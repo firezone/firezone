@@ -180,8 +180,18 @@ defmodule Portal.Req.SSRFProtection do
     end
   end
 
-  defp call_adapter(adapter, request) when is_atom(adapter), do: adapter.run(request)
-  defp call_adapter(adapter, request) when is_function(adapter, 1), do: adapter.(request)
+  # A Finch pool that shuts down for idleness while a request is checking out
+  # a connection exits the caller (sneako/finch#393). Surfacing it as a
+  # transport error lets Req's retry step handle it instead.
+  defp call_adapter(adapter, request) do
+    run_adapter(adapter, request)
+  catch
+    :exit, {{:shutdown, :idle_timeout}, {NimblePool, :checkout, _pools}} ->
+      {request, %Req.TransportError{reason: :closed}}
+  end
+
+  defp run_adapter(adapter, request) when is_atom(adapter), do: adapter.run(request)
+  defp run_adapter(adapter, request) when is_function(adapter, 1), do: adapter.(request)
 
   # Req creates a named Finch instance for each distinct set of connection
   # options. Since the TLS hostname is user-controlled here, doing that would

@@ -251,6 +251,30 @@ defmodule Portal.Req.SSRFProtectionTest do
     end
   end
 
+  test "retries when the Finch pool shuts down for idleness during checkout" do
+    attempts = :counters.new(1, [])
+
+    adapter = fn request ->
+      :counters.add(attempts, 1, 1)
+
+      if :counters.get(attempts, 1) == 1 do
+        exit({{:shutdown, :idle_timeout}, {NimblePool, :checkout, [self()]}})
+      else
+        {request, Req.Response.new(status: 204)}
+      end
+    end
+
+    request =
+      protected_request("https://8.8.8.8/events", adapter,
+        retry: :transient,
+        retry_delay: 0,
+        retry_log_level: false
+      )
+
+    assert {:ok, %Req.Response{status: 204}} = Req.post(request)
+    assert :counters.get(attempts, 1) == 2
+  end
+
   defp protected_request(url, adapter, options \\ []) do
     {resolver, options} = Keyword.pop(options, :resolver)
 
