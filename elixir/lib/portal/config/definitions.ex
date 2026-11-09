@@ -633,7 +633,8 @@ defmodule Portal.Config.Definitions do
     end
   )
 
-  # sobelow_skip ["DOS.StringToAtom"]
+  # Cluster configuration comes from administrator-controlled environment variables.
+  # sobelow_skip ["DOS.StringToAtom", "DOS.ModuleConcat"]
   defp dump_cluster_adapter_config(map, adapter) do
     keyword = Dumper.keyword(map)
 

@@ -504,8 +504,8 @@ defmodule PortalWeb.Components.Core do
   end
 
   defp build_gravatar_url(actor, size) do
-    email = actor.email
-    hash = Base.encode16(:crypto.hash(:md5, email), case: :lower)
+    email = actor.email |> String.trim() |> String.downcase()
+    hash = Base.encode16(:crypto.hash(:sha256, email), case: :lower)
     "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=retro"
   end
 
