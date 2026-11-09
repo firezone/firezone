@@ -3056,6 +3056,8 @@ name = "frostlink"
 version = "0.1.0"
 dependencies = [
  "ip-packet",
+ "opentelemetry",
+ "otel-instruments",
  "sanstun",
  "tracing",
  "zeroize",
