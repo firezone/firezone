@@ -12,18 +12,55 @@ defmodule Portal.Billing.Stripe.APIClientTest do
       )
     end
 
-    test "retries a rate-limited request" do
-      Req.Test.expect(APIClient, fn conn -> Plug.Conn.send_resp(conn, 429, "{}") end)
-      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "cus_retried"}) end)
+    test "retries a POST with the same idempotency key" do
+      test_pid = self()
+
+      for status <- [429, 503] do
+        Req.Test.expect(APIClient, fn conn ->
+          send(test_pid, {:key, Plug.Conn.get_req_header(conn, "idempotency-key")})
+          Plug.Conn.send_resp(conn, status, "{}")
+        end)
+      end
+
+      Req.Test.expect(APIClient, fn conn ->
+        send(test_pid, {:key, Plug.Conn.get_req_header(conn, "idempotency-key")})
+        Req.Test.json(conn, %{"id" => "cus_retried"})
+      end)
 
       assert {:ok, %{"id" => "cus_retried"}} =
-               APIClient.update_customer_metadata("test_token", "cus_retried", %{account_slug: "acme"})
+               APIClient.create_customer("test_token", "Test", "test@example.com", %{})
+
+      assert_received {:key, [key]}
+      assert_received {:key, [^key]}
+      assert_received {:key, [^key]}
     end
 
-    test "does not retry a server error, so a POST never runs twice" do
-      Req.Test.expect(APIClient, fn conn -> Plug.Conn.send_resp(conn, 500, "{}") end)
+    test "sends a new idempotency key for each call" do
+      test_pid = self()
 
-      assert {:error, :retry_later} = APIClient.create_customer("test_token", "Test", "test@example.com", %{})
+      Req.Test.stub(APIClient, fn conn ->
+        send(test_pid, {:key, Plug.Conn.get_req_header(conn, "idempotency-key")})
+        Req.Test.json(conn, %{"id" => "cus_test"})
+      end)
+
+      assert {:ok, _customer} = APIClient.update_customer_metadata("test_token", "cus_test", %{account_slug: "a"})
+      assert {:ok, _customer} = APIClient.update_customer_metadata("test_token", "cus_test", %{account_slug: "b"})
+
+      assert_received {:key, [first]}
+      assert_received {:key, [second]}
+      assert first != second
+    end
+
+    test "sends no idempotency key on a GET" do
+      test_pid = self()
+
+      Req.Test.stub(APIClient, fn conn ->
+        send(test_pid, {:key, Plug.Conn.get_req_header(conn, "idempotency-key")})
+        Req.Test.json(conn, %{"id" => "cus_test"})
+      end)
+
+      assert {:ok, _customer} = APIClient.fetch_customer("test_token", "cus_test")
+      assert_received {:key, []}
     end
   end
 

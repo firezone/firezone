@@ -100,16 +100,16 @@ defmodule Portal.Billing.Stripe.APIClient do
       {"stripe-version", "2023-10-16"}
     ]
 
-    # Stripe does not run a rate-limited request, so a 429 is safe to retry
-    # for any method. Other failures are not retried here, since a retried
-    # POST could create a second customer or subscription.
+    # Every retry of this call sends the same idempotency key, so Stripe
+    # returns the saved result of a POST it already ran instead of running it
+    # again, and a retried POST cannot create a second customer or subscription.
     req_opts =
       [
         method: method,
         url: url,
-        headers: headers,
+        headers: headers ++ idempotency_key_header(method),
         body: body,
-        retry: fn _request, response -> match?(%Req.Response{status: 429}, response) end,
+        retry: :transient,
         max_retries: 3
       ]
       |> Keyword.merge(fetch_config(:req_opts) || [])
@@ -128,6 +128,9 @@ defmodule Portal.Billing.Stripe.APIClient do
         {:error, reason}
     end
   end
+
+  defp idempotency_key_header(:post), do: [{"idempotency-key", Ecto.UUID.generate()}]
+  defp idempotency_key_header(_method), do: []
 
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
