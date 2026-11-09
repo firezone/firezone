@@ -14,7 +14,7 @@ use eventloop_budget::Budget;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, ThroughputLimit, VERSION, auth::AccountId, control_endpoint, ebpf, sockets,
+    Sleep, ThroughputLimit, auth::AccountId, control_endpoint, ebpf, sockets,
 };
 use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
@@ -164,7 +164,7 @@ fn main() -> ExitCode {
         .expect("Failed to build tokio runtime");
 
     if args.telemetry {
-        let release = VERSION
+        let release = git_sha::git_sha()
             .expect("relay binary was not patched with a release SHA before enabling telemetry");
         telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
         telemetry::start(args.api_url.as_str(), release, RELAY_DSN);
@@ -254,7 +254,7 @@ async fn try_main(args: Args) -> Result<()> {
         let is_connected = is_connected.clone();
         http_health_check::serve_with_version(
             args.health_check.health_check_addr,
-            *firezone_relay::VERSION,
+            git_sha::git_sha(),
             move || is_connected.load(Ordering::Relaxed),
         )
     });

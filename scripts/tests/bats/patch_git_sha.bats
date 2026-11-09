@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
 setup() {
-  PATCHER="$BATS_TEST_DIRNAME/../../../rust/mise-tasks/patch-relay-release"
-  BINARY="$BATS_TEST_TMPDIR/relay"
+  PATCHER="$BATS_TEST_DIRNAME/../../../rust/mise-tasks/patch-git-sha"
+  BINARY="$BATS_TEST_TMPDIR/binary"
   # A stand-in binary: arbitrary bytes around the marker + 40-zero placeholder.
   printf 'HEADER\0firezone-git-sha:0000000000000000000000000000000000000000\0FOOTER' >"$BINARY"
 }

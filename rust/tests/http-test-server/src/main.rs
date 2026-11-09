@@ -12,10 +12,14 @@ use std::{convert::Infallible, net::Ipv4Addr};
 use tokio::net::TcpListener;
 
 #[tokio::main(flavor = "current_thread")]
+#[expect(clippy::print_stderr, reason = "No logging is set up")]
 async fn main() -> Result<()> {
     let port = std::env::var("PORT")
         .context("Missing env var `PORT`")?
         .parse::<u16>()?;
+
+    let git_sha = git_sha::git_sha();
+    eprintln!("Listening on port {port} (git_sha = {git_sha:?})");
 
     let router = Router::new().route("/bytes", get(byte_stream));
     let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).await?;

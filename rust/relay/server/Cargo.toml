@@ -13,6 +13,7 @@ bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 eventloop-budget = { workspace = true }
 futures = { workspace = true }
+git-sha = { workspace = true }
 logging = { workspace = true }
 mimalloc = { workspace = true }
 mio = { workspace = true, features = ["net"] }

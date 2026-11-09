@@ -308,6 +308,7 @@ fn try_main() -> Result<()> {
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
+        git_sha = git_sha::git_sha(),
         system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         "`headless-client` started logging"
     );

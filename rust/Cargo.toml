@@ -49,6 +49,7 @@ members = [
     "libs/flow-log-spool",
     "libs/flow-log-upload",
     "libs/flow-log-writer",
+    "libs/git-sha",
     "libs/http-client",
     "libs/incremental-inet-checksum",
     "libs/known-dirs",
@@ -144,6 +145,7 @@ foldhash = "0.2.0"
 frostlink = { path = "libs/connlib/frostlink" }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
+git-sha = { path = "libs/git-sha" }
 glob = "0.3.3"
 gui-ipc = { path = "gui-client/src-gui-ipc" }
 gungraun = "0.20.0"
