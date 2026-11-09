@@ -2,12 +2,11 @@ defmodule Portal.Repo.Migrations.PointDevicesGatewayTokenAtDeviceTokens do
   use Ecto.Migration
 
   # Gateway tokens are now written only to device_tokens. The new key is
-  # added NOT VALID so devices is locked only briefly; the next migration
-  # validates it without blocking writes.
+  # added NOT VALID so devices is locked only briefly, and the short
+  # lock_timeout stops a blocked migration from queueing every devices query
+  # behind it. The next migration validates the key without blocking writes.
   def up do
-    execute("SET LOCAL lock_timeout TO '5s'")
-
-    execute("ALTER TABLE device_tokens DROP CONSTRAINT device_tokens_gateway_token_fkey")
+    execute("SET LOCAL lock_timeout TO '2s'")
 
     execute("""
     ALTER TABLE devices
@@ -21,7 +20,7 @@ defmodule Portal.Repo.Migrations.PointDevicesGatewayTokenAtDeviceTokens do
   end
 
   def down do
-    execute("SET LOCAL lock_timeout TO '5s'")
+    execute("SET LOCAL lock_timeout TO '2s'")
 
     execute("""
     ALTER TABLE devices
@@ -30,15 +29,6 @@ defmodule Portal.Repo.Migrations.PointDevicesGatewayTokenAtDeviceTokens do
         FOREIGN KEY (account_id, gateway_token_id)
         REFERENCES gateway_tokens (account_id, id)
         ON DELETE SET NULL (gateway_token_id)
-        NOT VALID
-    """)
-
-    execute("""
-    ALTER TABLE device_tokens
-      ADD CONSTRAINT device_tokens_gateway_token_fkey
-        FOREIGN KEY (account_id, id)
-        REFERENCES gateway_tokens (account_id, id)
-        ON DELETE CASCADE
         NOT VALID
     """)
   end
