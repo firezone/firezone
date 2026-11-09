@@ -217,36 +217,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:api_ingestion_capacity, :integer, default: 1)
 
   @doc """
-  Flow-log rows per second one initiator (a Client that reports its own flows) may upload. Charged per reporting device after the ingest token is verified.
-  """
-  defconfig(:api_ingestion_initiator_rows_per_second, :integer, default: 100)
-
-  @doc """
-  Flow-log rows one initiator may upload in a burst, for example when it drains its spool after it was offline.
-  """
-  defconfig(:api_ingestion_initiator_row_burst, :integer, default: 100_000)
-
-  @doc """
-  Flow-log rows per second one responder (usually a Gateway, which reports a row for every client it serves) may upload.
-  """
-  defconfig(:api_ingestion_responder_rows_per_second, :integer, default: 1_000)
-
-  @doc """
-  Flow-log rows one responder may upload in a burst.
-  """
-  defconfig(:api_ingestion_responder_row_burst, :integer, default: 1_000_000)
-
-  @doc """
-  Flow-log rows per second an account may upload, per device in its device allowance. An account with an unlimited device allowance has no account limit.
-  """
-  defconfig(:api_ingestion_account_rows_per_second_per_device, :integer, default: 50)
-
-  @doc """
-  Flow-log rows an account may upload in a burst, per device in its device allowance.
-  """
-  defconfig(:api_ingestion_account_row_burst_per_device, :integer, default: 50_000)
-
-  @doc """
   How often, in seconds, clients and gateways upload batched flow logs to the ingest API.
 
   The trade-off is request load on the API against how quickly flow logs become visible.

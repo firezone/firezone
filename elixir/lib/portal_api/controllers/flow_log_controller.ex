@@ -12,7 +12,6 @@ defmodule PortalAPI.FlowLogController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   import Ecto.Changeset
-  require Logger
   alias OpenApiSpex.Schema
   alias Portal.Accounts.Limits
   alias Portal.FlowLog
@@ -133,57 +132,59 @@ defmodule PortalAPI.FlowLogController do
   # the account's. A responder reports a row for every client it serves, so it
   # has its own, larger bucket. The account's allowance grows with its device
   # allowance, the same sizing as relay allocations; an unlimited device
-  # allowance has no account bucket.
+  # allowance has no account bucket. The account's `flow_log_*` limits, set from
+  # Stripe metadata, override each value.
   defp charge_rows(account, claims, rows) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    limits = account.limits || %Limits{}
     role = reporting_role(claims)
     device_id = reporting_device_id(role, claims)
-    {rows_per_second, burst} = device_bucket(role, config)
+    {refill_rate, capacity} = device_bucket(role, limits, config)
 
-    with :ok <- hit(:device, "ingestion:#{role}:#{device_id}", rows_per_second, burst, rows),
-         :ok <- charge_account(account, config, rows) do
+    with :ok <- hit(:device, "ingestion:#{role}:#{device_id}", refill_rate, capacity, rows),
+         :ok <- charge_account(account, limits, config, rows) do
       :ok
     else
       {:error, {bucket, retry_after_ms}} ->
         Portal.Telemetry.flow_log_upload_denied(bucket, role)
-
-        Logger.info("Flow log upload rate limited",
-          account_id: account.id,
-          account_slug: account.slug,
-          device_id: device_id,
-          bucket: bucket,
-          role: role,
-          rows: rows
-        )
-
         {:error, {:rate_limit, retry_after_ms}}
     end
   end
 
-  defp charge_account(account, config, rows) do
-    case Limits.device_allowance(account.limits) do
+  defp charge_account(account, limits, config, rows) do
+    case account_bucket(limits, config) do
       nil ->
         :ok
 
-      devices ->
-        hit(
-          :account,
-          "ingestion:account:#{account.id}",
-          devices * Keyword.fetch!(config, :account_rows_per_second_per_device),
-          devices * Keyword.fetch!(config, :account_row_burst_per_device),
-          rows
-        )
+      {refill_rate, capacity} ->
+        hit(:account, "ingestion:account:#{account.id}", refill_rate, capacity, rows)
     end
   end
 
-  defp device_bucket(:initiator, config) do
-    {Keyword.fetch!(config, :initiator_rows_per_second),
-     Keyword.fetch!(config, :initiator_row_burst)}
+  defp device_bucket(:initiator, limits, config) do
+    {limits.flow_log_initiator_refill_rate || Keyword.fetch!(config, :initiator_refill_rate),
+     limits.flow_log_initiator_capacity || Keyword.fetch!(config, :initiator_capacity)}
   end
 
-  defp device_bucket(:responder, config) do
-    {Keyword.fetch!(config, :responder_rows_per_second),
-     Keyword.fetch!(config, :responder_row_burst)}
+  defp device_bucket(:responder, limits, config) do
+    {limits.flow_log_responder_refill_rate || Keyword.fetch!(config, :responder_refill_rate),
+     limits.flow_log_responder_capacity || Keyword.fetch!(config, :responder_capacity)}
+  end
+
+  defp account_bucket(limits, config) do
+    devices = Limits.device_allowance(limits)
+
+    refill_rate =
+      limits.flow_log_account_refill_rate ||
+        (devices && devices * Keyword.fetch!(config, :account_refill_rate_per_device))
+
+    capacity =
+      limits.flow_log_account_capacity ||
+        (devices && devices * Keyword.fetch!(config, :account_capacity_per_device))
+
+    if refill_rate && capacity do
+      {refill_rate, capacity}
+    end
   end
 
   defp hit(bucket, key, refill_rate, capacity, cost) do

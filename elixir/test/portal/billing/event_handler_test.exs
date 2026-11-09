@@ -635,6 +635,27 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated.limits.relay_throughput_mbps == nil
     end
 
+    test "sets the flow-log limits from metadata", %{account: account, customer: customer} do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 1, %{
+          "flow_log_responder_refill_rate" => "5000",
+          "flow_log_responder_capacity" => "5000000"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.flow_log_responder_refill_rate == 5000
+      assert updated.limits.flow_log_responder_capacity == 5_000_000
+    end
+
     test "sets the monthly active users limit from Business seats", %{
       account: account,
       customer: customer

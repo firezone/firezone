@@ -664,15 +664,6 @@ if config_env() == :prod do
       refill_rate: env_var_to_config!(:api_ingestion_refill_rate),
       capacity: env_var_to_config!(:api_ingestion_capacity)
 
-    config :portal, PortalAPI.FlowLogController,
-      initiator_rows_per_second: env_var_to_config!(:api_ingestion_initiator_rows_per_second),
-      initiator_row_burst: env_var_to_config!(:api_ingestion_initiator_row_burst),
-      responder_rows_per_second: env_var_to_config!(:api_ingestion_responder_rows_per_second),
-      responder_row_burst: env_var_to_config!(:api_ingestion_responder_row_burst),
-      account_rows_per_second_per_device:
-        env_var_to_config!(:api_ingestion_account_rows_per_second_per_device),
-      account_row_burst_per_device: env_var_to_config!(:api_ingestion_account_row_burst_per_device)
-
     config :portal,
       api_external_url: api_external_url,
       rest_api_url: env_var_to_config!(:rest_api_url) || api_external_url,
