@@ -98,7 +98,6 @@ jobs:
       sha: ${{ inputs.sha }}
       profile: ${{ inputs.profile }}
       stage: ${{ inputs.stage }}
-      upload_binary: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
 
   package:
     name: package-gateway-${{ matrix.arch.shortname }}

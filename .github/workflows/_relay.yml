@@ -78,7 +78,6 @@ jobs:
       sha: ${{ inputs.sha }}
       profile: ${{ inputs.profile }}
       stage: ${{ inputs.stage }}
-      upload_binary: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
 
   upload-binary:
     name: upload-relay-${{ matrix.arch }}
