@@ -1,7 +1,7 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
   alias Portal.{Banner, Billing, EmailSuppression, Mailer, SlugRegistry}
-  alias Portal.Workers.DeleteAccount
+  alias Portal.Workers.{DeleteAccount, SyncStripeCustomer}
   alias Portal.Ops.AuthProviderNotices
 
   @max_bcc_per_message 50
@@ -174,6 +174,35 @@ defmodule Portal.Ops do
           IO.puts("Aborted.")
           :aborted
       end
+    end
+  end
+
+  @doc """
+  Queues a Stripe sync for every account with a Stripe customer, so each
+  customer gets the current name and slug of its account. Run it once per
+  region. Running it again only sends the same values again.
+  """
+  def sync_stripe_customers do
+    if Billing.enabled?() do
+      account_ids = Database.stripe_customer_account_ids()
+
+      IO.puts(
+        "About to queue a Stripe sync for #{length(account_ids)} account(s) in region #{SlugRegistry.region()}. Continue? [y/N]"
+      )
+
+      case IO.gets("") do
+        answer when answer in ["y\n", "Y\n"] ->
+          count = account_ids |> Enum.map(&SyncStripeCustomer.new(%{account_id: &1})) |> Oban.insert_all() |> length()
+          IO.puts("Queued #{count} Stripe sync job(s).")
+          {:ok, count}
+
+        _ ->
+          IO.puts("Aborted.")
+          :aborted
+      end
+    else
+      IO.puts("Billing is disabled, so there are no Stripe customers to sync.")
+      {:error, :billing_disabled}
     end
   end
 
@@ -787,6 +816,15 @@ defmodule Portal.Ops do
 
     def list_account_slugs do
       from(s in Portal.AccountSlug, select: %{slug: s.slug, account_id: s.account_id}, order_by: s.slug)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def stripe_customer_account_ids do
+      from(a in Account,
+        where: not is_nil(fragment("?->'stripe'->>'customer_id'", a.metadata)),
+        select: a.id
+      )
       |> Safe.unscoped()
       |> Safe.all()
     end
