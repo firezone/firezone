@@ -175,7 +175,13 @@ jobs:
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
       - name: Package binary
         shell: bash
-        run: cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+        run: |
+          set -xe
+
+          cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+
+          # Stamp before signing, which would otherwise be invalidated.
+          mise-tasks/patch-git-sha "$ARTIFACT_PATH" "$RESOLVED_SHA"
       - uses: ./.github/actions/setup-azure-sign-tool
         if: ${{ inputs.profile == 'release' }}
         with:

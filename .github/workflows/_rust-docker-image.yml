@@ -91,8 +91,8 @@ jobs:
           path: rust/target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ inputs.package }}
           key: ${{ inputs.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
       # Restored binaries skip the `cargo build` below, so the toolchains only
-      # needed to compile them are skipped too. The relay still needs mise to
-      # stamp in the commit SHA.
+      # needed to compile them are skipped too. Stamping in the commit SHA
+      # still needs mise.
       - uses: ./.github/actions/setup-musl
         if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
@@ -106,10 +106,9 @@ jobs:
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
-        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || inputs.package == 'firezone-relay' }}
         with:
-          # Stamping the SHA into the relay shells out to coreutils only, so a
-          # restored relay needs `mise` as a task runner but none of its tools.
+          # Stamping the SHA shells out to coreutils only, so a restored binary
+          # needs `mise` as a task runner but none of its tools.
           install: ${{ steps.binary-cache.outputs.cache-hit != 'true' }}
           install_args: --cd rust
         env:
@@ -134,11 +133,9 @@ jobs:
 
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ inputs.package }} ${{ inputs.package }}
 
-          # Stamp the commit SHA into the relay's placeholder before checksum and
-          # upload; the binary is otherwise SHA-independent and cache-restorable.
-          if [[ "${{ inputs.package }}" == "firezone-relay" ]]; then
-            mise run //rust:patch-relay-release "$PWD/${{ inputs.package }}" "${{ env.RESOLVED_SHA }}"
-          fi
+          # Stamp the commit SHA into the placeholder before checksum and upload;
+          # the binary is otherwise SHA-independent and cache-restorable.
+          mise run //rust:patch-git-sha "$PWD/${{ inputs.package }}" "${{ env.RESOLVED_SHA }}"
 
           sha256sum ${{ inputs.package }} > ${{ inputs.package }}.sha256sum.txt
       - name: Upload binary artifact
