@@ -4,6 +4,7 @@ defmodule Portal.Changes.Hooks.TokensTest do
   import Portal.TokenFixtures
   alias Portal.Changes.Change
   alias Portal.Changes.Hooks.ClientTokens
+  alias Portal.Changes.Hooks.DeviceTokens
   alias Portal.Changes.Hooks.GatewayTokens
   alias Portal.PG
 
@@ -119,6 +120,23 @@ defmodule Portal.Changes.Hooks.TokensTest do
       }
 
       assert :ok == GatewayTokens.on_delete(0, old_data)
+    end
+  end
+
+  describe "DeviceTokens.on_delete/2" do
+    test "sends :disconnect to registered token process" do
+      account = account_fixture()
+      token = gateway_token_fixture(account: account)
+
+      PG.register(token.id)
+
+      assert :ok == DeviceTokens.on_delete(0, %{"id" => token.id, "account_id" => account.id})
+      assert_receive :disconnect
+    end
+
+    test "returns :ok on insert and update" do
+      assert :ok == DeviceTokens.on_insert(0, %{})
+      assert :ok == DeviceTokens.on_update(0, %{}, %{})
     end
   end
 end

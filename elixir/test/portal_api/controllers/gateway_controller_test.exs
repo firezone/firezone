@@ -623,9 +623,7 @@ defmodule PortalAPI.GatewayControllerTest do
     } do
       rotated_at = ~U[2026-01-01 00:00:00.000000Z]
 
-      token
-      |> Ecto.Changeset.change(rotated_at: rotated_at)
-      |> Repo.update!()
+      stamp_gateway_token(token, rotated_at)
 
       conn =
         conn
@@ -648,9 +646,7 @@ defmodule PortalAPI.GatewayControllerTest do
     } do
       rotated_at = ~U[2026-01-01 00:00:00.000000Z]
 
-      token
-      |> Ecto.Changeset.change(rotated_at: rotated_at)
-      |> Repo.update!()
+      stamp_gateway_token(token, rotated_at)
 
       conn =
         conn

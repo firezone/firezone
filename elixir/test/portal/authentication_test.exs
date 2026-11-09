@@ -1699,6 +1699,75 @@ defmodule Portal.AuthenticationTest do
     end
   end
 
+  describe "gateway tokens read from device_tokens" do
+    setup do
+      account = account_fixture()
+      site = site_fixture(account: account)
+
+      %{account: account, site: site, subject: admin_subject_fixture(account: account)}
+    end
+
+    test "a token without a copy no longer verifies", %{account: account, site: site} do
+      token = gateway_token_fixture(account: account, site: site)
+      Repo.delete_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id))
+
+      assert {:error, :invalid_token} = verify_gateway_token(encode_fragment!(token))
+    end
+
+    test "verification uses the copy's rotation stamp", %{account: account} do
+      token = gateway_token_fixture(gateway: gateway_fixture(account: account))
+      expired = DateTime.add(DateTime.utc_now(), -5, :hour)
+
+      Repo.update_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id),
+        set: [rotated_at: expired]
+      )
+
+      assert {:error, :invalid_token} = verify_gateway_token(encode_fragment!(token))
+    end
+
+    test "delete_gateway_tokens/2 deletes from both tables", %{
+      account: account,
+      site: site,
+      subject: subject
+    } do
+      revoked = gateway_token_fixture(account: account, site: site)
+      kept = gateway_token_fixture(account: account, site: site)
+
+      assert {1, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^revoked.id)
+               |> delete_gateway_tokens(subject)
+
+      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: revoked.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: revoked.id)
+      assert Repo.get_by(Portal.GatewayToken, account_id: account.id, id: kept.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: kept.id)
+    end
+
+    test "delete_gateway_tokens/2 refuses a subject without access" do
+      account = account_fixture()
+      token = gateway_token_fixture(account: account)
+      subject = subject_fixture(account: account, actor: %{type: :account_user})
+
+      assert {:error, :unauthorized} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
+               |> delete_gateway_tokens(subject)
+
+      assert Repo.get_by(Portal.GatewayToken, account_id: account.id, id: token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+    end
+
+    test "delete_gateway_tokens/2 stays in the subject's account", %{subject: subject} do
+      other = gateway_token_fixture()
+
+      assert {0, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^other.id)
+               |> delete_gateway_tokens(subject)
+
+      assert Repo.get_by(Portal.GatewayToken, account_id: other.account_id, id: other.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: other.account_id, id: other.id)
+    end
+  end
+
   defp device_tokens(account) do
     Repo.all(from(dt in Portal.DeviceToken, where: dt.account_id == ^account.id))
   end
