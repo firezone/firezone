@@ -679,33 +679,28 @@ impl TunnelTest {
             }
 
             Transition::RebindClientNat {
-                client_id,
-                mapping,
-                stream,
+                flow_id,
+                gateway_id,
+                probes,
             } => {
-                let gateway_ips = self
-                    .gateways
-                    .values()
-                    .flat_map(|gateway| [gateway.ip4, gateway.nat_ip4()])
+                let flow = self.udp_flows[&flow_id];
+                let gateway = &self.gateways[&gateway_id];
+                let gateway_ips = [gateway.ip4, gateway.nat_ip4()]
+                    .into_iter()
                     .flatten()
                     .map(IpAddr::V4)
                     .collect::<Vec<_>>();
-                self.clients.get_mut(&client_id).unwrap().rebind_nat(
-                    mapping,
-                    |ip| gateway_ips.contains(&ip),
-                    now,
-                );
+                self.clients
+                    .get_mut(&flow.client_id)
+                    .unwrap()
+                    .rebind_nat(&gateway_ips);
 
-                if let Some((flow_id, probes)) = stream {
-                    let flow = self.udp_flows[&flow_id];
-
-                    for (at, probe_id) in
-                        iter::successors(Some(now), |at| Some(*at + STREAM_INTERVAL)).zip(probes)
-                    {
-                        self.advance_to(ref_state, portal, &mut buffered_transmits, at);
-                        self.flux_capacitor.skip_to(at);
-                        self.send_udp_probe(flow, probe_id, at);
-                    }
+                for (at, probe_id) in
+                    iter::successors(Some(now), |at| Some(*at + STREAM_INTERVAL)).zip(probes)
+                {
+                    self.advance_to(ref_state, portal, &mut buffered_transmits, at);
+                    self.flux_capacitor.skip_to(at);
+                    self.send_udp_probe(flow, probe_id, at);
                 }
             }
             Transition::ReconnectPortal { client_id } => {

@@ -31,16 +31,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// How long the Client's traffic goes unanswered before it re-keys: `KEEPALIVE_TIMEOUT +
-/// REKEY_TIMEOUT` on a Frostlink connection.
-const UNANSWERED_REKEY: Duration = Duration::from_secs(7);
-/// How far apart two re-keys of the Client may be for the Gateway to take them as distress, less a
-/// margin.
-const EARLY_REKEY_WINDOW: Duration = Duration::from_secs(100);
-/// How long a path may lose traffic after the exchange that makes the Client re-key a second time:
-/// the re-key itself, the Gateway re-probing, and a margin.
-const NAT_REBINDING_RECOVERY: Duration = Duration::from_secs(15);
-
 /// Reference state for a particular client.
 ///
 /// The reference state machine is designed to be as abstract as possible over connlib's functionality.
@@ -106,11 +96,6 @@ pub struct RefClient {
     #[debug(skip)]
     connection_resets: Vec<Instant>,
 
-    /// Since its NAT last rebound a mapping, the exchanges with each Gateway that make the
-    /// client re-key.
-    #[debug(skip)]
-    nat_rebinding: Option<BTreeMap<GatewayId, (Instant, Option<Instant>)>>,
-
     // TODO: Remove with classic ICE.
     /// Per Gateway, the instants at which this client sent a packet on that
     /// connection.
@@ -168,7 +153,6 @@ impl RefClient {
             routes: Default::default(),
             gateways_by_site: Default::default(),
             connection_resets: Default::default(),
-            nat_rebinding: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
             outbound_peer_authorizations: Default::default(),
@@ -1448,31 +1432,6 @@ impl RefClient {
             .range(..at)
             .next_back()
             .copied()
-    }
-
-    pub(crate) fn rebind_nat(&mut self) {
-        self.nat_rebinding = Some(BTreeMap::new());
-    }
-
-    /// Whether traffic with `gateway` at `at` may be lost to the last NAT rebinding.
-    ///
-    /// The path recovers once unanswered exchanges made the Client re-key twice within
-    /// [`EARLY_REKEY_WINDOW`].
-    pub(crate) fn may_lose_to_nat_rebinding(&mut self, gateway: GatewayId, at: Instant) -> bool {
-        let Some(rekeys) = &mut self.nat_rebinding else {
-            return false;
-        };
-        let (first, second) = rekeys.entry(gateway).or_insert((at, None));
-
-        if second.is_none() {
-            if at >= *first + EARLY_REKEY_WINDOW {
-                *first = at;
-            } else if at >= *first + UNANSWERED_REKEY {
-                *second = Some(at);
-            }
-        }
-
-        second.is_none_or(|second| at < second + NAT_REBINDING_RECOVERY)
     }
 
     // TODO: Remove with classic ICE.

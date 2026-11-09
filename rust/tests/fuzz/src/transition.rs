@@ -107,13 +107,12 @@ pub enum Transition {
         dead_window: Duration,
         portal_window: Duration,
     },
-    /// The Client's symmetric NAT moves one of its mappings towards a Gateway, picked by
-    /// `mapping`, to a fresh public port. Meanwhile, the Client may stream probes on one of its
-    /// UDP flows, one every [`STREAM_INTERVAL`].
+    /// The NAT of the Client streaming `probes` on the UDP flow moves its mappings towards the
+    /// flow's Gateway to other ports: back to the ones it moved them away from last, or fresh ones.
     RebindClientNat {
-        client_id: ClientId,
-        mapping: u32,
-        stream: Option<(FlowId, Vec<ProbeId>)>,
+        flow_id: FlowId,
+        gateway_id: GatewayId,
+        probes: Vec<ProbeId>,
     },
     ReconnectPortal {
         client_id: ClientId,

@@ -26,6 +26,13 @@ use crate::resource as client;
 // TODO: Remove with classic ICE.
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
+/// How long the Client's stream may lose responses after its NAT rebound the mapping it uses.
+///
+/// The Gateway re-probes once the Client re-keyed twice, each after 7s of hearing nothing back
+/// (`KEEPALIVE_TIMEOUT + REKEY_TIMEOUT`); anything still reaching the Client, e.g. probes over a
+/// relay, delays that. Generous rather than exact.
+const NAT_REBINDING_LOSS: Duration = Duration::from_secs(50);
+
 /// How long after a relay frees up its ports until no node ignores it anymore: how long a node
 /// ignores a relay that failed its allocation, plus a margin.
 const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
@@ -397,7 +404,43 @@ impl ReferenceState {
                 }
             }
             Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
-                self.send_udp_packet_on_existing_flow(portal, *flow_id, *probe_id, now);
+                let flow = self
+                    .udp_flows
+                    .get(flow_id)
+                    .expect("reused UDP flow must exist")
+                    .clone();
+
+                let request = ProbeRequest::Udp {
+                    src: flow.src,
+                    dst: flow.dst,
+                    sport: flow.sport,
+                    dport: flow.dport,
+                };
+
+                match self.record_flow_probe(
+                    portal,
+                    *probe_id,
+                    flow.client_id,
+                    flow.route,
+                    request,
+                    now,
+                ) {
+                    ExpectedOutcome::RoundTripCompleted { .. } => {
+                        if let Some(flow) = self.udp_flows.get_mut(flow_id) {
+                            flow.last_round_trip = now;
+                        }
+                    }
+                    ExpectedOutcome::Dropped => {
+                        panic!("reused UDP route must complete a round trip")
+                    }
+                    ExpectedOutcome::Rejected {
+                        by: RejectionRemote::Gateway(_),
+                        ..
+                    } => {}
+                    ExpectedOutcome::Rejected { .. } => {
+                        panic!("reused UDP route must complete a round trip")
+                    }
+                }
             }
             Transition::ConnectTcp {
                 flow_id,
@@ -552,18 +595,22 @@ impl ReferenceState {
                 }
             }
             Transition::RebindClientNat {
-                client_id, stream, ..
+                flow_id, probes, ..
             } => {
-                self.clients
-                    .get_mut(client_id)
-                    .unwrap()
-                    .exec_mut(|client| client.rebind_nat());
+                for (at, probe_id) in
+                    iter::successors(Some(now), |at| Some(*at + STREAM_INTERVAL)).zip(probes)
+                {
+                    let send = Transition::SendUdpPacketOnExistingFlow {
+                        flow_id: *flow_id,
+                        probe_id: *probe_id,
+                    };
+                    self = self.apply(&send, portal, at);
 
-                if let Some((flow_id, probes)) = stream {
-                    for (at, probe_id) in
-                        iter::successors(Some(now), |at| Some(*at + STREAM_INTERVAL)).zip(probes)
+                    if at < now + NAT_REBINDING_LOSS
+                        && let Some(probe) = self.expected_probes.get_mut(probe_id)
                     {
-                        self.send_udp_packet_on_existing_flow(portal, *flow_id, *probe_id, at);
+                        probe.trace_requirement =
+                            TraceRequirement::ExactOrLoss(KnownLoss::NatRebinding);
                     }
                 }
             }
@@ -832,45 +879,6 @@ impl ReferenceState {
         self.record_probe(portal, id, origin, request, sent_at, outcome, authorization);
 
         outcome
-    }
-
-    fn send_udp_packet_on_existing_flow(
-        &mut self,
-        portal: &StubPortal,
-        flow_id: FlowId,
-        probe_id: ProbeId,
-        now: Instant,
-    ) {
-        let flow = self
-            .udp_flows
-            .get(&flow_id)
-            .expect("reused UDP flow must exist")
-            .clone();
-
-        let request = ProbeRequest::Udp {
-            src: flow.src,
-            dst: flow.dst,
-            sport: flow.sport,
-            dport: flow.dport,
-        };
-
-        match self.record_flow_probe(portal, probe_id, flow.client_id, flow.route, request, now) {
-            ExpectedOutcome::RoundTripCompleted { .. } => {
-                if let Some(flow) = self.udp_flows.get_mut(&flow_id) {
-                    flow.last_round_trip = now;
-                }
-            }
-            ExpectedOutcome::Dropped => {
-                panic!("reused UDP route must complete a round trip")
-            }
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Gateway(_),
-                ..
-            } => {}
-            ExpectedOutcome::Rejected { .. } => {
-                panic!("reused UDP route must complete a round trip")
-            }
-        }
     }
 
     /// Records that `origin` sent `request`, the authorization it holds afterwards and the
@@ -1242,32 +1250,21 @@ impl ReferenceState {
         Ok(PoolTowardsPeer::Granted(pool))
     }
 
+    // TODO: Remove with classic ICE: every trace is then exact.
     fn trace_requirement(
-        &mut self,
+        &self,
         portal: &StubPortal,
         origin: ClientId,
         outcome: ExpectedOutcome,
         sent_at: Instant,
     ) -> TraceRequirement {
-        let Some(remote) = outcome.remote() else {
-            return TraceRequirement::Exact;
-        };
-
-        if let Remote::Gateway(gateway) = remote
-            && self
-                .clients
-                .get_mut(&origin)
-                .unwrap()
-                .exec_mut(|client| client.may_lose_to_nat_rebinding(gateway, sent_at))
-        {
-            return TraceRequirement::ExactOrLoss(KnownLoss::NatRebinding);
-        }
-
-        // TODO: Remove with classic ICE: every other trace is then exact.
         if portal.frostlink() {
             return TraceRequirement::Exact;
         }
 
+        let Some(remote) = outcome.remote() else {
+            return TraceRequirement::Exact;
+        };
         let known_loss = match remote {
             Remote::Client(client)
                 if self.clients[&client]

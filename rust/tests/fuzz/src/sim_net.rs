@@ -156,6 +156,8 @@ pub(crate) struct Nat {
     by_public: BTreeMap<SocketAddr, Binding>,
     /// IPv6 destinations the host has sent to; the state backing [`FilterMode`] for IPv6.
     sent_to6: BTreeMap<SocketAddr, Instant>,
+    /// The public socket each rebound mapping last moved away from.
+    rebound_from: BTreeMap<(SocketAddr, Option<SocketAddr>), SocketAddr>,
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +180,7 @@ impl Nat {
             by_internal: BTreeMap::default(),
             by_public: BTreeMap::default(),
             sent_to6: BTreeMap::default(),
+            rebound_from: BTreeMap::default(),
         }
     }
 
@@ -299,36 +302,26 @@ impl Nat {
         Ok(destination)
     }
 
-    /// Moves one of the mappings towards a destination matching `towards` to a fresh public port.
-    /// Nothing reaches the host through the old port anymore.
-    fn rebind(&mut self, selector: u32, towards: impl Fn(IpAddr) -> bool, now: Instant) {
-        let public = SocketAddr::new(self.ip4.into(), self.next_port);
-        let mut mapped = self
-            .by_internal
-            .iter_mut()
-            .filter(|((_, dst), _)| dst.is_some_and(|dst| towards(dst.ip())))
-            .map(|(_, public)| public)
-            .collect::<Vec<_>>();
-        if mapped.is_empty() {
-            return;
-        }
-        let index = selector as usize % mapped.len();
-        let old = mem::replace(mapped.swap_remove(index), public);
-        self.next_port += 1;
+    /// Moves the mappings towards `dst` to other public ports: back to the ones they last moved
+    /// away from, or fresh ones. Nothing reaches the host through the old ports anymore.
+    fn rebind(&mut self, dst: &[IpAddr]) {
+        for (key, public) in &mut self.by_internal {
+            if !key.1.is_some_and(|d| dst.contains(&d.ip())) {
+                continue;
+            }
 
-        let internal = self
-            .by_public
-            .remove(&old)
-            .expect("`by_internal` and `by_public` are in sync")
-            .internal;
-        self.by_public.insert(
-            public,
-            Binding {
-                internal,
-                sent_to: BTreeMap::new(),
-                refreshed_at: now,
-            },
-        );
+            let to = self.rebound_from.remove(key).unwrap_or_else(|| {
+                let port = self.next_port;
+                self.next_port += 1;
+
+                SocketAddr::new(self.ip4.into(), port)
+            });
+            let from = mem::replace(public, to);
+            self.rebound_from.insert(*key, from);
+
+            let binding = self.by_public.remove(&from).expect("bindings are in sync");
+            self.by_public.insert(to, binding);
+        }
     }
 
     /// Moves this NAT to a new public address, e.g. because the host roamed to a different network.
@@ -341,6 +334,7 @@ impl Nat {
         self.by_internal.clear();
         self.by_public.clear();
         self.sent_to6.clear();
+        self.rebound_from.clear();
     }
 }
 
@@ -426,17 +420,11 @@ impl<T> Host<T> {
         }
     }
 
-    /// Moves one of this host's NAT mappings towards a destination matching `towards` to a fresh
-    /// public port.
-    pub(crate) fn rebind_nat(
-        &mut self,
-        selector: u32,
-        towards: impl Fn(IpAddr) -> bool,
-        now: Instant,
-    ) {
+    /// Moves this host's NAT mappings towards `dst` to other public ports.
+    pub(crate) fn rebind_nat(&mut self, dst: &[IpAddr]) {
         match &mut self.edge {
             Edge::Open => {}
-            Edge::Nat(nat) => nat.rebind(selector, towards, now),
+            Edge::Nat(nat) => nat.rebind(dst),
         }
     }
 

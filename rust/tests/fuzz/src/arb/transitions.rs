@@ -82,8 +82,8 @@ const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 9] = [
     TransitionKind::CrashGateway,
 ];
 
-/// Streamed for 30s, well past the recovery from a NAT rebinding.
-const STREAMED_PROBES: usize = 15;
+/// Streamed for 68s, well past the recovery from a NAT rebinding.
+const STREAMED_PROBES: usize = 35;
 
 #[derive(Clone, Copy)]
 enum ExistingFlow<'a> {
@@ -112,16 +112,19 @@ pub(super) fn generate(
         .cloned()
         .collect::<Vec<_>>();
     let client_ids = state.all_client_ids();
-    let symmetric_natted_client_ids = state
-        .clients
-        .iter()
-        .filter(|(_, client)| {
-            matches!(
-                client.edge_config(),
-                EdgeConfig::Nat(Mapping::EndpointDependent, _, _)
-            )
+    let rebindable_flows = state
+        .udp_flows(now)
+        .into_iter()
+        .filter_map(|flow_id| {
+            let flow = &state.udp_flows[&flow_id];
+            let Remote::Gateway(gateway_id) = flow.route.remote() else {
+                return None;
+            };
+            let edge = state.clients[&flow.client_id].edge_config();
+
+            matches!(edge, EdgeConfig::Nat(Mapping::EndpointDependent, _, _))
+                .then_some((flow_id, gateway_id))
         })
-        .map(|(id, _)| *id)
         .collect::<Vec<_>>();
     let dns_record_domains = state.dns_resource_domains();
     let key_change_recipients = key_change_recipients(state);
@@ -218,8 +221,7 @@ pub(super) fn generate(
         (!expirable_peers.is_empty()).then_some((K::ExpirePeerAuthorizations, 2)),
         (!revocable_peers.is_empty()).then_some((K::RevokePeerAuthorization, 2)),
         // TODO: Remove the `frostlink` condition with classic ICE.
-        (portal.frostlink() && !symmetric_natted_client_ids.is_empty())
-            .then_some((K::RebindClientNat, 1)),
+        (portal.frostlink() && !rebindable_flows.is_empty()).then_some((K::RebindClientNat, 1)),
         (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
         (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
@@ -291,27 +293,14 @@ pub(super) fn generate(
             }
         }
         K::RebindClientNat => {
-            let client_id =
-                symmetric_natted_client_ids[g.choose_index(symmetric_natted_client_ids.len())];
-            let flows = state
-                .udp_flows(now)
-                .into_iter()
-                .filter(|flow| state.udp_flows[flow].client_id == client_id)
-                .collect::<Vec<_>>();
-            let mapping = g.u32();
-            let stream = (!flows.is_empty() && g.bool()).then(|| {
-                let flow = flows[g.choose_index(flows.len())];
-                let probes = iter::repeat_with(|| g.fresh_probe_id())
-                    .take(STREAMED_PROBES)
-                    .collect();
-
-                (flow, probes)
-            });
+            let (flow_id, gateway_id) = rebindable_flows[g.choose_index(rebindable_flows.len())];
 
             Transition::RebindClientNat {
-                client_id,
-                mapping,
-                stream,
+                flow_id,
+                gateway_id,
+                probes: iter::repeat_with(|| g.fresh_probe_id())
+                    .take(STREAMED_PROBES)
+                    .collect(),
             }
         }
         K::DeployNewRelays => {

@@ -247,7 +247,6 @@ pub(crate) enum KnownLoss {
     ConnectionReset,
     // TODO: Remove with classic ICE.
     WireGuardRekey,
-    /// A NAT moved the mapping a path uses; nothing notices until traffic goes unanswered.
     NatRebinding,
 }
 
