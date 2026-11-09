@@ -7,6 +7,8 @@
 "github:russellbanks/Komac" = { version = "2.17.1", bin = "komac", os = ["windows"] }
 # Builds the `.rpm`; `cargo-deb` for the `.deb` comes from `rust/mise.toml`.
 "cargo:cargo-generate-rpm" = { version = "0.21.1", os = ["linux"] }
+# Builds the `.msi`.
+"github:wixtoolset/wix3" = { version = "wix3141rtm", asset_pattern = "wix314-binaries.zip", os = ["windows"] }
 
 [tasks.dev]
 description = "Run the GUI client in dev against a dev Tunnel service"

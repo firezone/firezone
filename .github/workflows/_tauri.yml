@@ -280,6 +280,13 @@ jobs:
         if: "${{ runner.os == 'Windows' }}"
         shell: powershell
         run: ../../scripts/tests/gui-client-install-windows-msi.ps1
+      - name: Test upgrade from the latest release (Windows)
+        if: "${{ runner.os == 'Windows' }}"
+        shell: powershell
+        env:
+          ARCH: ${{ matrix.arch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ../../scripts/tests/gui-client-upgrade-windows-msi.ps1
 
       - name: Dump install.log
         # `always()` so the MSI's verbose log surfaces even when

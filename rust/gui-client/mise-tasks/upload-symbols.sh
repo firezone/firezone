@@ -7,7 +7,7 @@ cd ../target/release
 
 case "$OSTYPE" in
 linux*) files=(firezone-gui-client{,.debug} firezone-client-tunnel{,.debug}) ;;
-*) files=(Firezone.exe firezone_gui_client.pdb firezone-client-tunnel.exe firezone_client_tunnel.pdb register-sparse.exe register_sparse.pdb) ;;
+*) files=(firezone-gui-client.exe firezone_gui_client.pdb firezone-client-tunnel.exe firezone_client_tunnel.pdb register-sparse.exe register_sparse.pdb) ;;
 esac
 
 # Only the binaries we ship. Intermediate object files can reference a
