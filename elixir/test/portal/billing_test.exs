@@ -1055,32 +1055,52 @@ defmodule Portal.BillingTest do
     end
   end
 
-  describe "on_account_name_or_slug_changed/1" do
+  describe "sync_stripe_customer/1" do
     test "returns :ok when account is not provisioned", %{account: account} do
       account = update_account(account, %{metadata: %{stripe: %{}}})
-      assert :ok = Portal.Billing.on_account_name_or_slug_changed(account)
+      assert :ok = Portal.Billing.sync_stripe_customer(account.id)
     end
 
     test "returns :ok when billing is disabled", %{account: account} do
       Portal.Config.put_env_override(Portal.Billing, enabled: false)
+      account = update_account(account, %{metadata: %{stripe: %{customer_id: "cus_test123"}}})
 
-      account =
-        update_account(account, %{
-          metadata: %{stripe: %{customer_id: "cus_test123"}}
-        })
-
-      assert :ok = Portal.Billing.on_account_name_or_slug_changed(account)
+      assert :ok = Portal.Billing.sync_stripe_customer(account.id)
     end
 
-    test "updates Stripe customer when provisioned and enabled", %{account: account} do
+    test "returns :ok when the account no longer exists" do
+      assert :ok = Portal.Billing.sync_stripe_customer(Ecto.UUID.generate())
+    end
+
+    test "sends the current name and slug", %{account: account} do
       account =
         update_account(account, %{
+          slug: "current_slug",
           metadata: %{stripe: %{customer_id: "cus_test123"}}
         })
 
-      Stripe.stub(Stripe.mock_update_customer_endpoint(account))
+      test_pid = self()
 
-      assert :ok = Portal.Billing.on_account_name_or_slug_changed(account)
+      Req.Test.stub(Portal.Billing.Stripe.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:customer_update, conn.request_path, URI.decode_query(body)})
+        Req.Test.json(conn, %{"id" => "cus_test123"})
+      end)
+
+      assert :ok = Portal.Billing.sync_stripe_customer(account.id)
+
+      assert_received {:customer_update, "/v1/customers/cus_test123", params}
+      assert params["metadata[account_slug]"] == "current_slug"
+      assert params["metadata[account_name]"] == account.name
+    end
+
+    test "returns an error when Stripe fails, so the job retries", %{account: account} do
+      account = update_account(account, %{metadata: %{stripe: %{customer_id: "cus_test123"}}})
+      Req.Test.stub(Portal.Billing.Stripe.APIClient, fn conn -> Plug.Conn.send_resp(conn, 500, "{}") end)
+
+      capture_log(fn ->
+        assert {:error, :retry_later} = Portal.Billing.sync_stripe_customer(account.id)
+      end)
     end
   end
 

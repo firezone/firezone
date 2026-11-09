@@ -18,6 +18,16 @@ defmodule Portal.Billing.EventHandler do
     process_event_with_lock(event)
   end
 
+  @doc """
+  Runs `fun` with the current account of a Stripe customer, under the same
+  lock that the events of that customer take.
+  """
+  def with_current_account(customer_id, fun) do
+    Database.with_customer_lock(customer_id, fn ->
+      fun.(Database.account_by_customer_id(customer_id))
+    end)
+  end
+
   defp process_event_with_lock(event) do
     customer_id = extract_customer_id(event)
 
@@ -143,7 +153,7 @@ defmodule Portal.Billing.EventHandler do
         handle_customer_created(event_data)
 
       "customer.updated" ->
-        handle_customer_updated(event_data)
+        handle_customer_updated(event_data, get_in(event, ["data", "previous_attributes"]) || %{})
 
       "customer.subscription.deleted" ->
         handle_subscription_deleted(event_data)
@@ -195,7 +205,7 @@ defmodule Portal.Billing.EventHandler do
     create_account_from_stripe_customer(customer_data)
   end
 
-  defp handle_customer_updated(customer_data) do
+  defp handle_customer_updated(customer_data, previous_attributes) do
     %{
       "id" => customer_id,
       "name" => customer_name,
@@ -206,8 +216,8 @@ defmodule Portal.Billing.EventHandler do
     attrs = build_customer_update_attrs(customer_metadata, customer_name, customer_email)
 
     case update_account_by_stripe_customer_id(customer_id, attrs) do
-      {:ok, _account} ->
-        :ok
+      {:ok, account} ->
+        maybe_update_slug(account, customer_metadata, previous_attributes)
 
       {:error, :customer_not_provisioned} ->
         create_account_from_stripe_customer(customer_data)
@@ -224,6 +234,30 @@ defmodule Portal.Billing.EventHandler do
         {:error, reason}
     end
   end
+
+  # Only a slug edited in Stripe is applied, so an unrelated customer update
+  # never overwrites a slug the portal changed since. A slug that cannot be
+  # applied is logged instead of failing the event, so Stripe stops redelivering it.
+  defp maybe_update_slug(account, %{"account_slug" => slug}, %{"metadata" => previous})
+       when is_binary(slug) and is_map(previous) and is_map_key(previous, "account_slug") do
+    slug = slug |> String.trim() |> Portal.AccountSlug.canonical()
+
+    case Database.update_account_by_id(account.id, %{slug: slug}) do
+      {:ok, _account} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Cannot set the account slug from Stripe",
+          account_id: account.id,
+          slug: slug,
+          reason: inspect(reason)
+        )
+
+        :ok
+    end
+  end
+
+  defp maybe_update_slug(_account, _metadata, _previous_attributes), do: :ok
 
   def handle_customer_deleted(customer_data) do
     %{"id" => customer_id} = customer_data
@@ -301,7 +335,6 @@ defmodule Portal.Billing.EventHandler do
       legal_name: customer_name,
       metadata: %{stripe: %{billing_email: customer_email}}
     }
-    |> put_if_not_nil(:slug, customer_metadata["account_slug"])
   end
 
   defp build_subscription_update_attrs(subscription_data) do
@@ -492,8 +525,8 @@ defmodule Portal.Billing.EventHandler do
 
   defp generate_account_slug(metadata) do
     cond do
-      not is_nil(metadata["account_slug"]) ->
-        metadata["account_slug"]
+      slug = metadata["account_slug"] ->
+        slug |> String.trim() |> Portal.AccountSlug.canonical()
 
       company_website = metadata["company_website"] ->
         extract_slug_from_uri(company_website)
@@ -512,14 +545,14 @@ defmodule Portal.Billing.EventHandler do
         |> String.split(".")
         |> List.delete_at(-1)
         |> Enum.join("_")
-        |> String.replace("-", "_")
+        |> Portal.AccountSlug.canonical()
 
       uri.path ->
         uri.path
         |> String.split(".")
         |> List.delete_at(-1)
         |> Enum.join("_")
-        |> String.replace("-", "_")
+        |> Portal.AccountSlug.canonical()
 
       true ->
         generate_unique_slug()
@@ -774,9 +807,6 @@ defmodule Portal.Billing.EventHandler do
   defp cast_limit(number) when is_number(number), do: number
   defp cast_limit("unlimited"), do: nil
   defp cast_limit(binary) when is_binary(binary), do: String.to_integer(binary)
-
-  defp put_if_not_nil(map, _key, nil), do: map
-  defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
 
   # The slug registry records the account ID at claim time, so a key retry
   # keeps the same ID.

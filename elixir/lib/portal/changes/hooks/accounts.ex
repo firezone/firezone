@@ -1,6 +1,7 @@
 defmodule Portal.Changes.Hooks.Accounts do
   @behaviour Portal.Changes.Hooks
-  alias Portal.{Accounts.Limits, Billing, Changes.Change, PubSub}
+  alias Portal.{Accounts.Limits, Changes.Change, PubSub}
+  alias Portal.Workers.SyncStripeCustomer
   alias __MODULE__.Database
   import Portal.SchemaHelpers
 
@@ -48,11 +49,8 @@ defmodule Portal.Changes.Hooks.Accounts do
     account = struct_from_params(Portal.Account, data)
     change = %Change{lsn: lsn, op: :update, old_struct: old_account, struct: account}
 
-    # Start async task for billing update if name or slug changed
     if old_data["name"] != data["name"] or old_data["slug"] != data["slug"] do
-      Task.start(fn ->
-        :ok = Billing.on_account_name_or_slug_changed(account)
-      end)
+      {:ok, _job} = %{account_id: account.id} |> SyncStripeCustomer.new() |> Oban.insert()
     end
 
     # Relays apply changed account limits without reconnecting.

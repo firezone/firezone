@@ -12,7 +12,7 @@ defmodule Portal.Workers.SweepSlugRegistryTest do
   end
 
   test "releases old claims of this region that have no local row" do
-    account = account_fixture(slug: "Kept-Slug")
+    account = account_fixture() |> put_legacy_slug("Kept-Slug")
     use_azure_registry(:us)
     orphan_account_id = Ecto.UUID.generate()
     old = DateTime.utc_now() |> DateTime.add(-30, :minute) |> DateTime.to_iso8601()

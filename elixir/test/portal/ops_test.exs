@@ -181,6 +181,25 @@ defmodule Portal.OpsTest do
     end
   end
 
+  describe "set_account_slug/2" do
+    test "changes the slug and keeps the old one" do
+      account = account_fixture()
+      old_slug = account.slug
+
+      assert {:ok, %{slug: "new_slug"}} = set_account_slug(account.id, " New_Slug ")
+
+      slugs = Portal.Repo.all_by(Portal.AccountSlug, account_id: account.id) |> Enum.map(& &1.slug)
+      assert Enum.sort(slugs) == Enum.sort([old_slug, "new_slug"])
+    end
+
+    test "rejects a slug that does not match the format" do
+      account = account_fixture()
+
+      assert {:error, changeset} = set_account_slug(account.id, "new-slug")
+      assert %{slug: ["may only contain lowercase letters, numbers, and underscores"]} = errors_on(changeset)
+    end
+  end
+
   describe "backfill_slug_registry/0" do
     import ExUnit.CaptureIO
 
@@ -193,7 +212,7 @@ defmodule Portal.OpsTest do
     end
 
     test "aborts without confirmation" do
-      account_fixture(slug: "keep-local")
+      account_fixture(slug: "keep_local")
       use_azure_registry(:us)
       test_pid = self()
 
@@ -210,8 +229,8 @@ defmodule Portal.OpsTest do
     end
 
     test "claims every local slug in the registry" do
-      account = account_fixture(slug: "backfill-me")
-      update_account(account, slug: "backfill-me-too")
+      account = account_fixture(slug: "backfill_me")
+      update_account(account, slug: "backfill_me_too")
       use_azure_registry(:us)
       test_pid = self()
 

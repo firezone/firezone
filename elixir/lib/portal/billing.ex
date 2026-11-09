@@ -839,17 +839,28 @@ defmodule Portal.Billing do
     end
   end
 
-  def on_account_name_or_slug_changed(%Portal.Account{} = account) do
-    cond do
-      not account_provisioned?(account) ->
-        :ok
+  @doc """
+  Sends the current name and slug of the account to its Stripe customer.
 
-      not enabled?() ->
-        :ok
-
-      true ->
-        {:ok, _customer} = update_stripe_customer(account)
-        :ok
+  It reads the account again under the lock that Stripe events of the
+  customer take, so a slow send for an older change cannot land in Stripe
+  after a newer one.
+  """
+  @spec sync_stripe_customer(Ecto.UUID.t()) :: :ok | {:error, :retry_later}
+  def sync_stripe_customer(account_id) do
+    with %Portal.Account{} = account <- Database.get_account(account_id),
+         true <- account_provisioned?(account) do
+      account.metadata.stripe.customer_id
+      |> EventHandler.with_current_account(fn
+        nil -> {:ok, nil}
+        current -> update_stripe_customer(current)
+      end)
+      |> case do
+        {:ok, _account} -> :ok
+        {:error, _reason} -> {:error, :retry_later}
+      end
+    else
+      _ -> :ok
     end
   end
 
@@ -916,6 +927,12 @@ defmodule Portal.Billing do
     alias Portal.Account
     alias Portal.Actor
     alias Portal.Device
+
+    def get_account(account_id) do
+      from(a in Account, where: a.id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
 
     def update(changeset) do
       changeset

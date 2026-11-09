@@ -178,6 +178,13 @@ defmodule Portal.Ops do
   end
 
   @doc """
+  Changes the slug of an account. The old slug keeps pointing to the account.
+  """
+  def set_account_slug(account_id, slug) do
+    Database.set_account_slug(account_id, slug |> String.trim() |> String.downcase())
+  end
+
+  @doc """
   Enqueues account deletion jobs for accounts that are already scheduled for deletion.
 
   This is intended for operational use during the migration from the old daily deletion
@@ -625,6 +632,16 @@ defmodule Portal.Ops do
           {:ok, account}
         end
       end)
+    end
+
+    def set_account_slug(account_id, slug) do
+      from(a in Account, where: a.id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.one!()
+      |> Ecto.Changeset.cast(%{slug: slug}, [:slug])
+      |> Ecto.Changeset.validate_required(:slug)
+      |> Safe.unscoped()
+      |> Safe.update()
     end
 
     def insert(banner) do

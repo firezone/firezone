@@ -902,9 +902,6 @@ defmodule PortalWeb.Settings.Account do
     |> update_change(:slug, &normalize_slug/1)
     |> Account.changeset()
     |> validate_required([:name, :slug])
-    |> validate_format(:slug, ~r/^[a-z0-9]+(_[a-z0-9]+)*$/,
-      message: "may only contain lowercase letters, numbers, and underscores"
-    )
     |> validate_exclusion(:slug, @reserved_slugs, message: "is reserved")
     |> validate_change(:slug, fn :slug, slug ->
       if Portal.Repo.valid_uuid?(slug), do: [slug: "may not look like an account ID"], else: []

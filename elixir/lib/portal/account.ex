@@ -117,6 +117,9 @@ defmodule Portal.Account do
     |> validate_length(:name, min: 3, message: "too short")
     |> validate_length(:name, max: 64, message: "too long")
     |> validate_length(:slug, min: 3, max: 100)
+    |> validate_format(:slug, Portal.AccountSlug.format(),
+      message: "may only contain lowercase letters, numbers, and underscores"
+    )
     |> validate_length(:key, is: 6)
     |> validate_key_format()
     |> validate_length(:legal_name, min: 1, max: 255)
