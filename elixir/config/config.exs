@@ -639,14 +639,19 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
 
 # Flow-log rows per reporting device and per account, charged after the ingest
 # token is verified. The IP limit above already caps one uploader at one batch
-# (1,000 rows by default) per second. The bursts let a device that was offline
-# drain its spool, and are larger than the 10k-row request limit. The account
-# values are multiplied by `Portal.Accounts.Limits.device_allowance/1`. At half
-# the device values, half of the allowed devices must upload at full speed to
-# block the others; the smallest allowance (10) needs 5.
+# (1,000 rows by default) per second. An initiator reports its own flows; a
+# responder (usually a Gateway) reports a row for every client it serves, so it
+# has a larger bucket. The bursts let a device that was offline drain its spool,
+# and are larger than the 10k-row request limit. The account values are
+# multiplied by `Portal.Accounts.Limits.device_allowance/1`. At half the
+# initiator values, half of the allowed devices must upload at full speed to
+# block the others; the smallest allowance (10) needs 5. Production sets these
+# from the `API_INGESTION_*` env vars in runtime.exs.
 config :portal, PortalAPI.FlowLogController,
-  device_rows_per_second: 100,
-  device_row_burst: 100_000,
+  initiator_rows_per_second: 100,
+  initiator_row_burst: 100_000,
+  responder_rows_per_second: 1_000,
+  responder_row_burst: 1_000_000,
   account_rows_per_second_per_device: 50,
   account_row_burst_per_device: 50_000
 

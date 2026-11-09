@@ -1,6 +1,7 @@
 defmodule PortalAPI.FlowLogControllerTest do
   use PortalAPI.ConnCase, async: true
 
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.FlowLogFixtures
 
@@ -242,22 +243,41 @@ defmodule PortalAPI.FlowLogControllerTest do
       })
 
       assert devices * config[:account_rows_per_second_per_device] >=
-               5 * config[:device_rows_per_second]
+               5 * config[:initiator_rows_per_second]
 
-      assert devices * config[:account_row_burst_per_device] >= 5 * config[:device_row_burst]
+      assert devices * config[:account_row_burst_per_device] >=
+               5 * config[:initiator_row_burst]
     end
   end
 
   describe "create/2 row limits" do
-    # Each device holds 10 rows and refills 1 row/s. Each account holds 1 row
-    # and refills 1 row/s per device in its device allowance.
+    # An initiator holds 10 rows and a responder 20; both refill 1 row/s. Each
+    # account holds 1 row and refills 1 row/s per device in its device allowance.
     setup do
       Portal.Config.put_env_override(:portal, PortalAPI.FlowLogController,
-        device_rows_per_second: 1,
-        device_row_burst: 10,
+        initiator_rows_per_second: 1,
+        initiator_row_burst: 10,
+        responder_rows_per_second: 1,
+        responder_row_burst: 20,
         account_rows_per_second_per_device: 1,
         account_row_burst_per_device: 1
       )
+
+      test_pid = self()
+      handler_id = "test-flow-log-denied-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :flow_logs, :upload_denied],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      :ok
     end
 
     test "returns 429 when the reporting device runs out of rows", %{
@@ -287,22 +307,59 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert Repo.aggregate(FlowLog, :count) == 10
     end
 
-    test "charges a responder token to the responder device", %{conn: conn, account: account} do
-      claims = %{"role" => "responder", "responder_device_id" => Ecto.UUID.generate()}
+    test "logs and counts a device that runs out of rows", %{conn: conn, account: account} do
+      device_id = Ecto.UUID.generate()
+      claims = %{"initiator_device_id" => device_id}
+
+      assert conn |> authorize(account, claims) |> post_logs(records(1..10)) |> json_response(200)
+      refute_received {[:portal, :flow_logs, :upload_denied], _, _}
+
+      log =
+        capture_log(fn ->
+          conn = conn |> authorize(account, claims) |> post_logs(records(11..20))
+          assert %{"status" => 429} = json_response(conn, 429)
+        end)
+
+      assert log =~ "Flow log upload rate limited"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "account_slug=#{account.slug}"
+      assert log =~ "device_id=#{device_id}"
+      assert log =~ "bucket=device"
+      assert log =~ "role=initiator"
+      assert log =~ "rows=10"
+
+      assert_received {[:portal, :flow_logs, :upload_denied], %{count: 1},
+                       %{bucket: :device, role: :initiator}}
+    end
+
+    test "a responder has its own, larger bucket", %{conn: conn, account: account} do
+      device_id = Ecto.UUID.generate()
+      claims = %{"role" => "responder", "responder_device_id" => device_id}
 
       first_conn =
         conn
         |> authorize(account, claims)
-        |> post_logs(records(1..10))
+        |> post_logs(records(1..20))
 
       assert json_response(first_conn, 200)
 
       second_conn =
         conn
         |> authorize(account, claims)
-        |> post_logs(records(11..20))
+        |> post_logs(records(21..30))
 
       assert %{"status" => 429} = json_response(second_conn, 429)
+
+      assert_received {[:portal, :flow_logs, :upload_denied], %{count: 1},
+                       %{bucket: :device, role: :responder}}
+
+      # The responder's rows did not touch the same device's initiator bucket.
+      initiator_conn =
+        conn
+        |> authorize(account, %{"initiator_device_id" => device_id})
+        |> post_logs(records(31..40))
+
+      assert json_response(initiator_conn, 200)
     end
 
     test "returns 429 when the account runs out of rows", %{conn: conn} do
@@ -315,13 +372,17 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       assert json_response(first_conn, 200)
 
-      second_conn =
-        conn
-        |> authorize(account)
-        |> post_logs(records(11..20))
+      log =
+        capture_log(fn ->
+          conn = conn |> authorize(account) |> post_logs(records(11..20))
+          assert %{"status" => 429} = json_response(conn, 429)
+        end)
 
-      assert %{"status" => 429} = json_response(second_conn, 429)
+      assert log =~ "bucket=account"
       assert Repo.aggregate(FlowLog, :count) == 10
+
+      assert_received {[:portal, :flow_logs, :upload_denied], %{count: 1},
+                       %{bucket: :account, role: :initiator}}
     end
 
     test "the account allowance grows with the device allowance", %{conn: conn} do

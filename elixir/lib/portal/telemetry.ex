@@ -53,6 +53,12 @@ defmodule Portal.Telemetry do
         [:portal, :ice_candidates, :received],
         [:portal, :ice_candidates, :dropped]
       ]
+    },
+    flow_logs: %{
+      handler_id: "portal-flow-log-metrics",
+      events: [
+        [:portal, :flow_logs, :upload_denied]
+      ]
     }
   }
 
@@ -372,6 +378,19 @@ defmodule Portal.Telemetry do
     })
   end
 
+  @doc """
+  Records a flow-log upload the portal refused because the reporting device
+  (`:device`) or its account (`:account`) was out of rows.
+  """
+  @spec flow_log_upload_denied(:device | :account, :initiator | :responder) :: :ok
+  def flow_log_upload_denied(bucket, role)
+      when bucket in [:device, :account] and role in [:initiator, :responder] do
+    :telemetry.execute([:portal, :flow_logs, :upload_denied], %{count: 1}, %{
+      bucket: bucket,
+      role: role
+    })
+  end
+
   defp register_otel_instruments do
     meter = :opentelemetry_experimental.get_meter()
     node_attrs = %{"node_name" => System.get_env("NODE_NAME", to_string(node()))}
@@ -635,6 +654,15 @@ defmodule Portal.Telemetry do
       meter,
       :"portal.ice_candidates.dropped",
       %{description: "ICE candidates the portal did not forward, by sender and reason", unit: :"1"}
+    )
+
+    :otel_meter.create_counter(
+      meter,
+      :"portal.flow_logs.uploads_denied",
+      %{
+        description: "Flow-log uploads refused by a row limit, by bucket and reporter role",
+        unit: :"1"
+      }
     )
 
     :ok
@@ -906,6 +934,28 @@ defmodule Portal.Telemetry do
     :ok
   end
 
+  @doc false
+  def handle_flow_log_metric(
+        [:portal, :flow_logs, :upload_denied],
+        %{count: count},
+        %{bucket: bucket, role: role},
+        config
+      ) do
+    :otel_counter.add(
+      :otel_ctx.get_current(),
+      :opentelemetry_experimental.get_meter(),
+      :"portal.flow_logs.uploads_denied",
+      count,
+      %{
+        "flow_logs.bucket" => to_string(bucket),
+        "flow_logs.role" => to_string(role),
+        "node_name" => config.node_name
+      }
+    )
+
+    :ok
+  end
+
   @spec enable_metrics(atom()) :: :ok | {:error, :already_enabled} | {:error, :unknown_group}
   def enable_metrics(group) do
     case Map.fetch(@metric_groups, group) do
@@ -958,6 +1008,7 @@ defmodule Portal.Telemetry do
   defp metric_group_handler(:channels), do: &__MODULE__.handle_channel_metric/4
   defp metric_group_handler(:authorizations), do: &__MODULE__.handle_authorization_metric/4
   defp metric_group_handler(:ice_candidates), do: &__MODULE__.handle_ice_candidates_metric/4
+  defp metric_group_handler(:flow_logs), do: &__MODULE__.handle_flow_log_metric/4
 
   @doc false
   @spec endpoint_name(Plug.Conn.t()) :: String.t()
