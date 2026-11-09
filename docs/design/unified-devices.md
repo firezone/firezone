@@ -43,7 +43,7 @@ Three facts that shape the plan:
 - **Both token kinds share one secret scheme**, `sha3(nonce <> fragment <>
 salt)` with an empty nonce for admin-issued tokens. Only the signing salt on
   the wire differs, and the socket endpoint picks it. Gateway token rows can be
-  copied into the client token table with ids intact and every deployed
+  copied into a new shared token table with ids intact and every deployed
   `FIREZONE_TOKEN` keeps verifying.
 - **"Separate Internet gateways" is a classification-order bug.** With the
   Internet resource authorized, the gateway skips its CIDR table and rejects
@@ -81,12 +81,12 @@ cleanup.
 **Session** is live only: device, the token's actor, public key,
 capabilities. Policy evaluation reads the session's actor, as today.
 
-**Actor** gains `managed_by: account | system`. Each account gets one system
-service account ("Infrastructure") whose tokens the deploy flow mints by
-default. It takes no seat, is not in `Everyone`, cannot sign in, and is
+**Actor** gains the type `legacy_gateway`. Each account gets one, and it
+owns the existing Gateway tokens (decision 7). It takes no seat, is not in `Everyone`, cannot sign in, and is
 exempt from `connected_devices_per_actor`.
 
-**Token** (today `client_tokens`) absorbs the two gateway token kinds:
+**Token** (`device_tokens`, new) absorbs both client tokens and the two
+gateway token kinds:
 
 | Column                  | Meaning                                                                                                                                                                                                                                             |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -95,7 +95,8 @@ exempt from `connected_devices_per_actor`.
 | `site_id` (nullable)    | auto-join site for a device created on first connect with this token. Replaces multi-owner site tokens, which most gateways still use. Creation stays closed, as the API sunset already says; verification, listing and revocation are first class. |
 
 `expires_at` becomes nullable. Every token belongs to an actor, so every
-session has a Subject. `gateway_tokens` is dropped after its rows are copied.
+session has a Subject. `gateway_tokens` and `client_tokens` are dropped
+after their rows are copied.
 
 **Site** is a named set of devices that serve resources. Rows unchanged.
 Assignment is `site_devices(account, site, device)`, explicit rows only.
@@ -320,7 +321,7 @@ for "serves a site" and "has users".
 
 1. Platform: Linux (apt, systemd script, Docker, Terraform), Windows, macOS,
    iOS, Android (MDM profile for the last three).
-2. Connect as: a service account (default "Infrastructure") or "a user will
+2. Connect as: a service account or "a user will
    sign in". The first mints a device-bound token; the second creates nothing
    and shows the sign-in instructions, since user devices create their row on
    first connect.
@@ -341,7 +342,7 @@ site selector.
 member pickers accept any device.
 
 **Service accounts**: tokens tab shows device-bound tokens with the device
-they belong to. "Infrastructure" is visible, read-only, with its devices.
+they belong to. The legacy Gateway actor is never shown (decision 7).
 
 Client apps: unchanged. Resources grouped by site with status, device pools as
 today.
@@ -395,7 +396,7 @@ pre-fix gateway is warned about at assignment time (2.12b), not prevented.
   sharing `(issuer, serial)`. Output drives 2.15.
 - **0.2 Audit: multi-owner tokens in use.** Done 2026-10-22; figures kept privately. Devices whose `gateway_token_id`
   points at a token with `site_id` set, per account. Drives the auto-join
-  support in 1.11 and the comms plan.
+  support in 1.4 and the comms plan.
 - **0.3 Audit: version spread.** Done 2026-10-22; figures kept privately. `last_seen_version` histogram for gateways
   and clients against the `[minor-1, minor+1]` compat window.
 - **0.4 Rust: classification order.** `ClientOnGateway::classify_resource`
@@ -424,74 +425,77 @@ pre-fix gateway is warned about at assignment time (2.12b), not prevented.
 
 ### Phase 1: unified tokens
 
-- **1.1 Migration: `actors.managed_by`.** Text, default `account`, NOT NULL,
-  index on `(account_id, managed_by)`. Ecto field; `Safe.permit` refuses
-  update and delete of system actors.
-- **1.2 Code: provision the Infrastructure actor.** Created with every new
-  account next to `Everyone` and the Internet Site (`billing.ex`, sign-up,
-  billing event handler). Fixtures and seeds. Depends 1.1.
-- **1.3 Migration: backfill Infrastructure actor** for every existing account,
-  idempotent. Depends 1.2.
-- **1.4 Code: billing and limits exclude system actors.** Seats, service
-  account count, `connected_devices_per_actor`. Unit tests on `Billing`.
-  Depends 1.1.
-- **1.4b Code: one more free service account on every plan.** Applied where
+Gateway tokens move first, into a new `device_tokens` table owned by the
+legacy Gateway actor (decision 7). Client tokens follow the same steps once
+the Gateway move is complete. There are no triggers: the app writes both
+tables, and a migration in the next deploy copies what is missing.
+
+- **1.1 Code and migration: actor type `legacy_gateway`.** Every allow-list
+  on actor type leaves it out; `Safe` hides it from scoped actor queries and
+  refuses every action for it. Done (#16347).
+- **1.2 Migration and code: `device_tokens` and dual write.** Same ids and
+  secret columns as `gateway_tokens`, plus `actor_id`, `auth_provider_id` and
+  `expires_at`. A temporary foreign key to `gateway_tokens` (cascade) removes
+  a copy whenever its Gateway token is deleted. Token creation and rotation
+  write both tables in one transaction and create the account's legacy
+  Gateway actor when it is missing. Done (#16348).
+- **1.3 Migration: copy existing Gateway tokens.** Creates the missing legacy
+  Gateway actors, syncs rotation stamps and copies missing tokens. The audit
+  log redacts `device_tokens` secrets from this deploy on, one deploy before
+  the table is published. Done (#16357).
+- **1.4 Code: Gateway tokens read from `device_tokens`.** Verification, the
+  rotated sibling, Site token lists, REST reads and the grace reaper read the
+  copy. Every revoke deletes from both tables in one transaction, so nothing
+  depends on the cascade from here. Depends 1.3. (#16369)
+- **1.5 Code: the Gateway socket builds a Subject.** Verification loads the
+  token's actor in the same query. A new `Credential.GatewayToken` carries no
+  scopes and no auth provider, and the subject has no expiry, because
+  Gateway tokens never expire. The socket assigns `subject`. The session log
+  subject keeps its current shape. Depends 1.4.
+- **1.6 Code: Gateway writes scoped.** The `Safe.unscoped` calls in the
+  Gateway socket and channel become `Safe.scoped(subject)`. `Safe.permit`
+  grants the legacy Gateway actor only what the socket does: insert and
+  update its device, write its `site_devices` row, and insert and stamp its
+  `device_tokens` row. Everything else stays refused. Audit entries for
+  these writes then show the actor. Old and new nodes write the same rows,
+  so there is no rollout order. Depends 1.5.
+- **1.7 Stop writing `gateway_tokens`.** One deploy, after 1.4 runs on every
+  node. The migration drops the temporary foreign key and points
+  `devices.gateway_token_id` at `device_tokens` (NOT VALID, with a
+  `lock_timeout`). Replication publishes `device_tokens` instead of
+  `gateway_tokens`, so the revoke disconnect comes from `device_tokens`.
+  Token creation and rotation write only `device_tokens`, and the session
+  flush checks tokens in `device_tokens`. Depends 1.4 deployed.
+- **1.8 Migration: validate the `devices` foreign key.** Depends 1.7
+  deployed.
+- **1.9 Migration (contract): drop `gateway_tokens`, `Portal.GatewayToken`
+  and `Hooks.GatewayTokens`.** Depends 1.7 deployed.
+- **1.10 Code: one more free service account on every plan.** Applied where
   the ad-hoc allowance is read (seat counting, the account API, the settings
   page) rather than stored on the account, since subscription events rewrite
   the stored limits from Stripe. Customer service accounts that own routing
-  devices otherwise count as today. Depends 1.4.
-- **1.5 Migration: `client_tokens` columns.** `device_id` (composite FK to
-  devices, cascade), `rotated_at`, `site_id` (composite FK, cascade),
-  `expires_at` nullable, check `num_nonnulls(device_id, site_id) <= 1`,
-  unique `(account_id, device_id, (rotated_at IS NULL)) WHERE device_id IS NOT
-NULL`, partial index on `rotated_at`.
-- **1.6 Code: `Portal.ClientToken` schema** for the new columns;
-  `single_owner?` and `rotation_grace_hours` move over from `GatewayToken`.
-  Depends 1.5.
-- **1.7 Migration: `devices.token_id`.** Composite FK, SET NULL; backfill from
-  `coalesce(client_token_id, gateway_token_id)`.
-- **1.8 Code: session flush writes `token_id`** alongside the legacy column
-  (`LatestSession.upsert_all`, `Device.latest_session_fields`). Depends 1.7.
-- **1.9 Migration: copy `gateway_tokens` into `client_tokens`.** Same ids,
-  `actor_id` = Infrastructure, `device_id`, `site_id`, `rotated_at` carried,
-  `expires_at` and `auth_provider_id` nil, `ON CONFLICT DO NOTHING`. With the
-  gateway ids present, `devices.token_id` gets its foreign key (NOT VALID,
-  dangling ids cleared, validated). The flush writes `token_id` only when the
-  token exists in `client_tokens`, so an unmirrored gateway token nulls the
-  column instead of failing the batch. Old table untouched. Depends 1.3,
-  1.5, 1.7.
-- **1.10 Migration: mirror `gateway_tokens` writes by trigger.** Database
-  triggers keep `client_tokens` in step with every insert, rotation stamp
-  and delete on `gateway_tokens`, so pods still writing the old table during
-  a rollout, and every code path that creates, rotates or revokes a gateway
-  token, are covered without a code change. The copy from 1.9 runs again
-  first. From here the read switch is safe at any later deploy. Depends 1.9.
-- **1.11 Code: gateway tokens read from and written to `client_tokens`.**
-  `verify_gateway_token/1`, rotation confirmation and the grace reaper read
-  the unified table; creation and rotation write it, actor = Infrastructure;
-  multi-owner tokens keep the auto-join behaviour via `site_id`; the gateway
-  token delete hook's work is done by `Hooks.ClientTokens`. UI and REST
-  token controllers read the unified table. Pods on the previous release
-  still write `gateway_tokens`, which the trigger mirrors. Depends 1.10.
-- **1.12 Code: gateway socket builds a Subject.** `authenticate/2` with
-  context `:gateway` tries the `gateway` and `gateway_group` salts; socket
-  assigns `subject`; session logs use `Subject.to_map`. Depends 1.11.
-- **1.13 Code: gateway-side queries scoped.** `Safe.unscoped` calls in the
-  gateway socket and channel become `Safe.scoped(subject)`. Depends 1.12.
-- **1.14 Code: `Devices.provision_device/4`.** Generalizes
-  `provision_gateway`: inserts a device and mints a device-bound token for any
-  actor, default Infrastructure. Deploy UI calls it unchanged. Depends 1.11.
-- **1.15 REST: token endpoints on the unified table.** Existing
-  `/sites/:id/gateways/:id/token` and `/rotate` unchanged in shape; `POST
-/actors/:id/client_tokens` accepts `device_id`; new `POST
-/devices/:id/token`. OpenAPI. Depends 1.14.
-- **1.16 UI: tokens tab** on service accounts shows device-bound tokens with
-  their device; rotate available for any device-bound token. Depends 1.11.
-- **1.17 Replication: drop `gateway_tokens`** from both consumer lists and
-  delete `Hooks.GatewayTokens`; drop the mirror trigger. Depends 1.11.
-- **1.18 Migration (contract, next release): drop `gateway_tokens`,
-  `devices.client_token_id`, `devices.gateway_token_id`,
-  `Portal.GatewayToken`.** Depends 1.8, 1.17 deployed.
+  devices otherwise count as today.
+- **1.11 Client tokens into `device_tokens`.** The same steps as 1.2 to 1.4,
+  1.7 and 1.9, after 1.7. `policy_authorizations.token_id` points at
+  `device_tokens` only after every node writes both tables. The `Safe`
+  grants on `DeviceToken`, which today copy the Gateway token grants, are
+  narrowed to the client token rules. `devices.client_token_id` and
+  `devices.gateway_token_id` collapse into `token_id`.
+- **1.12 Code: `Devices.provision_device/4`.** Generalizes
+  `provision_gateway`: inserts a device and mints a device-bound token for
+  the actor given. The deploy UI calls it with the legacy Gateway actor until
+  `/device/v1` ships. Depends 1.7.
+- **1.13 REST: token endpoints on `device_tokens`.** The existing Gateway and
+  client token endpoints and scopes stay, same ids and JSON, and each returns
+  exactly its old token set, so an old scope never widens. New `POST
+/devices/:id/token`. OpenAPI. The API surface is renamed to device tokens
+  at the final collapse, with the old paths and scopes kept as aliases.
+  Depends 1.12.
+- **1.14 UI: tokens tab** on service accounts shows device-bound tokens with
+  their device; rotate available for any device-bound token. Depends 1.7.
+- **1.15 Code and UI: "Move to service account"** (decision 8). Changes the
+  owner of a Gateway token in place. With 1.6 done, only the subject's actor
+  changes and the service account's grants apply. Depends 1.6, 1.13.
 
 ### Phase 2: device rows and site assignment
 
@@ -563,12 +567,12 @@ serial)`; drop the actor-scoped indexes, `device_type_client_fields` and
 - **2.19 UI: Devices page lists every device** with "Serves" from
   `site_devices` and the two filters. Depends 2.10.
 - **2.20 UI: device detail** with sites-served editor, users, pools, token
-  rotate. Depends 2.12, 1.16.
+  rotate. Depends 2.12, 1.14.
 - **2.21 UI: Add device wizard** replaces Deploy gateway on Sites and Devices,
   calling `provision_device`, deploy tabs reused, sites multi-select writes
-  `site_devices`. Depends 1.14, 2.12.
+  `site_devices`. Depends 1.12, 2.12.
 - **2.22 Code: `devices.type` stays maintained** as a legacy value (gateway
-  when provisioned with Infrastructure, client otherwise) for `/clients`,
+  when provisioned to serve a site, client otherwise) for `/clients`,
   component versions and protocol selection until phase 6. No PR of its own;
   a rule each step above respects.
 - **2.23 Code: the outdated-gateway email selects by site assignment.** The
@@ -790,8 +794,8 @@ The portal deploys on every merge. These are the points where order matters.
 | Point | Must be live                               | Release                                                                                     |
 | ----- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
 | D1    | 0.6, 0.7                                   | R1: gateway 1.6.5 with 0.4 and 0.5                                                          |
-| D2    | 1.1 to 1.17                                | none                                                                                        |
-| D3    | 1.18, one release after D2 settled         | none                                                                                        |
+| D2    | 1.1 to 1.7, 1.10, 1.12 to 1.15             | none                                                                                        |
+| D3    | 1.8, 1.9, 1.11, after D2 settled           | none                                                                                        |
 | D4    | 2.1 to 2.21                                | none                                                                                        |
 | D5    | 3.0, 3.8                                   | R2: `firezone` 1.7.0 and Linux GUI 1.7.0, legacy sockets, interim role switch; cutover 3.8b |
 | D6    | 4.1 to 4.13                                | R3: `firezone` 1.8.0 on `DeviceState` over `/device/v1`                                     |
@@ -815,9 +819,9 @@ legacy gateways `[m-1, m+1]`, `firezone` 1.7 `[5, 7]`, `firezone` 1.8
 | `firezone` 1.7 (R2) | 1.5, 1.6, 1.7  | 1.5, 1.6, `firezone` 1.7 | Clients 1.5, 1.6, `firezone` 1.7 |
 | `firezone` 1.8 (R3) | 1.6, 1.7, 1.8  | 1.6, `firezone` 1.7, 1.8 | Clients 1.6, `firezone` 1.7, 1.8 |
 
-Apple, Android and the Windows GUI need no release. PR count is about 98
+Apple, Android and the Windows GUI need no release. PR count is about 94
 code PRs plus 3 docs PRs before merging small neighbours: phase 0 has 4,
-phase 1 has 19, phase 2 has 24, phase 3 has 12, phase 4 has 13,
+phase 1 has 15, phase 2 has 24, phase 3 has 12, phase 4 has 13,
 phase 5 has 12, phase 5b has 8, phase 6 has 8.
 
 ## 4. Decisions taken
@@ -826,7 +830,7 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
    rule for systemd-resolved, `resolv.conf` control documented as root-only.
 2. **Billing:** customer service accounts that own routing devices count as
    any actor does today; every plan gets one additional free service account
-   (step 1.4b). The legacy Gateway actor (decision 7) never counts.
+   (step 1.10). The legacy Gateway actor (decision 7) never counts.
 3. **Binary shape:** one executable, `firezone`, with `run` as the daemon.
 4. **Site assignment:** explicit rows only; rules not planned.
 5. **Forwarding:** on Linux the daemon owns kernel forwarding (sysctls and
@@ -910,7 +914,7 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
 | Phase | Steps | Size      |
 | ----- | ----- | --------- |
 | 0     | 9     | small     |
-| 1     | 19    | medium    |
+| 1     | 15    | medium    |
 | 2     | 25    | medium    |
 | 2b    | 1     | docs only |
 | 3     | 13    | medium    |
