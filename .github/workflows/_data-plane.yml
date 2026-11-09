@@ -194,7 +194,13 @@ jobs:
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
       - name: Package binary
         shell: bash
-        run: cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+        run: |
+          set -xe
+
+          cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+
+          # Stamp before signing, which would otherwise be invalidated.
+          mise-tasks/patch-git-sha "$ARTIFACT_PATH" "$RESOLVED_SHA"
       - uses: ./.github/actions/setup-azure-sign-tool
         if: ${{ inputs.profile == 'release' }}
         with:
@@ -297,7 +303,7 @@ jobs:
           key: ${{ matrix.name.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
       # Restored binaries skip every `cargo build` below, so the toolchains only
       # needed to compile them are skipped too. `cargo deb` still needs cargo and
-      # `cargo-deb`, and the relay still needs mise to stamp in the commit SHA.
+      # `cargo-deb`, and stamping in the commit SHA still needs mise.
       - uses: ./.github/actions/setup-musl
         if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
@@ -311,10 +317,9 @@ jobs:
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
-        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' || matrix.name.package == 'firezone-relay' }}
         with:
-          # Stamping the SHA into the relay shells out to coreutils only, so a
-          # restored relay needs `mise` as a task runner but none of its tools.
+          # Stamping the SHA shells out to coreutils only, so a restored binary
+          # needs `mise` as a task runner but none of its tools.
           install: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' }}
           install_args: --cd rust
         env:
@@ -340,11 +345,9 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
 
-          # Stamp the commit SHA into the relay's placeholder before checksum and
-          # upload; the binary is otherwise SHA-independent and cache-restorable.
-          if [[ "${{ matrix.name.package }}" == "firezone-relay" ]]; then
-            mise run //rust:patch-relay-release "$PWD/${{ matrix.name.package }}" "${{ env.RESOLVED_SHA }}"
-          fi
+          # Stamp the commit SHA into the placeholder before checksum and upload;
+          # the binary is otherwise SHA-independent and cache-restorable.
+          mise run //rust:patch-git-sha "$PWD/${{ matrix.name.package }}" "${{ env.RESOLVED_SHA }}"
 
           sha256sum ${{ matrix.name.package }} > ${{ matrix.name.package }}.sha256sum.txt
 
@@ -386,6 +389,7 @@ jobs:
       - name: Create Firezone Gateway .deb package
         if: ${{ env.BUILDS_DEB == 'true' }}
         run: |
+          cp firezone-gateway target/${{ matrix.arch.target }}/release/firezone-gateway
           cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
           cp target/debian/*.deb "$BINARY_DEST_PATH".deb
       - name: Upload Release Assets

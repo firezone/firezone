@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Stamp a 40-char commit SHA into a built relay binary's release placeholder"
+#MISE description="Stamp a 40-char commit SHA into a built binary's `git-sha` placeholder"
 set -euo pipefail
 
-binary="${1:?usage: mise run //rust:patch-relay-release <binary> <sha>}"
-sha="${2:?usage: mise run //rust:patch-relay-release <binary> <sha>}"
+binary="${1:?usage: mise run //rust:patch-git-sha <binary> <sha>}"
+sha="${2:?usage: mise run //rust:patch-git-sha <binary> <sha>}"
 marker="firezone-git-sha:"
 
 [[ -f "$binary" ]] || {

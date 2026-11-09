@@ -37,6 +37,7 @@ flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
+git-sha = { workspace = true }
 hex = { workspace = true }
 hickory-resolver = { workspace = true }
 humantime = { workspace = true }

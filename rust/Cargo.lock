@@ -2646,6 +2646,7 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "futures-bounded",
+ "git-sha",
  "hex",
  "hickory-resolver",
  "humantime",
@@ -2776,6 +2777,7 @@ dependencies = [
  "flow-log-upload",
  "flow-log-writer",
  "futures",
+ "git-sha",
  "humantime",
  "ip-packet",
  "ip_network",
@@ -2851,6 +2853,7 @@ dependencies = [
  "ebpf-shared",
  "eventloop-budget",
  "futures",
+ "git-sha",
  "logging",
  "mimalloc",
  "mio",
@@ -3431,6 +3434,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "git-sha"
+version = "0.1.0"
+
+[[package]]
 name = "glib"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3941,6 +3948,7 @@ dependencies = [
  "anyhow-ext",
  "axum",
  "futures",
+ "git-sha",
  "serde",
  "tokio",
 ]
@@ -6613,6 +6621,7 @@ dependencies = [
  "bytecodec",
  "derive_more",
  "ebpf-shared",
+ "git-sha",
  "hex",
  "hmac 0.13.0",
  "logging",

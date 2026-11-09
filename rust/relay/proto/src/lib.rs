@@ -20,20 +20,10 @@ use std::{
     sync::LazyLock,
 };
 
-/// The commit SHA this binary was built from, patched into the placeholder
-/// after linking. An all-zero field means the patch step did not run.
-#[used]
-static RELEASE: [u8; 57] = *b"firezone-git-sha:0000000000000000000000000000000000000000";
-
-pub static VERSION: LazyLock<Option<&'static str>> = LazyLock::new(|| {
-    // The 40-char SHA follows the 17-byte "firezone-git-sha:" marker.
-    let sha = std::str::from_utf8(&RELEASE[17..]).unwrap_or_default();
-    (!sha.bytes().all(|b| b == b'0')).then_some(sha)
-});
 pub static SOFTWARE: LazyLock<Software> = LazyLock::new(|| {
     Software::new(format!(
         "firezone-relay; rev={}",
-        VERSION.map(|rev| &rev[..8]).unwrap_or("xxxx")
+        git_sha::git_sha().map(|rev| &rev[..8]).unwrap_or("xxxx")
     ))
     .expect("less than 128 chars")
 });

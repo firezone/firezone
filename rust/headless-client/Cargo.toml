@@ -17,6 +17,7 @@ client-shared = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 futures = { workspace = true }
+git-sha = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
