@@ -8,8 +8,8 @@ use std::time::Duration;
 /// Unlike the receive buffer, this does not need to bridge scheduler stalls: our bounded userspace
 /// send channel applies backpressure while the send task is not running. It needs to fit complete
 /// GSO / USO sends and absorb the bursts handed to the send task while the interface drains its
-/// queue, as a full buffer stalls that task. At 30 Gbit/s, the 2 ms queue window is 7.5 MB and
-/// rounds up to 8 MiB.
+/// queue, as a full buffer stalls that task. At 30 Gbit/s on Linux, the 2 ms queue window is 7.5 MB
+/// and rounds up to 8 MiB; at 10 Gbit/s elsewhere, it is 2.5 MB and rounds up to 4 MiB.
 ///
 /// On Apple platforms UDP datagrams are handed straight to the interface and `SO_SNDBUF` primarily
 /// caps the maximum datagram size, so 64 KiB is sufficient for one complete send.
@@ -19,10 +19,10 @@ pub const SEND_BUFFER_SIZE: usize = send_buffer_size_for_queue_window(SEND_QUEUE
 ///
 /// This is deliberately independent of the capacity of one receive syscall: `SO_RCVBUF` bridges
 /// scheduler and application stalls, while GRO / `recvmsg_x` batching determines how quickly the
-/// receive thread can drain that backlog once it runs. At 30 Gbit/s, one 10 ms service-gap window is
-/// 37.5 MB, which rounds up to 64 MiB. Apple and Windows reserve two windows (128 MiB) because their
-/// uncoalesced receive batches and userspace receive queues carry much less traffic than a
-/// GRO-enabled batch.
+/// receive thread can drain that backlog once it runs. At 30 Gbit/s on Linux, one 10 ms service-gap
+/// window is 37.5 MB, which rounds up to 64 MiB; at 10 Gbit/s elsewhere, it is 12.5 MB, which rounds
+/// up to 16 MiB. Apple and Windows reserve two windows (32 MiB) because their uncoalesced receive
+/// batches and userspace receive queues carry much less traffic than a GRO-enabled batch.
 pub const RECV_BUFFER_SIZE: usize = recv_buffer_size_for_service_gap(
     RECV_SERVICE_GAP.saturating_mul(RECV_SERVICE_GAP_WINDOWS as u32),
 );
@@ -44,7 +44,12 @@ pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramBatch>()
 pub const MAX_RECV_BUFFER_MEMORY: usize = ip_packet::MAX_FZ_PAYLOAD * MAX_RECV_BUFFER_SEGMENTS;
 
 /// Largest traffic rate in either direction for which we size the UDP socket buffers.
-const MAX_EXPECTED_UDP_BITS_PER_SECOND: u64 = 30_000_000_000;
+///
+/// Only Linux reaches beyond 10 Gbit/s today.
+const MAX_EXPECTED_UDP_BITS_PER_SECOND: u64 = cfg_select! {
+    target_os = "linux" => { 30_000_000_000 }
+    _ => { 10_000_000_000 }
+};
 /// Largest payload handed to the kernel by one GSO / USO send.
 const MAX_ATOMIC_UDP_SEND_BYTES: usize = u16::MAX as usize;
 /// Time worth of controlled egress that may be queued in the kernel.
@@ -104,26 +109,33 @@ mod tests {
     fn socket_buffer_sizes_track_line_rate_and_queue_time() {
         const MIB: usize = 1024 * 1024;
 
+        let (one_ms, ten_ms, twenty_ms) = cfg_select! {
+            target_os = "linux" => { (4 * MIB, 64 * MIB, 128 * MIB) }
+            _ => { (2 * MIB, 16 * MIB, 32 * MIB) }
+        };
+
         assert_eq!(
             send_buffer_size_for_queue_window(Duration::from_millis(1)),
-            4 * MIB
+            one_ms
         );
         assert_eq!(
             recv_buffer_size_for_service_gap(Duration::from_millis(10)),
-            64 * MIB
+            ten_ms
         );
         assert_eq!(
             recv_buffer_size_for_service_gap(Duration::from_millis(20)),
-            128 * MIB
+            twenty_ms
         );
 
         let expected_send_buffer_size = cfg_select! {
             apple => { 64 * 1024 }
-            _ => { 8 * MIB }
+            target_os = "linux" => { 8 * MIB }
+            _ => { 4 * MIB }
         };
         let expected_recv_buffer_size = cfg_select! {
-            any(apple, target_os = "windows") => { 128 * MIB }
-            _ => { 64 * MIB }
+            any(apple, target_os = "windows") => { 32 * MIB }
+            target_os = "linux" => { 64 * MIB }
+            _ => { 16 * MIB }
         };
         let expected_recv_buffer_segments = cfg_select! {
             any(target_os = "linux", target_os = "android", target_os = "windows") => { 64 }
