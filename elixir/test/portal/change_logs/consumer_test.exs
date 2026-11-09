@@ -307,6 +307,33 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert attrs.after["api_url"] == "https://acme.workshop.cloud"
     end
 
+    test "redacts device token secrets in the buffered snapshot", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "secret_salt" => "salt",
+        "secret_hash" => "hash"
+      }
+
+      result_state =
+        Consumer.on_write(
+          initial_state,
+          12348,
+          :delete,
+          "device_tokens",
+          data,
+          nil
+        )
+
+      attrs = result_state.flush_buffer[12348]
+      assert attrs.before["secret_salt"] == "[redacted]"
+      assert attrs.before["secret_hash"] == "[redacted]"
+      assert attrs.before["id"] == data["id"]
+    end
+
     test "preserves existing buffer items", %{account: account, initial_state: initial_state} do
       existing_lsn = 100
 

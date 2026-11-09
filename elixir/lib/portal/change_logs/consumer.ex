@@ -43,6 +43,7 @@ defmodule Portal.ChangeLogs.Consumer do
     "sites" => Portal.Site,
     "site_devices" => Portal.SiteDevice,
     "client_tokens" => Portal.ClientToken,
+    "device_tokens" => Portal.DeviceToken,
     "trust_anchor_certificates" => Portal.TrustAnchorCertificate,
     "trust_anchors" => Portal.TrustAnchor,
     "userpass_auth_providers" => Portal.Userpass.AuthProvider,
