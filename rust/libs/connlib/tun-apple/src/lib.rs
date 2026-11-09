@@ -62,7 +62,7 @@ impl Io {
     pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
         let name = name(fd)?;
         set_non_blocking(fd)?;
-        raise_recv_buffer(fd);
+        // raise_recv_buffer(fd);
         raise_max_pending_packets(fd);
         let max_coalesced_len = max_coalesced_len(fd);
         let workers = match sys::batch_syscalls() {
@@ -223,6 +223,7 @@ fn max_coalesced_len(fd: RawFd) -> Option<usize> {
 
 /// Raises the utun socket's receive buffer so the kernel can queue more inbound
 /// packets between our reads.
+#[allow(dead_code)]
 fn raise_recv_buffer(fd: RawFd) {
     if let Err(e) = set_sockopt(fd, libc::SOL_SOCKET, libc::SO_RCVBUF, &RECV_BUFFER_SIZE) {
         tracing::warn!(error = %e, "Failed to set TUN socket receive buffer");
