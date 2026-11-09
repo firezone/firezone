@@ -1002,15 +1002,6 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Base URL of an OpenTelemetry Collector receiving the portal's traces and metrics over
-  OTLP/HTTP, e.g. `http://10.0.0.1:4318`.
-  """
-  defconfig(:otlp_endpoint, :string,
-    default: nil,
-    changeset: &Portal.Changeset.validate_uri/2
-  )
-
-  @doc """
   OTLP/HTTP endpoint receiving the portal's metrics, e.g. `https://otlp.example.com/v1/metrics`.
   """
   defconfig(:otlp_metrics_endpoint, :string,
