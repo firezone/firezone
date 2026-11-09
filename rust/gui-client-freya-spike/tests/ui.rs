@@ -1,51 +1,52 @@
+//! Renders every screen of `screenshots.test.tsx` and drives the interactions of the `*.test.tsx` files.
+
 use std::{collections::HashMap, error::Error, path::PathBuf, time::Duration};
 
 use freya::prelude::*;
 use freya_testing::prelude::*;
 use gui_client_freya_spike::*;
-use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 
+/// The window the client opens, from `tauri.conf.json`.
 const SIZE: (f32, f32) = (900., 500.);
-const AUTH_INPUT: (f64, f64) = (600., 153.);
-const API_INPUT: (f64, f64) = (600., 205.);
-const LOG_INPUT: (f64, f64) = (600., 257.);
-const APPLY: (f64, f64) = (850., 311.);
-const RESET: (f64, f64) = (748., 311.);
 
-fn runner(dark: bool) -> (TestingRunner, State<ViewModel>, mpsc::UnboundedReceiver<Request>) {
-    let (tx, rx) = mpsc::unbounded_channel();
+struct Ui {
+    t: TestingRunner,
+    vm: State<ViewModel>,
+    requests: mpsc::UnboundedReceiver<Request>,
+}
+
+fn launch(page: Page, dark: bool, model: ViewModel) -> Ui {
+    let (tx, requests) = mpsc::unbounded_channel();
     let (mut t, vm) = TestingRunner::new(
         app,
         SIZE.into(),
         |r| {
-            let vm = State::create_global(ViewModel::default());
-            r.provide_root_context(|| Bridge { vm, requests: tx, dark });
+            let vm = State::create_global(model);
+            r.provide_root_context(|| Bridge { vm, requests: tx, dark, start_page: page });
             vm
         },
         1.,
     );
-    register_roboto(&mut t, ROBOTO);
-    t.set_default_fonts(&[ROBOTO.into()]);
+    for (family, bytes) in FONTS {
+        // One file per call: `set_fonts` takes a map keyed by family name.
+        t.set_fonts(HashMap::from([(family, bytes)]));
+    }
+    t.set_default_fonts(&[SANS.into()]);
     t.run_in(|| GlobalContexts::get().insert_context(Clipboard::create(Some(Box::new(MemoryClipboard::default())))));
     t.sync_and_update();
-    (t, vm, rx)
+    settle(&mut t);
+    Ui { t, vm, requests }
 }
 
-fn register_roboto(t: &mut TestingRunner, family: &str) {
-    // One file per call: `set_fonts` takes a map keyed by family name.
-    t.set_fonts(HashMap::from([(family, ROBOTO_REGULAR)]));
-    t.set_fonts(HashMap::from([(family, ROBOTO_BOLD)]));
+fn settle(t: &mut TestingRunner) {
+    t.poll(Duration::from_millis(5), Duration::from_millis(60));
 }
 
-fn screenshot(t: &mut TestingRunner, name: &str) -> String {
+fn screenshot(t: &mut TestingRunner, name: &str) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("screenshots");
     std::fs::create_dir_all(&dir).unwrap();
-    let png = t.render();
-    std::fs::write(dir.join(format!("{name}.png")), png.as_bytes()).unwrap();
-    let hash = format!("{:x}", Sha256::digest(png.as_bytes()));
-    println!("{name}.png sha256={hash}");
-    hash
+    std::fs::write(dir.join(format!("{name}.png")), t.render().as_bytes()).unwrap();
 }
 
 fn texts(t: &TestingRunner) -> Vec<String> {
@@ -56,187 +57,320 @@ fn texts(t: &TestingRunner) -> Vec<String> {
     })
 }
 
-fn settle(t: &mut TestingRunner) {
-    t.poll(Duration::from_millis(10), Duration::from_millis(300));
+/// The centre of the label showing `text`, like `getByText`.
+fn text_at(t: &TestingRunner, text: &str) -> (f64, f64) {
+    t.find(|n, el| Label::try_downcast(el).filter(|l| l.text == text).map(|_| n.layout().area.center()))
+        .map(|c| (c.x as f64, c.y as f64))
+        .unwrap_or_else(|| panic!("no {text:?} in {:?}", texts(t)))
+}
+
+/// The centre of the element named `name`, like `getByRole(_, { name })`.
+fn named_at(t: &TestingRunner, name: &str) -> (f64, f64) {
+    t.find(|n, el| Rect::try_downcast(el).filter(|r| r.accessibility.builder.label() == Some(name)).map(|_| n.layout().area.center()))
+        .map(|c| (c.x as f64, c.y as f64))
+        .unwrap_or_else(|| panic!("nothing named {name:?}"))
+}
+
+fn click(t: &mut TestingRunner, at: (f64, f64)) {
+    t.move_cursor(at);
+    t.click_cursor(at);
+    settle(t);
+}
+
+/// Replaces what the field next to `label` holds, then presses Enter, like `userEvent.fill`.
+fn fill(t: &mut TestingRunner, label: &str, value: &str) {
+    let y = text_at(t, label).1;
+    click(t, (750., y));
+    t.send_event(PlatformEvent::Keyboard {
+        name: KeyboardEventName::KeyDown,
+        key: Key::Character("a".into()),
+        code: Code::Unidentified,
+        modifiers: Modifiers::CONTROL,
+    });
+    t.write_text(value);
+    t.press_key(Key::Named(NamedKey::Enter));
+    settle(t);
+}
+
+fn general_settings() -> GeneralSettings {
+    GeneralSettings {
+        start_minimized: true,
+        start_on_login: true,
+        account_slug: "example-corp".into(),
+        control_plane: ControlPlane::CloudUs,
+        auth_url: "https://app.firezone.dev/".into(),
+        api_url: "wss://api.firezone.dev/".into(),
+        custom_auth_url: "https://app.firezone.dev/".into(),
+        custom_api_url: "wss://api.firezone.dev/".into(),
+        ..Default::default()
+    }
+}
+
+fn custom_settings() -> GeneralSettings {
+    GeneralSettings {
+        control_plane: ControlPlane::Custom,
+        auth_url: "https://firezone.example.com/".into(),
+        api_url: "wss://api.firezone.example.com/".into(),
+        ..general_settings()
+    }
+}
+
+fn log_filter() -> Option<LogFilter> {
+    Some(LogFilter { log_filter: "info".into(), log_filter_is_managed: false })
+}
+
+fn certificate() -> Vec<CertField> {
+    const CN: &str = "dev.firezone.device-trust";
+    [
+        ("Common Name", CN.to_owned()),
+        ("Subject", format!("O=Example Corp, CN={CN}")),
+        ("Issuer", "DC=com, DC=example, CN=Example Corp Issuing CA 1".into()),
+        ("MDM Device ID", "9a1c7d4e-5f60-4b28-8c3a-2d5e7f9b0c14".into()),
+        ("Device Serial", "PF2X9K7L".into()),
+        ("Serial Number", "3a:68:e8:18:bf:83:6b:20:c4:37:16:ec:96:d2:7a:a4".into()),
+        ("Not Before", "Mar 12 09:12:44 2026 +00:00".into()),
+        ("Not After", "Jun 14 09:12:44 2028 +00:00".into()),
+        ("Signing Algorithm", "SHA256withRSA".into()),
+        (
+            "SHA-256 Fingerprint",
+            "90:E4:45:C9:E2:8E:8F:5B:57:D2:30:90:8C:6F:B2:3D:CE:A1:61:CA:96:3E:BF:B2:8E:E7:3D:A9:CF:70:DD:B7".into(),
+        ),
+    ]
+    .into_iter()
+    .map(|(label, value)| CertField { label: label.into(), value: Some(value), problem: None })
+    .collect()
+}
+
+#[derive(Default)]
+struct Screen {
+    vm: ViewModel,
+    click: Option<&'static str>,
+    input: Option<(&'static str, &'static str)>,
+}
+
+/// Every screen of `screenshots.test.tsx`, in the same states.
+fn screens() -> Vec<(&'static str, Page, Screen)> {
+    let vm = ViewModel::default;
+    let logs = Some(FileCount { bytes: 3_400_000, files: 12 });
+    vec![
+        ("overview-signed-out", Page::Overview, Screen { vm: ViewModel { session: Some(Session::SignedOut), ..vm() }, ..Default::default() }),
+        ("overview-loading", Page::Overview, Screen { vm: ViewModel { session: Some(Session::Loading), ..vm() }, ..Default::default() }),
+        (
+            "overview-signed-in",
+            Page::Overview,
+            Screen {
+                vm: ViewModel {
+                    session: Some(Session::SignedIn { account_slug: "example-corp".into(), actor_name: "Jane Doe".into() }),
+                    ..vm()
+                },
+                ..Default::default()
+            },
+        ),
+        ("general-settings", Page::Settings, Screen { vm: ViewModel { general_settings: Some(general_settings()), ..vm() }, ..Default::default() }),
+        ("general-settings-custom", Page::Settings, Screen { vm: ViewModel { general_settings: Some(custom_settings()), ..vm() }, ..Default::default() }),
+        (
+            "general-settings-invalid-url",
+            Page::Settings,
+            Screen {
+                vm: ViewModel { general_settings: Some(custom_settings()), ..vm() },
+                input: Some(("Auth URL", "firezone.example.com")),
+                ..Default::default()
+            },
+        ),
+        (
+            "general-settings-pending-sign-in",
+            Page::Settings,
+            Screen {
+                vm: ViewModel {
+                    general_settings: Some(GeneralSettings {
+                        signed_in_with: Some(SignInSettings {
+                            account_slug: "example-corp".into(),
+                            control_plane: ControlPlane::CloudEu,
+                            auth_url: "https://eu.app.firezone.dev/".into(),
+                            api_url: "wss://eu.api.firezone.dev/".into(),
+                        }),
+                        ..general_settings()
+                    }),
+                    ..vm()
+                },
+                ..Default::default()
+            },
+        ),
+        (
+            "general-settings-managed",
+            Page::Settings,
+            Screen {
+                vm: ViewModel {
+                    general_settings: Some(GeneralSettings {
+                        account_slug_is_managed: true,
+                        start_on_login_is_managed: true,
+                        connect_on_start_is_managed: true,
+                        control_plane: ControlPlane::CloudEu,
+                        auth_url: "https://eu.app.firezone.dev/".into(),
+                        auth_url_is_managed: true,
+                        api_url: "wss://eu.api.firezone.dev/".into(),
+                        api_url_is_managed: true,
+                        ..general_settings()
+                    }),
+                    ..vm()
+                },
+                ..Default::default()
+            },
+        ),
+        ("device-trust-happy", Page::DeviceTrust, Screen { vm: ViewModel { certificate: Some(certificate()), ..vm() }, ..Default::default() }),
+        ("diagnostics-no-logs", Page::Diagnostics, Screen::default()),
+        ("diagnostics", Page::Diagnostics, Screen { vm: ViewModel { log_count: logs, log_filter: log_filter(), ..vm() }, ..Default::default() }),
+        (
+            "diagnostics-clear-confirmation",
+            Page::Diagnostics,
+            Screen {
+                vm: ViewModel { log_count: Some(FileCount { bytes: 3_400_000, files: 17 }), log_filter: log_filter(), ..vm() },
+                click: Some("Clear Logs"),
+                ..Default::default()
+            },
+        ),
+        (
+            "settings-reset-confirmation",
+            Page::Settings,
+            Screen { vm: ViewModel { general_settings: Some(general_settings()), ..vm() }, click: Some("Reset to Defaults"), ..Default::default() },
+        ),
+        (
+            "diagnostics-managed",
+            Page::Diagnostics,
+            Screen {
+                vm: ViewModel { log_count: logs, log_filter: Some(LogFilter { log_filter: "debug".into(), log_filter_is_managed: true }), ..vm() },
+                ..Default::default()
+            },
+        ),
+        ("about", Page::About, Screen::default()),
+    ]
 }
 
 #[test]
-fn light_and_dark() {
-    let (mut t, _, _) = runner(false);
-    screenshot(&mut t, "advanced-light");
-    let (mut t, _, _) = runner(true);
-    screenshot(&mut t, "advanced-dark");
-}
-
-#[test]
-fn managed_tooltip_on_hover() {
-    let (mut t, _, _) = runner(false);
-    t.move_cursor(AUTH_INPUT);
-    settle(&mut t);
-    assert!(texts(&t).iter().any(|s| s.contains("managed by your organisation")));
-    screenshot(&mut t, "advanced-tooltip-light");
-}
-
-#[test]
-fn sidebar_navigation() {
-    let (mut t, _, _) = runner(false);
-    t.click_cursor((60., 166.));
-    settle(&mut t);
-    assert!(texts(&t).contains(&"Diagnostics".to_string()));
-    assert!(!texts(&t).contains(&"Advanced Settings".to_string()));
-    screenshot(&mut t, "sidebar-diagnostics-light");
-}
-
-#[test]
-fn typing_and_clipboard() {
-    let (mut t, _, mut requests) = runner(false);
-
-    // Type into the API URL: select all, replace.
-    click(&mut t, API_INPUT);
-    press_ctrl(&mut t, "a");
-    t.write_text("wss://staging.example");
-    settle(&mut t);
-    screenshot(&mut t, "advanced-typed-light");
-
-    // Mouse-select the log filter, copy it, paste it over the API URL.
-    t.press_key(Key::Named(NamedKey::Escape));
-    t.move_cursor((482., LOG_INPUT.1));
-    t.press_cursor((482., LOG_INPUT.1));
-    settle(&mut t);
-    t.move_cursor((560., LOG_INPUT.1));
-    t.release_cursor((560., LOG_INPUT.1));
-    press_ctrl(&mut t, "c");
-    t.press_key(Key::Named(NamedKey::Escape));
-    click(&mut t, API_INPUT);
-    press_ctrl(&mut t, "a");
-    press_ctrl(&mut t, "v");
-    t.press_key(Key::Named(NamedKey::Escape));
-
-    // The locked input ignores clicks and typing. (Clicking outside did not blur the
-    // previously focused input in the runner, so blur with Escape above.)
-    click(&mut t, AUTH_INPUT);
-    t.write_text("evil");
-
-    click(&mut t, APPLY);
-    let req = requests.try_recv().expect("Apply sends a request");
-    assert_eq!(
-        req,
-        Request::ApplyAdvanced {
-            auth_url: "https://app.firezone.dev".into(),
-            api_url: "info".into(),
-            log_filter: "info".into(),
+fn screenshots() {
+    for (name, page, screen) in screens() {
+        for (scheme, dark) in [("light", false), ("dark", true)] {
+            let mut ui = launch(page, dark, screen.vm.clone());
+            if let Some((label, value)) = screen.input {
+                fill(&mut ui.t, label, value);
+            }
+            if let Some(name) = screen.click {
+                let at = named_at(&ui.t, name);
+                click(&mut ui.t, at);
+            }
+            screenshot(&mut ui.t, &format!("{name}-{scheme}"));
         }
+    }
+}
+
+#[test]
+fn rejected_url_is_not_saved_and_shows_why() {
+    let mut ui = launch(Page::Settings, false, ViewModel { general_settings: Some(custom_settings()), ..Default::default() });
+    fill(&mut ui.t, "Auth URL", "firezone.example.com");
+    assert!(texts(&ui.t).contains(&"Enter a valid http:// or https:// URL".to_owned()));
+    assert!(ui.requests.try_recv().is_err());
+
+    fill(&mut ui.t, "Auth URL", "https://other.example.com");
+    assert_eq!(
+        ui.requests.try_recv().unwrap(),
+        Request::ApplySettings(SettingsChange {
+            control_plane: Some(ControlPlane::Custom),
+            auth_url: Some("https://other.example.com".into()),
+            ..Default::default()
+        })
     );
+    assert!(!texts(&ui.t).contains(&"Enter a valid http:// or https:// URL".to_owned()));
+}
+
+#[test]
+fn toggles_save_and_managed_ones_do_not() {
+    let settings = GeneralSettings { connect_on_start_is_managed: true, ..general_settings() };
+    let mut ui = launch(Page::Settings, false, ViewModel { general_settings: Some(settings), ..Default::default() });
+    let toggle_x = 851.;
+    let y = text_at(&ui.t, "Start on login").1;
+    click(&mut ui.t, (toggle_x, y));
+    assert_eq!(ui.requests.try_recv().unwrap(), Request::ApplySettings(SettingsChange { start_on_login: Some(false), ..Default::default() }));
+    let y = text_at(&ui.t, "Connect on start").1;
+    click(&mut ui.t, (toggle_x, y));
+    assert!(ui.requests.try_recv().is_err());
+    assert!(texts(&ui.t).contains(&"Some settings are managed by your organization.".to_owned()));
+}
+
+#[test]
+fn picking_custom_shows_the_url_fields() {
+    let mut ui = launch(Page::Settings, false, ViewModel { general_settings: Some(general_settings()), ..Default::default() });
+    assert!(!texts(&ui.t).contains(&"Auth URL".to_owned()));
+    let select = named_at(&ui.t, "Firezone Cloud (US)");
+    click(&mut ui.t, select);
+    let custom = named_at(&ui.t, "Custom");
+    click(&mut ui.t, custom);
+    assert_eq!(
+        ui.requests.try_recv().unwrap(),
+        Request::ApplySettings(SettingsChange {
+            control_plane: Some(ControlPlane::Custom),
+            auth_url: Some("https://app.firezone.dev/".into()),
+            api_url: Some("wss://api.firezone.dev/".into()),
+            ..Default::default()
+        })
+    );
+    assert!(texts(&ui.t).contains(&"Auth URL".to_owned()), "the page keeps Custom until the user enters URLs");
+}
+
+#[test]
+fn reset_asks_first() {
+    let mut ui = launch(Page::Settings, false, ViewModel { general_settings: Some(general_settings()), ..Default::default() });
+    let reset = named_at(&ui.t, "Reset to Defaults");
+    click(&mut ui.t, reset);
+    let cancel = named_at(&ui.t, "Cancel");
+    click(&mut ui.t, cancel);
+    assert!(!texts(&ui.t).contains(&"Reset settings to defaults?".to_owned()));
+    assert!(ui.requests.try_recv().is_err());
+
+    click(&mut ui.t, reset);
+    let confirm = named_at(&ui.t, "Reset");
+    click(&mut ui.t, confirm);
+    assert_eq!(ui.requests.try_recv().unwrap(), Request::ResetSettings);
+}
+
+#[test]
+fn sidebar_navigation_and_device_trust_tab() {
+    let mut ui = launch(Page::Overview, false, ViewModel::default());
+    assert!(!texts(&ui.t).contains(&"Device Trust".to_owned()));
+    let diagnostics = named_at(&ui.t, "Diagnostics");
+    click(&mut ui.t, diagnostics);
+    assert!(texts(&ui.t).contains(&"Log Filter".to_owned()));
+
+    ui.vm.set(ViewModel { certificate: Some(certificate()), ..Default::default() });
+    settle(&mut ui.t);
+    let device_trust = named_at(&ui.t, "Device Trust");
+    click(&mut ui.t, device_trust);
+    assert!(texts(&ui.t).contains(&"Issued by DC=com, DC=example, CN=Example Corp Issuing CA 1".to_owned()));
 }
 
 #[test]
 fn controller_roundtrip() {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let (mut t, vm, mut requests) = runner(false);
+    let Ui { mut t, vm, mut requests } = launch(Page::Overview, false, ViewModel::default());
     let (vm_tx, vm_rx) = mpsc::unbounded_channel();
 
     // Controller: a tokio task outside the UI thread.
     rt.spawn(async move {
-        let mut model = ViewModel::default();
-        model.session = "alice@example.com".into();
+        let mut model = ViewModel { session: Some(Session::SignedOut), ..Default::default() };
         vm_tx.send(model.clone()).unwrap();
         while let Some(req) = requests.recv().await {
-            if req == Request::ResetAdvanced {
-                model.session = "alice@example.com (reset)".into();
-                model.log_filter = "debug".into();
+            if req == Request::SignIn {
+                model.session = Some(Session::SignedIn { account_slug: "example-corp".into(), actor_name: "Jane Doe".into() });
                 vm_tx.send(model.clone()).unwrap();
             }
         }
     });
     t.run_in(|| spawn(apply_updates(vm_rx, vm)));
 
-    wait_for(&mut t, |t| texts(t).iter().any(|s| s == "Session: alice@example.com"));
-    t.click_cursor(RESET);
-    wait_for(&mut t, |t| texts(t).iter().any(|s| s.ends_with("(reset)")));
-    assert_eq!(vm.peek().log_filter, "debug");
-    assert!(texts(&t).contains(&"debug".to_string()), "input shows the pushed value");
-    screenshot(&mut t, "controller-update-light");
-}
-
-#[test]
-fn font_weights_and_span_family() {
-    fn fonts() -> impl IntoElement {
-        rect()
-            .font_size(20.)
-            .child(label().font_family(ROBOTO).text("Firezone Settings"))
-            .child(label().font_family(ROBOTO).font_weight(FontWeight::BOLD).text("Firezone Settings"))
-            .child(paragraph().font_family(ROBOTO).span(Span::new("Firezone Settings").font_family("BoldOnly")))
-    }
-    let (mut t, ()) = TestingRunner::new(fonts, SIZE.into(), |_| {}, 1.);
-    register_roboto(&mut t, ROBOTO);
-    t.set_fonts(HashMap::from([("BoldOnly", ROBOTO_BOLD)]));
-    t.sync_and_update();
-    let widths: Vec<f32> = t.find_many(|n, el| {
-        (Label::try_downcast(el).is_some() || Paragraph::try_downcast(el).is_some()).then(|| n.layout().area.width())
-    });
-    println!("widths regular/bold/span={widths:?}");
-    // Real bold glyphs have wider advances than regular ones (synthetic bold keeps advances).
-    assert!(widths[1] > widths[0] + 1.);
-    // The span picks its own family over the paragraph's.
-    assert!((widths[2] - widths[1]).abs() < 0.5);
-}
-
-#[test]
-fn accessibility_tree() {
-    // The runner only hands out a11y diffs, so mount the app after construction to get it all in one update.
-    #[derive(PartialEq)]
-    struct Main;
-    impl Component for Main {
-        fn render(&self) -> impl IntoElement {
-            app()
-        }
-    }
-    fn gated() -> impl IntoElement {
-        let show = use_consume::<State<bool>>();
-        rect().expanded().maybe_child(show().then_some(Main))
-    }
-    let (tx, _rx) = mpsc::unbounded_channel();
-    let (mut t, mut show) = TestingRunner::new(
-        gated,
-        SIZE.into(),
-        |r| {
-            let vm = State::create_global(ViewModel::default());
-            r.provide_root_context(|| Bridge { vm, requests: tx, dark: false });
-            r.provide_root_context(|| State::create(false))
-        },
-        1.,
-    );
-    show.set(true);
-    let update = t.sync_and_update();
-    let nodes: Vec<String> = update
-        .nodes
-        .iter()
-        .filter(|(_, n)| n.role() != accesskit::Role::GenericContainer || n.label().is_some())
-        .map(|(_, n)| format!("{:?} {:?}", n.role(), n.label().unwrap_or_default()))
-        .collect();
-    println!("a11y nodes: {}", update.nodes.len());
-    for n in &nodes {
-        println!("  {n}");
-    }
-    assert!(nodes.contains(&r#"Button """#.to_string()) || nodes.iter().any(|n| n.starts_with("Button")));
-    assert!(nodes.contains(&r#"TextInput "wss://api.firezone.dev""#.to_string()));
-    assert!(nodes.contains(&r#"Link "Diagnostics""#.to_string()));
-}
-
-/// Real mice move before they click; inputs track hover state from it.
-fn click(t: &mut TestingRunner, at: (f64, f64)) {
-    t.move_cursor(at);
-    t.click_cursor(at);
-}
-
-fn press_ctrl(t: &mut TestingRunner, key: &str) {
-    t.send_event(PlatformEvent::Keyboard {
-        name: KeyboardEventName::KeyDown,
-        key: Key::Character(key.into()),
-        code: Code::Unidentified,
-        modifiers: Modifiers::CONTROL,
-    });
-    t.sync_and_update();
+    wait_for(&mut t, |t| texts(t).contains(&"Sign in".to_owned()));
+    let sign_in = named_at(&t, "Sign in");
+    click(&mut t, sign_in);
+    wait_for(&mut t, |t| texts(t).iter().any(|s| s.contains("Jane Doe")));
+    assert!(matches!(vm.peek().session, Some(Session::SignedIn { .. })));
 }
 
 fn wait_for(t: &mut TestingRunner, cond: impl Fn(&TestingRunner) -> bool) {
@@ -263,3 +397,4 @@ impl copypasta::ClipboardProvider for MemoryClipboard {
         Ok(())
     }
 }
+

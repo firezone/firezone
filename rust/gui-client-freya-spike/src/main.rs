@@ -35,6 +35,7 @@ fn main() {
         vm: State::create_global(ViewModel::default()),
         requests: req_tx,
         dark: std::env::var("DARK").is_ok(),
+        start_page: Page::Overview,
     };
 
     // Build the event loop ourselves so "no display" is an error we handle, not a panic.
@@ -45,12 +46,11 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let config = LaunchConfig::new()
+    let config = FONTS.iter().fold(LaunchConfig::new(), |config, (family, bytes)| config.with_font(*family, Bytes::from_static(bytes)));
+    let config = config
         .with_event_loop(event_loop)
         .with_exit_on_close(false)
-        .with_font(ROBOTO, Bytes::from_static(ROBOTO_REGULAR))
-        .with_font(ROBOTO, Bytes::from_static(ROBOTO_BOLD))
-        .with_default_font(ROBOTO)
+        .with_default_font(SANS)
         .with_task({
             let bridge = bridge.clone();
             move |proxy| gui_loop(cmd_rx, proxy, bridge)
@@ -110,7 +110,10 @@ async fn controller(ui: mpsc::UnboundedSender<UiCommand>, mut requests: mpsc::Un
         pause().await;
         step(UiCommand::Show);
         pause().await;
-        step(UiCommand::Update(ViewModel { session: "alice@example.com".into(), ..Default::default() }));
+        step(UiCommand::Update(ViewModel {
+            session: Some(Session::SignedIn { account_slug: "example-corp".into(), actor_name: "Jane Doe".into() }),
+            ..Default::default()
+        }));
         pause().await;
         step(UiCommand::Hide);
         pause().await;
@@ -128,19 +131,27 @@ async fn controller(ui: mpsc::UnboundedSender<UiCommand>, mut requests: mpsc::Un
         return;
     }
     ui.send(UiCommand::Show).unwrap();
+    let mut model = ViewModel { session: Some(Session::SignedOut), log_count: Some(FileCount { bytes: 0, files: 0 }), ..Default::default() };
+    ui.send(UiCommand::Update(model.clone())).unwrap();
     while let Some(req) = requests.recv().await {
         println!("controller: {req:?}");
         match req {
-            Request::ApplyAdvanced { .. } => {
+            Request::SignIn => {
+                model.session = Some(Session::SignedIn { account_slug: "example-corp".into(), actor_name: "Jane Doe".into() });
+            }
+            Request::SignOut => model.session = Some(Session::SignedOut),
+            Request::ApplySettings(_) | Request::ResetSettings | Request::ApplyLogFilter(_) => {
                 let _ = desktop_notifications::show("dev.firezone.spike", "Settings applied", "", None).await;
             }
-            Request::ResetAdvanced => {
+            Request::ClearLogs => model.log_count = Some(FileCount { bytes: 0, files: 0 }),
+            Request::ExportLogs => {
                 let picked = rfd::AsyncFileDialog::new().set_file_name("logs.zip").save_file().await;
                 if let Some(path) = picked {
                     let _ = open::that(path.path());
                 }
             }
         }
+        ui.send(UiCommand::Update(model.clone())).unwrap();
     }
 }
 
