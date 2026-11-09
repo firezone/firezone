@@ -4780,6 +4780,7 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "futures",
+ "futures-bounded",
  "tokio",
  "tracing",
 ]
