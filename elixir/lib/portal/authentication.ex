@@ -734,35 +734,36 @@ defmodule Portal.Authentication do
     end
 
     # The copies are deleted first, so revoking still works once the copy no
-    # longer cascades from gateway_tokens.
+    # longer cascades from gateway_tokens. A refusal writes nothing, so it is
+    # returned without a rollback, which would also abort a caller's
+    # transaction.
     def delete_gateway_tokens(scoped_or_unscoped) do
-      Safe.transact(fn ->
-        case Safe.delete_all(scoped_or_unscoped) do
-          {:error, :unauthorized} = error ->
-            error
+      {:ok, result} =
+        Safe.transact(fn ->
+          case Safe.delete_all(scoped_or_unscoped) do
+            {:error, :unauthorized} = error ->
+              {:ok, error}
 
-          {count, keys} ->
-            {account_ids, ids} = Enum.unzip(keys)
+            {count, keys} ->
+              {account_ids, ids} = Enum.unzip(keys)
 
-            from(gt in Portal.GatewayToken,
-              join:
-                k in fragment(
-                  "SELECT * FROM unnest(?::uuid[], ?::uuid[]) AS k(account_id, id)",
-                  type(^account_ids, {:array, Ecto.UUID}),
-                  type(^ids, {:array, Ecto.UUID})
-                ),
-              on: gt.account_id == k.account_id and gt.id == k.id
-            )
-            |> Safe.unscoped()
-            |> Safe.delete_all()
+              from(gt in Portal.GatewayToken,
+                join:
+                  k in fragment(
+                    "SELECT * FROM unnest(?::uuid[], ?::uuid[]) AS k(account_id, id)",
+                    type(^account_ids, {:array, Ecto.UUID}),
+                    type(^ids, {:array, Ecto.UUID})
+                  ),
+                on: gt.account_id == k.account_id and gt.id == k.id
+              )
+              |> Safe.unscoped()
+              |> Safe.delete_all()
 
-            {:ok, {count, nil}}
-        end
-      end)
-      |> case do
-        {:ok, result} -> result
-        {:error, :unauthorized} -> {:error, :unauthorized}
-      end
+              {:ok, {count, nil}}
+          end
+        end)
+
+      result
     end
 
     def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{type: :client}) do
