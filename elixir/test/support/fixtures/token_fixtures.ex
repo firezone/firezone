@@ -3,6 +3,7 @@ defmodule Portal.TokenFixtures do
   Test helpers for creating tokens and related data.
   """
 
+  import Ecto.Query, only: [from: 2]
   import Ecto.Changeset
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -105,6 +106,34 @@ defmodule Portal.TokenFixtures do
     |> infrastructure_token_secrets()
     |> then(&struct!(Portal.GatewayToken, &1))
     |> Portal.Repo.insert!()
+    |> tap(&copy_gateway_token/1)
+  end
+
+  # Mirrors what the app writes while gateway_tokens is the source.
+  defp copy_gateway_token(token) do
+    Portal.Repo.insert!(%Portal.DeviceToken{
+      account_id: token.account_id,
+      id: token.id,
+      actor_id: legacy_gateway_actor_id(token.account_id),
+      device_id: token.device_id,
+      site_id: token.site_id,
+      secret_salt: token.secret_salt,
+      secret_hash: token.secret_hash,
+      rotated_at: token.rotated_at,
+      inserted_at: token.inserted_at
+    })
+  end
+
+  defp legacy_gateway_actor_id(account_id) do
+    from(a in Portal.Actor,
+      where: a.account_id == ^account_id and a.type == :legacy_gateway,
+      select: a.id
+    )
+    |> Portal.Repo.one()
+    |> case do
+      nil -> Portal.ActorFixtures.legacy_gateway_actor_fixture(account: %{id: account_id}).id
+      id -> id
+    end
   end
 
   def valid_api_token_attrs do
