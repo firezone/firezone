@@ -32,9 +32,9 @@ use std::{
 };
 
 /// How long after its first exchange following a NAT rebinding a path may lose traffic: the
-/// Client's WireGuard re-keys twice without hearing back (`KEEPALIVE_TIMEOUT + REKEY_TIMEOUT`
-/// each) before the Gateway re-probes, plus a margin.
-const NAT_REBINDING_RECOVERY: Duration = Duration::from_secs(30);
+/// Client's WireGuard re-keys twice without hearing back (`KEEPALIVE_TIMEOUT + REKEY_TIMEOUT`,
+/// 7s on a Frostlink connection) before the Gateway re-probes, plus a margin.
+const NAT_REBINDING_RECOVERY: Duration = Duration::from_secs(20);
 
 /// Reference state for a particular client.
 ///
