@@ -17,7 +17,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio_rustls::TlsAcceptor;
 use tracing_subscriber::layer::Identity;
@@ -29,16 +29,6 @@ use crate::rate_limit::RateLimiter;
 use crate::server::CertResolver;
 
 const RATE_LIMIT_EVICTION_INTERVAL: Duration = Duration::from_secs(60);
-
-/// The commit SHA this binary was built from, patched into the placeholder after linking with
-/// `mise run //rust:patch-relay-release`. An all-zero field means the patch step did not run.
-#[used]
-static RELEASE: [u8; 57] = *b"firezone-git-sha:0000000000000000000000000000000000000000";
-
-static VERSION: LazyLock<Option<&'static str>> = LazyLock::new(|| {
-    let sha = std::str::from_utf8(&RELEASE[17..]).unwrap_or_default();
-    (!sha.bytes().all(|b| b == b'0')).then_some(sha)
-});
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -182,7 +172,7 @@ async fn try_main(args: Args) -> Result<()> {
     tokio::spawn(evict_idle_rate_limits(ingest.clone()));
     tokio::spawn(http_health_check::serve_with_version(
         args.health_check.health_check_addr,
-        *VERSION,
+        git_sha::git_sha(),
         || true,
     ));
 
