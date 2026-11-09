@@ -91,7 +91,7 @@ defmodule PortalAPI.Schemas.Gateway do
             "When the token identified by `gateway_token_id` was rotated out. Null in " <>
               "the normal case. When set, a replacement token has been minted and this " <>
               "one stays valid only until the Gateway connects with the replacement or " <>
-              "#{Portal.GatewayToken.rotation_grace_hours()} hours elapse from this " <>
+              "#{Portal.DeviceToken.rotation_grace_hours()} hours elapse from this " <>
               "timestamp, whichever comes first - so a non-null value means a rotation " <>
               "is pending and the Gateway has not picked it up yet."
         },

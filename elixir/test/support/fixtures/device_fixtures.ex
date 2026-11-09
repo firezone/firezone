@@ -362,7 +362,7 @@ defmodule Portal.DeviceFixtures do
       case Map.get(attrs, :token) do
         nil -> gateway_token_fixture(account: account, site: site)
         :single_owner -> gateway_token_fixture(gateway: gateway)
-        %Portal.GatewayToken{} = token -> token
+        %Portal.DeviceToken{} = token -> token
       end
 
     public_key = Map.get(device_attrs, :public_key, generate_public_key())

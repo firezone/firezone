@@ -2,7 +2,7 @@ defmodule PortalWeb.SitesTest do
   use PortalWeb.ConnCase, async: true
 
   import Ecto.Query
-  alias Portal.{Device, GatewayToken, Repo, Resource, Site}
+  alias Portal.{Device, DeviceToken, Repo, Resource, Site}
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -460,7 +460,7 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "delete_site")
 
       assert Repo.get_by(Device, account_id: account.id, id: other_gateway.id)
-      assert Repo.get_by(GatewayToken, account_id: account.id, id: other_token.id)
+      assert Repo.get_by(DeviceToken, account_id: account.id, id: other_token.id)
 
       assert Repo.get_by(Portal.SiteDevice,
                account_id: account.id,
@@ -664,7 +664,7 @@ defmodule PortalWeb.SitesTest do
 
       assert is_nil(gateway.firezone_id)
 
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
       assert {:ok, verified_token} = Portal.Authentication.verify_gateway_token(encoded_token)
@@ -686,7 +686,7 @@ defmodule PortalWeb.SitesTest do
       assert render_click(lv, "deploy_gateway") =~ "Waiting for connection..."
 
       gateway = site_gateway!(site)
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       send(lv.pid, %Phoenix.Socket.Broadcast{
         topic: "presences:account_devices:#{account.id}",
@@ -711,7 +711,7 @@ defmodule PortalWeb.SitesTest do
 
       render_click(lv, "deploy_gateway")
 
-      refute Repo.get_by(GatewayToken, account_id: account.id, site_id: site.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, site_id: site.id)
     end
 
     test "rotates a gateway token from the expanded row", %{
@@ -722,7 +722,7 @@ defmodule PortalWeb.SitesTest do
       site = site_fixture(account: account)
       # The fixture session references the single-owner token, marking it in use
       gateway = gateway_fixture(account: account, site: site, token: :single_owner)
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       {:ok, lv, _html} =
         conn
@@ -753,7 +753,7 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "The expiring token keeps working"
       refute html =~ "The legacy site token keeps working"
 
-      old_token = Repo.get_by!(GatewayToken, account_id: account.id, id: token.id)
+      old_token = Repo.get_by!(DeviceToken, account_id: account.id, id: token.id)
       assert old_token.rotated_at != nil
 
       html = render_click(lv, "dismiss_rotated_gateway_token")
@@ -767,7 +767,7 @@ defmodule PortalWeb.SitesTest do
     } do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site, token: :single_owner)
-      old_token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      old_token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       {:ok, lv, _html} =
         conn
@@ -780,14 +780,14 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "dismiss_rotated_gateway_token")
 
       new_token =
-        GatewayToken
+        DeviceToken
         |> Repo.all()
         |> Enum.find(&(&1.device_id == gateway.id and is_nil(&1.rotated_at)))
 
       # The gateway reconnects with the replacement: verification deletes the
       # expiring token (cascading its sessions), presence and the PG registry
       # register immediately, while the new session waits in the async queue
-      GatewayToken
+      DeviceToken
       |> Repo.get_by!(account_id: account.id, id: old_token.id)
       |> Repo.delete!()
 
@@ -816,7 +816,7 @@ defmodule PortalWeb.SitesTest do
       gateway =
         gateway_fixture(account: account, site: site, name: "doomed-gw", token: :single_owner)
 
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       {:ok, lv, html} =
         conn
@@ -826,7 +826,7 @@ defmodule PortalWeb.SitesTest do
       # Offline, but listed by default because it has a gateway token
       assert html =~ "doomed-gw"
 
-      GatewayToken
+      DeviceToken
       |> Repo.get_by!(account_id: account.id, id: token.id)
       |> Repo.delete!()
 
@@ -847,7 +847,7 @@ defmodule PortalWeb.SitesTest do
     } do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site, token: :single_owner)
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       {:ok, lv, _html} =
         conn
@@ -860,7 +860,7 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "cancel_rotate_gateway_token")
       refute html =~ "Rotate this gateway&#39;s token?"
 
-      token = Repo.get_by!(GatewayToken, account_id: account.id, id: token.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, id: token.id)
       assert is_nil(token.rotated_at)
     end
 
@@ -999,7 +999,7 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "rotate_gateway_token", %{"id" => gateway.id})
       html = render_click(lv, "confirm_rotate_gateway_token", %{"id" => gateway.id})
 
-      first_token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      first_token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
       assert html =~ "Copy it now"
 
       # Mid-upgrade status: legacy session with an unused gateway token
@@ -1025,9 +1025,9 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "confirm_rotate_gateway_token", %{"id" => gateway.id})
 
       # The never-used first token is replaced outright, not put in grace
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: first_token.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: first_token.id)
 
-      second_token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      second_token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
       assert is_nil(second_token.rotated_at)
     end
 
@@ -1164,7 +1164,7 @@ defmodule PortalWeb.SitesTest do
       refute html =~ "The expiring token keeps working"
       assert html =~ "Never connected - Gateway token provisioned"
 
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
     end
   end
 
@@ -1425,7 +1425,7 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "confirm_revoke_gateway_token", %{"id" => token.id})
       assert html =~ "Token revoked."
       refute html =~ token.id
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
     end
 
     test "cancel revoke single token dismisses the inline confirmation", %{
@@ -1447,7 +1447,7 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "cancel_revoke_gateway_token")
       refute html =~ "Revoke this token?"
       assert html =~ token.id
-      assert Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+      assert Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
     end
 
     test "revoke all tokens shows confirmation then deletes all", %{
@@ -1471,8 +1471,8 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "All tokens revoked."
       refute html =~ token1.id
       refute html =~ token2.id
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: token1.id)
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: token2.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: token1.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: token2.id)
 
       # Tab flips back to gateways now that the Legacy tokens tab is gone
       assert html =~ "Deploy gateway"
@@ -1498,7 +1498,7 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "cancel_revoke_all_tokens")
       refute html =~ "Revoke all tokens?"
       assert html =~ token.id
-      assert Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+      assert Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
     end
   end
 

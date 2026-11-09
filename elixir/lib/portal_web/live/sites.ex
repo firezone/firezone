@@ -1419,7 +1419,7 @@ defmodule PortalWeb.Sites do
     end
 
     @spec deploy_gateway(Site.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Device.t(), Portal.GatewayToken.t(), binary()} | {:error, term()}
+            {:ok, Device.t(), DeviceToken.t(), binary()} | {:error, term()}
     def deploy_gateway(site, subject) do
       Portal.Devices.provision_gateway(site, nil, subject)
     end
@@ -1455,7 +1455,7 @@ defmodule PortalWeb.Sites do
     end
 
     @spec rotate_gateway_token(Device.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Portal.GatewayToken.t(), binary()} | {:error, term()}
+            {:ok, DeviceToken.t(), binary()} | {:error, term()}
     def rotate_gateway_token(gateway, subject) do
       with {:ok, token} <- Portal.Authentication.rotate_gateway_token(gateway, subject) do
         {:ok, %{token | secret_fragment: nil}, Portal.Authentication.encode_fragment!(token)}

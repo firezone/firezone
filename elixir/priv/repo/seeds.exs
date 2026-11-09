@@ -279,7 +279,7 @@ defmodule Portal.Repo.Seeds do
     # Find the latest gateway token for the site
     gateway_token =
       Repo.one!(
-        from(t in Portal.GatewayToken,
+        from(t in Portal.DeviceToken,
           where: t.site_id == ^site_id and t.account_id == ^site.account_id,
           order_by: [desc: t.inserted_at],
           limit: 1
@@ -3580,33 +3580,23 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Repo.insert!()
 
+    legacy_gateway_actor =
+      %Portal.Actor{account_id: site.account_id, type: :legacy_gateway, name: "Legacy Gateway"}
+      |> Ecto.Changeset.change()
+      |> Portal.Actor.changeset()
+      |> Repo.insert!()
+
     # Create gateway token with static values
     gateway_token =
-      %Portal.GatewayToken{
+      %Portal.DeviceToken{
         id: "2274560b-e97b-45e4-8b34-679c7617e98d",
         account_id: site.account_id,
+        actor_id: legacy_gateway_actor.id,
         site_id: site.id,
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
       }
       |> Repo.insert!()
-
-    # The copy the app writes beside every gateway token.
-    legacy_gateway_actor =
-      %Portal.Actor{account_id: gateway_token.account_id, type: :legacy_gateway, name: "Legacy Gateway"}
-      |> Ecto.Changeset.change()
-      |> Portal.Actor.changeset()
-      |> Repo.insert!()
-
-    Repo.insert!(%Portal.DeviceToken{
-      account_id: gateway_token.account_id,
-      id: gateway_token.id,
-      actor_id: legacy_gateway_actor.id,
-      site_id: gateway_token.site_id,
-      secret_salt: gateway_token.secret_salt,
-      secret_hash: gateway_token.secret_hash,
-      inserted_at: gateway_token.inserted_at
-    })
 
     gateway_encoded_token = Authentication.encode_fragment!(gateway_token)
 
