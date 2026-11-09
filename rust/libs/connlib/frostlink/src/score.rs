@@ -33,9 +33,6 @@ pub(crate) struct Bucket {
     /// end. Comparing both ends keeps e.g. relay->srflx (one relay hop)
     /// ahead of relay->relay (two) instead of tying them on RTT.
     pub(crate) tier: (crate::CandidateKind, crate::CandidateKind),
-    /// `(min, max)` of the two candidates' priorities, higher first. Both peers
-    /// compute the same value for a pair, so they agree on its rank.
-    pub(crate) priority: Reverse<(u32, u32)>,
     pub(crate) relay_end: RelayEnd,
     pub(crate) family_match: FamilyMatch,
     pub(crate) local_family: LocalFamily,
@@ -48,6 +45,10 @@ pub(crate) struct PairScore {
     /// first: a tier-based preliminary primary must be refinable by the first
     /// real measurement, never treated as the best just because it has no RTT.
     pub(crate) rtt: Duration,
+    /// `(min, max)` of the two candidates' priorities, higher first. Both peers
+    /// compute the same value for a pair, so they agree on its rank. Only
+    /// breaks ties between pairs whose RTTs are a wash-out.
+    pub(crate) priority: Reverse<(u32, u32)>,
 }
 
 pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
@@ -57,11 +58,6 @@ pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> P
                 let (local, remote) = (tier(state.kinds.0), tier(state.kinds.1));
 
                 (local.max(remote), local.min(remote))
-            },
-            priority: {
-                let (local, remote) = state.priorities;
-
-                Reverse((local.min(remote), local.max(remote)))
             },
             relay_end: if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
                 RelayEnd::Local
@@ -80,6 +76,11 @@ pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> P
             },
         },
         rtt: state.rtt.map(|rtt| rtt.smoothed).unwrap_or(Duration::MAX),
+        priority: {
+            let (local, remote) = state.priorities;
+
+            Reverse((local.min(remote), local.max(remote)))
+        },
     }
 }
 

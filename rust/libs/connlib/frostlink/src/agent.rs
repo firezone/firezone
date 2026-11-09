@@ -7,7 +7,7 @@ use crate::candidate::{Candidate, CandidateKind};
 use crate::event::{Event, Payload, Transmit};
 use crate::icmpv6::Probe;
 use crate::retransmit::PairRetransmit;
-use crate::score::pair_score;
+use crate::score::{PairScore, pair_score};
 
 /// Frostlink path selection for a single WireGuard connection.
 #[derive(Default)]
@@ -228,6 +228,29 @@ const MAX_REMOTE_PER_KIND: usize = 6;
 
 const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
 const PRIMARY_HYSTERESIS_FLOOR: Duration = Duration::from_millis(10);
+
+/// Whether a measured pair should displace the primary: a better bucket, a
+/// clear RTT win within the same bucket, or a higher priority when the RTTs are
+/// a wash-out. The margin keeps jitter between two live pairs from flapping the
+/// primary; the wash-out band is half of it so that two pairs whose RTTs differ
+/// by about the margin can't flap between an RTT win and a priority win.
+fn beats_primary(new: &PairScore, cur: &PairScore, cur_rtt: Option<Duration>) -> bool {
+    if new.bucket != cur.bucket {
+        return new.bucket < cur.bucket;
+    }
+
+    let Some(cur_rtt) = cur_rtt else {
+        return false;
+    };
+
+    let margin = PRIMARY_HYSTERESIS_FLOOR.max(cur_rtt.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
+
+    if new.rtt + margin < cur_rtt {
+        return true;
+    }
+
+    new.rtt.abs_diff(cur_rtt) < margin / 2 && new.priority < cur.priority
+}
 
 impl Agent {
     pub fn new() -> Self {
@@ -942,51 +965,31 @@ impl Agent {
 
     /// Runs on every probe reply. Probes can only *promote*: the best measured
     /// pair takes over an empty primary, or displaces the incumbent only when it
-    /// scores strictly better (a better tier or priority, or the same of both by
-    /// a clear RTT margin). A worse pair never demotes a working primary.
+    /// beats it (see [`beats_primary`]). A worse pair never demotes a working
+    /// primary.
     fn select_primary(&mut self) {
-        let Some(best) = self
-            .pairs
-            .iter()
-            .filter(|(_, s)| s.rtt.is_some())
-            .min_by_key(|(k, s)| pair_score(**k, s))
-            .map(|(k, _)| *k)
+        let measured = self.pairs.iter().filter(|(_, s)| s.rtt.is_some());
+
+        let Some(primary) = self.primary else {
+            if let Some((best, _)) = measured.min_by_key(|(k, s)| pair_score(**k, s)) {
+                self.set_primary(*best);
+            }
+            return;
+        };
+
+        let cur = pair_score(primary, &self.pairs[&primary]);
+        let cur_rtt = self.pairs[&primary].rtt.map(|r| r.smoothed);
+
+        let Some((best, _)) = measured
+            .filter(|(k, _)| **k != primary)
+            .map(|(k, s)| (*k, pair_score(*k, s)))
+            .filter(|(_, new)| beats_primary(new, &cur, cur_rtt))
+            .min_by(|(_, a), (_, b)| a.cmp(b))
         else {
             return;
         };
 
-        let Some(primary) = self.primary else {
-            self.set_primary(best);
-            return;
-        };
-
-        if best == primary {
-            return;
-        }
-
-        let new = pair_score(best, &self.pairs[&best]);
-        let cur = pair_score(primary, &self.pairs[&primary]);
-
-        if new.bucket < cur.bucket {
-            self.set_primary(best);
-            return;
-        }
-
-        // Same bucket: only switch on a clear RTT win, so jitter between two
-        // live same-tier pairs doesn't flap the primary.
-        if new.bucket == cur.bucket
-            && let Some(cur_rtt) = self.pairs[&primary].rtt
-        {
-            let new_rtt = self.pairs[&best]
-                .rtt
-                .map(|r| r.smoothed)
-                .unwrap_or_default();
-            let margin =
-                PRIMARY_HYSTERESIS_FLOOR.max(cur_rtt.smoothed.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
-            if new_rtt + margin < cur_rtt.smoothed {
-                self.set_primary(best);
-            }
-        }
+        self.set_primary(best);
     }
 
     fn set_primary(&mut self, path: (SocketAddr, SocketAddr)) {
