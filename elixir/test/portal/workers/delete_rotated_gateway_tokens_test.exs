@@ -54,8 +54,7 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokensTest do
       # ever deletes single-owner tokens regardless
       token =
         gateway_token_fixture()
-        |> Ecto.Changeset.change(rotated_at: rotated_at)
-        |> Repo.update!()
+        |> stamp_gateway_token(rotated_at)
 
       assert :ok = perform_job(DeleteRotatedGatewayTokens, %{})
 

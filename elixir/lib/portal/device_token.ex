@@ -1,7 +1,7 @@
 defmodule Portal.DeviceToken do
   @moduledoc """
-  A credential a device connects with. Gateway tokens are copied here while
-  `gateway_tokens` stays the source; nothing reads this table yet.
+  A credential a device connects with. Gateway tokens are read from here and
+  still written to `gateway_tokens` as well.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -26,6 +26,10 @@ defmodule Portal.DeviceToken do
 
     field :expires_at, :utc_datetime_usec
     field :rotated_at, :utc_datetime_usec
+
+    # Populated on fetch-for-verification: the id of this token's rotated
+    # sibling, if a rotation is pending confirmation
+    field :rotated_sibling_id, :binary_id, virtual: true
 
     timestamps()
   end

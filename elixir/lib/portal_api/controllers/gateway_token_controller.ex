@@ -274,7 +274,7 @@ defmodule PortalAPI.GatewayTokenController do
     alias Portal.Device
     alias Portal.Safe
     alias Portal.Site
-    alias Portal.GatewayToken
+    alias Portal.DeviceToken
     alias Portal.SiteDevice
 
     def fetch_gateway(site_id, id, subject) do
@@ -317,7 +317,7 @@ defmodule PortalAPI.GatewayTokenController do
       # tokens, which have site_id set) or via its owning device
       # (single-owner tokens, which have device_id set and site_id nil).
       result =
-        from(t in GatewayToken, as: :tokens, where: t.id == ^id)
+        from(t in DeviceToken, as: :tokens, where: t.id == ^id)
         |> join(:left, [tokens: t], sd in SiteDevice,
           on: sd.device_id == t.device_id and sd.account_id == t.account_id,
           as: :site_device
@@ -334,15 +334,18 @@ defmodule PortalAPI.GatewayTokenController do
     end
 
     def delete_token(token, subject) do
-      token
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      from(t in DeviceToken, where: t.account_id == ^token.account_id and t.id == ^token.id)
+      |> Portal.Authentication.delete_gateway_tokens(subject)
+      |> case do
+        {1, _} -> {:ok, token}
+        {0, _} -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+      end
     end
 
     def delete_all_tokens(site, subject) do
-      from(t in GatewayToken, where: t.site_id == ^site.id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
+      from(t in DeviceToken, where: t.site_id == ^site.id)
+      |> Portal.Authentication.delete_gateway_tokens(subject)
     end
   end
 end

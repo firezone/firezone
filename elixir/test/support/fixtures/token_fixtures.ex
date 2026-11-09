@@ -109,6 +109,19 @@ defmodule Portal.TokenFixtures do
     |> tap(&copy_gateway_token/1)
   end
 
+  @doc """
+  Sets `rotated_at` on a gateway token and its device_tokens copy, as a
+  rotation does.
+  """
+  def stamp_gateway_token(%Portal.GatewayToken{} = token, rotated_at) do
+    from(t in Portal.DeviceToken, where: t.account_id == ^token.account_id and t.id == ^token.id)
+    |> Portal.Repo.update_all(set: [rotated_at: rotated_at])
+
+    token
+    |> change(rotated_at: rotated_at)
+    |> Portal.Repo.update!()
+  end
+
   # Mirrors what the app writes while gateway_tokens is the source.
   defp copy_gateway_token(token) do
     Portal.Repo.insert!(%Portal.DeviceToken{
