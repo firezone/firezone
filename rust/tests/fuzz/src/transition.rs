@@ -18,9 +18,9 @@ use std::{
     time::Duration,
 };
 
-/// The gap between the probes a Client streams; well below WireGuard's 7s of silence after which
-/// either side re-keys.
-pub(crate) const STREAM_INTERVAL: Duration = Duration::from_secs(1);
+/// The gap between the probes a Client streams: longer than any round trip, so each response is
+/// attributed to its own probe, and well below the 7s of silence after which WireGuard re-keys.
+pub(crate) const STREAM_INTERVAL: Duration = Duration::from_secs(2);
 
 #[allow(private_interfaces)]
 #[derive(Clone, Debug)]
@@ -107,9 +107,9 @@ pub enum Transition {
         dead_window: Duration,
         portal_window: Duration,
     },
-    /// The Client's NAT moves one of its IPv4 mappings, picked by `mapping`, to a fresh public
-    /// port. Meanwhile, the Client may stream probes on one of its UDP flows, one every
-    /// [`STREAM_INTERVAL`].
+    /// The Client's symmetric NAT moves one of its mappings towards a Gateway, picked by
+    /// `mapping`, to a fresh public port. Meanwhile, the Client may stream probes on one of its
+    /// UDP flows, one every [`STREAM_INTERVAL`].
     RebindClientNat {
         client_id: ClientId,
         mapping: u32,

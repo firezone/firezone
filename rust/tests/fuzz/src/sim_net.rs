@@ -6,7 +6,7 @@ use ip_network_table::IpNetworkTable;
 use snownet::Transmit;
 use std::{
     collections::BTreeMap,
-    iter,
+    iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -299,29 +299,28 @@ impl Nat {
         Ok(destination)
     }
 
-    /// Moves one IPv4 mapping to a fresh public port. Nothing reaches the host through the old
-    /// port anymore.
-    fn rebind(&mut self, selector: u32, now: Instant) {
-        let Some(old) = self
-            .by_public
-            .keys()
-            .copied()
-            .nth(selector as usize % self.by_public.len().max(1))
-        else {
+    /// Moves one of the mappings towards a destination matching `towards` to a fresh public port.
+    /// Nothing reaches the host through the old port anymore.
+    fn rebind(&mut self, selector: u32, towards: impl Fn(IpAddr) -> bool, now: Instant) {
+        let public = SocketAddr::new(self.ip4.into(), self.next_port);
+        let mut mapped = self
+            .by_internal
+            .iter_mut()
+            .filter(|((_, dst), _)| dst.is_some_and(|dst| towards(dst.ip())))
+            .map(|(_, public)| public)
+            .collect::<Vec<_>>();
+        if mapped.is_empty() {
             return;
-        };
+        }
+        let index = selector as usize % mapped.len();
+        let old = mem::replace(mapped.swap_remove(index), public);
+        self.next_port += 1;
+
         let internal = self
             .by_public
             .remove(&old)
-            .expect("binding exists")
+            .expect("`by_internal` and `by_public` are in sync")
             .internal;
-
-        let public = SocketAddr::new(self.ip4.into(), self.next_port);
-        self.next_port += 1;
-
-        for mapped in self.by_internal.values_mut().filter(|p| **p == old) {
-            *mapped = public;
-        }
         self.by_public.insert(
             public,
             Binding {
@@ -427,11 +426,17 @@ impl<T> Host<T> {
         }
     }
 
-    /// Moves one of this host's NAT mappings to a fresh public port.
-    pub(crate) fn rebind_nat(&mut self, selector: u32, now: Instant) {
+    /// Moves one of this host's NAT mappings towards a destination matching `towards` to a fresh
+    /// public port.
+    pub(crate) fn rebind_nat(
+        &mut self,
+        selector: u32,
+        towards: impl Fn(IpAddr) -> bool,
+        now: Instant,
+    ) {
         match &mut self.edge {
             Edge::Open => {}
-            Edge::Nat(nat) => nat.rebind(selector, now),
+            Edge::Nat(nat) => nat.rebind(selector, towards, now),
         }
     }
 

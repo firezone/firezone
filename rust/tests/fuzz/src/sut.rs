@@ -683,10 +683,18 @@ impl TunnelTest {
                 mapping,
                 stream,
             } => {
-                self.clients
-                    .get_mut(&client_id)
-                    .unwrap()
-                    .rebind_nat(mapping, now);
+                let gateway_ips = self
+                    .gateways
+                    .values()
+                    .flat_map(|gateway| [gateway.ip4, gateway.nat_ip4()])
+                    .flatten()
+                    .map(IpAddr::V4)
+                    .collect::<Vec<_>>();
+                self.clients.get_mut(&client_id).unwrap().rebind_nat(
+                    mapping,
+                    |ip| gateway_ips.contains(&ip),
+                    now,
+                );
 
                 if let Some((flow_id, probes)) = stream {
                     let flow = self.udp_flows[&flow_id];

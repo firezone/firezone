@@ -24,7 +24,7 @@ use crate::dns_records::record_ip;
 use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
-use crate::sim_net::{EdgeConfig, Host};
+use crate::sim_net::{EdgeConfig, Host, Mapping};
 use crate::stub_portal::StubPortal;
 use crate::transition::{Destination, Seq, Transition};
 
@@ -83,7 +83,7 @@ const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 9] = [
 ];
 
 /// Streamed for 30s, well past the recovery from a NAT rebinding.
-const STREAMED_PROBES: usize = 30;
+const STREAMED_PROBES: usize = 15;
 
 #[derive(Clone, Copy)]
 enum ExistingFlow<'a> {
@@ -112,10 +112,15 @@ pub(super) fn generate(
         .cloned()
         .collect::<Vec<_>>();
     let client_ids = state.all_client_ids();
-    let natted_client_ids = state
+    let symmetric_natted_client_ids = state
         .clients
         .iter()
-        .filter(|(_, client)| client.nat_ip4().is_some())
+        .filter(|(_, client)| {
+            matches!(
+                client.edge_config(),
+                EdgeConfig::Nat(Mapping::EndpointDependent, _, _)
+            )
+        })
         .map(|(id, _)| *id)
         .collect::<Vec<_>>();
     let dns_record_domains = state.dns_resource_domains();
@@ -213,7 +218,8 @@ pub(super) fn generate(
         (!expirable_peers.is_empty()).then_some((K::ExpirePeerAuthorizations, 2)),
         (!revocable_peers.is_empty()).then_some((K::RevokePeerAuthorization, 2)),
         // TODO: Remove the `frostlink` condition with classic ICE.
-        (portal.frostlink() && !natted_client_ids.is_empty()).then_some((K::RebindClientNat, 1)),
+        (portal.frostlink() && !symmetric_natted_client_ids.is_empty())
+            .then_some((K::RebindClientNat, 1)),
         (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
         (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
@@ -285,7 +291,8 @@ pub(super) fn generate(
             }
         }
         K::RebindClientNat => {
-            let client_id = natted_client_ids[g.choose_index(natted_client_ids.len())];
+            let client_id =
+                symmetric_natted_client_ids[g.choose_index(symmetric_natted_client_ids.len())];
             let flows = state
                 .udp_flows(now)
                 .into_iter()
