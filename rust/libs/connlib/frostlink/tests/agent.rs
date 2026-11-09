@@ -776,6 +776,45 @@ fn a_peer_reflexive_remote_stays_peer_reflexive_until_signaled() {
     );
 }
 
+#[test]
+fn a_new_peer_reflexive_remote_evicts_the_oldest() {
+    let mut a = Agent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+
+    // The establishing init registers the first peer-reflexive remote and
+    // adopts its pair as the primary.
+    let mut hs = Handshake::new(t0);
+    let _ = a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(1), addr(10)),
+        t0,
+    );
+    a.confirm_session(t0);
+
+    for port in 11..=15 {
+        a.handle_probe(echo_request(0, port), (addr(1), addr(port)), t0);
+    }
+    prove_pair_alive(&mut a, (addr(1), addr(10)), t0 + secs(1));
+    assert_eq!(a.primary(), Some((addr(1), addr(10))));
+
+    // The peer's NAT moved its mapping once more: the new address is learned
+    // and the oldest one, the primary's, goes.
+    a.handle_probe(echo_request(0, 16), (addr(1), addr(16)), t0 + secs(2));
+
+    assert_eq!(remote_kind(&a, addr(10)), None);
+    assert_eq!(
+        remote_kind(&a, addr(16)),
+        Some(CandidateKind::PeerReflexive)
+    );
+    assert_eq!(a.primary(), None);
+
+    prove_pair_alive(&mut a, (addr(1), addr(16)), t0 + secs(3));
+    assert_eq!(a.primary(), Some((addr(1), addr(16))));
+}
+
 // --- test harness ---
 
 type Pair = (SocketAddr, SocketAddr);

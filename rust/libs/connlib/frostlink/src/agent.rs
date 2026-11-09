@@ -224,10 +224,8 @@ pub const EARLY_PEER_REKEY: Duration = Duration::from_secs(115);
 
 pub const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
-const MAX_PEER_REFLEXIVE: usize = 4;
-
 /// Per-kind FIFO cap on remote candidates, bounding `pairs` growth across
-/// portal-driven relay rotations.
+/// portal-driven relay rotations and the peer's NAT moving its mappings.
 const MAX_REMOTE_PER_KIND: usize = 6;
 
 const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
@@ -286,7 +284,7 @@ impl Agent {
             return;
         }
 
-        // Per-kind FIFO cap, bounding `pairs` growth across relay rotations.
+        // Per-kind FIFO cap.
         let kind = c.kind();
         let at_cap =
             self.remotes.iter().filter(|r| r.kind() == kind).count() >= MAX_REMOTE_PER_KIND;
@@ -902,20 +900,16 @@ impl Agent {
     fn register_peer_reflexive(&mut self, pair: (SocketAddr, SocketAddr), now: Instant) {
         // The peer reached us from a mapping they didn't advertise (symmetric
         // NAT). Registering it is a new candidate, which re-probes.
-        let peer_reflexive = self
-            .remotes
-            .iter()
-            .filter(|c| c.kind() == CandidateKind::PeerReflexive)
-            .count();
-
-        if peer_reflexive < MAX_PEER_REFLEXIVE && !self.remotes.iter().any(|c| c.addr() == pair.1) {
-            tracing::debug!(
-                local = %pair.0,
-                remote = %pair.1,
-                "Discovered peer-reflexive remote candidate",
-            );
-            self.add_remote_candidate(Candidate::peer_reflexive(pair.1), now);
+        if self.remotes.iter().any(|c| c.addr() == pair.1) {
+            return;
         }
+
+        tracing::debug!(
+            local = %pair.0,
+            remote = %pair.1,
+            "Discovered peer-reflexive remote candidate",
+        );
+        self.add_remote_candidate(Candidate::peer_reflexive(pair.1), now);
     }
 
     /// A handshake proves its path works both ways but carries no RTT, so it can
