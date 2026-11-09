@@ -15,12 +15,16 @@ fi
 pnpm install --frozen-lockfile
 pnpm exec vite build
 
-# The `firezone` CLI is its own workspace member, so `tauri build` never compiles it.
+# `tauri/custom-protocol` embeds the frontend built above. Without it, the app
+# loads the Vite dev server instead.
+cargo build --release -p firezone-gui-client --features tauri/custom-protocol
 cargo build --release -p firezone-cli
-pnpm exec tauri build --no-bundle
 
 case "$OSTYPE" in
 linux*)
+    # `tauri bundle` expects the binary under its `mainBinaryName`.
+    cp "$release/firezone-gui-client" "$release/firezone-client-gui"
+
     # Moves the debug info into `.debug` files, which only go to Sentry.
     for bin in firezone-client-gui firezone-client-tunnel firezone-cli register-sparse; do
         objcopy --only-keep-debug "$release/$bin" "$release/$bin.debug"
@@ -29,6 +33,8 @@ linux*)
     packages=(deb rpm)
     ;;
 msys* | cygwin*)
+    cp "$release/firezone-gui-client.exe" "$release/Firezone.exe"
+
     # Tauri signs `Firezone.exe` and the MSI itself, after patching the binary.
     ../../scripts/build/sign.sh \
         "$release/firezone-client-tunnel.exe" \
