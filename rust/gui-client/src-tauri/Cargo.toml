@@ -11,6 +11,63 @@ license = { workspace = true }
 [package.metadata.tslink]
 enum_representation = "discriminated"
 
+# `cargo deb --no-build` and `cargo generate-rpm` package what `mise run build` built.
+[package.metadata.deb]
+name = "firezone-client-gui"
+maintainer = "Firezone, Inc."
+extended-description = ""
+revision = ""
+priority = "optional"
+depends = "libwebkit2gtk-4.1-0, libgtk-3-0"
+recommends = "p11-kit-modules, firezone-archive-keyring"
+maintainer-scripts = "linux_package/"
+assets = [
+    ["target/release/firezone-gui-client", "usr/bin/firezone-client-gui", "755"],
+    ["target/release/firezone-client-tunnel", "usr/bin/firezone-client-tunnel", "755"],
+    ["target/release/firezone-cli", "usr/bin/firezone", "755"],
+    ["linux_package/firezone-client-tunnel.service", "usr/lib/systemd/system/firezone-client-tunnel.service", "644"],
+    ["linux_package/sysusers.conf", "usr/lib/sysusers.d/firezone-client-tunnel.conf", "644"],
+    ["linux_package/dev.firezone.client.metainfo.xml", "usr/share/metainfo/dev.firezone.client.metainfo.xml", "644"],
+    ["linux_package/firezone-client-gui.desktop", "usr/share/applications/firezone-client-gui.desktop", "644"],
+    ["icons/32x32.png", "usr/share/icons/hicolor/32x32/apps/firezone-client-gui.png", "644"],
+    ["icons/128x128.png", "usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png", "644"],
+    ["icons/128x128@2x.png", "usr/share/icons/hicolor/256x256/apps/firezone-client-gui.png", "644"],
+    ["icons/icon.png", "usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png", "644"],
+    ["target/release/completions/firezone.bash", "usr/share/bash-completion/completions/firezone", "644"],
+    ["target/release/completions/_firezone", "usr/share/zsh/site-functions/_firezone", "644"],
+    ["target/release/completions/firezone.fish", "usr/share/fish/vendor_completions.d/firezone.fish", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "firezone-client-gui"
+post_install_script = "linux_package/postinst"
+pre_uninstall_script = "linux_package/prerm_rpm"
+# Names the libraries rather than scanning the binaries, so it matches the `.deb`.
+auto-req = "no"
+assets = [
+    { source = "target/release/firezone-gui-client", dest = "/usr/bin/firezone-client-gui", mode = "755" },
+    { source = "target/release/firezone-client-tunnel", dest = "/usr/bin/firezone-client-tunnel", mode = "755" },
+    { source = "target/release/firezone-cli", dest = "/usr/bin/firezone", mode = "755" },
+    { source = "linux_package/firezone-client-tunnel.service", dest = "/usr/lib/systemd/system/firezone-client-tunnel.service", mode = "644" },
+    { source = "linux_package/sysusers.conf", dest = "/usr/lib/sysusers.d/firezone-client-tunnel.conf", mode = "644" },
+    { source = "linux_package/dev.firezone.client.metainfo.xml", dest = "/usr/share/metainfo/dev.firezone.client.metainfo.xml", mode = "644" },
+    { source = "linux_package/firezone-client-gui.desktop", dest = "/usr/share/applications/firezone-client-gui.desktop", mode = "644" },
+    { source = "icons/32x32.png", dest = "/usr/share/icons/hicolor/32x32/apps/firezone-client-gui.png", mode = "644" },
+    { source = "icons/128x128.png", dest = "/usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png", mode = "644" },
+    { source = "icons/128x128@2x.png", dest = "/usr/share/icons/hicolor/256x256/apps/firezone-client-gui.png", mode = "644" },
+    { source = "icons/icon.png", dest = "/usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png", mode = "644" },
+    { source = "target/release/completions/firezone.bash", dest = "/usr/share/bash-completion/completions/firezone", mode = "644" },
+    { source = "target/release/completions/_firezone", dest = "/usr/share/zsh/site-functions/_firezone", mode = "644" },
+    { source = "target/release/completions/firezone.fish", dest = "/usr/share/fish/vendor_completions.d/firezone.fish", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+"libwebkit2gtk-4.1.so.0()(64bit)" = "*"
+"libgtk-3.so.0()(64bit)" = "*"
+
+[package.metadata.generate-rpm.recommends]
+p11-kit = "*"
+
 [dependencies]
 anyhow = { workspace = true }
 arboard = { workspace = true }
