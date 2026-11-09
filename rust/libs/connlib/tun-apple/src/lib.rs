@@ -63,7 +63,7 @@ impl Io {
         let name = name(fd)?;
         set_non_blocking(fd)?;
         raise_recv_buffer(fd);
-        raise_max_pending_packets(fd);
+        // raise_max_pending_packets(fd);
         let max_coalesced_len = max_coalesced_len(fd);
         let workers = match sys::batch_syscalls() {
             Some(syscalls) => tun::Workers::spawn(
@@ -162,6 +162,7 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
 
 /// Raises the limit of packets the kernel buffers on the utun socket so it can run
 /// ahead of our reads instead of in lock-step.
+#[allow(dead_code)]
 fn raise_max_pending_packets(fd: RawFd) {
     let current = match get_sockopt::<u32>(fd, libc::SYSPROTO_CONTROL, UTUN_OPT_MAX_PENDING_PACKETS)
     {
