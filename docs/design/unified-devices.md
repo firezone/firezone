@@ -496,13 +496,27 @@ tables, and a migration in the next deploy copies what is missing.
   and `Hooks.GatewayTokens`.** Depends 1.7 deployed. Two deploys, because
   1.7 nodes still delete `gateway_tokens` rows on revoke: first no code
   touches the table (#16377), then the table is dropped (#16378). Done.
-- **1.10 Code: one more free service account on every plan.** Applied where
-  the ad-hoc allowance is read (seat counting, the account API, the settings
-  page) rather than stored on the account, since subscription events rewrite
-  the stored limits from Stripe. Customer service accounts that own routing
-  devices otherwise count as today.
+- **1.10 Removed.** No free service account: Gateways stay with the legacy
+  Gateway actor (decision 8).
 - **1.11 Client tokens into `device_tokens`.** The same steps as 1.2 to 1.4,
-  1.7 and 1.9, after 1.7. Ids are kept, so stored REST ids still work.
+  1.7 and 1.9, after 1.7, one PR per deploy:
+  - C1: create and revoke write both tables in one transaction. The
+    `device_tokens` actor foreign key becomes `ON DELETE CASCADE`, as on
+    `client_tokens`. `/client` and `/gateway` accept the `"device"` salt;
+    nothing signs with it yet.
+  - C2: copy missing client tokens, and delete copies whose original was
+    revoked by a C0 node during the C1 rollout.
+  - C3: verification, REST and UI read client tokens from `device_tokens`,
+    with the shape rules of decision 11.
+  - C4: stop writing `client_tokens`. New tokens are signed with `"device"`.
+    `policy_authorizations.token_id` and `devices.client_token_id` point at
+    `device_tokens` (NOT VALID, one table per migration, short
+    `lock_timeout`). Replication publishes `device_tokens` instead of
+    `client_tokens`.
+  - C5: validate both foreign keys.
+  - C6a: no code touches `client_tokens`. C6b: drop it.
+
+  Ids are kept, so stored REST ids still work.
   `policy_authorizations.token_id` points at `device_tokens` only after
   every node writes both tables. The `Safe` grants on `DeviceToken` already
   match the client token grants. New tokens are signed with `"device"`, and
@@ -511,6 +525,7 @@ tables, and a migration in the next deploy copies what is missing.
   the pages that listen show one actor's tokens, so Gateway tokens, owned by
   the legacy Gateway actor, reach no page. `devices.client_token_id` and
   `devices.gateway_token_id` collapse into `token_id`.
+
 - **1.12 Code: `Devices.provision_device/4`.** Generalizes
   `provision_gateway`: inserts a device and mints a device-bound token for
   the actor given. The deploy UI calls it with the legacy Gateway actor until
@@ -520,16 +535,13 @@ tables, and a migration in the next deploy copies what is missing.
   exactly its old token set, so an old scope never widens. Each endpoint
   filters by the row shape of decision 11: Gateway token endpoints by Site
   or by a Gateway device in it, client token endpoints by actor with no Site
-  and no Gateway device. Without the filter, deleting a service account's
-  client tokens would delete a Gateway token moved to it by 1.15. New `POST
+  and no Gateway device. New `POST
 /devices/:id/token`. OpenAPI. The API surface is renamed to device tokens
   at the final collapse, with the old paths and scopes kept as aliases.
   Depends 1.12.
 - **1.14 UI: tokens tab** on service accounts shows device-bound tokens with
   their device; rotate available for any device-bound token. Depends 1.7.
-- **1.15 Code and UI: "Move to service account"** (decision 8). Changes the
-  owner of a Gateway token in place. With 1.6 done, only the subject's actor
-  changes and the service account's grants apply. Depends 1.6, 1.13.
+- **1.15 Removed.** No "Move to service account" (decision 8).
 
 ### Phase 2: device rows and site assignment
 
@@ -828,7 +840,7 @@ The portal deploys on every merge. These are the points where order matters.
 | Point | Must be live                               | Release                                                                                     |
 | ----- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
 | D1    | 0.6, 0.7                                   | R1: gateway 1.6.5 with 0.4 and 0.5                                                          |
-| D2    | 1.1 to 1.7, 1.10, 1.12 to 1.15             | none                                                                                        |
+| D2    | 1.1 to 1.7, 1.12 to 1.14                   | none                                                                                        |
 | D3    | 1.8, 1.9, 1.11, after D2 settled           | none                                                                                        |
 | D4    | 2.1 to 2.21                                | none                                                                                        |
 | D5    | 3.0, 3.8                                   | R2: `firezone` 1.7.0 and Linux GUI 1.7.0, legacy sockets, interim role switch; cutover 3.8b |
@@ -863,8 +875,7 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
 1. **Daemon user on Linux:** the `firezone` user with `CAP_NET_ADMIN`, polkit
    rule for systemd-resolved, `resolv.conf` control documented as root-only.
 2. **Billing:** customer service accounts that own routing devices count as
-   any actor does today; every plan gets one additional free service account
-   (step 1.10). The legacy Gateway actor (decision 7) never counts.
+   any actor does today. The legacy Gateway actor (decision 7) never counts.
 3. **Binary shape:** one executable, `firezone`, with `run` as the daemon.
 4. **Site assignment:** explicit rows only; rules not planned.
 5. **Forwarding:** on Linux the daemon owns kernel forwarding (sysctls and
@@ -890,19 +901,15 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
    down on any disconnect); rotation and revocation are the controls. Once
    `/device/v1` ships, no new tokens are minted for it, but existing ones
    keep working on both `/gateway` and `/device/v1`, and rotating one keeps
-   the owner. The narrow name keeps it from being reused for anything else,
-   and the type goes away once no token belongs to it.
+   the owner. The narrow name keeps it from being reused for anything else.
+   The type stays as long as any legacy Gateway token exists.
 8. **A Gateway gets outbound access only through a service account.** A
-   device whose token the legacy Gateway actor owns can only serve. To let a Gateway reach other devices
-   or resources, the admin upgrades it to the `firezone` binary and uses
-   "Move to service account" on the device. This changes the owner of the
-   existing token: same secret, same file on the host, nothing to redeploy.
-   The service account's policies then apply, and serving its Site is not
-   affected. A shared Site token moves every Gateway that uses it, so the UI
-   lists them before the admin confirms; to move only one, that Gateway gets
-   its own device-bound token. New devices deployed through `/device/v1` use
-   a service account token from the start. Open: whether moving rotates the
-   secret (more secure, needs a host change) or keeps it (no host change).
+   device whose token the legacy Gateway actor owns can only serve, for as
+   long as it keeps that token. Tokens never change owner. To let a Gateway
+   reach other devices or resources, the admin creates a service account,
+   which takes a seat, and gives the host a new token for it. The device row
+   and its Sites stay only once device identity no longer depends on the
+   owner (2.15); before that, the admin adds the device to its Sites again.
 9. **Upgrading never needs a new token.** Existing Gateways upgrade the
    package or image and keep their token, `FIREZONE_ID`, device row and
    Site. Rolling back to the old binary keeps working because `/gateway`
