@@ -13,7 +13,10 @@ defmodule Portal.Ops.RegionTransfer do
   to skip the prompt when a script calls it through `bin/portal rpc`.
 
   The log tables are not moved. They stay in the source region until the
-  account is deleted there, which cascades to them.
+  account is deleted there, which cascades to them. The email suppression list
+  is shared by every account in a region, so only the suppressed addresses of
+  the account's actors and past recipients are copied, and the source keeps
+  them.
   """
   alias __MODULE__.Database
   alias Portal.Mailer
@@ -50,7 +53,7 @@ defmodule Portal.Ops.RegionTransfer do
         {:ok, account} = Database.disable_account(account, @disabled_reason)
         notify_admins(account, &Notifications.region_transfer_started_email(&1, &2, other_region_name()))
 
-        {:ok, {account_columns, tables}} = Database.export_tables(dir, account.id, plan)
+        {:ok, {account_columns, tables, suppressions}} = Database.export_tables(dir, account.id, plan)
 
         manifest = %{
           "account_id" => account.id,
@@ -60,7 +63,8 @@ defmodule Portal.Ops.RegionTransfer do
           "schema_version" => Database.schema_version(),
           "exported_at" => DateTime.to_iso8601(DateTime.utc_now()),
           "account_columns" => account_columns,
-          "tables" => tables
+          "tables" => tables,
+          "email_suppressions" => suppressions
         }
 
         File.write!(Path.join(dir, @manifest), Jason.encode!(manifest, pretty: true))
@@ -239,6 +243,8 @@ defmodule Portal.Ops.RegionTransfer do
     import Ecto.Query
     alias Portal.Account
     alias Portal.AccountSlug
+    alias Portal.EmailSuppression
+    alias Portal.OutboundEmailDelivery
     alias Portal.Safe
 
     def fetch_account!(id) do
@@ -404,7 +410,26 @@ defmodule Portal.Ops.RegionTransfer do
             %{"name" => name, "columns" => columns, "rows" => rows, "nulled_columns" => nulled}
           end)
 
-        {:ok, {account_columns, tables}}
+        {:ok, {account_columns, tables, list_suppressions(account_id)}}
+    end
+
+    defp list_suppressions(account_id) do
+      actor_emails =
+        from(a in Portal.Actor, where: a.account_id == ^account_id and not is_nil(a.email), select: a.email)
+        |> Safe.unscoped()
+        |> Safe.all()
+
+      recipient_emails =
+        from(d in OutboundEmailDelivery, where: d.account_id == ^account_id, distinct: true, select: d.email)
+        |> Safe.unscoped()
+        |> Safe.all()
+
+      addresses = (actor_emails ++ recipient_emails) |> Enum.map(&EmailSuppression.normalize_email/1) |> Enum.uniq()
+
+      from(s in EmailSuppression, where: s.email in ^addresses, order_by: s.email)
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Enum.map(&%{"email" => &1.email, "inserted_at" => DateTime.to_iso8601(&1.inserted_at)})
     end
 
     # sobelow_skip ["Traversal.FileModule"]
@@ -438,8 +463,22 @@ defmodule Portal.Ops.RegionTransfer do
           copy_in(name, columns, Path.join(dir, "#{name}.copy"))
         end)
 
+        insert_suppressions(manifest["email_suppressions"])
         verify_counts(manifest)
       end)
+    end
+
+    defp insert_suppressions([]), do: :ok
+
+    defp insert_suppressions(suppressions) do
+      rows =
+        Enum.map(suppressions, fn %{"email" => email, "inserted_at" => inserted_at} ->
+          {:ok, inserted_at, 0} = DateTime.from_iso8601(inserted_at)
+          %{email: email, inserted_at: inserted_at}
+        end)
+
+      Safe.unscoped() |> Safe.insert_all(EmailSuppression, rows, on_conflict: :nothing)
+      :ok
     end
 
     defp verify_counts(manifest) do

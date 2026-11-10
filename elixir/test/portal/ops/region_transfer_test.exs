@@ -191,6 +191,21 @@ defmodule Portal.Ops.RegionTransferTest do
       assert Enum.map(email.bcc, fn {_name, address} -> address end) == [actor.email]
     end
 
+    test "copies the suppressed addresses of the account's actors" do
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+      dir = Path.join(System.tmp_dir!(), "region-transfer-#{Ecto.UUID.generate()}")
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      suppression = insert!(%Portal.EmailSuppression{email: Portal.EmailSuppression.normalize_email(actor.email)})
+      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, dir, confirm: false) end)
+      delete!(account)
+      delete!(suppression)
+
+      capture_io(fn -> assert {:ok, _manifest} = RegionTransfer.import(dir, confirm: false) end)
+      assert Repo.get_by(Portal.EmailSuppression, email: suppression.email)
+    end
+
     test "does nothing without confirmation", %{account: account, dir: dir} do
       delete!(account)
 
