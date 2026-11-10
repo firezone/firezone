@@ -3019,7 +3019,6 @@ dependencies = [
  "mimalloc",
  "mio",
  "opentelemetry",
- "opentelemetry-otlp",
  "opentelemetry_sdk",
  "otel-attributes",
  "otel-azure-export",

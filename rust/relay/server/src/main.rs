@@ -1,6 +1,5 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
