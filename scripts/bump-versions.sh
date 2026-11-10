@@ -26,8 +26,8 @@ next_android_client_version="1.5.19"
 current_gui_client_version="1.5.20"
 next_gui_client_version="1.5.21"
 
-current_headless_client_version="1.5.15"
-next_headless_client_version="1.5.16"
+current_headless_client_version="1.5.16"
+next_headless_client_version="1.5.17"
 
 current_gateway_version="1.6.5"
 next_gateway_version="1.6.6"
