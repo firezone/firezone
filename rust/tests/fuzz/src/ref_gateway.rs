@@ -6,7 +6,7 @@ use super::{
     site_network::{Routes, SiteNetwork},
 };
 use chrono::{DateTime, Utc};
-use connlib_model::GatewayId;
+use connlib_model::{ClientId, GatewayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -28,6 +28,9 @@ pub struct RefGateway {
     /// Names the Gateway's upstream resolver does not resolve.
     unresolvable_names: BTreeSet<DomainName>,
     max_dns_domains_per_client: Option<usize>,
+
+    /// The resources each Client is authorized to reach through the Gateway.
+    authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
 }
 
 impl RefGateway {
@@ -49,6 +52,7 @@ impl RefGateway {
             site_specific_dns_records,
             unresolvable_names,
             max_dns_domains_per_client,
+            authorizations: Default::default(),
         }
     }
 
@@ -87,6 +91,47 @@ impl RefGateway {
             self.site_specific_dns_records,
             self.max_dns_domains_per_client,
         )
+    }
+
+    pub(crate) fn authorize(&mut self, client: ClientId, resource: ResourceId) {
+        self.authorizations
+            .entry(client)
+            .or_default()
+            .insert(resource);
+    }
+
+    /// Drops every authorization for `resource` and returns the Clients left with none.
+    pub(crate) fn revoke(&mut self, resource: ResourceId) -> Vec<ClientId> {
+        for resources in self.authorizations.values_mut() {
+            resources.remove(&resource);
+        }
+
+        self.authorizations
+            .extract_if(.., |_, resources| resources.is_empty())
+            .map(|(client, _)| client)
+            .collect()
+    }
+
+    pub(crate) fn forget_client(&mut self, client: ClientId) {
+        self.authorizations.remove(&client);
+    }
+
+    pub(crate) fn forget_all_clients(&mut self) {
+        self.authorizations.clear();
+    }
+
+    pub(crate) fn is_authorized(&self, client: ClientId, resource: ResourceId) -> bool {
+        self.authorizations
+            .get(&client)
+            .is_some_and(|resources| resources.contains(&resource))
+    }
+
+    pub(crate) fn authorized_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
+        self.authorizations.values().flatten().copied()
+    }
+
+    pub(crate) fn authorized_clients(&self) -> BTreeSet<ClientId> {
+        self.authorizations.keys().copied().collect()
     }
 
     pub fn dns_records(&self) -> &DnsRecords {
