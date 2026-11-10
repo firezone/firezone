@@ -83,8 +83,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  image:
+  binary:
     needs: update-release-draft
+    uses: ./.github/workflows/_rust-binary.yml
+    secrets: inherit
+    permissions:
+      contents: read
+    with:
+      package: firezone-gateway
+      name: gateway
+      prefix: ${{ inputs.image_prefix }}
+      sha: ${{ inputs.sha }}
+      profile: ${{ inputs.profile }}
+      stage: ${{ inputs.stage }}
+
+  image:
+    needs: binary
     uses: ./.github/workflows/_rust-docker-image.yml
     secrets: inherit
     permissions:
@@ -96,12 +110,13 @@ jobs:
       image_name: gateway
       image_prefix: ${{ inputs.image_prefix }}
       sha: ${{ inputs.sha }}
-      profile: ${{ inputs.profile }}
       stage: ${{ inputs.stage }}
+      binary_artifact: ${{ needs.binary.outputs.artifact }}
+      arches: ${{ needs.binary.outputs.arches }}
 
   package:
     name: package-gateway-${{ matrix.arch.shortname }}
-    needs: image
+    needs: binary
     if: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
     runs-on: ubuntu-24.04
     defaults:
@@ -130,7 +145,7 @@ jobs:
           ref: ${{ env.RESOLVED_SHA }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: ${{ needs.image.outputs.binary_artifact }}-${{ matrix.arch.shortname }}
+          name: ${{ needs.binary.outputs.artifact }}-${{ matrix.arch.shortname }}
           path: rust
       - uses: ./.github/actions/setup-rust-stable
         if: ${{ env.BUILDS_DEB == 'true' }}
