@@ -96,24 +96,12 @@ impl OwnedSocket {
     pub(crate) fn apply_buffer_sizes(&self, send: usize, recv: usize, port: u16) {
         let socket = socket2::SockRef::from(&self.socket);
 
-        let (send_forced, recv_forced) = cfg_select! {
-            target_os = "linux" => {(
-                force_buffer_size(&socket, libc::SO_SNDBUFFORCE, send),
-                force_buffer_size(&socket, libc::SO_RCVBUFFORCE, recv),
-            )}
-            _ => { (false, false) }
-        };
-
         // Apply each direction independently: failing to set one buffer size must not prevent the other from being applied.
-        if !send_forced
-            && let Err(e) = apply_buffer_size(send, |size| socket.set_send_buffer_size(size))
-        {
+        if let Err(e) = set_send_buffer_size(&socket, send) {
             tracing::warn!(requested_send_buffer_size = %send, "Failed to set send buffer size: {e}");
         }
 
-        if !recv_forced
-            && let Err(e) = apply_buffer_size(recv, |size| socket.set_recv_buffer_size(size))
-        {
+        if let Err(e) = set_recv_buffer_size(&socket, recv) {
             tracing::warn!(requested_recv_buffer_size = %recv, "Failed to set recv buffer size: {e}");
         }
 
@@ -124,9 +112,33 @@ impl OwnedSocket {
     }
 }
 
+fn set_send_buffer_size(socket: &socket2::SockRef<'_>, size: usize) -> io::Result<()> {
+    #[cfg(target_os = "linux")]
+    match force_buffer_size(socket, libc::SO_SNDBUFFORCE, size) {
+        Ok(()) => return Ok(()),
+        Err(e) => tracing::debug!("Failed to force send buffer size: {e}"),
+    }
+
+    apply_buffer_size(size, |size| socket.set_send_buffer_size(size))
+}
+
+fn set_recv_buffer_size(socket: &socket2::SockRef<'_>, size: usize) -> io::Result<()> {
+    #[cfg(target_os = "linux")]
+    match force_buffer_size(socket, libc::SO_RCVBUFFORCE, size) {
+        Ok(()) => return Ok(()),
+        Err(e) => tracing::debug!("Failed to force recv buffer size: {e}"),
+    }
+
+    apply_buffer_size(size, |size| socket.set_recv_buffer_size(size))
+}
+
 /// Sets a buffer size past `net.core.{w,r}mem_max`, which requires `CAP_NET_ADMIN`.
 #[cfg(target_os = "linux")]
-fn force_buffer_size(socket: &socket2::SockRef<'_>, option: libc::c_int, size: usize) -> bool {
+fn force_buffer_size(
+    socket: &socket2::SockRef<'_>,
+    option: libc::c_int,
+    size: usize,
+) -> io::Result<()> {
     use std::os::fd::AsRawFd as _;
 
     let value = libc::c_int::try_from(size).unwrap_or(libc::c_int::MAX);
@@ -143,14 +155,10 @@ fn force_buffer_size(socket: &socket2::SockRef<'_>, option: libc::c_int, size: u
     };
 
     if ret != 0 {
-        let error = io::Error::last_os_error();
-
-        tracing::debug!(%error, %option, requested_size = %size, "Failed to force socket buffer size");
-
-        return false;
+        return Err(io::Error::last_os_error());
     }
 
-    true
+    Ok(())
 }
 
 /// Opts a socket into URO unless broken coalescing has been observed (see [`crate::uro`]).
