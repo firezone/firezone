@@ -24,12 +24,12 @@ pub(crate) fn to_frostlink(c: &is::Candidate) -> frostlink::Candidate {
 /// Inverse of [`to_frostlink`]: rebuilds the str0m `Candidate` the rest of
 /// snownet works with when decoding a Frostlink candidate off the wire.
 pub(crate) fn from_frostlink(c: &frostlink::Candidate) -> Option<is::Candidate> {
-    let candidate = match *c {
-        frostlink::Candidate::Host(addr) => is::Candidate::host(addr, "udp"),
-        frostlink::Candidate::ServerReflexive { addr, local } => {
+    let candidate = match c.address() {
+        frostlink::Address::Host(addr) => is::Candidate::host(addr, "udp"),
+        frostlink::Address::ServerReflexive { addr, local } => {
             is::Candidate::server_reflexive(addr, local, "udp")
         }
-        frostlink::Candidate::PeerReflexive(addr) => Ok(is::Candidate::from_parts(
+        frostlink::Address::PeerReflexive(addr) => Ok(is::Candidate::from_parts(
             String::new(),
             1,
             is::Protocol::Udp,
@@ -40,7 +40,7 @@ pub(crate) fn from_frostlink(c: &frostlink::Candidate) -> Option<is::Candidate> 
             None,
             None,
         )),
-        frostlink::Candidate::Relayed { addr, local } => is::Candidate::relayed(addr, local, "udp"),
+        frostlink::Address::Relayed { addr, local } => is::Candidate::relayed(addr, local, "udp"),
     };
 
     candidate.ok()
