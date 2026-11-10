@@ -481,6 +481,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      id-token: write # Keyless signing of deployment manifests
     with:
       package: firezone-otel-ingest-proxy
       name: otel-ingest-proxy
