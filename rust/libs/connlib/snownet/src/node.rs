@@ -235,7 +235,7 @@ where
             let num_frostlink = self.connections.reset_for_roam(now);
             tracing::debug!(
                 %num_frostlink,
-                "Soft-reset frostlink connections (path-agent reset, key kept)"
+                "Soft-reset frostlink connections (agent reset, key kept)"
             );
 
             for (cid, c) in self.connections.iter_mut() {
@@ -2224,7 +2224,7 @@ where
             .collect::<SmallVec<[_; 2]>>();
         self.agent.rebuild_frostlink(|c| dropped.contains(c), now);
 
-        tracing::info!(%cid, "Reset frostlink path-agent after relay invalidation");
+        tracing::info!(%cid, "Reset frostlink agent after relay invalidation");
     }
 
     fn initiate_wg_session(

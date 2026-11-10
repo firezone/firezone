@@ -475,7 +475,7 @@ fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
 /// Samples NAT idle timers found in the wild, from netfilter's 30s unreplied
 /// default up to carrier-grade minutes.
 ///
-/// Every timer sits above connlib's 25s keep-alive cadences (the path agent's
+/// Every timer sits above connlib's 25s keep-alive cadences (the frostlink agent's
 /// `PRIMARY_KEEPALIVE`, snownet's `BINDING_INTERVAL`): a correct implementation
 /// refreshes every flow it depends on at least that often, including reply
 /// traffic on the pair the peer chose, so any expiry-induced connectivity loss
