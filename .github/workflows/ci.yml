@@ -113,7 +113,7 @@ jobs:
             jobs="${jobs},nix"
           fi
 
-          # The data plane (client/gateway/relay/http-test-server images) and the
+          # The data plane (client/gateway/relay images) and the
           # integration/compatibility tests that exercise them are built from the
           # headless client, gateway and relay. The platform client shims
           # (rust/gui-client for Tauri, rust/client-ffi for the Swift/Kotlin FFI)
@@ -462,7 +462,6 @@ jobs:
       gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
       client_image: ${{ needs.data-plane.outputs.client_image }}
       relay_image: ${{ needs.data-plane.outputs.relay_image }}
-      http_test_server_image: ${{ needs.data-plane.outputs.http_test_server_image }}
 
   compatibility-tests:
     strategy:

@@ -62,9 +62,6 @@ on:
       gateway_image:
         description: "The gateway image that was built"
         value: ${{ jobs.data-plane-linux.outputs.gateway_image }}
-      http_test_server_image:
-        description: "The http_test_server image that was built"
-        value: ${{ jobs.data-plane-linux.outputs.http_test_server_image }}
 
 permissions:
   contents: write # create/update GitHub releases
@@ -240,8 +237,6 @@ jobs:
         exclude:
           # Devs are either on amd64 or arm64
           - { stage: debug, arch: { platform: linux/arm/v7 } }
-          # Exclude http-test-server from perf image builds
-          - { image_prefix: perf, name: { package: http-test-server } }
 
         arch:
           - target: x86_64-unknown-linux-musl
@@ -271,9 +266,6 @@ jobs:
             release_name: gateway-1.6.6
             # mark:next-gateway-version
             version: 1.6.6
-          - package: http-test-server
-            artifact: http-test-server
-            image_name: http-test-server
 
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
@@ -287,7 +279,6 @@ jobs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
       gateway_image: ${{ steps.image-name.outputs.gateway_image }}
-      http_test_server_image: ${{ steps.image-name.outputs.http-test-server_image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -504,14 +495,8 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        # Copy input vars to matrix vars to conditionally exclude them
         image_prefix:
           - ${{ inputs.image_prefix }}
-
-        # Exclude http-test-server from perf image builds
-        exclude:
-          - { image_prefix: perf, image: { name: http-test-server } }
-
         image:
           - name: relay
           - name: gateway
@@ -520,7 +505,6 @@ jobs:
           - name: client
             # mark:next-client-version
             version: 1.0.6
-          - name: http-test-server
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -573,7 +557,6 @@ jobs:
           echo "ref=${image}@${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
 
       - name: Run Trivy vulnerability scanner
-        if: ${{ matrix.image.name != 'http-test-server' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.manifest.outputs.ref }}
@@ -583,7 +566,6 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL,HIGH
       - name: Upload Trivy scan results to GitHub Security tab
-        if: ${{ matrix.image.name != 'http-test-server' }}
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: trivy-results.sarif

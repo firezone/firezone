@@ -70,7 +70,6 @@ members = [
     "tests/doh-test-server",
     "tests/fuzz",
     "tests/gui-smoke-test",
-    "tests/http-test-server",
     "tests/loadtest",
     "tests/seeded-rng",
     "tests/tunnel-bench",
