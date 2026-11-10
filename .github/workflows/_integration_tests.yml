@@ -47,14 +47,6 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
-      http_test_server_image:
-        required: false
-        type: string
-        default: "ghcr.io/firezone/debug/http-test-server"
-      http_test_server_tag:
-        required: false
-        type: string
-        default: ${{ github.sha }}
       api_fuzz:
         description: "Also fuzz the REST API from its OpenAPI spec. Only depends on the portal, so one invocation is enough."
         required: false
@@ -78,8 +70,6 @@ jobs:
       client_tag: ${{ inputs.client_tag }}
       elixir_image: ${{ inputs.elixir_image }}
       elixir_tag: ${{ inputs.elixir_tag }}
-      http_test_server_image: ${{ inputs.http_test_server_image }}
-      http_test_server_tag: ${{ inputs.http_test_server_tag }}
 
   # Fuzzes the REST API from its OpenAPI spec against a seeded portal. Only
   # postgres and the portal run, so it does not join the matrix above.
@@ -139,8 +129,6 @@ jobs:
       CLIENT_TAG: ${{ inputs.client_tag }}
       ELIXIR_IMAGE: ${{ inputs.elixir_image }}
       ELIXIR_TAG: ${{ inputs.elixir_tag }}
-      HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
-      HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:

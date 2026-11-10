@@ -13,7 +13,6 @@ jobs:
       contents: read
     with:
       id: perf
-      # `http-test-server` has no perf image, and the perf tests don't use it.
       pull_services: "elixir postgres portal relay-1 relay-2 gateway primary-client iperf3 secnetperf network-config"
       build_services: "primary-client-router gateway-router relay-1-router relay-2-router portal-router"
       gateway_image: "ghcr.io/firezone/perf/gateway"
