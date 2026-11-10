@@ -2,7 +2,7 @@
 
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::{SeedableRng as _, rngs::StdRng};
-use relay_proto::{
+use relay_server_proto::{
     AddressFamily, AllocationPort, Attribute, ChannelData, ClientSocket, Command, PeerSocket,
     Server, ThroughputLimit, auth,
 };

@@ -7,7 +7,9 @@ use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::RelayId;
 use ip_packet::Ecn;
 use rand::{SeedableRng as _, rngs::StdRng};
-use relay_proto::{AddressFamily, AllocationPort, Attribute, ClientSocket, IpStack, PeerSocket};
+use relay_server_proto::{
+    AddressFamily, AllocationPort, Attribute, ClientSocket, IpStack, PeerSocket,
+};
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
@@ -21,7 +23,7 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 use uuid::Uuid;
 
 pub(crate) struct SimRelay {
-    pub(crate) sut: relay_proto::Server<StdRng>,
+    pub(crate) sut: relay_server_proto::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
 
     /// Whether authenticated `ALLOCATE` requests are answered with `508 Insufficient Capacity`,
@@ -55,13 +57,13 @@ impl SimRelay {
         ip6: Option<Ipv6Addr>,
         created_at: SystemTime,
     ) -> Self {
-        let mut sut = relay_proto::Server::new(
+        let mut sut = relay_server_proto::Server::new(
             IpStack::from((ip4, ip6)),
             rand::rngs::StdRng::seed_from_u64(seed),
             3478,
             49152..=65535,
         );
-        sut.set_accounts([(relay_proto::auth::AccountId::from(Uuid::nil()), None)]);
+        sut.set_accounts([(relay_server_proto::auth::AccountId::from(Uuid::nil()), None)]);
 
         Self {
             sut,
@@ -78,9 +80,11 @@ impl SimRelay {
         public_address: IpStack,
     ) -> (RelaySocket, String, String, String) {
         let relay_socket = match public_address {
-            relay_proto::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
-            relay_proto::IpStack::Ip6(ip6) => RelaySocket::V6(SocketAddrV6::new(ip6, 3478, 0, 0)),
-            relay_proto::IpStack::Dual { ip4, ip6 } => RelaySocket::Dual {
+            relay_server_proto::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
+            relay_server_proto::IpStack::Ip6(ip6) => {
+                RelaySocket::V6(SocketAddrV6::new(ip6, 3478, 0, 0))
+            }
+            relay_server_proto::IpStack::Dual { ip4, ip6 } => RelaySocket::Dual {
                 v4: SocketAddrV4::new(ip4, 3478),
                 v6: SocketAddrV6::new(ip6, 3478, 0, 0),
             },
@@ -213,7 +217,7 @@ impl SimRelay {
         );
         response.add_attribute(ErrorCode::from(InsufficientCapacity));
         let password =
-            relay_proto::auth::generate_password(self.sut.auth_secret(), username.name());
+            relay_server_proto::auth::generate_password(self.sut.auth_secret(), username.name());
         let realm = Realm::new("firezone".to_owned()).ok()?;
         let integrity =
             MessageIntegrity::new_long_term_credential(&response, username, &realm, &password)
@@ -233,7 +237,7 @@ impl SimRelay {
         let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port, now)?;
 
         let mut header = [0; 4];
-        relay_proto::ChannelData::encode_header_to_slice(
+        relay_server_proto::ChannelData::encode_header_to_slice(
             channel,
             payload.len() as u16,
             &mut header,
@@ -268,9 +272,11 @@ impl SimRelay {
 
         let username = format!(
             "{secs}:{}:{username}",
-            relay_proto::auth::hash_account_id(&relay_proto::auth::AccountId::from(Uuid::nil()))
+            relay_server_proto::auth::hash_account_id(&relay_server_proto::auth::AccountId::from(
+                Uuid::nil()
+            ))
         );
-        let password = relay_proto::auth::generate_password(auth_secret, &username);
+        let password = relay_server_proto::auth::generate_password(auth_secret, &username);
 
         (username, password)
     }
@@ -297,7 +303,7 @@ impl Host<SimRelay> {
 
         while let Some(command) = self.exec_mut(|r| r.sut.next_command()) {
             match command {
-                relay_proto::Command::SendMessage { payload, recipient } => {
+                relay_server_proto::Command::SendMessage { payload, recipient } => {
                     let dst = recipient.into_socket();
                     let src = self
                         .sending_socket_for(dst.ip())
@@ -311,14 +317,14 @@ impl Host<SimRelay> {
 
                     transmits.push_from(transmit, self, now);
                 }
-                relay_proto::Command::CreateAllocation { port, family } => {
+                relay_server_proto::Command::CreateAllocation { port, family } => {
                     self.exec_mut(|r| r.allocations.insert((family, port)));
                 }
-                relay_proto::Command::FreeAllocation { port, family } => {
+                relay_server_proto::Command::FreeAllocation { port, family } => {
                     self.exec_mut(|r| r.allocations.remove(&(family, port)));
                 }
-                relay_proto::Command::CreateChannelBinding { .. }
-                | relay_proto::Command::DeleteChannelBinding { .. } => {}
+                relay_server_proto::Command::CreateChannelBinding { .. }
+                | relay_server_proto::Command::DeleteChannelBinding { .. } => {}
             }
         }
     }
