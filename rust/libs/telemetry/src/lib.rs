@@ -6,7 +6,7 @@ use anyhow::{Context as _, Result, bail};
 use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
-    protocol::{Event, Log, LogAttribute, Metric},
+    protocol::{Event, Log, LogAttribute},
 };
 use sha2::Digest as _;
 use smallvec::SmallVec;
@@ -21,13 +21,11 @@ mod ingest;
 mod noop_push_metrics_exporter;
 mod posthog;
 mod sentry;
-mod sentry_instrument_provider;
 mod state;
 
 use state::SharedState;
 
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
-pub use sentry_instrument_provider::SentryMeterProvider;
 
 /// Hashes a device ID using SHA256 and returns the hex-encoded result.
 pub fn hash_device_id(id: impl AsRef<[u8]>) -> String {
@@ -531,32 +529,6 @@ fn insert_user_attributes_into_log(mut log: Log) -> Log {
     log
 }
 
-fn insert_user_attributes_into_metric(mut metric: Metric) -> Metric {
-    if let Some(account_slug) = current_account_slug() {
-        metric
-            .attributes
-            .insert("user.account_slug".into(), LogAttribute::from(account_slug));
-    }
-    if let Some(account_id) = current_account_id() {
-        metric
-            .attributes
-            .insert("user.account_id".into(), LogAttribute::from(account_id));
-    }
-    if let Some(actor_email) = current_actor_email() {
-        metric
-            .attributes
-            .insert("user.actor_email".into(), LogAttribute::from(actor_email));
-    }
-    if let Some(mdm_device_id) = current_mdm_device_id() {
-        metric.attributes.insert(
-            "user.mdm_device_id".into(),
-            LogAttribute::from(mdm_device_id),
-        );
-    }
-
-    metric
-}
-
 fn insert_feature_flags_into_event(mut event: Event<'static>) -> Event<'static> {
     // Re-emit the current flag state as Sentry's standard "flags" context shape
     // so issue pages surface the flags that were active when the event was sent.
@@ -571,17 +543,6 @@ fn insert_feature_flags_into_event(mut event: Event<'static>) -> Event<'static> 
 
     event.contexts.insert("flags".into(), context);
     event
-}
-
-fn insert_feature_flags_into_metric(mut metric: Metric) -> Metric {
-    for (name, value) in feature_flags::current() {
-        metric.attributes.insert(
-            format!("feature_flag.{name}").into(),
-            LogAttribute::from(value),
-        );
-    }
-
-    metric
 }
 
 fn update_user(update: impl FnOnce(&mut sentry::User)) {

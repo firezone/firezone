@@ -108,7 +108,7 @@ impl LoginUrl<PublicKeyParam> {
         let url = get_websocket_path(
             url,
             "client",
-            Some("v3"),
+            Some("v4"),
             Some(external_id),
             Some(device_name),
             None,
@@ -143,7 +143,7 @@ impl LoginUrl<PublicKeyParam> {
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             "gateway",
-            Some("v2"),
+            Some("v3"),
             Some(external_id),
             None,
             None,
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn client_uses_v2_endpoint() {
+    fn client_uses_v4_endpoint() {
         let login_url = LoginUrl::client(
             "wss://api.firez.one",
             "some-id".to_owned(),
@@ -413,7 +413,7 @@ mod tests {
 
         assert_eq!(
             login_url.to_url(PublicKeyParam([0; 32])).path(),
-            "/client/v3/websocket"
+            "/client/v4/websocket"
         )
     }
 
@@ -538,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    fn gateway_uses_v2_endpoint_without_reporting_a_name() {
+    fn gateway_uses_v3_endpoint_without_reporting_a_name() {
         let login_url = LoginUrl::gateway(
             "wss://api.firez.one",
             "some-id".to_owned(),
@@ -548,7 +548,7 @@ mod tests {
         .unwrap();
         let url = login_url.to_url(PublicKeyParam([0; 32]));
 
-        assert_eq!(url.path(), "/gateway/v2/websocket");
+        assert_eq!(url.path(), "/gateway/v3/websocket");
         assert_eq!(
             url.query_pairs()
                 .collect::<std::collections::HashMap<_, _>>(),

@@ -18,18 +18,6 @@ use crate::{Env, ingest, posthog};
 
 pub(crate) const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
 
-/// Number of raw samples retained per distribution series per flush interval when
-/// the `stream_metrics` payload does not specify one.
-///
-/// Percentile accuracy depends on this count, not on how many measurements were
-/// recorded, so volume stays bounded regardless of load. Larger values tighten the
-/// p99 estimate at a proportional increase in volume.
-const DEFAULT_METRICS_RESERVOIR_SIZE: usize = 64;
-
-/// Upper bound on the configurable reservoir size, guarding against a misconfigured
-/// payload requesting an allocation large enough to exhaust memory.
-const MAX_METRICS_RESERVOIR_SIZE: usize = 8192;
-
 // Process-wide storage of enabled feature flags.
 //
 // Defaults to everything off unless the env variables say otherwise.
@@ -60,18 +48,8 @@ pub fn stream_logs_active() -> bool {
     !FEATURE_FLAGS.stream_logs.read().directives.is_empty()
 }
 
-pub fn stream_metrics() -> bool {
-    FEATURE_FLAGS.stream_metrics()
-}
-
 pub fn wintun_tcp_coalescing() -> bool {
     FEATURE_FLAGS.wintun_tcp_coalescing()
-}
-
-/// Number of raw samples retained per distribution series per flush interval,
-/// configured via the `stream_metrics` feature-flag payload.
-pub fn metrics_reservoir_size() -> usize {
-    FEATURE_FLAGS.metrics_reservoir_size()
 }
 
 /// The current value of every feature flag, by name.
@@ -81,8 +59,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         icmp_unreachable_instead_of_nat64,
         drop_llmnr_nxdomain_responses,
         stream_logs,
-        stream_metrics,
-        metrics_reservoir_size: _,
         wintun_tcp_coalescing,
     } = &*FEATURE_FLAGS;
 
@@ -96,7 +72,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
             drop_llmnr_nxdomain_responses.load(Ordering::Relaxed),
         ),
         ("stream_logs", !stream_logs.read().directives.is_empty()),
-        ("stream_metrics", stream_metrics.load(Ordering::Relaxed)),
         (
             "wintun_tcp_coalescing",
             wintun_tcp_coalescing.load(Ordering::Relaxed),
@@ -216,8 +191,6 @@ struct FeatureFlagsResponse {
     #[serde(default)]
     stream_logs: bool,
     #[serde(default)]
-    stream_metrics: bool,
-    #[serde(default)]
     wintun_tcp_coalescing: bool,
 }
 
@@ -226,8 +199,6 @@ struct FeatureFlagsResponse {
 struct FeatureFlagPayloadsResponse {
     #[serde(default)]
     stream_logs: String,
-    #[serde(default)]
-    stream_metrics: String,
 }
 
 #[derive(Debug, Default)]
@@ -235,8 +206,6 @@ struct FeatureFlags {
     icmp_unreachable_instead_of_nat64: AtomicBool,
     drop_llmnr_nxdomain_responses: AtomicBool,
     stream_logs: RwLock<LogFilter>,
-    stream_metrics: AtomicBool,
-    metrics_reservoir_size: RwLock<MetricsReservoirSize>,
     wintun_tcp_coalescing: AtomicBool,
 }
 
@@ -253,7 +222,6 @@ impl FeatureFlags {
             icmp_unreachable_instead_of_nat64,
             drop_llmnr_nxdomain_responses,
             stream_logs,
-            stream_metrics,
             wintun_tcp_coalescing,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
@@ -264,10 +232,6 @@ impl FeatureFlags {
             .store(drop_llmnr_nxdomain_responses, Ordering::Relaxed);
         self.wintun_tcp_coalescing
             .store(wintun_tcp_coalescing, Ordering::Relaxed);
-
-        self.stream_metrics.store(stream_metrics, Ordering::Relaxed);
-        *self.metrics_reservoir_size.write() =
-            MetricsReservoirSize(MetricsConfig::parse(&payloads.stream_metrics).reservoir_size());
 
         let log_filter = if stream_logs {
             LogFilter::parse(payloads.stream_logs)
@@ -291,16 +255,8 @@ impl FeatureFlags {
         self.stream_logs.read().enabled(metadata)
     }
 
-    fn stream_metrics(&self) -> bool {
-        self.stream_metrics.load(Ordering::Relaxed)
-    }
-
     fn wintun_tcp_coalescing(&self) -> bool {
         self.wintun_tcp_coalescing.load(Ordering::Relaxed)
-    }
-
-    fn metrics_reservoir_size(&self) -> usize {
-        self.metrics_reservoir_size.read().0
     }
 }
 
@@ -315,7 +271,6 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.drop_llmnr_nxdomain_responses,
         ),
         stream_logs: env_or("FZFF_stream_logs", flags.stream_logs),
-        stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
         wintun_tcp_coalescing: env_or("FZFF_WINTUN_TCP_COALESCING", flags.wintun_tcp_coalescing),
     }
 }
@@ -325,51 +280,6 @@ fn env_or(key: &str, fallback: bool) -> bool {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(fallback)
-}
-
-/// Runtime configuration carried by the `stream_metrics` feature-flag payload.
-///
-/// Fields are optional so new ones can be added without breaking clients that
-/// predate them; unknown fields are ignored.
-#[derive(Debug, Deserialize, Default)]
-struct MetricsConfig {
-    #[serde(default)]
-    reservoir_size: Option<usize>,
-}
-
-impl MetricsConfig {
-    /// Parses the config from the payload, which PostHog delivers as a JSON string.
-    /// A malformed payload yields the default config.
-    fn parse(payload: &str) -> Self {
-        serde_json::from_str(payload).unwrap_or_default()
-    }
-
-    fn reservoir_size(&self) -> usize {
-        let size = self
-            .reservoir_size
-            .filter(|&size| size > 0)
-            .unwrap_or(DEFAULT_METRICS_RESERVOIR_SIZE);
-
-        if size > MAX_METRICS_RESERVOIR_SIZE {
-            tracing::warn!(
-                requested = size,
-                max = MAX_METRICS_RESERVOIR_SIZE,
-                "Clamping metrics reservoir size"
-            );
-        }
-
-        size.min(MAX_METRICS_RESERVOIR_SIZE)
-    }
-}
-
-/// The number of samples kept per distribution series, from the `stream_metrics` payload.
-#[derive(Debug)]
-struct MetricsReservoirSize(usize);
-
-impl Default for MetricsReservoirSize {
-    fn default() -> Self {
-        Self(DEFAULT_METRICS_RESERVOIR_SIZE)
-    }
 }
 
 struct LogFilter {
@@ -429,68 +339,6 @@ mod tests {
         let filter = LogFilter::parse("\"debug,is::ice_::pair=trace\"".to_owned());
 
         assert_eq!(filter.directives, "debug,is::ice_::pair=trace");
-    }
-
-    #[test]
-    fn parses_metrics_config_from_payload() {
-        assert_eq!(
-            MetricsConfig::parse(r#"{"reservoir_size":128}"#).reservoir_size(),
-            128
-        );
-        // Unknown fields are ignored so new keys don't break older clients.
-        assert_eq!(
-            MetricsConfig::parse(r#"{"reservoir_size":64,"future_knob":true}"#).reservoir_size(),
-            64
-        );
-        // Missing, zero, or invalid payloads fall back to the default.
-        assert_eq!(
-            MetricsConfig::parse("{}").reservoir_size(),
-            DEFAULT_METRICS_RESERVOIR_SIZE
-        );
-        assert_eq!(
-            MetricsConfig::parse(r#"{"reservoir_size":0}"#).reservoir_size(),
-            DEFAULT_METRICS_RESERVOIR_SIZE
-        );
-        assert_eq!(
-            MetricsConfig::parse("not json").reservoir_size(),
-            DEFAULT_METRICS_RESERVOIR_SIZE
-        );
-        // Oversized values are clamped to the maximum.
-        assert_eq!(
-            MetricsConfig::parse(r#"{"reservoir_size":1000000}"#).reservoir_size(),
-            MAX_METRICS_RESERVOIR_SIZE
-        );
-    }
-
-    #[test]
-    fn enabled_state_is_driven_by_the_flag_not_the_size() {
-        let flags = FeatureFlags::default();
-
-        flags.update(
-            FeatureFlagsResponse {
-                stream_metrics: true,
-                ..Default::default()
-            },
-            FeatureFlagPayloadsResponse::default(),
-        );
-        assert!(flags.stream_metrics());
-        assert_eq!(
-            flags.metrics_reservoir_size(),
-            DEFAULT_METRICS_RESERVOIR_SIZE
-        );
-
-        // Disabling the flag wins even when the payload still carries a size.
-        flags.update(
-            FeatureFlagsResponse {
-                stream_metrics: false,
-                ..Default::default()
-            },
-            FeatureFlagPayloadsResponse {
-                stream_metrics: r#"{"reservoir_size":128}"#.to_owned(),
-                ..Default::default()
-            },
-        );
-        assert!(!flags.stream_metrics());
     }
 
     #[test]

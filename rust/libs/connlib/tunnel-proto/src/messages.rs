@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc, serde::ts_seconds};
 use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DoHUrl, DomainName};
 use ip_network::IpNetwork;
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, serde_as};
 use std::fmt;
@@ -250,6 +251,19 @@ impl FlowLogsConfig {
     pub fn upload_enabled(&self) -> bool {
         self.upload_interval_secs > 0
     }
+}
+
+/// Where and how often to export OTLP metrics, sent by the portal in `init` and as `metrics_config`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct MetricsConfig {
+    /// URL the metrics are POSTed to.
+    pub endpoint: String,
+    pub export_interval_secs: u64,
+    /// Authorizes the export; `None` means exporting is off.
+    pub token: Option<SecretString>,
+    /// Name patterns of the metrics the token allows, where `*` matches any run of characters.
+    #[serde(default)]
+    pub patterns: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
