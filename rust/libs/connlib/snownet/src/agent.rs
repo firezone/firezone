@@ -106,18 +106,18 @@ impl Agent {
         }
     }
 
-    /// Frostlink ranks `preferred` candidates above all others.
+    /// Frostlink ranks `manually_configured` candidates above all others.
     pub(crate) fn add_local_candidate(
         &mut self,
         c: Candidate,
-        preferred: bool,
+        manually_configured: bool,
         now: Instant,
     ) -> Option<Candidate> {
         match self {
             Self::Ice(a) => a.add_local_candidate(c).cloned(),
             Self::Frostlink(agent) => {
                 let candidate = crate::candidate::to_frostlink(&c)
-                    .with_local_preference(if preferred { u16::MAX } else { 0 });
+                    .with_local_preference(if manually_configured { u16::MAX } else { 0 });
 
                 agent
                     .add_local_candidate(candidate, now)

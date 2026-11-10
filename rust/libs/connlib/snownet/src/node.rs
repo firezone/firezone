@@ -1300,7 +1300,9 @@ where
         .flatten()
         .map(|c| (c, false))
         .chain(additional_host_candidates.iter().map(|c| (c.clone(), true)))
-        .filter_map(move |(c, preferred)| agent.add_local_candidate(c, preferred, now))
+        .filter_map(move |(c, manually_configured)| {
+            agent.add_local_candidate(c, manually_configured, now)
+        })
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -2248,15 +2250,15 @@ where
         &mut self,
         cid: TId,
         candidate: &Candidate,
-        preferred: bool,
+        manually_configured: bool,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,
     {
-        if let Some(candidate) = self
-            .agent
-            .add_local_candidate(candidate.clone(), preferred, now)
+        if let Some(candidate) =
+            self.agent
+                .add_local_candidate(candidate.clone(), manually_configured, now)
         {
             let frostlink = self.agent.is_frostlink();
             pending_events.push_back(new_ice_candidate_event(cid, candidate, frostlink));
