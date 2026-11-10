@@ -12,7 +12,7 @@ use itertools::Itertools;
 use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt,
+    fmt, iter,
     net::IpAddr,
 };
 use tunnel_proto::dns::is_subdomain;
