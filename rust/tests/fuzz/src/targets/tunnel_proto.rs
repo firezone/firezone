@@ -34,7 +34,7 @@ pub fn test(data: &[u8]) {
         feedback_recorder.observe(&transition, &reference, flux_capacitor.now());
 
         reference.invalidate(&transition, &portal);
-        tunnel.invalidate(&transition, &reference);
+        tunnel.invalidate(&reference);
 
         portal.apply(&transition, &reference);
         reference = reference.apply(&transition, &portal, flux_capacitor.now());
