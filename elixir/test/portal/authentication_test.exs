@@ -1607,15 +1607,12 @@ defmodule Portal.AuthenticationTest do
              ) == 1
     end
 
-    test "the legacy Gateway actor cannot be deleted while it owns tokens", %{
+    test "deleting the account deletes its Gateway tokens", %{
       account: account,
       site: site,
       subject: subject
     } do
       {:ok, token} = create_gateway_token(site, subject)
-      actor = Repo.get_by!(Portal.Actor, id: token.actor_id)
-
-      assert_raise Ecto.ConstraintError, fn -> Repo.delete!(actor) end
 
       Repo.delete!(account)
       refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
@@ -1680,5 +1677,124 @@ defmodule Portal.AuthenticationTest do
 
       assert Repo.get_by(Portal.DeviceToken, account_id: other.account_id, id: other.id)
     end
+  end
+
+  describe "client tokens in device_tokens" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
+
+      {:ok, token} =
+        create_interactive_client_token(%{
+          account_id: account.id,
+          actor_id: actor.id,
+          auth_provider_id: auth_provider.id,
+          secret_nonce: "nonce",
+          expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+        })
+
+      %{account: account, actor: actor, auth_provider: auth_provider, token: token}
+    end
+
+    test "an interactive token is copied with the same id and secret", %{token: token} do
+      copy = Repo.get_by!(Portal.DeviceToken, account_id: token.account_id, id: token.id)
+
+      assert copy.client_token_id == token.id
+      assert copy.actor_id == token.actor_id
+      assert copy.auth_provider_id == token.auth_provider_id
+      assert copy.secret_salt == token.secret_salt
+      assert copy.secret_hash == token.secret_hash
+      assert copy.expires_at == token.expires_at
+      assert is_nil(copy.site_id)
+      assert is_nil(copy.device_id)
+    end
+
+    test "a non-interactive token is copied", %{account: account} do
+      service_account = actor_fixture(account: account, type: :service_account)
+      subject = admin_subject_fixture(account: account)
+
+      {:ok, token} =
+        create_non_interactive_client_token(
+          service_account,
+          %{expires_at: DateTime.add(DateTime.utc_now(), 1, :day)},
+          subject
+        )
+
+      copy = Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: token.id)
+      assert copy.client_token_id == token.id
+      assert copy.actor_id == service_account.id
+      assert is_nil(copy.auth_provider_id)
+    end
+
+    test "deleting the client token deletes the copy", %{token: token} do
+      Repo.delete_all(from(ct in ClientToken, where: ct.id == ^token.id))
+
+      refute Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
+    end
+
+    test "deleting the actor deletes the token and the copy", %{actor: actor, token: token} do
+      Repo.delete!(actor)
+
+      refute Repo.get_by(ClientToken, account_id: token.account_id, id: token.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
+    end
+
+    test "deleting the auth provider deletes the copy", %{auth_provider: auth_provider, token: token} do
+      Repo.delete_all(from(ap in Portal.AuthProvider, where: ap.id == ^auth_provider.id))
+
+      refute Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
+    end
+
+    test "a device token is deleted with its actor", %{account: account, actor: actor} do
+      Repo.insert!(%Portal.DeviceToken{
+        account_id: account.id,
+        actor_id: actor.id,
+        secret_salt: "salt",
+        secret_hash: "hash"
+      })
+
+      Repo.delete!(actor)
+
+      refute Repo.exists?(from(dt in Portal.DeviceToken, where: dt.actor_id == ^actor.id))
+    end
+
+    test "client tokens signed with the device salt are accepted" do
+      token = client_token_fixture(secret_nonce: "nonce")
+      encoded = sign_with_salt("device", "nonce", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:ok, used} = use_token(encoded, build_context(type: :client))
+      assert used.id == token.id
+    end
+
+    test "the device salt is not accepted for API tokens" do
+      token = api_token_fixture()
+      encoded = sign_with_salt("device", "", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = use_token(encoded, build_context(type: :api_client))
+    end
+
+    test "gateway tokens signed with the device salt are accepted" do
+      token = gateway_token_fixture()
+      encoded = sign_with_salt("device", "", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:ok, verified} = verify_gateway_token(encoded)
+      assert verified.id == token.id
+    end
+
+    test "relay tokens signed with the device salt are refused" do
+      token = relay_token_fixture()
+      encoded = sign_with_salt("device", "", {nil, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = verify_relay_token(encoded)
+    end
+  end
+
+  defp sign_with_salt(type, nonce, body) do
+    config = Application.fetch_env!(:portal, Portal.Tokens)
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt) <> type
+
+    nonce <> "." <> Plug.Crypto.sign(key_base, salt, body)
   end
 end
