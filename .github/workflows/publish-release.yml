@@ -212,6 +212,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-workflows: write # The bump rewrites version markers in `.github/workflows`.
+          permission-members: read # Resolves the `firezone/engineering` team to request its review.
       - uses: firezone/actions/create-pull-request@f92afb7395591f2205bdcfd42b975c8dcf51bb6b # main
         if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         with:
