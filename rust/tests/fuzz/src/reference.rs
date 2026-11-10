@@ -108,10 +108,8 @@ impl ReferenceState {
     pub fn invalidate(&mut self, transition: &Transition, portal: &StubPortal) {
         self.expected_probes.clear();
 
-        if transition.clears_packets() {
-            for client in self.clients.values_mut() {
-                client.exec_mut(|c| c.clear_packets())
-            }
+        for client in self.clients.values_mut() {
+            client.exec_mut(|c| c.clear_packets())
         }
 
         // TODO: Remove with classic ICE.

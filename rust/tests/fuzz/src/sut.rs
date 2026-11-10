@@ -241,10 +241,8 @@ impl TunnelTest {
             });
         }
 
-        if transition.clears_packets() {
-            for client in self.clients.values_mut() {
-                client.exec_mut(|c| c.clear_packets());
-            }
+        for client in self.clients.values_mut() {
+            client.exec_mut(|c| c.clear_packets());
         }
 
         for _ in self
