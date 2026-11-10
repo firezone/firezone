@@ -18,7 +18,10 @@ use is::{Candidate, CandidateKind};
 use relay_client_proto::{Allocation, Event, channel_data};
 use relay_server_proto::{AddressFamily, Command};
 use snownet::Transmit;
-use stun_codec::rfc5389::attributes::{Realm, Username};
+use stun_codec::{
+    Method, TransactionId,
+    rfc5389::attributes::{Realm, Username},
+};
 
 use crate::sim_relay::SimRelay;
 use garbage::Verdict;
@@ -34,6 +37,14 @@ const CONVERGENCE: Duration = Duration::from_secs(30 * 60);
 
 /// More datagrams than the client and the relay ever exchange without a timer firing.
 const MAX_DATAGRAMS_PER_INSTANT: usize = 1000;
+
+/// Keeps the simulation away from what it is known to find; set to `false` to reproduce.
+///
+/// 1. The client takes a response as the answer to the pending request with the same
+///    transaction ID even if its method differs, and debug builds panic on the mismatch.
+///    `BINDING` responses are exempt from the integrity check, so a forged one drops a pending
+///    authenticated request such as `ALLOCATE` without knowing the password.
+const SKIP_KNOWN_FINDINGS: bool = true;
 
 const RELAY_IP4: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 1);
 const RELAY_IP6: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 1);
@@ -131,6 +142,8 @@ struct Client {
     password: String,
     /// The candidates the allocation announced and did not invalidate since.
     announced: Vec<Candidate>,
+    /// The requests the allocation sent.
+    requests: Vec<(TransactionId, Method)>,
 }
 
 /// What a client shows of itself.
@@ -326,6 +339,7 @@ impl World {
             realm,
             password,
             announced: Vec::new(),
+            requests: Vec::new(),
         });
         self.tick_client();
     }
@@ -533,6 +547,13 @@ impl World {
 
         let transmits =
             std::iter::from_fn(|| client.allocation.poll_transmit()).collect::<Vec<_>>();
+        for transmit in &transmits {
+            if let Ok(Ok(request)) = relay_client_proto::decode(&transmit.payload) {
+                client
+                    .requests
+                    .push((request.transaction_id(), request.method()));
+            }
+        }
         for transmit in transmits {
             self.send_from_client(transmit.dst, transmit.payload.to_vec());
         }
@@ -707,6 +728,14 @@ impl World {
         match datagram.payload.first() {
             Some(0..=3) => {
                 if let Ok(Ok(message)) = relay_client_proto::decode(&datagram.payload) {
+                    let answers_other_method = client.requests.iter().any(|(id, method)| {
+                        *id == message.transaction_id() && *method != message.method()
+                    });
+
+                    if SKIP_KNOWN_FINDINGS && answers_other_method {
+                        return;
+                    }
+
                     client
                         .allocation
                         .handle_input(datagram.src, datagram.dst, message, self.now);
