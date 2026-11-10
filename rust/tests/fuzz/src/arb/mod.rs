@@ -17,6 +17,7 @@ use crate::transition::Transition;
 mod context;
 mod dns_queries;
 mod packets;
+mod queries;
 mod topology;
 mod transitions;
 mod values;
