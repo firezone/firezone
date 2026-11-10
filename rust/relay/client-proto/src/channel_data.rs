@@ -9,11 +9,11 @@ pub struct Packet<'a> {
 }
 
 impl<'a> Packet<'a> {
-    pub(crate) fn channel(&self) -> u16 {
+    pub fn channel(&self) -> u16 {
         self.channel
     }
 
-    pub(crate) fn payload(&self) -> &'a [u8] {
+    pub fn payload(&self) -> &'a [u8] {
         self.payload
     }
 }
@@ -68,4 +68,8 @@ pub fn encode_header_to_slice(mut slice: &mut [u8], channel: u16, payload_length
     slice.put_u16(payload_length as u16);
 
     HEADER_LEN + payload_length
+}
+
+pub fn channel_data_packet_buffer(payload: &[u8]) -> Vec<u8> {
+    [&[0u8; 4] as &[u8], payload].concat()
 }

@@ -123,7 +123,11 @@ impl PendingEncapsulate {
             let message = match channel {
                 Some(channel) => {
                     let (header, message) = datagram.split_at_mut(ip_packet::DATA_CHANNEL_OVERHEAD);
-                    crate::channel_data::encode_header_to_slice(header, channel, message.len());
+                    relay_client_proto::channel_data::encode_header_to_slice(
+                        header,
+                        channel,
+                        message.len(),
+                    );
 
                     message
                 }
@@ -214,7 +218,7 @@ impl<'n> DecapsulateBatch<'n> {
     /// segment to [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) then.
     pub fn push(&mut self, segment: &[u8], now: Instant) -> bool {
         let message = match self.channel {
-            Some(channel) => match crate::channel_data::decode(segment) {
+            Some(channel) => match relay_client_proto::channel_data::decode(segment) {
                 Ok(cd) if cd.channel() == channel => cd.payload(),
                 _ => return false,
             },

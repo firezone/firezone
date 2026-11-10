@@ -1,0 +1,28 @@
+[package]
+name = "relay-client-proto"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+bufferpool = { workspace = true }
+bytecodec = { workspace = true }
+bytes = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
+fast-random-state = { workspace = true }
+hex = { workspace = true }
+hex-display = { workspace = true }
+is = { workspace = true }
+logging = { workspace = true }
+rand = { workspace = true }
+ringbuffer = { workspace = true }
+smallvec = { workspace = true }
+stun_codec = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+test-case = { workspace = true }
+
+[lints]
+workspace = true

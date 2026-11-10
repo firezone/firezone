@@ -6599,6 +6599,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "relay-client-proto"
+version = "0.1.0"
+dependencies = [
+ "bufferpool",
+ "bytecodec",
+ "bytes",
+ "derive_more",
+ "fast-random-state",
+ "hex",
+ "hex-display",
+ "is",
+ "logging",
+ "rand 0.10.3",
+ "ringbuffer",
+ "smallvec",
+ "stun_codec",
+ "test-case",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "relay-server-proto"
 version = "0.1.0"
 dependencies = [
@@ -7561,29 +7583,25 @@ dependencies = [
  "anyhow-ext",
  "bnum",
  "bufferpool",
- "bytecodec",
- "bytes",
  "deadline-map",
  "derive_more",
  "fast-random-state",
  "frostlink",
  "hex",
- "hex-display",
  "ip-packet",
  "is",
  "itertools 0.15.0",
- "logging",
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
  "prefetch",
  "rand 0.10.3",
+ "relay-client-proto",
  "ringbuffer",
  "sanstun",
  "smallvec",
  "str0m-proto",
  "stun_codec",
- "test-case",
  "thiserror 2.0.21",
  "tracing",
  "zeroize",
