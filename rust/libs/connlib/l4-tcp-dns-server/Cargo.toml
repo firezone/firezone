@@ -16,7 +16,7 @@ tokio = { workspace = true, features = ["net", "io-util"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["process", "macros", "rt", "test-util"] }
+tokio = { workspace = true, features = ["process", "macros", "rt"] }
 
 [lints]
 workspace = true
