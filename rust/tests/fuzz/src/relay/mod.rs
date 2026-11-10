@@ -33,7 +33,10 @@ mod transition;
 const MAX_TRANSITIONS: usize = 256;
 
 /// How long a working network gets to bring the client and the relay back in sync.
-const CONVERGENCE: Duration = Duration::from_secs(30 * 60);
+///
+/// The client notices at its next refresh that the relay lost its allocation, which is at most
+/// five minutes away.
+const CONVERGENCE: Duration = Duration::from_secs(15 * 60);
 
 /// More datagrams than the client and the relay ever exchange without a timer firing.
 const MAX_DATAGRAMS_PER_INSTANT: usize = 1000;
@@ -104,8 +107,8 @@ pub fn test(data: &[u8], start: Instant) {
 /// - Nothing a foreign socket sends changes what the relay holds for the client, or reaches
 ///   the client.
 /// - The client ignores what fails the integrity check.
-/// - On a working network, the client and the relay end up agreeing on the allocation, or
-///   the client gives it up.
+/// - On a working network, the client and the relay end up agreeing on the allocation. The
+///   client only gives up on a relay it cannot reach or whose credentials expired.
 struct World {
     start: Instant,
     now: Instant,
@@ -262,16 +265,7 @@ impl World {
                 self.relay_state = RelayState::default();
                 self.tainted = false;
             }
-            Transition::AnnounceRelay => {
-                let is_connected = self
-                    .client
-                    .as_ref()
-                    .is_some_and(|c| c.relay_generation == self.relay_generation);
-
-                if !is_connected {
-                    self.connect();
-                }
-            }
+            Transition::AnnounceRelay => self.announce_relay(),
             Transition::SetRelayCapacity { exhausted } => self.relay.out_of_capacity = exhausted,
             Transition::GarbageToRelay {
                 sender,
@@ -284,11 +278,23 @@ impl World {
     }
 
     /// Gives a working network time and checks where the client and the relay end up.
+    ///
+    /// The portal announces the relay again if the client gave it up.
     fn converge(&mut self) {
+        self.relay.out_of_capacity = false;
         self.settle();
-        self.advance(CONVERGENCE, true);
+
+        for _ in 0..2 {
+            self.announce_relay();
+            self.advance(CONVERGENCE, true);
+        }
 
         let Some(client) = &self.client else {
+            assert!(
+                !self.can_allocate(),
+                "The client gave up on a relay that works"
+            );
+
             return;
         };
 
@@ -314,7 +320,37 @@ impl World {
         );
     }
 
-    /// The portal hands the relay to the client, which starts a new allocation on it.
+    /// The portal announces the relay; a client that is connected to it does nothing.
+    fn announce_relay(&mut self) {
+        let is_connected = self
+            .client
+            .as_ref()
+            .is_some_and(|c| c.relay_generation == self.relay_generation);
+
+        if !is_connected {
+            self.connect();
+        }
+    }
+
+    /// Whether a new allocation can succeed: the relay is reachable and its credentials valid.
+    fn can_allocate(&self) -> bool {
+        let is_reachable = (self.sockets.v4.is_some() && self.relay_stack.v4)
+            || (self.sockets.v6.is_some() && self.relay_stack.v6);
+        let (_, username, _, _) = self.relay.explode(
+            "client",
+            self.relay.sut.auth_secret(),
+            self.relay.sut.public_address(),
+        );
+        let expiry = username
+            .split(':')
+            .next()
+            .and_then(|secs| secs.parse().ok())
+            .map(|secs| SystemTime::UNIX_EPOCH + Duration::from_secs(secs));
+
+        is_reachable && expiry.is_some_and(|expiry| expiry >= utc(self.now - self.start))
+    }
+
+    /// The client starts a new allocation on the relay.
     fn connect(&mut self) {
         let (server, username, password, realm) = self.relay.explode(
             "client",
