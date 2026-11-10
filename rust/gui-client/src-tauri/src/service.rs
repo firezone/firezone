@@ -970,15 +970,18 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
+        let config = client_shared::SessionConfig::default()
+            .with_internet_resource_active(is_internet_resource_active)
+            .with_dns_servers(dns)
+            .with_additional_host_candidates(
+                self.advanced_settings.additional_host_candidates.clone(),
+            )
+            .with_flow_logs_dir(known_dirs::flow_logs());
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            is_internet_resource_active,
-            dns,
-            self.advanced_settings.additional_host_candidates.clone(),
-            known_dirs::flow_logs(),
-            false,
+            config,
         )
         .context("Failed to start connlib")?;
 
