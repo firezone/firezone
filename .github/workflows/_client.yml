@@ -69,7 +69,7 @@ jobs:
     env:
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
       # mark:next-headless-version
-      RELEASE_NAME: headless-client-1.5.16
+      RELEASE_NAME: headless-client-1.5.17
     steps:
       - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -134,9 +134,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.16]
+        release_name: [headless-client-1.5.17]
         # mark:next-headless-version
-        version: [1.5.16]
+        version: [1.5.17]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -246,9 +246,9 @@ jobs:
         arch: [x86_64, aarch64, armv7]
     env:
       # mark:next-headless-version
-      ARTIFACT_PATH: firezone-client-headless-linux_1.5.16_${{ matrix.arch }}
+      ARTIFACT_PATH: firezone-client-headless-linux_1.5.17_${{ matrix.arch }}
       # mark:next-headless-version
-      RELEASE_NAME: headless-client-1.5.16
+      RELEASE_NAME: headless-client-1.5.17
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
