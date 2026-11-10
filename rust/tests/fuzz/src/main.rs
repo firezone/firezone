@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     let target: fn(&[u8]) = match cli.target {
         Target::IpPacket => |data| with_input(data, targets::ip_packet::test),
         Target::RelayProto => |data| with_input(data, targets::relay_proto::test),
-        Target::TunnelProto => targets::tunnel_proto::test,
+        Target::Tunnel => targets::tunnel::test,
         Target::X509Claims => |data| with_input(data, targets::x509_claims::test),
     };
     if cli.replay.is_empty() {
@@ -91,7 +91,7 @@ struct Cli {
 enum Target {
     IpPacket,
     RelayProto,
-    TunnelProto,
+    Tunnel,
     X509Claims,
 }
 
@@ -136,9 +136,9 @@ mod tests {
 
     #[test]
     fn target_without_replay_selects_fuzzing() {
-        let cli = Cli::try_parse_from(["fuzz", "tunnel-proto"]).unwrap();
+        let cli = Cli::try_parse_from(["fuzz", "tunnel"]).unwrap();
 
-        assert_eq!(cli.target, Target::TunnelProto);
+        assert_eq!(cli.target, Target::Tunnel);
         assert!(cli.replay.is_empty());
         assert_eq!(cli.repeat, 1);
     }

@@ -19,7 +19,7 @@ export AFL_NO_SYNC=1 AFL_SHUFFLE_QUEUE=1
 export AFL_FAST_CAL=1
 ulimit -c 0
 max_length=4096
-if [ "$target" = tunnel-proto ] || [ "$target" = relay-proto ]; then
+if [ "$target" = tunnel ] || [ "$target" = relay-proto ]; then
     max_length=8192
 fi
 name="worker-${usage_worker:?}"
