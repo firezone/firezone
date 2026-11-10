@@ -20,7 +20,7 @@ fn main() -> Result<()> {
 
     let target: fn(&[u8]) = match cli.target {
         Target::IpPacket => |data| with_input(data, targets::ip_packet::test),
-        Target::RelayProto => |data| with_input(data, targets::relay_proto::test),
+        Target::Relay => targets::relay::test,
         Target::TunnelProto => targets::tunnel_proto::test,
         Target::X509Claims => |data| with_input(data, targets::x509_claims::test),
     };
@@ -90,7 +90,7 @@ struct Cli {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum Target {
     IpPacket,
-    RelayProto,
+    Relay,
     TunnelProto,
     X509Claims,
 }

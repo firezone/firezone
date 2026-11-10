@@ -3,7 +3,7 @@
 One executable exercises four targets, each with its own corpus:
 
 - `ip-packet`: packet parsing and mutation.
-- `relay-proto`: relay message handling, including authenticated requests.
+- `relay`: a relay client and a relay talking to each other over an unreliable network.
 - `tunnel-proto`: tunnel behavior checked against a reference model.
 - `x509-claims`: certificate parsing and identity claims.
 

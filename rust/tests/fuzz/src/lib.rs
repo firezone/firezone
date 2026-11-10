@@ -15,6 +15,7 @@ mod probe;
 mod ref_client;
 mod ref_gateway;
 mod reference;
+pub mod relay;
 mod resource;
 mod sim_client;
 mod sim_gateway;

@@ -21,10 +21,10 @@ LLVM_PROFILE_FILE="$temporary/%p-%m.profraw" "$binary" "$target" --replay "corpu
 "$llvm_bin/llvm-profdata" merge -sparse "$temporary"/*.profraw -o "$temporary/coverage.profdata"
 
 case "$target" in
-relay-proto) package=relay-server-proto ;;
-*) package="$target" ;;
+relay) roots=(relay-client-proto relay-server-proto) ;;
+*) roots=("$target") ;;
 esac
-packages="$(cargo tree --locked -p "$package" --edges normal --prefix none --format '{p}' \
+packages="$(cargo tree --locked "${roots[@]/#/--package=}" --edges normal --prefix none --format '{p}' \
     --target x86_64-unknown-linux-gnu | cut -d ' ' -f 1 | sort -u | jq -Rsc 'split("\n")[:-1]')"
 crates="$(mise run -q //rust:workspace-crates)"
 directories="$(jq -r --argjson packages "$packages" \
@@ -37,7 +37,11 @@ done <<<"$directories"
 sources+=("$PWD/src/main.rs" "$PWD/src/clock.rs" "$PWD/src/targets/${target//-/_}.rs")
 if [ "$target" = tunnel-proto ]; then
     mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/src" -type f -name '*.rs' \
-        ! -path "$PWD/src/targets/*" ! -name main.rs ! -name clock.rs)
+        ! -path "$PWD/src/targets/*" ! -path "$PWD/src/relay/*" ! -name main.rs ! -name clock.rs)
+fi
+if [ "$target" = relay ]; then
+    mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/src/relay" -type f -name '*.rs')
+    sources+=("$PWD/src/sim_relay.rs")
 fi
 "$llvm_bin/llvm-cov" export -format=lcov -instr-profile="$temporary/coverage.profdata" \
     "$binary" "${sources[@]}" >"coverage/$target/lcov.info"

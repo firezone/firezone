@@ -22,11 +22,13 @@ flow-tracker = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true, features = ["arbitrary"] }
 ip_network = { workspace = true }
+is = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l3-tcp = { workspace = true }
 libc = { workspace = true }
 rand = { workspace = true }
+relay-client-proto = { workspace = true }
 relay-server-proto = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 seeded-rng = { workspace = true }
