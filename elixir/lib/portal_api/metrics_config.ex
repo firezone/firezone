@@ -12,10 +12,15 @@ defmodule PortalAPI.MetricsConfig do
   def refresh_every, do: :timer.seconds(div(MetricsToken.ttl_seconds(), 2))
 
   def render(%Account{} = account, %Device{} = device) do
-    patterns = if MetricsToken.enabled?(), do: AccountMetrics.effective_patterns(account), else: []
+    endpoint = Portal.Config.get_env(:portal, :otlp_metrics_ingest_url)
+
+    patterns =
+      if endpoint && MetricsToken.enabled?(),
+        do: AccountMetrics.effective_patterns(account),
+        else: []
 
     %{
-      endpoint: Portal.Config.fetch_env!(:portal, :otlp_metrics_ingest_url),
+      endpoint: endpoint,
       export_interval_secs: Portal.Config.fetch_env!(:portal, :otlp_metrics_export_interval_secs),
       patterns: patterns,
       token: if(patterns != [], do: MetricsToken.mint(account, device, patterns))

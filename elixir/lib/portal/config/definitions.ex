@@ -245,9 +245,10 @@ defmodule Portal.Config.Definitions do
 
   @doc """
   The URL Clients and Gateways POST OTLP metrics to, e.g. `https://otlp.firezone.dev/v1/metrics`.
+  Metrics export is off while unset.
   """
   defconfig(:otlp_metrics_ingest_url, :string,
-    default: "https://otlp.firezone.dev/v1/metrics",
+    default: nil,
     changeset: fn changeset, key ->
       Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
     end

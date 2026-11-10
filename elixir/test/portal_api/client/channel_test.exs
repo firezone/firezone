@@ -551,10 +551,25 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "metrics_config", _payload
     end
 
+    test "sends no metrics token without an ingest URL", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["*"])
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+    end
+
     test "sends no metrics token while the account exports no metrics", %{
       client: client,
       subject: subject
     } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
       socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
       assert_push "init", init
       refute Map.has_key?(init, :metrics)
@@ -569,13 +584,14 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
       {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["b"])
       socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
 
       assert_push "init", _init_payload
 
       assert_push "metrics_config", %{
-        endpoint: "https://otlp.firezone.dev/v1/metrics",
+        endpoint: "https://otlp.example.com/v1/metrics",
         export_interval_secs: 60,
         patterns: ["b"],
         token: token
@@ -602,6 +618,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
       socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
       assert_push "init", _init_payload
       assert_push "metrics_config", %{token: nil}

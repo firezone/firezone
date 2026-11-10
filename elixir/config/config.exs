@@ -548,7 +548,7 @@ config :portal,
   flow_logs_upload_interval_secs: 60
 
 config :portal,
-  otlp_metrics_ingest_url: "https://otlp.firezone.dev/v1/metrics",
+  otlp_metrics_ingest_url: nil,
   otlp_metrics_export_interval_secs: 60,
   otel_ingest_jwt_private_key: nil
 
