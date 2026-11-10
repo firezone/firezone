@@ -482,18 +482,15 @@ impl RefClient {
     ///
     /// Only the connection to that Gateway goes; the ICE state towards our peers, which
     /// `connection_resets` tracks, is untouched.
-    pub(crate) fn close_gateway_connection(
-        &mut self,
-        gateway: GatewayId,
-        resources: &BTreeSet<ResourceId>,
-    ) {
+    pub(crate) fn close_gateway_connection(&mut self, gateway: GatewayId) {
         // TODO: Remove with classic ICE.
         self.gateway_send_times.remove(&gateway);
 
-        let affected = resources
+        let affected = self
+            .authorizations
             .iter()
-            .copied()
-            .filter(|resource| self.authorizations.contains_key(resource))
+            .filter(|(_, through)| **through == gateway)
+            .map(|(resource, _)| *resource)
             .collect();
 
         self.discard_connections(affected);

@@ -155,11 +155,25 @@ impl ReferenceState {
                 for client in self.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(id));
                 }
-                self.expect_gateway_connections_closed(portal, *id);
+                self.revoke_gateway_authorizations(*id);
             }
             Transition::EditResource(edit) => {
+                match client::classify(&edit.old, &edit.new) {
+                    client::EditEffect::Metadata => {}
+                    client::EditEffect::Filters { .. } => {
+                        self.close_gateway_connections_used_for(edit.old.id());
+                    }
+                    client::EditEffect::Access { .. } => {
+                        self.close_gateway_connections_used_for(edit.old.id());
+                        self.revoke_gateway_authorizations(edit.old.id());
+                    }
+                    client::EditEffect::DevicePoolRouting => {}
+                    client::EditEffect::Type { .. } => {
+                        self.close_gateway_connections_used_for(edit.old.id());
+                        self.revoke_gateway_authorizations(edit.old.id());
+                    }
+                }
                 self.apply_resource_edit(edit);
-                self.expect_gateway_connections_closed(portal, edit.new.id());
             }
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
@@ -209,24 +223,43 @@ impl ReferenceState {
                     None => global_dns_records.domain_rtypes(domain),
                 };
 
+                let mut requested = Vec::new();
+
                 for (client_id, query) in queries {
                     let client = self.clients[client_id].inner();
-                    let gateway = client
+                    let resource = client
                         .is_site_specific_dns_query(query)
-                        .or_else(|| client.dns_query_via_resource(query, upstream_do53))
+                        .or_else(|| client.dns_query_via_resource(query, upstream_do53));
+                    let gateway = resource
                         .and_then(|resource| self.select_gateway(portal, *client_id, resource));
                     let routes = gateway.map(|gid| &gateways[&gid].inner().routes);
                     let listing = is_device_listing_query(query).then(|| {
                         portal.browse_device_domain(&query.domain, &client.device_pool_ids())
                     });
+                    let unconnected = resource
+                        .filter(|resource| client.gateway_for_resource(*resource).is_none());
 
-                    self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                    let client = self.clients.get_mut(client_id).unwrap();
+                    client.exec_mut(|c| {
                         c.on_dns_query(query, gateway, upstream_do53, resolve, routes);
 
                         if let Some(listing) = listing {
                             c.expect_device_listing(query, listing);
                         }
                     });
+
+                    if let Some(resource) = unconnected
+                        && let Some(gateway) = client.inner().gateway_for_resource(resource)
+                    {
+                        requested.push((gateway, *client_id, resource));
+                    }
+                }
+
+                for (gateway, client, resource) in requested {
+                    self.gateways
+                        .get_mut(&gateway)
+                        .unwrap()
+                        .exec_mut(|g| g.authorize(client, resource));
                 }
             }
             Transition::SendDnsResourcePtrQuery {
@@ -572,13 +605,14 @@ impl ReferenceState {
                 });
 
                 // The peers lose their connections to the roaming client, and their authorizations
-                // towards it with them.
+                // towards it with them. The Gateways forget it as it comes back with a new key.
                 if !all_frostlink {
                     for (id, peer) in &mut self.clients {
                         if id != client_id {
                             peer.exec_mut(|peer| peer.forget_peer_authorizations(*client_id));
                         }
                     }
+                    self.forget_client_on_gateways(*client_id);
                 }
             }
             Transition::ReconnectPortal { client_id } => {
@@ -669,7 +703,7 @@ impl ReferenceState {
                 for client in self.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(resource));
                 }
-                self.expect_gateway_connections_closed(portal, *resource);
+                self.revoke_gateway_authorizations(*resource);
             }
             Transition::ExpirePeerAuthorizations {
                 client,
@@ -690,7 +724,7 @@ impl ReferenceState {
                 });
             }
             Transition::RevokeGatewayAuthorization(resource) => {
-                self.expect_gateway_connections_closed(portal, *resource);
+                self.revoke_gateway_authorizations(*resource);
             }
             Transition::RestartClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
@@ -703,6 +737,7 @@ impl ReferenceState {
                 for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
                     peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                 }
+                self.forget_client_on_gateways(*client_id);
             }
             Transition::UpdateDnsRecords { domain, records } => {
                 self.global_dns_records
@@ -722,9 +757,15 @@ impl ReferenceState {
                 for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
                     peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                 }
+                self.forget_client_on_gateways(*client_id);
             }
             Transition::CrashGateway { gateway_id, .. } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
+
+                self.gateways
+                    .get_mut(gateway_id)
+                    .unwrap()
+                    .exec_mut(|g| g.forget_all_clients());
 
                 let crashed = BTreeSet::from([*gateway_id]);
                 for client in self.clients.values_mut() {
@@ -738,19 +779,67 @@ impl ReferenceState {
         self
     }
 
-    /// A Gateway that revoking `resource` left with nothing closes the connection with a
-    /// `goodbye`, so we expect the Client to reset its state for that Gateway.
-    fn expect_gateway_connections_closed(&mut self, portal: &StubPortal, resource: ResourceId) {
-        for closed in portal.gateway_connections_closed_by(resource) {
-            let Some(client) = self.clients.get_mut(&closed.client) else {
-                continue;
-            };
+    /// Drops every Gateway's authorizations for `resource`.
+    ///
+    /// A Gateway left with nothing for a Client closes the connection with a `goodbye`.
+    fn revoke_gateway_authorizations(&mut self, resource: ResourceId) {
+        let closed = self
+            .gateways
+            .iter_mut()
+            .flat_map(|(id, gateway)| {
+                gateway
+                    .exec_mut(|g| g.revoke(resource))
+                    .into_iter()
+                    .map(|client| (client, *id))
+            })
+            .collect::<Vec<_>>();
 
-            client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources));
-            for _ in self.tcp_flows.extract_if(.., |_, flow| {
-                flow.client_id == closed.client
-                    && flow.route.remote() == Remote::Gateway(closed.gateway)
-            }) {}
+        for (client, gateway) in closed {
+            self.close_gateway_connection(client, gateway);
+        }
+    }
+
+    /// Closes the connections of the Clients that hold nothing but `resource` through a Gateway,
+    /// as they disconnect from it with a `goodbye`.
+    fn close_gateway_connections_used_for(&mut self, resource: ResourceId) {
+        let closed = self
+            .clients
+            .iter()
+            .filter_map(|(id, client)| {
+                let client = client.inner();
+                let gateway = client.gateway_for_resource(resource)?;
+                let unused = client.connected_resources().all(|other| {
+                    other == resource || client.gateway_for_resource(other) != Some(gateway)
+                });
+
+                unused.then_some((*id, gateway))
+            })
+            .collect::<Vec<_>>();
+
+        for (client, gateway) in closed {
+            self.close_gateway_connection(client, gateway);
+        }
+    }
+
+    /// Closes the connection between `client` and `gateway`: both forget what they held for
+    /// each other.
+    fn close_gateway_connection(&mut self, client: ClientId, gateway: GatewayId) {
+        self.gateways
+            .get_mut(&gateway)
+            .unwrap()
+            .exec_mut(|g| g.forget_client(client));
+        self.clients
+            .get_mut(&client)
+            .unwrap()
+            .exec_mut(|c| c.close_gateway_connection(gateway));
+        for _ in self.tcp_flows.extract_if(.., |_, flow| {
+            flow.client_id == client && flow.route.remote() == Remote::Gateway(gateway)
+        }) {}
+    }
+
+    fn forget_client_on_gateways(&mut self, client: ClientId) {
+        for gateway in self.gateways.values_mut() {
+            gateway.exec_mut(|g| g.forget_client(client));
         }
     }
 
@@ -816,7 +905,6 @@ impl ReferenceState {
     ) -> ExpectedOutcome {
         let (outcome, authorization) = match route {
             Route::Resource { resource, gateway } => self.resource_verdict(
-                portal,
                 origin,
                 resource,
                 gateway,
@@ -948,16 +1036,7 @@ impl ReferenceState {
 
         let established = established == Some(Route::Resource { resource, gateway });
 
-        self.resource_verdict(
-            portal,
-            origin,
-            resource,
-            gateway,
-            src,
-            dst,
-            protocol,
-            established,
-        )
+        self.resource_verdict(origin, resource, gateway, src, dst, protocol, established)
     }
 
     /// Whether `origin` reaches the peer client at `ip`, which takes an authorization on both
@@ -1021,11 +1100,13 @@ impl ReferenceState {
         )
     }
 
-    /// The Gateway's verdict for a packet to `resource` through `gateway`, which the client
-    /// holds access to afterwards either way.
+    /// The Gateway's verdict for a packet to `resource` through `gateway`, and the access the
+    /// client asks the portal for.
+    ///
+    /// A client asks when it holds no authorization for `resource`, or when the Gateway reports
+    /// that it holds none either.
     fn resource_verdict(
         &self,
-        portal: &StubPortal,
         origin: ClientId,
         resource: ResourceId,
         gateway: GatewayId,
@@ -1051,7 +1132,6 @@ impl ReferenceState {
             Destination::IpAddr(_) => BTreeMap::new(),
         };
         let rejection = self.gateway_verdict(
-            portal,
             origin,
             gateway,
             resource,
@@ -1072,13 +1152,17 @@ impl ReferenceState {
             ),
         };
 
+        let client = self.clients[&origin].inner();
+        let reported = rejection == Some(RejectionResponse::Prohibited)
+            && !client.malicious_behaviour.ignore_no_authorization_events;
+        let asks = !client.connected_resources().contains(&resource) || reported;
         let authorization = Authorization::Resource {
             resource,
             gateway,
             resolutions,
         };
 
-        (outcome, Some(authorization))
+        (outcome, asks.then_some(authorization))
     }
 
     /// Records the authorization `origin` holds after its packet.
@@ -1093,6 +1177,10 @@ impl ReferenceState {
                     client.add_dns_resource_resolutions(resource, resolutions);
                     client.connect_to_resource(resource, gateway);
                 });
+                self.gateways
+                    .get_mut(&gateway)
+                    .unwrap()
+                    .exec_mut(|g| g.authorize(origin, resource));
             }
             Some(Authorization::Peer { peer, pool }) => {
                 self.clients
@@ -1133,7 +1221,6 @@ impl ReferenceState {
     /// it, whatever the domain resolves to since.
     fn gateway_verdict(
         &self,
-        portal: &StubPortal,
         origin: ClientId,
         gateway: GatewayId,
         resource: ResourceId,
@@ -1144,17 +1231,26 @@ impl ReferenceState {
         established: bool,
     ) -> Option<RejectionResponse> {
         let client = self.clients[&origin].inner();
+        let authorizations = self.gateways[&gateway].inner();
 
         // The gateway checks every CIDR route it still authorizes for the client, so another
         // CIDR resource on the same gateway can permit traffic the selected resource does not.
         let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
-            portal.gateway_cidr_authorization_allows(origin, gateway, ip, protocol)
+            client
+                .all_resources()
+                .into_iter()
+                .filter_map(|resource| resource.into_cidr())
+                .any(|cidr| {
+                    cidr.address.contains(ip)
+                        && protocol_filter_allows(&cidr.filters, protocol)
+                        && authorizations.is_authorized(origin, cidr.id)
+                })
         });
 
         // The Gateway lost its authorization while the client still believes it holds one:
         // it rejects this packet and tells the client to request a new authorization.
         if client.connected_resources().contains(&resource)
-            && !portal.holds_gateway_authorization(origin, resource)
+            && !authorizations.is_authorized(origin, resource)
             && !allowed_by_another_cidr
         {
             return Some(RejectionResponse::Prohibited);

@@ -68,7 +68,11 @@ impl ReferenceState {
 
     /// Resources a Gateway currently holds an authorization for.
     pub(crate) fn revocable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
-        let authorized = portal.authorized_resources();
+        let authorized = self
+            .gateways
+            .values()
+            .flat_map(|gateway| gateway.inner().authorized_resources())
+            .collect::<BTreeSet<_>>();
 
         self.deauthorizable_resource_ids(portal)
             .into_iter()

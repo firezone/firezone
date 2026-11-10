@@ -36,7 +36,7 @@ pub fn test(data: &[u8]) {
         reference.invalidate(&transition, &portal);
         tunnel.invalidate(&reference);
 
-        portal.apply(&transition, &reference);
+        portal.apply(&transition);
         reference = reference.apply(&transition, &portal, flux_capacitor.now());
         tunnel = tunnel.apply(transition, &reference, &mut portal);
         check_invariants(&reference, &tunnel, &portal);
