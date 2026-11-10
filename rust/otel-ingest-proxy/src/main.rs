@@ -45,9 +45,9 @@ struct Args {
     #[arg(long, env, hide = true, default_value_t = 60)]
     tls_reload_interval_secs: u64,
 
-    /// PEM-encoded Ed25519 public key of the portal, used to verify device tokens.
+    /// Path to the PEM-encoded Ed25519 public key of the portal, used to verify device tokens.
     #[arg(long, env)]
-    jwt_public_key: String,
+    jwt_public_key_path: PathBuf,
 
     /// Full OTLP/HTTP metrics URL to forward device metrics to, used verbatim.
     #[arg(long, env)]
@@ -148,8 +148,15 @@ async fn try_main(args: Args) -> Result<()> {
     )?);
     let tls = TlsAcceptor::from(Arc::new(cert_resolver.clone().server_config()));
 
+    let jwt_public_key = std::fs::read(&args.jwt_public_key_path).with_context(|| {
+        format!(
+            "Failed to read JWT public key from {}",
+            args.jwt_public_key_path.display()
+        )
+    })?;
+
     let ingest = Arc::new(Ingest {
-        verifier: Verifier::from_ed_pem(args.jwt_public_key.as_bytes())?,
+        verifier: Verifier::from_ed_pem(&jwt_public_key)?,
         device_limiter: RateLimiter::new(
             args.device_requests_per_minute,
             args.device_burst,
