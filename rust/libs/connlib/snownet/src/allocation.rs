@@ -1039,6 +1039,20 @@ impl Allocation {
             .is_some_and(|c| &c.username == username && c.password == password)
     }
 
+    /// Replaces the portal-issued credentials while keeping the allocation and its candidates.
+    ///
+    /// The relay accepts any valid credentials of the same account when refreshing an existing allocation.
+    /// Has no effect if our credentials were cleared after an authentication failure.
+    pub fn update_credentials(&mut self, username: Username, password: String, realm: Realm) {
+        let Some(credentials) = &mut self.credentials else {
+            return;
+        };
+
+        credentials.username = username;
+        credentials.password = password;
+        credentials.realm = realm;
+    }
+
     pub fn matches_socket(&self, socket: &RelaySocket) -> bool {
         &self.server == socket
     }

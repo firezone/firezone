@@ -163,12 +163,16 @@ where
                 UpsertResult::Added
             }
             Entry::Occupied(mut o) => {
-                let allocation = o.get();
+                let allocation = o.get_mut();
 
-                if allocation.matches_credentials(&username, &password)
-                    && allocation.matches_socket(&server)
-                {
-                    return UpsertResult::Skipped;
+                if allocation.matches_socket(&server) && allocation.has_credentials() {
+                    if allocation.matches_credentials(&username, &password) {
+                        return UpsertResult::Skipped;
+                    }
+
+                    allocation.update_credentials(username, password, realm);
+
+                    return UpsertResult::CredentialsUpdated;
                 }
 
                 let mut seed = [0u8; 32];
@@ -367,6 +371,7 @@ pub(crate) enum UpsertResult {
     Added,
     Skipped,
     Blocked,
+    CredentialsUpdated,
     Replaced(Allocation),
 }
 
@@ -464,6 +469,63 @@ mod tests {
             allocations.get_mut_by_server(SERVER_V4),
             MutAllocationRef::Disconnected
         ));
+    }
+
+    #[test]
+    fn new_credentials_for_same_server_update_allocation_in_place() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("1000:account:device".to_owned()).unwrap(),
+            "old-password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        let new_username = Username::new("2000:account:device".to_owned()).unwrap();
+        let result = allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            new_username.clone(),
+            "new-password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        assert!(matches!(result, UpsertResult::CredentialsUpdated));
+        assert!(
+            allocations
+                .get_mut_by_id(&1)
+                .unwrap()
+                .matches_credentials(&new_username, "new-password")
+        );
+    }
+
+    #[test]
+    fn new_credentials_for_new_server_replace_allocation() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("1000:account:device".to_owned()).unwrap(),
+            "old-password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        let result = allocations.upsert(
+            1,
+            RelaySocket::from(SERVER2_V4),
+            Username::new("2000:account:device".to_owned()).unwrap(),
+            "new-password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        assert!(matches!(result, UpsertResult::Replaced(_)));
     }
 
     #[test]

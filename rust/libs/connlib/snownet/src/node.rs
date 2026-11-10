@@ -876,6 +876,13 @@ where
                 allocations::UpsertResult::Blocked => {
                     tracing::debug!(%rid, address = ?server, "Ignoring blocked TURN server")
                 }
+                allocations::UpsertResult::CredentialsUpdated => {
+                    if let Some(allocation) = self.allocations.get_mut_by_id(rid) {
+                        allocation.refresh(now);
+                    }
+
+                    tracing::info!(%rid, address = ?server, "Updated TURN credentials")
+                }
                 allocations::UpsertResult::Replaced(previous) => {
                     invalidate_allocation_candidates(
                         &mut self.connections,
