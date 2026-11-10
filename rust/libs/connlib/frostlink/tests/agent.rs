@@ -342,6 +342,38 @@ fn probe_reply_promotes_to_a_better_tier() {
 }
 
 #[test]
+fn a_higher_priority_pair_wins_the_same_tier_when_rtts_are_a_wash_out() {
+    let mut a = agent_with_relay_pairs();
+    let preferred =
+        Candidate::from_sdp_string("candidate:1 1 udp 2130706431 127.0.0.1 5 typ host").unwrap();
+    a.add_remote_candidate(preferred, Instant::now());
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    let probes = a.tick(t0);
+    a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(10));
+    a.ack_probe(&probes, (addr(1), addr(5)), t0 + ms(12));
+
+    assert_eq!(a.primary(), Some((addr(1), addr(5))));
+}
+
+#[test]
+fn a_clearly_faster_pair_wins_the_same_tier_despite_a_lower_priority() {
+    let mut a = agent_with_relay_pairs();
+    let preferred =
+        Candidate::from_sdp_string("candidate:1 1 udp 2130706431 127.0.0.1 5 typ host").unwrap();
+    a.add_remote_candidate(preferred, Instant::now());
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    let probes = a.tick(t0);
+    a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(10));
+    a.ack_probe(&probes, (addr(1), addr(5)), t0 + ms(200));
+
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+}
+
+#[test]
 fn a_worse_tier_probe_never_demotes_the_primary() {
     let (mut a, t0) = direct_primary_with_relay_fallback(); // primary (1,3), host
     prove_pair_alive(&mut a, (addr(2), addr(4)), t0 + secs(1)); // relay answers

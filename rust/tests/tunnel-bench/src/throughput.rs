@@ -46,7 +46,7 @@ const BURST: usize = 10_000;
 /// shallow enough that no UDP receive buffer overflows: macOS caps a socket buffer at 8 MiB
 /// (`kern.ipc.maxsockbuf`), which holds about 4096 datagrams of [`SIZE`] bytes. The crypto workers
 /// make the pipeline deeper than that on many-core machines, so Linux, whose benchmark container
-/// raises `rmem_max` to 16 MiB, keeps twice as many in flight.
+/// has `CAP_NET_ADMIN` to force a 16 MiB receive buffer, keeps twice as many in flight.
 const IN_FLIGHT: usize = cfg_select! {
     target_os = "macos" => { 4_096 }
     _ => { 8_192 }
@@ -260,14 +260,17 @@ impl EventLoop {
         let tun = device.io();
         let thread = match host {
             AnyHost::Client(client) => {
-                let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now).unwrap();
+                let mut tunnel =
+                    ClientTunnel::new(tcp, udp, socket.port(), BTreeSet::new(), false, now)
+                        .unwrap();
                 *tunnel.state_mut() = client.into_state();
                 tunnel.set_tun(tun);
 
                 run(tunnel, runtime, now)
             }
             AnyHost::Gateway(gateway) => {
-                let mut tunnel = GatewayTunnel::new(tcp, udp, BTreeSet::new(), now).unwrap();
+                let mut tunnel =
+                    GatewayTunnel::new(tcp, udp, socket.port(), BTreeSet::new(), now).unwrap();
                 *tunnel.state_mut() = gateway.into_state();
                 tunnel.set_tun(tun);
 

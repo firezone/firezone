@@ -117,6 +117,27 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.token_id == token1.id
     end
 
+    test "assigns a subject for the token's legacy Gateway actor" do
+      account = account_fixture()
+      token = gateway_token_fixture(account: account, site: site_fixture(account: account))
+      connect_info = build_connect_info(token: encode_gateway_token(token))
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+
+      assert %Portal.Authentication.Subject{
+               actor: %Portal.Actor{type: :legacy_gateway} = actor,
+               account: %Portal.Account{id: account_id},
+               credential: %Portal.Authentication.Credential.GatewayToken{id: token_id},
+               expires_at: nil,
+               context: %Portal.Authentication.Context{type: :gateway}
+             } = socket.assigns.subject
+
+      assert actor.id == token.actor_id
+      assert account_id == account.id
+      assert token_id == token.id
+    end
+
     test "creates a new gateway" do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
@@ -600,7 +621,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: build_connect_info())
 
-      refute Portal.Repo.get_by(Portal.GatewayToken,
+      refute Portal.Repo.get_by(Portal.DeviceToken,
                account_id: rotated.account_id,
                id: rotated.id
              )

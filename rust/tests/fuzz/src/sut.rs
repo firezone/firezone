@@ -224,14 +224,15 @@ impl TunnelTest {
         Some(self.gateways.get(&id)?.inner())
     }
 
-    /// Drops the bookkeeping that `transition` makes stale before it is applied.
+    /// Drops the bookkeeping of the previous transition before the next one is applied.
     ///
     /// Runs after the reference model invalidated, so the flows it dropped are known.
-    pub fn invalidate(&mut self, transition: &Transition, ref_state: &ReferenceState) {
+    pub fn invalidate(&mut self, ref_state: &ReferenceState) {
         for client in self.clients.values_mut() {
             client.exec_mut(|c| {
                 c.tcp_client.drop_unfinished();
                 c.clear_probe_observations();
+                c.clear_packets();
             });
         }
         for gateway in self.gateways.values_mut() {
@@ -239,12 +240,6 @@ impl TunnelTest {
                 g.drop_unfinished_tcp_connections();
                 g.clear_probe_observations();
             });
-        }
-
-        if transition.clears_packets() {
-            for client in self.clients.values_mut() {
-                client.exec_mut(|c| c.clear_packets());
-            }
         }
 
         for _ in self
@@ -644,7 +639,7 @@ impl TunnelTest {
                 self.flux_capacitor.skip_to(dead_until);
 
                 // 2. The new link comes up: assign the new IPs, re-register the
-                //    client and reset the path-agent so it re-gathers candidates.
+                //    client and reset the frostlink agent so it re-gathers candidates.
                 //    The sockets now pass traffic, but the client has not
                 //    reconnected to the portal yet, so any portal-bound message is
                 //    dropped until the portal window elapses.

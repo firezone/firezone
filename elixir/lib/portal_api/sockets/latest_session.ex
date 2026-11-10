@@ -195,7 +195,7 @@ defmodule PortalAPI.Sockets.LatestSession do
 
     @token_schemas %{
       client_token_id: Portal.ClientToken,
-      gateway_token_id: Portal.GatewayToken
+      gateway_token_id: Portal.DeviceToken
     }
 
     def missing_token_ids(entries, token_field) do

@@ -633,7 +633,8 @@ defmodule Portal.Config.Definitions do
     end
   )
 
-  # sobelow_skip ["DOS.StringToAtom"]
+  # Cluster configuration comes from administrator-controlled environment variables.
+  # sobelow_skip ["DOS.StringToAtom", "DOS.ModuleConcat"]
   defp dump_cluster_adapter_config(map, adapter) do
     keyword = Dumper.keyword(map)
 
@@ -998,15 +999,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:telemetry_metrics_reporter_opts, :map,
     default: %{},
     dump: &Dumper.keyword/1
-  )
-
-  @doc """
-  Base URL of an OpenTelemetry Collector receiving the portal's traces and metrics over
-  OTLP/HTTP, e.g. `http://10.0.0.1:4318`.
-  """
-  defconfig(:otlp_endpoint, :string,
-    default: nil,
-    changeset: &Portal.Changeset.validate_uri/2
   )
 
   @doc """

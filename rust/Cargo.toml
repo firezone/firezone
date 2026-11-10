@@ -49,6 +49,7 @@ members = [
     "libs/flow-log-spool",
     "libs/flow-log-upload",
     "libs/flow-log-writer",
+    "libs/git-sha",
     "libs/http-client",
     "libs/incremental-inet-checksum",
     "libs/known-dirs",
@@ -69,7 +70,6 @@ members = [
     "tests/doh-test-server",
     "tests/fuzz",
     "tests/gui-smoke-test",
-    "tests/http-test-server",
     "tests/loadtest",
     "tests/seeded-rng",
     "tests/tunnel-bench",
@@ -144,6 +144,7 @@ foldhash = "0.2.0"
 frostlink = { path = "libs/connlib/frostlink" }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
+git-sha = { path = "libs/git-sha" }
 glob = "0.3.3"
 gui-ipc = { path = "gui-client/src-gui-ipc" }
 gungraun = "0.20.0"
@@ -273,7 +274,6 @@ tracing-core = "0.1.36"
 tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" } # Contains `dbg!` but for `tracing`.
-tracing-opentelemetry = "0.34.0"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
 tun-android = { path = "libs/connlib/tun-android" }

@@ -3,6 +3,21 @@ defmodule PortalWeb.Components.CoreTest do
 
   alias PortalWeb.Components.Core
 
+  describe "Core.avatar/1" do
+    test "uses Gravatar's SHA-256 identifier for the normalized email" do
+      html =
+        render_component(&Core.avatar/1,
+          actor: %{email: "MyEmailAddress@example.com "},
+          size: 64
+        )
+        |> Floki.parse_fragment!()
+
+      assert Floki.attribute(html, "img", "src") == [
+               "https://www.gravatar.com/avatar/84059b07d4be67b806386c0aad8070a23f18836bbaae342275dc0a83414c32ee?s=64&d=retro"
+             ]
+    end
+  end
+
   describe "Core.copy/1" do
     test "renders the messages the CopyClipboard hook swaps after a copy" do
       html =

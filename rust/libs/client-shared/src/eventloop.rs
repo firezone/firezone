@@ -1,4 +1,4 @@
-use crate::{ConnectedAs, PHOENIX_TOPIC};
+use crate::{ConnectedAs, PHOENIX_TOPIC, SessionConfig};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -164,11 +164,7 @@ impl Eventloop {
     pub(crate) fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        is_internet_resource_active: bool,
-        dns_servers: Vec<IpAddr>,
-        additional_host_candidates: Vec<IpAddr>,
-        flow_logs_dir: Option<std::path::PathBuf>,
-        local_flow_logs: bool,
+        config: SessionConfig,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
@@ -176,6 +172,14 @@ impl Eventloop {
         connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Result<Self> {
+        let SessionConfig {
+            listen_port,
+            is_internet_resource_active,
+            dns_servers,
+            additional_host_candidates,
+            flow_logs_dir,
+            local_flow_logs,
+        } = config;
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
         let mut clock = Clock::new();
@@ -183,6 +187,7 @@ impl Eventloop {
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
+            listen_port,
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),

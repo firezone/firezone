@@ -152,9 +152,9 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, Portal.Site, :service_account) == :ok
     end
 
-    test "GatewayToken: admin and api_client only" do
-      assert Safe.permit(:delete, Portal.GatewayToken, :account_admin_user) == :ok
-      assert Safe.permit(:delete, Portal.GatewayToken, :api_client) == :ok
+    test "DeviceToken: admin and api_client only" do
+      assert Safe.permit(:delete, Portal.DeviceToken, :account_admin_user) == :ok
+      assert Safe.permit(:delete, Portal.DeviceToken, :api_client) == :ok
     end
 
     test "Resource: admin and api_client all actions, every type may read" do
@@ -202,7 +202,7 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, Portal.ExternalIdentity, :service_account) == {:error, :unauthorized}
       assert Safe.permit(:read, Portal.ClientToken, :account_user) == {:error, :unauthorized}
       assert Safe.permit(:read, Portal.APIToken, :api_client) == {:error, :unauthorized}
-      assert Safe.permit(:read, Portal.GatewayToken, :account_user) == {:error, :unauthorized}
+      assert Safe.permit(:read, Portal.DeviceToken, :account_user) == {:error, :unauthorized}
     end
 
     test "non-read actions are denied where only read is granted" do
@@ -336,17 +336,29 @@ defmodule Portal.SafeTest do
       assert %Portal.Actor{name: "Legacy Gateway"} = Repo.get_by(Portal.Actor, id: actor.id)
     end
 
-    test "as a subject type it is granted nothing" do
+    test "as a subject type it may only read Sites and register and update Gateways" do
       for {action, schema} <- [
             {:read, Portal.Site},
+            {:read, Portal.Device},
+            {:insert, Portal.Device},
+            {:update, Portal.Device}
+          ] do
+        assert Safe.permit(action, schema, :legacy_gateway) == :ok
+      end
+
+      for {action, schema} <- [
+            {:update, Portal.Site},
+            {:delete, Portal.Device},
+            {:read, Portal.SiteDevice},
+            {:read, Portal.DeviceToken},
+            {:insert, Portal.DeviceToken},
             {:read, Portal.Resource},
             {:read, Portal.Policy},
             {:read, Portal.Membership},
             {:read, Portal.PolicyAuthorization},
             {:insert, Portal.PolicyAuthorization},
             {:read, Portal.Account},
-            {:read, Portal.Actor},
-            {:insert, Portal.Device}
+            {:read, Portal.Actor}
           ] do
         assert Safe.permit(action, schema, :legacy_gateway) == {:error, :unauthorized}
       end

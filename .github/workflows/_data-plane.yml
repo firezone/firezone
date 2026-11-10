@@ -62,9 +62,6 @@ on:
       gateway_image:
         description: "The gateway image that was built"
         value: ${{ jobs.data-plane-linux.outputs.gateway_image }}
-      http_test_server_image:
-        description: "The http_test_server image that was built"
-        value: ${{ jobs.data-plane-linux.outputs.http_test_server_image }}
 
 permissions:
   contents: write # create/update GitHub releases
@@ -83,10 +80,10 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.6.5
+          - release_name: gateway-1.6.6
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.16
+          - release_name: headless-client-1.5.17
             config_name: release-drafter-headless-client.yml
 
     steps:
@@ -153,9 +150,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.16]
+        release_name: [headless-client-1.5.17]
         # mark:next-headless-version
-        version: [1.5.16]
+        version: [1.5.17]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -194,7 +191,13 @@ jobs:
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
       - name: Package binary
         shell: bash
-        run: cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+        run: |
+          set -xe
+
+          cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+
+          # Stamp before signing, which would otherwise be invalidated.
+          mise-tasks/patch-git-sha "$ARTIFACT_PATH" "$RESOLVED_SHA"
       - uses: ./.github/actions/setup-azure-sign-tool
         if: ${{ inputs.profile == 'release' }}
         with:
@@ -234,8 +237,6 @@ jobs:
         exclude:
           # Devs are either on amd64 or arm64
           - { stage: debug, arch: { platform: linux/arm/v7 } }
-          # Exclude http-test-server from perf image builds
-          - { image_prefix: perf, name: { package: http-test-server } }
 
         arch:
           - target: x86_64-unknown-linux-musl
@@ -252,9 +253,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.16
+            release_name: headless-client-1.5.17
             # mark:next-headless-version
-            version: 1.5.16
+            version: 1.5.17
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -262,12 +263,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.6.5
+            release_name: gateway-1.6.6
             # mark:next-gateway-version
-            version: 1.6.5
-          - package: http-test-server
-            artifact: http-test-server
-            image_name: http-test-server
+            version: 1.6.6
 
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
@@ -281,7 +279,6 @@ jobs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
       gateway_image: ${{ steps.image-name.outputs.gateway_image }}
-      http_test_server_image: ${{ steps.image-name.outputs.http-test-server_image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -297,7 +294,7 @@ jobs:
           key: ${{ matrix.name.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
       # Restored binaries skip every `cargo build` below, so the toolchains only
       # needed to compile them are skipped too. `cargo deb` still needs cargo and
-      # `cargo-deb`, and the relay still needs mise to stamp in the commit SHA.
+      # `cargo-deb`, and stamping in the commit SHA still needs mise.
       - uses: ./.github/actions/setup-musl
         if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
@@ -311,10 +308,9 @@ jobs:
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
-        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' || matrix.name.package == 'firezone-relay' }}
         with:
-          # Stamping the SHA into the relay shells out to coreutils only, so a
-          # restored relay needs `mise` as a task runner but none of its tools.
+          # Stamping the SHA shells out to coreutils only, so a restored binary
+          # needs `mise` as a task runner but none of its tools.
           install: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' }}
           install_args: --cd rust
         env:
@@ -340,16 +336,33 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
 
-          # Stamp the commit SHA into the relay's placeholder before checksum and
-          # upload; the binary is otherwise SHA-independent and cache-restorable.
-          if [[ "${{ matrix.name.package }}" == "firezone-relay" ]]; then
-            mise run //rust:patch-relay-release "$PWD/${{ matrix.name.package }}" "${{ env.RESOLVED_SHA }}"
-          fi
+          # Stamp the commit SHA into the placeholder before checksum and upload;
+          # the binary is otherwise SHA-independent and cache-restorable.
+          mise run //rust:patch-git-sha "$PWD/${{ matrix.name.package }}" "${{ env.RESOLVED_SHA }}"
 
           sha256sum ${{ matrix.name.package }} > ${{ matrix.name.package }}.sha256sum.txt
 
           # Used for release artifact
           cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
+      # Sign a manifest after stamping the source SHA. Only main can publish
+      # deployment signatures; release tags and other OIDC identities are not
+      # trusted by the infra VM verifier.
+      - name: Sign deployment manifest
+        if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
+        env:
+          COMPONENT: ${{ matrix.name.image_name }}
+          ARCH: ${{ matrix.arch.shortname }}
+          BINARY: ${{ matrix.name.package }}
+        run: |
+          set -euo pipefail
+          [[ "$RESOLVED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          digest=$(cut -d ' ' -f 1 "$BINARY.sha256sum.txt")
+          jq -n --arg component "$COMPONENT" --arg sha "$RESOLVED_SHA" \
+            --arg arch "$ARCH" --arg sha256 "$digest" \
+            '{component: $component, sha: $sha, arch: $arch, sha256: $sha256}' \
+            > "$BINARY.manifest.json"
+          mise install aqua:sigstore/cosign
+          mise exec -- cosign sign-blob --yes --bundle "$BINARY.sigstore.json" "$BINARY.manifest.json"
       - name: Azure login (OIDC)
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' }}
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
@@ -383,9 +396,29 @@ jobs:
             --auth-mode login \
             --account-name firezoneartifacts
 
+      - name: Publish signed deployment manifest
+        if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
+        env:
+          COMPONENT: ${{ matrix.name.image_name }}
+          ARCH: ${{ matrix.arch.shortname }}
+          BINARY: ${{ matrix.name.package }}
+        run: |
+          set -euo pipefail
+          for suffix in .manifest.json .sigstore.json; do
+            az storage blob upload \
+              --container-name binaries \
+              --name "$COMPONENT/$RESOLVED_SHA/$ARCH$suffix" \
+              --file "$BINARY$suffix" \
+              --overwrite true \
+              --no-progress \
+              --auth-mode login \
+              --account-name firezoneartifacts
+          done
+
       - name: Create Firezone Gateway .deb package
         if: ${{ env.BUILDS_DEB == 'true' }}
         run: |
+          cp firezone-gateway target/${{ matrix.arch.target }}/release/firezone-gateway
           cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
           cp target/debian/*.deb "$BINARY_DEST_PATH".deb
       - name: Upload Release Assets
@@ -500,23 +533,16 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        # Copy input vars to matrix vars to conditionally exclude them
         image_prefix:
           - ${{ inputs.image_prefix }}
-
-        # Exclude http-test-server from perf image builds
-        exclude:
-          - { image_prefix: perf, image: { name: http-test-server } }
-
         image:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.6.5
+            version: 1.6.6
           - name: client
             # mark:next-client-version
             version: 1.0.6
-          - name: http-test-server
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -569,7 +595,6 @@ jobs:
           echo "ref=${image}@${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
 
       - name: Run Trivy vulnerability scanner
-        if: ${{ matrix.image.name != 'http-test-server' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.manifest.outputs.ref }}
@@ -579,7 +604,6 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL,HIGH
       - name: Upload Trivy scan results to GitHub Security tab
-        if: ${{ matrix.image.name != 'http-test-server' }}
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: trivy-results.sarif

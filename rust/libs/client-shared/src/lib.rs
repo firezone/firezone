@@ -18,7 +18,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::HashSet;
 use std::future;
 use std::io;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, UdpSocket as StdUdpSocket};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -83,11 +83,7 @@ impl Session {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-        is_internet_resource_active: bool,
-        dns_servers: Vec<IpAddr>,
-        additional_host_candidates: Vec<IpAddr>,
-        flow_logs_dir: Option<PathBuf>,
-        local_flow_logs: bool,
+        config: SessionConfig,
     ) -> io::Result<(Self, EventStream)> {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
@@ -98,11 +94,7 @@ impl Session {
                 Eventloop::new(
                     tcp_socket_factory,
                     udp_socket_factory,
-                    is_internet_resource_active,
-                    dns_servers,
-                    additional_host_candidates,
-                    flow_logs_dir,
-                    local_flow_logs,
+                    config,
                     portal,
                     cmd_rx,
                     resource_list_sender,
@@ -278,6 +270,80 @@ impl EventStream {
             seen_notifications: Default::default(),
         })
     }
+}
+
+/// The settings a [`Session`] starts with.
+pub struct SessionConfig {
+    pub(crate) listen_port: u16,
+    pub(crate) is_internet_resource_active: bool,
+    pub(crate) dns_servers: Vec<IpAddr>,
+    pub(crate) additional_host_candidates: Vec<IpAddr>,
+    pub(crate) flow_logs_dir: Option<PathBuf>,
+    pub(crate) local_flow_logs: bool,
+}
+
+impl SessionConfig {
+    /// Creates the settings of a session whose UDP sockets listen on `listen_port`.
+    pub fn new(listen_port: u16) -> Self {
+        Self {
+            listen_port,
+            is_internet_resource_active: false,
+            dns_servers: Vec::new(),
+            additional_host_candidates: Vec::new(),
+            flow_logs_dir: None,
+            local_flow_logs: false,
+        }
+    }
+
+    pub fn with_internet_resource_active(mut self, active: bool) -> Self {
+        self.is_internet_resource_active = active;
+        self
+    }
+
+    pub fn with_dns_servers(mut self, servers: Vec<IpAddr>) -> Self {
+        self.dns_servers = servers;
+        self
+    }
+
+    pub fn with_additional_host_candidates(mut self, ips: Vec<IpAddr>) -> Self {
+        self.additional_host_candidates = ips;
+        self
+    }
+
+    pub fn with_flow_logs_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.flow_logs_dir = dir;
+        self
+    }
+
+    pub fn with_local_flow_logs(mut self, enabled: bool) -> Self {
+        self.local_flow_logs = enabled;
+        self
+    }
+}
+
+/// Finds a UDP port that is free on both IP stacks.
+///
+/// Clients listen on a port of their own instead of a well-known one, so that several of them
+/// behind the same NAT don't compete for its mapping.
+pub fn free_udp_port() -> io::Result<u16> {
+    const ATTEMPTS: usize = 5;
+
+    for _ in 0..ATTEMPTS {
+        let port = StdUdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?
+            .local_addr()?
+            .port();
+
+        match StdUdpSocket::bind((Ipv6Addr::UNSPECIFIED, port)) {
+            Err(e) if e.kind() == io::ErrorKind::AddrInUse => continue,
+            // Anything else means there is no IPv6 stack to collide on.
+            Ok(_) | Err(_) => return Ok(port),
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::AddrInUse,
+        "Failed to find a UDP port that is free for IPv4 and IPv6",
+    ))
 }
 
 #[cfg(test)]

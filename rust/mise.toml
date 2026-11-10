@@ -15,6 +15,7 @@ auto_install = false
 # platform gets the bare binary; `bin` gives it a name the shim can use.
 "github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
+"aqua:sigstore/cosign" = { version = "3.1.4", os = ["linux"] }
 
 [tools."github:bencherdev/bencher"]
 version = "0.6.13"
@@ -141,14 +142,12 @@ echo "Done: perf-client.data${gateway:+ perf-gateway.data} perf-sched.data perf-
 """
 
 [tasks.setup-perf-env]
-description = "Apply the kernel sysctls for connlib perf benchmarking (larger socket + backlog buffers)."
+description = "Apply the kernel sysctls for connlib perf benchmarking (larger backlog buffers)."
 raw = true
 run = """
 set -u
 
 echo "Applying kernel sysctls ..."
-sudo sysctl -w net.core.wmem_max=2097152          # 2 MB, caps connlib's UDP sndbuf
-sudo sysctl -w net.core.rmem_max=16777216         # 16 MB, caps connlib's UDP rcvbuf = the RcvbufErr we measure
 sudo sysctl -w net.core.netdev_max_backlog=100000 # matches the netem limit
 sudo sysctl -w net.core.netdev_budget=5000        # drain more per softirq poll
 

@@ -416,6 +416,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
       {"API tokens", "api_tokens"},
       {"Auth providers", "auth_providers"},
       {"Client tokens", "client_tokens"},
+      {"Device tokens", "device_tokens"},
       {"Devices", "devices"},
       {"Directories", "directories"},
       {"Entra auth providers", "entra_auth_providers"},

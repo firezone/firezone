@@ -110,7 +110,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     devices
     sites
     site_devices
-    gateway_tokens
+    device_tokens
     policies
     resources
     client_tokens
@@ -163,7 +163,7 @@ config :portal, Portal.Changes.Consumer,
     devices
     external_identities
     policy_authorizations
-    gateway_tokens
+    device_tokens
     sites
     policies
     resources

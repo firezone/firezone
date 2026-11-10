@@ -864,7 +864,12 @@ defmodule Portal.Safe do
   end
 
   # Ahead of the wildcard grants below, so this type gets nothing it is not
-  # given here.
+  # given here: a Gateway reads its Site and registers and updates itself.
+  def permit(:read, Portal.Site, :legacy_gateway), do: :ok
+
+  def permit(action, Portal.Device, :legacy_gateway) when action in [:read, :insert, :update],
+    do: :ok
+
   def permit(_action, _schema, :legacy_gateway), do: {:error, :unauthorized}
 
   # Account permissions
@@ -981,9 +986,9 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Site, :api_client), do: :ok
   def permit(:read, Portal.Site, _), do: :ok
 
-  # GatewayToken permissions
-  def permit(_action, Portal.GatewayToken, :account_admin_user), do: :ok
-  def permit(_action, Portal.GatewayToken, :api_client), do: :ok
+  # DeviceToken permissions
+  def permit(_action, Portal.DeviceToken, :account_admin_user), do: :ok
+  def permit(_action, Portal.DeviceToken, :api_client), do: :ok
 
   # Resource permissions
   def permit(_action, Portal.Resource, :account_admin_user), do: :ok

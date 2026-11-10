@@ -1,4 +1,4 @@
-defmodule Portal.Changes.Hooks.GatewayTokens do
+defmodule Portal.Changes.Hooks.DeviceTokens do
   @behaviour Portal.Changes.Hooks
   alias Portal.PG
   import Portal.SchemaHelpers
@@ -11,7 +11,7 @@ defmodule Portal.Changes.Hooks.GatewayTokens do
 
   @impl true
   def on_delete(_lsn, old_data) do
-    token = struct_from_params(Portal.GatewayToken, old_data)
+    token = struct_from_params(Portal.DeviceToken, old_data)
     PG.deliver(token.id, :disconnect)
     :ok
   end

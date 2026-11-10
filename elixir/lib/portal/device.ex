@@ -122,10 +122,6 @@ defmodule Portal.Device do
     has_one :site_device, Portal.SiteDevice, foreign_key: :device_id, references: :id
     has_one :site, through: [:site_device, :site]
 
-    has_many :gateway_tokens, Portal.GatewayToken,
-      foreign_key: :device_id,
-      references: :id
-
     # Latest-session fields, written by the connect flush. The flush probes
     # the token columns' referents and fails entries whose token was deleted;
     # the FKs nilify on token delete so the columns never dangle.

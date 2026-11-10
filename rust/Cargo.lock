@@ -2614,7 +2614,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli"
-version = "1.5.21"
+version = "1.5.22"
 dependencies = [
  "anyhow-ext",
  "clap",
@@ -2631,7 +2631,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.6.5"
+version = "1.6.6"
 dependencies = [
  "anyhow-ext",
  "async-runtime",
@@ -2646,6 +2646,7 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "futures-bounded",
+ "git-sha",
  "hex",
  "hickory-resolver",
  "humantime",
@@ -2680,7 +2681,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.5.21"
+version = "1.5.22"
 dependencies = [
  "admx-macro",
  "anyhow-ext",
@@ -2765,7 +2766,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.5.16"
+version = "1.5.17"
 dependencies = [
  "anyhow-ext",
  "async-runtime",
@@ -2776,6 +2777,7 @@ dependencies = [
  "flow-log-upload",
  "flow-log-writer",
  "futures",
+ "git-sha",
  "humantime",
  "ip-packet",
  "ip_network",
@@ -2793,7 +2795,6 @@ dependencies = [
  "rustls",
  "sd-notify",
  "secrecy",
- "socket-factory",
  "telemetry",
  "tokio",
  "tracing",
@@ -2851,6 +2852,7 @@ dependencies = [
  "ebpf-shared",
  "eventloop-budget",
  "futures",
+ "git-sha",
  "logging",
  "mimalloc",
  "mio",
@@ -2876,7 +2878,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-core",
- "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
 ]
@@ -3431,6 +3432,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "git-sha"
+version = "0.1.0"
+
+[[package]]
 name = "glib"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3932,17 +3937,6 @@ dependencies = [
  "tokio-util",
  "tracing",
  "webpki-roots 1.0.11",
-]
-
-[[package]]
-name = "http-test-server"
-version = "0.1.0"
-dependencies = [
- "anyhow-ext",
- "axum",
- "futures",
- "serde",
- "tokio",
 ]
 
 [[package]]
@@ -4772,6 +4766,7 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "futures",
+ "futures-bounded",
  "tokio",
  "tracing",
 ]
@@ -6613,6 +6608,7 @@ dependencies = [
  "bytecodec",
  "derive_more",
  "ebpf-shared",
+ "git-sha",
  "hex",
  "hmac 0.13.0",
  "logging",
@@ -8952,22 +8948,6 @@ version = "0.1.0"
 source = "git+https://github.com/tokio-rs/tracing?branch=main#a3d8b7fd3a8bafd1b98f9a6f48418640aab0af8a"
 dependencies = [
  "tracing",
-]
-
-[[package]]
-name = "tracing-opentelemetry"
-version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a904802a1b902f43638b677ff2a650847e3b4404101b6c586d648e8c1e3e8fe"
-dependencies = [
- "js-sys",
- "opentelemetry",
- "smallvec",
- "tracing",
- "tracing-core",
- "tracing-log",
- "tracing-subscriber",
- "web-time",
 ]
 
 [[package]]

@@ -158,10 +158,6 @@ struct Cli {
     #[arg(default_value = known_dirs::default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: PathBuf,
 
-    /// Increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
-    #[arg(long, env = "FIREZONE_INC_BUF", hide = true, default_value_t = false)]
-    inc_buf: bool,
-
     /// Track flow logs even when the portal has them disabled, and emit them
     /// to the log output by adding the `flow_logs=trace` log directive.
     ///
@@ -181,10 +177,6 @@ enum MetricsExporter {
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
-    }
-
-    fn is_inc_buf_allowed(&self) -> bool {
-        self.inc_buf
     }
 }
 
@@ -308,6 +300,7 @@ fn try_main() -> Result<()> {
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
+        git_sha = git_sha::git_sha(),
         system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         "`headless-client` started logging"
     );
@@ -337,20 +330,6 @@ fn try_main() -> Result<()> {
     dns_controller.deactivate()?;
 
     let rt = async_runtime::current_thread()?;
-
-    if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
-        let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
-        let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
-
-        match std::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()) {
-            Ok(()) => tracing::info!("Set `core.rmem_max` to {recv_buf_size}",),
-            Err(e) => tracing::info!("Failed to increase `core.rmem_max`: {e}"),
-        };
-        match std::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()) {
-            Ok(()) => tracing::info!("Set `core.wmem_max` to {send_buf_size}",),
-            Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
-        };
-    }
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id.clone() {
@@ -472,15 +451,19 @@ fn try_main() -> Result<()> {
             flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
         }
 
+        let listen_port =
+            client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+        let config = client_shared::SessionConfig::new(listen_port)
+            .with_internet_resource_active(cli.activate_internet_resource)
+            .with_dns_servers(dns_controller.system_resolvers())
+            .with_additional_host_candidates(cli.additional_host_candidates.clone())
+            .with_flow_logs_dir(flow_logs_dir.clone())
+            .with_local_flow_logs(cli.flow_logs);
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            cli.activate_internet_resource,
-            dns_controller.system_resolvers(),
-            cli.additional_host_candidates.clone(),
-            flow_logs_dir.clone(),
-            cli.flow_logs,
+            config,
         )
         .context("Failed to start connlib")?;
 

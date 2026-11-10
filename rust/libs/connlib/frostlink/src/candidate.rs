@@ -1,7 +1,18 @@
+use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, SocketAddr};
 
+/// A candidate's addresses plus its SDP `priority`.
+///
+/// Equality and hashing only consider the addresses: the priority ranks a
+/// candidate but does not identify it.
+#[derive(Debug, Clone, Copy)]
+pub struct Candidate {
+    address: Address,
+    priority: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Candidate {
+pub enum Address {
     Host(SocketAddr),
     ServerReflexive { addr: SocketAddr, local: SocketAddr },
     PeerReflexive(SocketAddr),
@@ -10,76 +21,107 @@ pub enum Candidate {
 
 impl Candidate {
     pub const fn host(addr: SocketAddr) -> Self {
-        Self::Host(addr)
+        Self::new(Address::Host(addr))
     }
 
     pub const fn server_reflexive(addr: SocketAddr, local: SocketAddr) -> Self {
-        Self::ServerReflexive { addr, local }
+        Self::new(Address::ServerReflexive { addr, local })
     }
 
     pub const fn peer_reflexive(addr: SocketAddr) -> Self {
-        Self::PeerReflexive(addr)
+        Self::new(Address::PeerReflexive(addr))
     }
 
     pub const fn relayed(addr: SocketAddr, local: SocketAddr) -> Self {
-        Self::Relayed { addr, local }
+        Self::new(Address::Relayed { addr, local })
+    }
+
+    const fn new(address: Address) -> Self {
+        let type_preference: u32 = match address {
+            Address::Host(_) => 126,
+            Address::ServerReflexive { .. } => 100,
+            Address::PeerReflexive(_) => 100,
+            Address::Relayed { .. } => 0,
+        };
+
+        Self {
+            address,
+            priority: (type_preference << 24) | 255,
+        }
+    }
+
+    pub const fn with_local_preference(mut self, local_preference: u16) -> Self {
+        self.priority = (self.priority & !(0xffff << 8)) | ((local_preference as u32) << 8);
+        self
+    }
+
+    pub const fn address(&self) -> Address {
+        self.address
+    }
+
+    /// The SDP `priority`: `type_preference << 24 | local_preference << 8 | 255`.
+    ///
+    /// The local preference defaults to 0; a received candidate keeps whatever
+    /// the peer sent.
+    pub const fn priority(&self) -> u32 {
+        self.priority
     }
 
     pub const fn addr(&self) -> SocketAddr {
-        match self {
-            Self::Host(a) => *a,
-            Self::ServerReflexive { addr, .. } | Self::Relayed { addr, .. } => *addr,
-            Self::PeerReflexive(a) => *a,
+        match self.address {
+            Address::Host(a) => a,
+            Address::ServerReflexive { addr, .. } | Address::Relayed { addr, .. } => addr,
+            Address::PeerReflexive(a) => a,
         }
     }
 
     /// For `Relayed`, the allocation address — pair keys and the
     /// allocations-table lookup hang off this.
     pub const fn local(&self) -> SocketAddr {
-        match self {
-            Self::Host(a) => *a,
-            Self::ServerReflexive { local, .. } => *local,
-            Self::PeerReflexive(a) => *a,
-            Self::Relayed { addr, .. } => *addr,
+        match self.address {
+            Address::Host(a) => a,
+            Address::ServerReflexive { local, .. } => local,
+            Address::PeerReflexive(a) => a,
+            Address::Relayed { addr, .. } => addr,
         }
     }
 
     pub const fn kind(&self) -> CandidateKind {
-        match self {
-            Self::Host(_) => CandidateKind::Host,
-            Self::ServerReflexive { .. } => CandidateKind::ServerReflexive,
-            Self::PeerReflexive(_) => CandidateKind::PeerReflexive,
-            Self::Relayed { .. } => CandidateKind::Relayed,
+        match self.address {
+            Address::Host(_) => CandidateKind::Host,
+            Address::ServerReflexive { .. } => CandidateKind::ServerReflexive,
+            Address::PeerReflexive(_) => CandidateKind::PeerReflexive,
+            Address::Relayed { .. } => CandidateKind::Relayed,
         }
     }
 
     pub const fn is_relayed(&self) -> bool {
-        matches!(self, Self::Relayed { .. })
+        matches!(self.address, Address::Relayed { .. })
     }
 
     pub const fn is_family_matched(&self) -> bool {
-        match self {
-            Self::Host(_) | Self::ServerReflexive { .. } => true,
-            Self::PeerReflexive(_) => true,
-            Self::Relayed { addr, local } => addr.is_ipv4() == local.is_ipv4(),
+        match self.address {
+            Address::Host(_) | Address::ServerReflexive { .. } => true,
+            Address::PeerReflexive(_) => true,
+            Address::Relayed { addr, local } => addr.is_ipv4() == local.is_ipv4(),
         }
     }
 
     /// Encodes this candidate as an SDP `candidate:` attribute value.
     ///
-    /// `foundation` and `priority` are synthesised; a `srflx`/`relay`
-    /// candidate's base is carried in `raddr`/`rport` so the codec round-trips.
+    /// `foundation` is synthesised; a `srflx`/`relay` candidate's base is
+    /// carried in `raddr`/`rport` so the codec round-trips.
     pub fn to_sdp_string(self) -> String {
         let addr = self.addr();
-        let (typ, related) = match self {
-            Self::Host(_) => ("host", None),
-            Self::ServerReflexive { local, .. } => ("srflx", Some(local)),
-            Self::PeerReflexive(_) => ("prflx", None),
-            Self::Relayed { local, .. } => ("relay", Some(local)),
+        let (typ, related) = match self.address {
+            Address::Host(_) => ("host", None),
+            Address::ServerReflexive { local, .. } => ("srflx", Some(local)),
+            Address::PeerReflexive(_) => ("prflx", None),
+            Address::Relayed { local, .. } => ("relay", Some(local)),
         };
 
         let foundation = self.sdp_foundation(related);
-        let priority = self.sdp_priority();
+        let priority = self.priority;
 
         let mut out = format!(
             "candidate:{foundation} 1 udp {priority} {ip} {port} typ {typ}",
@@ -109,7 +151,11 @@ impl Candidate {
         if !transport.eq_ignore_ascii_case("udp") {
             return Err(E::UnsupportedTransport);
         }
-        let _priority = fields.next().ok_or(E::Malformed)?;
+        let priority = fields
+            .next()
+            .ok_or(E::Malformed)?
+            .parse::<u32>()
+            .map_err(|_| E::Malformed)?;
         let ip = fields.next().ok_or(E::Malformed)?;
         let port = fields.next().ok_or(E::Malformed)?;
         let addr = parse_socket(ip, port)?;
@@ -133,13 +179,21 @@ impl Candidate {
             None => None,
         };
 
-        match typ {
-            "host" => Ok(Self::host(addr)),
-            "srflx" => Ok(Self::server_reflexive(addr, related.ok_or(E::MissingBase)?)),
-            "prflx" => Ok(Self::peer_reflexive(addr)),
-            "relay" => Ok(Self::relayed(addr, related.ok_or(E::MissingBase)?)),
-            _ => Err(E::UnknownType),
-        }
+        let address = match typ {
+            "host" => Address::Host(addr),
+            "srflx" => Address::ServerReflexive {
+                addr,
+                local: related.ok_or(E::MissingBase)?,
+            },
+            "prflx" => Address::PeerReflexive(addr),
+            "relay" => Address::Relayed {
+                addr,
+                local: related.ok_or(E::MissingBase)?,
+            },
+            _ => return Err(E::UnknownType),
+        };
+
+        Ok(Self { address, priority })
     }
 
     /// Stable hash of the candidate's identity for the SDP `foundation`. FNV-1a
@@ -153,17 +207,19 @@ impl Candidate {
         }
         hash
     }
+}
 
-    /// SDP `priority`; only the `host > srflx > relay` ordering matters here.
-    fn sdp_priority(&self) -> u32 {
-        let type_preference: u32 = match self.kind() {
-            CandidateKind::Host => 126,
-            CandidateKind::ServerReflexive => 100,
-            CandidateKind::PeerReflexive => 100,
-            CandidateKind::Relayed => 0,
-        };
+impl PartialEq for Candidate {
+    fn eq(&self, other: &Self) -> bool {
+        self.address == other.address
+    }
+}
 
-        (type_preference << 24) | (0xffff << 8) | 255
+impl Eq for Candidate {}
+
+impl Hash for Candidate {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.address.hash(state);
     }
 }
 
@@ -322,24 +378,34 @@ mod tests {
         assert_eq!(c.to_sdp_string(), c.to_sdp_string());
     }
 
-    fn priority(c: &Candidate) -> u32 {
-        // `candidate:<foundation> <component> <transport> <priority> ...`
-        c.to_sdp_string()
-            .split_ascii_whitespace()
-            .nth(3)
-            .unwrap()
-            .parse()
-            .unwrap()
-    }
-
     #[test]
     fn sdp_priority_orders_host_above_srflx_above_relay() {
-        let host = priority(&Candidate::host(addr()));
-        let srflx = priority(&Candidate::server_reflexive(addr(), other_addr()));
-        let relay = priority(&Candidate::relayed(addr(), other_addr()));
+        let host = Candidate::host(addr()).priority();
+        let srflx = Candidate::server_reflexive(addr(), other_addr()).priority();
+        let relay = Candidate::relayed(addr(), other_addr()).priority();
 
         assert!(host > srflx);
         assert!(srflx > relay);
+    }
+
+    #[test]
+    fn default_local_preference_is_zero() {
+        let priority = Candidate::host(addr()).priority();
+
+        assert_eq!((priority >> 8) & 0xffff, 0);
+    }
+
+    #[test]
+    fn sdp_priority_round_trips() {
+        let sdp = "candidate:1 1 udp 2130706431 1.1.1.1 80 typ host";
+
+        let candidate = Candidate::from_sdp_string(sdp).unwrap();
+
+        assert_eq!(candidate.priority(), 2130706431);
+        assert_eq!(
+            candidate.to_sdp_string().split_ascii_whitespace().nth(3),
+            Some("2130706431")
+        );
     }
 
     #[test]

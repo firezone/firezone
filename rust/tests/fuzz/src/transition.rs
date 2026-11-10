@@ -175,48 +175,6 @@ pub enum Transition {
 }
 
 impl Transition {
-    /// Whether the DNS queries and responses that accumulate across transitions are stale
-    /// once this transition is applied.
-    pub fn clears_packets(&self) -> bool {
-        match self {
-            Transition::AddResource(_) => true,
-            Transition::RemoveResource(_) => true,
-            Transition::EditResource(edit) => classify(&edit.old, &edit.new).clears_packets(),
-            Transition::UpdateDevicePoolMembers { .. } => true,
-            Transition::SetInternetResourceState { .. } => true,
-            Transition::SendIcmpPacketOnNewFlow { .. } => false,
-            Transition::SendIcmpPacketOnExistingFlow { .. } => false,
-            Transition::SendUdpPacketOnNewFlow { .. } => false,
-            Transition::SendUdpPacketOnExistingFlow { .. } => false,
-            Transition::ConnectTcp { .. } => false,
-            Transition::SendTcpData { .. } => false,
-            Transition::SendDnsQueries(_) => false,
-            Transition::SendDnsResourcePtrQuery { .. } => false,
-            Transition::UpdateSystemDnsServers { .. } => false,
-            Transition::UpdateUpstreamDo53Servers(_) => false,
-            Transition::UpdateUpstreamDoHServers(_) => false,
-            Transition::UpdateUpstreamSearchDomain(_) => false,
-            Transition::RoamClient { .. } => false,
-            Transition::RebindClientNat { .. } => false,
-            Transition::ReconnectPortal { .. } => false,
-            Transition::RestartClient { .. } => false,
-            Transition::DeployNewRelays(_) => false,
-            Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle { .. } => false,
-            Transition::RebootRelaysWhilePartitioned(_) => false,
-            Transition::ExhaustRelayPorts(_) => false,
-            Transition::FreeRelayPorts(_) => false,
-            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
-            Transition::RevokeGatewayAuthorization(_) => true,
-            Transition::ExpirePeerAuthorizations { .. } => true,
-            Transition::RevokePeerAuthorization { .. } => true,
-            Transition::UpdateDnsRecords { .. } => false,
-            Transition::CrashClient { .. } => false,
-            Transition::CrashGateway { .. } => false,
-            Transition::SpuriousPublicKeyChanged { .. } => false,
-        }
-    }
-
     /// Returns whether the TCP connection `flow` survives this transition.
     ///
     /// TCP retransmits whatever the tunnel loses while it reconnects, so a connection
@@ -405,21 +363,6 @@ fn is_device_pool(resource: &Resource) -> bool {
 }
 
 impl EditEffect<'_> {
-    fn clears_packets(&self) -> bool {
-        match self {
-            EditEffect::Metadata => false,
-            EditEffect::Filters { affects_tcp, .. } => *affects_tcp,
-            EditEffect::Access { affects_tcp, .. } => *affects_tcp,
-            EditEffect::DevicePoolRouting => false,
-            EditEffect::Type { old, .. } => match old {
-                Resource::Dns(_) => true,
-                Resource::Cidr(_) => false,
-                Resource::Internet(_) => false,
-                Resource::DevicePool(_) => false,
-            },
-        }
-    }
-
     fn retains_flow(&self, route: Route) -> bool {
         match (self, route) {
             (EditEffect::Metadata, _) => true,

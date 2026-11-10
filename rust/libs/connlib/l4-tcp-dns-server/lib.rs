@@ -3,37 +3,68 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::{Context as _, Result};
-use futures::{
-    FutureExt, StreamExt as _, future::BoxFuture, stream::FuturesUnordered, task::AtomicWaker,
-};
+use futures::{FutureExt as _, channel::oneshot, future::BoxFuture, task::AtomicWaker};
+use futures_bounded::{Delay, FuturesMap, PushError};
 use std::{
     collections::HashMap,
     io,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     task::{Context, Poll},
+    time::Duration,
 };
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     net::{TcpListener, TcpStream},
 };
 
-#[derive(Default)]
+/// How long we wait for a client to send a query, or for a response to be sent to the client, before we close the connection.
+const TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How many TCP connections one [`Server`] keeps open at most.
+///
+/// A client keeps one connection open to each server it sends queries to, and a Gateway supports up to 1000 clients.
+///
+/// When this limit is hit, the server accepts each new connection and closes it at once, without reading a query.
+/// Open connections are not affected.
+const MAX_CONNECTIONS: usize = 1024;
+
+/// How many TCP connections one remote IP can keep open at most.
+///
+/// A client needs one, and a second one for a short time while it reconnects.
+///
+/// When this limit is hit, the server accepts each new connection from that IP and closes it at once, without reading a query.
+/// Other IPs and open connections are not affected.
+const MAX_CONNECTIONS_PER_IP: usize = 4;
+
 pub struct Server {
     listener: Option<TcpListener>,
 
-    /// Tracks open TCP streams by their remote address.
-    ///
-    /// After reading a query from the stream, we keep the stream around in here to send a response back.
-    tcp_streams_by_remote: HashMap<SocketAddr, TcpStream>,
+    /// One future for each open connection, either reading the next query or sending a response.
+    connections: FuturesMap<SocketAddr, Result<Step>>,
 
-    /// A set of futures that read DNS queries from TCP streams.
-    reading_tcp_queries: FuturesUnordered<
-        BoxFuture<'static, Result<Option<(SocketAddr, dns_types::Query, TcpStream)>>>,
-    >,
-    /// A set of futures that send DNS responses over TCP streams.
-    sending_tcp_responses: FuturesUnordered<BoxFuture<'static, Result<(TcpStream, SocketAddr)>>>,
+    /// Where to send the response for a query we've read, by remote address.
+    pending_responses: HashMap<SocketAddr, oneshot::Sender<dns_types::Response>>,
 
     waker: AtomicWaker,
+}
+
+/// The type of every future in [`Server::connections`], so [`FuturesMap::iter_of_type`] can find all of them.
+type ConnectionStep = BoxFuture<'static, Result<Step>>;
+
+enum Step {
+    ReadQuery(Option<(dns_types::Query, TcpStream)>),
+    SentResponse(TcpStream),
+}
+
+impl Default for Server {
+    fn default() -> Self {
+        Self {
+            listener: None,
+            connections: FuturesMap::new(|| Delay::tokio(TIMEOUT), MAX_CONNECTIONS),
+            pending_responses: HashMap::default(),
+            waker: AtomicWaker::default(),
+        }
+    }
 }
 
 impl Server {
@@ -56,75 +87,73 @@ impl Server {
         to: SocketAddr,
         response: dns_types::Response,
     ) -> io::Result<()> {
-        let mut stream = self
-            .tcp_streams_by_remote
+        self.pending_responses
             .remove(&to)
-            .ok_or_else(|| io::Error::other("No TCP stream"))?;
-
-        self.sending_tcp_responses.push(
-            async move {
-                let response = response.into_bytes(u16::MAX); // DNS over TCP has a 16-bit length field, we can't encode anything bigger than that.
-
-                let len = response.len() as u16;
-                let len = len.to_be_bytes();
-
-                stream
-                    .write_all(&len)
-                    .await
-                    .context("Failed to write TCP DNS header")?;
-                stream
-                    .write_all(&response)
-                    .await
-                    .context("Failed to write TCP DNS message")?;
-
-                Ok((stream, to))
-            }
-            .boxed(),
-        );
-
-        Ok(())
+            .ok_or_else(|| io::Error::other("No TCP stream"))?
+            .send(response)
+            .map_err(|_| io::Error::other("TCP stream closed"))
     }
 
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<Query>> {
         loop {
-            if let Poll::Ready(Some(result)) = self.sending_tcp_responses.poll_next_unpin(cx) {
-                let (stream, from) = result
-                    .context("Failed to send TCP DNS response")
-                    .map_err(anyhow_to_io)?;
+            if let Poll::Ready((remote, result)) = self.connections.poll_unpin(cx) {
+                let result = match result {
+                    Ok(result) => result,
+                    Err(_timeout) => {
+                        tracing::debug!(%remote, "Closing idle TCP DNS connection");
 
-                // We've successfully sent a response back, try to read another query. (Clients may reuse TCP streams for multiple queries.)
-                self.reading_tcp_queries
-                    .push(read_tcp_query(stream, from).boxed());
-
-                continue;
-            }
-
-            if let Poll::Ready(Some(result)) = self.reading_tcp_queries.poll_next_unpin(cx) {
-                let Some((from, message, stream)) = result
-                    .context("Failed to read TCP DNS query")
-                    .map_err(anyhow_to_io)?
-                else {
-                    continue;
+                        self.pending_responses.remove(&remote);
+                        continue;
+                    }
                 };
 
-                let local = stream.local_addr()?;
+                match result {
+                    Ok(Step::ReadQuery(Some((message, stream)))) => {
+                        let local = stream.local_addr();
 
-                // Store the stream so we can send a response back later.
-                // We don't need to index by the local address because we only ever listen on a single socket.
-                self.tcp_streams_by_remote.insert(from, stream);
+                        let (tx, rx) = oneshot::channel();
+                        self.pending_responses.insert(remote, tx);
+                        let _ = self.try_push(remote, send_response(stream, rx).boxed());
 
-                return Poll::Ready(Ok(Query {
-                    local,
-                    remote: from,
-                    message,
-                }));
+                        return Poll::Ready(local.map(|local| Query {
+                            local,
+                            remote,
+                            message,
+                        }));
+                    }
+                    Ok(Step::SentResponse(stream)) => {
+                        // Clients may reuse TCP streams for multiple queries.
+                        let _ = self.try_push(remote, read_query(stream).boxed());
+
+                        continue;
+                    }
+                    Ok(Step::ReadQuery(None)) => continue,
+                    Err(e) => {
+                        self.pending_responses.remove(&remote);
+
+                        return Poll::Ready(Err(anyhow_to_io(e)));
+                    }
+                }
             }
 
             if let Some(tcp) = self.listener.as_mut()
                 && let Poll::Ready((stream, from)) = tcp.poll_accept(cx)?
             {
-                self.reading_tcp_queries
-                    .push(read_tcp_query(stream, from).boxed());
+                if self.num_connections_from(from.ip()) >= MAX_CONNECTIONS_PER_IP {
+                    tracing::debug!(%from, "Too many TCP DNS connections from IP; closing new connection");
+                    continue;
+                }
+
+                match self.try_push(from, read_query(stream).boxed()) {
+                    Ok(()) => {}
+                    Err(PushError::BeyondCapacity(_)) => {
+                        tracing::debug!(%from, "Too many TCP DNS connections; closing new connection");
+                    }
+                    Err(PushError::Replaced(_)) => {
+                        self.pending_responses.remove(&from);
+                    }
+                }
+
                 continue;
             }
 
@@ -132,17 +161,61 @@ impl Server {
             return Poll::Pending;
         }
     }
+
+    /// Pushes the next step of a connection.
+    ///
+    /// Pushing the step that follows a completed one can't fail: the completed step has freed its slot and its key.
+    fn try_push(
+        &mut self,
+        remote: SocketAddr,
+        step: ConnectionStep,
+    ) -> Result<(), PushError<impl Sized + use<>>> {
+        self.connections.try_push(remote, step)
+    }
+
+    fn num_connections_from(&self, ip: IpAddr) -> usize {
+        self.connections
+            .iter_of_type::<ConnectionStep>()
+            .filter(|(remote, _)| remote.ip() == ip)
+            .count()
+    }
 }
 
 fn anyhow_to_io(e: anyhow::Error) -> io::Error {
     io::Error::other(format!("{e:#}"))
 }
 
-/// Read a TCP query from a stream, returning the source address, the message and stream so we can later send a response back.
-async fn read_tcp_query(
+async fn read_query(mut stream: TcpStream) -> Result<Step> {
+    let query = read_message(&mut stream)
+        .await
+        .context("Failed to read TCP DNS query")?;
+
+    Ok(Step::ReadQuery(query.map(|query| (query, stream))))
+}
+
+async fn send_response(
     mut stream: TcpStream,
-    from: SocketAddr,
-) -> Result<Option<(SocketAddr, dns_types::Query, TcpStream)>> {
+    response: oneshot::Receiver<dns_types::Response>,
+) -> Result<Step> {
+    let response = response.await.context("No response for TCP DNS query")?;
+    let response = response.into_bytes(u16::MAX); // DNS over TCP has a 16-bit length field, we can't encode anything bigger than that.
+
+    let len = response.len() as u16;
+    let len = len.to_be_bytes();
+
+    stream
+        .write_all(&len)
+        .await
+        .context("Failed to write TCP DNS header")?;
+    stream
+        .write_all(&response)
+        .await
+        .context("Failed to write TCP DNS message")?;
+
+    Ok(Step::SentResponse(stream))
+}
+
+async fn read_message(stream: &mut TcpStream) -> Result<Option<dns_types::Query>> {
     let mut buf = [0; 2];
     match stream.read_exact(&mut buf).await {
         Ok(2) => {}
@@ -161,7 +234,7 @@ async fn read_tcp_query(
 
     let message = dns_types::Query::parse(&buf).context("Failed to parse DNS message")?;
 
-    Ok(Some((from, message, stream)))
+    Ok(Some(message))
 }
 
 pub struct Query {
@@ -254,6 +327,79 @@ mod tests {
         assert!(dig(socket).await.success());
 
         assert!(!server_task.is_finished());
+
+        server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn idle_connection_times_out() {
+        let mut server = Server::default();
+        server
+            .rebind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+            .unwrap();
+        let socket = server.listener.as_ref().unwrap().local_addr().unwrap();
+
+        let start = tokio::time::Instant::now();
+        assert_connection_closed(server, socket, TIMEOUT * 2).await;
+
+        assert!(start.elapsed() >= TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn closes_connections_over_limit() {
+        let mut server = Server::default();
+        server
+            .rebind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+            .unwrap();
+        let socket = server.listener.as_ref().unwrap().local_addr().unwrap();
+
+        for port in 0..MAX_CONNECTIONS as u16 {
+            server
+                .try_push(
+                    SocketAddr::from((Ipv4Addr::new(10, 0, 0, 1), port)),
+                    futures::future::pending().boxed(),
+                )
+                .unwrap();
+        }
+
+        assert_connection_closed(server, socket, Duration::from_secs(5)).await;
+    }
+
+    #[tokio::test]
+    async fn closes_connections_over_per_ip_limit() {
+        let mut server = Server::default();
+        server
+            .rebind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+            .unwrap();
+        let socket = server.listener.as_ref().unwrap().local_addr().unwrap();
+
+        for port in 0..MAX_CONNECTIONS_PER_IP as u16 {
+            server
+                .try_push(
+                    SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
+                    futures::future::pending().boxed(),
+                )
+                .unwrap();
+        }
+
+        assert_connection_closed(server, socket, Duration::from_secs(5)).await;
+    }
+
+    async fn assert_connection_closed(mut server: Server, socket: SocketAddr, within: Duration) {
+        let server_task = tokio::spawn(async move {
+            loop {
+                let _ = poll_fn(|cx| server.poll(cx)).await;
+            }
+        });
+
+        let mut client = TcpStream::connect(socket).await.unwrap();
+
+        let read = tokio::time::timeout(within, client.read(&mut [0; 1]))
+            .await
+            .expect("Server should close the connection")
+            .unwrap();
+
+        assert_eq!(read, 0);
 
         server_task.abort();
     }

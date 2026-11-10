@@ -1829,7 +1829,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
 
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.GatewayTokens.on_delete(lsn, data)
+      Changes.Hooks.DeviceTokens.on_delete(lsn, data)
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}

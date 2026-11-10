@@ -51,7 +51,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(site, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token))
+      |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -114,7 +114,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token))
+      |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
     else
       {:error, %Ecto.Changeset{errors: errors} = changeset} ->
         if unique_violation?(errors) do
@@ -135,7 +135,7 @@ defmodule PortalAPI.GatewayTokenController do
       "Mints a replacement token for the gateway. A current token the gateway " <>
         "has connected with keeps working until the gateway first connects " <>
         "with the replacement or " <>
-        "#{Portal.GatewayToken.rotation_grace_hours()} hours elapse, whichever " <>
+        "#{Portal.DeviceToken.rotation_grace_hours()} hours elapse, whichever " <>
         "comes first; a token no gateway has ever connected with is replaced " <>
         "immediately. Rotating again before the gateway picks up the " <>
         "replacement replaces only the pending token and never invalidates the " <>
@@ -177,7 +177,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.rotate_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token))
+      |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -274,7 +274,7 @@ defmodule PortalAPI.GatewayTokenController do
     alias Portal.Device
     alias Portal.Safe
     alias Portal.Site
-    alias Portal.GatewayToken
+    alias Portal.DeviceToken
     alias Portal.SiteDevice
 
     def fetch_gateway(site_id, id, subject) do
@@ -317,7 +317,7 @@ defmodule PortalAPI.GatewayTokenController do
       # tokens, which have site_id set) or via its owning device
       # (single-owner tokens, which have device_id set and site_id nil).
       result =
-        from(t in GatewayToken, as: :tokens, where: t.id == ^id)
+        from(t in DeviceToken, as: :tokens, where: t.id == ^id)
         |> join(:left, [tokens: t], sd in SiteDevice,
           on: sd.device_id == t.device_id and sd.account_id == t.account_id,
           as: :site_device
@@ -334,15 +334,18 @@ defmodule PortalAPI.GatewayTokenController do
     end
 
     def delete_token(token, subject) do
-      token
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      from(t in DeviceToken, where: t.account_id == ^token.account_id and t.id == ^token.id)
+      |> Portal.Authentication.delete_gateway_tokens(subject)
+      |> case do
+        {1, _} -> {:ok, token}
+        {0, _} -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+      end
     end
 
     def delete_all_tokens(site, subject) do
-      from(t in GatewayToken, where: t.site_id == ^site.id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
+      from(t in DeviceToken, where: t.site_id == ^site.id)
+      |> Portal.Authentication.delete_gateway_tokens(subject)
     end
   end
 end

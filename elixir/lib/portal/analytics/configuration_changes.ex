@@ -30,7 +30,7 @@ defmodule Portal.Analytics.ConfigurationChanges do
     "accounts" => "account",
     "actors" => "actor",
     "api_tokens" => "api_token",
-    "gateway_tokens" => "gateway_token",
+    "device_tokens" => "device_token",
     "groups" => "group",
     "policies" => "policy",
     "resources" => "resource",
