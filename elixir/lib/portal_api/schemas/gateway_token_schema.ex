@@ -11,6 +11,7 @@ defmodule PortalAPI.Schemas.GatewayToken do
                :account_id,
                :actor_id,
                :auth_provider_id,
+               :client_token_id,
                :device_id,
                :expires_at,
                :inserted_at,

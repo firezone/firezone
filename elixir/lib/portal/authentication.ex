@@ -31,7 +31,7 @@ defmodule Portal.Authentication do
     |> put_change(:secret_fragment, secret_fragment)
     |> put_change(:secret_salt, secret_salt)
     |> put_change(:secret_hash, secret_hash)
-    |> Database.insert_token()
+    |> Database.insert_client_token()
   end
 
   # Non-interactive client token - issued directly by an admin (no sign-in flow,
@@ -55,7 +55,7 @@ defmodule Portal.Authentication do
     |> cast(attrs, [:expires_at])
     |> validate_required([:expires_at])
     |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
-    |> Database.insert_token(subject)
+    |> Database.insert_client_token(subject)
   end
 
   # API Tokens
@@ -379,8 +379,7 @@ defmodule Portal.Authentication do
   def verify_relay_token(encoded_token) when is_binary(encoded_token) do
     verify_infrastructure_token(
       encoded_token,
-      "relay",
-      "relay_group",
+      ["relay", "relay_group"],
       &Database.fetch_relay_token/1
     )
   end
@@ -389,8 +388,7 @@ defmodule Portal.Authentication do
     with {:ok, token} <-
            verify_infrastructure_token(
              encoded_token,
-             "gateway",
-             "gateway_group",
+             ["device", "gateway", "gateway_group"],
              &Database.fetch_gateway_token/2
            ) do
       :ok = confirm_gateway_token_rotation(token)
@@ -419,14 +417,14 @@ defmodule Portal.Authentication do
 
   defp confirm_gateway_token_rotation(_token), do: :ok
 
-  defp verify_infrastructure_token(encoded_token, current_salt, legacy_salt, fetch_fn) do
+  defp verify_infrastructure_token(encoded_token, salts, fetch_fn) do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     base_salt = Keyword.fetch!(config, :salt)
 
     with [nonce, signed] <- String.split(encoded_token, ".", parts: 2),
          {:ok, {account_id, id, fragment}} <-
-           decode_infrastructure_token(signed, key_base, base_salt, current_salt, legacy_salt),
+           decode_infrastructure_token(signed, key_base, base_salt, salts),
          {:ok, token} <- apply_fetch(fetch_fn, account_id, id),
          :ok <- verify_secret_hash(token, nonce, fragment) do
       {:ok, token}
@@ -440,14 +438,13 @@ defmodule Portal.Authentication do
   defp apply_fetch(fetch_fn, account_id, id) when is_function(fetch_fn, 2),
     do: fetch_fn.(account_id, id)
 
-  defp decode_infrastructure_token(signed, key_base, base_salt, current_salt, legacy_salt) do
-    case Plug.Crypto.verify(key_base, base_salt <> current_salt, signed, max_age: :infinity) do
-      {:ok, _} = result ->
-        result
-
-      {:error, _} ->
-        Plug.Crypto.verify(key_base, base_salt <> legacy_salt, signed, max_age: :infinity)
-    end
+  defp decode_infrastructure_token(signed, key_base, base_salt, salts) do
+    Enum.find_value(salts, {:error, :invalid}, fn salt ->
+      case Plug.Crypto.verify(key_base, base_salt <> salt, signed, max_age: :infinity) do
+        {:ok, _} = result -> result
+        {:error, _} -> nil
+      end
+    end)
   end
 
   def fetch_token(account_id, token_id, %Context{} = context) do
@@ -470,11 +467,15 @@ defmodule Portal.Authentication do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     base_salt = Keyword.fetch!(config, :salt)
-    salt = base_salt <> to_string(context.type)
 
-    with {:error, _} <- try_decode(encoded_token, key_base, salt) do
-      {:error, :invalid_token}
-    end
+    context.type
+    |> context_salts()
+    |> Enum.find_value({:error, :invalid_token}, fn salt ->
+      case try_decode(encoded_token, key_base, base_salt <> salt) do
+        {:ok, _} = result -> result
+        _ -> nil
+      end
+    end)
   end
 
   defp try_decode(encoded_token, key_base, salt) do
@@ -580,6 +581,11 @@ defmodule Portal.Authentication do
     Portal.Config.fetch_env!(:portal, Portal.Tokens)
   end
 
+  # Device tokens will be signed with "device". Every node accepts it before
+  # any node signs with it.
+  defp context_salts(:client), do: ["device", "client"]
+  defp context_salts(type), do: [to_string(type)]
+
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
@@ -607,17 +613,27 @@ defmodule Portal.Authentication do
     end
 
     # Client
-    def insert_token(changeset) do
-      changeset
-      |> Safe.unscoped()
-      |> Safe.insert()
+    # Each client token is copied to device_tokens in the same transaction.
+    # The copy's foreign key to its client token cascades, so every delete
+    # removes it too.
+    def insert_client_token(changeset) do
+      Safe.transact(fn ->
+        with {:ok, token} <- changeset |> Safe.unscoped() |> Safe.insert(),
+             {:ok, _copy} <- token |> device_token_copy() |> Safe.unscoped() |> Safe.insert() do
+          {:ok, token}
+        end
+      end)
     end
 
     # Service Account
-    def insert_token(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+    def insert_client_token(changeset, subject) do
+      Safe.transact(fn ->
+        with {:ok, token} <- changeset |> Safe.scoped(subject) |> Safe.insert(),
+             {:ok, _copy} <-
+               token |> device_token_copy() |> Safe.scoped(subject) |> Safe.insert() do
+          {:ok, token}
+        end
+      end)
     end
 
     def insert_relay_token(relay_token) do
@@ -1024,6 +1040,21 @@ defmodule Portal.Authentication do
       )
       |> Safe.unscoped()
       |> Safe.one!()
+    end
+
+    defp device_token_copy(%ClientToken{} = token) do
+      %Portal.DeviceToken{
+        account_id: token.account_id,
+        id: token.id,
+        client_token_id: token.id,
+        actor_id: token.actor_id,
+        auth_provider_id: token.auth_provider_id,
+        secret_salt: token.secret_salt,
+        secret_hash: token.secret_hash,
+        expires_at: token.expires_at,
+        inserted_at: token.inserted_at,
+        updated_at: token.updated_at
+      }
     end
   end
 end
