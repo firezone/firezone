@@ -1617,8 +1617,7 @@ defmodule PortalWeb.SignUp do
 
     %Portal.Site{
       account_id: account.id,
-      managed_by: :account,
-      gateway_tokens: []
+      managed_by: :account
     }
     |> cast(attrs, [:name])
     |> validate_required([:name])
@@ -1630,8 +1629,7 @@ defmodule PortalWeb.SignUp do
 
     %Portal.Site{
       account_id: account.id,
-      managed_by: :system,
-      gateway_tokens: []
+      managed_by: :system
     }
     |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
     |> validate_required([:name, :managed_by])

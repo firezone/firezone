@@ -1584,7 +1584,6 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(token.device_id)
       assert is_nil(token.expires_at)
       assert %Portal.Actor{type: :legacy_gateway} = Repo.get_by!(Portal.Actor, id: token.actor_id)
-      refute Repo.exists?(from(gt in Portal.GatewayToken, where: gt.account_id == ^account.id))
     end
 
     test "every token in an account shares one legacy Gateway actor", %{
@@ -1644,23 +1643,19 @@ defmodule Portal.AuthenticationTest do
       assert {:error, :invalid_token} = verify_gateway_token(encode_fragment!(token))
     end
 
-    test "delete_gateway_tokens/2 also deletes the old gateway_tokens row", %{
+    test "delete_gateway_tokens/2 deletes only the selected tokens", %{
       account: account,
       site: site,
       subject: subject
     } do
       revoked = gateway_token_fixture(account: account, site: site)
       kept = gateway_token_fixture(account: account, site: site)
-      insert_old_gateway_token_row(revoked)
-      insert_old_gateway_token_row(kept)
 
       assert {1, nil} =
                from(dt in Portal.DeviceToken, where: dt.id == ^revoked.id)
                |> delete_gateway_tokens(subject)
 
-      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: revoked.id)
       refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: revoked.id)
-      assert Repo.get_by(Portal.GatewayToken, account_id: account.id, id: kept.id)
       assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: kept.id)
     end
 
@@ -1685,16 +1680,5 @@ defmodule Portal.AuthenticationTest do
 
       assert Repo.get_by(Portal.DeviceToken, account_id: other.account_id, id: other.id)
     end
-  end
-
-  defp insert_old_gateway_token_row(token) do
-    Repo.insert!(%Portal.GatewayToken{
-      account_id: token.account_id,
-      id: token.id,
-      site_id: token.site_id,
-      device_id: token.device_id,
-      secret_salt: token.secret_salt,
-      secret_hash: token.secret_hash
-    })
   end
 end
