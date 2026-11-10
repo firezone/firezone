@@ -11,7 +11,7 @@ services:
         ipv6_address: 10:20:0::100
 
   download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
-    image: python:3.14.10-alpine3.24@sha256:a18b20ad69e74df6cf6d2e1b1a260d7a1ecf5380fd83b310f83ba88c461cf894
+    image: python:3.14.10-alpine3.24
     command:
       - python3
       - -c
