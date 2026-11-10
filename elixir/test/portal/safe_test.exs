@@ -336,17 +336,29 @@ defmodule Portal.SafeTest do
       assert %Portal.Actor{name: "Legacy Gateway"} = Repo.get_by(Portal.Actor, id: actor.id)
     end
 
-    test "as a subject type it is granted nothing" do
+    test "as a subject type it may only read Sites and register and update Gateways" do
       for {action, schema} <- [
             {:read, Portal.Site},
+            {:read, Portal.Device},
+            {:insert, Portal.Device},
+            {:update, Portal.Device}
+          ] do
+        assert Safe.permit(action, schema, :legacy_gateway) == :ok
+      end
+
+      for {action, schema} <- [
+            {:update, Portal.Site},
+            {:delete, Portal.Device},
+            {:read, Portal.SiteDevice},
+            {:read, Portal.DeviceToken},
+            {:insert, Portal.DeviceToken},
             {:read, Portal.Resource},
             {:read, Portal.Policy},
             {:read, Portal.Membership},
             {:read, Portal.PolicyAuthorization},
             {:insert, Portal.PolicyAuthorization},
             {:read, Portal.Account},
-            {:read, Portal.Actor},
-            {:insert, Portal.Device}
+            {:read, Portal.Actor}
           ] do
         assert Safe.permit(action, schema, :legacy_gateway) == {:error, :unauthorized}
       end
