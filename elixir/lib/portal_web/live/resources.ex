@@ -1584,7 +1584,7 @@ defmodule PortalWeb.Resources do
     alias Portal.Resource
     alias Portal.Policy
     alias Portal.PolicyAuthorization
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Actor
     alias Portal.Device
     alias Portal.Site
@@ -1892,7 +1892,7 @@ defmodule PortalWeb.Resources do
         on: g.id == p.group_id and g.account_id == p.account_id,
         as: :groups
       )
-      |> join(:inner, [policy_authorizations: pa], t in ClientToken,
+      |> join(:inner, [policy_authorizations: pa], t in DeviceToken,
         on: t.id == pa.token_id and t.account_id == pa.account_id,
         as: :tokens
       )

@@ -1154,7 +1154,7 @@ defmodule PortalWeb.Policies do
     import Portal.Repo.Query
     alias Portal.{Safe, Policy, Site, Resource, Group}
     alias Portal.PolicyAuthorization
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Actor
     alias Portal.Device
     alias Portal.Authentication
@@ -1515,7 +1515,7 @@ defmodule PortalWeb.Policies do
 
       from(pa in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: pa], pa.policy_id == ^policy.id)
-      |> join(:inner, [policy_authorizations: pa], t in ClientToken,
+      |> join(:inner, [policy_authorizations: pa], t in DeviceToken,
         on: t.id == pa.token_id and t.account_id == pa.account_id,
         as: :tokens
       )

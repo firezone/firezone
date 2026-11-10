@@ -22,6 +22,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
 
   defmodule Database do
     alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.PortalSession
     alias Portal.Safe
     import Ecto.Query
@@ -34,6 +35,15 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
           c.account_id == ^account_id and
             c.actor_id == ^actor_id and
             c.auth_provider_id in subquery(auth_provider_ids)
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      from(t in DeviceToken,
+        where:
+          t.account_id == ^account_id and
+            t.actor_id == ^actor_id and
+            t.auth_provider_id in subquery(auth_provider_ids)
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

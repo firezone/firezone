@@ -6,14 +6,19 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.ClientToken,
+             for: Portal.DeviceToken,
              internal: [
                :account_id,
                :auth_provider_id,
                :auth_provider_name,
                :auth_provider_type,
+               :client_token_id,
+               :device_id,
                :last_used_device,
-               :online?
+               :online?,
+               :rotated_at,
+               :rotated_sibling_id,
+               :site_id
              ]}
     OpenApiSpex.schema(%{
       title: "ClientToken",

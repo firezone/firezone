@@ -58,6 +58,21 @@ defmodule Portal.Authentication do
     |> Database.insert_client_token(subject)
   end
 
+  @doc """
+  Deletes the client tokens a `Portal.DeviceToken` query selects, which
+  disconnects any client still using one of them.
+  """
+  @spec delete_client_tokens(Ecto.Queryable.t(), Subject.t()) ::
+          {non_neg_integer(), nil} | {:error, :unauthorized}
+  def delete_client_tokens(queryable, %Subject{} = subject) do
+    Database.delete_client_tokens(queryable, subject)
+  end
+
+  @spec delete_client_tokens(Ecto.Queryable.t()) :: {non_neg_integer(), nil}
+  def delete_client_tokens(queryable) do
+    Database.delete_client_tokens(queryable, nil)
+  end
+
   # API Tokens
 
   def create_api_token(
@@ -516,7 +531,7 @@ defmodule Portal.Authentication do
     end
   end
 
-  def build_subject(%ClientToken{} = token, %Context{} = context) do
+  def build_subject(%Portal.DeviceToken{} = token, %Context{type: :client} = context) do
     credential = %Credential.ClientToken{
       id: token.id,
       auth_provider_id: token.auth_provider_id
@@ -542,7 +557,7 @@ defmodule Portal.Authentication do
 
   # Gateway tokens never expire, so the subject has no expiry. The actor and
   # account are loaded by verification.
-  def build_subject(%Portal.DeviceToken{} = token, %Context{} = context) do
+  def build_subject(%Portal.DeviceToken{} = token, %Context{type: :gateway} = context) do
     {:ok,
      %Subject{
        actor: token.actor,
@@ -743,6 +758,9 @@ defmodule Portal.Authentication do
         on:
           actor.account_id == gt.account_id and actor.id == gt.actor_id and
             actor.is_disabled == false,
+        left_join: device in Portal.Device,
+        on: device.account_id == gt.account_id and device.id == gt.device_id,
+        where: not is_nil(gt.site_id) or device.type == :gateway,
         left_join: sibling in Portal.DeviceToken,
         on:
           sibling.account_id == gt.account_id and sibling.device_id == gt.device_id and
@@ -768,15 +786,58 @@ defmodule Portal.Authentication do
       end
     end
 
+    # The client_tokens rows are deleted too, so nodes that still read that
+    # table during the rollout see the revoke. A refusal writes nothing, so it
+    # is returned without a rollback, which would also abort a caller's
+    # transaction.
+    def delete_client_tokens(queryable, subject) do
+      keys = select(queryable, [t], {t.account_id, t.id})
+      scoped_or_unscoped = if subject, do: Safe.scoped(keys, subject), else: Safe.unscoped(keys)
+
+      {:ok, result} =
+        Safe.transact(fn ->
+          case Safe.delete_all(scoped_or_unscoped) do
+            {:error, :unauthorized} = error ->
+              {:ok, error}
+
+            {count, keys} ->
+              {account_ids, ids} = Enum.unzip(keys)
+
+              from(ct in ClientToken,
+                join:
+                  k in fragment(
+                    "SELECT * FROM unnest(?::uuid[], ?::uuid[]) AS k(account_id, id)",
+                    type(^account_ids, {:array, Ecto.UUID}),
+                    type(^ids, {:array, Ecto.UUID})
+                  ),
+                on: ct.account_id == k.account_id and ct.id == k.id
+              )
+              |> Safe.unscoped()
+              |> Safe.delete_all()
+
+              {:ok, {count, nil}}
+          end
+        end)
+
+      result
+    end
+
+    # A client token has no Site and, when bound to a device, a client device.
     def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{type: :client}) do
       now = DateTime.utc_now()
 
-      from(tokens in ClientToken, as: :tokens)
+      from(tokens in Portal.DeviceToken, as: :tokens)
       |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
       |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor),
         on: actor.account_id == tokens.account_id,
         as: :actor
       )
+      |> join(:left, [tokens: tokens], device in Portal.Device,
+        on: device.account_id == tokens.account_id and device.id == tokens.device_id,
+        as: :device
+      )
+      |> where([tokens: tokens], is_nil(tokens.site_id))
+      |> where([tokens: tokens, device: device], is_nil(tokens.device_id) or device.type == :client)
       |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))
       |> where([tokens: tokens], tokens.id == ^token_id)
       |> where([tokens: tokens], tokens.account_id == ^account_id)

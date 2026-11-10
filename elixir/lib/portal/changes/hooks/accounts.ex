@@ -80,6 +80,7 @@ defmodule Portal.Changes.Hooks.Accounts do
   defmodule Database do
     import Ecto.Query
     alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.PolicyAuthorization
     alias Portal.Safe
 
@@ -93,6 +94,13 @@ defmodule Portal.Changes.Hooks.Accounts do
     def delete_client_tokens_for_account(%Portal.Account{} = account) do
       from(ct in ClientToken, as: :client_tokens)
       |> where([client_tokens: ct], ct.account_id == ^account.id)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      # Gateway tokens have a Site or a device and stay with a disabled account.
+      from(t in DeviceToken,
+        where: t.account_id == ^account.id and is_nil(t.site_id) and is_nil(t.device_id)
+      )
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

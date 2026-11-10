@@ -7,7 +7,7 @@ defmodule PortalWeb.ServiceAccounts do
   alias Portal.Actor
   alias Portal.Authentication
   alias Portal.Changes.Change
-  alias Portal.ClientToken
+  alias Portal.DeviceToken
   alias Portal.Presence
   alias Portal.PubSub
   alias Phoenix.LiveView.AsyncResult
@@ -528,7 +528,7 @@ defmodule PortalWeb.ServiceAccounts do
     token = Database.get_client_token_by_id(token_id, socket.assigns.subject)
 
     if token do
-      case Database.delete(token, socket.assigns.subject) do
+      case Database.delete_client_token(token, socket.assigns.subject) do
         {:ok, _} ->
           tokens =
             Database.get_client_tokens_for_actor(
@@ -870,7 +870,7 @@ defmodule PortalWeb.ServiceAccounts do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.Actor
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Device
     alias Portal.Presence
     alias Portal.Safe
@@ -985,7 +985,7 @@ defmodule PortalWeb.ServiceAccounts do
 
     def get_client_tokens_for_actor(actor_id, subject) do
       tokens =
-        from(c in ClientToken, as: :client_tokens)
+        from(c in DeviceToken, as: :client_tokens)
         |> where([client_tokens: c], c.actor_id == ^actor_id)
         |> order_by([client_tokens: c], desc: c.inserted_at)
         |> Safe.scoped(subject)
@@ -1015,10 +1015,19 @@ defmodule PortalWeb.ServiceAccounts do
     end
 
     def get_client_token_by_id(token_id, subject) do
-      from(c in ClientToken, as: :client_tokens)
+      from(c in DeviceToken, as: :client_tokens)
       |> where([client_tokens: c], c.id == ^token_id)
       |> Safe.scoped(subject)
       |> Safe.one()
+    end
+
+    def delete_client_token(token, subject) do
+      from(t in DeviceToken, where: t.account_id == ^token.account_id and t.id == ^token.id)
+      |> Portal.Authentication.delete_client_tokens(subject)
+      |> case do
+        {:error, :unauthorized} = error -> error
+        {_count, _} -> {:ok, token}
+      end
     end
 
     def get_groups_for_actor(actor_id, subject) do

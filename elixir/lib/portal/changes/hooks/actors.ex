@@ -85,6 +85,7 @@ defmodule Portal.Changes.Hooks.Actors do
 
   defmodule Database do
     alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.OAuthGrant
     alias Portal.PortalSession
     alias Portal.Safe
@@ -93,6 +94,12 @@ defmodule Portal.Changes.Hooks.Actors do
     def delete_client_tokens_for_actor(account_id, actor_id) do
       from(c in ClientToken,
         where: c.account_id == ^account_id and c.actor_id == ^actor_id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      from(t in DeviceToken,
+        where: t.account_id == ^account_id and t.actor_id == ^actor_id
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

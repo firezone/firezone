@@ -9,7 +9,7 @@ defmodule PortalWeb.Actors do
   alias Portal.Changes.Change
   alias Portal.ExternalIdentity
   alias Portal.PortalSession
-  alias Portal.ClientToken
+  alias Portal.DeviceToken
   alias Portal.Presence
   alias Portal.PubSub
   alias Phoenix.LiveView.AsyncResult
@@ -633,7 +633,7 @@ defmodule PortalWeb.Actors do
       if socket.assigns.selected_actor.type == :service_account, do: "token", else: "session"
 
     if token do
-      case Database.delete(token, socket.assigns.subject) do
+      case Database.delete_client_token(token, socket.assigns.subject) do
         {:ok, _} ->
           tokens =
             Database.get_client_tokens_for_actor(
@@ -1562,7 +1562,7 @@ defmodule PortalWeb.Actors do
 
     def get_client_tokens_for_actor(actor_id, subject) do
       tokens =
-        from(c in ClientToken, as: :client_tokens)
+        from(c in DeviceToken, as: :client_tokens)
         |> where([client_tokens: c], c.actor_id == ^actor_id)
         |> order_by([client_tokens: c], desc: c.inserted_at)
         |> Safe.scoped(subject)
@@ -1599,10 +1599,19 @@ defmodule PortalWeb.Actors do
     end
 
     def get_client_token_by_id(token_id, subject) do
-      from(c in ClientToken, as: :client_tokens)
+      from(c in DeviceToken, as: :client_tokens)
       |> where([client_tokens: c], c.id == ^token_id)
       |> Safe.scoped(subject)
       |> Safe.one()
+    end
+
+    def delete_client_token(token, subject) do
+      from(t in DeviceToken, where: t.account_id == ^token.account_id and t.id == ^token.id)
+      |> Portal.Authentication.delete_client_tokens(subject)
+      |> case do
+        {:error, :unauthorized} = error -> error
+        {_count, _} -> {:ok, token}
+      end
     end
 
     def get_portal_sessions_for_actor(actor_id, subject) do
@@ -1744,9 +1753,8 @@ defmodule PortalWeb.Actors do
     end
 
     defp clear_client_tokens_for_actor(actor_id, subject) do
-      from(c in ClientToken, where: c.actor_id == ^actor_id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
+      from(t in DeviceToken, where: t.actor_id == ^actor_id)
+      |> Portal.Authentication.delete_client_tokens(subject)
     end
 
     def delete(actor, subject) do
