@@ -128,6 +128,33 @@ jobs:
       profile: "release"
       stage: "release"
 
+  otel-ingest-proxy-prod-binary:
+    uses: ./.github/workflows/_rust-binary.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # Keyless signing of deployment manifests
+    with:
+      package: firezone-otel-ingest-proxy
+      name: otel-ingest-proxy
+      profile: "release"
+      stage: "release"
+
+  otel-ingest-proxy-prod-images:
+    needs: otel-ingest-proxy-prod-binary
+    uses: ./.github/workflows/_rust-docker-image.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      package: firezone-otel-ingest-proxy
+      image_name: otel-ingest-proxy
+      stage: "release"
+      binary_artifact: ${{ needs.otel-ingest-proxy-prod-binary.outputs.artifact }}
+      arches: ${{ needs.otel-ingest-proxy-prod-binary.outputs.arches }}
+
   # Build data-plane perf images for perf-tests
   client-perf-images:
     uses: ./.github/workflows/_client.yml
@@ -202,6 +229,7 @@ jobs:
         client-prod-images,
         gateway-prod-images,
         relay-prod-images,
+        otel-ingest-proxy-prod-images,
         control-plane-images,
         loadtest-binaries,
       ]

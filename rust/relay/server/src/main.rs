@@ -1,7 +1,5 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-mod otlp_metrics;
-
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -91,7 +89,7 @@ struct Args {
 
     /// How to authenticate requests to `otlp_metrics_endpoint`.
     #[arg(long, env, hide = true)]
-    otlp_auth: Option<otlp_metrics::OtlpAuth>,
+    otlp_auth: Option<otel_azure_export::OtlpAuth>,
 
     /// Enable offloading of TURN traffic to an eBPF program.
     ///
@@ -352,7 +350,7 @@ fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
     if let Some(endpoint) = &args.otlp_metrics_endpoint {
         // Reqwest's blocking client initializes its own runtime.
         meter_provider = tokio::task::block_in_place(|| {
-            otlp_metrics::with_exporter(meter_provider, endpoint, args.otlp_auth)
+            otel_azure_export::with_exporter(meter_provider, endpoint, args.otlp_auth)
         })?;
     }
     opentelemetry::global::set_meter_provider(meter_provider.build());
@@ -1009,7 +1007,7 @@ mod tests {
         assert_eq!(unset.otlp_auth, None);
         assert_eq!(
             azure.otlp_auth,
-            Some(otlp_metrics::OtlpAuth::AzureManagedIdentity)
+            Some(otel_azure_export::OtlpAuth::AzureManagedIdentity)
         );
         assert!(invalid.is_err());
     }
