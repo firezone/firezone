@@ -43,6 +43,11 @@ const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); 
 /// with 0700/0600 permissions.
 const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
 
+/// The UDP port Gateways listen on. It is fixed so that admins can forward it.
+const LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
+const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
+const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
+
 /// Exit code that tells systemd this failure needs an operator, so restarting cannot fix it.
 ///
 /// `EX_CONFIG` from `sysexits.h`; `firezone-gateway.service` lists it in `RestartPreventExitStatus`.
@@ -306,6 +311,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         let mut tunnel = GatewayTunnel::new(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
+            LISTEN_PORT,
             nameservers,
             clock.now(),
         )

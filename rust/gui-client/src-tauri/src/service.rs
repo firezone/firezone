@@ -970,7 +970,9 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
-        let config = client_shared::SessionConfig::default()
+        let listen_port =
+            client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+        let config = client_shared::SessionConfig::new(listen_port)
             .with_internet_resource_active(is_internet_resource_active)
             .with_dns_servers(dns)
             .with_additional_host_candidates(

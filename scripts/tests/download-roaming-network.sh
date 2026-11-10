@@ -71,7 +71,7 @@ outers="$(get_flow_field "$flow" "outers")"
 num_tuples="$(echo "$outers" | grep -o '"dst_ip":' | wc -l || true)"
 assert_gteq "$num_tuples" 2
 
-# At least one tuple must come from the reconnected path, i.e. not from the
-# client's standard p2p port.
-non_standard_ports="$(echo "$outers" | grep -oP '"src_port":\K[0-9]+' | grep -cv '^52625$' || true)"
-assert_gteq "$non_standard_ports" 1
+# The NAT binding of the old path is still active after the roam, so the
+# reconnected path must come from a different source port.
+num_src_ports="$(echo "$outers" | grep -oP '"src_port":\K[0-9]+' | sort -u | wc -l || true)"
+assert_gteq "$num_src_ports" 2
