@@ -33,7 +33,7 @@ on:
     outputs:
       image:
         description: "The image that was built"
-        value: ${{ jobs.build.outputs.image }}
+        value: ${{ jobs.image.outputs.image }}
 
 permissions:
   contents: read
@@ -41,8 +41,7 @@ permissions:
   security-events: write # upload Trivy SARIF results
 
 jobs:
-  build:
-    name: ${{ inputs.image_name }}-${{ matrix.arch.shortname }}
+  image:
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -53,6 +52,7 @@ jobs:
         arch: ${{ fromJSON(inputs.arches) }}
     env:
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+      PLATFORM: ${{ fromJSON('{"x86_64":"linux/amd64","aarch64":"linux/arm64","armv7":"linux/arm/v7"}')[matrix.arch] }}
     outputs:
       image: ${{ steps.image-name.outputs.image }}
     steps:
@@ -65,7 +65,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: ${{ inputs.binary_artifact }}-${{ matrix.arch.shortname }}
+          name: ${{ inputs.binary_artifact }}-${{ matrix.arch }}
           path: rust
       - run: chmod +x ${{ inputs.package }}
       - name: Set up QEMU
@@ -92,10 +92,9 @@ jobs:
         id: build_ro
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          platforms: ${{ matrix.arch.platform }}
+          platforms: ${{ env.PLATFORM }}
           build-args: |
             PACKAGE=${{ inputs.package }}
-            TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
             type=gha,scope=${{ inputs.image_name }}:${{ env.CACHE_TAG }}
@@ -111,10 +110,9 @@ jobs:
         id: build_rw
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          platforms: ${{ matrix.arch.platform }}
+          platforms: ${{ env.PLATFORM }}
           build-args: |
             PACKAGE=${{ inputs.package }}
-            TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
             type=gha,scope=${{ inputs.image_name }}:${{ env.CACHE_TAG }}
@@ -134,7 +132,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           overwrite: true
-          name: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ inputs.image_name }}-${{ env.RESOLVED_SHA }}-digest-${{ matrix.arch.shortname }}
+          name: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ inputs.image_name }}-${{ env.RESOLVED_SHA }}-digest-${{ matrix.arch }}
           path: /tmp/digests/${{ inputs.image_name }}
           if-no-files-found: error
           retention-days: 1
@@ -142,9 +140,8 @@ jobs:
         id: image-name
         run: echo "image=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ inputs.image_name }}" >> "$GITHUB_OUTPUT"
 
-  merge-docker-artifacts:
-    name: merge-${{ inputs.image_name }}
-    needs: build
+  image-manifest:
+    needs: image
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     env:
