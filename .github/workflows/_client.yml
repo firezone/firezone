@@ -203,6 +203,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      id-token: write
     with:
       package: firezone-headless-client
       name: client
