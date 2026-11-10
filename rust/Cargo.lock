@@ -2631,7 +2631,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.6.5"
+version = "1.6.6"
 dependencies = [
  "anyhow-ext",
  "async-runtime",
