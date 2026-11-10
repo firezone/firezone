@@ -10,7 +10,6 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::candidate::HostCandidatePreference;
 use crate::crypto::{CommittedBatch, DecapsulateBatch, DecryptedBatch, EncapsulateBatch};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
@@ -98,7 +97,6 @@ pub struct Node<TId, RId> {
 
     allocations: Allocations<RId>,
     additional_host_candidates: Vec<Candidate>,
-    host_candidate_preference: HostCandidatePreference,
 
     connections: Connections<TId, RId>,
     buffered_candidates: BufferedCandidates<TId>,
@@ -202,7 +200,6 @@ where
             last_now: now,
             allocations,
             additional_host_candidates: Default::default(),
-            host_candidate_preference: Default::default(),
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
             buffered_candidates: Default::default(),
@@ -243,7 +240,7 @@ where
 
             for (cid, c) in self.connections.iter_mut() {
                 for candidate in &self.additional_host_candidates {
-                    c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+                    c.add_local_candidate(cid, candidate, true, &mut self.pending_events, now);
                 }
             }
 
@@ -350,7 +347,6 @@ where
                 &mut c.agent,
                 &self.allocations,
                 &self.additional_host_candidates,
-                &self.host_candidate_preference,
                 now,
             );
 
@@ -388,7 +384,7 @@ where
             Agent::frostlink()
         } else {
             tracing::debug!(%cid, "Using ICE agent for connection");
-            Agent::ice(new_agent(ice_role, self.host_candidate_preference.clone()))
+            Agent::ice(new_agent(ice_role))
         };
 
         agent.apply_ice_config(default_ice_config);
@@ -416,7 +412,7 @@ where
 
         connection.assign_relay(cid, &mut self.allocations, &mut self.pending_events, now);
         for candidate in &self.additional_host_candidates {
-            connection.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+            connection.add_local_candidate(cid, candidate, true, &mut self.pending_events, now);
         }
 
         if self.allocations.is_empty() {
@@ -913,8 +909,6 @@ where
                     .ok()
             })
             .collect::<Vec<_>>();
-        self.host_candidate_preference
-            .set_preferred(candidates.iter().map(|c| c.addr()).collect());
         let removed = mem::replace(&mut self.additional_host_candidates, candidates)
             .into_iter()
             .filter(|c| !self.additional_host_candidates.contains(c))
@@ -932,7 +926,7 @@ where
                 c.invalidate_local_candidate(cid, candidate, &mut self.pending_events, now);
             }
             for candidate in &self.additional_host_candidates {
-                c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+                c.add_local_candidate(cid, candidate, true, &mut self.pending_events, now);
             }
         }
     }
@@ -993,7 +987,6 @@ where
             idle_ice_config,
             poll_timeout_cache: Default::default(),
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
-            host_candidate_preference: self.host_candidate_preference.clone(),
         };
 
         Ok(connection)
@@ -1271,7 +1264,13 @@ where
             match event {
                 allocation::Event::New(candidate) => {
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
-                        c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
+                        c.add_local_candidate(
+                            cid,
+                            &candidate,
+                            false,
+                            &mut self.pending_events,
+                            now,
+                        );
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
@@ -1290,7 +1289,6 @@ fn seed_agent_with_local_candidates<'a, RId>(
     agent: &'a mut Agent,
     allocations: &Allocations<RId>,
     additional_host_candidates: &'a [Candidate],
-    host_candidate_preference: &'a HostCandidatePreference,
     now: Instant,
 ) -> impl Iterator<Item = Candidate> + use<'a, RId>
 where
@@ -1300,8 +1298,9 @@ where
         .map(|rid| allocations.candidates_for_relay(&rid))
         .into_iter()
         .flatten()
-        .chain(additional_host_candidates.iter().cloned())
-        .filter_map(move |c| agent.add_local_candidate(c, host_candidate_preference, now))
+        .map(|c| (c, false))
+        .chain(additional_host_candidates.iter().map(|c| (c.clone(), true)))
+        .filter_map(move |(c, preferred)| agent.add_local_candidate(c, preferred, now))
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -1530,8 +1529,6 @@ struct Connection<RId> {
     idle_ice_config: IceConfig,
 
     poll_timeout_cache: TimeoutCache,
-
-    host_candidate_preference: HostCandidatePreference,
 }
 
 impl<RId> Connection<RId> {
@@ -2251,14 +2248,15 @@ where
         &mut self,
         cid: TId,
         candidate: &Candidate,
+        preferred: bool,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,
     {
-        if let Some(candidate) =
-            self.agent
-                .add_local_candidate(candidate.clone(), &self.host_candidate_preference, now)
+        if let Some(candidate) = self
+            .agent
+            .add_local_candidate(candidate.clone(), preferred, now)
         {
             let frostlink = self.agent.is_frostlink();
             pending_events.push_back(new_ice_candidate_event(cid, candidate, frostlink));
@@ -2374,7 +2372,7 @@ where
         // no local candidates, so host and reflexive candidates need seeding too.
         // The agent dedups, so candidates it already knows are not re-signalled.
         for candidate in allocations.candidates_for_relay(&rid) {
-            self.add_local_candidate(cid, &candidate, pending_events, now);
+            self.add_local_candidate(cid, &candidate, false, pending_events, now);
         }
     }
 }
@@ -2429,10 +2427,9 @@ where
     Some(transmit)
 }
 
-fn new_agent(role: IceRole, preference: HostCandidatePreference) -> IceAgent {
+fn new_agent(role: IceRole) -> IceAgent {
     let mut agent = IceAgent::new(is::IceCreds::new());
     agent.set_controlling(matches!(role, IceRole::Controlling));
-    agent.set_local_preference(preference);
     agent.set_timing_advance(Duration::ZERO);
 
     agent
@@ -2446,7 +2443,7 @@ mod tests {
 
     #[test]
     fn client_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling, HostCandidatePreference::default());
+        let mut agent = new_agent(IceRole::Controlling);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2457,7 +2454,7 @@ mod tests {
     // otherwise we cannot migrate an existing tunnel to a new candidate pair.
     #[test]
     fn client_default_ice_timeout_less_than_wg_rekey_attempt_time() {
-        let mut agent = new_agent(IceRole::Controlling, HostCandidatePreference::default());
+        let mut agent = new_agent(IceRole::Controlling);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2466,7 +2463,7 @@ mod tests {
 
     #[test]
     fn client_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling, HostCandidatePreference::default());
+        let mut agent = new_agent(IceRole::Controlling);
 
         IceConfig::client_idle().apply(&mut agent);
 
@@ -2475,7 +2472,7 @@ mod tests {
 
     #[test]
     fn server_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling, HostCandidatePreference::default());
+        let mut agent = new_agent(IceRole::Controlling);
 
         IceConfig::server_default().apply(&mut agent);
 
@@ -2484,7 +2481,7 @@ mod tests {
 
     #[test]
     fn server_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling, HostCandidatePreference::default());
+        let mut agent = new_agent(IceRole::Controlling);
 
         IceConfig::server_idle().apply(&mut agent);
 

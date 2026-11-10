@@ -8,53 +8,7 @@
 //! (the underlying base socket) — it's what we send from on the wire,
 //! whereas `addr()` is the NAT-mapped public-facing address.
 
-use std::collections::BTreeSet;
-use std::net::SocketAddr;
-use std::sync::{Arc, PoisonError, RwLock};
-
 use is::CandidateKind;
-
-/// Half of `is`'s host range of local preferences, so every preferred host
-/// candidate ranks above every other one.
-const NON_PREFERRED_HOST_OFFSET: u32 = 8192;
-
-/// Decides which host candidates path selection prefers: the additional ones.
-///
-/// Shared with the `is` agents, which consult it whenever a local candidate is
-/// added, because the set changes at runtime.
-#[derive(Debug, Default, Clone)]
-pub(crate) struct HostCandidatePreference(Arc<RwLock<BTreeSet<SocketAddr>>>);
-
-impl HostCandidatePreference {
-    pub(crate) fn set_preferred(&self, addrs: BTreeSet<SocketAddr>) {
-        *self.0.write().unwrap_or_else(PoisonError::into_inner) = addrs;
-    }
-
-    pub(crate) fn is_preferred(&self, c: &is::Candidate) -> bool {
-        c.kind() == CandidateKind::Host
-            && self
-                .0
-                .read()
-                .unwrap_or_else(PoisonError::into_inner)
-                .contains(&c.addr())
-    }
-
-    pub(crate) fn frostlink_local_preference(&self, c: &is::Candidate) -> u16 {
-        if self.is_preferred(c) { u16::MAX } else { 0 }
-    }
-}
-
-impl is::LocalPreference for HostCandidatePreference {
-    fn calculate(&self, c: &is::Candidate, same_kind: usize) -> u32 {
-        let preference = is::default_local_preference(c, same_kind);
-
-        if c.kind() != CandidateKind::Host || self.is_preferred(c) {
-            return preference;
-        }
-
-        preference - NON_PREFERRED_HOST_OFFSET
-    }
-}
 
 /// A host candidate's local preference travels in [`is::Candidate::prio`], see [`from_frostlink`].
 pub(crate) fn to_frostlink(c: &is::Candidate) -> frostlink::Candidate {
@@ -142,7 +96,7 @@ pub(crate) fn decode(is_frostlink: bool, sdp: &str) -> Option<is::Candidate> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use is::LocalPreference as _;
+    use std::net::SocketAddr;
 
     fn addr() -> SocketAddr {
         "1.1.1.1:1234".parse().unwrap()
@@ -203,30 +157,6 @@ mod tests {
         let received = to_frostlink(&decode(true, &signalled).unwrap());
 
         assert_eq!(received.priority(), original.priority());
-    }
-
-    #[test]
-    fn preferred_host_ranks_above_hosts_added_before_it() {
-        let preference = HostCandidatePreference::default();
-        preference.set_preferred(BTreeSet::from([addr()]));
-        let gathered = is::Candidate::host(other_addr(), "udp").unwrap();
-        let preferred = is::Candidate::host(addr(), "udp").unwrap();
-
-        let gathered = preference.calculate(&gathered, 0);
-        let preferred = preference.calculate(&preferred, 1);
-
-        assert!(preferred > gathered);
-    }
-
-    #[test]
-    fn non_host_candidates_keep_the_default_preference() {
-        let preference = HostCandidatePreference::default();
-        let relayed = is::Candidate::relayed(addr(), other_addr(), "udp").unwrap();
-
-        assert_eq!(
-            preference.calculate(&relayed, 0),
-            is::default_local_preference(&relayed, 0)
-        );
     }
 
     #[test]

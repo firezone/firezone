@@ -7,7 +7,6 @@ use std::time::Instant;
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 
-use crate::candidate::HostCandidatePreference;
 use crate::{IceConfig, IceRole};
 
 #[derive(derive_more::Debug)]
@@ -107,18 +106,18 @@ impl Agent {
         }
     }
 
-    /// The ICE agent consults its own copy of `preference` for the local preference.
+    /// Frostlink ranks `preferred` candidates above all others.
     pub(crate) fn add_local_candidate(
         &mut self,
         c: Candidate,
-        preference: &HostCandidatePreference,
+        preferred: bool,
         now: Instant,
     ) -> Option<Candidate> {
         match self {
             Self::Ice(a) => a.add_local_candidate(c).cloned(),
             Self::Frostlink(agent) => {
                 let candidate = crate::candidate::to_frostlink(&c)
-                    .with_local_preference(preference.frostlink_local_preference(&c));
+                    .with_local_preference(if preferred { u16::MAX } else { 0 });
 
                 agent
                     .add_local_candidate(candidate, now)
