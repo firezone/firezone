@@ -144,7 +144,7 @@ mod tests {
             let sdp = encode(true, &original);
             let decoded = decode(true, &sdp).expect("frostlink round-trip");
 
-            // The path agent keys off addr/kind/base, so that is what must survive.
+            // The frostlink agent keys off addr/kind/base, so that is what must survive.
             assert_eq!(to_frostlink(&decoded), to_frostlink(&original));
         }
     }

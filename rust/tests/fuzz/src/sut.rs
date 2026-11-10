@@ -639,7 +639,7 @@ impl TunnelTest {
                 self.flux_capacitor.skip_to(dead_until);
 
                 // 2. The new link comes up: assign the new IPs, re-register the
-                //    client and reset the path-agent so it re-gathers candidates.
+                //    client and reset the frostlink agent so it re-gathers candidates.
                 //    The sockets now pass traffic, but the client has not
                 //    reconnected to the portal yet, so any portal-bound message is
                 //    dropped until the portal window elapses.
