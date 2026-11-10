@@ -26,7 +26,7 @@ export default defineConfig({
 
   define: {
     // mark:next-gui-version
-    __APP_VERSION__: JSON.stringify("1.5.21"),
+    __APP_VERSION__: JSON.stringify("1.5.22"),
     __GIT_VERSION__: JSON.stringify(gitVersion),
   },
 
