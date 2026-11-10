@@ -156,7 +156,7 @@ config :portal, Portal.Changes.Consumer,
   table_subscriptions: ~w[
     accounts
     account_slugs
-    account_metric_sets
+    account_metrics
     actors
     groups
     memberships

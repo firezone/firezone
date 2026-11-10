@@ -1,4 +1,4 @@
-defmodule Portal.PlanMetricSet do
+defmodule Portal.PlanMetrics do
   @moduledoc """
   Metric name patterns the Clients and Gateways of every account on `plan`
   export. `plan` is a `Portal.Billing.plan_type/1` value.
@@ -10,13 +10,11 @@ defmodule Portal.PlanMetricSet do
 
   @plans ~w[enterprise business team starter unknown]
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key {:plan, :string, autogenerate: false}
   @timestamps_opts [type: :utc_datetime_usec]
 
-  schema "plan_metric_sets" do
-    field :plan, :string
+  schema "plan_metrics" do
     field :patterns, {:array, :string}
-    field :description, :string
 
     timestamps()
   end

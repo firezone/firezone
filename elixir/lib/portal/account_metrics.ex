@@ -1,4 +1,4 @@
-defmodule Portal.AccountMetricSet do
+defmodule Portal.AccountMetrics do
   @moduledoc """
   Metric name patterns the account's Clients and Gateways export, on top of
   those of its plan.
@@ -9,21 +9,20 @@ defmodule Portal.AccountMetricSet do
 
   @type t :: %__MODULE__{}
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
-  schema "account_metric_sets" do
-    belongs_to :account, Portal.Account
+  schema "account_metrics" do
+    belongs_to :account, Portal.Account, primary_key: true
     field :patterns, {:array, :string}
-    field :description, :string
 
     timestamps()
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:patterns])
+    |> validate_required([:account_id, :patterns])
     |> validate_length(:patterns, min: 1)
     |> assoc_constraint(:account)
   end
@@ -43,16 +42,16 @@ defmodule Portal.AccountMetricSet do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{AccountMetricSet, PlanMetricSet, Safe}
+    alias Portal.{AccountMetrics, PlanMetrics, Safe}
 
     def list_patterns(plan, account_id) do
       account_patterns =
-        from(s in AccountMetricSet,
-          where: s.account_id == ^account_id,
-          select: fragment("unnest(?)", s.patterns)
+        from(m in AccountMetrics,
+          where: m.account_id == ^account_id,
+          select: fragment("unnest(?)", m.patterns)
         )
 
-      from(s in PlanMetricSet, where: s.plan == ^plan, select: fragment("unnest(?)", s.patterns))
+      from(m in PlanMetrics, where: m.plan == ^plan, select: fragment("unnest(?)", m.patterns))
       |> union(^account_patterns)
       |> Safe.unscoped()
       |> Safe.all()

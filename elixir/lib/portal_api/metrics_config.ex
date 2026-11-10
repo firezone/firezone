@@ -4,7 +4,7 @@ defmodule PortalAPI.MetricsConfig do
   metrics, how often, the metric name patterns their token allows, and the token
   itself. A `nil` token means metrics export is off.
   """
-  alias Portal.{Account, AccountMetricSet, Device, MetricsToken}
+  alias Portal.{Account, AccountMetrics, Device, MetricsToken}
 
   @doc """
   How often channels push a fresh token, so devices never hold an expired one.
@@ -12,7 +12,7 @@ defmodule PortalAPI.MetricsConfig do
   def refresh_every, do: :timer.seconds(div(MetricsToken.ttl_seconds(), 2))
 
   def render(%Account{} = account, %Device{} = device) do
-    patterns = if MetricsToken.enabled?(), do: AccountMetricSet.effective_patterns(account), else: []
+    patterns = if MetricsToken.enabled?(), do: AccountMetrics.effective_patterns(account), else: []
 
     %{
       endpoint: Portal.Config.fetch_env!(:portal, :otlp_metrics_ingest_url),

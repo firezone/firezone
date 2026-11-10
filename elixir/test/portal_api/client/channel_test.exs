@@ -540,7 +540,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      {:ok, _id} = Portal.Ops.add_account_metrics(account.id, ["*"])
+      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["*"])
       socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
 
       assert_push "init", init
@@ -569,7 +569,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      {:ok, _id} = Portal.Ops.add_account_metrics(account.id, ["b"])
+      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["b"])
       socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
 
       assert_push "init", _init_payload
@@ -590,14 +590,14 @@ defmodule PortalAPI.Client.ChannelTest do
       assert claims["device_version"] == version
       assert claims["metrics"] == ["b"]
 
-      {:ok, _id} = Portal.Ops.add_plan_metrics(Portal.Billing.plan_type(account), ["a"])
+      {:ok, _patterns} = Portal.Ops.set_plan_metrics(Portal.Billing.plan_type(account), ["a"])
       send(socket.channel_pid, :refresh_metrics_token)
 
       assert_push "metrics_config", %{patterns: ["a", "b"], token: token}
       assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["a", "b"]
     end
 
-    test "pushes the metrics config when the account's metric sets change", %{
+    test "pushes the metrics config when the account's metric patterns change", %{
       account: account,
       client: client,
       subject: subject
@@ -606,19 +606,32 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _init_payload
       assert_push "metrics_config", %{token: nil}
 
-      {:ok, id} = Portal.Ops.add_account_metrics(account.id, ["a"])
-      metric_set = Repo.get!(Portal.AccountMetricSet, id)
-      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: metric_set})
+      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["a"])
+      metrics = Repo.get!(Portal.AccountMetrics, account.id)
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: metrics})
 
       assert_push "metrics_config", %{token: token, patterns: ["a"]}
       assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["a"]
 
-      :ok = Portal.Ops.remove_account_metrics(id)
-      send(socket.channel_pid, %Changes.Change{lsn: 101, op: :delete, old_struct: metric_set})
+      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["b"])
+      updated = Repo.get!(Portal.AccountMetrics, account.id)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 101,
+        op: :update,
+        old_struct: metrics,
+        struct: updated
+      })
+
+      assert_push "metrics_config", %{token: token, patterns: ["b"]}
+      assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["b"]
+
+      :ok = Portal.Ops.remove_account_metrics(account.id)
+      send(socket.channel_pid, %Changes.Change{lsn: 102, op: :delete, old_struct: updated})
 
       assert_push "metrics_config", %{token: nil, patterns: []}
 
-      send(socket.channel_pid, %Changes.Change{lsn: 101, op: :delete, old_struct: metric_set})
+      send(socket.channel_pid, %Changes.Change{lsn: 102, op: :delete, old_struct: updated})
       refute_push "metrics_config", _payload
     end
 

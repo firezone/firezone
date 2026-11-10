@@ -330,97 +330,99 @@ defmodule Portal.OpsTest do
     end
   end
 
-  describe "metric sets" do
-    test "add_plan_metrics/3 stores a set for a plan" do
-      assert {:ok, id} = add_plan_metrics(:team, ["a", "b*"], "base")
-      assert [%Portal.PlanMetricSet{id: ^id, plan: "team", patterns: ["a", "b*"], description: "base"}] =
-               list_plan_metrics(:team)
+  describe "metrics" do
+    test "set_plan_metrics/2 sets the patterns of a plan" do
+      assert {:ok, ["a", "b*"]} = set_plan_metrics(:team, ["a", "b*"])
+      assert get_plan_metrics(:team) == ["a", "b*"]
+      assert get_plan_metrics("team") == ["a", "b*"]
 
-      assert {:ok, _id} = add_plan_metrics("team", ["c"])
-      assert length(list_plan_metrics("team")) == 2
-      assert list_plan_metrics(:starter) == []
+      assert {:ok, ["c"]} = set_plan_metrics("team", ["c"])
+      assert get_plan_metrics(:team) == ["c"]
+      assert get_plan_metrics(:starter) == nil
     end
 
-    test "add_plan_metrics/3 rejects unknown plans and invalid patterns" do
-      assert {:error, changeset} = add_plan_metrics(:gold, ["a"])
+    test "set_plan_metrics/2 rejects unknown plans and invalid patterns" do
+      assert {:error, changeset} = set_plan_metrics(:gold, ["a"])
       assert errors_on(changeset) == %{plan: ["is invalid"]}
 
-      assert {:error, changeset} = add_plan_metrics(:team, [])
+      assert {:error, changeset} = set_plan_metrics(:team, [])
       assert errors_on(changeset) == %{patterns: ["should have at least 1 item(s)"]}
 
-      assert {:error, changeset} = add_plan_metrics(:team, [""])
+      assert {:error, changeset} = set_plan_metrics(:team, [""])
       assert errors_on(changeset) == %{patterns: ["should have at least 1 item(s)"]}
 
-      assert {:error, changeset} = add_plan_metrics(:team, ["a", 1])
+      assert {:error, changeset} = set_plan_metrics(:team, ["a", 1])
       assert errors_on(changeset) == %{patterns: ["is invalid"]}
+
+      assert get_plan_metrics(:team) == nil
     end
 
-    test "add_account_metrics/3 stores a set for an account" do
+    test "set_account_metrics/2 sets the patterns of an account" do
       account = account_fixture()
 
-      assert {:ok, id} = add_account_metrics(account.id, ["a"], "debugging")
+      assert {:ok, ["a"]} = set_account_metrics(account.id, ["a"])
+      assert get_account_metrics(account.id) == ["a"]
 
-      assert [%Portal.AccountMetricSet{id: ^id, patterns: ["a"], description: "debugging"}] =
-               list_account_metrics(account.id)
+      assert {:ok, ["b", "c"]} = set_account_metrics(account.id, ["b", "c"])
+      assert get_account_metrics(account.id) == ["b", "c"]
+      assert get_account_metrics(account_fixture().id) == nil
 
-      assert {:error, changeset} = add_account_metrics(account.id, [])
+      assert {:error, changeset} = set_account_metrics(account.id, [])
       assert errors_on(changeset) == %{patterns: ["should have at least 1 item(s)"]}
 
-      assert {:error, changeset} = add_account_metrics(Ecto.UUID.generate(), ["a"])
+      assert {:error, changeset} = set_account_metrics(Ecto.UUID.generate(), ["a"])
       assert errors_on(changeset) == %{account: ["does not exist"]}
     end
 
-    test "remove_plan_metrics/1 and remove_account_metrics/1 delete a set" do
+    test "remove_plan_metrics/1 and remove_account_metrics/1 remove the patterns" do
       account = account_fixture()
-      {:ok, plan_set_id} = add_plan_metrics(:team, ["a"])
-      {:ok, account_set_id} = add_account_metrics(account.id, ["a"])
+      {:ok, _patterns} = set_plan_metrics(:team, ["a"])
+      {:ok, _patterns} = set_account_metrics(account.id, ["a"])
 
-      assert :ok = remove_plan_metrics(plan_set_id)
-      assert :ok = remove_account_metrics(account_set_id)
-      assert list_plan_metrics(:team) == []
-      assert list_account_metrics(account.id) == []
+      assert :ok = remove_plan_metrics(:team)
+      assert :ok = remove_account_metrics(account.id)
+      assert get_plan_metrics(:team) == nil
+      assert get_account_metrics(account.id) == nil
 
-      assert {:error, :not_found} = remove_plan_metrics(plan_set_id)
-      assert {:error, :not_found} = remove_account_metrics(account_set_id)
+      assert {:error, :not_found} = remove_plan_metrics(:team)
+      assert {:error, :not_found} = remove_account_metrics(account.id)
     end
 
-    test "effective_metrics/1 is empty without any sets" do
+    test "effective_metrics/1 is empty without any patterns" do
       assert effective_metrics(team_account_fixture().id) == []
     end
 
-    test "effective_metrics/1 includes the sets of the account's plan" do
+    test "effective_metrics/1 includes the patterns of the account's plan" do
       account = team_account_fixture()
-      {:ok, _id} = add_plan_metrics(:team, ["b", "a"])
-      {:ok, _id} = add_plan_metrics(:starter, ["c"])
+      {:ok, _patterns} = set_plan_metrics(:team, ["b", "a"])
+      {:ok, _patterns} = set_plan_metrics(:starter, ["c"])
 
       assert effective_metrics(account.id) == ["a", "b"]
     end
 
-    test "effective_metrics/1 includes the account's own sets" do
+    test "effective_metrics/1 includes the account's own patterns" do
       account = team_account_fixture()
-      {:ok, _id} = add_account_metrics(account.id, ["a"])
-      {:ok, _id} = add_account_metrics(account_fixture().id, ["c"])
+      {:ok, _patterns} = set_account_metrics(account.id, ["a"])
+      {:ok, _patterns} = set_account_metrics(account_fixture().id, ["c"])
 
       assert effective_metrics(account.id) == ["a"]
     end
 
-    test "effective_metrics/1 is the sorted union of all sets without duplicates" do
+    test "effective_metrics/1 is the sorted union of both lists without duplicates" do
       account = team_account_fixture()
-      {:ok, _id} = add_plan_metrics(:team, ["c", "a"])
-      {:ok, _id} = add_plan_metrics(:team, ["a", "d"])
-      {:ok, _id} = add_account_metrics(account.id, ["d", "b"])
-      {:ok, _id} = add_account_metrics(account.id, ["b", "a"])
+      {:ok, _patterns} = set_plan_metrics(:team, ["c", "a", "d"])
+      {:ok, _patterns} = set_account_metrics(account.id, ["d", "b", "a"])
 
       assert effective_metrics(account.id) == ["a", "b", "c", "d"]
     end
 
-    test "an account's sets are deleted with it" do
+    test "an account's patterns are deleted with it" do
       account = account_fixture()
-      {:ok, _id} = add_account_metrics(account.id, ["a"])
+      {:ok, _patterns} = set_account_metrics(account.id, ["a"])
 
       Repo.delete!(account)
 
-      assert Repo.aggregate(Portal.AccountMetricSet, :count) == 0
+      assert Repo.aggregate(Portal.AccountMetrics, :count) == 0
     end
   end
 

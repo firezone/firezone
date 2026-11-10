@@ -2,10 +2,10 @@ defmodule PortalAPI.Client.V4.Channel do
   @moduledoc """
   The v4 client control protocol: v3 plus metrics export. Clients on this channel
   receive `metrics_config` pushes after joining, when their token is refreshed,
-  and when the account's metric sets change.
+  and when the account's metric patterns change.
   """
   use PortalAPI, :channel
-  alias Portal.{AccountMetricSet, Changes.Change}
+  alias Portal.{AccountMetrics, Changes.Change}
   alias PortalAPI.MetricsConfig
   alias PortalAPI.Client.Channel.Shared
 
@@ -36,7 +36,7 @@ defmodule PortalAPI.Client.V4.Channel do
     {:noreply, socket}
   end
 
-  def handle_info(%Change{} = change, socket) when is_struct(change.struct, AccountMetricSet) or is_struct(change.old_struct, AccountMetricSet) do
+  def handle_info(%Change{} = change, socket) when is_struct(change.struct, AccountMetrics) or is_struct(change.old_struct, AccountMetrics) do
     last_lsn = Map.get(socket.assigns, :last_lsn, 0)
 
     with {:noreply, socket} <- Shared.handle_info(change, socket) do
