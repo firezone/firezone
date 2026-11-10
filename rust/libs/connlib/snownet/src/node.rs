@@ -9,7 +9,6 @@ pub use connection_state::ConnectionPath;
 pub use connections::UnknownConnection;
 
 use crate::agent::{Agent, CandidateOrigin};
-use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::crypto::{CommittedBatch, DecapsulateBatch, DecryptedBatch, EncapsulateBatch};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
@@ -17,7 +16,6 @@ use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
 use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::node::timeout_cache::TimeoutCache;
-use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use bufferpool::Bytes;
 use core::fmt;
@@ -30,6 +28,8 @@ use itertools::Itertools;
 use opentelemetry::metrics::Gauge;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use relay_client_proto::channel_data::channel_data_packet_buffer;
+use relay_client_proto::{Allocation, RelaySocket, Socket};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use std::collections::{BTreeSet, HashSet};
@@ -1050,7 +1050,7 @@ where
         match packet.first().copied() {
             // STUN method range
             Some(0..=3) => {
-                let Ok(Ok(message)) = allocation::decode(packet) else {
+                let Ok(Ok(message)) = relay_client_proto::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
                 };
@@ -1082,7 +1082,7 @@ where
             }
             // Channel data number range
             Some(64..=79) => {
-                let Ok(cd) = crate::channel_data::decode(packet) else {
+                let Ok(cd) = relay_client_proto::channel_data::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
                 };
@@ -1280,7 +1280,7 @@ where
             tracing::trace!(%rid, ?event);
 
             match event {
-                allocation::Event::New(candidate) => {
+                relay_client_proto::Event::New(candidate) => {
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
                         c.add_local_candidate(
                             cid,
@@ -1291,7 +1291,7 @@ where
                         );
                     }
                 }
-                allocation::Event::Invalid(candidate) => {
+                relay_client_proto::Event::Invalid(candidate) => {
                     for (cid, c) in self.connections.iter_mut() {
                         c.remove_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }

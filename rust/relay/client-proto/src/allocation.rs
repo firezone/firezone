@@ -1,13 +1,11 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
     channel_data,
-    node::Transmit,
 };
 use bufferpool::Bytes;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use fast_random_state::FastRandomState;
 use hex_display::HexDisplayExt as _;
-use ip_packet::Ecn;
 use is::Candidate;
 use logging::err_with_src;
 use rand::{SeedableRng as _, rngs::StdRng};
@@ -15,7 +13,7 @@ use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use smallvec::SmallVec;
 use std::{
     collections::{HashMap, VecDeque},
-    iter,
+    fmt, iter,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
@@ -119,9 +117,25 @@ struct ActiveSocket {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum Event {
+pub enum Event {
     New(Candidate),
     Invalid(Candidate),
+}
+
+/// A datagram to send to the relay.
+#[derive(PartialEq)]
+pub struct Transmit {
+    pub dst: SocketAddr,
+    pub payload: Bytes,
+}
+
+impl fmt::Debug for Transmit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Transmit")
+            .field("dst", &self.dst)
+            .field("len", &self.payload.len())
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -279,7 +293,7 @@ impl Allocation {
     /// The username/password/realm, however, are minted by the portal per session and stay
     /// valid, so we keep them and re-allocate immediately instead of waiting for the portal
     /// to re-issue them.
-    pub(crate) fn restart(&mut self, now: Instant, seed: [u8; 32]) {
+    pub fn restart(&mut self, now: Instant, seed: [u8; 32]) {
         let Some(Credentials {
             username,
             password,
@@ -1050,11 +1064,6 @@ impl Allocation {
         self.rtt
     }
 
-    #[cfg(test)]
-    pub(crate) fn set_rtt(&mut self, rtt: Duration) {
-        self.rtt = Some(rtt);
-    }
-
     fn update_rtt(&mut self, sample: Duration) {
         // RFC 6298 SRTT-style EMA: srtt = 7/8 * srtt + 1/8 * sample.
         self.rtt = Some(match self.rtt {
@@ -1254,10 +1263,8 @@ impl Allocation {
             .insert(id, (dst, message.clone(), backoff));
 
         self.buffered_transmits.push_back(Transmit {
-            src: None,
             dst,
             payload: Bytes::copied_from(&encode(message)),
-            ecn: Ecn::NonEct,
         });
 
         true
@@ -1543,7 +1550,7 @@ fn relay_candidate(
     }
 }
 
-pub(crate) fn decode(packet: &[u8]) -> bytecodec::Result<DecodedMessage<Attribute>> {
+pub fn decode(packet: &[u8]) -> bytecodec::Result<DecodedMessage<Attribute>> {
     MessageDecoder::<Attribute>::default().decode_from_bytes(packet)
 }
 
@@ -1827,7 +1834,7 @@ fn display_attr(attr: &Attribute) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::channel_data_packet_buffer;
+    use crate::channel_data::channel_data_packet_buffer;
 
     use super::*;
     use std::{
