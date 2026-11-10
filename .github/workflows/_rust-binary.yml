@@ -1,0 +1,136 @@
+name: Build Rust binary
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: "The Cargo package to build"
+        required: true
+        type: string
+      name:
+        description: "The name of the component, used to name the artifact"
+        required: true
+        type: string
+      prefix:
+        description: "The prefix to prepend to the artifact name to prevent SHA conflicts"
+        required: false
+        type: string
+      sha:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      profile:
+        description: "The Rust profile to build the binary with"
+        required: true
+        type: string
+      stage:
+        description: "The stage of the image the binary is built for"
+        required: true
+        type: string
+    outputs:
+      artifact:
+        description: "The name of the binary artifact, without the `-<arch>` suffix"
+        value: ${{ format('{0}{1}-{2}-binary', inputs.prefix && format('{0}-', inputs.prefix) || '', inputs.name, inputs.sha || github.sha) }}
+      arches:
+        description: "The architectures the binary was built for, as a JSON array"
+        value: ${{ jobs.arches.outputs.json }}
+
+permissions:
+  contents: read
+
+jobs:
+  arches:
+    runs-on: ubuntu-24.04
+    outputs:
+      json: ${{ steps.arches.outputs.json }}
+    steps:
+      - id: arches
+        env:
+          # Devs are either on amd64 or arm64
+          EXCLUDE: ${{ inputs.stage == 'debug' && 'armv7' || '' }}
+        run: |
+          jq -rn --arg exclude "$EXCLUDE" '[
+            { target: "x86_64-unknown-linux-musl", shortname: "x86_64", platform: "linux/amd64" },
+            { target: "aarch64-unknown-linux-musl", shortname: "aarch64", platform: "linux/arm64" }, # E.g. AWS Graviton
+            { target: "armv7-unknown-linux-musleabihf", shortname: "armv7", platform: "linux/arm/v7" } # E.g. Raspberry Pi
+          ] | map(select(.shortname != $exclude)) | "json=\(tojson)"' >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ inputs.name }}-${{ matrix.arch.shortname }}
+    needs: arches
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        arch: ${{ fromJSON(needs.arches.outputs.json) }}
+    env:
+      SENTRY_ENVIRONMENT: "production"
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RESOLVED_SHA }}
+      - uses: ./.github/actions/setup-rust-binary-cache
+        id: binary-cache
+        with:
+          path: rust/target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ inputs.package }}
+          key: ${{ inputs.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
+      # Restored binaries skip the `cargo build` below, so the toolchains only
+      # needed to compile them are skipped too. Stamping in the commit SHA
+      # still needs mise.
+      - uses: ./.github/actions/setup-musl
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          target: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-stable
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          targets: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-mise
+        with:
+          # Stamping the SHA shells out to coreutils only, so a restored binary
+          # needs `mise` as a task runner but none of its tools.
+          install: ${{ steps.binary-cache.outputs.cache-hit != 'true' }}
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: mise run //rust:install-ebpf-toolchain
+        if: inputs.package == 'firezone-relay' && steps.binary-cache.outputs.cache-hit != 'true'
+      - name: Build binaries
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        run: |
+          set -xe
+
+          if [[ "${{ inputs.profile }}" == "release" ]]; then
+            PROFILE="--release"
+          else
+            PROFILE=""
+          fi
+
+          cargo build $PROFILE -p ${{ inputs.package }} --target ${{ matrix.arch.target }} --verbose
+      - name: Package binaries
+        run: |
+          set -xe
+
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ inputs.package }} ${{ inputs.package }}
+
+          # Stamp the commit SHA into the placeholder before checksum and upload;
+          # the binary is otherwise SHA-independent and cache-restorable.
+          mise run //rust:patch-git-sha "$PWD/${{ inputs.package }}" "${{ env.RESOLVED_SHA }}"
+
+          sha256sum ${{ inputs.package }} > ${{ inputs.package }}.sha256sum.txt
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.prefix && format('{0}-', inputs.prefix) || '' }}${{ inputs.name }}-${{ env.RESOLVED_SHA }}-binary-${{ matrix.arch.shortname }}
+          path: |
+            rust/${{ inputs.package }}
+            rust/${{ inputs.package }}.sha256sum.txt
+          if-no-files-found: error
+          retention-days: 1

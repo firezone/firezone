@@ -3,7 +3,7 @@ on:
   workflow_call:
     inputs:
       package:
-        description: "The Cargo package to build and put into the image"
+        description: "The Cargo package to put into the image"
         required: true
         type: string
       image_name:
@@ -11,32 +11,29 @@ on:
         required: true
         type: string
       image_prefix:
-        description: |
-          The prefix to prepend to the image name to prevent SHA conflicts.
-          * Use "debug" to build debug binaries inside debug stage images + with debug tooling installed.
-          * Use "perf" to build release binaries inside debug stage images + with debug tooling installed.
-          * Leave blank to build release binaries inside release stage images.
+        description: "The prefix to prepend to the image name to prevent SHA conflicts"
         required: false
         type: string
       sha:
         required: false
         type: string
         default: ${{ github.sha }}
-      profile:
-        description: "The Rust profile to build the binary with"
-        required: true
-        type: string
       stage:
         description: "The stage of the image to build"
+        required: true
+        type: string
+      binary_artifact:
+        description: "The name of the binary artifact, without the `-<arch>` suffix"
+        required: true
+        type: string
+      arches:
+        description: "The architectures to build the image for, as a JSON array"
         required: true
         type: string
     outputs:
       image:
         description: "The image that was built"
         value: ${{ jobs.build.outputs.image }}
-      binary_artifact:
-        description: "The name of the binary artifact, without the `-<arch>` suffix"
-        value: ${{ format('{0}{1}-{2}-binary', inputs.image_prefix && format('{0}-', inputs.image_prefix) || '', inputs.image_name, inputs.sha || github.sha) }}
 
 permissions:
   contents: read
@@ -53,27 +50,8 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        # Copy input vars to matrix vars to conditionally exclude them
-        stage:
-          - ${{ inputs.stage }}
-
-        # Syntax is weird because https://github.com/actions/runner/issues/1512
-        exclude:
-          # Devs are either on amd64 or arm64
-          - { stage: debug, arch: { platform: linux/arm/v7 } }
-
-        arch:
-          - target: x86_64-unknown-linux-musl
-            shortname: x86_64
-            platform: linux/amd64
-          - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
-            shortname: aarch64
-            platform: linux/arm64
-          - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
-            platform: linux/arm/v7
-            shortname: armv7
+        arch: ${{ fromJSON(inputs.arches) }}
     env:
-      SENTRY_ENVIRONMENT: "production"
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
     outputs:
       image: ${{ steps.image-name.outputs.image }}
@@ -85,68 +63,11 @@ jobs:
         id: login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/setup-rust-binary-cache
-        id: binary-cache
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          path: rust/target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ inputs.package }}
-          key: ${{ inputs.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
-      # Restored binaries skip the `cargo build` below, so the toolchains only
-      # needed to compile them are skipped too. Stamping in the commit SHA
-      # still needs mise.
-      - uses: ./.github/actions/setup-musl
-        if: steps.binary-cache.outputs.cache-hit != 'true'
-        with:
-          target: ${{ matrix.arch.target }}
-      - uses: ./.github/actions/setup-rust-stable
-        if: steps.binary-cache.outputs.cache-hit != 'true'
-        with:
-          targets: ${{ matrix.arch.target }}
-      - uses: ./.github/actions/setup-rust-sccache
-        if: steps.binary-cache.outputs.cache-hit != 'true'
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - uses: ./.github/actions/setup-mise
-        with:
-          # Stamping the SHA shells out to coreutils only, so a restored binary
-          # needs `mise` as a task runner but none of its tools.
-          install: ${{ steps.binary-cache.outputs.cache-hit != 'true' }}
-          install_args: --cd rust
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: mise run //rust:install-ebpf-toolchain
-        if: inputs.package == 'firezone-relay' && steps.binary-cache.outputs.cache-hit != 'true'
-      - name: Build binaries
-        if: steps.binary-cache.outputs.cache-hit != 'true'
-        run: |
-          set -xe
-
-          if [[ "${{ inputs.profile }}" == "release" ]]; then
-            PROFILE="--release"
-          else
-            PROFILE=""
-          fi
-
-          cargo build $PROFILE -p ${{ inputs.package }} --target ${{ matrix.arch.target }} --verbose
-      - name: Package binaries
-        run: |
-          set -xe
-
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ inputs.package }} ${{ inputs.package }}
-
-          # Stamp the commit SHA into the placeholder before checksum and upload;
-          # the binary is otherwise SHA-independent and cache-restorable.
-          mise run //rust:patch-git-sha "$PWD/${{ inputs.package }}" "${{ env.RESOLVED_SHA }}"
-
-          sha256sum ${{ inputs.package }} > ${{ inputs.package }}.sha256sum.txt
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ inputs.image_name }}-${{ env.RESOLVED_SHA }}-binary-${{ matrix.arch.shortname }}
-          path: |
-            rust/${{ inputs.package }}
-            rust/${{ inputs.package }}.sha256sum.txt
-          if-no-files-found: error
-          retention-days: 1
+          name: ${{ inputs.binary_artifact }}-${{ matrix.arch.shortname }}
+          path: rust
+      - run: chmod +x ${{ inputs.package }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - name: Set up Docker Buildx
