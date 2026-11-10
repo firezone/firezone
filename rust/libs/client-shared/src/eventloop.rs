@@ -173,6 +173,7 @@ impl Eventloop {
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Result<Self> {
         let SessionConfig {
+            listen_port,
             is_internet_resource_active,
             dns_servers,
             additional_host_candidates,
@@ -186,6 +187,7 @@ impl Eventloop {
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
+            listen_port,
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),

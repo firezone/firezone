@@ -473,7 +473,9 @@ fn try_main() -> Result<()> {
             flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
         }
 
-        let config = client_shared::SessionConfig::default()
+        let listen_port =
+            client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+        let config = client_shared::SessionConfig::new(listen_port)
             .with_internet_resource_active(cli.activate_internet_resource)
             .with_dns_servers(dns_controller.system_resolvers())
             .with_additional_host_candidates(cli.additional_host_candidates.clone())

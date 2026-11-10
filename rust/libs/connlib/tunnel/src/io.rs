@@ -320,6 +320,10 @@ impl Io {
         self.tun.flush_batch();
     }
 
+    pub fn listen_port(&self) -> u16 {
+        self.sockets.listen_port()
+    }
+
     pub fn reset(&mut self) {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
