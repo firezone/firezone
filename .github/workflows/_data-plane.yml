@@ -358,9 +358,7 @@ jobs:
       # trusted by the infra VM verifier.
       - name: Install Cosign
         if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
-        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
-        with:
-          cosign-release: v3.1.4
+        run: mise install aqua:sigstore/cosign
       - name: Sign deployment manifest
         if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
         env:
@@ -370,12 +368,12 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RESOLVED_SHA" =~ ^[0-9a-f]{40}$ ]]
-          digest=$(sha256sum "$BINARY" | cut -d ' ' -f 1)
+          digest=$(cut -d ' ' -f 1 "$BINARY.sha256sum.txt")
           jq -n --arg component "$COMPONENT" --arg sha "$RESOLVED_SHA" \
             --arg arch "$ARCH" --arg sha256 "$digest" \
             '{component: $component, sha: $sha, arch: $arch, sha256: $sha256}' \
             > "$BINARY.manifest.json"
-          cosign sign-blob --yes --bundle "$BINARY.sigstore.json" "$BINARY.manifest.json"
+          mise exec -- cosign sign-blob --yes --bundle "$BINARY.sigstore.json" "$BINARY.manifest.json"
       - name: Azure login (OIDC)
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' }}
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0

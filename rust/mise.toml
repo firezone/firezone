@@ -15,6 +15,7 @@ auto_install = false
 # platform gets the bare binary; `bin` gives it a name the shim can use.
 "github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
+"aqua:sigstore/cosign" = { version = "3.1.4", os = ["linux"] }
 
 [tools."github:bencherdev/bencher"]
 version = "0.6.13"
