@@ -47,7 +47,7 @@ defmodule Portal.TokenFixtures do
     actor = Map.get(attrs, :actor) || actor_fixture(account: account)
 
     changeset =
-      %Portal.ClientToken{}
+      %Portal.DeviceToken{}
       |> Ecto.Changeset.cast(attrs, [
         :secret_nonce,
         :secret_fragment,
@@ -66,22 +66,7 @@ defmodule Portal.TokenFixtures do
         changeset
       end
 
-    token = Portal.Repo.insert!(changeset)
-
-    Portal.Repo.insert!(%Portal.DeviceToken{
-      account_id: token.account_id,
-      id: token.id,
-      client_token_id: token.id,
-      actor_id: token.actor_id,
-      auth_provider_id: token.auth_provider_id,
-      secret_salt: token.secret_salt,
-      secret_hash: token.secret_hash,
-      expires_at: token.expires_at,
-      inserted_at: token.inserted_at,
-      updated_at: token.updated_at
-    })
-
-    token
+    Portal.Repo.insert!(changeset)
   end
 
   @doc """

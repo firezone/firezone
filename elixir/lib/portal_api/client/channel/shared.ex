@@ -731,7 +731,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           "policy_authorizations_account_id_fkey" => {:simple, :account_id, Portal.Account},
           "policy_authorizations_policy_id_fkey" => {:composite, :policy_id, Portal.Policy},
           "policy_authorizations_resource_id_fkey" => {:composite, :resource_id, Portal.Resource},
-          "policy_authorizations_token_id_fkey" => {:composite, :token_id, Portal.ClientToken},
+          "policy_authorizations_token_id_fkey" => {:composite, :token_id, Portal.DeviceToken},
           "policy_authorizations_membership_id_fkey" =>
             {:composite_optional, :membership_id, Portal.Membership},
           "policy_authorizations_initiating_device_id_fkey" =>

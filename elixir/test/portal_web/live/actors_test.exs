@@ -820,7 +820,7 @@ defmodule PortalWeb.ActorsTest do
 
       assert html =~ "Tokens can only be created for service accounts"
       refute html =~ "Token Created"
-      refute Portal.Repo.get_by(Portal.ClientToken, actor_id: user.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, actor_id: user.id)
     end
 
     test "redirects to actor list when actor does not exist", %{
@@ -1270,7 +1270,7 @@ defmodule PortalWeb.ActorsTest do
       render_click(lv, "confirm_email_change")
 
       refute Portal.Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
-      refute Portal.Repo.get_by(Portal.ClientToken, id: client_token.id, account_id: account.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, id: client_token.id, account_id: account.id)
     end
 
     test "re-runs role validation on confirmation (rejects if state changed mid-flow)", %{
@@ -1937,7 +1937,7 @@ defmodule PortalWeb.ActorsTest do
         refute Portal.Repo.get_by(Actor, account_id: account.id, name: "Late")
         assert Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
         assert Portal.Repo.get_by(Portal.ExternalIdentity, account_id: account.id, id: identity.id)
-        assert Portal.Repo.get_by(Portal.ClientToken, account_id: account.id, id: token.id)
+        assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
       end
     end
   end

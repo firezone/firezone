@@ -207,7 +207,6 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       data = %{"id" => account.id, "is_disabled" => true}
 
       assert :ok == on_update(0, old_data, data)
-      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
       assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
       assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
     end

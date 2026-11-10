@@ -114,7 +114,6 @@ config :portal, Portal.ChangeLogs.Consumer,
     device_tokens
     policies
     resources
-    client_tokens
     one_time_passcodes
     api_tokens
     trust_anchors
@@ -168,7 +167,6 @@ config :portal, Portal.Changes.Consumer,
     sites
     policies
     resources
-    client_tokens
     google_auth_providers
     github_auth_providers
     entra_auth_providers

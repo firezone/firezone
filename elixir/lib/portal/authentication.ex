@@ -18,7 +18,7 @@ defmodule Portal.Authentication do
   # and headless client sign-ins.
   def create_interactive_client_token(attrs) do
     changeset =
-      %ClientToken{}
+      %Portal.DeviceToken{}
       |> cast(attrs, ~w[secret_nonce account_id actor_id auth_provider_id expires_at]a)
       |> validate_required([:account_id, :actor_id, :auth_provider_id, :expires_at])
       |> validate_length(:secret_nonce, max: 128)
@@ -44,7 +44,7 @@ defmodule Portal.Authentication do
       ) do
     {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
-    %ClientToken{
+    %Portal.DeviceToken{
       account_id: actor.account_id,
       actor_id: actor.id,
       secret_nonce: "",
@@ -332,7 +332,7 @@ defmodule Portal.Authentication do
     do: encode_token(nil, token.id, token.secret_fragment, "relay")
 
   def encode_fragment!(%Portal.DeviceToken{} = token),
-    do: encode_token(token.account_id, token.id, token.secret_fragment, "gateway")
+    do: encode_token(token.account_id, token.id, token.secret_fragment, "device")
 
   def encode_fragment!(%Portal.APIToken{} = token),
     do: encode_token(token.account_id, token.id, token.secret_fragment, "api_client")
@@ -596,8 +596,6 @@ defmodule Portal.Authentication do
     Portal.Config.fetch_env!(:portal, Portal.Tokens)
   end
 
-  # Device tokens will be signed with "device". Every node accepts it before
-  # any node signs with it.
   defp context_salts(:client), do: ["device", "client"]
   defp context_salts(type), do: [to_string(type)]
 
@@ -628,27 +626,17 @@ defmodule Portal.Authentication do
     end
 
     # Client
-    # Each client token is copied to device_tokens in the same transaction.
-    # The copy's foreign key to its client token cascades, so every delete
-    # removes it too.
     def insert_client_token(changeset) do
-      Safe.transact(fn ->
-        with {:ok, token} <- changeset |> Safe.unscoped() |> Safe.insert(),
-             {:ok, _copy} <- token |> device_token_copy() |> Safe.unscoped() |> Safe.insert() do
-          {:ok, token}
-        end
-      end)
+      changeset
+      |> Safe.unscoped()
+      |> Safe.insert()
     end
 
     # Service Account
     def insert_client_token(changeset, subject) do
-      Safe.transact(fn ->
-        with {:ok, token} <- changeset |> Safe.scoped(subject) |> Safe.insert(),
-             {:ok, _copy} <-
-               token |> device_token_copy() |> Safe.scoped(subject) |> Safe.insert() do
-          {:ok, token}
-        end
-      end)
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.insert()
     end
 
     def insert_relay_token(relay_token) do
@@ -1101,21 +1089,6 @@ defmodule Portal.Authentication do
       )
       |> Safe.unscoped()
       |> Safe.one!()
-    end
-
-    defp device_token_copy(%ClientToken{} = token) do
-      %Portal.DeviceToken{
-        account_id: token.account_id,
-        id: token.id,
-        client_token_id: token.id,
-        actor_id: token.actor_id,
-        auth_provider_id: token.auth_provider_id,
-        secret_salt: token.secret_salt,
-        secret_hash: token.secret_hash,
-        expires_at: token.expires_at,
-        inserted_at: token.inserted_at,
-        updated_at: token.updated_at
-      }
     end
   end
 end

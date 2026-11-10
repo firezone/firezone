@@ -34,14 +34,14 @@ defmodule Portal.Changes.Hooks.AuthProvidersTest do
   test "disabling the provider signs out its sessions", %{data: data} = ctx do
     assert :ok = on_update(1, data, %{data | "is_disabled" => true})
 
-    refute Portal.Repo.get_by(Portal.ClientToken, id: ctx.token.id)
+    refute Portal.Repo.get_by(Portal.DeviceToken, id: ctx.token.id)
     refute Portal.Repo.get_by(Portal.PortalSession, id: ctx.session.id)
   end
 
   test "disabling a domain signs out the provider's sessions", %{data: data} = ctx do
     assert :ok = on_update(1, data, %{data | "workspace_domains" => ["a.example"]})
 
-    refute Portal.Repo.get_by(Portal.ClientToken, id: ctx.token.id)
+    refute Portal.Repo.get_by(Portal.DeviceToken, id: ctx.token.id)
     refute Portal.Repo.get_by(Portal.PortalSession, id: ctx.session.id)
   end
 
@@ -49,7 +49,7 @@ defmodule Portal.Changes.Hooks.AuthProvidersTest do
     assert :ok =
              on_update(1, data, %{data | "workspace_domains" => ["a.example", "b.example", "c.example"]})
 
-    assert Portal.Repo.get_by(Portal.ClientToken, id: ctx.token.id)
+    assert Portal.Repo.get_by(Portal.DeviceToken, id: ctx.token.id)
     assert Portal.Repo.get_by(Portal.PortalSession, id: ctx.session.id)
   end
 
@@ -57,7 +57,7 @@ defmodule Portal.Changes.Hooks.AuthProvidersTest do
     assert :ok = on_update(1, data, Map.put(data, "name", "Renamed"))
     assert :ok = on_update(1, %{"is_disabled" => false, "name" => "Email"}, %{"is_disabled" => false, "name" => "Renamed"})
 
-    assert Portal.Repo.get_by(Portal.ClientToken, id: ctx.token.id)
+    assert Portal.Repo.get_by(Portal.DeviceToken, id: ctx.token.id)
     assert Portal.Repo.get_by(Portal.PortalSession, id: ctx.session.id)
   end
 end
