@@ -2,12 +2,15 @@ defmodule Portal.Ops.RegionTransfer do
   @moduledoc """
   Moves one account between Firezone Cloud regions.
 
-  `export/2` disables the account and writes every row it owns to a directory,
-  one PostgreSQL COPY file per table plus a manifest. `import/1` loads that
+  `export/3` disables the account and writes every row it owns to a directory,
+  one PostgreSQL COPY file per table plus a manifest. `import/2` loads that
   directory into the database of the other region in one transaction, and
-  `enable/1` turns the account back on once the move is verified. The runbook
+  `enable/2` turns the account back on once the move is verified. The runbook
   in the infra repository, README-region-transfer.md, lists the steps around
   these calls.
+
+  Every function asks for confirmation on the console. Pass `confirm: false`
+  to skip the prompt when a script calls it through `bin/portal rpc`.
 
   The log tables are not moved. They stay in the source region until the
   account is deleted there, which cascades to them.
@@ -21,70 +24,62 @@ defmodule Portal.Ops.RegionTransfer do
   @manifest "manifest.json"
   @region_names %{us: "United States", eu: "European Union"}
 
-  # Session state that users recreate by signing in, rows the account disable
-  # hook deletes anyway, OAuth state bound to this region's clients, and the
+  # Session state that users recreate by signing in, tokens signed with this
+  # region's keys, OAuth state bound to this region's clients, log sink
+  # cursors into logs that stay here (the destination seeds new ones), and the
   # log tables, which are deleted with the account in the source region.
-  @skipped_tables ~w(api_request_logs change_logs client_tokens feedback_submissions flow_logs oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes policy_authorizations portal_sessions session_logs)
+  # Nullable foreign keys from moved tables to these are exported as NULL.
+  @skipped_tables ~w(api_request_logs change_logs client_tokens device_tokens feedback_submissions flow_logs log_sink_cursors oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes pending_identities policy_authorizations portal_sessions session_logs)
 
   @doc "Disables the account and exports it to `dir`."
   # sobelow_skip ["Traversal.FileModule"]
-  def export(account_id, dir) do
+  def export(account_id, dir, opts \\ []) do
     account = Database.fetch_account!(account_id)
 
-    tables = Database.list_account_tables() -- @skipped_tables
-    {ordered, deferred} = order_tables(tables, Database.foreign_keys(tables))
-    counts = Map.new(ordered, &{&1, Database.count_rows(&1, account.id)})
-
-    print_summary("Export", account, Enum.map(ordered, &{&1, counts[&1]}))
-    IO.puts("Skipped: #{Enum.join(@skipped_tables, ", ")}")
-
-    if confirm?("Disable the account and export it to #{dir}? [y/N]") do
-      File.mkdir_p!(dir)
-      {:ok, account} = Database.disable_account(account, @disabled_reason)
-      notify_admins(account, &Notifications.region_transfer_started_email(&1, &2, other_region_name()))
-
-      account_columns = Database.columns("accounts")
-      1 = Database.copy_out("accounts", account_columns, "id", account.id, Path.join(dir, "accounts.copy"))
-
-      tables =
-        Enum.map(ordered, fn table ->
-          columns = Database.columns(table)
-          rows = Database.copy_out(table, columns, "account_id", account.id, Path.join(dir, "#{table}.copy"))
-
-          %{
-            "name" => table,
-            "columns" => columns,
-            "rows" => rows,
-            "deferred_columns" => Map.get(deferred, table, [])
-          }
-        end)
-
-      manifest = %{
-        "account_id" => account.id,
-        "name" => account.name,
-        "slug" => account.slug,
-        "schema_version" => Database.schema_version(),
-        "exported_at" => DateTime.to_iso8601(DateTime.utc_now()),
-        "account_columns" => account_columns,
-        "tables" => tables
-      }
-
-      File.write!(Path.join(dir, @manifest), Jason.encode!(manifest, pretty: true))
-
-      IO.puts("Exported #{total_rows(manifest)} rows to #{dir}. The account is disabled.")
-      {:ok, manifest}
+    if account.is_disabled and account.disabled_reason != @disabled_reason do
+      {:error, {:account_disabled, account.disabled_reason}}
     else
-      IO.puts("Aborted.")
-      :aborted
+      plan = plan_export()
+      counts = Enum.map(plan, &{&1.name, Database.count_rows(&1.name, account.id)})
+
+      print_summary("Export", account, counts)
+      IO.puts("Skipped: #{Enum.join(@skipped_tables, ", ")}")
+
+      if confirm?(opts, "Disable the account and export it to #{dir}? [y/N]") do
+        File.mkdir_p!(dir)
+        {:ok, account} = Database.disable_account(account, @disabled_reason)
+        notify_admins(account, &Notifications.region_transfer_started_email(&1, &2, other_region_name()))
+
+        {:ok, {account_columns, tables}} = Database.export_tables(dir, account.id, plan)
+
+        manifest = %{
+          "account_id" => account.id,
+          "name" => account.name,
+          "slug" => account.slug,
+          "slugs" => Database.list_slugs(account.id),
+          "schema_version" => Database.schema_version(),
+          "exported_at" => DateTime.to_iso8601(DateTime.utc_now()),
+          "account_columns" => account_columns,
+          "tables" => tables
+        }
+
+        File.write!(Path.join(dir, @manifest), Jason.encode!(manifest, pretty: true))
+
+        IO.puts("Exported #{total_rows(manifest)} rows to #{dir}. The account is disabled.")
+        {:ok, manifest}
+      else
+        IO.puts("Aborted.")
+        :aborted
+      end
     end
   end
 
   @doc """
   Imports an account exported by `export/3` from `dir`. The account stays
-  disabled until `enable/1` runs.
+  disabled until `enable/2` runs.
   """
   # sobelow_skip ["Traversal.FileModule"]
-  def import(dir) do
+  def import(dir, opts \\ []) do
     manifest = dir |> Path.join(@manifest) |> File.read!() |> Jason.decode!()
     local_version = Database.schema_version()
 
@@ -95,20 +90,63 @@ defmodule Portal.Ops.RegionTransfer do
       Database.account_exists?(manifest["account_id"]) ->
         {:error, :account_exists}
 
-      Database.slug_taken?(manifest["slug"]) ->
-        {:error, :slug_taken}
+      (taken = Database.taken_slugs([manifest["slug"] | manifest["slugs"]])) != [] ->
+        {:error, {:slugs_taken, taken}}
 
       true ->
-        confirm_import(dir, manifest)
+        confirm_import(dir, manifest, opts)
     end
   end
 
-  @doc "Turns an imported account back on and tells its admins."
-  def enable(account_id) do
-    with {:ok, account} <- account_id |> Database.fetch_account!() |> Database.enable_account() do
-      notify_admins(account, &Notifications.region_transfer_completed_email(&1, &2, region_name()))
-      {:ok, account}
+  @doc """
+  Turns an account disabled by `export/3` back on. In the destination this
+  also emails the admins that the move is done; pass `notify: false` when
+  rolling back in the source.
+  """
+  def enable(account_id, opts \\ []) do
+    account = Database.fetch_account!(account_id)
+
+    cond do
+      not account.is_disabled or account.disabled_reason != @disabled_reason ->
+        {:error, {:not_in_transfer, account.disabled_reason}}
+
+      not confirm?(opts, "Enable account #{account.name} (#{account.slug})? [y/N]") ->
+        IO.puts("Aborted.")
+        :aborted
+
+      true ->
+        {:ok, account} = Database.enable_account(account)
+
+        if Keyword.get(opts, :notify, true) do
+          notify_admins(account, &Notifications.region_transfer_completed_email(&1, &2, region_name()))
+        end
+
+        {:ok, account}
     end
+  end
+
+  # Tables in foreign key order, each with the columns that point at a skipped
+  # table and are exported as NULL. Raises before anything is disabled when a
+  # moved table cannot be loaded on its own.
+  defp plan_export do
+    all_tables = Database.list_account_tables()
+    tables = all_tables -- @skipped_tables
+    foreign_keys = Database.foreign_keys(all_tables)
+
+    nulled =
+      for {table, ref, columns} <- foreign_keys, table in tables, ref in @skipped_tables, reduce: %{} do
+        acc ->
+          if columns == [] do
+            raise "#{table} has a NOT NULL foreign key to the skipped table #{ref}"
+          end
+
+          Map.update(acc, table, columns, &Enum.uniq(&1 ++ columns))
+      end
+
+    foreign_keys
+    |> Enum.filter(fn {table, ref, _columns} -> table in tables and ref in tables end)
+    |> then(&order_tables(tables, &1))
+    |> Enum.map(&%{name: &1, nulled_columns: Map.get(nulled, &1, [])})
   end
 
   defp notify_admins(account, build_email) do
@@ -133,14 +171,14 @@ defmodule Portal.Ops.RegionTransfer do
     end
   end
 
-  defp confirm_import(dir, manifest) do
+  defp confirm_import(dir, manifest, opts) do
     rows = Enum.map(manifest["tables"], &{&1["name"], &1["rows"]})
     print_summary("Import", manifest, rows)
 
-    if confirm?("Import #{total_rows(manifest)} rows from #{dir}? [y/N]") do
+    if confirm?(opts, "Import #{total_rows(manifest)} rows from #{dir}? [y/N]") do
       case Database.import_tables(dir, manifest) do
         {:ok, imported} ->
-          IO.puts("Imported #{imported} rows. The account stays disabled until enable/1 runs.")
+          IO.puts("Imported #{imported} rows. The account stays disabled until enable/2 runs.")
           {:ok, manifest}
 
         {:error, reason} ->
@@ -167,48 +205,40 @@ defmodule Portal.Ops.RegionTransfer do
   defp account_field(%{"account_id" => _} = manifest, field), do: manifest[Atom.to_string(field)]
   defp account_field(account, field), do: Map.fetch!(account, field)
 
-  defp confirm?(prompt) do
-    IO.puts(prompt)
-    IO.gets("") |> String.trim() |> String.downcase() == "y"
-  end
-
-  # Kahn's algorithm over the foreign keys between the exported tables. When
-  # only cycles remain, a foreign key with nullable columns is cut: those
-  # columns are imported as NULL and restored once every table is in.
-  defp order_tables(tables, foreign_keys) do
-    deps =
-      Map.new(tables, fn table ->
-        {table, for({^table, ref, _nullable} <- foreign_keys, ref != table, uniq: true, do: ref)}
-      end)
-
-    do_order(Enum.sort(tables), deps, foreign_keys, [], %{})
-  end
-
-  defp do_order([], _deps, _foreign_keys, ordered, deferred), do: {Enum.reverse(ordered), deferred}
-
-  defp do_order(remaining, deps, foreign_keys, ordered, deferred) do
-    case Enum.filter(remaining, fn table -> Enum.all?(deps[table], &(&1 not in remaining)) end) do
-      [] ->
-        {table, ref, columns} = cut_cycle(remaining, foreign_keys)
-        deps = Map.update!(deps, table, &List.delete(&1, ref))
-        deferred = Map.update(deferred, table, columns, &Enum.uniq(&1 ++ columns))
-        do_order(remaining, deps, foreign_keys, ordered, deferred)
-
-      ready ->
-        do_order(remaining -- ready, deps, foreign_keys, Enum.reverse(ready) ++ ordered, deferred)
+  defp confirm?(opts, prompt) do
+    if Keyword.get(opts, :confirm, true) do
+      IO.puts(prompt)
+      IO.gets("") |> String.trim() |> String.downcase() == "y"
+    else
+      true
     end
   end
 
-  defp cut_cycle(remaining, foreign_keys) do
-    Enum.find(foreign_keys, fn {table, ref, nullable} ->
-      table in remaining and ref in remaining and table != ref and nullable != []
-    end) ||
-      raise "cannot order tables, the cycle among #{inspect(remaining)} has no nullable foreign key"
+  # Kahn's algorithm over the foreign keys between the moved tables. A
+  # self-reference needs no ordering because COPY checks it at the end of
+  # the statement.
+  defp order_tables(tables, foreign_keys) do
+    deps =
+      Map.new(tables, fn table ->
+        {table, for({^table, ref, _columns} <- foreign_keys, ref != table, uniq: true, do: ref)}
+      end)
+
+    do_order(Enum.sort(tables), deps, [])
+  end
+
+  defp do_order([], _deps, ordered), do: Enum.reverse(ordered)
+
+  defp do_order(remaining, deps, ordered) do
+    case Enum.filter(remaining, fn table -> Enum.all?(deps[table], &(&1 not in remaining)) end) do
+      [] -> raise "cannot order tables, there is a foreign key cycle among #{inspect(remaining)}"
+      ready -> do_order(remaining -- ready, deps, Enum.reverse(ready) ++ ordered)
+    end
   end
 
   defmodule Database do
     import Ecto.Query
     alias Portal.Account
+    alias Portal.AccountSlug
     alias Portal.Safe
 
     def fetch_account!(id) do
@@ -223,10 +253,28 @@ defmodule Portal.Ops.RegionTransfer do
       |> Safe.one() != nil
     end
 
-    def slug_taken?(slug) do
-      from(a in Account, where: a.slug == ^slug, select: a.id)
+    def list_slugs(account_id) do
+      from(s in AccountSlug, where: s.account_id == ^account_id, select: s.slug, order_by: s.slug)
       |> Safe.unscoped()
-      |> Safe.one() != nil
+      |> Safe.all()
+    end
+
+    # Any spelling of the slugs already held here, by the account or in the
+    # slug history of another one.
+    def taken_slugs(slugs) do
+      spellings = slugs |> Enum.flat_map(&AccountSlug.spellings/1) |> Enum.uniq()
+
+      current =
+        from(a in Account, where: a.slug in ^spellings, select: a.slug)
+        |> Safe.unscoped()
+        |> Safe.all()
+
+      history =
+        from(s in AccountSlug, where: s.slug in ^spellings, select: s.slug)
+        |> Safe.unscoped()
+        |> Safe.all()
+
+      Enum.uniq(current ++ history)
     end
 
     def list_admin_emails(account_id) do
@@ -286,7 +334,7 @@ defmodule Portal.Ops.RegionTransfer do
     end
 
     # Foreign keys between the given tables as `{table, referenced_table,
-    # nullable_columns}`. A nullable column makes the key skippable on import.
+    # nullable_columns}`.
     def foreign_keys(tables) do
       %{rows: rows} =
         query!(
@@ -330,19 +378,43 @@ defmodule Portal.Ops.RegionTransfer do
       count
     end
 
+    # One REPEATABLE READ transaction, so every table comes from the same
+    # snapshot. The level is set as the connection default because
+    # SET TRANSACTION fails inside the test sandbox's transaction.
+    def export_tables(dir, account_id, plan) do
+      Safe.checkout(Safe.unscoped(), fn ->
+        query!("SET default_transaction_isolation = 'repeatable read'", [])
+
+        try do
+          Safe.transact(fn -> export_snapshot(dir, account_id, plan) end)
+        after
+          query!("RESET default_transaction_isolation", [])
+        end
+      end)
+    end
+
+    defp export_snapshot(dir, account_id, plan) do
+        account_columns = columns("accounts")
+        1 = copy_out("accounts", account_columns, [], "id", account_id, Path.join(dir, "accounts.copy"))
+
+        tables =
+          Enum.map(plan, fn %{name: name, nulled_columns: nulled} ->
+            columns = columns(name)
+            rows = copy_out(name, columns, nulled, "account_id", account_id, Path.join(dir, "#{name}.copy"))
+            %{"name" => name, "columns" => columns, "rows" => rows, "nulled_columns" => nulled}
+          end)
+
+        {:ok, {account_columns, tables}}
+    end
+
     # sobelow_skip ["Traversal.FileModule"]
-    def copy_out(table, columns, where_column, account_id, path) do
+    defp copy_out(table, columns, nulled, where_column, account_id, path) do
       {:ok, account_id} = Ecto.UUID.cast(account_id)
+      select = Enum.map_join(columns, ", ", &if(&1 in nulled, do: "NULL", else: ident(&1)))
 
-      sql =
-        ~s[COPY (SELECT #{idents(columns)} FROM #{ident(table)} WHERE #{ident(where_column)} = '#{account_id}') TO STDOUT]
+      sql = ~s[COPY (SELECT #{select} FROM #{ident(table)} WHERE #{ident(where_column)} = '#{account_id}') TO STDOUT]
 
-      {:ok, rows} =
-        Safe.transact(fn ->
-          File.open!(path, [:write, :binary], &{:ok, copy_to_file(sql, &1)})
-        end)
-
-      rows
+      File.open!(path, [:write, :binary], &copy_to_file(sql, &1))
     end
 
     defp copy_to_file(sql, file) do
@@ -362,26 +434,12 @@ defmodule Portal.Ops.RegionTransfer do
       Safe.transact(fn ->
         copy_in("accounts", manifest["account_columns"], Path.join(dir, "accounts.copy"))
 
-        staged = Enum.flat_map(manifest["tables"], &import_table(dir, &1))
-
-        Enum.each(staged, fn {table, staging, deferred_columns} ->
-          restore_deferred(table, staging, deferred_columns)
+        Enum.each(manifest["tables"], fn %{"name" => name, "columns" => columns} ->
+          copy_in(name, columns, Path.join(dir, "#{name}.copy"))
         end)
 
         verify_counts(manifest)
       end)
-    end
-
-    defp import_table(dir, %{"name" => name, "columns" => columns, "deferred_columns" => []}) do
-      copy_in(name, columns, Path.join(dir, "#{name}.copy"))
-      []
-    end
-
-    defp import_table(dir, %{"name" => name, "columns" => columns, "deferred_columns" => deferred}) do
-      staging = stage(name)
-      copy_in(staging, columns, Path.join(dir, "#{name}.copy"))
-      insert_from_staging(name, staging, columns, deferred)
-      [{name, staging, deferred}]
     end
 
     defp verify_counts(manifest) do
@@ -399,41 +457,6 @@ defmodule Portal.Ops.RegionTransfer do
     defp copy_in(table, columns, path) do
       stream = Safe.unscoped() |> Safe.sql_stream(~s[COPY #{ident(table)} (#{idents(columns)}) FROM STDIN], [])
       path |> File.stream!(64 * 1024) |> Enum.into(stream)
-    end
-
-    defp stage(table) do
-      staging = "region_transfer_#{table}"
-      query!(~s[DROP TABLE IF EXISTS #{ident(staging)}], [])
-      query!(~s[CREATE TEMP TABLE #{ident(staging)} (LIKE #{ident(table)}) ON COMMIT DROP], [])
-      staging
-    end
-
-    defp insert_from_staging(table, staging, columns, deferred_columns) do
-      select = Enum.map_join(columns, ", ", &if(&1 in deferred_columns, do: "NULL", else: ident(&1)))
-      query!(~s[INSERT INTO #{ident(table)} (#{idents(columns)}) SELECT #{select} FROM #{ident(staging)}], [])
-    end
-
-    defp restore_deferred(table, staging, deferred_columns) do
-      set = Enum.map_join(deferred_columns, ", ", &"#{ident(&1)} = s.#{ident(&1)}")
-      on = Enum.map_join(primary_key(table), " AND ", &"t.#{ident(&1)} = s.#{ident(&1)}")
-      query!(~s[UPDATE #{ident(table)} AS t SET #{set} FROM #{ident(staging)} AS s WHERE #{on}], [])
-    end
-
-    defp primary_key(table) do
-      %{rows: rows} =
-        query!(
-          """
-          SELECT kcu.column_name
-          FROM information_schema.table_constraints tc
-          JOIN information_schema.key_column_usage kcu
-            ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
-          WHERE tc.table_schema = 'public' AND tc.table_name = $1 AND tc.constraint_type = 'PRIMARY KEY'
-          ORDER BY kcu.ordinal_position
-          """,
-          [table]
-        )
-
-      Enum.map(rows, &hd/1)
     end
 
     defp idents(columns), do: Enum.map_join(columns, ", ", &ident/1)

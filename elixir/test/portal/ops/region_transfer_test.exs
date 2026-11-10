@@ -10,6 +10,7 @@ defmodule Portal.Ops.RegionTransferTest do
   import Portal.PolicyFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
+  import Portal.TokenFixtures
   alias Portal.Ops.RegionTransfer
 
   setup do
@@ -19,12 +20,16 @@ defmodule Portal.Ops.RegionTransferTest do
     group = group_fixture(account: account)
     membership_fixture(account: account, actor: actor, group: group)
     site = site_fixture(account: account)
-    # A single-owner token points back at its gateway, so both halves of the
-    # devices <-> gateway_tokens cycle are set.
+    # Both devices point at tokens, which are not moved.
     gateway = gateway_fixture(account: account, site: site, token: :single_owner)
     resource = resource_fixture(account: account, site: site)
     policy_fixture(account: account, group: group, resource: resource)
-    client = client_fixture(account: account, actor: actor)
+    client_token = client_token_fixture(account: account, actor: actor)
+
+    client =
+      client_fixture(account: account, actor: actor)
+      |> Ecto.Changeset.change(client_token_id: client_token.id)
+      |> update!()
 
     dir = Path.join(System.tmp_dir!(), "region-transfer-#{Ecto.UUID.generate()}")
     on_exit(fn -> File.rm_rf!(dir) end)
@@ -40,7 +45,12 @@ defmodule Portal.Ops.RegionTransferTest do
           assert manifest["account_id"] == account.id
           assert manifest["slug"] == account.slug
           assert Enum.any?(manifest["tables"], &(&1["name"] == "devices" and &1["rows"] == 2))
-          refute Enum.any?(manifest["tables"], &(&1["name"] in ~w(client_tokens portal_sessions api_request_logs)))
+          assert manifest["slugs"] == [account.slug]
+
+          refute Enum.any?(
+                   manifest["tables"],
+                   &(&1["name"] in ~w(client_tokens device_tokens log_sink_cursors pending_identities portal_sessions api_request_logs))
+                 )
         end)
 
       assert output =~ "Export of account #{account.name}"
@@ -49,7 +59,7 @@ defmodule Portal.Ops.RegionTransferTest do
       assert File.exists?(Path.join(dir, "accounts.copy"))
       assert File.exists?(Path.join(dir, "devices.copy"))
 
-      account = Repo.reload!(account)
+      account = fetch_account(account.id)
       assert account.is_disabled
       assert account.disabled_reason == "Region transfer in progress"
     end
@@ -70,20 +80,24 @@ defmodule Portal.Ops.RegionTransferTest do
       assert Enum.map(email.bcc, fn {_name, address} -> address end) == [actor.email]
     end
 
-    test "cuts the devices and gateway_tokens cycle through a nullable column", %{
-      account: account,
-      dir: dir
-    } do
-      capture_io("y\n", fn ->
-        assert {:ok, manifest} = RegionTransfer.export(account.id, dir)
+    test "exports foreign keys to tables that are not moved as NULL", %{account: account, dir: dir} do
+      capture_io(fn -> send(self(), RegionTransfer.export(account.id, dir, confirm: false)) end)
+      assert_received {:ok, manifest}
 
-        deferred =
-          manifest["tables"]
-          |> Enum.filter(&(&1["deferred_columns"] != []))
-          |> Map.new(&{&1["name"], &1["deferred_columns"]})
+      nulled =
+        manifest["tables"]
+        |> Enum.filter(&(&1["nulled_columns"] != []))
+        |> Map.new(&{&1["name"], &1["nulled_columns"]})
 
-        assert deferred == %{"devices" => ["gateway_token_id"]}
-      end)
+      assert nulled == %{"devices" => ["client_token_id", "gateway_token_id"]}
+    end
+
+    test "refuses an account disabled for another reason", %{account: account, dir: dir} do
+      account |> Ecto.Changeset.change(is_disabled: true, disabled_reason: "Stripe") |> update!()
+
+      assert {:error, {:account_disabled, "Stripe"}} = RegionTransfer.export(account.id, dir, confirm: false)
+      refute File.exists?(dir)
+      assert fetch_account(account.id).disabled_reason == "Stripe"
     end
 
     test "does nothing without confirmation", %{account: account, dir: dir} do
@@ -94,7 +108,7 @@ defmodule Portal.Ops.RegionTransferTest do
 
       assert output =~ "Aborted."
       refute File.exists?(dir)
-      refute Repo.reload!(account).is_disabled
+      refute fetch_account(account.id).is_disabled
     end
   end
 
@@ -109,7 +123,7 @@ defmodule Portal.Ops.RegionTransferTest do
     end
 
     test "refuses a manifest from another schema version", %{account: account, dir: dir} do
-      Repo.delete!(account)
+      delete!(account)
       path = Path.join(dir, "manifest.json")
       manifest = path |> File.read!() |> Jason.decode!()
       File.write!(path, Jason.encode!(%{manifest | "schema_version" => 1}))
@@ -117,7 +131,20 @@ defmodule Portal.Ops.RegionTransferTest do
       assert {:error, {:schema_version_mismatch, exported: 1, local: _local}} = RegionTransfer.import(dir)
     end
 
-    test "restores every row and the cut foreign keys", %{
+    test "refuses when another account holds one of the slugs", %{account: account, dir: dir} do
+      delete!(account)
+      other = account_fixture()
+
+      insert!(%Portal.AccountSlug{
+        slug: String.replace(account.slug, "_", "-"),
+        account_id: other.id
+      })
+
+      assert {:error, {:slugs_taken, [_slug]}} = RegionTransfer.import(dir, confirm: false)
+      refute fetch_account(account.id)
+    end
+
+    test "restores every row without the tokens", %{
       account: account,
       actor: actor,
       gateway: gateway,
@@ -125,7 +152,7 @@ defmodule Portal.Ops.RegionTransferTest do
       dir: dir
     } do
       counts = row_counts(account.id)
-      Repo.delete!(account)
+      delete!(account)
       assert row_counts(account.id) == Map.new(counts, fn {table, _count} -> {table, 0} end)
 
       output =
@@ -138,17 +165,17 @@ defmodule Portal.Ops.RegionTransferTest do
 
       assert row_counts(account.id) == counts
 
-      imported = Repo.get!(Portal.Account, account.id)
+      imported = fetch_account(account.id)
       assert imported.slug == account.slug
       assert imported.is_disabled
 
-      imported_gateway = Repo.get_by!(Portal.Device, id: gateway.id)
-      assert imported_gateway.gateway_token_id == gateway.gateway_token_id
-      assert Repo.get_by!(Portal.GatewayToken, id: gateway.gateway_token_id).device_id == gateway.id
-      assert Repo.get_by!(Portal.Device, id: client.id).actor_id == client.actor_id
+      assert is_nil(fetch_device(gateway.id).gateway_token_id)
+      imported_client = fetch_device(client.id)
+      assert imported_client.actor_id == client.actor_id
+      assert is_nil(imported_client.client_token_id)
 
       Portal.Config.put_env_override(:data_residency_region, :eu)
-      assert {:ok, enabled} = RegionTransfer.enable(account.id)
+      assert {:ok, enabled} = RegionTransfer.enable(account.id, confirm: false)
       refute enabled.is_disabled
       assert is_nil(enabled.disabled_reason)
 
@@ -165,22 +192,56 @@ defmodule Portal.Ops.RegionTransferTest do
     end
 
     test "does nothing without confirmation", %{account: account, dir: dir} do
-      Repo.delete!(account)
+      delete!(account)
 
       capture_io("n\n", fn ->
         assert :aborted = RegionTransfer.import(dir)
       end)
 
-      refute Repo.get(Portal.Account, account.id)
+      refute fetch_account(account.id)
+    end
+  end
+
+  describe "enable/2" do
+    test "refuses an account that is not being transferred", %{account: account} do
+      assert {:error, {:not_in_transfer, nil}} = RegionTransfer.enable(account.id, confirm: false)
+
+      account |> Ecto.Changeset.change(is_disabled: true, disabled_reason: "Stripe") |> update!()
+      assert {:error, {:not_in_transfer, "Stripe"}} = RegionTransfer.enable(account.id, confirm: false)
+      assert fetch_account(account.id).is_disabled
+    end
+
+    test "rolls back without emailing the admins", %{account: account, dir: dir} do
+      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, dir, confirm: false) end)
+      started = collect_queued_emails(account.id)
+
+      assert {:ok, enabled} = RegionTransfer.enable(account.id, confirm: false, notify: false)
+      refute enabled.is_disabled
+      assert collect_queued_emails(account.id) == started
+    end
+
+    test "does nothing without confirmation", %{account: account, dir: dir} do
+      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, dir, confirm: false) end)
+
+      capture_io("n\n", fn -> assert :aborted = RegionTransfer.enable(account.id) end)
+      assert fetch_account(account.id).is_disabled
     end
   end
 
   defp row_counts(account_id) do
     id = Ecto.UUID.dump!(account_id)
 
-    Map.new(~w(actors devices gateway_tokens groups memberships policies resources sites), fn table ->
+    Map.new(~w(actors devices groups memberships policies resources site_devices sites), fn table ->
       %{rows: [[count]]} = Repo.query!(~s[SELECT count(*) FROM "#{table}" WHERE account_id = $1], [id])
       {table, count}
     end)
   end
+
+  defp fetch_device(id), do: Repo.get_by!(Portal.Device, id: id)
+
+  defp update!(changeset), do: Repo.update!(changeset)
+
+  defp insert!(struct), do: Repo.insert!(struct)
+
+  defp delete!(struct), do: Repo.delete!(struct)
 end
