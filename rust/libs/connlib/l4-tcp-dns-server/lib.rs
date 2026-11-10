@@ -331,7 +331,7 @@ mod tests {
         server_task.abort();
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn idle_connection_times_out() {
         let mut server = Server::default();
         server
