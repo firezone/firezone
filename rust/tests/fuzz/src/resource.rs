@@ -136,14 +136,10 @@ pub(crate) enum EditEffect<'a> {
     /// Only fields the data plane never acts on changed.
     Metadata,
     /// The gateway swaps the resource's filters in place; clients reconnect to it.
-    Filters {
-        resource_id: ResourceId,
-        affects_tcp: bool,
-    },
+    Filters { resource_id: ResourceId },
     /// The gateway revokes all access to the resource; clients reconnect to it.
     Access {
         resource_id: ResourceId,
-        affects_tcp: bool,
         forgets_dns_records_matching: Option<&'a str>,
     },
     /// The pool's filters change the client's routes but keep its peer authorizations.
@@ -183,16 +179,12 @@ pub(crate) fn classify<'a>(old: &'a Resource, new: &'a Resource) -> EditEffect<'
             if address != new_address || sites != new_sites || ip_stack != new_ip_stack {
                 return EditEffect::Access {
                     resource_id: *id,
-                    affects_tcp: true,
                     forgets_dns_records_matching: (address != new_address).then_some(new_address),
                 };
             }
 
             if filters != new_filters {
-                return EditEffect::Filters {
-                    resource_id: *id,
-                    affects_tcp: true,
-                };
+                return EditEffect::Filters { resource_id: *id };
             }
 
             EditEffect::Metadata
@@ -218,16 +210,12 @@ pub(crate) fn classify<'a>(old: &'a Resource, new: &'a Resource) -> EditEffect<'
             if address != new_address || sites != new_sites {
                 return EditEffect::Access {
                     resource_id: *id,
-                    affects_tcp: false,
                     forgets_dns_records_matching: None,
                 };
             }
 
             if filters != new_filters {
-                return EditEffect::Filters {
-                    resource_id: *id,
-                    affects_tcp: false,
-                };
+                return EditEffect::Filters { resource_id: *id };
             }
 
             EditEffect::Metadata
@@ -243,7 +231,6 @@ pub(crate) fn classify<'a>(old: &'a Resource, new: &'a Resource) -> EditEffect<'
             if sites != new_sites {
                 return EditEffect::Access {
                     resource_id: *id,
-                    affects_tcp: false,
                     forgets_dns_records_matching: None,
                 };
             }
