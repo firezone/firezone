@@ -118,7 +118,6 @@ jobs:
             --field 'client_payload[publish]=true'
 
   windows:
-    name: client-windows-${{ matrix.target }}
     if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
     needs: update-release-draft
     runs-on: windows-2022
@@ -129,17 +128,14 @@ jobs:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         # TODO: Add ARM64 support
-        artifact: [firezone-client-headless-windows]
         arch: [x86_64]
-        target: [x86_64-pc-windows-msvc]
-        package: [firezone-headless-client]
-        # mark:next-headless-version
-        release_name: [headless-client-1.5.17]
-        # mark:next-headless-version
-        version: [1.5.17]
     env:
-      ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
-      RELEASE_NAME: ${{ matrix.release_name }}
+      TARGET: ${{ matrix.arch }}-pc-windows-msvc
+      PACKAGE: firezone-headless-client
+      # mark:next-headless-version
+      ARTIFACT_PATH: firezone-client-headless-windows_1.5.17_${{ matrix.arch }}.exe
+      # mark:next-headless-version
+      RELEASE_NAME: headless-client-1.5.17
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -148,14 +144,14 @@ jobs:
       - uses: ./.github/actions/setup-rust-binary-cache
         id: binary-cache
         with:
-          path: rust/target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe
-          key: ${{ matrix.package }}-${{ matrix.target }}-${{ inputs.profile }}
+          path: rust/target/${{ env.TARGET }}/${{ inputs.profile }}/${{ env.PACKAGE }}.exe
+          key: ${{ env.PACKAGE }}-${{ env.TARGET }}-${{ inputs.profile }}
       # A restored binary skips the build below, so the toolchain that only
       # exists to compile it is skipped too.
       - uses: ./.github/actions/setup-rust-stable
         if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ env.TARGET }}
       - uses: ./.github/actions/setup-rust-sccache
         if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
@@ -172,13 +168,13 @@ jobs:
             PROFILE=""
           fi
 
-          cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
+          cargo build $PROFILE -p ${{ env.PACKAGE }} --target ${{ env.TARGET }} --verbose
       - name: Package binary
         shell: bash
         run: |
           set -xe
 
-          cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+          cp target/${{ env.TARGET }}/${{ inputs.profile }}/${{ env.PACKAGE }}.exe "$ARTIFACT_PATH"
 
           # Stamp before signing, which would otherwise be invalidated.
           mise-tasks/patch-git-sha "$ARTIFACT_PATH" "$RESOLVED_SHA"
@@ -195,7 +191,7 @@ jobs:
           AZURE_CERT_NAME: ${{ vars.AZURE_CODESIGNING_CERTIFICATE_NAME }}
         run: ../scripts/build/sign.sh "$ARTIFACT_PATH"
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -233,7 +229,6 @@ jobs:
       arches: ${{ needs.binary.outputs.arches }}
 
   linux-release-assets:
-    name: client-linux-${{ matrix.arch }}
     needs: binary
     if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
     runs-on: ubuntu-24.04

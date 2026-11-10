@@ -95,7 +95,6 @@ jobs:
       arches: ${{ needs.binary.outputs.arches }}
 
   upload-binary:
-    name: upload-relay-${{ matrix.arch }}
     needs: binary
     if: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
     runs-on: ubuntu-24.04
