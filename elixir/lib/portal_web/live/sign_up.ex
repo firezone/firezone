@@ -1213,14 +1213,7 @@ defmodule PortalWeb.SignUp do
       with :ok <- PublicEmailRateLimit.check(:sign_up, socket.assigns.real_ip) do
         case Database.find_accounts_by_owner_email(registration.email) do
           [] ->
-            send_verification_email(
-              registration.email,
-              registration.account.name,
-              registration.actor.name,
-              survey_attrs(registration.sign_up_survey),
-              socket.assigns.website_attribution,
-              socket.assigns.sign_up_browser_id
-            )
+            send_new_owner_email(registration, socket)
 
           existing_accounts ->
             send_existing_accounts_email(registration.email, existing_accounts)
@@ -1297,6 +1290,43 @@ defmodule PortalWeb.SignUp do
       rate_limit_key: {:sign_up_verification, String.downcase(email)},
       rate_limit: 3,
       rate_limit_interval: :timer.minutes(30)
+    )
+  end
+
+  defp send_new_owner_email(registration, socket) do
+    mx_check = Portal.MXDomains.check_email(registration.email)
+    log_mx_check(mx_check)
+
+    case mx_check do
+      {:bad, _match} ->
+        {:ok, :suppressed}
+
+      _allowed ->
+        send_verification_email(
+          registration.email,
+          registration.account.name,
+          registration.actor.name,
+          survey_attrs(registration.sign_up_survey),
+          socket.assigns.website_attribution,
+          socket.assigns.sign_up_browser_id
+        )
+    end
+  end
+
+  defp log_mx_check({:bad, match}), do: log_mx_rating("Sign-up email suppressed for a bad MX domain", :bad, match)
+  defp log_mx_check({:good, match}), do: log_mx_rating("Sign-up email allowed for a good MX domain", :good, match)
+
+  defp log_mx_check({:unknown, match}),
+    do: log_mx_rating("Sign-up email allowed for an unknown MX domain", :unknown, match)
+
+  defp log_mx_check(:unchecked), do: :ok
+
+  defp log_mx_rating(message, rating, match) do
+    Logger.info(message,
+      mx_rating: rating,
+      email_domain: match.email_domain,
+      mx_host: match.mx_host,
+      mx_domain: match.mx_domain
     )
   end
 

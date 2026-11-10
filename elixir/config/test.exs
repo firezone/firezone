@@ -191,6 +191,8 @@ config :portal, Portal.Ops.RegionTransfer.Storage,
     retry: false
   ]
 
+config :portal, Portal.MXDomains, mx_lookup: &Portal.MXDomainFixtures.no_mx/1
+
 config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",

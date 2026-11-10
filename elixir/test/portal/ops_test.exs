@@ -412,6 +412,65 @@ defmodule Portal.OpsTest do
     end
   end
 
+  describe "add_mx_domain/3" do
+    test "rates a normalized domain and logs the change" do
+      log =
+        capture_log([level: :info], fn ->
+          assert {:ok, %Portal.MXDomain{domain: "mail.tm", rating: :bad, note: "Disposable"}} =
+                   add_mx_domain(" Mail.TM. ", :bad, "Disposable")
+        end)
+
+      assert log =~ "MX domain rated"
+      assert log =~ "mx_domain=mail.tm"
+      assert log =~ "rating=bad"
+    end
+
+    test "replaces an earlier rating" do
+      {:ok, _} = add_mx_domain("mail.tm", :good)
+      {:ok, _} = add_mx_domain("mail.tm", :bad, "Confirmed disposable")
+
+      assert [%Portal.MXDomain{rating: :bad, note: "Confirmed disposable"}] = list_mx_domains()
+    end
+
+    test "requires a note for bad domains" do
+      assert {:error, changeset} = add_mx_domain("mail.tm", :bad)
+      assert %{note: ["is required for bad domains"]} = errors_on(changeset)
+      assert list_mx_domains() == []
+    end
+
+    test "rejects names that are not domains" do
+      assert {:error, changeset} = add_mx_domain("tm", :good)
+      assert %{domain: [_]} = errors_on(changeset)
+    end
+  end
+
+  describe "remove_mx_domain/1" do
+    test "removes the rating" do
+      {:ok, _} = add_mx_domain("mail.tm", :bad, "Disposable")
+
+      assert {:ok, %Portal.MXDomain{domain: "mail.tm"}} = remove_mx_domain("MAIL.tm.")
+      assert list_mx_domains() == []
+    end
+
+    test "returns an error for an unrated domain" do
+      assert remove_mx_domain("mail.tm") == {:error, :not_found}
+    end
+  end
+
+  describe "list_mx_domains/1" do
+    test "lists all domains or those with one rating" do
+      {:ok, _} = add_mx_domain("mail.tm", :bad, "Disposable")
+      {:ok, _} = add_mx_domain("google.com", :good)
+      {:ok, _} = add_mx_domain("outlook.com", :good)
+
+      assert list_mx_domains() |> Enum.map(&{&1.domain, &1.rating}) ==
+               [{"mail.tm", :bad}, {"google.com", :good}, {"outlook.com", :good}]
+
+      assert list_mx_domains(:bad) |> Enum.map(& &1.domain) == ["mail.tm"]
+      assert list_mx_domains(:good) |> Enum.map(& &1.domain) == ["google.com", "outlook.com"]
+    end
+  end
+
   describe "queue_admin_email/4" do
     import ExUnit.CaptureIO
 

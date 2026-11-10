@@ -2,7 +2,9 @@ defmodule PortalWeb.SignUpTest do
   use PortalWeb.ConnCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
+  import Portal.MXDomainFixtures
 
   alias Portal.Mocks.Stripe
 
@@ -857,6 +859,103 @@ defmodule PortalWeb.SignUpTest do
       refute_email_sent()
     end
 
+  end
+
+  describe "bad MX domains" do
+    setup do
+      mx_domain_fixture("mail.tm")
+      :ok
+    end
+
+    test "an email whose mail servers are bad looks sent but gets no email", %{conn: conn} do
+      stub_mx(fn "fldubai.com" -> {:ok, ["in.mail.tm"]} end)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      log =
+        capture_log([level: :info], fn ->
+          assert lv |> form("form", email_attrs("user@fldubai.com")) |> render_submit() =~ "Check your email"
+        end)
+
+      refute_email_sent()
+      assert log =~ "Sign-up email suppressed for a bad MX domain"
+      assert log =~ "mx_rating=bad"
+      assert log =~ "mx_host=in.mail.tm"
+      assert log =~ "mx_domain=mail.tm"
+      refute log =~ "user@fldubai.com"
+    end
+
+    test "an email whose mail servers are good gets the email", %{conn: conn} do
+      mx_domain_fixture("google.com", :good, nil)
+      stub_mx(fn "example.com" -> {:ok, ["aspmx.l.google.com"]} end)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      log =
+        capture_log([level: :info], fn ->
+          assert lv |> form("form", email_attrs("user@example.com")) |> render_submit() =~ "Check your email"
+        end)
+
+      assert_email_sent(to: "user@example.com")
+      assert log =~ "Sign-up email allowed for a good MX domain"
+      assert log =~ "mx_rating=good"
+      assert log =~ "email_domain=example.com"
+      assert log =~ "mx_domain=google.com"
+      refute log =~ "user@example.com"
+    end
+
+    test "an email whose mail servers are unrated gets the email", %{conn: conn} do
+      stub_mx(fn "example.com" -> {:ok, ["mx.example.com"]} end)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      log =
+        capture_log([level: :info], fn ->
+          assert lv |> form("form", email_attrs("user@example.com")) |> render_submit() =~ "Check your email"
+        end)
+
+      assert_email_sent(to: "user@example.com")
+      assert log =~ "Sign-up email allowed for an unknown MX domain"
+      assert log =~ "mx_rating=unknown"
+      assert log =~ "mx_host=mx.example.com"
+    end
+
+    test "Google sign-ups are never checked", %{conn: conn} do
+      test_pid = self()
+
+      stub_mx(fn domain ->
+        send(test_pid, {:mx_lookup, domain})
+        {:ok, ["in.mail.tm"]}
+      end)
+
+      Stripe.stub(
+        [{"POST", "/v1/customers", 200, Stripe.customer_object("cus_mx", "MX Corp", "ada@mail.tm")}] ++
+          Stripe.mock_create_subscription_endpoint()
+      )
+
+      conn = with_google_identity(conn, email: "ada@mail.tm", name: "Ada Lovelace")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      conn =
+        submit_identity_form(lv, conn, "google", %{
+          account: %{name: "MX Corp"},
+          actor: %{name: "Ada Lovelace"},
+          sign_up_survey: @survey
+        })
+
+      assert redirected_to(conn) =~ "/sites"
+      assert Portal.Repo.get_by(Portal.Account, name: "MX Corp")
+      refute_received {:mx_lookup, _domain}
+    end
+
+    defp email_attrs(email) do
+      [
+        registration: %{
+          email: email,
+          phone: "",
+          account: %{name: "MX Corp"},
+          actor: %{name: "MX User"},
+          sign_up_survey: @survey
+        }
+      ]
+    end
   end
 
   describe "turnstile" do
