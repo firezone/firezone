@@ -89,6 +89,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      id-token: write
     with:
       package: firezone-gateway
       name: gateway
@@ -187,6 +188,23 @@ jobs:
             --no-progress \
             --auth-mode login \
             --account-name firezoneartifacts
+
+      - name: Publish signed deployment manifest
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          for suffix in .manifest.json .sigstore.json; do
+            az storage blob upload \
+              --container-name binaries \
+              --name "gateway/$RESOLVED_SHA/$ARCH$suffix" \
+              --file "firezone-gateway$suffix" \
+              --overwrite true \
+              --no-progress \
+              --auth-mode login \
+              --account-name firezoneartifacts
+          done
 
       - name: Create Firezone Gateway .deb package
         if: ${{ env.BUILDS_DEB == 'true' }}
