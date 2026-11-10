@@ -9,6 +9,25 @@ use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 
 use crate::{IceConfig, IceRole};
 
+/// Where a local candidate came from.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum CandidateOrigin {
+    /// Learned from a relay allocation.
+    Gathered,
+    /// An additional host candidate configured by an admin.
+    ManuallyConfigured,
+}
+
+impl CandidateOrigin {
+    /// Frostlink ranks manually configured candidates above all others.
+    fn frostlink_local_preference(self) -> u16 {
+        match self {
+            CandidateOrigin::Gathered => 0,
+            CandidateOrigin::ManuallyConfigured => u16::MAX,
+        }
+    }
+}
+
 #[derive(derive_more::Debug)]
 pub(crate) enum Agent {
     Ice(IceAgent),
@@ -106,12 +125,23 @@ impl Agent {
         }
     }
 
-    pub(crate) fn add_local_candidate(&mut self, c: Candidate, now: Instant) -> Option<Candidate> {
+    pub(crate) fn add_local_candidate(
+        &mut self,
+        c: Candidate,
+        origin: CandidateOrigin,
+        now: Instant,
+    ) -> Option<Candidate> {
         match self {
             Self::Ice(a) => a.add_local_candidate(c).cloned(),
-            Self::Frostlink(agent) => agent
-                .add_local_candidate(crate::candidate::to_frostlink(&c), now)
-                .then_some(c),
+            Self::Frostlink(agent) => {
+                let candidate = crate::candidate::to_frostlink(&c)
+                    .with_local_preference(origin.frostlink_local_preference());
+
+                agent
+                    .add_local_candidate(candidate, now)
+                    .then(|| crate::candidate::from_frostlink(&candidate))
+                    .flatten()
+            }
         }
     }
 

@@ -8,7 +8,7 @@ mod timeout_cache;
 pub use connection_state::ConnectionPath;
 pub use connections::UnknownConnection;
 
-use crate::agent::Agent;
+use crate::agent::{Agent, CandidateOrigin};
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::crypto::{CommittedBatch, DecapsulateBatch, DecryptedBatch, EncapsulateBatch};
 use crate::node::allocations::Allocations;
@@ -240,7 +240,13 @@ where
 
             for (cid, c) in self.connections.iter_mut() {
                 for candidate in &self.additional_host_candidates {
-                    c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+                    c.add_local_candidate(
+                        cid,
+                        candidate,
+                        CandidateOrigin::ManuallyConfigured,
+                        &mut self.pending_events,
+                        now,
+                    );
                 }
             }
 
@@ -412,7 +418,13 @@ where
 
         connection.assign_relay(cid, &mut self.allocations, &mut self.pending_events, now);
         for candidate in &self.additional_host_candidates {
-            connection.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+            connection.add_local_candidate(
+                cid,
+                candidate,
+                CandidateOrigin::ManuallyConfigured,
+                &mut self.pending_events,
+                now,
+            );
         }
 
         if self.allocations.is_empty() {
@@ -926,7 +938,13 @@ where
                 c.invalidate_local_candidate(cid, candidate, &mut self.pending_events, now);
             }
             for candidate in &self.additional_host_candidates {
-                c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+                c.add_local_candidate(
+                    cid,
+                    candidate,
+                    CandidateOrigin::ManuallyConfigured,
+                    &mut self.pending_events,
+                    now,
+                );
             }
         }
     }
@@ -1264,7 +1282,13 @@ where
             match event {
                 allocation::Event::New(candidate) => {
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
-                        c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
+                        c.add_local_candidate(
+                            cid,
+                            &candidate,
+                            CandidateOrigin::Gathered,
+                            &mut self.pending_events,
+                            now,
+                        );
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
@@ -1292,8 +1316,13 @@ where
         .map(|rid| allocations.candidates_for_relay(&rid))
         .into_iter()
         .flatten()
-        .chain(additional_host_candidates.iter().cloned())
-        .filter_map(move |c| agent.add_local_candidate(c, now))
+        .map(|c| (c, CandidateOrigin::Gathered))
+        .chain(
+            additional_host_candidates
+                .iter()
+                .map(|c| (c.clone(), CandidateOrigin::ManuallyConfigured)),
+        )
+        .filter_map(move |(c, origin)| agent.add_local_candidate(c, origin, now))
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -2241,12 +2270,16 @@ where
         &mut self,
         cid: TId,
         candidate: &Candidate,
+        origin: CandidateOrigin,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,
     {
-        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone(), now) {
+        if let Some(candidate) = self
+            .agent
+            .add_local_candidate(candidate.clone(), origin, now)
+        {
             let frostlink = self.agent.is_frostlink();
             pending_events.push_back(new_ice_candidate_event(cid, candidate, frostlink));
         }
@@ -2361,7 +2394,13 @@ where
         // no local candidates, so host and reflexive candidates need seeding too.
         // The agent dedups, so candidates it already knows are not re-signalled.
         for candidate in allocations.candidates_for_relay(&rid) {
-            self.add_local_candidate(cid, &candidate, pending_events, now);
+            self.add_local_candidate(
+                cid,
+                &candidate,
+                CandidateOrigin::Gathered,
+                pending_events,
+                now,
+            );
         }
     }
 }
