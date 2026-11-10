@@ -356,9 +356,6 @@ jobs:
       # Sign a manifest after stamping the source SHA. Only main can publish
       # deployment signatures; release tags and other OIDC identities are not
       # trusted by the infra VM verifier.
-      - name: Install Cosign
-        if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
-        run: mise install aqua:sigstore/cosign
       - name: Sign deployment manifest
         if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
         env:
@@ -373,6 +370,7 @@ jobs:
             --arg arch "$ARCH" --arg sha256 "$digest" \
             '{component: $component, sha: $sha, arch: $arch, sha256: $sha256}' \
             > "$BINARY.manifest.json"
+          mise install aqua:sigstore/cosign
           mise exec -- cosign sign-blob --yes --bundle "$BINARY.sigstore.json" "$BINARY.manifest.json"
       - name: Azure login (OIDC)
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' }}
