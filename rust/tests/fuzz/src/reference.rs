@@ -15,7 +15,7 @@ use std::{
     fmt,
     net::IpAddr,
 };
-use tunnel_proto::dns::is_subdomain;
+use tunnel_proto::dns::{self, is_subdomain};
 
 use crate::resource as client;
 
@@ -236,21 +236,22 @@ impl ReferenceState {
                     let listing = is_device_listing_query(query).then(|| {
                         portal.browse_device_domain(&query.domain, &client.device_pool_ids())
                     });
-                    let unconnected = resource
-                        .filter(|resource| client.gateway_for_resource(*resource).is_none());
+                    let request = resource.zip(gateway).filter(|(resource, gateway)| {
+                        self.tunnelled_dns_query_asks(*client_id, query, *resource, *gateway)
+                    });
 
-                    let client = self.clients.get_mut(client_id).unwrap();
-                    client.exec_mut(|c| {
-                        c.on_dns_query(query, gateway, upstream_do53, resolve, routes);
+                    let tunnelled = self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                        let tunnelled =
+                            c.on_dns_query(query, gateway, upstream_do53, resolve, routes);
 
                         if let Some(listing) = listing {
                             c.expect_device_listing(query, listing);
                         }
+
+                        tunnelled
                     });
 
-                    if let Some(resource) = unconnected
-                        && let Some(gateway) = client.inner().gateway_for_resource(resource)
-                    {
+                    if tunnelled && let Some((resource, gateway)) = request {
                         requested.push((gateway, *client_id, resource));
                     }
                 }
@@ -1103,8 +1104,8 @@ impl ReferenceState {
     /// The Gateway's verdict for a packet to `resource` through `gateway`, and the access the
     /// client asks the portal for.
     ///
-    /// A client asks when it holds no authorization for `resource`, or when the Gateway reports
-    /// that it holds none either.
+    /// A client asks when it holds no authorization for `resource`, or when the Gateway rejects
+    /// the packet for lack of one and the client heeds its `no_authorization` event.
     fn resource_verdict(
         &self,
         origin: ClientId,
@@ -1163,6 +1164,40 @@ impl ReferenceState {
         };
 
         (outcome, asks.then_some(authorization))
+    }
+
+    /// Whether tunnelling `query` to `gateway` makes `origin` ask the portal for access to
+    /// `resource`.
+    ///
+    /// The Gateway answers a site-specific query itself; any other is a packet to the resolver.
+    fn tunnelled_dns_query_asks(
+        &self,
+        origin: ClientId,
+        query: &DnsQuery,
+        resource: ResourceId,
+        gateway: GatewayId,
+    ) -> bool {
+        let client = self.clients[&origin].inner();
+        let (dns::Upstream::Do53 { server }, None) =
+            (&query.dns_server, client.is_site_specific_dns_query(query))
+        else {
+            return client.gateway_for_resource(resource).is_none();
+        };
+        let protocol = match query.transport {
+            DnsTransport::Udp { .. } => Protocol::Udp(server.port()),
+            DnsTransport::Tcp => Protocol::Tcp(server.port()),
+        };
+        let (_, authorization) = self.resource_verdict(
+            origin,
+            resource,
+            gateway,
+            client.tunnel_ip_for(server.ip()),
+            &Destination::IpAddr(server.ip()),
+            protocol,
+            false,
+        );
+
+        authorization.is_some()
     }
 
     /// Records the authorization `origin` holds after its packet.
@@ -1231,7 +1266,7 @@ impl ReferenceState {
         established: bool,
     ) -> Option<RejectionResponse> {
         let client = self.clients[&origin].inner();
-        let authorizations = self.gateways[&gateway].inner();
+        let ref_gateway = self.gateways[&gateway].inner();
 
         // The gateway checks every CIDR route it still authorizes for the client, so another
         // CIDR resource on the same gateway can permit traffic the selected resource does not.
@@ -1243,14 +1278,14 @@ impl ReferenceState {
                 .any(|cidr| {
                     cidr.address.contains(ip)
                         && protocol_filter_allows(&cidr.filters, protocol)
-                        && authorizations.is_authorized(origin, cidr.id)
+                        && ref_gateway.is_authorized(origin, cidr.id)
                 })
         });
 
         // The Gateway lost its authorization while the client still believes it holds one:
         // it rejects this packet and tells the client to request a new authorization.
         if client.connected_resources().contains(&resource)
-            && !authorizations.is_authorized(origin, resource)
+            && !ref_gateway.is_authorized(origin, resource)
             && !allowed_by_another_cidr
         {
             return Some(RejectionResponse::Prohibited);

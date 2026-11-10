@@ -478,7 +478,7 @@ impl RefClient {
         self.gateways_by_site.get(&site).copied()
     }
 
-    /// The Gateway closed the connection, so everything we reached through it is gone.
+    /// The connection to `gateway` closed, so everything we reached through it is gone.
     ///
     /// Only the connection to that Gateway goes; the ICE state towards our peers, which
     /// `connection_resets` tracks, is untouched.
@@ -656,6 +656,7 @@ impl RefClient {
         }
     }
 
+    /// Returns whether the query is tunnelled to `gateway`.
     pub(crate) fn on_dns_query(
         &mut self,
         query: &DnsQuery,
@@ -663,10 +664,10 @@ impl RefClient {
         upstream_do53: &[UpstreamDo53],
         resolve: impl Fn(Option<GatewayId>, &DomainName) -> BTreeSet<RecordType>,
         routes: Option<&Routes>,
-    ) {
+    ) -> bool {
         if self.is_device_dns_query(query) {
             self.expect_dns_response(query);
-            return;
+            return false;
         }
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
@@ -678,7 +679,7 @@ impl RefClient {
             }
             self.expect_dns_response(query);
 
-            return;
+            return gateway.is_some();
         }
 
         if self.is_local_dns_resource_query(query)
@@ -700,13 +701,13 @@ impl RefClient {
             && !self.local_dns_resource_query_has_records(query)
         {
             self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
-            return;
+            return false;
         }
 
         if self.local_dns_resource(query).is_some() {
             self.expect_dns_response(query);
 
-            return;
+            return false;
         }
 
         if let Some(resource) = self.dns_query_via_resource(query, upstream_do53) {
@@ -718,7 +719,7 @@ impl RefClient {
             if !self.resource_filter_allows(resource, proto) {
                 tracing::debug!("Resource filter does not allow protocol, dropping");
                 self.expect_dns_response(query); // We always generate a response, even if we don't connect to the upstream server.
-                return;
+                return false;
             }
 
             if self.resolver_is_unreachable(query, routes) {
@@ -733,10 +734,12 @@ impl RefClient {
                 self.connect_to_resource(resource, gateway);
             }
 
-            return;
+            return gateway.is_some();
         }
 
         self.expect_dns_response(query);
+
+        false
     }
 
     /// Expects the PTR `query` to be answered with `listing`, the names and TTL the portal
