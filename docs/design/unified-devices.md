@@ -98,6 +98,28 @@ gateway token kinds:
 session has a Subject. `gateway_tokens` and `client_tokens` are dropped
 after their rows are copied.
 
+There is one kind of token and no `type` column (decision 11). Every new
+token is signed with the `"device"` salt. The old `"client"` and `"gateway"`
+salts stay only as fallbacks for tokens issued before the change. Each socket
+checks its salts in order and then accepts only the rows of its shape, in the
+lookup query:
+
+| Socket       | Salts checked                            | Rows accepted                                           |
+| ------------ | ---------------------------------------- | ------------------------------------------------------- |
+| `/client`    | `"device"`, then `"client"`              | `site_id` null, and `device_id` null or a client device |
+| `/gateway`   | `"device"`, then `"gateway"`             | `site_id` set, or `device_id` a Gateway device          |
+| `/device/v1` | `"device"`, `"client"`, then `"gateway"` | any                                                     |
+
+The id and hash find the row; the shape decides if this socket may use it.
+Without it, a Site token would connect to `/client` as its owner. The REST
+token endpoints use the same rules, so a `client_tokens` scope never reaches
+a Gateway token and the reverse. A client or Gateway that upgrades to
+`/device/v1` keeps its token. Adding the device to a Site adds a
+`site_devices` row and does not change the token or `devices.type`, so going
+back to the old binary keeps working. The `"client"` fallback goes once the
+last client token issued before the change expires; the `"gateway"` fallback
+goes once no Gateway uses a token issued before the change.
+
 **Site** is a named set of devices that serve resources. Rows unchanged.
 Assignment is `site_devices(account, site, device)`, explicit rows only.
 Rule-based assignment reusing `DeviceMembershipCriteria` is possible later
@@ -451,7 +473,7 @@ tables, and a migration in the next deploy copies what is missing.
   token's actor in the same query. A new `Credential.GatewayToken` carries no
   scopes and no auth provider, and the subject has no expiry, because
   Gateway tokens never expire. The socket assigns `subject`. The session log
-  subject keeps its current shape. Depends 1.4.
+  subject keeps its current shape. Depends 1.4. Done (#16375).
 - **1.6 Code: Gateway writes scoped.** The `Safe.unscoped` calls in the
   Gateway socket and channel become `Safe.scoped(subject)`. `Safe.permit`
   grants the legacy Gateway actor only what the socket does: insert and
@@ -459,28 +481,35 @@ tables, and a migration in the next deploy copies what is missing.
   rotation is an admin action, and confirming a rotation happens during
   verification, before there is a subject. Everything else stays refused. Audit entries for
   these writes then show the actor. Old and new nodes write the same rows,
-  so there is no rollout order. Depends 1.5.
+  so there is no rollout order. Depends 1.5. Done (#16376).
 - **1.7 Stop writing `gateway_tokens`.** One deploy, after 1.4 runs on every
   node. The migration drops the temporary foreign key and points
   `devices.gateway_token_id` at `device_tokens` (NOT VALID, with a
   `lock_timeout`). Replication publishes `device_tokens` instead of
   `gateway_tokens`, so the revoke disconnect comes from `device_tokens`.
   Token creation and rotation write only `device_tokens`, and the session
-  flush checks tokens in `device_tokens`. Depends 1.4 deployed.
+  flush checks tokens in `device_tokens`. Depends 1.4 deployed. Done
+  (#16372).
 - **1.8 Migration: validate the `devices` foreign key.** Depends 1.7
-  deployed.
+  deployed. Done (#16372).
 - **1.9 Migration (contract): drop `gateway_tokens`, `Portal.GatewayToken`
-  and `Hooks.GatewayTokens`.** Depends 1.7 deployed.
+  and `Hooks.GatewayTokens`.** Depends 1.7 deployed. Two deploys, because
+  1.7 nodes still delete `gateway_tokens` rows on revoke: first no code
+  touches the table (#16377), then the table is dropped (#16378). Done.
 - **1.10 Code: one more free service account on every plan.** Applied where
   the ad-hoc allowance is read (seat counting, the account API, the settings
   page) rather than stored on the account, since subscription events rewrite
   the stored limits from Stripe. Customer service accounts that own routing
   devices otherwise count as today.
 - **1.11 Client tokens into `device_tokens`.** The same steps as 1.2 to 1.4,
-  1.7 and 1.9, after 1.7. `policy_authorizations.token_id` points at
-  `device_tokens` only after every node writes both tables. The `Safe`
-  grants on `DeviceToken`, which today copy the Gateway token grants, are
-  narrowed to the client token rules. `devices.client_token_id` and
+  1.7 and 1.9, after 1.7. Ids are kept, so stored REST ids still work.
+  `policy_authorizations.token_id` points at `device_tokens` only after
+  every node writes both tables. The `Safe` grants on `DeviceToken` already
+  match the client token grants. New tokens are signed with `"device"`, and
+  `/client` and `/gateway` check the row shape in their lookup (decision
+  11). The `device_tokens` change hook broadcasts every insert and delete;
+  the pages that listen show one actor's tokens, so Gateway tokens, owned by
+  the legacy Gateway actor, reach no page. `devices.client_token_id` and
   `devices.gateway_token_id` collapse into `token_id`.
 - **1.12 Code: `Devices.provision_device/4`.** Generalizes
   `provision_gateway`: inserts a device and mints a device-bound token for
@@ -488,7 +517,11 @@ tables, and a migration in the next deploy copies what is missing.
   `/device/v1` ships. Depends 1.7.
 - **1.13 REST: token endpoints on `device_tokens`.** The existing Gateway and
   client token endpoints and scopes stay, same ids and JSON, and each returns
-  exactly its old token set, so an old scope never widens. New `POST
+  exactly its old token set, so an old scope never widens. Each endpoint
+  filters by the row shape of decision 11: Gateway token endpoints by Site
+  or by a Gateway device in it, client token endpoints by actor with no Site
+  and no Gateway device. Without the filter, deleting a service account's
+  client tokens would delete a Gateway token moved to it by 1.15. New `POST
 /devices/:id/token`. OpenAPI. The API surface is renamed to device tokens
   at the final collapse, with the old paths and scopes kept as aliases.
   Depends 1.12.
@@ -886,6 +919,13 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
     portal sends, never what a device may do. A minimum supported minor can
     refuse `/device/v1` binaries at connect; legacy sockets are not refused,
     since a refused Gateway stays down.
+11. **One kind of token.** `device_tokens` has no `type` column. Every new
+    token is signed with the `"device"` salt; `"client"` and `"gateway"`
+    remain as fallbacks for older tokens. The legacy sockets and the REST
+    endpoints tell client and Gateway tokens apart by the row's shape (Site,
+    bound device and its type), which the lookup query enforces. Upgrading
+    to `/device/v1` never needs a new token: it accepts every salt and every
+    shape, and serving a Site comes from `site_devices`, not the token.
 
 ## 5. Risks
 
