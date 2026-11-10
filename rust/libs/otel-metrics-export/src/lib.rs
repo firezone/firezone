@@ -1,8 +1,4 @@
-//! Exports OpenTelemetry metrics to the portal's OTLP/HTTP endpoint.
-//!
-//! Binaries install the meter provider with [`install_meter_provider`]. An
-//! [`Exporter`] collects from its reader on the portal's interval and POSTs the
-//! result with the portal's token, on its own thread.
+//! Exports OpenTelemetry metrics over OTLP/HTTP to the endpoint the portal configures.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -42,7 +38,7 @@ impl Exporter {
     pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> io::Result<Self> {
         let (config, rx) = watch::channel(None);
 
-        async_runtime::spawn_thread("fz-metrics", move || run(rx, socket_factory))?;
+        async_runtime::spawn_thread("fz-metrics-export", move || run(rx, socket_factory))?;
 
         Ok(Self { config })
     }
