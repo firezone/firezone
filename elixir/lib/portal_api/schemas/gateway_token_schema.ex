@@ -13,7 +13,6 @@ defmodule PortalAPI.Schemas.GatewayToken do
                :auth_provider_id,
                :auth_provider_name,
                :auth_provider_type,
-               :client_token_id,
                :device_id,
                :expires_at,
                :inserted_at,

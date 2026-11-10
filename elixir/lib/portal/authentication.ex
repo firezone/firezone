@@ -2,7 +2,6 @@ defmodule Portal.Authentication do
   import Ecto.Changeset
   import Ecto.Query
   import Portal.Changeset
-  alias Portal.ClientToken
   alias Portal.OneTimePasscode
   alias Portal.PortalSession
   alias Portal.SessionLog
@@ -325,9 +324,6 @@ defmodule Portal.Authentication do
   The token is encoded as a tuple of {account_id, token_id, secret_fragment}
   which is then signed using Plug.Crypto to ensure it can't be tampered with.
   """
-  def encode_fragment!(%ClientToken{} = token),
-    do: encode_token(token.account_id, token.id, token.secret_fragment, "client")
-
   def encode_fragment!(%Portal.RelayToken{} = token),
     do: encode_token(nil, token.id, token.secret_fragment, "relay")
 
@@ -605,7 +601,6 @@ defmodule Portal.Authentication do
     alias Portal.Account
     alias Portal.Actor
 
-    alias Portal.ClientToken
     alias Portal.OneTimePasscode
     alias Portal.SessionLog
 
@@ -774,40 +769,14 @@ defmodule Portal.Authentication do
       end
     end
 
-    # The client_tokens rows are deleted too, so nodes that still read that
-    # table during the rollout see the revoke. A refusal writes nothing, so it
-    # is returned without a rollback, which would also abort a caller's
-    # transaction.
     def delete_client_tokens(queryable, subject) do
-      keys = select(queryable, [t], {t.account_id, t.id})
-      scoped_or_unscoped = if subject, do: Safe.scoped(keys, subject), else: Safe.unscoped(keys)
+      scoped_or_unscoped =
+        if subject, do: Safe.scoped(queryable, subject), else: Safe.unscoped(queryable)
 
-      {:ok, result} =
-        Safe.transact(fn ->
-          case Safe.delete_all(scoped_or_unscoped) do
-            {:error, :unauthorized} = error ->
-              {:ok, error}
-
-            {count, keys} ->
-              {account_ids, ids} = Enum.unzip(keys)
-
-              from(ct in ClientToken,
-                join:
-                  k in fragment(
-                    "SELECT * FROM unnest(?::uuid[], ?::uuid[]) AS k(account_id, id)",
-                    type(^account_ids, {:array, Ecto.UUID}),
-                    type(^ids, {:array, Ecto.UUID})
-                  ),
-                on: ct.account_id == k.account_id and ct.id == k.id
-              )
-              |> Safe.unscoped()
-              |> Safe.delete_all()
-
-              {:ok, {count, nil}}
-          end
-        end)
-
-      result
+      case Safe.delete_all(scoped_or_unscoped) do
+        {:error, :unauthorized} = error -> error
+        {count, _} -> {count, nil}
+      end
     end
 
     # A client token has no Site and, when bound to a device, a client device.

@@ -25,9 +25,6 @@ defmodule Portal.DeviceToken do
     belongs_to :device, Portal.Device
     belongs_to :site, Portal.Site
 
-    # Set on copies of client tokens until client_tokens is dropped
-    field :client_token_id, :binary_id
-
     field :secret_salt, :string, redact: true
     field :secret_hash, :string, redact: true
 
