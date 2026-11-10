@@ -69,7 +69,7 @@ jobs:
     env:
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
       # mark:next-gateway-version
-      RELEASE_NAME: gateway-1.6.5
+      RELEASE_NAME: gateway-1.6.6
     steps:
       - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -134,7 +134,7 @@ jobs:
             shortname: armv7
     env:
       # mark:next-gateway-version
-      BINARY_DEST_PATH: firezone-gateway_1.6.5_${{ matrix.arch.shortname }}
+      BINARY_DEST_PATH: firezone-gateway_1.6.6_${{ matrix.arch.shortname }}
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
       # Only a dispatched build publishes the `.deb`. On a push, it would just
       # expire unread as an artifact.
@@ -206,7 +206,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-gateway-version
-          RELEASE_NAME: gateway-1.6.5
+          RELEASE_NAME: gateway-1.6.6
           ARTIFACT_PATH: ${{ env.BINARY_DEST_PATH }}
         run: |
           set -xe
