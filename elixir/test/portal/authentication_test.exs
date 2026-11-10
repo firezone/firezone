@@ -788,6 +788,36 @@ defmodule Portal.AuthenticationTest do
       assert verified.device_id == gateway.id
     end
 
+    test "rejects a token whose actor is disabled" do
+      token = gateway_token_fixture(gateway: gateway_fixture())
+
+      from(a in Portal.Actor, where: a.id == ^token.actor_id)
+      |> Repo.update_all(set: [is_disabled: true])
+
+      assert {:error, :invalid_token} = verify_gateway_token(encode_fragment!(token))
+    end
+
+    test "builds a subject for the token's actor" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway)
+      context = build_context(type: :gateway)
+
+      assert {:ok, verified} = verify_gateway_token(encode_fragment!(token))
+
+      assert {:ok,
+              %Authentication.Subject{
+                actor: %Portal.Actor{type: :legacy_gateway} = actor,
+                account: %Portal.Account{} = account,
+                credential: %Credential.GatewayToken{id: token_id},
+                expires_at: nil,
+                context: ^context
+              } = subject} = build_subject(verified, context)
+
+      assert actor.id == token.actor_id
+      assert account.id == gateway.account_id
+      assert token_id == token.id
+    end
+
     test "verifies a rotated token within the grace period" do
       gateway = gateway_fixture()
       token = gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
