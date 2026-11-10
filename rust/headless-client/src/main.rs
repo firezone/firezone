@@ -473,15 +473,17 @@ fn try_main() -> Result<()> {
             flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
         }
 
+        let config = client_shared::SessionConfig::default()
+            .with_internet_resource_active(cli.activate_internet_resource)
+            .with_dns_servers(dns_controller.system_resolvers())
+            .with_additional_host_candidates(cli.additional_host_candidates.clone())
+            .with_flow_logs_dir(flow_logs_dir.clone())
+            .with_local_flow_logs(cli.flow_logs);
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            cli.activate_internet_resource,
-            dns_controller.system_resolvers(),
-            cli.additional_host_candidates.clone(),
-            flow_logs_dir.clone(),
-            cli.flow_logs,
+            config,
         )
         .context("Failed to start connlib")?;
 
