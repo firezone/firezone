@@ -84,4 +84,35 @@ defmodule Portal.Accounts.LimitsTest do
     assert Limits.relay_allocation_limit(%Limits{}) == nil
     assert Limits.relay_allocation_limit(nil) == nil
   end
+
+  describe "changeset/2" do
+    test "rejects a zero refill rate, which the rate limiter divides by" do
+      for field <- ~w[
+            api_refill_rate
+            api_read_refill_rate
+            flow_log_initiator_refill_rate
+            flow_log_responder_refill_rate
+            flow_log_account_refill_rate
+          ]a do
+        changeset = Limits.changeset(%{field => 0})
+        refute changeset.valid?
+        assert {"must be greater than %{number}", _opts} = changeset.errors[field]
+
+        assert Limits.changeset(%{field => 1}).valid?
+      end
+    end
+
+    test "allows a zero capacity" do
+      for field <- ~w[
+            api_capacity
+            api_read_capacity
+            flow_log_initiator_capacity
+            flow_log_responder_capacity
+            flow_log_account_capacity
+          ]a do
+        assert Limits.changeset(%{field => 0}).valid?
+        refute Limits.changeset(%{field => -1}).valid?
+      end
+    end
+  end
 end
