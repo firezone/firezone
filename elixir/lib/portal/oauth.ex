@@ -73,10 +73,7 @@ defmodule Portal.OAuth do
   end
 
   @doc """
-  The cached client for `client_id`, or nil.
-
-  Never fetches the metadata document, so it is safe on a page that renders
-  before the request has been validated.
+  The cached client for `client_id`, or nil. Never fetches the metadata document.
   """
   def cached_client(client_id) when is_binary(client_id),
     do: Database.fetch_cached_client(client_id)
@@ -85,11 +82,13 @@ defmodule Portal.OAuth do
 
   @doc """
   Resolves the client and redirect URI. Errors here **must not** be redirected.
+
+  The client is cached only with `store: true`. See `ClientMetadata.fetch/2`.
   """
-  def validate_client(params) do
+  def validate_client(params, opts \\ []) do
     with {:ok, client_id} <- fetch_param(params, "client_id"),
          {:ok, redirect_uri} <- fetch_param(params, "redirect_uri"),
-         {:ok, client} <- fetch_client(client_id),
+         {:ok, client} <- ClientMetadata.fetch(client_id, opts),
          :ok <- ClientMetadata.validate_redirect_uri(client, redirect_uri) do
       {:ok, client, redirect_uri}
     else
@@ -242,8 +241,6 @@ defmodule Portal.OAuth do
       :error -> {0, nil}
     end
   end
-
-  defp fetch_client(client_id), do: ClientMetadata.fetch(client_id)
 
   defp validate_response_type(%{"response_type" => "code"}), do: :ok
 
