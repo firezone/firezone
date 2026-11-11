@@ -5,8 +5,8 @@ defmodule Portal.Changes.Hooks.DeviceTokens do
   alias Portal.PubSub
   import Portal.SchemaHelpers
 
-  # Pages that listen show the tokens of one actor, so Gateway tokens, owned
-  # by the legacy Gateway actor, reach none of them.
+  # Gateway tokens are broadcast too. Listeners count tokens per auth
+  # provider, and Gateway tokens have none, so the counts do not change.
   @impl true
   def on_insert(lsn, data) do
     token = struct_from_params(Portal.DeviceToken, data)
