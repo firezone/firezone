@@ -576,6 +576,31 @@ defmodule PortalAPI.PolicyControllerTest do
              }
     end
 
+    test "accepts only true for a client_verified condition", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      for values <- [["1"], ["false"]] do
+        attrs = %{
+          "group_id" => group.id,
+          "resource_id" => resource.id,
+          "conditions" => [%{"property" => "client_verified", "operator" => "is", "values" => values}]
+        }
+
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> post("/policies", policy: attrs)
+
+        assert json_response(conn, 422)["title"] == "Unprocessable Content"
+      end
+    end
+
     test "returns validation error for invalid condition", %{
       conn: conn,
       account: account,

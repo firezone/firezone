@@ -154,9 +154,16 @@ defmodule Portal.Policies.ConditionTest do
       assert cs.valid?
     end
 
-    test "valid with is and false" do
-      cs = changeset(%{property: :client_verified, operator: :is, values: ["false"]})
-      assert cs.valid?
+    test "invalid with values other than true" do
+      for values <- [["false"], ["1"], ["0"], ["TRUE"]] do
+        cs = changeset(%{property: :client_verified, operator: :is, values: values})
+        assert cs.errors[:values]
+      end
+    end
+
+    test "missing values returns error" do
+      cs = changeset(%{property: :client_verified, operator: :is})
+      assert cs.errors[:values]
     end
 
     test "invalid operator returns error" do
