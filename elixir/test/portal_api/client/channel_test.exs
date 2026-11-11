@@ -2644,6 +2644,34 @@ defmodule PortalAPI.Client.ChannelTest do
       assert payload.id == resource.id
     end
 
+    test "for disabled policy inserts keeps the resource out of the client", %{
+      client: client,
+      subject: subject,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+      resource = resource_fixture(account: account)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      policy = disabled_policy_fixture(%{account: account, group: group, resource: resource})
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: policy})
+
+      refute_push "resource_created_or_updated", _payload
+
+      state = :sys.get_state(socket.channel_pid)
+      refute Map.has_key?(state.assigns.cache.policies, Ecto.UUID.dump!(policy.id))
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+
+      resource_id = resource.id
+      assert_push "flow_creation_failed", %{reason: :not_found, resource_id: ^resource_id}
+    end
+
     test "for breaking policy updates sends resource_deleted followed by resource_created_or_updated",
          %{
            client: client,
