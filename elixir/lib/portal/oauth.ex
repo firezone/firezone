@@ -689,7 +689,7 @@ defmodule Portal.OAuth do
     # token, so a refresh cannot keep extending access the token would be refused.
     def fetch_refreshable_token(account_id, id) do
       now = DateTime.utc_now()
-      enabled_provider_ids = Portal.Authentication.Database.enabled_auth_provider_ids_subquery()
+      enabled_provider_ids = Authentication.enabled_auth_provider_ids_query()
 
       from(tokens in OAuthToken,
         join: account in assoc(tokens, :account),

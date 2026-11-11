@@ -189,6 +189,9 @@ defmodule Portal.Authentication do
     Database.delete_gateway_tokens(queryable, nil)
   end
 
+  @doc "A query selecting the id of every enabled auth provider."
+  def enabled_auth_provider_ids_query, do: Database.enabled_auth_provider_ids_subquery()
+
   @doc """
   Mints a fresh secret triple. Public because `Portal.OAuth` issues its own
   tokens and must derive them exactly the same way.
