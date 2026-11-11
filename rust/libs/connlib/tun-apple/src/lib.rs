@@ -30,7 +30,7 @@ use tokio::io::Interest;
 const RECV_BUFFER_SIZE: libc::c_int = if cfg!(target_os = "ios") {
     2 * 1024 * 1024
 } else {
-    512 * 1024
+    8 * 1024 * 1024
 };
 
 /// From XNU's `bsd/net/if_utun.h`.
