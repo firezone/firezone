@@ -808,11 +808,19 @@ firezone` and `firezone authenticate`. Depends 3.7.
 - **5b.6 Windows: `firezone.exe` serves.** Userspace forwarder only; the
   MSI install test adds a served resource and pings it through a second
   device. Depends 5b.4.
-- **5b.7 Integration tests: both forwarders** on the one image from 5.10,
+- **5b.7 Apple: macOS and iOS serve.** The Network Extension runs
+  `DeviceState` over `/device/v1` with the userspace forwarder only. A
+  manual test adds a served resource and pings it through a second device.
+  Depends 5b.4.
+- **5b.8 Android serves.** `DeviceState` over `/device/v1` with the
+  userspace forwarder only. Every host socket of the forwarder goes through
+  `VpnService.protect()`, so it leaves outside the tunnel. Same manual test
+  as 5b.7. Depends 5b.4.
+- **5b.9 Integration tests: both forwarders** on the one image from 5.10,
   the Linux container once with and once without `NET_ADMIN`, with ping,
   TCP and UDP downloads. Depends 5b.2, 5b.4.
-- **5b.8 Portal and docs.** Device detail shows the forwarder in use; the
-  0.8 page gains the opt-out flag and the Windows note. Depends 5b.1.
+- **5b.10 Portal and docs.** Device detail shows the forwarder in use; the
+  0.8 page gains the opt-out flag and a note per platform. Depends 5b.1.
 
 ### Phase 6: contract
 
@@ -865,10 +873,10 @@ legacy gateways `[m-1, m+1]`, `firezone` 1.7 `[5, 7]`, `firezone` 1.8
 | `firezone` 1.7 (R2) | 1.5, 1.6, 1.7  | 1.5, 1.6, `firezone` 1.7 | Clients 1.5, 1.6, `firezone` 1.7 |
 | `firezone` 1.8 (R3) | 1.6, 1.7, 1.8  | 1.6, `firezone` 1.7, 1.8 | Clients 1.6, `firezone` 1.7, 1.8 |
 
-Apple, Android and the Windows GUI need no release. PR count is about 94
-code PRs plus 3 docs PRs before merging small neighbours: phase 0 has 4,
-phase 1 has 15, phase 2 has 24, phase 3 has 12, phase 4 has 13,
-phase 5 has 12, phase 5b has 8, phase 6 has 8.
+The Windows GUI needs no release. Apple and Android release once, to serve
+(5b.7, 5b.8). PR count is about 96 code PRs plus 3 docs PRs before merging
+small neighbours: phase 0 has 4, phase 1 has 15, phase 2 has 24, phase 3
+has 12, phase 4 has 13, phase 5 has 12, phase 5b has 10, phase 6 has 8.
 
 ## 4. Decisions taken
 
@@ -968,5 +976,5 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
 | 3     | 13    | medium    |
 | 4     | 13    | large     |
 | 5     | 12    | large     |
-| 5b    | 8     | medium    |
+| 5b    | 10    | medium    |
 | 6     | 8     | medium    |
