@@ -2,12 +2,13 @@ defmodule Portal.Ops.RegionTransfer do
   @moduledoc """
   Moves one account between Firezone Cloud regions.
 
-  `export/3` disables the account and writes every row it owns to a directory,
-  one PostgreSQL COPY file per table plus a manifest. `import/2` loads that
-  directory into the database of the other region in one transaction, and
-  `enable/2` turns the account back on once the move is verified. The runbook
-  in the infra repository, README-region-transfer.md, lists the steps around
-  these calls.
+  `export/2` disables the account and uploads every row it owns to a blob
+  container in the other region, one PostgreSQL COPY file per table plus a
+  manifest. `import/2` loads that export into the database of the other region
+  in one transaction, and `enable/2` turns the account back on once the move is
+  verified. The files exist on this machine only for the duration of each
+  call. The runbook in the infra repository, README-region-transfer.md, lists
+  the steps around these calls.
 
   Every function asks for confirmation on the console. Pass `confirm: false`
   to skip the prompt when a script calls it through `bin/portal rpc`.
@@ -19,6 +20,7 @@ defmodule Portal.Ops.RegionTransfer do
   them.
   """
   alias __MODULE__.Database
+  alias __MODULE__.Storage
   alias Portal.Mailer
   alias Portal.Mailer.Notifications
   require Logger
@@ -34,9 +36,8 @@ defmodule Portal.Ops.RegionTransfer do
   # Nullable foreign keys from moved tables to these are exported as NULL.
   @skipped_tables ~w(api_request_logs change_logs client_tokens device_tokens feedback_submissions flow_logs log_sink_cursors oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes pending_identities policy_authorizations portal_sessions session_logs)
 
-  @doc "Disables the account and exports it to `dir`."
-  # sobelow_skip ["Traversal.FileModule"]
-  def export(account_id, dir, opts \\ []) do
+  @doc "Disables the account and uploads it to the other region."
+  def export(account_id, opts \\ []) do
     account = Database.fetch_account!(account_id)
 
     if account.is_disabled and account.disabled_reason != @disabled_reason do
@@ -48,28 +49,13 @@ defmodule Portal.Ops.RegionTransfer do
       print_summary("Export", account, counts)
       IO.puts("Skipped: #{Enum.join(@skipped_tables, ", ")}")
 
-      if confirm?(opts, "Disable the account and export it to #{dir}? [y/N]") do
-        File.mkdir_p!(dir)
+      if confirm?(opts, "Disable the account and export it to the #{other_region_name()} region? [y/N]") do
         {:ok, account} = Database.disable_account(account, @disabled_reason)
         notify_admins(account, &Notifications.region_transfer_started_email(&1, &2, other_region_name()))
 
-        {:ok, {account_columns, tables, suppressions}} = Database.export_tables(dir, account.id, plan)
+        manifest = with_scratch_dir(&upload_export(&1, account, plan))
 
-        manifest = %{
-          "account_id" => account.id,
-          "name" => account.name,
-          "slug" => account.slug,
-          "slugs" => Database.list_slugs(account.id),
-          "schema_version" => Database.schema_version(),
-          "exported_at" => DateTime.to_iso8601(DateTime.utc_now()),
-          "account_columns" => account_columns,
-          "tables" => tables,
-          "email_suppressions" => suppressions
-        }
-
-        File.write!(Path.join(dir, @manifest), Jason.encode!(manifest, pretty: true))
-
-        IO.puts("Exported #{total_rows(manifest)} rows to #{dir}. The account is disabled.")
+        IO.puts("Exported #{total_rows(manifest)} rows. The account is disabled.")
         {:ok, manifest}
       else
         IO.puts("Aborted.")
@@ -79,12 +65,17 @@ defmodule Portal.Ops.RegionTransfer do
   end
 
   @doc """
-  Imports an account exported by `export/3` from `dir`. The account stays
-  disabled until `enable/2` runs.
+  Imports an account that `export/2` uploaded from the other region. The
+  account stays disabled until `enable/2` runs.
   """
-  # sobelow_skip ["Traversal.FileModule"]
-  def import(dir, opts \\ []) do
-    manifest = dir |> Path.join(@manifest) |> File.read!() |> Jason.decode!()
+  def import(account_id, opts \\ []) do
+    case Storage.get(:inbox, account_id, @manifest) do
+      {:ok, body} -> check_import(Jason.decode!(body), opts)
+      {:error, :not_found} -> {:error, :export_not_found}
+    end
+  end
+
+  defp check_import(manifest, opts) do
     local_version = Database.schema_version()
 
     cond do
@@ -98,12 +89,12 @@ defmodule Portal.Ops.RegionTransfer do
         {:error, {:slugs_taken, taken}}
 
       true ->
-        confirm_import(dir, manifest, opts)
+        confirm_import(manifest, opts)
     end
   end
 
   @doc """
-  Turns an account disabled by `export/3` back on. In the destination this
+  Turns an account disabled by `export/2` back on. In the destination this
   also emails the admins that the move is done; pass `notify: false` when
   rolling back in the source.
   """
@@ -175,12 +166,79 @@ defmodule Portal.Ops.RegionTransfer do
     end
   end
 
-  defp confirm_import(dir, manifest, opts) do
+  # Each file goes up before the manifest that names it, so an import never
+  # sees a manifest without its files. The checksums catch files left over
+  # from an earlier export of the same account.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp upload_export(dir, account, plan) do
+    {:ok, {account_columns, tables, suppressions}} = Database.export_tables(dir, account.id, plan)
+
+    checksums =
+      Map.new(["accounts" | Enum.map(tables, & &1["name"])], fn table ->
+        body = File.read!(Path.join(dir, copy_file(table)))
+        :ok = Storage.put!(:outbox, account.id, copy_file(table), body)
+        {table, sha256(body)}
+      end)
+
+    manifest = %{
+      "account_id" => account.id,
+      "name" => account.name,
+      "slug" => account.slug,
+      "slugs" => Database.list_slugs(account.id),
+      "schema_version" => Database.schema_version(),
+      "exported_at" => DateTime.to_iso8601(DateTime.utc_now()),
+      "account_columns" => account_columns,
+      "tables" => tables,
+      "checksums" => checksums,
+      "email_suppressions" => suppressions
+    }
+
+    :ok = Storage.put!(:outbox, account.id, @manifest, Jason.encode!(manifest, pretty: true))
+    manifest
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp download_export(dir, manifest) do
+    Enum.reduce_while(manifest["checksums"], :ok, fn {table, checksum}, :ok ->
+      with {:ok, body} <- Storage.get(:inbox, manifest["account_id"], copy_file(table)),
+           ^checksum <- sha256(body) do
+        File.write!(Path.join(dir, copy_file(table)), body)
+        {:cont, :ok}
+      else
+        {:error, :not_found} -> {:halt, {:error, {:file_missing, table}}}
+        _checksum -> {:halt, {:error, {:checksum_mismatch, table}}}
+      end
+    end)
+  end
+
+  defp download_and_import(dir, manifest) do
+    with :ok <- download_export(dir, manifest) do
+      Database.import_tables(dir, manifest)
+    end
+  end
+
+  defp copy_file(table), do: "#{table}.copy"
+
+  defp sha256(body), do: :crypto.hash(:sha256, body) |> Base.encode16(case: :lower)
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp with_scratch_dir(fun) do
+    dir = Path.join(System.tmp_dir!(), "region-transfer-#{Ecto.UUID.generate()}")
+    File.mkdir_p!(dir)
+
+    try do
+      fun.(dir)
+    after
+      File.rm_rf!(dir)
+    end
+  end
+
+  defp confirm_import(manifest, opts) do
     rows = Enum.map(manifest["tables"], &{&1["name"], &1["rows"]})
     print_summary("Import", manifest, rows)
 
-    if confirm?(opts, "Import #{total_rows(manifest)} rows from #{dir}? [y/N]") do
-      case Database.import_tables(dir, manifest) do
+    if confirm?(opts, "Import #{total_rows(manifest)} rows? [y/N]") do
+      case with_scratch_dir(&download_and_import(&1, manifest)) do
         {:ok, imported} ->
           IO.puts("Imported #{imported} rows. The account stays disabled until enable/2 runs.")
           {:ok, manifest}
@@ -400,17 +458,17 @@ defmodule Portal.Ops.RegionTransfer do
     end
 
     defp export_snapshot(dir, account_id, plan) do
-        account_columns = columns("accounts")
-        1 = copy_out("accounts", account_columns, [], "id", account_id, Path.join(dir, "accounts.copy"))
+      account_columns = columns("accounts")
+      1 = copy_out("accounts", account_columns, [], "id", account_id, Path.join(dir, "accounts.copy"))
 
-        tables =
-          Enum.map(plan, fn %{name: name, nulled_columns: nulled} ->
-            columns = columns(name)
-            rows = copy_out(name, columns, nulled, "account_id", account_id, Path.join(dir, "#{name}.copy"))
-            %{"name" => name, "columns" => columns, "rows" => rows, "nulled_columns" => nulled}
-          end)
+      tables =
+        Enum.map(plan, fn %{name: name, nulled_columns: nulled} ->
+          columns = columns(name)
+          rows = copy_out(name, columns, nulled, "account_id", account_id, Path.join(dir, "#{name}.copy"))
+          %{"name" => name, "columns" => columns, "rows" => rows, "nulled_columns" => nulled}
+        end)
 
-        {:ok, {account_columns, tables, list_suppressions(account_id)}}
+      {:ok, {account_columns, tables, list_suppressions(account_id)}}
     end
 
     defp list_suppressions(account_id) do

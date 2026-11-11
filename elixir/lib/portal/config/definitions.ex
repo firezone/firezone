@@ -478,6 +478,20 @@ defmodule Portal.Config.Definitions do
   defconfig(:slug_registry_table_url, :string, default: nil)
 
   @doc """
+  Blob container in the other Firezone Cloud region that a region transfer
+  uploads accounts to, for example
+  https://firezonetransfereu.blob.core.windows.net/transfers.
+  """
+  defconfig(:region_transfer_outbox_url, :string, default: nil)
+
+  @doc """
+  Blob container in this region that the other Firezone Cloud region uploads
+  transferred accounts to, for example
+  https://firezonetransferus.blob.core.windows.net/transfers.
+  """
+  defconfig(:region_transfer_inbox_url, :string, default: nil)
+
+  @doc """
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,

@@ -1,6 +1,7 @@
 defmodule Portal.Ops.RegionTransferTest do
   use Portal.DataCase, async: true
   import ExUnit.CaptureIO
+  import Plug.Conn
   import Portal.AccountFixtures
   import Portal.OutboundEmailTestHelpers
   import Portal.ActorFixtures
@@ -12,6 +13,8 @@ defmodule Portal.Ops.RegionTransferTest do
   import Portal.SiteFixtures
   import Portal.TokenFixtures
   alias Portal.Ops.RegionTransfer
+
+  @container_url "https://transfers.example.test/transfers"
 
   setup do
     Portal.Config.put_env_override(:data_residency_region, :us)
@@ -31,17 +34,14 @@ defmodule Portal.Ops.RegionTransferTest do
       |> Ecto.Changeset.change(client_token_id: client_token.id)
       |> update!()
 
-    dir = Path.join(System.tmp_dir!(), "region-transfer-#{Ecto.UUID.generate()}")
-    on_exit(fn -> File.rm_rf!(dir) end)
-
-    %{account: account, actor: actor, gateway: gateway, client: client, dir: dir}
+    %{account: account, actor: actor, gateway: gateway, client: client, store: stub_storage()}
   end
 
   describe "export/2" do
-    test "disables the account and writes one file per table", %{account: account, dir: dir} do
+    test "disables the account and uploads one file per table", %{account: account, store: store} do
       output =
         capture_io("y\n", fn ->
-          assert {:ok, manifest} = RegionTransfer.export(account.id, dir)
+          assert {:ok, manifest} = RegionTransfer.export(account.id)
           assert manifest["account_id"] == account.id
           assert manifest["slug"] == account.slug
           assert Enum.any?(manifest["tables"], &(&1["name"] == "devices" and &1["rows"] == 2))
@@ -55,9 +55,9 @@ defmodule Portal.Ops.RegionTransferTest do
 
       assert output =~ "Export of account #{account.name}"
       assert output =~ "devices"
-      assert File.exists?(Path.join(dir, "manifest.json"))
-      assert File.exists?(Path.join(dir, "accounts.copy"))
-      assert File.exists?(Path.join(dir, "devices.copy"))
+      assert blob(store, account.id, "manifest.json")
+      assert blob(store, account.id, "accounts.copy")
+      assert blob(store, account.id, "devices.copy")
 
       account = fetch_account(account.id)
       assert account.is_disabled
@@ -66,10 +66,9 @@ defmodule Portal.Ops.RegionTransferTest do
 
     test "emails the admins that the account is disabled for the move", %{
       account: account,
-      actor: actor,
-      dir: dir
+      actor: actor
     } do
-      capture_io("y\n", fn -> {:ok, _manifest} = RegionTransfer.export(account.id, dir) end)
+      capture_io("y\n", fn -> {:ok, _manifest} = RegionTransfer.export(account.id) end)
 
       [email] = collect_queued_emails(account.id)
       assert email.subject == "Firezone Account Transfer in Progress"
@@ -80,8 +79,8 @@ defmodule Portal.Ops.RegionTransferTest do
       assert Enum.map(email.bcc, fn {_name, address} -> address end) == [actor.email]
     end
 
-    test "exports foreign keys to tables that are not moved as NULL", %{account: account, dir: dir} do
-      capture_io(fn -> send(self(), RegionTransfer.export(account.id, dir, confirm: false)) end)
+    test "exports foreign keys to tables that are not moved as NULL", %{account: account} do
+      capture_io(fn -> send(self(), RegionTransfer.export(account.id, confirm: false)) end)
       assert_received {:ok, manifest}
 
       nulled =
@@ -92,46 +91,60 @@ defmodule Portal.Ops.RegionTransferTest do
       assert nulled == %{"devices" => ["client_token_id", "gateway_token_id"]}
     end
 
-    test "refuses an account disabled for another reason", %{account: account, dir: dir} do
+    test "refuses an account disabled for another reason", %{account: account, store: store} do
       account |> Ecto.Changeset.change(is_disabled: true, disabled_reason: "Stripe") |> update!()
 
-      assert {:error, {:account_disabled, "Stripe"}} = RegionTransfer.export(account.id, dir, confirm: false)
-      refute File.exists?(dir)
+      assert {:error, {:account_disabled, "Stripe"}} = RegionTransfer.export(account.id, confirm: false)
+      assert Agent.get(store, & &1) == %{}
       assert fetch_account(account.id).disabled_reason == "Stripe"
     end
 
-    test "does nothing without confirmation", %{account: account, dir: dir} do
+    test "does nothing without confirmation", %{account: account, store: store} do
       output =
         capture_io("n\n", fn ->
-          assert :aborted = RegionTransfer.export(account.id, dir)
+          assert :aborted = RegionTransfer.export(account.id)
         end)
 
       assert output =~ "Aborted."
-      refute File.exists?(dir)
+      assert Agent.get(store, & &1) == %{}
       refute fetch_account(account.id).is_disabled
     end
   end
 
-  describe "import/1" do
-    setup %{account: account, dir: dir} do
-      capture_io("y\n", fn -> {:ok, _manifest} = RegionTransfer.export(account.id, dir) end)
+  describe "import/2" do
+    setup %{account: account} do
+      capture_io("y\n", fn -> {:ok, _manifest} = RegionTransfer.export(account.id) end)
       :ok
     end
 
-    test "refuses while the account still exists", %{dir: dir} do
-      assert {:error, :account_exists} = RegionTransfer.import(dir)
+    test "refuses an account that was not exported" do
+      assert {:error, :export_not_found} = RegionTransfer.import(Ecto.UUID.generate())
     end
 
-    test "refuses a manifest from another schema version", %{account: account, dir: dir} do
+    test "refuses while the account still exists", %{account: account} do
+      assert {:error, :account_exists} = RegionTransfer.import(account.id)
+    end
+
+    test "refuses a manifest from another schema version", %{account: account, store: store} do
       delete!(account)
-      path = Path.join(dir, "manifest.json")
-      manifest = path |> File.read!() |> Jason.decode!()
-      File.write!(path, Jason.encode!(%{manifest | "schema_version" => 1}))
+      manifest = store |> blob(account.id, "manifest.json") |> Jason.decode!()
+      put_blob(store, account.id, "manifest.json", Jason.encode!(%{manifest | "schema_version" => 1}))
 
-      assert {:error, {:schema_version_mismatch, exported: 1, local: _local}} = RegionTransfer.import(dir)
+      assert {:error, {:schema_version_mismatch, exported: 1, local: _local}} = RegionTransfer.import(account.id)
     end
 
-    test "refuses when another account holds one of the slugs", %{account: account, dir: dir} do
+    test "rolls back when a file does not match its checksum", %{account: account, store: store} do
+      delete!(account)
+      put_blob(store, account.id, "devices.copy", "")
+
+      capture_io(fn ->
+        assert {:error, {:checksum_mismatch, "devices"}} = RegionTransfer.import(account.id, confirm: false)
+      end)
+
+      refute fetch_account(account.id)
+    end
+
+    test "refuses when another account holds one of the slugs", %{account: account} do
       delete!(account)
       other = account_fixture()
 
@@ -140,7 +153,7 @@ defmodule Portal.Ops.RegionTransferTest do
         account_id: other.id
       })
 
-      assert {:error, {:slugs_taken, [_slug]}} = RegionTransfer.import(dir, confirm: false)
+      assert {:error, {:slugs_taken, [_slug]}} = RegionTransfer.import(account.id, confirm: false)
       refute fetch_account(account.id)
     end
 
@@ -148,8 +161,7 @@ defmodule Portal.Ops.RegionTransferTest do
       account: account,
       actor: actor,
       gateway: gateway,
-      client: client,
-      dir: dir
+      client: client
     } do
       counts = row_counts(account.id)
       delete!(account)
@@ -157,7 +169,7 @@ defmodule Portal.Ops.RegionTransferTest do
 
       output =
         capture_io("y\n", fn ->
-          assert {:ok, _manifest} = RegionTransfer.import(dir)
+          assert {:ok, _manifest} = RegionTransfer.import(account.id)
         end)
 
       assert output =~ "Import of account #{account.name}"
@@ -194,23 +206,20 @@ defmodule Portal.Ops.RegionTransferTest do
     test "copies the suppressed addresses of the account's actors" do
       account = account_fixture()
       actor = admin_actor_fixture(account: account)
-      dir = Path.join(System.tmp_dir!(), "region-transfer-#{Ecto.UUID.generate()}")
-      on_exit(fn -> File.rm_rf!(dir) end)
-
       suppression = insert!(%Portal.EmailSuppression{email: Portal.EmailSuppression.normalize_email(actor.email)})
-      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, dir, confirm: false) end)
+      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, confirm: false) end)
       delete!(account)
       delete!(suppression)
 
-      capture_io(fn -> assert {:ok, _manifest} = RegionTransfer.import(dir, confirm: false) end)
+      capture_io(fn -> assert {:ok, _manifest} = RegionTransfer.import(account.id, confirm: false) end)
       assert Repo.get_by(Portal.EmailSuppression, email: suppression.email)
     end
 
-    test "does nothing without confirmation", %{account: account, dir: dir} do
+    test "does nothing without confirmation", %{account: account} do
       delete!(account)
 
       capture_io("n\n", fn ->
-        assert :aborted = RegionTransfer.import(dir)
+        assert :aborted = RegionTransfer.import(account.id)
       end)
 
       refute fetch_account(account.id)
@@ -226,8 +235,8 @@ defmodule Portal.Ops.RegionTransferTest do
       assert fetch_account(account.id).is_disabled
     end
 
-    test "rolls back without emailing the admins", %{account: account, dir: dir} do
-      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, dir, confirm: false) end)
+    test "rolls back without emailing the admins", %{account: account} do
+      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, confirm: false) end)
       started = collect_queued_emails(account.id)
 
       assert {:ok, enabled} = RegionTransfer.enable(account.id, confirm: false, notify: false)
@@ -235,13 +244,47 @@ defmodule Portal.Ops.RegionTransferTest do
       assert collect_queued_emails(account.id) == started
     end
 
-    test "does nothing without confirmation", %{account: account, dir: dir} do
-      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, dir, confirm: false) end)
+    test "does nothing without confirmation", %{account: account} do
+      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, confirm: false) end)
 
       capture_io("n\n", fn -> assert :aborted = RegionTransfer.enable(account.id) end)
       assert fetch_account(account.id).is_disabled
     end
   end
+
+  # Both settings point at one in-memory container, so a test exports and
+  # imports in the same region.
+  defp stub_storage do
+    Portal.Config.put_env_override(:region_transfer_outbox_url, @container_url)
+    Portal.Config.put_env_override(:region_transfer_inbox_url, @container_url)
+
+    Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+      Req.Test.json(conn, %{"access_token" => "storage-token", "expires_on" => "4102444800"})
+    end)
+
+    store = start_supervised!({Agent, fn -> %{} end})
+
+    Req.Test.stub(RegionTransfer.Storage, fn
+      %{method: "PUT"} = conn ->
+        ["Bearer storage-token"] = get_req_header(conn, "authorization")
+        {:ok, body, conn} = read_body(conn)
+        Agent.update(store, &Map.put(&1, conn.request_path, body))
+        send_resp(conn, 201, "")
+
+      %{method: "GET"} = conn ->
+        case Agent.get(store, &Map.fetch(&1, conn.request_path)) do
+          {:ok, body} -> send_resp(conn, 200, body)
+          :error -> send_resp(conn, 404, "")
+        end
+    end)
+
+    store
+  end
+
+  defp blob(store, account_id, name), do: Agent.get(store, &Map.get(&1, "/transfers/#{account_id}/#{name}"))
+
+  defp put_blob(store, account_id, name, body),
+    do: Agent.update(store, &Map.put(&1, "/transfers/#{account_id}/#{name}", body))
 
   defp row_counts(account_id) do
     id = Ecto.UUID.dump!(account_id)

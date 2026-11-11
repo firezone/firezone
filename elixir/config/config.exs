@@ -46,6 +46,7 @@ config :portal, run_manual_migrations: false
 
 config :portal, data_residency_region: :on_prem
 config :portal, slug_registry_table_url: nil
+config :portal, region_transfer_outbox_url: nil, region_transfer_inbox_url: nil
 
 config :portal, Portal.Repo,
   hostname: "localhost",
@@ -247,6 +248,12 @@ config :portal, Portal.OTLP.TracesExporter,
   ]
 
 config :portal, Portal.SlugRegistry.Cache, max_entries: 10_000
+
+config :portal, Portal.Ops.RegionTransfer.Storage,
+  req_opts: [
+    receive_timeout: 60_000,
+    retry: :transient
+  ]
 
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
