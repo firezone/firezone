@@ -118,6 +118,10 @@ where
             .find_map(|(id, a)| a.has_socket(addr).then_some((*id, a)))
     }
 
+    pub(crate) fn has_server(&self, socket: SocketAddr) -> bool {
+        self.inner.values().any(|a| a.server().matches(socket))
+    }
+
     pub(crate) fn get_mut_by_server(&mut self, socket: SocketAddr) -> MutAllocationRef<'_, RId> {
         self.inner
             .iter_mut()

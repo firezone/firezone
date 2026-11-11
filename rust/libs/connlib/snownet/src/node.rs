@@ -298,6 +298,23 @@ where
             .map(ConnectionPath::from)
     }
 
+    /// Returns whether `socket` is one of our relays or a remote candidate of a connection.
+    pub fn remote_kind(&self, socket: SocketAddr) -> Option<RemoteKind> {
+        if self.allocations.has_server(socket) {
+            return Some(RemoteKind::Relay);
+        }
+
+        if self
+            .connections
+            .iter_established()
+            .any(|(_, c)| c.agent.has_remote_candidate(socket))
+        {
+            return Some(RemoteKind::Peer);
+        }
+
+        None
+    }
+
     /// Upserts a connection to the given remote.
     ///
     /// If we already have a connection with the same parameters, this does nothing.
@@ -1450,6 +1467,14 @@ impl From<is::IceCreds> for Credentials {
     }
 }
 
+/// The kind of remote a [`Node`] sends to.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum RemoteKind {
+    Relay,
+    /// A remote candidate of a connection, including the remote's relayed ones.
+    Peer,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId, RId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
@@ -2599,5 +2624,53 @@ mod tests {
         assert!(agent.remote_candidates().contains(&expected_candidate1));
         assert!(agent.remote_candidates().contains(&expected_candidate2));
         assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
+    }
+
+    #[test]
+    fn remote_kind_identifies_relays_and_remote_candidates() {
+        let relay = SocketAddr::from(([203, 0, 113, 1], 3478));
+        let peer = SocketAddr::from(([198, 51, 100, 1], 52625));
+        let unknown = SocketAddr::from(([192, 0, 2, 1], 52625));
+
+        for use_frostlink in [false, true] {
+            let now = Instant::now();
+            let mut node = Node::<u32, u32>::new([0; 32], now, Duration::ZERO);
+            node.update_relays(
+                BTreeSet::new(),
+                &BTreeSet::from([(
+                    1,
+                    RelaySocket::from(relay),
+                    "user".to_owned(),
+                    "pass".to_owned(),
+                    "firezone".to_owned(),
+                )]),
+                now,
+            );
+            node.upsert_connection(
+                1,
+                sanstun::PublicKey::from([1; 32]),
+                sanstun::StaticSecret::from(Zeroizing::new([0; 32])),
+                credentials(),
+                credentials(),
+                IceRole::Controlling,
+                IceConfig::client_default(),
+                IceConfig::client_idle(),
+                use_frostlink,
+                now,
+            );
+            let candidate = Candidate::host(peer, "udp").unwrap();
+            node.add_remote_candidate(1, crate::candidate::encode(use_frostlink, &candidate), now);
+
+            assert_eq!(node.remote_kind(relay), Some(RemoteKind::Relay));
+            assert_eq!(node.remote_kind(peer), Some(RemoteKind::Peer));
+            assert_eq!(node.remote_kind(unknown), None);
+        }
+    }
+
+    fn credentials() -> Credentials {
+        Credentials {
+            username: "ufrag".to_owned(),
+            password: "password".to_owned(),
+        }
     }
 }

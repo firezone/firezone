@@ -167,6 +167,14 @@ impl Sockets {
         self.listen_port
     }
 
+    /// Returns the local ports of the IPv4 and IPv6 sockets.
+    pub fn ports(&self) -> [Option<u16>; 2] {
+        [
+            self.socket_v4.as_ref().map(|s| s.port),
+            self.socket_v6.as_ref().map(|s| s.port),
+        ]
+    }
+
     fn bind(
         &mut self,
         socket_factory: &Arc<dyn SocketFactory<UdpSocket>>,
@@ -422,6 +430,7 @@ const _: () = {
 
 struct ThreadedUdpSocket {
     thread_name: String,
+    port: u16,
     join_handle: Option<std::thread::JoinHandle<()>>,
     main_thread_ends: Option<MainThreadEnds>,
 }
@@ -541,6 +550,7 @@ impl ThreadedUdpSocket {
 
                 socket.set_buffer_sizes(send_buffer_size, recv_buffer_size);
 
+                let port = socket.port();
                 let socket = Arc::new(socket);
 
                 let send = runtime.spawn({
@@ -661,7 +671,7 @@ impl ThreadedUdpSocket {
                     }
                 });
 
-                let _ = startup_tx.send(Ok(()));
+                let _ = startup_tx.send(Ok(port));
 
                 runtime.block_on(async move {
                     futures::future::select(send, receive).await;
@@ -671,10 +681,11 @@ impl ThreadedUdpSocket {
                 });
             })?;
 
-        startup_rx.recv().map_err(io::Error::other)??;
+        let port = startup_rx.recv().map_err(io::Error::other)??;
 
         Ok(Self {
             thread_name,
+            port,
             join_handle: Some(join_handle),
             main_thread_ends: Some(main_thread_ends),
         })
@@ -787,6 +798,7 @@ impl Sockets {
             let (main_thread_ends, socket_thread_ends) = channels(addr);
             let socket = ThreadedUdpSocket {
                 thread_name: "fake".to_owned(),
+                port: addr.port(),
                 join_handle: None,
                 main_thread_ends: Some(main_thread_ends),
             };

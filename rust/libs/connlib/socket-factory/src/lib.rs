@@ -499,6 +499,11 @@ impl PerfUdpSocket {
         self.send_transmit(pooled.as_socket(), &transmit).await
     }
 
+    /// Returns the local port the socket is bound to.
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
     /// The number of connected per-destination "flow" sockets currently cached.
     ///
     /// Exposed for integration tests. Always `0` on non-Apple platforms, where all

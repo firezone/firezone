@@ -139,6 +139,10 @@ impl GatewayState {
         self.node.public_key()
     }
 
+    pub fn remote_kind(&self, socket: SocketAddr) -> Option<snownet::RemoteKind> {
+        self.node.remote_kind(socket)
+    }
+
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
 

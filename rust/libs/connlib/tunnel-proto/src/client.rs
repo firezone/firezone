@@ -265,6 +265,10 @@ impl ClientState {
         self.node.connection_path(&peer)
     }
 
+    pub fn remote_kind(&self, socket: SocketAddr) -> Option<snownet::RemoteKind> {
+        self.node.remote_kind(socket)
+    }
+
     pub(crate) fn resources(&self) -> Vec<ResourceView> {
         self.resources_by_id
             .values()
