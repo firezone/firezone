@@ -127,7 +127,8 @@ defmodule PortalAPI.Client.DeviceTrust do
           last_attested_cert_issuer: binary(),
           not_after: DateTime.t(),
           device: Portal.Device.t() | nil,
-          matched_on: :mdm_device_id | :cert_identity | nil
+          matched_on: :mdm_device_id | :cert_identity | nil,
+          trust_anchor_certificate_ids: [Ecto.UUID.t()]
         }
 
   @type prepared_authentication :: %{
@@ -218,7 +219,7 @@ defmodule PortalAPI.Client.DeviceTrust do
            expires_at: expires_at,
            context: context
          },
-         {:ok, proof} <- attest_validated(der, leaf, subject) do
+         {:ok, proof} <- attest_validated(der, leaf, anchors, subject) do
       {:ok, subject, proof}
     else
       {:error, reason}
@@ -282,11 +283,11 @@ defmodule PortalAPI.Client.DeviceTrust do
          {:ok, anchors} <- fetch_anchors(subject),
          {:ok, leaf} <- decode_leaf(der),
          :ok <- validate_leaf(leaf, der, anchors) do
-      attest_validated(der, leaf, subject)
+      attest_validated(der, leaf, anchors, subject)
     end
   end
 
-  defp attest_validated(der, leaf, subject) do
+  defp attest_validated(der, leaf, anchors, subject) do
     with {:ok, serial} <- cert_serial(leaf),
          {:ok, issuer} <- cert_issuer(der),
          state =
@@ -310,7 +311,8 @@ defmodule PortalAPI.Client.DeviceTrust do
          last_attested_cert_issuer: issuer,
          not_after: not_after(leaf),
          device: state.device,
-         matched_on: state.matched_on
+         matched_on: state.matched_on,
+         trust_anchor_certificate_ids: anchors |> Enum.map(& &1.id) |> Enum.uniq()
        }}
     end
   end

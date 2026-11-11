@@ -381,6 +381,7 @@ defmodule PortalAPI.Client.Socket do
         posture: posture_rows(client, subject)
     })
     |> assign(:attestation, attestation(attested?, proof))
+    |> assign(:trust_anchor_certificate_ids, trust_anchor_certificate_ids(proof))
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
@@ -407,6 +408,9 @@ defmodule PortalAPI.Client.Socket do
 
   defp attested_until(true, %{not_after: %DateTime{} = not_after}), do: not_after
   defp attested_until(_attested?, _proof), do: nil
+
+  defp trust_anchor_certificate_ids(%{trust_anchor_certificate_ids: ids}), do: ids
+  defp trust_anchor_certificate_ids(_proof), do: []
 
   defp insert_changeset(actor, subject, attrs) do
     required_fields = ~w[firezone_id name]a

@@ -628,7 +628,11 @@ defmodule PortalAPI.Client.SocketTest do
   describe "connect/3 device attestation" do
     setup :setup_device_trust
 
-    test "attests the device from the presented certificate", %{pki: pki, token: token} do
+    test "attests the device from the presented certificate", %{
+      pki: pki,
+      token: token,
+      trust_anchor: trust_anchor
+    } do
       connect_info = attested_connect_info(pki, token)
 
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
@@ -637,6 +641,9 @@ defmodule PortalAPI.Client.SocketTest do
       {:ok, leaf} = Portal.Crypto.X509.decode_der_certificate(connect_info.peer_data.ssl_cert, :otp)
       not_after = Portal.Crypto.X509.not_after(leaf)
       assert socket.assigns.client.attested_until == %{not_after | microsecond: {0, 6}}
+
+      assert socket.assigns.trust_anchor_certificate_ids ==
+               Enum.map(trust_anchor.certificates, & &1.id)
 
       assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert socket.assigns.client.last_attested_cert_fingerprint
@@ -655,7 +662,8 @@ defmodule PortalAPI.Client.SocketTest do
     test "authenticates from X.509 identity claims without a client token", %{
       account: account,
       actor: actor,
-      pki: pki
+      pki: pki,
+      trust_anchor: trust_anchor
     } do
       provider = x509_provider_fixture(account: account, is_disabled: false)
 
@@ -672,6 +680,9 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.subject.expires_at.microsecond == {0, 6}
       assert socket.assigns.client.attested?
       assert is_nil(socket.assigns.client.client_token_id)
+
+      assert socket.assigns.trust_anchor_certificate_ids ==
+               Enum.map(trust_anchor.certificates, & &1.id)
     end
 
     test "authenticates a service account from an X.509 actor ID claim", %{
@@ -2002,12 +2013,18 @@ defmodule PortalAPI.Client.SocketTest do
     account = account_fixture()
     enable_feature(:x509_auth)
     pki = pki()
-    trust_anchor_fixture(account: account, certs: [pki.ca_der])
+    trust_anchor = trust_anchor_fixture(account: account, certs: [pki.ca_der])
 
     actor = actor_fixture(account: account)
     token = client_token_fixture(account: account, actor: actor)
 
-    %{account: account, actor: actor, pki: pki, token: encode_token(token)}
+    %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: encode_token(token),
+      trust_anchor: trust_anchor
+    }
   end
 
   defp assert_invalid_x509_identity(certificate, token \\ nil) do

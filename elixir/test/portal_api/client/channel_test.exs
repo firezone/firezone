@@ -70,6 +70,7 @@ defmodule PortalAPI.Client.ChannelTest do
         subject: subject,
         client_version: client_version,
         attestation: Keyword.get(opts, :attestation),
+        trust_anchor_certificate_ids: Keyword.get(opts, :trust_anchor_certificate_ids, []),
         previous_public_key: Keyword.get(opts, :previous_public_key)
       })
       |> subscribe_and_join(channel, "client")
@@ -1367,6 +1368,70 @@ defmodule PortalAPI.Client.ChannelTest do
                  "account_id" => account.id
                })
 
+      refute_receive :socket_drain
+      assert Process.alive?(socket.channel_pid)
+    end
+
+    test "reconnects an X.509 session that joins after its trust anchor certificate is deleted",
+         %{account: account, client: client, subject: subject} do
+      Process.flag(:trap_exit, true)
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+      trust_anchor = trust_anchor_fixture(account: account)
+      certificate_ids = Enum.map(trust_anchor.certificates, & &1.id)
+      Repo.delete!(trust_anchor)
+
+      credential = %Portal.Authentication.Credential.X509{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: provider.id
+      }
+
+      assert {:shutdown, _call} =
+               catch_exit(
+                 join_channel(client, %{subject | credential: credential},
+                   attestation: %{issuer: <<"i">>, serial: "AABBCC"},
+                   trust_anchor_certificate_ids: certificate_ids
+                 )
+               )
+
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+      refute_push "init", _init_payload
+    end
+
+    test "reconnects an attested session that joins after its trust anchor certificate is deleted",
+         %{account: account, client: client, subject: subject} do
+      Process.flag(:trap_exit, true)
+      trust_anchor = trust_anchor_fixture(account: account)
+      certificate_ids = Enum.map(trust_anchor.certificates, & &1.id)
+      Repo.delete!(trust_anchor)
+
+      assert {:shutdown, _call} =
+               catch_exit(
+                 join_channel(client, subject,
+                   attestation: %{issuer: <<"i">>, serial: "AABBCC"},
+                   trust_anchor_certificate_ids: certificate_ids
+                 )
+               )
+
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+      refute_push "init", _init_payload
+    end
+
+    test "registers a certificate session whose trust anchor certificates remain", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      trust_anchor = trust_anchor_fixture(account: account)
+
+      socket =
+        join_channel(client, subject,
+          attestation: %{issuer: <<"i">>, serial: "AABBCC"},
+          trust_anchor_certificate_ids: Enum.map(trust_anchor.certificates, & &1.id)
+        )
+
+      assert_push "init", _init_payload
       refute_receive :socket_drain
       assert Process.alive?(socket.channel_pid)
     end
