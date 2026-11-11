@@ -125,7 +125,7 @@ impl SocketPool {
                 flows: BTreeMap::new(),
                 sources: BTreeMap::new(),
                 rates: RateGate::default(),
-                flow_sockets_supported: true,
+                flow_sockets_supported: false,
                 buffer_sizes: None,
                 drained: VecDeque::new(),
                 recv_waker: None,
@@ -494,10 +494,6 @@ fn create_socket(
     // Darwin attaches the destination-address control message when it enqueues a datagram, and
     // a connected socket captures its 4-tuple immediately, so the option must be on beforehand.
     let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))?;
-    // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
-    unsafe {
-        state.set_apple_fast_path();
-    }
 
     socket.bind(&bind_addr)?;
     // NECP scopes the socket to the primary interface during bind, which keeps it out of our own tunnel.
