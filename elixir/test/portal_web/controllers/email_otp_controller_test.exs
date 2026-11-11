@@ -707,6 +707,42 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert state == %{}
     end
 
+    test "accepts a code after another sign in is started for the same email", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      on_exit(fn ->
+        Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, actor.email})
+      end)
+
+      sign_in_path = ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
+
+      conn = post(conn, sign_in_path, %{"email" => %{"email" => actor.email}})
+      assert_received {:email, email}
+      code = extract_code_from_email(email)
+
+      other_conn = post(build_conn(), sign_in_path, %{"email" => %{"email" => actor.email}})
+      assert redirected_to(other_conn) =~ sign_in_path
+      assert_received {:email, _}
+
+      conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
+          "secret" => code
+        })
+
+      assert redirected_to(conn) =~ "/sites"
+    end
+
     test "successfully authenticates account_user in client context", %{
       conn: conn,
       account: account,
