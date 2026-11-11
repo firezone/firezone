@@ -24,13 +24,23 @@ defmodule Portal.Workers.DeleteExpiredClientTokens do
   defmodule Database do
     import Ecto.Query
     alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Safe
 
+    # Gateway tokens never expire, so only client tokens match.
     def delete_expired_client_tokens do
-      from(c in ClientToken, as: :client_tokens)
-      |> where([client_tokens: c], c.expires_at <= ^DateTime.utc_now())
+      now = DateTime.utc_now()
+
+      result =
+        from(t in DeviceToken, where: t.expires_at <= ^now)
+        |> Safe.unscoped()
+        |> Safe.delete_all()
+
+      from(c in ClientToken, where: c.expires_at <= ^now)
       |> Safe.unscoped()
       |> Safe.delete_all()
+
+      result
     end
   end
 end

@@ -1404,7 +1404,7 @@ defmodule Portal.AuthenticationTest do
 
   describe "build_subject/2" do
     test "builds subject from client token" do
-      token = client_token_fixture()
+      token = client_token_fixture() |> device_token()
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1430,7 +1430,7 @@ defmodule Portal.AuthenticationTest do
     test "returns error when actor is disabled" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      token = client_token_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor) |> device_token()
 
       actor
       |> Ecto.Changeset.change(is_disabled: true)
@@ -1443,7 +1443,7 @@ defmodule Portal.AuthenticationTest do
     test "returns error when actor is deleted" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      token = client_token_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor) |> device_token()
 
       Portal.Repo.delete!(actor)
 
@@ -1454,7 +1454,7 @@ defmodule Portal.AuthenticationTest do
     test "subject contains correct account" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      token = client_token_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor) |> device_token()
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1464,7 +1464,7 @@ defmodule Portal.AuthenticationTest do
     test "subject contains correct actor" do
       account = account_fixture()
       actor = actor_fixture(account: account, type: :account_admin_user)
-      token = client_token_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor) |> device_token()
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1474,7 +1474,7 @@ defmodule Portal.AuthenticationTest do
 
     test "subject contains expires_at from token" do
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
-      token = client_token_fixture(expires_at: expires_at)
+      token = client_token_fixture(expires_at: expires_at) |> device_token()
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1486,7 +1486,7 @@ defmodule Portal.AuthenticationTest do
       actor = actor_fixture(account: account)
       auth_provider = auth_provider_fixture(account: account)
 
-      token = client_token_fixture(account: account, actor: actor, auth_provider: auth_provider)
+      token = client_token_fixture(account: account, actor: actor, auth_provider: auth_provider) |> device_token()
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1494,7 +1494,7 @@ defmodule Portal.AuthenticationTest do
     end
 
     test "subject context matches provided context" do
-      token = client_token_fixture()
+      token = client_token_fixture() |> device_token()
 
       context =
         build_context(
@@ -1782,12 +1782,69 @@ defmodule Portal.AuthenticationTest do
       assert verified.id == token.id
     end
 
+    test "a token only in device_tokens is accepted on the client socket", %{token: token} do
+      Repo.delete_all(from(ct in ClientToken, where: ct.id == ^token.id))
+
+      Repo.insert!(%Portal.DeviceToken{
+        account_id: token.account_id,
+        id: token.id,
+        actor_id: token.actor_id,
+        auth_provider_id: token.auth_provider_id,
+        secret_salt: token.secret_salt,
+        secret_hash: token.secret_hash,
+        expires_at: token.expires_at
+      })
+
+      encoded = sign_with_salt("device", "nonce", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:ok, %Portal.DeviceToken{id: id}} = use_token(encoded, build_context(type: :client))
+      assert id == token.id
+    end
+
+    test "the client socket refuses a Gateway token" do
+      token = gateway_token_fixture()
+      encoded = sign_with_salt("device", "", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = use_token(encoded, build_context(type: :client))
+    end
+
+    test "the Gateway socket refuses a client token", %{token: token} do
+      encoded = sign_with_salt("device", "nonce", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = verify_gateway_token(encoded)
+    end
+
+    test "delete_client_tokens/2 deletes from both tables", %{account: account, token: token} do
+      subject = admin_subject_fixture(account: account)
+
+      assert {1, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
+               |> delete_client_tokens(subject)
+
+      refute Repo.get_by(ClientToken, account_id: account.id, id: token.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+    end
+
+    test "delete_client_tokens/2 refuses a subject without access", %{token: token} do
+      subject = subject_fixture(actor: [type: :account_user])
+
+      assert {:error, :unauthorized} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
+               |> delete_client_tokens(subject)
+
+      assert Repo.get_by(ClientToken, account_id: token.account_id, id: token.id)
+    end
+
     test "relay tokens signed with the device salt are refused" do
       token = relay_token_fixture()
       encoded = sign_with_salt("device", "", {nil, token.id, token.secret_fragment})
 
       assert {:error, :invalid_token} = verify_relay_token(encoded)
     end
+  end
+
+  defp device_token(%ClientToken{} = token) do
+    Repo.get_by!(Portal.DeviceToken, account_id: token.account_id, id: token.id)
   end
 
   defp sign_with_salt(type, nonce, body) do

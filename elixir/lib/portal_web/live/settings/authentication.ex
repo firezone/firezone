@@ -2434,7 +2434,7 @@ defmodule PortalWeb.Settings.Authentication do
       provider_ids = Enum.map(providers, & &1.id)
 
       client_tokens_counts =
-        from(ct in Portal.ClientToken,
+        from(ct in Portal.DeviceToken,
           where: ct.auth_provider_id in ^provider_ids,
           group_by: ct.auth_provider_id,
           select: {ct.auth_provider_id, count(ct.id)}
@@ -2466,9 +2466,8 @@ defmodule PortalWeb.Settings.Authentication do
     def revoke_sessions_for_provider(provider, subject) do
       Safe.transact(fn ->
         {client_tokens_deleted, _} =
-          from(ct in Portal.ClientToken, where: ct.auth_provider_id == ^provider.id)
-          |> Safe.scoped(subject)
-          |> Safe.delete_all()
+          from(ct in Portal.DeviceToken, where: ct.auth_provider_id == ^provider.id)
+          |> Portal.Authentication.delete_client_tokens(subject)
 
         {portal_sessions_deleted, _} =
           from(ps in Portal.PortalSession, where: ps.auth_provider_id == ^provider.id)

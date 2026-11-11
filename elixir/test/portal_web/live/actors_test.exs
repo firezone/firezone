@@ -594,6 +594,7 @@ defmodule PortalWeb.ActorsTest do
 
       html = render_click(lv, "confirm_disable_actor")
       assert html =~ "Disable this actor?"
+      assert html =~ "Client sessions are kept and work again if you enable it."
 
       html = render_click(lv, "cancel_disable_actor")
       refute html =~ "Disable this actor?"
@@ -733,6 +734,25 @@ defmodule PortalWeb.ActorsTest do
 
       html = render(lv)
       assert html =~ "No tokens."
+    end
+
+    test "does not delete a token of another actor", %{conn: conn, account: account, actor: actor} do
+      service_account = service_account_fixture(account: account)
+      gateway_token = gateway_token_fixture(account: account)
+
+      other_token =
+        client_token_fixture(account: account, actor: service_account_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{service_account}")
+
+      render_click(lv, "delete_token", %{"id" => gateway_token.id})
+      render_click(lv, "delete_token", %{"id" => other_token.id})
+
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: other_token.id)
     end
 
     test "sends welcome email", %{conn: conn, account: account, actor: actor} do

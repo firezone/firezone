@@ -42,6 +42,7 @@ defmodule Portal.Changes.Hooks.AuthProviders do
   defmodule Database do
     import Ecto.Query
     alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.PortalSession
     alias Portal.Safe
 
@@ -51,6 +52,12 @@ defmodule Portal.Changes.Hooks.AuthProviders do
       # The ClientTokens hook will handle disconnecting sockets
       from(c in ClientToken,
         where: c.account_id == ^account_id and c.auth_provider_id == ^provider_id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      from(t in DeviceToken,
+        where: t.account_id == ^account_id and t.auth_provider_id == ^provider_id
       )
       |> Safe.unscoped()
       |> Safe.delete_all()
