@@ -20,10 +20,6 @@
     "name": "read_req_body"
   },
   {
-    "file": "elixir/lib/portal_api/mcp/capture_adapter.ex",
-    "name": "send_chunked"
-  },
-  {
     "file": "elixir/lib/portal_web/protocols.ex",
     "name": "to_param"
   },
