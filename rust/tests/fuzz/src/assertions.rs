@@ -290,12 +290,12 @@ fn assert_round_trip(
         if trace.received_responses.is_empty() && response == RemoteResponse::Nothing {
             return;
         }
-        // TODO: Remove with classic ICE.
         if trace.received_responses.is_empty()
-            && expected.trace_requirement
-                == TraceRequirement::ExactOrLoss(KnownLoss::WireGuardRekey)
+            && let TraceRequirement::ExactOrLoss(
+                reason @ (KnownLoss::WireGuardRekey | KnownLoss::NatRebinding),
+            ) = expected.trace_requirement
         {
-            tracing::debug!(target: "assertions", id = ?expected.id, "Probe response was lost during rekeying");
+            tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe response was lost");
             return;
         }
 

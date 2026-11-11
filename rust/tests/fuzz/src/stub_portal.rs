@@ -265,6 +265,7 @@ impl StubPortal {
                     self.forget_gateway_authorizations(*client_id);
                 }
             }
+            Transition::RebindClientNat { .. } => {}
             Transition::ReconnectPortal { .. } => {}
             Transition::RestartClient { client_id, .. } => {
                 for _ in self

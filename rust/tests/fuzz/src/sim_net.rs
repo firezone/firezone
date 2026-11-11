@@ -6,7 +6,7 @@ use ip_network_table::IpNetworkTable;
 use snownet::Transmit;
 use std::{
     collections::BTreeMap,
-    iter,
+    iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -156,6 +156,8 @@ pub(crate) struct Nat {
     by_public: BTreeMap<SocketAddr, Binding>,
     /// IPv6 destinations the host has sent to; the state backing [`FilterMode`] for IPv6.
     sent_to6: BTreeMap<SocketAddr, Instant>,
+    /// The public socket each rebound mapping last moved away from.
+    rebound_from: BTreeMap<(SocketAddr, Option<SocketAddr>), SocketAddr>,
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +180,7 @@ impl Nat {
             by_internal: BTreeMap::default(),
             by_public: BTreeMap::default(),
             sent_to6: BTreeMap::default(),
+            rebound_from: BTreeMap::default(),
         }
     }
 
@@ -299,6 +302,28 @@ impl Nat {
         Ok(destination)
     }
 
+    /// Moves the mappings towards `dst` to other public ports: back to the ones they last moved
+    /// away from, or fresh ones. Nothing reaches the host through the old ports anymore.
+    fn rebind(&mut self, dst: &[IpAddr]) {
+        for (key, public) in &mut self.by_internal {
+            if !key.1.is_some_and(|d| dst.contains(&d.ip())) {
+                continue;
+            }
+
+            let to = self.rebound_from.remove(key).unwrap_or_else(|| {
+                let port = self.next_port;
+                self.next_port += 1;
+
+                SocketAddr::new(self.ip4.into(), port)
+            });
+            let from = mem::replace(public, to);
+            self.rebound_from.insert(*key, from);
+
+            let binding = self.by_public.remove(&from).expect("bindings are in sync");
+            self.by_public.insert(to, binding);
+        }
+    }
+
     /// Moves this NAT to a new public address, e.g. because the host roamed to a different network.
     fn migrate(&mut self, ip4: Ipv4Addr) {
         self.ip4 = ip4;
@@ -309,6 +334,7 @@ impl Nat {
         self.by_internal.clear();
         self.by_public.clear();
         self.sent_to6.clear();
+        self.rebound_from.clear();
     }
 }
 
@@ -391,6 +417,14 @@ impl<T> Host<T> {
         match &self.edge {
             Edge::Nat(nat) => Some(nat.ip4),
             Edge::Open => None,
+        }
+    }
+
+    /// Moves this host's NAT mappings towards `dst` to other public ports.
+    pub(crate) fn rebind_nat(&mut self, dst: &[IpAddr]) {
+        match &mut self.edge {
+            Edge::Open => {}
+            Edge::Nat(nat) => nat.rebind(dst),
         }
     }
 

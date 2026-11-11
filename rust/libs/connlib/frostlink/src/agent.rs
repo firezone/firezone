@@ -31,9 +31,9 @@ pub struct Agent {
     /// Our own re-keys sent since the last one was answered. The second one
     /// unanswered is WireGuard distress: the primary path is dead.
     unanswered_rekeys: u32,
-    /// Distinct peer inits since we last saw peer data. The second with no data
-    /// in between means the peer isn't hearing us: the primary path is dead.
-    peer_rekeys: u32,
+    /// When the peer's last distinct init arrived. Another one sooner than
+    /// [`EARLY_PEER_REKEY`] means the peer isn't hearing us: the primary path is dead.
+    last_peer_init: Option<Instant>,
 
     responder_dedup: Option<ResponderDedup>,
     forwarded_response: Option<Vec<u8>>,
@@ -212,18 +212,21 @@ pub const PROBE_BUDGET: u32 = 12;
 /// single probe every 25s is negligible.
 pub const PRIMARY_KEEPALIVE: Duration = Duration::from_secs(25);
 
-/// Repeated re-keys with no progress in between that count as WireGuard
-/// distress and clear the primary: our own retransmit going unanswered, or a
-/// second distinct peer init with no data in between. The first re-key is
-/// ordinary (it may still be answered); the second is the distress signal.
+/// Our own unanswered re-keys that count as WireGuard distress and clear the
+/// primary. The first re-key is ordinary (it may still be answered); the second
+/// is the distress signal.
 pub const REKEY_DISTRESS_ATTEMPTS: u32 = 2;
+
+/// A distinct peer init arriving sooner than this after the previous one counts
+/// as WireGuard distress and clears the primary. A peer that hears us re-keys
+/// only every `REKEY_AFTER_TIME` (120s); this allows for one `REKEY_TIMEOUT`
+/// (5s) of slack.
+pub const EARLY_PEER_REKEY: Duration = Duration::from_secs(115);
 
 pub const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
-const MAX_PEER_REFLEXIVE: usize = 4;
-
 /// Per-kind FIFO cap on remote candidates, bounding `pairs` growth across
-/// portal-driven relay rotations.
+/// portal-driven relay rotations and the peer's NAT moving its mappings.
 const MAX_REMOTE_PER_KIND: usize = 6;
 
 const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
@@ -306,7 +309,7 @@ impl Agent {
             return;
         }
 
-        // Per-kind FIFO cap, bounding `pairs` growth across relay rotations.
+        // Per-kind FIFO cap.
         let kind = c.kind();
         let at_cap =
             self.remotes.iter().filter(|r| r.kind() == kind).count() >= MAX_REMOTE_PER_KIND;
@@ -556,10 +559,13 @@ impl Agent {
             self.set_primary(path);
         }
 
-        // Distinct inits with no data in between mean the peer isn't
-        // hearing us: WireGuard distress.
-        self.peer_rekeys = self.peer_rekeys.saturating_add(1);
-        if self.primary.is_some() && self.peer_rekeys == REKEY_DISTRESS_ATTEMPTS {
+        // The peer re-keying early means it isn't hearing us: WireGuard
+        // distress.
+        let early = self
+            .last_peer_init
+            .replace(now)
+            .is_some_and(|last| now.duration_since(last) < EARLY_PEER_REKEY);
+        if self.primary.is_some() && early {
             tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; clearing primary and re-probing");
             self.clear_and_reprobe(now);
         }
@@ -648,16 +654,9 @@ impl Agent {
         self.events.pop_front()
     }
 
-    /// Records that data from the peer decrypted.
-    pub fn handle_inbound_data(&mut self, now: Instant) {
-        self.last_now = Some(now);
-        // Decrypted peer data proves the peer is hearing us: not in distress.
-        self.peer_rekeys = 0;
-    }
-
     /// Answers a probe request or measures the pair a probe reply arrived on.
     pub fn handle_probe(&mut self, probe: Probe, pair: (SocketAddr, SocketAddr), now: Instant) {
-        self.handle_inbound_data(now);
+        self.last_now = Some(now);
 
         match probe.kind {
             crate::icmpv6::Echo::Request => {
@@ -927,20 +926,16 @@ impl Agent {
     fn register_peer_reflexive(&mut self, pair: (SocketAddr, SocketAddr), now: Instant) {
         // The peer reached us from a mapping they didn't advertise (symmetric
         // NAT). Registering it is a new candidate, which re-probes.
-        let peer_reflexive = self
-            .remotes
-            .iter()
-            .filter(|c| c.kind() == CandidateKind::PeerReflexive)
-            .count();
-
-        if peer_reflexive < MAX_PEER_REFLEXIVE && !self.remotes.iter().any(|c| c.addr() == pair.1) {
-            tracing::debug!(
-                local = %pair.0,
-                remote = %pair.1,
-                "Discovered peer-reflexive remote candidate",
-            );
-            self.add_remote_candidate(Candidate::peer_reflexive(pair.1), now);
+        if self.remotes.iter().any(|c| c.addr() == pair.1) {
+            return;
         }
+
+        tracing::debug!(
+            local = %pair.0,
+            remote = %pair.1,
+            "Discovered peer-reflexive remote candidate",
+        );
+        self.add_remote_candidate(Candidate::peer_reflexive(pair.1), now);
     }
 
     /// A handshake proves its path works both ways but carries no RTT, so it can
@@ -997,11 +992,10 @@ impl Agent {
         self.primary = Some(path);
 
         // Distress is measured per primary: a fresh one starts with a clean
-        // slate so a count that climbed on a previous (or no) primary — e.g.
-        // while pathless — can't leak in and trip `== REKEY_DISTRESS_ATTEMPTS`
-        // on the wrong path.
+        // slate so distress building up on a previous (or no) primary, e.g.
+        // while pathless, can't leak in and trip on the wrong path.
         self.unanswered_rekeys = 0;
-        self.peer_rekeys = 0;
+        self.last_peer_init = None;
 
         tracing::debug!(?from, local = %path.0, remote = %path.1, "Frostlink primary changed");
 

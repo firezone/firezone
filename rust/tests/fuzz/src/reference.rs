@@ -12,7 +12,7 @@ use itertools::Itertools;
 use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt,
+    fmt, iter,
     net::IpAddr,
 };
 use tunnel_proto::dns::is_subdomain;
@@ -21,6 +21,13 @@ use crate::resource as client;
 
 // TODO: Remove with classic ICE.
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
+
+/// How long the Client's stream may lose responses after its NAT rebound the mapping it uses.
+///
+/// The Gateway re-probes once the Client re-keyed twice, each after 7s of hearing nothing back
+/// (`KEEPALIVE_TIMEOUT + REKEY_TIMEOUT`); anything still reaching the Client, e.g. probes over a
+/// relay, delays that. Generous rather than exact.
+const NAT_REBINDING_LOSS: Duration = Duration::from_secs(50);
 
 /// How long after a relay frees up its ports until no node ignores it anymore: how long a node
 /// ignores a relay that failed its allocation, plus a margin.
@@ -578,6 +585,26 @@ impl ReferenceState {
                         if id != client_id {
                             peer.exec_mut(|peer| peer.forget_peer_authorizations(*client_id));
                         }
+                    }
+                }
+            }
+            Transition::RebindClientNat {
+                flow_id, probes, ..
+            } => {
+                for (at, probe_id) in
+                    iter::successors(Some(now), |at| Some(*at + STREAM_INTERVAL)).zip(probes)
+                {
+                    let send = Transition::SendUdpPacketOnExistingFlow {
+                        flow_id: *flow_id,
+                        probe_id: *probe_id,
+                    };
+                    self = self.apply(&send, portal, at);
+
+                    if at < now + NAT_REBINDING_LOSS
+                        && let Some(probe) = self.expected_probes.get_mut(probe_id)
+                    {
+                        probe.trace_requirement =
+                            TraceRequirement::ExactOrLoss(KnownLoss::NatRebinding);
                     }
                 }
             }

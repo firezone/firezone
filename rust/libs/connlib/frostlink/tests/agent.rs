@@ -9,8 +9,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use frostlink::{
-    Agent, Candidate, CandidateKind, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC,
-    Payload, Probe, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
+    Agent, Candidate, CandidateKind, EARLY_PEER_REKEY, Event, PROBE_BUDGET, PROBE_BURST_GAPS,
+    PROBE_DST, PROBE_SRC, Payload, Probe, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
 use ip_packet::{Icmpv6Type, IpPacket};
 use zeroize::Zeroizing;
@@ -547,90 +547,44 @@ fn a_primary_change_resets_the_distress_count() {
 }
 
 #[test]
-fn a_second_peer_rekey_without_data_clears_the_primary() {
+fn an_early_peer_rekey_clears_the_primary() {
     let (mut a, t0) = direct_primary_with_relay_fallback();
 
-    let mut t = t0;
-    for i in 0..REKEY_DISTRESS_ATTEMPTS {
-        t += secs(1);
-        let mut hs = Handshake::new_seeded(t0, u8::try_from(i).unwrap());
-        let _ = a.receive(
-            &mut hs.responder,
-            &mut hs.responder_interface,
-            &hs.init,
-            (addr(2), addr(4)),
-            t,
-        );
-    }
-    a.drain_events();
-    let _ = a.transmits();
+    receive_peer_init(&mut a, 0, t0 + secs(1));
+    receive_peer_init(&mut a, 1, t0 + secs(8));
 
     assert_eq!(
         a.primary(),
         None,
-        "repeated peer re-keys with no data are distress; the primary is cleared",
+        "a peer re-keying early isn't hearing us; the primary is cleared",
     );
 }
 
 #[test]
-fn peer_data_resets_the_peer_rekey_count() {
+fn peer_data_does_not_mask_an_early_peer_rekey() {
+    // The peer's NAT moved its mapping: its data and probes still reach us, but
+    // nothing we send on the primary reaches it.
     let (mut a, t0) = direct_primary_with_relay_fallback();
 
-    // Many peer re-keys, but data flows in between each: never distress.
-    let mut t = t0;
-    for i in 0..(REKEY_DISTRESS_ATTEMPTS + 2) {
-        t += secs(1);
-        let mut hs = Handshake::new_seeded(t0, u8::try_from(i).unwrap());
-        let _ = a.receive(
-            &mut hs.responder,
-            &mut hs.responder_interface,
-            &hs.init,
-            (addr(2), addr(4)),
-            t,
-        );
-        a.handle_inbound_data(t);
-    }
-    a.drain_events();
+    receive_peer_init(&mut a, 0, t0 + secs(1));
+    a.handle_probe(echo_request(0, 1), (addr(1), addr(3)), t0 + secs(4));
     let _ = a.transmits();
+    receive_peer_init(&mut a, 1, t0 + secs(8));
 
-    assert_eq!(
-        a.primary(),
-        Some((addr(1), addr(3))),
-        "data between re-keys resets the count, so it never reaches distress",
-    );
+    assert_eq!(a.primary(), None);
 }
 
 #[test]
-fn unauthenticated_peer_data_does_not_reset_the_peer_rekey_count() {
+fn peer_rekeys_at_the_rekey_interval_are_not_distress() {
     let (mut a, t0) = direct_primary_with_relay_fallback();
 
     let mut t = t0;
-    for i in 0..REKEY_DISTRESS_ATTEMPTS {
-        t += secs(1);
-        let mut hs = Handshake::new_seeded(t0, u8::try_from(i).unwrap());
-        let _ = a.receive(
-            &mut hs.responder,
-            &mut hs.responder_interface,
-            &hs.init,
-            (addr(2), addr(4)),
-            t,
-        );
-        let _ = a.receive(
-            &mut reject_all(),
-            &mut hs.responder_interface,
-            &data_packet_bytes(),
-            (addr(2), addr(4)),
-            t,
-        );
+    for i in 0..3 {
+        t += EARLY_PEER_REKEY;
+        receive_peer_init(&mut a, i, t);
     }
-    a.drain_events();
-    let _ = a.transmits();
 
-    assert_eq!(
-        a.primary(),
-        None,
-        "forged data between re-keys must not mask distress",
-    );
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
 }
 
 // --- new candidate ---
@@ -854,6 +808,45 @@ fn a_peer_reflexive_remote_stays_peer_reflexive_until_signaled() {
     );
 }
 
+#[test]
+fn a_new_peer_reflexive_remote_evicts_the_oldest() {
+    let mut a = Agent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+
+    // The establishing init registers the first peer-reflexive remote and
+    // adopts its pair as the primary.
+    let mut hs = Handshake::new(t0);
+    let _ = a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(1), addr(10)),
+        t0,
+    );
+    a.confirm_session(t0);
+
+    for port in 11..=15 {
+        a.handle_probe(echo_request(0, port), (addr(1), addr(port)), t0);
+    }
+    prove_pair_alive(&mut a, (addr(1), addr(10)), t0 + secs(1));
+    assert_eq!(a.primary(), Some((addr(1), addr(10))));
+
+    // The peer's NAT moved its mapping once more: the new address is learned
+    // and the oldest one, the primary's, goes.
+    a.handle_probe(echo_request(0, 16), (addr(1), addr(16)), t0 + secs(2));
+
+    assert_eq!(remote_kind(&a, addr(10)), None);
+    assert_eq!(
+        remote_kind(&a, addr(16)),
+        Some(CandidateKind::PeerReflexive)
+    );
+    assert_eq!(a.primary(), None);
+
+    prove_pair_alive(&mut a, (addr(1), addr(16)), t0 + secs(3));
+    assert_eq!(a.primary(), Some((addr(1), addr(16))));
+}
+
 // --- test harness ---
 
 type Pair = (SocketAddr, SocketAddr);
@@ -1073,16 +1066,21 @@ fn prove_pair_alive(a: &mut Agent, pair: Pair, now: Instant) {
     a.handle_probe(echo_reply(probe.id, probe.seq), pair, now + ms(20));
 }
 
-fn handshake_init_bytes() -> sanstun::Datagram {
-    Handshake::new(Instant::now()).init
+fn receive_peer_init(a: &mut Agent, seed: u8, now: Instant) {
+    let mut hs = Handshake::new_seeded(now, seed);
+    let _ = a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(2), addr(4)),
+        now,
+    );
+    a.drain_events();
+    let _ = a.transmits();
 }
 
-/// Synthetic data packet: only the type byte and a length past the data
-/// overhead matter for it to parse as `PacketData`.
-fn data_packet_bytes() -> Vec<u8> {
-    let mut bytes = vec![0u8; 32];
-    bytes[0] = 4;
-    bytes
+fn handshake_init_bytes() -> sanstun::Datagram {
+    Handshake::new(Instant::now()).init
 }
 
 fn bootstrap_primary(a: &mut Agent, recv_path: Pair, now: Instant) {

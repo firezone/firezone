@@ -18,6 +18,10 @@ use std::{
     time::Duration,
 };
 
+/// The gap between the probes a Client streams: longer than any round trip, so each response is
+/// attributed to its own probe, and well below the 7s of silence after which WireGuard re-keys.
+pub(crate) const STREAM_INTERVAL: Duration = Duration::from_secs(2);
+
 #[allow(private_interfaces)]
 #[derive(Clone, Debug)]
 pub enum Transition {
@@ -102,6 +106,13 @@ pub enum Transition {
         nat_ip4: Ipv4Addr,
         dead_window: Duration,
         portal_window: Duration,
+    },
+    /// The NAT of the Client streaming `probes` on the UDP flow moves its mappings towards the
+    /// flow's Gateway to other ports: back to the ones it moved them away from last, or fresh ones.
+    RebindClientNat {
+        flow_id: FlowId,
+        gateway_id: GatewayId,
+        probes: Vec<ProbeId>,
     },
     ReconnectPortal {
         client_id: ClientId,
@@ -219,6 +230,7 @@ impl Transition {
                 Destination::DomainName { .. } => frostlink || client_id != *roamed,
                 Destination::IpAddr(_) => true,
             },
+            Transition::RebindClientNat { .. } => true,
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient { .. } => self.retains_flow(client_id, route, false),
             Transition::DeployNewRelays(_) => true,
@@ -285,6 +297,7 @@ impl Transition {
                 Route::Resource { .. } => frostlink || client_id != *changed,
                 Route::Peer(peer) => frostlink || (client_id != *changed && peer != *changed),
             },
+            Transition::RebindClientNat { .. } => true,
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient {
                 client_id: restarted,

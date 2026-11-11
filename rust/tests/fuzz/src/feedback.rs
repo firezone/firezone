@@ -310,6 +310,7 @@ impl Recorder {
                 self.observe_resumed_flow(resumed, *probe_id);
             }
             Transition::AddResource(_)
+            | Transition::RebindClientNat { .. }
             | Transition::RemoveResource(_)
             | Transition::SendDnsResourcePtrQuery { .. }
             | Transition::UpdateUpstreamSearchDomain(_) => {}

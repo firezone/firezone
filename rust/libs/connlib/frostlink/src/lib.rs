@@ -43,10 +43,12 @@
 //!
 //! The primary is dropped only on a signal that it is dead. WireGuard re-keys
 //! when its data goes unanswered; because every WireGuard packet flows through
-//! the agent, a second unanswered re-key (ours) — or a second distinct peer
-//! init with no data in between — is taken as distress ([`REKEY_DISTRESS_ATTEMPTS`]),
-//! clearing the primary and re-probing every pair. A new candidate is the same
-//! kind of signal and does the same. Pairs already probing keep their state.
+//! the agent, a second unanswered re-key of ours ([`REKEY_DISTRESS_ATTEMPTS`])
+//! or a distinct peer init arriving sooner than [`EARLY_PEER_REKEY`] after the
+//! previous one is taken as distress, clearing the primary and re-probing every
+//! pair. Paths may be asymmetric, so data from the peer proves nothing about
+//! whether it hears us. A new candidate is the same kind of signal and does the
+//! same. Pairs already probing keep their state.
 
 mod agent;
 mod candidate;
@@ -56,7 +58,7 @@ mod retransmit;
 mod score;
 
 pub use agent::{
-    Agent, PRIMARY_KEEPALIVE, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_INTERVAL,
+    Agent, EARLY_PEER_REKEY, PRIMARY_KEEPALIVE, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_INTERVAL,
     REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
 };
 pub use candidate::{Address, Candidate, CandidateKind, ParseCandidateError};

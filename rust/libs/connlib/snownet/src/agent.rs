@@ -214,13 +214,6 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_inbound_data(&mut self, now: Instant) {
-        match self {
-            Self::Ice(_) => {}
-            Self::Frostlink(agent) => agent.handle_inbound_data(now),
-        }
-    }
-
     pub(crate) fn handle_probe(
         &mut self,
         probe: frostlink::Probe,
