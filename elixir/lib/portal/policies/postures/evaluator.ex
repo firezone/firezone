@@ -211,8 +211,8 @@ defmodule Portal.Policies.Postures.Evaluator do
         :does_not_contain -> not String.contains?(value, parsed)
         :starts_with -> String.starts_with?(value, parsed)
         :ends_with -> String.ends_with?(value, parsed)
-        :matches -> Postures.safe_match?(parsed, value)
-        :does_not_match -> not Postures.safe_match?(parsed, value)
+        :matches -> Postures.regex_match(parsed, value) == :match
+        :does_not_match -> Postures.regex_match(parsed, value) == :nomatch
       end
 
     {passed?, nil}
