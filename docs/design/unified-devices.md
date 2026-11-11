@@ -820,7 +820,9 @@ firezone` and `firezone authenticate`. Depends 3.7.
   the Linux container once with and once without `NET_ADMIN`, with ping,
   TCP and UDP downloads. Depends 5b.2, 5b.4.
 - **5b.10 Portal and docs.** Device detail shows the forwarder in use; the
-  0.8 page gains the opt-out flag and a note per platform. Depends 5b.1.
+  0.8 page gains the Linux `--no-kernel-forwarding` flag and says that
+  Windows, macOS, iOS and Android use the userspace forwarder only.
+  Depends 5b.1.
 
 ### Phase 6: contract
 
