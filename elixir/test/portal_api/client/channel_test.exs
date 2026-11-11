@@ -6,6 +6,7 @@ defmodule PortalAPI.Client.ChannelTest do
   alias Portal.Fixture
   alias Portal.Presence
   alias Portal.{PG, PubSub}
+  alias Portal.Replication.Decoder.Messages.Begin
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -2006,6 +2007,41 @@ defmodule PortalAPI.Client.ChannelTest do
       send(socket.channel_pid, %Changes.Change{lsn: 50})
 
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
+    end
+
+    test "applies a transaction that committed after a later-written one", %{
+      account: account,
+      client: client,
+      subject: subject,
+      membership: membership,
+      dns_resource: dns_resource
+    } do
+      join_channel(client, subject)
+      assert_push "init", _init_payload
+      Repo.delete!(membership)
+      other_group = group_fixture(account: account)
+      dns_resource_id = dns_resource.id
+
+      state =
+        %{}
+        |> Changes.Consumer.init_state()
+        |> Changes.Consumer.on_begin(%Begin{final_lsn: {1, 300}})
+        |> Changes.Consumer.on_write(200, :insert, "groups", nil, %{
+          "id" => other_group.id,
+          "account_id" => account.id,
+          "name" => other_group.name
+        })
+
+      state
+      |> Changes.Consumer.on_begin(%Begin{final_lsn: {1, 400}})
+      |> Changes.Consumer.on_write(100, :delete, "memberships", %{
+        "id" => membership.id,
+        "account_id" => membership.account_id,
+        "actor_id" => membership.actor_id,
+        "group_id" => membership.group_id
+      }, nil)
+
+      assert_push "resource_deleted", ^dns_resource_id
     end
 
     test "for account updates the subject in the socket", %{
