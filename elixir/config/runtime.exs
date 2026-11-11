@@ -233,6 +233,10 @@ if config_env() == :prod do
 
   config :portal, slug_registry_table_url: env_var_to_config!(:slug_registry_table_url)
 
+  config :portal,
+    region_transfer_outbox_url: env_var_to_config!(:region_transfer_outbox_url),
+    region_transfer_inbox_url: env_var_to_config!(:region_transfer_inbox_url)
+
   # Shared cookie and proxy config (used by both Web and API endpoints)
   config :portal,
     cookie_secure: env_var_to_config!(:phoenix_secure_cookies),

@@ -342,6 +342,16 @@ defmodule Portal.Safe do
   end
 
   @doc """
+  A stream over a raw SQL statement, for `COPY ... TO STDOUT` (enumerate it)
+  and `COPY ... FROM STDIN` (collect into it). Must run inside `transact/2`.
+  """
+  @spec sql_stream(Unscoped.t(), String.t(), list()) :: Enum.t()
+  # sobelow_skip ["SQL.Stream"]
+  def sql_stream(%Unscoped{repo: repo}, sql, params) when is_binary(sql) and is_list(params) do
+    Ecto.Adapters.SQL.stream(repo, sql, params)
+  end
+
+  @doc """
   Runs a function inside a database transaction without subject scoping.
 
   The function must return `{:ok, value}` or `{:error, reason}`; an error
