@@ -962,8 +962,14 @@ defmodule PortalWeb.Actors.Components do
             class="px-3 py-2.5 rounded border border-border bg-raised"
           >
             <p class="text-xs font-medium text-heading mb-1">Disable this actor?</p>
-            <p class="text-xs text-body mb-3">
-              All active sessions will be immediately revoked.
+            <p class="text-xs text-body mb-2">
+              Its Clients disconnect now and cannot connect while it is disabled.
+            </p>
+            <p class="flex gap-1.5 text-xs text-warning mb-3">
+              <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-px" />
+              <span>
+                Its {if @actor.type == :service_account, do: "tokens", else: "Client sessions"} are kept and work again if you enable it. To remove them, revoke them first.
+              </span>
             </p>
             <div class="flex items-center gap-1.5">
               <Form.button type="button" phx-click="cancel_disable_actor" size="xs">

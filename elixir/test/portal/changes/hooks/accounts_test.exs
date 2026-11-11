@@ -1,7 +1,6 @@
 defmodule Portal.Changes.Hooks.AccountsTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
-  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.PolicyAuthorizationFixtures
   import Portal.TokenFixtures
@@ -199,35 +198,17 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       assert Repo.get_by(Portal.PolicyAuthorization, id: policy_authorization.id) == nil
     end
 
-    test "deletes associated client tokens when account is disabled" do
+    test "keeps client and Gateway tokens when account is disabled" do
       account = account_fixture()
       client_token = client_token_fixture(account: account)
-
-      old_data = %{
-        "id" => account.id,
-        "is_disabled" => false
-      }
-
-      data = %{
-        "id" => account.id,
-        "is_disabled" => true
-      }
-
-      assert :ok == on_update(0, old_data, data)
-      assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
-    end
-
-    test "deletes client tokens only in device_tokens and keeps Gateway tokens when account is disabled" do
-      account = account_fixture()
-      client_token = client_token_fixture(account: account)
-      Repo.delete_all(from(ct in Portal.ClientToken, where: ct.id == ^client_token.id))
       gateway_token = gateway_token_fixture(account: account)
 
       old_data = %{"id" => account.id, "is_disabled" => false}
       data = %{"id" => account.id, "is_disabled" => true}
 
       assert :ok == on_update(0, old_data, data)
-      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
       assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
     end
   end
