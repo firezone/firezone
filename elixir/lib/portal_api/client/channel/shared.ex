@@ -3091,26 +3091,36 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # Only enqueue + arm on the first successful registration; re-registrations
   # after a PG scope crash share the same channel and session row.
-  defp register_session(socket, current_pid) do
-    if is_nil(current_pid) do
-      Portal.Queue.enqueue(
-        Portal.Queue.name(:client_session_queue),
-        session_attrs(
-          socket.assigns.client,
-          socket.assigns.session_ref,
-          socket.assigns.client.attested?
-        ),
-        metadata: %{
-          subject: Authentication.Subject.to_map(socket.assigns.subject),
-          timestamp: DateTime.utc_now()
-        }
-      )
+  defp register_session(socket, nil) do
+    Portal.Queue.enqueue(
+      Portal.Queue.name(:client_session_queue),
+      session_attrs(
+        socket.assigns.client,
+        socket.assigns.session_ref,
+        socket.assigns.client.attested?
+      ),
+      metadata: %{
+        subject: Authentication.Subject.to_map(socket.assigns.subject),
+        timestamp: DateTime.utc_now()
+      }
+    )
 
-      {:noreply, arm_session_durability_timer(socket)}
-    else
+    {:noreply, arm_session_durability_timer(socket)}
+  end
+
+  # A token deleted while the scope was down missed its PG disconnect.
+  defp register_session(socket, _current_pid) do
+    if client_token_kept?(socket) do
       {:noreply, socket}
+    else
+      handle_info(:disconnect, socket)
     end
   end
+
+  defp client_token_kept?(%{assigns: %{subject: %{credential: %Credential.ClientToken{id: id}}}} = socket),
+    do: Database.client_token_exists?(socket.assigns.client.account_id, id)
+
+  defp client_token_kept?(_socket), do: true
 
   # Tracks client presence and monitors Presence tracker shard processes so we
   # can re-track if any crash. Monitoring the supervisor alone is insufficient
@@ -3297,6 +3307,12 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.delete_all()
+    end
+
+    def client_token_exists?(account_id, id) do
+      from(t in Portal.DeviceToken, where: t.account_id == ^account_id, where: t.id == ^id)
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.exists?()
     end
 
     @doc """
