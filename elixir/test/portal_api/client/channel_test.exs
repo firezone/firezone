@@ -530,6 +530,7 @@ defmodule PortalAPI.Client.ChannelTest do
       Portal.Changes.Hooks.DeviceTokens.on_delete(lsn, data)
 
       assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
@@ -1134,6 +1135,7 @@ defmodule PortalAPI.Client.ChannelTest do
       PG.deliver(client.id, :disconnect)
 
       assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
@@ -2529,7 +2531,8 @@ defmodule PortalAPI.Client.ChannelTest do
         old_struct: client
       })
 
-      assert_receive {:EXIT, _pid, _reason}
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
     end
 
     test "for sites pushes resource_created_or_updated for name changes", %{

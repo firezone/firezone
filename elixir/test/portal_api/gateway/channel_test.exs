@@ -1832,6 +1832,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       Changes.Hooks.DeviceTokens.on_delete(lsn, data)
 
       assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
@@ -1853,7 +1854,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         old_struct: gateway
       })
 
-      assert_receive {:EXIT, _pid, _reason}
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
     end
 
     test "pushes allow_access message", %{
