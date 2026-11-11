@@ -8,6 +8,12 @@ defmodule PortalWeb.Devices do
   alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
+  @edit_form_events ~w[change_device_edit_form submit_device_edit_form cancel_device_edit_form]
+
+  @selected_device_events ~w[
+    change_policy_authorizations_page open_device_edit_form verify_device unverify_device delete_device
+  ]
+
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
 
@@ -47,6 +53,7 @@ defmodule PortalWeb.Devices do
         ],
         loader: &load_devices/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -274,6 +281,10 @@ defmodule PortalWeb.Devices do
       confirm_unverify_device: assigns.device_confirm.unverify?
     }
   end
+
+  defp stale_event?(event, %{device_panel: %{edit_form: nil}}) when event in @edit_form_events, do: true
+  defp stale_event?(event, %{selected_device: nil}) when event in @selected_device_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp base_device_assigns do
     [

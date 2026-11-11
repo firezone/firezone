@@ -424,6 +424,10 @@ defmodule Portal.Cache.Client do
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
+  def add_policy(cache, %Policy{is_disabled: true}, _client, _subject) do
+    {:ok, [], [], cache}
+  end
+
   def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
     policy = Portal.Cache.Cacheable.to_cache(policy)
 

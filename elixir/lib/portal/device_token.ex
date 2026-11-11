@@ -25,9 +25,6 @@ defmodule Portal.DeviceToken do
     belongs_to :device, Portal.Device
     belongs_to :site, Portal.Site
 
-    # Set on copies of client tokens until client_tokens is dropped
-    field :client_token_id, :binary_id
-
     field :secret_salt, :string, redact: true
     field :secret_hash, :string, redact: true
 
@@ -35,11 +32,19 @@ defmodule Portal.DeviceToken do
     field :rotated_at, :utc_datetime_usec
 
     # Used only during creation
+    field :secret_nonce, :string, virtual: true, redact: true
     field :secret_fragment, :string, virtual: true, redact: true
 
     # Populated on fetch-for-verification: the id of this token's rotated
     # sibling, if a rotation is pending confirmation
     field :rotated_sibling_id, :binary_id, virtual: true
+
+    # Client token lists: the device that last connected with the token (see
+    # devices.client_token_id), its auth provider and whether it is online
+    field :last_used_device, :any, virtual: true
+    field :auth_provider_name, :string, virtual: true
+    field :auth_provider_type, :string, virtual: true
+    field :online?, :boolean, virtual: true
 
     timestamps()
   end

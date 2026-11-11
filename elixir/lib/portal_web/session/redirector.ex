@@ -12,7 +12,6 @@ defmodule PortalWeb.Session.Redirector do
 
   alias Portal.Authentication
   alias Portal.Analytics.PostHog
-  alias Portal.ClientToken
   alias PortalWeb.WebsiteAttribution
 
   @doc """
@@ -98,7 +97,7 @@ defmodule PortalWeb.Session.Redirector do
         account,
         actor_name,
         identifier,
-        %ClientToken{} = token,
+        %Portal.DeviceToken{} = token,
         state
       ) do
     if Portal.Account.active?(account) do
@@ -138,7 +137,7 @@ defmodule PortalWeb.Session.Redirector do
         %Plug.Conn{} = conn,
         account,
         actor_name,
-        %ClientToken{} = token,
+        %Portal.DeviceToken{} = token,
         state
       ) do
     if Portal.Account.active?(account) do

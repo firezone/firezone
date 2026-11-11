@@ -9,6 +9,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
   alias Portal.{Actor, APIToken, Authentication}
 
+  @selected_actor_events ~w[validate_edit update_actor]
+
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
@@ -114,6 +116,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       |> assign(selected_actor: nil)
       |> assign(form: nil, encoded_token: nil)
       |> assign(pending_confirm: nil, open_actor_actions_id: nil)
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -653,37 +656,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
   # An api_client actor always has a token in practice; guard anyway.
   def handle_event("disable", %{"id" => id}, socket) do
-    actor = get_actor_by_id(socket, id)
-
-    changeset =
-      actor
-      |> change()
-      |> put_change(:is_disabled, true)
-
-    with {:ok, updated} <-
-           Portal.Safe.scoped(changeset, socket.assigns.subject) |> Portal.Safe.update() do
-      socket =
-        socket
-        |> assign(
-          actors_with_tokens: reload_actors_with_tokens(socket),
-          pending_confirm: nil,
-          open_actor_actions_id: nil
-        )
-        |> maybe_update_selected(updated)
-
-      {:noreply, socket}
-    end
-  end
-
-  def handle_event("enable", %{"id" => id}, socket) do
-    actor = get_actor_by_id(socket, id)
-
-    changeset =
-      actor
-      |> change()
-      |> put_change(:is_disabled, false)
-
-    with :ok <- Portal.Billing.check_actor_enable_limits(socket.assigns.account, actor),
+    with %Actor{} = actor <- get_actor_by_id(socket, id),
+         changeset = actor |> change() |> put_change(:is_disabled, true),
          {:ok, updated} <-
            Portal.Safe.scoped(changeset, socket.assigns.subject) |> Portal.Safe.update() do
       socket =
@@ -697,6 +671,30 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
       {:noreply, socket}
     else
+      nil -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("enable", %{"id" => id}, socket) do
+    with %Actor{} = actor <- get_actor_by_id(socket, id),
+         changeset = actor |> change() |> put_change(:is_disabled, false),
+         :ok <- Portal.Billing.check_actor_enable_limits(socket.assigns.account, actor),
+         {:ok, updated} <-
+           Portal.Safe.scoped(changeset, socket.assigns.subject) |> Portal.Safe.update() do
+      socket =
+        socket
+        |> assign(
+          actors_with_tokens: reload_actors_with_tokens(socket),
+          pending_confirm: nil,
+          open_actor_actions_id: nil
+        )
+        |> maybe_update_selected(updated)
+
+      {:noreply, socket}
+    else
+      nil ->
+        {:noreply, socket}
+
       {:error, :api_clients_limit_reached} ->
         {:noreply,
          put_flash(
@@ -730,9 +728,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    actor = get_actor_by_id(socket, id)
-
-    with {:ok, _actor} <-
+    with %Actor{} = actor <- get_actor_by_id(socket, id),
+         {:ok, _actor} <-
            Portal.Safe.scoped(actor, socket.assigns.subject) |> Portal.Safe.delete() do
       socket =
         socket
@@ -744,6 +741,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         |> push_patch(to: ~p"/#{socket.assigns.account}/settings/api_clients")
 
       {:noreply, socket}
+    else
+      nil -> {:noreply, socket}
     end
   end
 
@@ -840,4 +839,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       value -> "#{value}T00:00:00.000000Z"
     end)
   end
+
+  defp stale_event?(event, %{selected_actor: nil}) when event in @selected_actor_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 end

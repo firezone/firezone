@@ -59,6 +59,18 @@ defmodule PortalAPI.FlowLogControllerTest do
     )
   end
 
+  # One device per actor and no add-ons: a device allowance of seats + 10 +
+  # div(seats, 10).
+  defp device_limits(seats) do
+    %{
+      monthly_active_users_count: seats,
+      connected_devices_per_actor: 1,
+      adhoc_service_accounts_count: 0
+    }
+  end
+
+  defp records(ports), do: Enum.map(ports, &build_record(%{"inner_src_port" => &1}))
+
   defp post_logs(conn, records) do
     post(conn, "/ingestion/flow_logs", %{"flow_logs" => records})
   end
@@ -217,6 +229,234 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> post_logs([build_record()])
 
       assert %{"status" => 401} = json_response(conn, 401)
+    end
+  end
+
+  describe "row limit config" do
+    test "several devices are needed to block the smallest account" do
+      config = Application.fetch_env!(:portal, PortalAPI.FlowLogController)
+      devices = Portal.Accounts.Limits.device_allowance(%Portal.Accounts.Limits{
+        monthly_active_users_count: 0,
+        connected_devices_per_actor: 0,
+        adhoc_service_accounts_count: 0
+      })
+
+      assert devices * config[:account_refill_rate_per_device] >=
+               5 * config[:initiator_refill_rate]
+
+      assert devices * config[:account_capacity_per_device] >= 5 * config[:initiator_capacity]
+    end
+  end
+
+  describe "create/2 row limits" do
+    # An initiator holds 10 rows and a responder 20; both refill 1 row/s. Each
+    # account holds 1 row and refills 1 row/s per device in its device allowance.
+    setup do
+      Portal.Config.put_env_override(:portal, PortalAPI.FlowLogController,
+        initiator_refill_rate: 1,
+        initiator_capacity: 10,
+        responder_refill_rate: 1,
+        responder_capacity: 20,
+        account_refill_rate_per_device: 1,
+        account_capacity_per_device: 1
+      )
+
+      test_pid = self()
+      handler_id = "test-flow-log-denied-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :flow_logs, :upload_denied],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      :ok
+    end
+
+    test "returns 429 when the reporting device runs out of rows", %{
+      conn: conn,
+      account: account
+    } do
+      device_id = Ecto.UUID.generate()
+
+      first_conn =
+        conn
+        |> Map.put(:remote_ip, unique_ip())
+        |> authorize(account, %{"initiator_device_id" => device_id})
+        |> post_logs(records(1..10))
+
+      assert json_response(first_conn, 200)
+
+      # A new token and a new IP do not reset the device's allowance.
+      second_conn =
+        conn
+        |> Map.put(:remote_ip, unique_ip())
+        |> authorize(account, %{"initiator_device_id" => device_id})
+        |> post_logs(records(11..20))
+
+      assert %{"status" => 429} = json_response(second_conn, 429)
+      assert [retry_after] = get_resp_header(second_conn, "retry-after")
+      assert String.to_integer(retry_after) >= 1
+      assert Repo.aggregate(FlowLog, :count) == 10
+    end
+
+    test "counts a device that runs out of rows", %{conn: conn, account: account} do
+      claims = %{"initiator_device_id" => Ecto.UUID.generate()}
+
+      assert conn |> authorize(account, claims) |> post_logs(records(1..10)) |> json_response(200)
+      refute_received {[:portal, :flow_logs, :upload_denied], _, _}
+
+      conn = conn |> authorize(account, claims) |> post_logs(records(11..20))
+      assert %{"status" => 429} = json_response(conn, 429)
+
+      assert_received {[:portal, :flow_logs, :upload_denied], %{count: 1},
+                       %{bucket: :device, role: :initiator}}
+    end
+
+    test "an account's limits override the device bucket", %{conn: conn} do
+      account =
+        account_fixture(%{
+          limits: %{flow_log_initiator_refill_rate: 1, flow_log_initiator_capacity: 30}
+        })
+
+      claims = %{"initiator_device_id" => Ecto.UUID.generate()}
+
+      for range <- [1..10, 11..20, 21..30] do
+        assert conn |> authorize(account, claims) |> post_logs(records(range)) |> json_response(200)
+      end
+
+      conn = conn |> authorize(account, claims) |> post_logs(records(31..40))
+      assert %{"status" => 429} = json_response(conn, 429)
+    end
+
+    test "a responder has its own, larger bucket", %{conn: conn, account: account} do
+      device_id = Ecto.UUID.generate()
+      claims = %{"role" => "responder", "responder_device_id" => device_id}
+
+      first_conn =
+        conn
+        |> authorize(account, claims)
+        |> post_logs(records(1..20))
+
+      assert json_response(first_conn, 200)
+
+      second_conn =
+        conn
+        |> authorize(account, claims)
+        |> post_logs(records(21..30))
+
+      assert %{"status" => 429} = json_response(second_conn, 429)
+
+      assert_received {[:portal, :flow_logs, :upload_denied], %{count: 1},
+                       %{bucket: :device, role: :responder}}
+
+      # The responder's rows did not touch the same device's initiator bucket.
+      initiator_conn =
+        conn
+        |> authorize(account, %{"initiator_device_id" => device_id})
+        |> post_logs(records(31..40))
+
+      assert json_response(initiator_conn, 200)
+    end
+
+    test "returns 429 when the account runs out of rows", %{conn: conn} do
+      account = account_fixture(%{limits: device_limits(0)})
+
+      first_conn =
+        conn
+        |> authorize(account)
+        |> post_logs(records(1..10))
+
+      assert json_response(first_conn, 200)
+
+      second_conn =
+        conn
+        |> authorize(account)
+        |> post_logs(records(11..20))
+
+      assert %{"status" => 429} = json_response(second_conn, 429)
+      assert Repo.aggregate(FlowLog, :count) == 10
+
+      assert_received {[:portal, :flow_logs, :upload_denied], %{count: 1},
+                       %{bucket: :account, role: :initiator}}
+    end
+
+    test "an account's limits override the account bucket", %{conn: conn} do
+      account =
+        account_fixture(%{
+          limits:
+            Map.merge(device_limits(0), %{
+              flow_log_account_refill_rate: 1,
+              flow_log_account_capacity: 20
+            })
+        })
+
+      for range <- [1..10, 11..20] do
+        assert conn |> authorize(account) |> post_logs(records(range)) |> json_response(200)
+      end
+
+      conn = conn |> authorize(account) |> post_logs(records(21..30))
+      assert %{"status" => 429} = json_response(conn, 429)
+    end
+
+    test "the account allowance grows with the device allowance", %{conn: conn} do
+      account = account_fixture(%{limits: device_limits(10)})
+
+      for range <- [1..10, 11..20] do
+        conn =
+          conn
+          |> authorize(account)
+          |> post_logs(records(range))
+
+        assert json_response(conn, 200)
+      end
+    end
+
+    test "an unlimited device allowance has no account limit", %{conn: conn, account: account} do
+      for range <- [1..10, 11..20, 21..30] do
+        conn =
+          conn
+          |> authorize(account)
+          |> post_logs(records(range))
+
+        assert json_response(conn, 200)
+      end
+    end
+
+    test "a device over its allowance does not spend the account's", %{conn: conn} do
+      account = account_fixture(%{limits: device_limits(10)})
+      device_id = Ecto.UUID.generate()
+
+      for {range, status} <- [{1..10, 200}, {11..20, 429}] do
+        conn =
+          conn
+          |> authorize(account, %{"initiator_device_id" => device_id})
+          |> post_logs(records(range))
+
+        assert json_response(conn, status)
+      end
+
+      other_conn =
+        conn
+        |> authorize(account)
+        |> post_logs(records(21..30))
+
+      assert json_response(other_conn, 200)
+    end
+
+    test "a batch larger than the burst is rejected", %{conn: conn, account: account} do
+      conn =
+        conn
+        |> authorize(account)
+        |> post_logs(records(1..11))
+
+      assert %{"status" => 429} = json_response(conn, 429)
+      assert Repo.all(FlowLog) == []
     end
   end
 

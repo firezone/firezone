@@ -1733,4 +1733,33 @@ defmodule PortalWeb.DevicesTest do
       assert_patch(lv, ~p"/#{account}/devices?#{filter}")
     end
   end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"change_policy_authorizations_page", %{"page" => "2"}},
+          {"open_device_edit_form", %{}},
+          {"cancel_device_edit_form", %{}},
+          {"change_device_edit_form", %{"device" => %{"name" => "Late"}}},
+          {"submit_device_edit_form", %{"device" => %{"name" => "Late"}}},
+          {"verify_device", %{}},
+          {"unverify_device", %{}},
+          {"delete_device", %{}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        client = client_fixture(account: account, actor: actor)
+
+        {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/devices/#{client.id}/edit")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/devices")
+
+        render_click(lv, unquote(event), unquote(Macro.escape(params)))
+
+        assert render(lv) =~ "Devices"
+        device = Repo.get_by(Device, account_id: account.id, id: client.id)
+        assert device.name == client.name
+        assert device.verified_at == client.verified_at
+      end
+    end
+  end
 end

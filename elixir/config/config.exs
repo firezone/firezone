@@ -46,6 +46,7 @@ config :portal, run_manual_migrations: false
 
 config :portal, data_residency_region: :on_prem
 config :portal, slug_registry_table_url: nil
+config :portal, region_transfer_outbox_url: nil, region_transfer_inbox_url: nil
 
 config :portal, Portal.Repo,
   hostname: "localhost",
@@ -113,7 +114,6 @@ config :portal, Portal.ChangeLogs.Consumer,
     device_tokens
     policies
     resources
-    client_tokens
     one_time_passcodes
     api_tokens
     trust_anchors
@@ -167,7 +167,6 @@ config :portal, Portal.Changes.Consumer,
     sites
     policies
     resources
-    client_tokens
     google_auth_providers
     github_auth_providers
     entra_auth_providers
@@ -247,6 +246,12 @@ config :portal, Portal.OTLP.TracesExporter,
   ]
 
 config :portal, Portal.SlugRegistry.Cache, max_entries: 10_000
+
+config :portal, Portal.Ops.RegionTransfer.Storage,
+  req_opts: [
+    receive_timeout: 60_000,
+    retry: :transient
+  ]
 
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
@@ -636,6 +641,24 @@ config :portal, PortalAPI.Sockets.RateLimit,
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 1,
   capacity: 1
+
+# Flow-log rows per reporting device and per account, charged after the ingest
+# token is verified. The IP limit above already caps one uploader at one batch
+# (1,000 rows by default) per second. An initiator reports its own flows; a
+# responder (usually a Gateway) reports a row for every client it serves, so it
+# has a larger bucket. The capacities let a device that was offline drain its
+# spool, and are larger than the 10k-row request limit. The account values are
+# multiplied by `Portal.Accounts.Limits.device_allowance/1`. At half the
+# initiator values, half of the allowed devices must upload at full speed to
+# block the others; the smallest allowance (10) needs 5. An account's
+# `flow_log_*` limits, set from Stripe metadata, override any of these.
+config :portal, PortalAPI.FlowLogController,
+  initiator_refill_rate: 100,
+  initiator_capacity: 100_000,
+  responder_refill_rate: 1_000,
+  responder_capacity: 1_000_000,
+  account_refill_rate_per_device: 50,
+  account_capacity_per_device: 50_000
 
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,

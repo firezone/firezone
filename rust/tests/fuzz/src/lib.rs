@@ -47,8 +47,8 @@ type DeviceListing = (
     Option<String>,
 );
 
-/// Provides the tunnel-proto target's reference-model harness.
-pub mod tunnel_proto {
+/// Provides the tunnel target's reference-model harness.
+pub mod tunnel {
     use tracing_subscriber::{
         EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
     };

@@ -36,7 +36,6 @@ defmodule Portal.Repo.Seeds do
     SessionLog,
     Sophos,
     Site,
-    ClientToken,
     Userpass,
     X509
   }
@@ -2970,7 +2969,7 @@ defmodule Portal.Repo.Seeds do
       }
 
       {:ok, token} =
-        Repo.insert(%ClientToken{
+        Repo.insert(%Portal.DeviceToken{
           auth_provider_id: userpass_provider.id,
           account_id: account.id,
           actor_id: identity.actor_id,
@@ -3094,7 +3093,7 @@ defmodule Portal.Repo.Seeds do
 
     # Create client token for unprivileged actor so policy authorizations can reference it
     {:ok, unprivileged_client_token} =
-      Repo.insert(%ClientToken{
+      Repo.insert(%Portal.DeviceToken{
         auth_provider_id: userpass_provider.id,
         account_id: account.id,
         actor_id: unprivileged_actor.id,
@@ -3107,7 +3106,7 @@ defmodule Portal.Repo.Seeds do
 
     # Create client token for admin actor so we can create client sessions
     {:ok, admin_client_token} =
-      Repo.insert(%ClientToken{
+      Repo.insert(%Portal.DeviceToken{
         auth_provider_id: userpass_provider.id,
         account_id: account.id,
         actor_id: admin_actor.id,
@@ -3151,7 +3150,7 @@ defmodule Portal.Repo.Seeds do
     }
 
     primary_client_token =
-      %ClientToken{
+      %Portal.DeviceToken{
         id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
         account_id: primary_client_actor.account_id,
         actor_id: primary_client_actor.id,
@@ -3162,7 +3161,7 @@ defmodule Portal.Repo.Seeds do
       |> Repo.insert!()
 
     pool_member_token =
-      %ClientToken{
+      %Portal.DeviceToken{
         id: "fe2bf22d-0986-433a-85ed-a8f37c90a34b",
         account_id: pool_member_actor.account_id,
         actor_id: pool_member_actor.id,

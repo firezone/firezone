@@ -7,9 +7,16 @@ defmodule Portal.Changes.Consumer do
   atomically with any progress marker, so delivery is at-least-once: a crash
   before the slot advances replays the batch and duplicates the hook calls.
   Hook implementations must tolerate duplicates.
+
+  Logical decoding emits transactions in commit order, but a change's own WAL
+  LSN is assigned when the row is written, so a transaction that wrote first
+  and committed last delivers lower LSNs after higher ones. Hooks therefore
+  receive a position that combines the transaction's commit LSN with the
+  change's own LSN, which only grows in delivery order.
   """
   @behaviour Portal.Replication.SlotPoller
 
+  import Bitwise
   require Logger
 
   alias Portal.Changes.Hooks
@@ -27,7 +34,6 @@ defmodule Portal.Changes.Consumer do
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
     "resources" => Hooks.Resources,
-    "client_tokens" => Hooks.ClientTokens,
     "portal_sessions" => Hooks.PortalSessions,
     "google_auth_providers" => Hooks.AuthProviders,
     "github_auth_providers" => Hooks.AuthProviders,
@@ -57,10 +63,12 @@ defmodule Portal.Changes.Consumer do
   }
 
   @impl true
-  def init_state(_config), do: %{}
+  def init_state(_config), do: %{commit_lsn: 0}
 
   @impl true
-  def on_begin(state, _msg), do: state
+  def on_begin(state, %{final_lsn: {xlog_file, xlog_offset}}) do
+    %{state | commit_lsn: (xlog_file <<< 32) + xlog_offset}
+  end
 
   @impl true
   def on_logical_message(state, _msg), do: state
@@ -68,12 +76,13 @@ defmodule Portal.Changes.Consumer do
   @impl true
   def on_write(state, lsn, op, table, old_data, data) do
     hook = Map.get(@tables_to_hooks, table)
+    position = (state.commit_lsn <<< 64) + lsn
 
     if hook do
       case op do
-        :insert -> :ok = hook.on_insert(lsn, data)
-        :update -> :ok = hook.on_update(lsn, old_data, data)
-        :delete -> :ok = hook.on_delete(lsn, old_data)
+        :insert -> :ok = hook.on_insert(position, data)
+        :update -> :ok = hook.on_update(position, old_data, data)
+        :delete -> :ok = hook.on_delete(position, old_data)
       end
     else
       log_warning(op, table)

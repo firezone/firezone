@@ -296,7 +296,7 @@ defmodule PortalAPI.ActorController do
     import Ecto.Query
     alias Portal.Actor
     alias Portal.APIToken
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Device
     alias Portal.ExternalIdentity
     alias Portal.OAuthToken
@@ -493,9 +493,8 @@ defmodule PortalAPI.ActorController do
     end
 
     defp clear_client_tokens_for_actor(actor_id, subject) do
-      from(c in ClientToken, where: c.actor_id == ^actor_id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
+      from(t in DeviceToken, where: t.actor_id == ^actor_id)
+      |> Portal.Authentication.delete_client_tokens(subject)
     end
   end
 end

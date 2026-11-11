@@ -35,7 +35,7 @@ while IFS= read -r directory; do
     mapfile -t -O "${#sources[@]}" sources < <(find "$directory" -type f -name '*.rs')
 done <<<"$directories"
 sources+=("$PWD/src/main.rs" "$PWD/src/clock.rs" "$PWD/src/targets/${target//-/_}.rs")
-if [ "$target" = tunnel-proto ]; then
+if [ "$target" = tunnel ]; then
     mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/src" -type f -name '*.rs' \
         ! -path "$PWD/src/targets/*" ! -path "$PWD/src/relay/*" ! -name main.rs ! -name clock.rs)
 fi

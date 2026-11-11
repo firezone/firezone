@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use fuzz::{
     feedback,
-    tunnel_proto::{FluxCapacitor, Generator, TunnelTest, check_invariants, init_fuzz_subscriber},
+    tunnel::{FluxCapacitor, Generator, TunnelTest, check_invariants, init_fuzz_subscriber},
 };
 
 const MAX_TRANSITIONS: usize = 20;

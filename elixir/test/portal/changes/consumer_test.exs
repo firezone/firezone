@@ -5,6 +5,8 @@ defmodule Portal.Changes.ConsumerTest do
   alias Portal.Changes.Consumer
   alias Portal.Fixture
 
+  @state %{commit_lsn: 0}
+
   setup do
     tables =
       Application.fetch_env!(:portal, Portal.Changes.Consumer)
@@ -25,8 +27,8 @@ defmodule Portal.Changes.ConsumerTest do
 
       log_output =
         capture_log(fn ->
-          result = Consumer.on_write(%{}, 0, :insert, table, nil, data)
-          assert result == %{}
+          result = Consumer.on_write(@state, 0, :insert, table, nil, data)
+          assert result == @state
         end)
 
       assert log_output =~ "No hook defined for insert on table unknown_table"
@@ -44,8 +46,8 @@ defmodule Portal.Changes.ConsumerTest do
         # The actual hook call might fail if the hook modules aren't available,
         # but we can test that our routing logic works
         try do
-          result = Consumer.on_write(%{}, 0, :insert, table, nil, data)
-          assert result == %{}
+          result = Consumer.on_write(@state, 0, :insert, table, nil, data)
+          assert result == @state
         rescue
           # Depending on the shape of the data we might get a function clause error. This is ok,
           # as we are testing the routing logic, not the actual hook implementations.
@@ -60,7 +62,7 @@ defmodule Portal.Changes.ConsumerTest do
         log_output =
           capture_log(fn ->
             try do
-              Consumer.on_write(%{}, 0, :insert, table, nil, %{
+              Consumer.on_write(@state, 0, :insert, table, nil, %{
                 "account_id" => Ecto.UUID.generate(),
                 "id" => Ecto.UUID.generate()
               })
@@ -90,8 +92,8 @@ defmodule Portal.Changes.ConsumerTest do
 
       log_output =
         capture_log(fn ->
-          result = Consumer.on_write(%{}, 0, :update, table, old_data, data)
-          assert result == %{}
+          result = Consumer.on_write(@state, 0, :update, table, old_data, data)
+          assert result == @state
         end)
 
       assert log_output =~ "No hook defined for update on table unknown_table"
@@ -109,8 +111,8 @@ defmodule Portal.Changes.ConsumerTest do
 
       for table <- tables do
         try do
-          result = Consumer.on_write(%{}, 0, :update, table, old_data, data)
-          assert result == %{}
+          result = Consumer.on_write(@state, 0, :update, table, old_data, data)
+          assert result == @state
         rescue
           FunctionClauseError ->
             # Shape of the data might not match the expected one, which is fine
@@ -132,8 +134,8 @@ defmodule Portal.Changes.ConsumerTest do
 
       log_output =
         capture_log(fn ->
-          result = Consumer.on_write(%{}, 0, :delete, table, old_data, nil)
-          assert result == %{}
+          result = Consumer.on_write(@state, 0, :delete, table, old_data, nil)
+          assert result == @state
         end)
 
       assert log_output =~ "No hook defined for delete on table unknown_table"
@@ -152,8 +154,8 @@ defmodule Portal.Changes.ConsumerTest do
 
       for table <- tables do
         try do
-          result = Consumer.on_write(%{}, 0, :delete, table, old_data, nil)
-          assert result == %{}
+          result = Consumer.on_write(@state, 0, :delete, table, old_data, nil)
+          assert result == @state
         rescue
           # Shape of the data might not match the expected one, which is fine
           FunctionClauseError -> :ok
@@ -168,7 +170,7 @@ defmodule Portal.Changes.ConsumerTest do
       # Since we can't directly test the hook calls without the actual hook modules,
       # we can at least verify the routing logic doesn't crash
 
-      state = %{}
+      state = @state
       table = "accounts"
 
       # Insert
@@ -227,7 +229,7 @@ defmodule Portal.Changes.ConsumerTest do
       # Test insert
       log_output =
         capture_log(fn ->
-          Consumer.on_write(%{}, 0, :insert, "test_table_insert", nil, %{})
+          Consumer.on_write(@state, 0, :insert, "test_table_insert", nil, %{})
         end)
 
       assert log_output =~ "No hook defined for insert on table test_table_insert"
@@ -236,7 +238,7 @@ defmodule Portal.Changes.ConsumerTest do
       # Test update
       log_output =
         capture_log(fn ->
-          Consumer.on_write(%{}, 0, :update, "test_table_update", %{}, %{})
+          Consumer.on_write(@state, 0, :update, "test_table_update", %{}, %{})
         end)
 
       assert log_output =~ "No hook defined for update on table test_table_update"
@@ -245,7 +247,7 @@ defmodule Portal.Changes.ConsumerTest do
       # Test delete
       log_output =
         capture_log(fn ->
-          Consumer.on_write(%{}, 0, :delete, "test_table_delete", %{}, nil)
+          Consumer.on_write(@state, 0, :delete, "test_table_delete", %{}, nil)
         end)
 
       assert log_output =~ "No hook defined for delete on table test_table_delete"
@@ -255,7 +257,7 @@ defmodule Portal.Changes.ConsumerTest do
 
   describe "state preservation" do
     test "always returns the state unchanged" do
-      initial_state = %{some: "data", counter: 42}
+      initial_state = %{commit_lsn: 0, some: "data", counter: 42}
 
       # Unknown table - should log warning and return state unchanged
       result1 = Consumer.on_write(initial_state, 1, :insert, "unknown", nil, %{})
@@ -283,7 +285,6 @@ defmodule Portal.Changes.ConsumerTest do
         "sites" => Portal.Changes.Hooks.Sites,
         "policies" => Portal.Changes.Hooks.Policies,
         "resources" => Portal.Changes.Hooks.Resources,
-        "client_tokens" => Portal.Changes.Hooks.ClientTokens,
         "intune_devices" => Portal.Changes.Hooks.IntuneDevices,
         "iru_devices" => Portal.Changes.Hooks.IruDevices,
         "defender_devices" => Portal.Changes.Hooks.DefenderDevices,
@@ -299,7 +300,6 @@ defmodule Portal.Changes.ConsumerTest do
                  "account_slugs",
                  "memberships",
                  "devices",
-                 "client_tokens",
                  "policy_authorizations",
                  "sites",
                  "policies",

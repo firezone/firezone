@@ -348,7 +348,7 @@ jobs:
       # deployment signatures; release tags and other OIDC identities are not
       # trusted by the infra VM verifier.
       - name: Sign deployment manifest
-        if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
+        if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         env:
           COMPONENT: ${{ matrix.name.image_name }}
           ARCH: ${{ matrix.arch.shortname }}
@@ -374,7 +374,7 @@ jobs:
           # account, not subscription-wide Reader.
           allow-no-subscriptions: true
       - name: Copy binary to Azure Blob Storage
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         run: |
           set -e
 
@@ -397,7 +397,7 @@ jobs:
             --account-name firezoneartifacts
 
       - name: Publish signed deployment manifest
-        if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
+        if: ${{ github.ref == 'refs/heads/main' && inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         env:
           COMPONENT: ${{ matrix.name.image_name }}
           ARCH: ${{ matrix.arch.shortname }}

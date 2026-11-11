@@ -194,7 +194,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     }
 
     @token_schemas %{
-      client_token_id: Portal.ClientToken,
+      client_token_id: Portal.DeviceToken,
       gateway_token_id: Portal.DeviceToken
     }
 

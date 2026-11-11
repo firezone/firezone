@@ -594,6 +594,8 @@ defmodule PortalWeb.ActorsTest do
 
       html = render_click(lv, "confirm_disable_actor")
       assert html =~ "Disable this actor?"
+      assert html =~ "Disabling this actor will immediately disconnect all its Clients."
+      assert html =~ "Its sessions and tokens are paused, not revoked."
 
       html = render_click(lv, "cancel_disable_actor")
       refute html =~ "Disable this actor?"
@@ -735,6 +737,25 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "No tokens."
     end
 
+    test "does not delete a token of another actor", %{conn: conn, account: account, actor: actor} do
+      service_account = service_account_fixture(account: account)
+      gateway_token = gateway_token_fixture(account: account)
+
+      other_token =
+        client_token_fixture(account: account, actor: service_account_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{service_account}")
+
+      render_click(lv, "delete_token", %{"id" => gateway_token.id})
+      render_click(lv, "delete_token", %{"id" => other_token.id})
+
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: other_token.id)
+    end
+
     test "sends welcome email", %{conn: conn, account: account, actor: actor} do
       other_actor = actor_with_email_fixture(account: account)
 
@@ -799,7 +820,7 @@ defmodule PortalWeb.ActorsTest do
 
       assert html =~ "Tokens can only be created for service accounts"
       refute html =~ "Token Created"
-      refute Portal.Repo.get_by(Portal.ClientToken, actor_id: user.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, actor_id: user.id)
     end
 
     test "redirects to actor list when actor does not exist", %{
@@ -1249,7 +1270,7 @@ defmodule PortalWeb.ActorsTest do
       render_click(lv, "confirm_email_change")
 
       refute Portal.Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
-      refute Portal.Repo.get_by(Portal.ClientToken, id: client_token.id, account_id: account.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, id: client_token.id, account_id: account.id)
     end
 
     test "re-runs role validation on confirmation (rejects if state changed mid-flow)", %{
@@ -1873,6 +1894,51 @@ defmodule PortalWeb.ActorsTest do
       html = render(lv)
       assert html =~ "Johnny Renamed"
       refute html =~ other.name
+    end
+  end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"open_actor_edit_form", %{}},
+          {"cancel_actor_edit_form", %{}},
+          {"validate", %{"actor" => %{"name" => "Late"}}},
+          {"save", %{"actor" => %{"name" => "Late"}}},
+          {"create_user", %{"actor" => %{"name" => "Late", "email" => "late@example.com", "type" => "account_user"}}},
+          {"create_service_account", %{"actor" => %{"name" => "Late"}, "token_expiration" => ""}},
+          {"delete_token", %{"id" => :token_id}},
+          {"delete_session", %{"id" => :session_id}},
+          {"delete_identity", %{"id" => :identity_id}},
+          {"send_welcome_email", %{"id" => :other_actor_id}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        other_actor = actor_fixture(account: account)
+        auth_provider = userpass_provider_fixture(account: account).auth_provider
+        session = portal_session_fixture(account: account, actor: other_actor, auth_provider: auth_provider)
+        identity = identity_fixture(account: account, actor: other_actor)
+        token = client_token_fixture(account: account, actor: other_actor)
+
+        ids = %{
+          other_actor_id: other_actor.id,
+          session_id: session.id,
+          identity_id: identity.id,
+          token_id: token.id
+        }
+
+        {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{other_actor}")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/actors")
+
+        params = Map.new(unquote(Macro.escape(params)), fn {k, v} -> {k, Map.get(ids, v, v)} end)
+        render_click(lv, unquote(event), params)
+
+        assert render(lv) =~ other_actor.name
+        assert Portal.Repo.get_by(Actor, account_id: account.id, id: other_actor.id).name == other_actor.name
+        refute Portal.Repo.get_by(Actor, account_id: account.id, name: "Late")
+        assert Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
+        assert Portal.Repo.get_by(Portal.ExternalIdentity, account_id: account.id, id: identity.id)
+        assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+      end
     end
   end
 end

@@ -2653,4 +2653,36 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "input[name='resources[name_or_address]'][value='alpha']")
     end
   end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"change_resource_form", %{"resource" => %{"name" => "Late"}}},
+          {"submit_resource_form", %{"resource" => %{"name" => "Late"}}},
+          {"open_grant_form", %{}},
+          {"submit_grant", %{}},
+          {"disable_policy", %{"group_id" => :group_id}},
+          {"enable_policy", %{"group_id" => :group_id}},
+          {"remove_group_access", %{"group_id" => :group_id}},
+          {"delete_resource", %{}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        resource = resource_fixture(account: account)
+        group = group_fixture(account: account)
+        policy = policy_fixture(account: account, group: group, resource: resource)
+        ids = %{group_id: group.id}
+
+        {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/resources/#{resource}/edit")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/resources")
+
+        params = Map.new(unquote(Macro.escape(params)), fn {k, v} -> {k, Map.get(ids, v, v)} end)
+        render_click(lv, unquote(event), params)
+
+        assert render(lv) =~ resource.name
+        assert Repo.get_by(Resource, account_id: account.id, id: resource.id).name == resource.name
+        assert Repo.get_by(Policy, account_id: account.id, id: policy.id).is_disabled == policy.is_disabled
+      end
+    end
+  end
 end

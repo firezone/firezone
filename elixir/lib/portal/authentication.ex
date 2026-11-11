@@ -2,7 +2,6 @@ defmodule Portal.Authentication do
   import Ecto.Changeset
   import Ecto.Query
   import Portal.Changeset
-  alias Portal.ClientToken
   alias Portal.OneTimePasscode
   alias Portal.PortalSession
   alias Portal.SessionLog
@@ -18,7 +17,7 @@ defmodule Portal.Authentication do
   # and headless client sign-ins.
   def create_interactive_client_token(attrs) do
     changeset =
-      %ClientToken{}
+      %Portal.DeviceToken{}
       |> cast(attrs, ~w[secret_nonce account_id actor_id auth_provider_id expires_at]a)
       |> validate_required([:account_id, :actor_id, :auth_provider_id, :expires_at])
       |> validate_length(:secret_nonce, max: 128)
@@ -44,7 +43,7 @@ defmodule Portal.Authentication do
       ) do
     {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
-    %ClientToken{
+    %Portal.DeviceToken{
       account_id: actor.account_id,
       actor_id: actor.id,
       secret_nonce: "",
@@ -56,6 +55,21 @@ defmodule Portal.Authentication do
     |> validate_required([:expires_at])
     |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
     |> Database.insert_client_token(subject)
+  end
+
+  @doc """
+  Deletes the client tokens a `Portal.DeviceToken` query selects, which
+  disconnects any client still using one of them.
+  """
+  @spec delete_client_tokens(Ecto.Queryable.t(), Subject.t()) ::
+          {non_neg_integer(), nil} | {:error, :unauthorized}
+  def delete_client_tokens(queryable, %Subject{} = subject) do
+    Database.delete_client_tokens(queryable, subject)
+  end
+
+  @spec delete_client_tokens(Ecto.Queryable.t()) :: {non_neg_integer(), nil}
+  def delete_client_tokens(queryable) do
+    Database.delete_client_tokens(queryable, nil)
   end
 
   # API Tokens
@@ -310,14 +324,11 @@ defmodule Portal.Authentication do
   The token is encoded as a tuple of {account_id, token_id, secret_fragment}
   which is then signed using Plug.Crypto to ensure it can't be tampered with.
   """
-  def encode_fragment!(%ClientToken{} = token),
-    do: encode_token(token.account_id, token.id, token.secret_fragment, "client")
-
   def encode_fragment!(%Portal.RelayToken{} = token),
     do: encode_token(nil, token.id, token.secret_fragment, "relay")
 
   def encode_fragment!(%Portal.DeviceToken{} = token),
-    do: encode_token(token.account_id, token.id, token.secret_fragment, "gateway")
+    do: encode_token(token.account_id, token.id, token.secret_fragment, "device")
 
   def encode_fragment!(%Portal.APIToken{} = token),
     do: encode_token(token.account_id, token.id, token.secret_fragment, "api_client")
@@ -516,7 +527,7 @@ defmodule Portal.Authentication do
     end
   end
 
-  def build_subject(%ClientToken{} = token, %Context{} = context) do
+  def build_subject(%Portal.DeviceToken{} = token, %Context{type: :client} = context) do
     credential = %Credential.ClientToken{
       id: token.id,
       auth_provider_id: token.auth_provider_id
@@ -542,7 +553,7 @@ defmodule Portal.Authentication do
 
   # Gateway tokens never expire, so the subject has no expiry. The actor and
   # account are loaded by verification.
-  def build_subject(%Portal.DeviceToken{} = token, %Context{} = context) do
+  def build_subject(%Portal.DeviceToken{} = token, %Context{type: :gateway} = context) do
     {:ok,
      %Subject{
        actor: token.actor,
@@ -581,8 +592,6 @@ defmodule Portal.Authentication do
     Portal.Config.fetch_env!(:portal, Portal.Tokens)
   end
 
-  # Device tokens will be signed with "device". Every node accepts it before
-  # any node signs with it.
   defp context_salts(:client), do: ["device", "client"]
   defp context_salts(type), do: [to_string(type)]
 
@@ -592,7 +601,6 @@ defmodule Portal.Authentication do
     alias Portal.Account
     alias Portal.Actor
 
-    alias Portal.ClientToken
     alias Portal.OneTimePasscode
     alias Portal.SessionLog
 
@@ -613,27 +621,17 @@ defmodule Portal.Authentication do
     end
 
     # Client
-    # Each client token is copied to device_tokens in the same transaction.
-    # The copy's foreign key to its client token cascades, so every delete
-    # removes it too.
     def insert_client_token(changeset) do
-      Safe.transact(fn ->
-        with {:ok, token} <- changeset |> Safe.unscoped() |> Safe.insert(),
-             {:ok, _copy} <- token |> device_token_copy() |> Safe.unscoped() |> Safe.insert() do
-          {:ok, token}
-        end
-      end)
+      changeset
+      |> Safe.unscoped()
+      |> Safe.insert()
     end
 
     # Service Account
     def insert_client_token(changeset, subject) do
-      Safe.transact(fn ->
-        with {:ok, token} <- changeset |> Safe.scoped(subject) |> Safe.insert(),
-             {:ok, _copy} <-
-               token |> device_token_copy() |> Safe.scoped(subject) |> Safe.insert() do
-          {:ok, token}
-        end
-      end)
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.insert()
     end
 
     def insert_relay_token(relay_token) do
@@ -743,6 +741,9 @@ defmodule Portal.Authentication do
         on:
           actor.account_id == gt.account_id and actor.id == gt.actor_id and
             actor.is_disabled == false,
+        left_join: device in Portal.Device,
+        on: device.account_id == gt.account_id and device.id == gt.device_id,
+        where: not is_nil(gt.site_id) or device.type == :gateway,
         left_join: sibling in Portal.DeviceToken,
         on:
           sibling.account_id == gt.account_id and sibling.device_id == gt.device_id and
@@ -768,15 +769,32 @@ defmodule Portal.Authentication do
       end
     end
 
+    def delete_client_tokens(queryable, subject) do
+      scoped_or_unscoped =
+        if subject, do: Safe.scoped(queryable, subject), else: Safe.unscoped(queryable)
+
+      case Safe.delete_all(scoped_or_unscoped) do
+        {:error, :unauthorized} = error -> error
+        {count, _} -> {count, nil}
+      end
+    end
+
+    # A client token has no Site and, when bound to a device, a client device.
     def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{type: :client}) do
       now = DateTime.utc_now()
 
-      from(tokens in ClientToken, as: :tokens)
+      from(tokens in Portal.DeviceToken, as: :tokens)
       |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
       |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor),
         on: actor.account_id == tokens.account_id,
         as: :actor
       )
+      |> join(:left, [tokens: tokens], device in Portal.Device,
+        on: device.account_id == tokens.account_id and device.id == tokens.device_id,
+        as: :device
+      )
+      |> where([tokens: tokens], is_nil(tokens.site_id))
+      |> where([tokens: tokens, device: device], is_nil(tokens.device_id) or device.type == :client)
       |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))
       |> where([tokens: tokens], tokens.id == ^token_id)
       |> where([tokens: tokens], tokens.account_id == ^account_id)
@@ -1040,21 +1058,6 @@ defmodule Portal.Authentication do
       )
       |> Safe.unscoped()
       |> Safe.one!()
-    end
-
-    defp device_token_copy(%ClientToken{} = token) do
-      %Portal.DeviceToken{
-        account_id: token.account_id,
-        id: token.id,
-        client_token_id: token.id,
-        actor_id: token.actor_id,
-        auth_provider_id: token.auth_provider_id,
-        secret_salt: token.secret_salt,
-        secret_hash: token.secret_hash,
-        expires_at: token.expires_at,
-        inserted_at: token.inserted_at,
-        updated_at: token.updated_at
-      }
     end
   end
 end

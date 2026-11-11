@@ -41,16 +41,16 @@ defmodule Portal.Changes.Hooks.AuthProviders do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.PortalSession
     alias Portal.Safe
 
     # Delete all GUI client tokens for a provider and disconnect their sockets
     # Service Account tokens do not have an auth provider set and will not be affected
     def delete_client_tokens_for_provider(account_id, provider_id) do
-      # The ClientTokens hook will handle disconnecting sockets
-      from(c in ClientToken,
-        where: c.account_id == ^account_id and c.auth_provider_id == ^provider_id
+      # The DeviceTokens hook will handle disconnecting sockets
+      from(t in DeviceToken,
+        where: t.account_id == ^account_id and t.auth_provider_id == ^provider_id
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

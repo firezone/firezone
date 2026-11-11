@@ -65,7 +65,6 @@ defmodule Portal.Account do
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site
 
-    has_many :client_tokens, Portal.ClientToken
     has_many :one_time_passcodes, Portal.OneTimePasscode
 
     has_many :google_directories, Portal.Google.Directory

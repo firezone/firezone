@@ -582,7 +582,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     # Important: We push disconnect before closing the socket to prevent the gateway from
     # attempting to immediately reconnect
     push(socket, "disconnect", %{reason: "token_expired"})
-    {:stop, :shutdown, socket}
+    close_transport(socket)
   end
 
   # Flush-failure disconnects are PG-delivered by device id but target one
@@ -949,7 +949,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
            assigns: %{gateway: %{id: gateway_id}}
          } = socket
        ) do
-    {:stop, :shutdown, socket}
+    close_transport(socket)
   end
 
   # RESOURCES
@@ -1202,6 +1202,13 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       remote_ip_location_lon: gateway.last_seen_remote_ip_location_lon,
       version: gateway.last_seen_version
     }
+  end
+
+  # Stopping the channel alone leaves the transport up, and a rejoin on it reuses
+  # the assigns from Socket.connect/3 without checking them again.
+  defp close_transport(socket) do
+    send(socket.transport_pid, :socket_drain)
+    {:stop, :shutdown, socket}
   end
 
   defp abnormal_exit?(:normal), do: false

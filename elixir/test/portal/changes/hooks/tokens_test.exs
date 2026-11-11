@@ -3,81 +3,8 @@ defmodule Portal.Changes.Hooks.TokensTest do
   import Portal.AccountFixtures
   import Portal.TokenFixtures
   alias Portal.Changes.Change
-  alias Portal.Changes.Hooks.ClientTokens
   alias Portal.Changes.Hooks.DeviceTokens
   alias Portal.PG
-
-  describe "ClientTokens.on_insert/2" do
-    test "broadcasts inserted token change and returns :ok" do
-      account = account_fixture()
-      token = client_token_fixture(account: account)
-      token_id = token.id
-      account_id = account.id
-      :ok = Portal.PubSub.Changes.subscribe(account.id, :client_tokens)
-
-      assert :ok == ClientTokens.on_insert(0, Map.from_struct(token))
-
-      assert_receive %Change{
-        lsn: 0,
-        op: :insert,
-        struct: %Portal.ClientToken{id: ^token_id, account_id: ^account_id}
-      }
-    end
-  end
-
-  describe "ClientTokens.on_update/3" do
-    test "returns :ok" do
-      assert :ok = ClientTokens.on_update(0, %{}, %{})
-    end
-  end
-
-  describe "ClientTokens.on_delete/2" do
-    test "sends :disconnect to registered token process" do
-      account = account_fixture()
-      token = client_token_fixture(account: account)
-
-      PG.register(token.id)
-
-      old_data = %{
-        "id" => token.id,
-        "account_id" => account.id,
-        "type" => "client"
-      }
-
-      assert :ok == ClientTokens.on_delete(0, old_data)
-      assert_receive :disconnect
-    end
-
-    test "does not broadcast raw disconnect to socket_id topic (must go via PG for graceful push)" do
-      account = account_fixture()
-      token = client_token_fixture(account: account)
-
-      topic = Portal.Sockets.socket_id(token.id)
-      :ok = Portal.PubSub.subscribe(topic)
-
-      old_data = %{
-        "id" => token.id,
-        "account_id" => account.id,
-        "type" => "client"
-      }
-
-      assert :ok == ClientTokens.on_delete(0, old_data)
-      refute_receive %Phoenix.Socket.Broadcast{topic: ^topic, event: "disconnect"}
-    end
-
-    test "returns :ok when no process is registered for token" do
-      account = account_fixture()
-      token = client_token_fixture(account: account)
-
-      old_data = %{
-        "id" => token.id,
-        "account_id" => account.id,
-        "type" => "client"
-      }
-
-      assert :ok == ClientTokens.on_delete(0, old_data)
-    end
-  end
 
   describe "DeviceTokens.on_delete/2" do
     test "sends :disconnect to registered token process" do
@@ -90,8 +17,33 @@ defmodule Portal.Changes.Hooks.TokensTest do
       assert_receive :disconnect
     end
 
-    test "returns :ok on insert and update" do
-      assert :ok == DeviceTokens.on_insert(0, %{})
+    test "broadcasts the deleted token" do
+      account = account_fixture()
+      token = client_token_fixture(account: account)
+      token_id = token.id
+      :ok = Portal.PubSub.Changes.subscribe(account.id, :client_tokens)
+
+      assert :ok == DeviceTokens.on_delete(0, %{"id" => token.id, "account_id" => account.id})
+
+      assert_receive %Change{op: :delete, old_struct: %Portal.DeviceToken{id: ^token_id}}
+    end
+  end
+
+  describe "DeviceTokens.on_insert/2" do
+    test "broadcasts the inserted token" do
+      account = account_fixture()
+      token = client_token_fixture(account: account)
+      token_id = token.id
+      :ok = Portal.PubSub.Changes.subscribe(account.id, :client_tokens)
+
+      assert :ok == DeviceTokens.on_insert(0, %{"id" => token.id, "account_id" => account.id})
+
+      assert_receive %Change{op: :insert, struct: %Portal.DeviceToken{id: ^token_id}}
+    end
+  end
+
+  describe "DeviceTokens.on_update/3" do
+    test "returns :ok" do
       assert :ok == DeviceTokens.on_update(0, %{}, %{})
     end
   end

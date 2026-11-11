@@ -33,7 +33,6 @@ defmodule Portal.Actor do
       preload_order: [desc: :inserted_at],
       references: :id
 
-    has_many :client_tokens, Portal.ClientToken, references: :id
     has_many :one_time_passcodes, Portal.OneTimePasscode, references: :id
     has_many :memberships, Portal.Membership, on_replace: :delete, references: :id
     has_many :groups, through: [:memberships, :group]

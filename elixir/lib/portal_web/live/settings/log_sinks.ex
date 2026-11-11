@@ -47,6 +47,8 @@ defmodule PortalWeb.Settings.LogSinks do
 
   @streams ~w[change session api_request flow]
 
+  @form_events ~w[validate submit_sink]
+
   @common_fields ~w[name is_disabled disabled_reason error_message errored_at error_email_count
                     enabled_streams retroactive]a
 
@@ -88,7 +90,10 @@ defmodule PortalWeb.Settings.LogSinks do
         s3_setup_tab: "console"
       )
 
-    {:ok, init_if_connected(socket)}
+    {:ok,
+     socket
+     |> init_if_connected()
+     |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)}
   end
 
   # New Log Sink
@@ -196,7 +201,10 @@ defmodule PortalWeb.Settings.LogSinks do
   def handle_event("delete_sink", %{"id" => id}, socket) do
     sink = socket.assigns.log_sinks |> Enum.find(fn s -> s.id == id end)
 
-    case Database.delete_sink(sink, socket.assigns.subject) do
+    case sink && Database.delete_sink(sink, socket.assigns.subject) do
+      nil ->
+        {:noreply, socket}
+
       {:ok, _sink} ->
         {:noreply,
          socket
@@ -211,38 +219,9 @@ defmodule PortalWeb.Settings.LogSinks do
   end
 
   def handle_event("toggle_sink", %{"id" => id}, socket) do
-    sink = socket.assigns.log_sinks |> Enum.find(fn s -> s.id == id end)
-    new_disabled_state = not sink.is_disabled
-    account = socket.assigns.account
-
-    cond do
-      new_disabled_state == false && sink.disabled_reason == "Sync error" ->
-        {:noreply,
-         put_flash(socket, :error, "Edit and save this log sink to enable it.")}
-
-      new_disabled_state == false && not account.features.log_sinks ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Log sinks are available on the Enterprise plan. Please upgrade your plan."
-         )}
-
-      true ->
-        changeset = toggle_sink_changeset(sink, new_disabled_state)
-        action = if(new_disabled_state, do: "disabled", else: "enabled")
-
-        case Database.update_sink(changeset, socket.assigns.subject) do
-          {:ok, _sink} ->
-            {:noreply,
-             socket
-             |> init()
-             |> put_flash(:success, "Log sink #{action} successfully.")}
-
-          {:error, reason} ->
-            Logger.info("Failed to toggle log sink: #{inspect(reason)}")
-            {:noreply, put_flash(socket, :error, "Failed to update log sink.")}
-        end
+    case Enum.find(socket.assigns.log_sinks, &(&1.id == id)) do
+      nil -> {:noreply, socket}
+      sink -> toggle_sink(sink, socket)
     end
   end
 
@@ -2391,6 +2370,46 @@ defmodule PortalWeb.Settings.LogSinks do
       assign(socket, log_sinks: log_sinks, open_sink_actions_id: nil)
     end
   end
+
+  defp toggle_sink(sink, socket) do
+    new_disabled_state = not sink.is_disabled
+    account = socket.assigns.account
+
+    cond do
+      new_disabled_state == false && sink.disabled_reason == "Sync error" ->
+        {:noreply,
+         put_flash(socket, :error, "Edit and save this log sink to enable it.")}
+
+      new_disabled_state == false && not account.features.log_sinks ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Log sinks are available on the Enterprise plan. Please upgrade your plan."
+         )}
+
+      true ->
+        changeset = toggle_sink_changeset(sink, new_disabled_state)
+        action = if(new_disabled_state, do: "disabled", else: "enabled")
+
+        case Database.update_sink(changeset, socket.assigns.subject) do
+          {:ok, _sink} ->
+            {:noreply,
+             socket
+             |> init()
+             |> put_flash(:success, "Log sink #{action} successfully.")}
+
+          {:error, reason} ->
+            Logger.info("Failed to toggle log sink: #{inspect(reason)}")
+            {:noreply, put_flash(socket, :error, "Failed to update log sink.")}
+        end
+    end
+  end
+
+  defp stale_event?(event, %{live_action: action}) when event in @form_events and action not in [:new, :edit],
+    do: true
+
+  defp stale_event?(_event, _assigns), do: false
 
   defmodule Database do
     import Ecto.Query
