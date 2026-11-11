@@ -40,7 +40,7 @@ defmodule Portal.PolicyAuthorization do
       define_field: false
 
     belongs_to :resource, Portal.Resource
-    belongs_to :token, Portal.ClientToken
+    belongs_to :token, Portal.DeviceToken
     belongs_to :membership, Portal.Membership
 
     # TODO: These can be removed since we don't use them

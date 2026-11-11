@@ -36,7 +36,6 @@ defmodule Portal.Repo.Seeds do
     SessionLog,
     Sophos,
     Site,
-    ClientToken,
     Userpass,
     X509
   }
@@ -2970,7 +2969,7 @@ defmodule Portal.Repo.Seeds do
       }
 
       {:ok, token} =
-        Repo.insert(%ClientToken{
+        Repo.insert(%Portal.DeviceToken{
           auth_provider_id: userpass_provider.id,
           account_id: account.id,
           actor_id: identity.actor_id,
@@ -2979,7 +2978,7 @@ defmodule Portal.Repo.Seeds do
           secret_hash: "placeholder"
         })
 
-      {:ok, subject} = Authentication.build_subject(insert_device_token_copy!(token), context)
+      {:ok, subject} = Authentication.build_subject(token, context)
 
       count = Enum.random([1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 240])
 
@@ -3094,7 +3093,7 @@ defmodule Portal.Repo.Seeds do
 
     # Create client token for unprivileged actor so policy authorizations can reference it
     {:ok, unprivileged_client_token} =
-      Repo.insert(%ClientToken{
+      Repo.insert(%Portal.DeviceToken{
         auth_provider_id: userpass_provider.id,
         account_id: account.id,
         actor_id: unprivileged_actor.id,
@@ -3105,11 +3104,9 @@ defmodule Portal.Repo.Seeds do
         expires_at: DateTime.utc_now() |> DateTime.add(7, :day)
       })
 
-    insert_device_token_copy!(unprivileged_client_token)
-
     # Create client token for admin actor so we can create client sessions
     {:ok, admin_client_token} =
-      Repo.insert(%ClientToken{
+      Repo.insert(%Portal.DeviceToken{
         auth_provider_id: userpass_provider.id,
         account_id: account.id,
         actor_id: admin_actor.id,
@@ -3119,8 +3116,6 @@ defmodule Portal.Repo.Seeds do
         secret_hash: Ecto.UUID.generate(),
         expires_at: DateTime.utc_now() |> DateTime.add(7, :day)
       })
-
-    insert_device_token_copy!(admin_client_token)
 
     # For seeds, create a system subject for admin operations
     # In real usage, subjects are created during sign-in flow
@@ -3155,7 +3150,7 @@ defmodule Portal.Repo.Seeds do
     }
 
     primary_client_token =
-      %ClientToken{
+      %Portal.DeviceToken{
         id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
         account_id: primary_client_actor.account_id,
         actor_id: primary_client_actor.id,
@@ -3165,10 +3160,8 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    insert_device_token_copy!(primary_client_token)
-
     pool_member_token =
-      %ClientToken{
+      %Portal.DeviceToken{
         id: "fe2bf22d-0986-433a-85ed-a8f37c90a34b",
         account_id: pool_member_actor.account_id,
         actor_id: pool_member_actor.id,
@@ -3177,8 +3170,6 @@ defmodule Portal.Repo.Seeds do
         expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
       }
       |> Repo.insert!()
-
-    insert_device_token_copy!(pool_member_token)
 
     pool_member_subject = %Authentication.Subject{
       account: account,
@@ -4233,19 +4224,6 @@ defmodule Portal.Repo.Seeds do
     IO.puts("Device posture fleet seeded (#{fleet.members} devices, SEED_FLEET_SIZE to change)")
     IO.puts("  Intune #{fleet.intune}, Iru #{fleet.iru}, Defender #{fleet.defender}, Santa #{fleet.santa}, SentinelOne #{fleet.sentinelone}, Sophos #{fleet.sophos}")
     IO.puts("  #{fleet.clients} Firezone Clients across #{fleet.people} people")
-  end
-
-  defp insert_device_token_copy!(%ClientToken{} = token) do
-    Repo.insert!(%Portal.DeviceToken{
-      account_id: token.account_id,
-      id: token.id,
-      client_token_id: token.id,
-      actor_id: token.actor_id,
-      auth_provider_id: token.auth_provider_id,
-      secret_salt: token.secret_salt,
-      secret_hash: token.secret_hash,
-      expires_at: token.expires_at
-    })
   end
 end
 

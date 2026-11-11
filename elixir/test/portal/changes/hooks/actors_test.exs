@@ -83,7 +83,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
 
       assert :ok == on_update(0, old_data, data)
 
-      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
       refute Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
       assert_receive %Change{op: :update, lsn: 0}
     end
@@ -127,7 +127,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
       refute Repo.get_by(Portal.OAuthToken, account_id: account.id, id: token.id)
 
       # A demoted admin is still a user, so their Clients stay signed in.
-      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
     end
 
     test "deletes OAuth grants when a disabled admin is demoted" do
@@ -181,7 +181,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
 
       assert :ok == on_update(0, old_data, %{old_data | "password_hash" => "new-hash"})
 
-      refute Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
       refute Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
     end
 
@@ -202,7 +202,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
 
       assert :ok == on_update(0, old_data, %{old_data | "name" => "Renamed"})
 
-      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
       assert Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
     end
   end

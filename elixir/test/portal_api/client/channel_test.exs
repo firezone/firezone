@@ -518,7 +518,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "init", _init_payload
 
-      token = Repo.get_by(Portal.ClientToken, id: subject.credential.id)
+      token = Repo.get_by(Portal.DeviceToken, id: subject.credential.id)
 
       data = %{
         "id" => token.id,

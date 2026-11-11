@@ -86,7 +86,7 @@ defmodule Portal.Ops.RegionTransferTest do
       nulled =
         manifest["tables"]
         |> Enum.filter(&(&1["nulled_columns"] != []))
-        |> Map.new(&{&1["name"], &1["nulled_columns"]})
+        |> Map.new(&{&1["name"], Enum.sort(&1["nulled_columns"])})
 
       assert nulled == %{"devices" => ["client_token_id", "gateway_token_id"]}
     end

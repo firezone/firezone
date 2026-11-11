@@ -122,7 +122,7 @@ defmodule Portal.QueueTest do
             "policy_authorizations_resource_id_fkey" =>
               {:composite, :resource_id, Portal.Resource},
             "policy_authorizations_token_id_fkey" =>
-              {:composite, :token_id, Portal.ClientToken},
+              {:composite, :token_id, Portal.DeviceToken},
             "policy_authorizations_membership_id_fkey" =>
               {:composite_optional, :membership_id, Portal.Membership},
             "policy_authorizations_initiating_device_id_fkey" =>

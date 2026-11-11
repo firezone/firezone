@@ -190,7 +190,7 @@ defmodule PortalWeb.ServiceAccountsTest do
           name: "CI Service Account"
         )
 
-      assert Portal.Repo.get_by(Portal.ClientToken, actor_id: service_account.id)
+      assert Portal.Repo.get_by(Portal.DeviceToken, actor_id: service_account.id)
       assert html =~ "CI Service Account"
       assert html =~ "Token Created"
     end
@@ -220,7 +220,7 @@ defmodule PortalWeb.ServiceAccountsTest do
           name: "Tokenless SA"
         )
 
-      refute Portal.Repo.get_by(Portal.ClientToken, actor_id: service_account.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, actor_id: service_account.id)
       assert html =~ "Tokenless SA"
       refute html =~ "Token Created"
     end
@@ -621,7 +621,7 @@ defmodule PortalWeb.ServiceAccountsTest do
       render_click(lv, "delete_token", %{"id" => token.id})
 
       html = render(lv)
-      refute Portal.Repo.get_by(Portal.ClientToken, id: token.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, id: token.id)
       assert html =~ "No tokens."
     end
 
@@ -1316,7 +1316,7 @@ defmodule PortalWeb.ServiceAccountsTest do
         assert render(lv) =~ service_account.name
         assert Repo.get_by(Actor, account_id: account.id, id: service_account.id).name == service_account.name
         refute Repo.get_by(Actor, account_id: account.id, name: "Late")
-        assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: token.id)
+        assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
       end
     end
   end

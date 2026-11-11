@@ -379,11 +379,11 @@ defmodule PortalWeb.Settings.Authentication do
     assign_default_provider(provider_id, socket)
   end
 
-  def handle_info(%Portal.Changes.Change{struct: %Portal.ClientToken{}}, socket) do
+  def handle_info(%Portal.Changes.Change{struct: %Portal.DeviceToken{}}, socket) do
     {:noreply, refresh_session_counts(socket)}
   end
 
-  def handle_info(%Portal.Changes.Change{old_struct: %Portal.ClientToken{}}, socket) do
+  def handle_info(%Portal.Changes.Change{old_struct: %Portal.DeviceToken{}}, socket) do
     {:noreply, refresh_session_counts(socket)}
   end
 

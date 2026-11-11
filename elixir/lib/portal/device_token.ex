@@ -35,6 +35,7 @@ defmodule Portal.DeviceToken do
     field :rotated_at, :utc_datetime_usec
 
     # Used only during creation
+    field :secret_nonce, :string, virtual: true, redact: true
     field :secret_fragment, :string, virtual: true, redact: true
 
     # Populated on fetch-for-verification: the id of this token's rotated
