@@ -17,7 +17,7 @@
 use arbitrary::Arbitrary;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::{SeedableRng as _, rngs::StdRng};
-use relay_proto::{
+use relay_server_proto::{
     Attribute, ClientSocket, Command, Server,
     auth::{AccountId, generate_password, hash_account_id},
 };

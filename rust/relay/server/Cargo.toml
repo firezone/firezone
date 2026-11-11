@@ -25,7 +25,7 @@ otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
 rand = { workspace = true }
-relay-proto = { workspace = true }
+relay-server-proto = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "query", "rustls-no-provider"] }
 rustls = { workspace = true }
 secrecy = { workspace = true }

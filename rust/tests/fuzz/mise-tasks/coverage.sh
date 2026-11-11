@@ -20,7 +20,11 @@ trap 'rm -rf "$temporary"' EXIT
 LLVM_PROFILE_FILE="$temporary/%p-%m.profraw" "$binary" "$target" --replay "corpus/$target"
 "$llvm_bin/llvm-profdata" merge -sparse "$temporary"/*.profraw -o "$temporary/coverage.profdata"
 
-packages="$(cargo tree --locked -p "$target" --edges normal --prefix none --format '{p}' \
+case "$target" in
+relay-proto) package=relay-server-proto ;;
+*) package="$target" ;;
+esac
+packages="$(cargo tree --locked -p "$package" --edges normal --prefix none --format '{p}' \
     --target x86_64-unknown-linux-gnu | cut -d ' ' -f 1 | sort -u | jq -Rsc 'split("\n")[:-1]')"
 crates="$(mise run -q //rust:workspace-crates)"
 directories="$(jq -r --argjson packages "$packages" \

@@ -2864,7 +2864,7 @@ dependencies = [
  "otel-instruments",
  "phoenix-channel",
  "rand 0.10.3",
- "relay-proto",
+ "relay-server-proto",
  "reqwest",
  "rustls",
  "secrecy",
@@ -3205,7 +3205,7 @@ dependencies = [
  "l3-tcp",
  "libc",
  "rand 0.10.3",
- "relay-proto",
+ "relay-server-proto",
  "secrecy",
  "seeded-rng",
  "serde_json",
@@ -6599,7 +6599,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
-name = "relay-proto"
+name = "relay-server-proto"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
@@ -9196,7 +9196,7 @@ dependencies = [
  "libc",
  "mimalloc",
  "rand 0.10.3",
- "relay-proto",
+ "relay-server-proto",
  "seeded-rng",
  "serde_json",
  "snownet",

@@ -27,7 +27,7 @@ itertools = { workspace = true, features = ["use_std"] }
 l3-tcp = { workspace = true }
 libc = { workspace = true }
 rand = { workspace = true }
-relay-proto = { workspace = true }
+relay-server-proto = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 seeded-rng = { workspace = true }
 serde_json = { workspace = true }
