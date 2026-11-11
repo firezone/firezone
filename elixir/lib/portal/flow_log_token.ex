@@ -80,7 +80,7 @@ defmodule Portal.FlowLogToken do
   end
 
   @doc """
-  Verify a token and return its claims.
+  Verify a token and return its claims and the account that signed it.
 
   The endpoint is not pre-authenticated, so verification first decodes the
   (unverified) payload to read the `account_id` claim, loads the signing key,
@@ -90,14 +90,17 @@ defmodule Portal.FlowLogToken do
   An unknown account and a bad signature both collapse to `:invalid` so the
   endpoint is not an oracle for which account ids exist.
   """
-  @spec verify(term()) :: {:ok, claims()} | {:error, :malformed | :invalid | :expired}
+  @spec verify(term()) ::
+          {:ok, claims(), Account.t()} | {:error, :malformed | :invalid | :expired}
   def verify(token) when is_binary(token) do
     with {:ok, account_id} <- peek_account_id(token),
-         %Account{ingest_signing_key: key} <- fetch_account(account_id),
-         {true, %JOSE.JWT{fields: claims}, _jws} <- JOSE.JWT.verify_strict(jwk(key), ["HS256"], token) do
-      verify_exp(claims)
+         %Account{ingest_signing_key: key} = account <- fetch_account(account_id),
+         {true, %JOSE.JWT{fields: claims}, _jws} <- JOSE.JWT.verify_strict(jwk(key), ["HS256"], token),
+         {:ok, claims} <- verify_exp(claims) do
+      {:ok, claims, account}
     else
       {:error, :malformed} -> {:error, :malformed}
+      {:error, :expired} -> {:error, :expired}
       _ -> {:error, :invalid}
     end
   end

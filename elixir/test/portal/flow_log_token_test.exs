@@ -16,7 +16,7 @@ defmodule Portal.FlowLogTokenTest do
 
       token = FlowLogToken.mint(account, attrs, expires_at)
 
-      assert {:ok, claims} = FlowLogToken.verify(token)
+      assert {:ok, claims, _account} = FlowLogToken.verify(token)
       assert claims["account_id"] == account.id
 
       for {k, v} <- attrs do
@@ -28,7 +28,7 @@ defmodule Portal.FlowLogTokenTest do
       expires_at = DateTime.add(DateTime.utc_now(), 3600, :second)
       token = FlowLogToken.mint(account, flow_log_token_claims(), expires_at)
 
-      assert {:ok, claims} = FlowLogToken.verify(token)
+      assert {:ok, claims, _account} = FlowLogToken.verify(token)
       assert claims["exp"] == DateTime.to_unix(expires_at) + 2_592_000
     end
 
@@ -40,7 +40,7 @@ defmodule Portal.FlowLogTokenTest do
           DateTime.add(DateTime.utc_now(), 3600, :second)
         )
 
-      assert {:ok, claims} = FlowLogToken.verify(token)
+      assert {:ok, claims, _account} = FlowLogToken.verify(token)
       refute Map.has_key?(claims, "injected")
     end
 

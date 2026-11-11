@@ -19,11 +19,17 @@ defmodule Portal.Accounts.Limits do
     field :api_capacity, :integer
     field :api_read_refill_rate, :integer
     field :api_read_capacity, :integer
-    field :ingestion_refill_rate, :integer
-    field :ingestion_capacity, :integer
     # Throughput each Relay allows per direction of a relayed connection; nil
     # or 0 is unlimited.
     field :relay_throughput_mbps, :integer
+    # Flow-log ingest buckets; nil uses the PortalAPI.FlowLogController config.
+    # The account values replace the sizing derived from the device allowance.
+    field :flow_log_initiator_refill_rate, :integer
+    field :flow_log_initiator_capacity, :integer
+    field :flow_log_responder_refill_rate, :integer
+    field :flow_log_responder_capacity, :integer
+    field :flow_log_account_refill_rate, :integer
+    field :flow_log_account_capacity, :integer
   end
 
   @doc """
@@ -100,9 +106,13 @@ defmodule Portal.Accounts.Limits do
       api_capacity
       api_read_refill_rate
       api_read_capacity
-      ingestion_refill_rate
-      ingestion_capacity
       relay_throughput_mbps
+      flow_log_initiator_refill_rate
+      flow_log_initiator_capacity
+      flow_log_responder_refill_rate
+      flow_log_responder_capacity
+      flow_log_account_refill_rate
+      flow_log_account_capacity
     ]a
 
     limits
@@ -118,8 +128,12 @@ defmodule Portal.Accounts.Limits do
     |> validate_number(:api_tokens_per_client_count, greater_than_or_equal_to: 0)
     |> validate_number(:api_read_refill_rate, greater_than_or_equal_to: 0)
     |> validate_number(:api_read_capacity, greater_than_or_equal_to: 0)
-    |> validate_number(:ingestion_refill_rate, greater_than_or_equal_to: 0)
-    |> validate_number(:ingestion_capacity, greater_than_or_equal_to: 0)
     |> validate_number(:relay_throughput_mbps, greater_than_or_equal_to: 0)
+    |> validate_number(:flow_log_initiator_refill_rate, greater_than_or_equal_to: 0)
+    |> validate_number(:flow_log_initiator_capacity, greater_than_or_equal_to: 0)
+    |> validate_number(:flow_log_responder_refill_rate, greater_than_or_equal_to: 0)
+    |> validate_number(:flow_log_responder_capacity, greater_than_or_equal_to: 0)
+    |> validate_number(:flow_log_account_refill_rate, greater_than_or_equal_to: 0)
+    |> validate_number(:flow_log_account_capacity, greater_than_or_equal_to: 0)
   end
 end
