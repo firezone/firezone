@@ -9,6 +9,7 @@ defmodule Portal.OAuthTest do
   alias Portal.OAuth
   alias Portal.OAuth.ClientMetadata
   alias Portal.Req.SSRFProtection.UnsafeURLError
+  alias Portal.StreamingServer
   alias Portal.Scope
 
   @verifier "a-code-verifier-long-enough-to-satisfy-the-pkce-rules"
@@ -191,6 +192,41 @@ defmodule Portal.OAuthTest do
                ClientMetadata.fetch("https://127.0.0.1/client.json")
 
       refute_receive :unsafe_adapter_called
+    end
+
+    test "stops waiting for icons that are slow to arrive" do
+      client_id = "https://localhost/slow-icons.json"
+      icon_url = StreamingServer.start(&StreamingServer.drip(&1, 100))
+
+      adapter = fn request ->
+        if request.url.path == "/slow-icons.json" do
+          body = %{
+            "client_id" => client_id,
+            "client_name" => "Slow icons",
+            "redirect_uris" => [redirect_uri()],
+            "logo_uri" => "https://localhost/logo.png",
+            "client_uri" => "https://localhost"
+          }
+
+          {request, Req.Response.new(status: 200, body: body)}
+        else
+          Req.Finch.run(%{request | url: URI.parse(icon_url <> request.url.path)})
+        end
+      end
+
+      config = Portal.Config.fetch_env!(:portal, ClientMetadata)
+
+      Portal.Config.put_env_override(
+        :portal,
+        ClientMetadata,
+        Keyword.put(config, :req_opts, adapter: adapter, retry: false)
+      )
+
+      started = System.monotonic_time(:millisecond)
+
+      assert {:ok, client} = ClientMetadata.fetch(client_id)
+      assert client.logo_data == nil
+      assert System.monotonic_time(:millisecond) - started < 8_000
     end
 
     test "rejects a redirect uri the metadata does not list", %{client: client} do
