@@ -310,6 +310,12 @@ impl UdpSocket {
     pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
         let quinn_state = self.state;
 
+        #[cfg(apple)]
+        // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
+        unsafe {
+            quinn_state.set_apple_fast_path();
+        }
+
         // A single `recv` may receive several datagrams coalesced into one buffer via
         // generic receive offload (GRO). The kernel coalesces up to `gro_segments`
         // datagrams of at most `MAX_FZ_PAYLOAD` bytes each, so the buffer must be large
@@ -561,10 +567,11 @@ impl PerfUdpSocket {
             tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %contents.len().div_ceil(segment_size), %segment_size, connected = %socket.connected);
 
             let result = if socket.connected {
-                // Darwin rejects a destination on a connected socket without `sendmsg_x`.
-                socket2::SockRef::from(socket.inner)
-                    .send(contents)
-                    .map(|_| quinn_udp::SendCount::new(1).expect("1 is non-zero"))
+                // Connected sockets never return `EWOULDBLOCK` on Darwin; issue the syscall
+                // directly instead of going through tokio's (always-set) write-readiness.
+                socket
+                    .state
+                    .try_send(UdpSockRef::from(socket.inner), &chunk)
             } else {
                 let mut send = std::pin::pin!(socket.inner.async_io(Interest::WRITABLE, || {
                     socket
