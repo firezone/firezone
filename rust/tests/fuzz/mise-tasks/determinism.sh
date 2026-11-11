@@ -19,7 +19,7 @@ fi
 build_afl
 
 ijon_offset=""
-if [ "$target" = tunnel-proto ]; then
+if [ "$target" = tunnel ]; then
     map_size="$(AFL_DUMP_MAP_SIZE=1 "$afl_binary" "$target")" || true
     [[ "$map_size" =~ ^[0-9]+$ ]] || {
         echo "Could not determine AFL++ coverage map size" >&2
@@ -80,7 +80,7 @@ for run in 1 2; do
     if [ "$run" -eq 1 ] && [ -n "$ijon_offset" ] &&
         ! awk -F: -v offset="$ijon_offset" '$1 >= offset { found = 1 } END { exit !found }' \
             "$temporary/maps-$run"/*; then
-        echo "The tunnel-proto corpus produced no IJON feedback" >&2
+        echo "The tunnel corpus produced no IJON feedback" >&2
         exit 1
     fi
     for input in "$temporary/inputs"/*; do
