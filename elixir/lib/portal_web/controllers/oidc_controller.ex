@@ -413,7 +413,7 @@ defmodule PortalWeb.OIDCController do
 
     error = authorization_error_message(reason)
     log_sign_in_redirect_error(account.id, error)
-    path = error_path_for_context(account, params, error)
+    path = error_path_for_context(account, params)
 
     conn
     |> put_flash(:error, error)
@@ -2131,7 +2131,7 @@ defmodule PortalWeb.OIDCController do
   defp redirect_with_error_context(conn, error) do
     {account_id, account_slug, original_params} = fetch_error_context(conn)
     log_sign_in_redirect_error(account_id, error)
-    redirect_for_error(conn, error, error_path_for_context(account_slug, original_params, error))
+    redirect_for_error(conn, error, error_path_for_context(account_slug, original_params))
   end
 
   defp log_sign_in_redirect_error(nil, _error), do: :ok
@@ -2146,18 +2146,12 @@ defmodule PortalWeb.OIDCController do
   defp error_path("", _params), do: ~p"/sign_in"
   defp error_path(account, params), do: ~p"/#{account}/sign_in?#{sanitize(params)}"
 
-  defp error_path_for_context(account, params, error) do
+  defp error_path_for_context(account, params) do
     if client_context?(params) and account != "" do
-      ~p"/#{account}/sign_in/client_auth_error?#{client_error_params(params, error)}"
+      ~p"/#{account}/sign_in/client_auth_error?#{sanitize(params)}"
     else
       error_path(account, params)
     end
-  end
-
-  defp client_error_params(params, error) do
-    params
-    |> sanitize()
-    |> Map.put("error", error)
   end
 
   defp sanitize(params) do

@@ -1728,7 +1728,9 @@ defmodule PortalWeb.OIDCControllerTest do
           assert query["state"] == "client-state"
           assert query["nonce"] == "client-nonce"
 
-          assert query["error"] ==
+          refute Map.has_key?(query, "error")
+
+          assert flash(conn, :error) ==
                    "The authorization code has expired or was already used. Please try signing in again."
         end)
 
@@ -3777,17 +3779,16 @@ defmodule PortalWeb.OIDCControllerTest do
         assert failed_query["state"] == params["state"]
         assert failed_query["nonce"] == params["nonce"]
         assert failed_query["redirect_to"] == params["redirect_to"]
-        assert failed_query["error"] =~ "Unable to fetch discovery document"
+        refute Map.has_key?(failed_query, "error")
+        assert flash(failed_conn, :error) =~ "Unable to fetch discovery document"
 
         Mocks.OIDC.stub_discovery_document()
-
-        retry_params = Map.drop(failed_query, ["error"])
 
         retry_conn =
           get(
             recycle(conn),
             "/#{account.slug}/sign_in",
-            retry_params
+            failed_query
           )
 
         provider_retry_path = redirected_to(retry_conn)
@@ -3837,7 +3838,9 @@ defmodule PortalWeb.OIDCControllerTest do
           assert query["state"] == "client-state"
           assert query["nonce"] == "client-nonce"
 
-          assert query["error"] ==
+          refute Map.has_key?(query, "error")
+
+          assert flash(conn, :error) ==
                    "Unable to fetch discovery document: Connection refused. The identity provider may be down."
         end)
 
