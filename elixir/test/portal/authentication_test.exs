@@ -13,7 +13,6 @@ defmodule Portal.AuthenticationTest do
   import Portal.SiteFixtures
   alias Portal.Authentication
   alias Portal.Authentication.Credential
-  alias Portal.ClientToken
   alias Portal.Fixture
 
   describe "create_non_interactive_client_token/3" do
@@ -1700,7 +1699,6 @@ defmodule Portal.AuthenticationTest do
     test "an interactive token is written only to device_tokens", %{token: token} do
       assert %Portal.DeviceToken{} = token
       assert Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
-      refute Repo.get_by(ClientToken, account_id: token.account_id, id: token.id)
     end
 
     test "a new token is signed with the device salt", %{token: token} do
@@ -1729,7 +1727,6 @@ defmodule Portal.AuthenticationTest do
 
       assert %Portal.DeviceToken{actor_id: actor_id, auth_provider_id: nil} = token
       assert actor_id == service_account.id
-      refute Repo.get_by(ClientToken, account_id: account.id, id: token.id)
     end
 
     test "deleting the actor deletes the token", %{actor: actor, token: token} do

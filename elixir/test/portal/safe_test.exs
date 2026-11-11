@@ -73,11 +73,6 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:delete, Portal.ExternalIdentity, :api_client) == :ok
     end
 
-    test "ClientToken: admin and api_client only" do
-      assert Safe.permit(:delete, Portal.ClientToken, :account_admin_user) == :ok
-      assert Safe.permit(:delete, Portal.ClientToken, :api_client) == :ok
-    end
-
     test "APIToken: admin only" do
       assert Safe.permit(:delete, Portal.APIToken, :account_admin_user) == :ok
     end
@@ -200,7 +195,6 @@ defmodule Portal.SafeTest do
     test "lower-privilege types are denied admin-only schemas" do
       assert Safe.permit(:read, Portal.Actor, :account_user) == {:error, :unauthorized}
       assert Safe.permit(:read, Portal.ExternalIdentity, :service_account) == {:error, :unauthorized}
-      assert Safe.permit(:read, Portal.ClientToken, :account_user) == {:error, :unauthorized}
       assert Safe.permit(:read, Portal.APIToken, :api_client) == {:error, :unauthorized}
       assert Safe.permit(:read, Portal.DeviceToken, :account_user) == {:error, :unauthorized}
     end

@@ -897,8 +897,6 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Group, :account_user), do: :ok
   def permit(_action, Portal.ExternalIdentity, :account_admin_user), do: :ok
   def permit(_action, Portal.ExternalIdentity, :api_client), do: :ok
-  def permit(_action, Portal.ClientToken, :account_admin_user), do: :ok
-  def permit(_action, Portal.ClientToken, :api_client), do: :ok
   def permit(_action, Portal.APIToken, :account_admin_user), do: :ok
 
   # OAuth grants and codes are created by a person going through the browser
