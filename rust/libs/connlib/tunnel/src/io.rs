@@ -324,10 +324,6 @@ impl Io {
         self.sockets.listen_port()
     }
 
-    pub fn udp_ports(&self) -> [Option<u16>; 2] {
-        self.sockets.ports()
-    }
-
     pub fn reset(&mut self) {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();

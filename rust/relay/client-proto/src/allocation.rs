@@ -318,6 +318,12 @@ impl Allocation {
         .flatten()
     }
 
+    pub fn host_candidates(&self) -> impl Iterator<Item = &Candidate> {
+        [&self.ip4_host_candidate, &self.ip6_host_candidate]
+            .into_iter()
+            .flatten()
+    }
+
     pub fn current_relay_candidates(&self) -> impl Iterator<Item = Candidate> + use<> {
         [self.ip4_allocation.clone(), self.ip6_allocation.clone()]
             .into_iter()

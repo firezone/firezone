@@ -298,23 +298,6 @@ where
             .map(ConnectionPath::from)
     }
 
-    /// Returns whether `socket` is one of our relays or a remote candidate of a connection.
-    pub fn remote_kind(&self, socket: SocketAddr) -> Option<RemoteKind> {
-        if self.allocations.has_server(socket) {
-            return Some(RemoteKind::Relay);
-        }
-
-        if self
-            .connections
-            .iter_established()
-            .any(|(_, c)| c.agent.has_remote_candidate(socket))
-        {
-            return Some(RemoteKind::Peer);
-        }
-
-        None
-    }
-
     /// Upserts a connection to the given remote.
     ///
     /// If we already have a connection with the same parameters, this does nothing.
@@ -721,6 +704,10 @@ where
     ) -> Result<Option<EncapsulateBatch<'_>>> {
         self.last_now = now;
 
+        if let Some(remote) = self.routing_loop(packet) {
+            return Err(RoutingLoop { remote }.into());
+        }
+
         let conn = self.connections.get_mut(&cid, now)?;
         let socket = conn.ready_socket(cid)?;
 
@@ -964,6 +951,42 @@ where
                 );
             }
         }
+    }
+
+    fn routing_loop(&self, packet: &IpPacket) -> Option<RemoteKind> {
+        let udp = packet.as_udp()?;
+        let src_port = udp.source_port();
+
+        // Our UDP sockets bypass the tunnel, so seeing one of their datagrams here means the bypass failed.
+        if !self.allocations.has_host_candidate_port(src_port)
+            && !self
+                .additional_host_candidates
+                .iter()
+                .any(|c| c.addr().port() == src_port)
+        {
+            return None;
+        }
+
+        self.remote_kind(SocketAddr::new(
+            packet.destination(),
+            udp.destination_port(),
+        ))
+    }
+
+    fn remote_kind(&self, socket: SocketAddr) -> Option<RemoteKind> {
+        if self.allocations.has_server(socket) {
+            return Some(RemoteKind::Relay);
+        }
+
+        if self
+            .connections
+            .iter_established()
+            .any(|(_, c)| c.agent.has_remote_candidate(socket))
+        {
+            return Some(RemoteKind::Peer);
+        }
+
+        None
     }
 
     fn init_connection(
@@ -1467,11 +1490,15 @@ impl From<is::IceCreds> for Credentials {
     }
 }
 
-/// The kind of remote a [`Node`] sends to.
+#[derive(thiserror::Error, Debug)]
+#[error("Packet is our own UDP datagram to a {remote:?}")]
+pub struct RoutingLoop {
+    remote: RemoteKind,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum RemoteKind {
+enum RemoteKind {
     Relay,
-    /// A remote candidate of a connection, including the remote's relayed ones.
     Peer,
 }
 
@@ -2492,6 +2519,8 @@ fn new_agent(role: IceRole) -> IceAgent {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
+    use anyhow::ErrorExt as _;
+
     use super::*;
 
     #[test]
@@ -2627,7 +2656,8 @@ mod tests {
     }
 
     #[test]
-    fn remote_kind_identifies_relays_and_remote_candidates() {
+    fn encapsulate_rejects_own_datagrams_to_relays_and_peers() {
+        let host = SocketAddr::from(([10, 0, 0, 1], 41000));
         let relay = SocketAddr::from(([203, 0, 113, 1], 3478));
         let peer = SocketAddr::from(([198, 51, 100, 1], 52625));
         let unknown = SocketAddr::from(([192, 0, 2, 1], 52625));
@@ -2635,6 +2665,7 @@ mod tests {
         for use_frostlink in [false, true] {
             let now = Instant::now();
             let mut node = Node::<u32, u32>::new([0; 32], now, Duration::ZERO);
+            node.set_additional_host_candidates(BTreeSet::from([host]), now);
             node.update_relays(
                 BTreeSet::new(),
                 &BTreeSet::from([(
@@ -2661,10 +2692,36 @@ mod tests {
             let candidate = Candidate::host(peer, "udp").unwrap();
             node.add_remote_candidate(1, crate::candidate::encode(use_frostlink, &candidate), now);
 
-            assert_eq!(node.remote_kind(relay), Some(RemoteKind::Relay));
-            assert_eq!(node.remote_kind(peer), Some(RemoteKind::Peer));
-            assert_eq!(node.remote_kind(unknown), None);
+            assert_eq!(
+                routing_loop(&mut node, host.port(), relay, now),
+                Some(RemoteKind::Relay)
+            );
+            assert_eq!(
+                routing_loop(&mut node, host.port(), peer, now),
+                Some(RemoteKind::Peer)
+            );
+            assert_eq!(routing_loop(&mut node, host.port(), unknown, now), None);
+            assert_eq!(routing_loop(&mut node, host.port() + 1, relay, now), None);
         }
+    }
+
+    fn routing_loop(
+        node: &mut Node<u32, u32>,
+        src_port: u16,
+        dst: SocketAddr,
+        now: Instant,
+    ) -> Option<RemoteKind> {
+        let packet = ip_packet::make::udp_packet(
+            Ipv4Addr::new(100, 64, 0, 1),
+            dst.ip(),
+            src_port,
+            dst.port(),
+            &[],
+        )
+        .unwrap();
+        let error = node.encapsulate(1, &packet, now).err()?;
+
+        Some(error.any_downcast_ref::<RoutingLoop>()?.remote)
     }
 
     fn credentials() -> Credentials {

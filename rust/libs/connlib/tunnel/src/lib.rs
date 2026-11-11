@@ -16,7 +16,6 @@ use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::{CryptoWorkers, Io};
-use ip_packet::IpPacket;
 use packet_counts::{DroppedTunPackets, TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -118,8 +117,6 @@ pub struct Tunnel<TRoleState> {
     /// Not every component advertises a deadline for that work, so the tunnel says so itself:
     /// [`Tunnel::next_timeout`] reports `now` and the alarm rings straight away.
     needs_timeout: bool,
-
-    logged_routing_loop: bool,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -148,7 +145,6 @@ impl<TRoleState> Tunnel<TRoleState> {
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
-            logged_routing_loop: false,
         };
 
         tunnel.set_tun(tun);
@@ -198,7 +194,6 @@ pub trait Role: Sized {
     ) -> Poll<Result<Self::Event, TunnelError>>;
     fn poll_timeout(&mut self) -> Option<Instant>;
     fn handle_timeout(&mut self, now: Instant);
-    fn remote_kind(&self, socket: SocketAddr) -> Option<snownet::RemoteKind>;
 }
 
 impl Role for ClientState {
@@ -219,10 +214,6 @@ impl Role for ClientState {
     fn handle_timeout(&mut self, now: Instant) {
         ClientState::handle_timeout(self, now);
     }
-
-    fn remote_kind(&self, socket: SocketAddr) -> Option<snownet::RemoteKind> {
-        ClientState::remote_kind(self, socket)
-    }
 }
 
 impl Role for GatewayState {
@@ -242,10 +233,6 @@ impl Role for GatewayState {
 
     fn handle_timeout(&mut self, now: Instant) {
         GatewayState::handle_timeout(self, now);
-    }
-
-    fn remote_kind(&self, socket: SocketAddr) -> Option<snownet::RemoteKind> {
-        GatewayState::remote_kind(self, socket)
     }
 }
 
@@ -307,7 +294,6 @@ impl ClientTunnel {
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
-            logged_routing_loop: false,
         })
     }
 
@@ -428,7 +414,6 @@ impl ClientTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let udp_ports = self.io.udp_ports();
                     let mut jobs = self.io.new_encrypt_jobs();
 
                     let mut packets = packets
@@ -437,13 +422,6 @@ impl ClientTunnel {
                         .peekable();
 
                     while let Some(packet) = packets.next() {
-                        warn_on_routing_loop(
-                            &self.role_state,
-                            udp_ports,
-                            &packet,
-                            &mut self.logged_routing_loop,
-                        );
-
                         let mut tun_batch = match self.role_state.handle_tun_input(packet, now) {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
@@ -590,7 +568,6 @@ impl GatewayTunnel {
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
-            logged_routing_loop: false,
         })
     }
 
@@ -694,7 +671,6 @@ impl GatewayTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let udp_ports = self.io.udp_ports();
                     let mut jobs = self.io.new_encrypt_jobs();
 
                     let mut packets = packets
@@ -703,13 +679,6 @@ impl GatewayTunnel {
                         .peekable();
 
                     while let Some(packet) = packets.next() {
-                        warn_on_routing_loop(
-                            &self.role_state,
-                            udp_ports,
-                            &packet,
-                            &mut self.logged_routing_loop,
-                        );
-
                         let mut tun_batch = match self.role_state.handle_tun_input(packet, now) {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
@@ -877,41 +846,6 @@ pub struct FakeTunnelEnds {
 pub struct FailedToHandleNetworkPacket {
     local: SocketAddr,
     from: SocketAddr,
-}
-
-fn warn_on_routing_loop<R: Role>(
-    role_state: &R,
-    udp_ports: [Option<u16>; 2],
-    packet: &IpPacket,
-    logged: &mut bool,
-) {
-    if *logged {
-        return;
-    }
-
-    let Some(udp) = packet.as_udp() else {
-        return;
-    };
-
-    if !udp_ports.contains(&Some(udp.source_port())) {
-        return;
-    }
-
-    let dst = SocketAddr::new(packet.destination(), udp.destination_port());
-
-    let Some(remote) = role_state.remote_kind(dst) else {
-        return;
-    };
-
-    *logged = true;
-
-    tracing::debug!(src = %SocketAddr::new(packet.source(), udp.source_port()), %dst);
-
-    // Our UDP sockets bypass the TUN device, so reading one of their datagrams means the bypass failed.
-    tracing::warn!(
-        ?remote,
-        "Routing loop: read our own UDP datagram from the TUN device"
-    );
 }
 
 fn listen_sockets(ips: Vec<IpAddr>, port: u16) -> Vec<SocketAddr> {
