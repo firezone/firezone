@@ -63,6 +63,7 @@ members = [
     "libs/x509-claims-ffi",
     "libs/x509-credential",
     "libs/x509-keystore",
+    "relay/client-proto",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
     "relay/server",
@@ -209,6 +210,7 @@ quote = "1.0.45"
 rand = "0.10.1"
 rangemap = "1.7.1"
 rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
+relay-client-proto = { path = "relay/client-proto" }
 relay-server-proto = { path = "relay/server-proto" }
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"

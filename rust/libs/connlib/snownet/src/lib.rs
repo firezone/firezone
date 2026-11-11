@@ -4,15 +4,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod agent;
-mod allocation;
-mod backoff;
 mod candidate;
-mod channel_data;
 mod crypto;
 mod node;
-mod utils;
 
-pub use allocation::RelaySocket;
 pub use crypto::{
     CommittedBatch, DecapsulateBatch, DecryptedBatch, EncapsulateBatch, PendingDecapsulate,
     PendingEncapsulate,
@@ -21,3 +16,4 @@ pub use node::{
     ConnectionPath, Credentials, Event, IceConfig, IceRole, Node, StillConnecting, Transmit,
     UnknownConnection,
 };
+pub use relay_client_proto::RelaySocket;
