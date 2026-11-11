@@ -125,7 +125,7 @@ impl SocketPool {
                 flows: BTreeMap::new(),
                 sources: BTreeMap::new(),
                 rates: RateGate::default(),
-                flow_sockets_supported: false,
+                flow_sockets_supported: true,
                 buffer_sizes: None,
                 drained: VecDeque::new(),
                 recv_waker: None,

@@ -561,11 +561,16 @@ impl PerfUdpSocket {
             tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %contents.len().div_ceil(segment_size), %segment_size, connected = %socket.connected);
 
             let result = if socket.connected {
-                // Connected sockets never return `EWOULDBLOCK` on Darwin; issue the syscall
-                // directly instead of going through tokio's (always-set) write-readiness.
-                socket
-                    .state
-                    .try_send(UdpSockRef::from(socket.inner), &chunk)
+                #[cfg(apple)]
+                {
+                    send_connected(socket.inner, &chunk)
+                }
+                #[cfg(not(apple))]
+                {
+                    socket
+                        .state
+                        .try_send(UdpSockRef::from(socket.inner), &chunk)
+                }
             } else {
                 let mut send = std::pin::pin!(socket.inner.async_io(Interest::WRITABLE, || {
                     socket
@@ -603,8 +608,6 @@ impl PerfUdpSocket {
                     offset += sent_bytes;
                     attempt = 0; // Each batch gets its own retry budget.
                 }
-                #[cfg(apple)]
-                Err(e) if e.raw_os_error() == Some(libc::ENOBUFS) => return Ok(()),
                 // Connected sockets get a write-readiness wakeup from the kernel's flow advisory
                 // once the interface queue drains, so we park until then.
                 #[cfg(apple)]
@@ -937,6 +940,51 @@ async fn spin_and_yield(attempt: u32) {
     }
 
     tokio::task::yield_now().await;
+}
+
+#[cfg(apple)]
+fn send_connected(
+    socket: &tokio::net::UdpSocket,
+    transmit: &Transmit<'_>,
+) -> io::Result<quinn_udp::SendCount> {
+    // SAFETY: CMSG_SPACE only calculates the space needed for this fixed-size value.
+    const CONTROL_LEN: usize = unsafe { libc::CMSG_SPACE(size_of::<libc::c_int>() as _) } as usize;
+    let mut control = [0u64; CONTROL_LEN.div_ceil(size_of::<u64>())];
+    let is_ipv4 = transmit.destination.is_ipv4()
+        || matches!(transmit.destination.ip(), IpAddr::V6(ip) if ip.to_ipv4_mapped().is_some());
+    let (level, kind) = if is_ipv4 {
+        (libc::IPPROTO_IP, libc::IP_TOS)
+    } else {
+        (libc::IPPROTO_IPV6, libc::IPV6_TCLASS)
+    };
+    // SAFETY: The zeroed buffer is large and aligned for one cmsghdr and c_int,
+    // and its initialized bytes remain alive throughout sendmsg.
+    let control = unsafe {
+        let header = control.as_mut_ptr().cast::<libc::cmsghdr>();
+        header.write(libc::cmsghdr {
+            cmsg_len: libc::CMSG_LEN(size_of::<libc::c_int>() as _),
+            cmsg_level: level,
+            cmsg_type: kind,
+        });
+        libc::CMSG_DATA(header)
+            .cast::<libc::c_int>()
+            .write(transmit.ecn.map_or(0, |ecn| ecn as libc::c_int));
+        std::slice::from_raw_parts(control.as_ptr().cast::<u8>(), CONTROL_LEN)
+    };
+    let buffers = [io::IoSlice::new(transmit.contents)];
+    let message = socket2::MsgHdr::new()
+        .with_buffers(&buffers)
+        .with_control(control);
+    let socket = socket2::SockRef::from(socket);
+    loop {
+        match socket.sendmsg(&message, 0) {
+            Ok(_) => break,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(quinn_udp::SendCount::new(1).expect("1 is non-zero"))
 }
 
 /// Parks until the kernel signals send capacity on the given (connected) socket, bounded by a timeout.
