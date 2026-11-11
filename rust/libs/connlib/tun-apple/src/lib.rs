@@ -30,7 +30,7 @@ use tokio::io::Interest;
 const RECV_BUFFER_SIZE: libc::c_int = if cfg!(target_os = "ios") {
     2 * 1024 * 1024
 } else {
-    512 * 1024
+    8 * 1024 * 1024
 };
 
 /// From XNU's `bsd/net/if_utun.h`.
@@ -52,7 +52,7 @@ impl Io {
         set_non_blocking(fd)?;
         raise_recv_buffer(fd);
         let max_coalesced_len = max_coalesced_len(fd);
-        let workers = match sys::batch_syscalls().filter(|_| false) {
+        let workers = match sys::batch_syscalls() {
             Some(syscalls) => tun::Workers::spawn(
                 move |outbound_rx| {
                     let open = move || bulk::Fd::open(fd, Interest::WRITABLE, syscalls);
