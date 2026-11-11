@@ -525,7 +525,12 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   def handle_event("delete_token", %{"id" => token_id}, socket) do
-    token = Database.get_client_token_by_id(token_id, socket.assigns.subject)
+    token =
+      Database.get_client_token_by_id(
+        token_id,
+        socket.assigns.selected_actor.id,
+        socket.assigns.subject
+      )
 
     if token do
       case Database.delete_client_token(token, socket.assigns.subject) do
@@ -1014,9 +1019,9 @@ defmodule PortalWeb.ServiceAccounts do
       end)
     end
 
-    def get_client_token_by_id(token_id, subject) do
+    def get_client_token_by_id(token_id, actor_id, subject) do
       from(c in DeviceToken, as: :client_tokens)
-      |> where([client_tokens: c], c.id == ^token_id)
+      |> where([client_tokens: c], c.id == ^token_id and c.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.one()
     end

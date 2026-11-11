@@ -624,6 +624,29 @@ defmodule PortalWeb.ServiceAccountsTest do
       refute Portal.Repo.get_by(Portal.ClientToken, id: token.id)
       assert html =~ "No tokens."
     end
+
+    test "delete_token does not delete a token of another actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account)
+      gateway_token = gateway_token_fixture(account: account)
+
+      other_token =
+        client_token_fixture(account: account, actor: service_account_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+      render_click(lv, "delete_token", %{"id" => gateway_token.id})
+      render_click(lv, "delete_token", %{"id" => other_token.id})
+
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: other_token.id)
+    end
   end
 
   describe "disable / enable / delete" do
