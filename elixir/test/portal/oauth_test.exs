@@ -448,7 +448,10 @@ defmodule Portal.OAuthTest do
     end)
 
     assert {:ok, client, _} =
-             OAuth.validate_client(%{"client_id" => client_id, "redirect_uri" => redirect_uri()})
+             OAuth.validate_client(
+               %{"client_id" => client_id, "redirect_uri" => redirect_uri()},
+               store: true
+             )
 
     assert client.token_endpoint_auth_method == "none"
     context = %{context | client: client}
