@@ -19,7 +19,10 @@ defmodule Portal.Replication.SlotPollerTest do
     end
 
     @impl true
-    def on_begin(state, _msg), do: state
+    def on_begin(state, msg) do
+      send(state.test_pid, {:begin, msg.final_lsn})
+      state
+    end
 
     @impl true
     def on_logical_message(state, msg) do
@@ -203,6 +206,27 @@ defmodule Portal.Replication.SlotPollerTest do
     assert_receive {:write, _, :update, ^table, _old, %{"val" => "after"}}, 5000
     assert_receive {:write, _, :delete, ^table, old_data, nil}, 5000
     assert old_data["id"] == "2"
+  end
+
+  test "dispatches transactions in commit order with the commit LSN", %{
+    aux: aux,
+    table: table
+  } do
+    start_poller!()
+
+    {:ok, _} =
+      Postgrex.transaction(aux, fn conn ->
+        Postgrex.query!(conn, "INSERT INTO #{table} (id, val) VALUES (20, 'first-written')", [])
+        Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (21, 'first-committed')", [])
+      end)
+
+    assert_receive {:begin, first_commit_lsn}, 5000
+    assert_receive {:write, first_committed_lsn, :insert, ^table, nil, %{"id" => "21"}}, 5000
+    assert_receive {:begin, second_commit_lsn}, 5000
+    assert_receive {:write, first_written_lsn, :insert, ^table, nil, %{"id" => "20"}}, 5000
+
+    assert first_written_lsn < first_committed_lsn
+    assert first_commit_lsn < second_commit_lsn
   end
 
   test "does not poll while another session holds the leadership lock", %{
