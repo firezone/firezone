@@ -371,8 +371,13 @@ impl Allocation {
         Span::current().record("class", field::display(message.class()));
 
         // Early return to avoid cryptographic work in case it isn't our message.
-        if !self.sent_requests.contains_key(&transaction_id) {
+        let Some((_, request, _)) = self.sent_requests.get(&transaction_id) else {
             return false;
+        };
+
+        if request.method() != message.method() {
+            tracing::debug!(request = %request.method(), "Ignoring response for a different method");
+            return true; // The message still indicated that it was for this `Allocation`.
         }
 
         let passed_message_integrity_check = self.check_message_integrity(&message);
@@ -2329,6 +2334,21 @@ mod tests {
         assert_eq!(
             refresh.get_attribute::<Nonce>().map(|n| n.value()),
             Some("nonce2")
+        );
+    }
+
+    #[test]
+    fn ignores_response_for_a_different_method() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(binding_response(&allocate, PEER1), now);
+        allocation.handle_test_input_ip4(allocate_response(&allocate, &[RELAY_ADDR_IP4]), now);
+
+        assert_eq!(
+            allocation.current_relay_candidates().collect::<Vec<_>>(),
+            vec![Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()]
         );
     }
 
