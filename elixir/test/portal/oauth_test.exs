@@ -543,6 +543,15 @@ defmodule Portal.OAuthTest do
       assert is_binary(response.refresh_token)
     end
 
+    test "keeps the provider the person signed in with on the issued tokens", context do
+      code = consent(context)
+
+      assert {:ok, _response} = OAuth.exchange(exchange_params(context, code), @resource)
+
+      token = Portal.Repo.get_by!(Portal.OAuthToken, actor_id: context.actor.id)
+      assert token.auth_provider_id == context.subject.credential.auth_provider_id
+    end
+
     test "records the grant so the client is not asked twice", context do
       consent(context)
 
@@ -801,6 +810,35 @@ defmodule Portal.OAuthTest do
       refresh = refreshable_token(context)
 
       account |> Ecto.Changeset.change(is_disabled: true) |> Portal.Repo.update!()
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.refresh(refresh_params(context, refresh), @resource)
+    end
+
+    test "refuses a refresh token while its auth provider is disabled", context do
+      refresh = refreshable_token(context)
+      provider = Portal.Repo.get_by!(Portal.EmailOTP.AuthProvider, account_id: context.account.id)
+
+      provider = provider |> Ecto.Changeset.change(is_disabled: true) |> Portal.Repo.update!()
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.refresh(refresh_params(context, refresh), @resource)
+
+      provider |> Ecto.Changeset.change(is_disabled: false) |> Portal.Repo.update!()
+
+      assert {:ok, _response} = OAuth.refresh(refresh_params(context, refresh), @resource)
+    end
+
+    test "refuses a refresh token with no auth provider", context do
+      {token, _access, refresh} =
+        oauth_token_fixture(
+          account: context.account,
+          actor: context.actor,
+          client: context.client,
+          resource: @resource
+        )
+
+      token |> Ecto.Changeset.change(auth_provider_id: nil) |> Portal.Repo.update!()
 
       assert {:error, "invalid_grant", _description} =
                OAuth.refresh(refresh_params(context, refresh), @resource)

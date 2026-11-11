@@ -17,6 +17,7 @@ defmodule Portal.OAuth do
   import Ecto.Changeset
 
   alias Portal.Authentication
+  alias Portal.Authentication.Credential
   alias Portal.Authentication.Subject
   alias Portal.OAuth.ClientMetadata
   alias Portal.Scope
@@ -361,6 +362,7 @@ defmodule Portal.OAuth do
     |> cast(
       %{
         actor_id: grant.actor_id,
+        auth_provider_id: Credential.auth_provider_id(subject.credential),
         oauth_client_id: request.client.id,
         oauth_grant_id: grant.id,
         secret_salt: salt,
@@ -372,8 +374,8 @@ defmodule Portal.OAuth do
         scopes: request.scopes,
         expires_at: DateTime.add(DateTime.utc_now(), @code_ttl_seconds, :second)
       },
-      ~w[actor_id oauth_client_id oauth_grant_id secret_salt secret_hash code_challenge
-         code_challenge_method redirect_uri resource scopes expires_at]a
+      ~w[actor_id auth_provider_id oauth_client_id oauth_grant_id secret_salt secret_hash
+         code_challenge code_challenge_method redirect_uri resource scopes expires_at]a
     )
     |> Database.insert_code(subject)
   end
@@ -491,6 +493,7 @@ defmodule Portal.OAuth do
       %{
         account_id: code.account_id,
         actor_id: code.actor_id,
+        auth_provider_id: code.auth_provider_id,
         oauth_grant_id: code.oauth_grant_id,
         secret_salt: access_salt,
         secret_hash: access_hash,
@@ -501,8 +504,8 @@ defmodule Portal.OAuth do
         expires_at: DateTime.add(now, @access_ttl_seconds, :second),
         refresh_expires_at: DateTime.add(now, @refresh_ttl_seconds, :second)
       },
-      ~w[account_id actor_id oauth_grant_id secret_salt secret_hash refresh_secret_salt
-         refresh_secret_hash scopes resource expires_at refresh_expires_at]a
+      ~w[account_id actor_id auth_provider_id oauth_grant_id secret_salt secret_hash
+         refresh_secret_salt refresh_secret_hash scopes resource expires_at refresh_expires_at]a
     )
     |> Database.insert_token()
     |> case do
@@ -682,10 +685,11 @@ defmodule Portal.OAuth do
       end
     end
 
-    # Held to the same actor and account checks as using an access token, so a
-    # refresh cannot keep extending access the token itself would be refused.
+    # Held to the same actor, account and provider checks as using an access
+    # token, so a refresh cannot keep extending access the token would be refused.
     def fetch_refreshable_token(account_id, id) do
       now = DateTime.utc_now()
+      enabled_provider_ids = Portal.Authentication.Database.enabled_auth_provider_ids_subquery()
 
       from(tokens in OAuthToken,
         join: account in assoc(tokens, :account),
@@ -697,6 +701,7 @@ defmodule Portal.OAuth do
         where: account.is_disabled == false,
         where: actor.is_disabled == false,
         where: actor.type == :account_admin_user,
+        where: tokens.auth_provider_id in subquery(enabled_provider_ids),
         preload: [oauth_grant: :oauth_client]
       )
       |> Safe.unscoped()

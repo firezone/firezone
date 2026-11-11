@@ -816,6 +816,7 @@ defmodule Portal.Authentication do
         ) do
       now = DateTime.utc_now()
       remote_ip = %Postgrex.INET{address: context.remote_ip}
+      enabled_provider_ids = enabled_auth_provider_ids_subquery()
 
       from(tokens in Portal.OAuthToken, as: :tokens)
       |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
@@ -836,6 +837,7 @@ defmodule Portal.Authentication do
       # the admin is demoted, but that happens asynchronously, so a token is
       # also refused here as soon as its actor is no longer an admin.
       |> where([actor: actor], actor.type == :account_admin_user)
+      |> where([tokens: tokens], tokens.auth_provider_id in subquery(enabled_provider_ids))
       |> update([tokens: tokens],
         set: [
           last_seen_at: ^now,
@@ -994,7 +996,7 @@ defmodule Portal.Authentication do
       end
     end
 
-    defp enabled_auth_provider_ids_subquery do
+    def enabled_auth_provider_ids_subquery do
       provider_modules = [
         Portal.EmailOTP.AuthProvider,
         Portal.Userpass.AuthProvider,
