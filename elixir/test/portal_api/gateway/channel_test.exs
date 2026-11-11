@@ -1769,7 +1769,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, _, _, _, gateway_public_key, _, _, _, _, _}
+      assert_receive {:connect, ^socket_ref, _, _, _, gateway_public_key, _, _, _, _, _, _}
       assert gateway_public_key == connected.public_key
     end
 
@@ -3753,6 +3753,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       gateway_ipv4 = gateway.ipv4
       gateway_ipv6 = gateway.ipv6
       rid_bytes = Ecto.UUID.dump!(resource.id)
+      request_ref = make_ref()
 
       ice_credentials = %{
         initiator: %{username: "A", password: "B"},
@@ -3776,7 +3777,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
            policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           request_ref: request_ref
          }}
       )
 
@@ -3796,7 +3798,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         ^gateway_ipv6,
         ^preshared_key,
         ^ice_credentials,
-        _use_iceless
+        _use_iceless,
+        ^request_ref
       }
     end
 
@@ -3870,7 +3873,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, use_iceless}
+      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, use_iceless, _}
       assert use_iceless == true
     end
 
@@ -4247,6 +4250,61 @@ defmodule PortalAPI.Gateway.ChannelTest do
         })
 
       assert_reply push_ref, :error, %{reason: :invalid_ref}
+    end
+
+    test "flow_authorized accepts a ref only from the gateway it was issued to", %{
+      account: account,
+      client: client,
+      subject: subject,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      send_create_authorization(socket, client, subject, resource, Ecto.UUID.generate())
+      assert_push "authorize_flow", %{ref: ref}
+
+      other_gateway = fetch_device!(gateway_fixture(account: account, site: site))
+      other_token = gateway_token_fixture(site: site, account: account)
+      other_socket = join_channel(other_gateway, site, other_token)
+      assert_push "init", %{relays: _}
+
+      push_ref = push(other_socket, "flow_authorized", %{"ref" => ref})
+      assert_reply push_ref, :error, %{reason: :invalid_ref}
+      refute_received {:connect, _, _, _, _, _, _, _, _, _, _, _}
+
+      push_ref = push(socket, "flow_authorized", %{"ref" => ref})
+      assert_reply push_ref, :ok
+      assert_receive {:connect, _, _, _, gateway_id, _, _, _, _, _, _, _}
+      assert gateway_id == gateway.id
+    end
+
+    test "flow_authorized does not accept an old ref", %{
+      client: client,
+      subject: subject,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      send_create_authorization(socket, client, subject, resource, Ecto.UUID.generate())
+      assert_push "authorize_flow", %{ref: ref}
+
+      key_base = PortalAPI.Endpoint.config(:secret_key_base)
+      salt = "gateway_authorization_ref"
+      {:ok, data} = Plug.Crypto.verify(key_base, salt, ref, max_age: :infinity)
+      signed_at = System.system_time(:second) - 120
+      old_ref = Plug.Crypto.sign(key_base, salt, data, signed_at: signed_at)
+
+      push_ref = push(socket, "flow_authorized", %{"ref" => old_ref})
+      assert_reply push_ref, :error, %{reason: :invalid_ref}
+      refute_received {:connect, _, _, _, _, _, _, _, _, _, _, _}
     end
 
     test "authorization_created accepts the renamed acknowledgement", %{

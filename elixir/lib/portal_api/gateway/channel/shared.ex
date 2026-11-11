@@ -24,6 +24,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   @session_durability_timeout :timer.seconds(15)
 
+  # A new salt keeps nodes from an earlier release from decoding this ref format.
+  @reply_ref_salt "gateway_authorization_ref"
+  @reply_ref_max_age_seconds 60
+
   # Relay credentials must be stable across reconnects so that gateways
   # don't see credential changes on every websocket connect. We use a fixed
   # far-future date rather than a dynamic offset from now.
@@ -340,6 +344,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     initiator_iceless_capable = Map.get(payload, :initiator_iceless_capable, false)
     flow_logs_ingest_token = Map.get(payload, :flow_logs_ingest_token)
+    request_ref = Map.get(payload, :request_ref)
 
     rid_bytes = Ecto.UUID.dump!(resource.id)
 
@@ -356,7 +361,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         rid_bytes,
         preshared_key,
         ice_credentials,
-        use_iceless
+        use_iceless,
+        request_ref
       })
 
     event = socket.assigns.channel_protocol.create_authorization_event()
@@ -645,10 +651,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   @impl true
   def handle_in("authorization_created", %{"ref" => signed_ref}, socket) do
     case decode_ref(socket, signed_ref) do
-      {:ok, ref_tuple} ->
-        {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_iceless} =
-          ref_tuple
-
+      {:ok,
+       {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_iceless,
+        request_ref}} ->
         send(
           channel_pid,
           {
@@ -662,13 +667,14 @@ defmodule PortalAPI.Gateway.Channel.Shared do
             socket.assigns.gateway.ipv6,
             preshared_key,
             ice_credentials,
-            use_iceless
+            use_iceless,
+            request_ref
           }
         )
 
         {:reply, :ok, socket}
 
-      {:error, :invalid_ref} ->
+      _other ->
         Logger.error("Gateway replied with an invalid ref")
         {:reply, {:error, %{reason: :invalid_ref}}, socket}
     end
@@ -693,7 +699,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
         {:reply, :ok, socket}
 
-      {:error, :invalid_ref} ->
+      _other ->
         Logger.error("Gateway replied with an invalid ref")
         {:reply, {:error, %{reason: :invalid_ref}}, socket}
     end
@@ -765,27 +771,27 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   defp encode_ref(socket, tuple) do
     ref =
-      tuple
+      {socket.assigns.gateway.id, tuple}
       |> :erlang.term_to_binary()
       |> Base.url_encode64()
 
     key_base = socket.endpoint.config(:secret_key_base)
-    Plug.Crypto.sign(key_base, "gateway_reply_ref", ref)
+    Plug.Crypto.sign(key_base, @reply_ref_salt, ref)
   end
 
   defp decode_ref(socket, signed_ref) do
     key_base = socket.endpoint.config(:secret_key_base)
+    gateway_id = socket.assigns.gateway.id
 
     with {:ok, ref} <-
-           Plug.Crypto.verify(key_base, "gateway_reply_ref", signed_ref, max_age: :infinity) do
-      tuple =
-        ref
-        |> Base.url_decode64!()
-        |> Plug.Crypto.non_executable_binary_to_term([:safe])
-
+           Plug.Crypto.verify(key_base, @reply_ref_salt, signed_ref,
+             max_age: @reply_ref_max_age_seconds
+           ),
+         {:ok, binary} <- Base.url_decode64(ref),
+         {^gateway_id, tuple} <- Plug.Crypto.non_executable_binary_to_term(binary, [:safe]) do
       {:ok, tuple}
     else
-      {:error, :invalid} -> {:error, :invalid_ref}
+      _other -> {:error, :invalid_ref}
     end
   end
 

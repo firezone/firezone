@@ -156,7 +156,7 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   defp gateway_authorization_generation(channel_pid, resource_id) do
-    {generation, _timer_ref, _initiator_token, _address} =
+    {generation, _timer_ref, _initiator_token, _address, _gateway_id} =
       :sys.get_state(channel_pid).assigns.pending_authorizations |> Map.fetch!(resource_id)
 
     generation
@@ -4169,7 +4169,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
-         ice_credentials}
+         ice_credentials, false, payload.request_ref}
       )
 
       gateway_group_id = gateway.site.id
@@ -4259,7 +4259,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials}
+         payload.ice_credentials, false, payload.request_ref}
       )
 
       assert_push "flow_created", %{flow_logs_ingest_token: initiator_token}
@@ -4313,7 +4313,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials}
+         payload.ice_credentials, false, payload.request_ref}
       )
 
       assert_push "flow_created", %{flow_logs_ingest_token: initiator_token}
@@ -4336,11 +4336,12 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _init_payload
 
       timer_ref = Process.send_after(self(), :pending_flow_timeout, 60_000)
+      request_ref = make_ref()
 
       :sys.replace_state(socket.channel_pid, fn state ->
         put_in(
           state.assigns.pending_authorizations,
-          %{resource.id => {make_ref(), timer_ref, "ingest-token", nil}}
+          %{resource.id => {request_ref, timer_ref, "ingest-token", nil, gateway.id}}
         )
       end)
 
@@ -4355,7 +4356,7 @@ defmodule PortalAPI.Client.ChannelTest do
         socket.channel_pid,
         {:connect, make_ref(), Ecto.UUID.dump!(resource.id), gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
-         ice_credentials}
+         ice_credentials, false, request_ref}
       )
 
       site_id = gateway.site.id
@@ -4702,11 +4703,75 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials}
+         payload.ice_credentials, false, payload.request_ref}
       )
 
       # The late connect should be ignored — no "flow_created" push
       refute_push "flow_created", _
+    end
+
+    test "accepts {:connect, ...} only for the pending request and its gateway", %{
+      account: account,
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      for struct <- [resource, policy, membership] do
+        send(socket.channel_pid, %Changes.Change{
+          lsn: System.unique_integer([:positive, :monotonic]),
+          op: :insert,
+          struct: struct
+        })
+      end
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload1}
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+      assert_receive {:create_authorization, {^channel_pid, _socket_ref}, payload2}
+      refute payload1.request_ref == payload2.request_ref
+
+      rid_bytes = Ecto.UUID.dump!(resource.id)
+      other_site = site_fixture(account: account)
+      other_gateway = gateway_fixture(account: account, site: other_site)
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id, gateway.public_key,
+         gateway.ipv4, gateway.ipv6, payload1.preshared_key, payload1.ice_credentials, false,
+         payload1.request_ref}
+      )
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, other_site.id, other_gateway.id,
+         other_gateway.public_key, other_gateway.ipv4, other_gateway.ipv6,
+         payload2.preshared_key, payload2.ice_credentials, false, payload2.request_ref}
+      )
+
+      refute_push "flow_created", _
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id, gateway.public_key,
+         gateway.ipv4, gateway.ipv6, payload2.preshared_key, payload2.ice_credentials, false,
+         payload2.request_ref}
+      )
+
+      assert_push "flow_created", %{resource_id: resource_id, gateway_id: gateway_id}
+      assert resource_id == resource.id
+      assert gateway_id == gateway.id
     end
 
     test "v2 pushes authorization_created and ignores its timeout after success", %{
@@ -4758,7 +4823,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials}
+         payload.ice_credentials, false, payload.request_ref}
       )
 
       assert_push "authorization_created", %{resource_id: resource_id}
@@ -4809,7 +4874,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref2, Ecto.UUID.dump!(resource.id), gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload2.preshared_key,
-         payload2.ice_credentials}
+         payload2.ice_credentials, false, payload2.request_ref}
       )
 
       assert_push "flow_created", %{resource_id: resource_id}
@@ -8217,7 +8282,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, Ecto.UUID.dump!(resource_id), gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials}
+         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials, false, payload.request_ref}
       )
 
       gateway_id = gateway.id
