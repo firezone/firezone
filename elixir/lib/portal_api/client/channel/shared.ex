@@ -189,6 +189,8 @@ defmodule PortalAPI.Client.Channel.Shared do
       @recompute_authorized_resources_every
     )
 
+    socket = expire_attestation(socket)
+
     {:ok, added_resources, removed_ids, cache} =
       Cache.Client.recompute_connectable_resources(
         socket.assigns.cache,
@@ -3085,6 +3087,18 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp x509_session_enabled?(_socket), do: true
+
+  defp expire_attestation(%{assigns: %{client: %{attested?: true, attested_until: %DateTime{} = attested_until}}} = socket) do
+    if DateTime.compare(DateTime.utc_now(), attested_until) == :gt do
+      socket
+      |> assign(:client, %{socket.assigns.client | attested?: false, attested_until: nil})
+      |> track_presence()
+    else
+      socket
+    end
+  end
+
+  defp expire_attestation(socket), do: socket
 
   defp certificate_session?(%{assigns: %{subject: %{credential: %Credential.X509{}}}}), do: true
   defp certificate_session?(socket), do: not is_nil(socket.assigns[:attestation])
