@@ -5,6 +5,16 @@ defmodule PortalWeb.Sites do
   alias Portal.Presence
   alias __MODULE__.Database
 
+  @resource_form_events ~w[resource_change resource_submit]
+
+  @edit_form_events ~w[change_site_edit_form submit_site_edit_form]
+
+  @selected_site_events ~w[
+    confirm_rotate_gateway_token confirm_delete_gateway confirm_revoke_gateway_token
+    revoke_all_gateway_tokens show_all_gateways show_online_gateways deploy_gateway
+    delete_site open_site_edit_form cancel_site_edit_form
+  ]
+
   def mount(_params, _session, socket) do
     if connected?(socket) do
       :ok = Presence.Devices.Account.subscribe(socket.assigns.account.id)
@@ -23,6 +33,7 @@ defmodule PortalWeb.Sites do
       |> assign(internet_resource: nil)
       |> assign(internet_site: nil)
       |> assign(site_state_reset_assigns())
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     socket =
       if connected?(socket) do
@@ -176,6 +187,13 @@ defmodule PortalWeb.Sites do
       new_site: base_new_site_state()
     ]
   end
+
+  defp stale_event?(event, %{site_resource_form: %{form: nil}}) when event in @resource_form_events, do: true
+  defp stale_event?(event, %{site_edit: %{form: nil}}) when event in @edit_form_events, do: true
+
+  defp stale_event?("new_site_submit", %{new_site: %{form: nil}}), do: true
+  defp stale_event?(event, %{selected_site: nil}) when event in @selected_site_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp site_state_reset_assigns do
     [

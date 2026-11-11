@@ -1468,4 +1468,36 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
                Repo.get!(Portal.Google.Directory, directory.id)
     end
   end
+
+  describe "events queued after the panel closes" do
+    test "ignores submit_directory", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/settings/directory_sync")
+
+      render_click(lv, "submit_directory", %{})
+
+      assert render(lv) =~ "Directory Sync"
+    end
+
+    for event <- ["delete_directory", "toggle_directory"] do
+      test "ignores #{event} for a deleted directory", %{conn: conn, account: account, actor: actor} do
+        directory = synced_google_directory_fixture(%{account: account, name: "Ops Google"})
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/directory_sync")
+
+        render_click(lv, "delete_directory", %{"id" => directory.id})
+        render_click(lv, unquote(event), %{"id" => directory.id})
+
+        refute render(lv) =~ "Ops Google"
+      end
+    end
+  end
 end

@@ -14,6 +14,8 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   @types ~w[intune iru defender santa sentinelone sophos]
 
+  @form_events ~w[validate start_verification reset_verification submit]
+
   @coming_soon_providers [
     %{
       type: "crowdstrike",
@@ -105,7 +107,8 @@ defmodule PortalWeb.Settings.DevicePosture do
        feedback_sent?: false,
        feedback_error: nil
      )
-     |> init_if_connected()}
+     |> init_if_connected()
+     |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)}
   end
 
   def handle_params(_params, _url, %{assigns: %{live_action: :select_type}} = socket) do
@@ -2151,6 +2154,9 @@ defmodule PortalWeb.Settings.DevicePosture do
     do: Portal.Account.device_posture_enabled?(socket.assigns.subject.account)
 
   defp index_path(socket), do: ~p"/#{socket.assigns.account}/settings/device_posture"
+
+  defp stale_event?(event, %{form: nil}) when event in @form_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defmodule Database do
     import Ecto.Query

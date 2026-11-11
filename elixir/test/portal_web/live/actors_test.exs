@@ -1875,4 +1875,49 @@ defmodule PortalWeb.ActorsTest do
       refute html =~ other.name
     end
   end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"open_actor_edit_form", %{}},
+          {"cancel_actor_edit_form", %{}},
+          {"validate", %{"actor" => %{"name" => "Late"}}},
+          {"save", %{"actor" => %{"name" => "Late"}}},
+          {"create_user", %{"actor" => %{"name" => "Late", "email" => "late@example.com", "type" => "account_user"}}},
+          {"create_service_account", %{"actor" => %{"name" => "Late"}, "token_expiration" => ""}},
+          {"delete_token", %{"id" => :token_id}},
+          {"delete_session", %{"id" => :session_id}},
+          {"delete_identity", %{"id" => :identity_id}},
+          {"send_welcome_email", %{"id" => :other_actor_id}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        other_actor = actor_fixture(account: account)
+        auth_provider = userpass_provider_fixture(account: account).auth_provider
+        session = portal_session_fixture(account: account, actor: other_actor, auth_provider: auth_provider)
+        identity = identity_fixture(account: account, actor: other_actor)
+        token = client_token_fixture(account: account, actor: other_actor)
+
+        ids = %{
+          other_actor_id: other_actor.id,
+          session_id: session.id,
+          identity_id: identity.id,
+          token_id: token.id
+        }
+
+        {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{other_actor}")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/actors")
+
+        params = Map.new(unquote(Macro.escape(params)), fn {k, v} -> {k, Map.get(ids, v, v)} end)
+        render_click(lv, unquote(event), params)
+
+        assert render(lv) =~ other_actor.name
+        assert Portal.Repo.get_by(Actor, account_id: account.id, id: other_actor.id).name == other_actor.name
+        refute Portal.Repo.get_by(Actor, account_id: account.id, name: "Late")
+        assert Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
+        assert Portal.Repo.get_by(Portal.ExternalIdentity, account_id: account.id, id: identity.id)
+        assert Portal.Repo.get_by(Portal.ClientToken, account_id: account.id, id: token.id)
+      end
+    end
+  end
 end

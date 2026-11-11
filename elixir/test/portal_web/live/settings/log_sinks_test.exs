@@ -1729,4 +1729,36 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert submit_button_disabled?(render_change(form))
     end
   end
+
+  describe "events queued after the panel closes" do
+    test "ignores submit_sink", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/new")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/settings/log_sinks")
+
+      render_click(lv, "submit_sink", %{"log_sink" => %{"name" => "Late"}})
+
+      assert render(lv) =~ "Log Sinks"
+    end
+
+    for event <- ["delete_sink", "toggle_sink"] do
+      test "ignores #{event} for a deleted sink", %{conn: conn, account: account, actor: actor} do
+        sink = splunk_log_sink_fixture(account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/log_sinks")
+
+        render_click(lv, "delete_sink", %{"id" => sink.id})
+        render_click(lv, unquote(event), %{"id" => sink.id})
+
+        refute render(lv) =~ sink.name
+      end
+    end
+  end
 end

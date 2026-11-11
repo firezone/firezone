@@ -9,6 +9,11 @@ defmodule PortalWeb.Policies do
   alias PortalWeb.Policies.Postures
 
   @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
+
+  @form_events ~w[change_policy_form submit_policy_form]
+
+  @selected_policy_events ~w[disable_policy enable_policy delete_policy]
+
   import Ecto.Changeset
 
   def mount(_params, _session, socket) do
@@ -45,6 +50,7 @@ defmodule PortalWeb.Policies do
         ],
         loader: &load_policies/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -406,6 +412,11 @@ defmodule PortalWeb.Policies do
       confirm_breaking_change: not is_nil(assigns.policy_confirm.breaking_params)
     }
   end
+
+  defp stale_event?(event, %{policy_panel: %{form: nil}}) when event in @form_events, do: true
+  defp stale_event?(event, %{selected_policy: nil}) when event in @selected_policy_events, do: true
+  defp stale_event?("save_policy_breaking_change", %{policy_confirm: %{breaking_params: nil}}), do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp base_policy_assigns(socket) do
     [
@@ -899,6 +910,10 @@ defmodule PortalWeb.Policies do
 
   def handle_info(%Change{struct: %Policy{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
+  end
+
+  def handle_info({:panel_change_resource, _resource}, %{assigns: %{policy_panel: %{form: nil}}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_info({:panel_change_resource, resource}, socket) do

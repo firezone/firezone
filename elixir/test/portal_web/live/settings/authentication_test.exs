@@ -5071,4 +5071,36 @@ defmodule PortalWeb.Settings.AuthenticationTest do
                "Unable to fetch discovery document: DNS lookup failed. Please verify the provider domain."
     end
   end
+
+  describe "events queued after the panel closes" do
+    test "ignores submit_provider", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/google/new")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/settings/authentication")
+
+      render_click(lv, "submit_provider", %{})
+
+      assert render(lv) =~ "Authentication"
+    end
+
+    for event <- ["delete_provider", "toggle_provider", "revoke_sessions"] do
+      test "ignores #{event} for a deleted provider", %{conn: conn, account: account, actor: actor} do
+        provider = google_provider_fixture(account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication")
+
+        render_click(lv, "delete_provider", %{"id" => provider.id})
+        render_click(lv, unquote(event), %{"id" => provider.id})
+
+        refute render(lv) =~ provider.name
+      end
+    end
+  end
 end
