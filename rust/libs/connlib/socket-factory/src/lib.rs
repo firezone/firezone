@@ -561,11 +561,10 @@ impl PerfUdpSocket {
             tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %contents.len().div_ceil(segment_size), %segment_size, connected = %socket.connected);
 
             let result = if socket.connected {
-                // Connected sockets never return `EWOULDBLOCK` on Darwin; issue the syscall
-                // directly instead of going through tokio's (always-set) write-readiness.
-                socket
-                    .state
-                    .try_send(UdpSockRef::from(socket.inner), &chunk)
+                // Darwin rejects a destination on a connected socket without `sendmsg_x`.
+                socket2::SockRef::from(socket.inner)
+                    .send(contents)
+                    .map(|_| quinn_udp::SendCount::new(1).expect("1 is non-zero"))
             } else {
                 let mut send = std::pin::pin!(socket.inner.async_io(Interest::WRITABLE, || {
                     socket
@@ -603,8 +602,6 @@ impl PerfUdpSocket {
                     offset += sent_bytes;
                     attempt = 0; // Each batch gets its own retry budget.
                 }
-                #[cfg(apple)]
-                Err(e) if e.raw_os_error() == Some(libc::ENOBUFS) => return Ok(()),
                 // Connected sockets get a write-readiness wakeup from the kernel's flow advisory
                 // once the interface queue drains, so we park until then.
                 #[cfg(apple)]
