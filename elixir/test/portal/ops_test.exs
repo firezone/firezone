@@ -84,6 +84,15 @@ defmodule Portal.OpsTest do
     end
   end
 
+  describe "reload_disposable_email_lists/0" do
+    test "reloads the lists on every node and returns each node's results" do
+      # The application's lists process has no URLs configured in tests.
+      assert reload_disposable_email_lists() == [
+               {node(), %{confirmed: :not_configured, suspected: :not_configured}}
+             ]
+    end
+  end
+
   describe "sync_pricing_plans/0" do
     test "applies current Stripe product features and limits to accounts" do
       account =

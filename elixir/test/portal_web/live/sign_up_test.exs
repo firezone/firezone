@@ -2,7 +2,9 @@ defmodule PortalWeb.SignUpTest do
   use PortalWeb.ConnCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
+  import Portal.DisposableEmailHelpers
 
   alias Portal.Mocks.Stripe
 
@@ -200,6 +202,14 @@ defmodule PortalWeb.SignUpTest do
       assert has_element?(lv, "#auth-brand-mobile", "Firezone")
       assert has_element?(lv, "#auth-card", "Create your organization")
       assert has_element?(lv, "#auth-trust-mobile", "WireGuard encrypted")
+    end
+
+    # The email field's errors overflow to the right of the form on wide screens.
+    test "lets field errors overflow the card on wide screens", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/email")
+
+      assert [card] = html |> Floki.parse_document!() |> Floki.find("#auth-card")
+      assert card |> Floki.attribute("class") |> hd() |> String.split() |> Enum.member?("lg:overflow-visible")
     end
 
     test "choosing email shows the sign-up form", %{conn: conn} do
@@ -1155,6 +1165,168 @@ defmodule PortalWeb.SignUpTest do
     end
   end
 
+  describe "disposable emails" do
+    @disposable_error "domain not allowed"
+    @idp_disposable_error "This email domain is not allowed at this time."
+
+    setup do
+      use_disposable_email_lists(confirmed: ["fldubai.com", "mail.tm"], suspected: ["mailinator.com"])
+      :ok
+    end
+
+    test "does not screen while the form changes", %{conn: conn} do
+      Portal.Config.put_env_override(:sign_up_disposable_mx_check_enabled, true)
+      stub_mx(fn _domain -> raise "MX records looked up" end)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html =
+        lv
+        |> form("form", registration: %{email: "user@fldubai.com"})
+        |> render_change()
+
+      refute html =~ @disposable_error
+    end
+
+    test "rejects a confirmed domain on submit without sending an email", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      log =
+        capture_log([level: :info], fn ->
+          html = submit_email_sign_up(lv, "user@sub.fldubai.com")
+
+          assert html =~ @disposable_error
+          refute html =~ "Check your email"
+        end)
+
+      assert log =~ "Sign-up blocked for confirmed disposable email"
+      assert log =~ "email_domain=sub.fldubai.com"
+      assert log =~ "source=domain"
+      assert log =~ "provider=email"
+      refute_email_sent()
+    end
+
+    test "allows a suspected domain and logs a warning", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      log =
+        capture_log(fn ->
+          assert submit_email_sign_up(lv, "user@mailinator.com") =~ "Check your email"
+        end)
+
+      assert log =~ "Sign-up from suspected disposable email"
+      assert log =~ "email_domain=mailinator.com"
+      assert_email_sent()
+    end
+
+    test "allows any domain without lists", %{conn: conn} do
+      use_disposable_email_lists([])
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      assert submit_email_sign_up(lv, "user@fldubai.com") =~ "Check your email"
+      assert_email_sent()
+    end
+
+    test "rejects a domain whose mail server is under a confirmed domain", %{conn: conn} do
+      Portal.Config.put_env_override(:sign_up_disposable_mx_check_enabled, true)
+      stub_mx(fn "fresh-domain.example" -> {:ok, ["in.mail.tm"]} end)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      log =
+        capture_log([level: :info], fn ->
+          assert submit_email_sign_up(lv, "user@fresh-domain.example") =~ @disposable_error
+        end)
+
+      assert log =~ "source=mx"
+      refute_email_sent()
+    end
+
+    test "screens only once the Turnstile challenge passes", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, Portal.Turnstile,
+        site_key: "test-site-key",
+        secret_key: "test-secret-key",
+        req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+      )
+
+      use_disposable_email_lists(confirmed: ["turnstile-gated.example"])
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      stub_turnstile(:refuse)
+
+      log =
+        capture_log([level: :info], fn ->
+          html = submit_email_form(lv, %{"cf-turnstile-response" => "bad-token"}, "user@turnstile-gated.example")
+          assert html =~ "Please complete the verification and try again."
+          refute html =~ @disposable_error
+        end)
+
+      refute log =~ "turnstile-gated.example"
+
+      stub_turnstile(:approve)
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"}, "user@turnstile-gated.example")
+      assert html =~ @disposable_error
+      refute_email_sent()
+    end
+
+    test "allows the sign-up when the MX lookup fails", %{conn: conn} do
+      Portal.Config.put_env_override(:sign_up_disposable_mx_check_enabled, true)
+      stub_mx(fn _domain -> {:error, :timeout} end)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      assert submit_email_sign_up(lv, "user@example.com") =~ "Check your email"
+      assert_email_sent()
+    end
+
+    test "rejects a Google identity with a confirmed domain once connected", %{conn: conn} do
+      conn = with_google_identity(conn, email: "ada@fldubai.com")
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/google")
+
+      assert html =~ "Something went wrong"
+      assert html =~ @idp_disposable_error
+    end
+
+    test "rejects a GitHub identity whose mail server is under a confirmed domain", %{conn: conn} do
+      Portal.Config.put_env_override(:sign_up_disposable_mx_check_enabled, true)
+      stub_mx(fn _domain -> {:ok, ["in.mail.tm"]} end)
+      conn = with_github_identity(conn, email: "octocat@fresh-domain.example")
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/github")
+
+      assert html =~ @idp_disposable_error
+    end
+
+    test "allows a Google identity with a suspected domain and logs one warning", %{conn: conn} do
+      conn = with_google_identity(conn, email: "ada@mailinator.com")
+
+      log =
+        capture_log(fn ->
+          {:ok, _lv, html} = live(conn, ~p"/sign_up/google")
+          assert html =~ "Almost there"
+        end)
+
+      assert [_warning] = Regex.scan(~r/Sign-up from suspected disposable email/, log)
+      assert log =~ "provider=google"
+    end
+
+    test "screens again when the identity sign-up completes", %{conn: conn} do
+      conn = with_google_identity(conn, email: "ada@fresh-domain.example")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      use_disposable_email_lists(confirmed: ["fresh-domain.example"])
+
+      conn =
+        submit_identity_form(lv, conn, "google", %{
+          account: %{name: "Fresh Corp"},
+          actor: %{name: "Ada Lovelace"},
+          sign_up_survey: @survey
+        })
+
+      assert redirected_to(conn) == ~p"/sign_up/google"
+      refute Portal.Repo.get_by(Portal.Account, name: "Fresh Corp")
+    end
+  end
+
   describe "sign-up survey" do
     setup do
       Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail, recipient: "feedback@example.com")
@@ -1503,6 +1675,20 @@ defmodule PortalWeb.SignUpTest do
 
     Plug.Test.init_test_session(conn, %{"idp_sign_up" => identity})
   end
+  defp submit_email_sign_up(lv, email) do
+    lv
+    |> form("form",
+      registration: %{
+        email: email,
+        phone: "",
+        account: %{name: "Test Corp"},
+        actor: %{name: "Test User"},
+        sign_up_survey: @survey
+      }
+    )
+    |> render_submit()
+  end
+
   # Submits the identity form, which the LiveView validates before the browser posts it to
   # PortalWeb.SignUpController.
   defp submit_identity_form(lv, conn, provider, registration) do

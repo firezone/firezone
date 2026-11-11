@@ -62,6 +62,7 @@ defmodule Portal.Application do
       Portal.SlugRegistry.Cache,
       Portal.ComponentVersions,
       Portal.OSReleases,
+      Portal.DisposableEmail.Lists,
       Portal.ClockDriftAlarm,
       OpenIDConnect.Document.Cache
     ]

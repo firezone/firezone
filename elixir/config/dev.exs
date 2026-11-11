@@ -77,6 +77,16 @@ config :portal, Portal.Billing,
   webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111"),
   default_price_id: System.get_env("STRIPE_DEFAULT_PRICE_ID", "price_1OkUIcADeNU9NGxvTNA4PPq6")
 
+# Point these at local files to try disposable email blocking, e.g.
+# SIGN_UP_CONFIRMED_DISPOSABLE_DOMAINS_URL=file:///tmp/confirmed.txt
+config :portal, Portal.DisposableEmail.Lists,
+  confirmed_url: System.get_env("SIGN_UP_CONFIRMED_DISPOSABLE_DOMAINS_URL"),
+  suspected_url: System.get_env("SIGN_UP_SUSPECTED_DISPOSABLE_DOMAINS_URL"),
+  refresh_interval: :timer.seconds(String.to_integer(System.get_env("SIGN_UP_DISPOSABLE_DOMAINS_REFRESH_INTERVAL_SECS", "10")))
+
+config :portal,
+  sign_up_disposable_mx_check_enabled: System.get_env("SIGN_UP_DISPOSABLE_MX_CHECK_ENABLED", "false") == "true"
+
 # For dev, we want to run things very frequently to aid development and testing.
 worker_dev_schedule = System.get_env("WORKER_DEV_SCHEDULE", "* * * * *")
 

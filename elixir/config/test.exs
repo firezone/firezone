@@ -257,6 +257,12 @@ config :portal, :revocation_endpoint_queue, enabled: false
 
 config :portal, Portal.OSReleases, reload_every: false
 
+config :portal, Portal.DisposableEmail.Lists,
+  req_opts: [
+    plug: {Req.Test, Portal.DisposableEmail.Lists},
+    retry: false
+  ]
+
 config :portal, Portal.OSReleases.Sync,
   req_opts: [
     plug: {Req.Test, Portal.OSReleases.Sync},

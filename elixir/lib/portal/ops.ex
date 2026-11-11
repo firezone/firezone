@@ -85,6 +85,30 @@ defmodule Portal.Ops do
     count_presences_on_nodes(nodes)
   end
 
+  @doc """
+  Reloads the disposable email domain lists on every node now, instead of waiting for
+  the next refresh. Run it after uploading a changed list, e.g. during a sign-up attack.
+
+  ## Examples
+
+      iex> reload_disposable_email_lists()
+      [
+        {:"portal@10.0.0.1", %{confirmed: :ok, suspected: :not_modified}},
+        {:"portal@10.0.0.2", %{confirmed: :ok, suspected: :not_modified}}
+      ]
+
+  """
+  def reload_disposable_email_lists do
+    nodes = [node() | Node.list()]
+
+    nodes
+    |> :erpc.multicall(Portal.DisposableEmail.Lists, :reload, [], :timer.seconds(35))
+    |> Enum.zip_with(nodes, fn
+      {:ok, results}, node -> {node, results}
+      {class, reason}, node -> {node, {:error, {class, reason}}}
+    end)
+  end
+
   defp count_presences_on_nodes(nodes) do
     nodes = MapSet.new(nodes)
 
