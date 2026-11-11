@@ -664,7 +664,8 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       html = render_click(lv, "confirm_disable_actor")
       assert html =~ "Disable"
-      assert html =~ "tokens are kept and work again if you enable it."
+      assert html =~ "Disabling this actor will immediately disconnect all its Clients."
+      assert html =~ "Its sessions and tokens are paused, not revoked."
 
       html = render_click(lv, "cancel_disable_actor")
       refute html =~ "Service account disabled successfully"

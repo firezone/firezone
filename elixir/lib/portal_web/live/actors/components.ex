@@ -963,12 +963,12 @@ defmodule PortalWeb.Actors.Components do
           >
             <p class="text-xs font-medium text-heading mb-1">Disable this actor?</p>
             <p class="text-xs text-body mb-2">
-              Its Clients disconnect now and cannot connect while it is disabled.
+              Disabling this actor will immediately disconnect all its Clients.
             </p>
             <p class="flex gap-1.5 text-xs text-warning mb-3">
               <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-px" />
               <span>
-                Its {if @actor.type == :service_account, do: "tokens", else: "Client sessions"} are kept and work again if you enable it. To remove them, revoke them first.
+                Its sessions and tokens are paused, not revoked. They work again if you re-enable the actor.
               </span>
             </p>
             <div class="flex items-center gap-1.5">
