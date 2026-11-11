@@ -11,6 +11,13 @@ defmodule PortalWeb.Groups do
 
   @member_page_size 10
 
+  @form_events ~w[validate focus_search blur_search add_member remove_member undo_member_removal create save]
+
+  @selected_group_events ~w[
+    filter_show_members prev_member_page next_member_page delete submit_grant_resource
+    disable_resource_access enable_resource_access remove_resource_access
+  ]
+
   import Ecto.Changeset
 
   alias PortalWeb.Policies.Components, as: PolicyComponents
@@ -36,6 +43,7 @@ defmodule PortalWeb.Groups do
         ],
         loader: &load_groups/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -928,6 +936,10 @@ defmodule PortalWeb.Groups do
       grant_conditions: grant_conditions_state(socket)
     ]
   end
+
+  defp stale_event?(event, %{group_form: %{form: nil}}) when event in @form_events, do: true
+  defp stale_event?(event, %{selected_group: nil}) when event in @selected_group_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp group_panel_state(overrides \\ []) do
     Map.merge(
