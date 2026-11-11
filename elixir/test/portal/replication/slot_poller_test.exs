@@ -205,6 +205,49 @@ defmodule Portal.Replication.SlotPollerTest do
     assert old_data["id"] == "2"
   end
 
+  test "fills unchanged out-of-line values in updates from the old tuple", %{
+    aux: aux,
+    table: table
+  } do
+    start_poller!()
+
+    Postgrex.query!(aux, "ALTER TABLE #{table} ALTER COLUMN val SET STORAGE EXTERNAL", [])
+
+    Postgrex.query!(
+      aux,
+      "INSERT INTO #{table} (id, val) SELECT 5, string_agg(md5(i::text), '') FROM generate_series(1, 300) i",
+      []
+    )
+
+    Postgrex.query!(aux, "UPDATE #{table} SET id = 6 WHERE id = 5", [])
+
+    assert_receive {:write, _, :insert, ^table, nil, %{"val" => val}}, 5000
+    assert byte_size(val) == 9600
+
+    assert_receive {:write, _, :update, ^table, %{"id" => "5", "val" => ^val}, %{"id" => "6", "val" => ^val}},
+                   5000
+  end
+
+  test "keeps unchanged out-of-line values marked when the old tuple is not replicated", %{
+    aux: aux,
+    table: table
+  } do
+    start_poller!()
+
+    Postgrex.query!(aux, "ALTER TABLE #{table} REPLICA IDENTITY DEFAULT", [])
+    Postgrex.query!(aux, "ALTER TABLE #{table} ALTER COLUMN val SET STORAGE EXTERNAL", [])
+
+    Postgrex.query!(
+      aux,
+      "INSERT INTO #{table} (id, val) SELECT 7, string_agg(md5(i::text), '') FROM generate_series(1, 300) i",
+      []
+    )
+
+    Postgrex.query!(aux, "UPDATE #{table} SET id = 8 WHERE id = 7", [])
+
+    assert_receive {:write, _, :update, ^table, nil, %{"id" => "8", "val" => :unchanged_toast}}, 5000
+  end
+
   test "does not poll while another session holds the leadership lock", %{
     aux: aux,
     slot: slot,

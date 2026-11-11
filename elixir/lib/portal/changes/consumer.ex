@@ -13,6 +13,7 @@ defmodule Portal.Changes.Consumer do
   require Logger
 
   alias Portal.Changes.Hooks
+  alias Portal.SchemaHelpers
 
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
@@ -69,11 +70,7 @@ defmodule Portal.Changes.Consumer do
     hook = Map.get(@tables_to_hooks, table)
 
     if hook do
-      case op do
-        :insert -> :ok = hook.on_insert(lsn, data)
-        :update -> :ok = hook.on_update(lsn, old_data, data)
-        :delete -> :ok = hook.on_delete(lsn, old_data)
-      end
+      dispatch(hook, lsn, op, table, old_data, data)
     else
       log_warning(op, table)
     end
@@ -83,6 +80,18 @@ defmodule Portal.Changes.Consumer do
 
   @impl true
   def flush(state), do: state
+
+  # A row that does not cast is skipped: hooks never act on a partial struct.
+  defp dispatch(hook, lsn, op, table, old_data, data) do
+    case op do
+      :insert -> :ok = hook.on_insert(lsn, data)
+      :update -> :ok = hook.on_update(lsn, old_data, data)
+      :delete -> :ok = hook.on_delete(lsn, old_data)
+    end
+  rescue
+    error in SchemaHelpers.CastError ->
+      Logger.error("Skipping #{op} on table #{table}: #{Exception.message(error)}", lsn: lsn)
+  end
 
   defp log_warning(op, table) do
     Logger.warning(
