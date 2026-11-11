@@ -57,7 +57,7 @@ impl Io {
                 move |outbound_rx| {
                     let open = move || bulk::Fd::open(fd, Interest::WRITABLE, syscalls);
 
-                    bulk::send(open, outbound_rx, max_coalesced_len.filter(|_| false))
+                    bulk::send(open, outbound_rx, max_coalesced_len)
                 },
                 move |inbound_tx| {
                     let open = move || bulk::Fd::open(fd, Interest::READABLE, syscalls);
