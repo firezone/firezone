@@ -947,7 +947,8 @@ fn send_connected(
     socket: &tokio::net::UdpSocket,
     transmit: &Transmit<'_>,
 ) -> io::Result<quinn_udp::SendCount> {
-    const CONTROL_LEN: usize = libc::CMSG_SPACE(size_of::<libc::c_int>() as _) as usize;
+    // SAFETY: CMSG_SPACE only calculates the space needed for this fixed-size value.
+    const CONTROL_LEN: usize = unsafe { libc::CMSG_SPACE(size_of::<libc::c_int>() as _) } as usize;
     let mut control = [0u64; CONTROL_LEN.div_ceil(size_of::<u64>())];
     let is_ipv4 = transmit.destination.is_ipv4()
         || matches!(transmit.destination.ip(), IpAddr::V6(ip) if ip.to_ipv4_mapped().is_some());
