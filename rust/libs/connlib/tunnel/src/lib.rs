@@ -905,10 +905,10 @@ fn warn_on_routing_loop<R: Role>(
 
     *logged = true;
 
+    tracing::debug!(src = %SocketAddr::new(packet.source(), udp.source_port()), %dst);
+
     // Our UDP sockets bypass the TUN device, so reading one of their datagrams means the bypass failed.
     tracing::warn!(
-        src = %SocketAddr::new(packet.source(), udp.source_port()),
-        %dst,
         ?remote,
         "Routing loop: read our own UDP datagram from the TUN device"
     );
