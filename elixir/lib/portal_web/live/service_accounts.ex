@@ -16,6 +16,10 @@ defmodule PortalWeb.ServiceAccounts do
 
   require Logger
 
+  @form_events ~w[validate save create_service_account]
+
+  @selected_actor_events ~w[open_actor_edit_form cancel_actor_edit_form save create_token delete_token]
+
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
 
@@ -43,6 +47,7 @@ defmodule PortalWeb.ServiceAccounts do
         ],
         loader: &load_actors/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -710,6 +715,10 @@ defmodule PortalWeb.ServiceAccounts do
     </div>
     """
   end
+
+  defp stale_event?(event, %{actor_form: %{form: nil}}) when event in @form_events, do: true
+  defp stale_event?(event, %{selected_actor: nil}) when event in @selected_actor_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp base_actor_assigns do
     [

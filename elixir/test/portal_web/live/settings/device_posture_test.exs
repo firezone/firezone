@@ -1918,4 +1918,27 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert provider.tenant_id == verified
     end
   end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"validate", %{"provider" => %{"name" => "Late"}}},
+          {"start_verification", %{}},
+          {"reset_verification", %{}},
+          {"submit", %{"provider" => %{"name" => "Late"}}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+        render_click(lv, unquote(event), unquote(Macro.escape(params)))
+
+        assert render(lv) =~ "Device Posture"
+      end
+    end
+  end
 end

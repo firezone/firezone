@@ -1262,4 +1262,37 @@ defmodule PortalWeb.ServiceAccountsTest do
       refute html =~ other.name
     end
   end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"open_actor_edit_form", %{}},
+          {"cancel_actor_edit_form", %{}},
+          {"validate", %{"actor" => %{"name" => "Late"}}},
+          {"save", %{"actor" => %{"name" => "Late"}}},
+          {"create_service_account", %{"actor" => %{"name" => "Late"}, "token_expiration" => ""}},
+          {"create_token", %{"token_expiration" => :expiration}},
+          {"delete_token", %{"id" => :token_id}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        service_account = service_account_fixture(account: account)
+        token = client_token_fixture(account: account, actor: service_account)
+        expiration = Date.utc_today() |> Date.add(30) |> Date.to_iso8601()
+        ids = %{token_id: token.id, expiration: expiration}
+
+        {:ok, lv, _html} =
+          conn |> authorize_conn(actor) |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/service_accounts")
+
+        params = Map.new(unquote(Macro.escape(params)), fn {k, v} -> {k, Map.get(ids, v, v)} end)
+        render_click(lv, unquote(event), params)
+
+        assert render(lv) =~ service_account.name
+        assert Repo.get_by(Actor, account_id: account.id, id: service_account.id).name == service_account.name
+        refute Repo.get_by(Actor, account_id: account.id, name: "Late")
+        assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: token.id)
+      end
+    end
+  end
 end

@@ -16,6 +16,12 @@ defmodule PortalWeb.Resources do
 
   @device_search_refill_threshold 5
 
+  @form_events ~w[change_resource_form submit_resource_form]
+
+  @selected_resource_events ~w[
+    open_grant_form submit_grant disable_policy enable_policy remove_group_access delete_resource
+  ]
+
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
 
@@ -58,6 +64,7 @@ defmodule PortalWeb.Resources do
         ],
         loader: &load_resources/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -154,6 +161,10 @@ defmodule PortalWeb.Resources do
      |> assign(filter_site: filter_site, selected_resource: nil, selected_groups: [])
      |> assign(resource_state_assigns(socket))}
   end
+
+  defp stale_event?(event, %{resource_form: %{form: nil}}) when event in @form_events, do: true
+  defp stale_event?(event, %{selected_resource: nil}) when event in @selected_resource_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp resource_state_assigns(socket, overrides \\ []) do
     [

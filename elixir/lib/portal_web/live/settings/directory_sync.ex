@@ -54,7 +54,10 @@ defmodule PortalWeb.Settings.DirectorySync do
       :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :directories)
     end
 
-    {:ok, init_if_connected(socket)}
+    {:ok,
+     socket
+     |> init_if_connected()
+     |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)}
   end
 
   defp refresh_hook_directory(%{assigns: %{live_action: :hook, directory: directory}} = socket) do
@@ -282,7 +285,10 @@ defmodule PortalWeb.Settings.DirectorySync do
   def handle_event("delete_directory", %{"id" => id}, socket) do
     directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end)
 
-    case Database.delete_directory(directory, socket.assigns.subject) do
+    case directory && Database.delete_directory(directory, socket.assigns.subject) do
+      nil ->
+        {:noreply, socket}
+
       {:ok, _directory} ->
         unsubscribe_webhooks(directory)
 
@@ -299,35 +305,9 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   def handle_event("toggle_directory", %{"id" => id}, socket) do
-    directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end)
-    new_disabled_state = not directory.is_disabled
-    account = socket.assigns.account
-
-    # Check if trying to enable a directory without the IDP_SYNC feature
-    if new_disabled_state == false && not account.features.idp_sync do
-      {:noreply,
-       put_flash(
-         socket,
-         :error,
-         "Directory sync is available on the Enterprise plan. Please upgrade your plan."
-       )}
-    else
-      changeset = toggle_directory_changeset(directory, new_disabled_state)
-      action = if(new_disabled_state, do: "disabled", else: "enabled")
-
-      case Database.update_directory(changeset, socket.assigns.subject) do
-        {:ok, _directory} ->
-          update_webhooks(directory, new_disabled_state)
-
-          {:noreply,
-           socket
-           |> init()
-           |> put_flash(:success, "Directory #{action} successfully.")}
-
-        {:error, reason} ->
-          Logger.info("Failed to toggle directory: #{inspect(reason)}")
-          {:noreply, put_flash(socket, :error, "Failed to update directory.")}
-      end
+    case Enum.find(socket.assigns.directories, &(&1.id == id)) do
+      nil -> {:noreply, socket}
+      directory -> toggle_directory(directory, socket)
     end
   end
 
@@ -2717,6 +2697,41 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp sync_module(%Entra.Directory{}), do: Entra.Sync
   defp sync_module(%Google.Directory{}), do: Google.Sync
   defp sync_module(%Okta.Directory{}), do: Okta.Sync
+
+  defp toggle_directory(directory, socket) do
+    new_disabled_state = not directory.is_disabled
+    account = socket.assigns.account
+
+    # Check if trying to enable a directory without the IDP_SYNC feature
+    if new_disabled_state == false && not account.features.idp_sync do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Directory sync is available on the Enterprise plan. Please upgrade your plan."
+       )}
+    else
+      changeset = toggle_directory_changeset(directory, new_disabled_state)
+      action = if(new_disabled_state, do: "disabled", else: "enabled")
+
+      case Database.update_directory(changeset, socket.assigns.subject) do
+        {:ok, _directory} ->
+          update_webhooks(directory, new_disabled_state)
+
+          {:noreply,
+           socket
+           |> init()
+           |> put_flash(:success, "Directory #{action} successfully.")}
+
+        {:error, reason} ->
+          Logger.info("Failed to toggle directory: #{inspect(reason)}")
+          {:noreply, put_flash(socket, :error, "Failed to update directory.")}
+      end
+    end
+  end
+
+  defp stale_event?("submit_directory", %{live_action: action}) when action not in [:new, :edit], do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defmodule Database do
     alias Portal.{Entra, Google, Okta, Safe}
