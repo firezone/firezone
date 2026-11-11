@@ -641,6 +641,7 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       html = render_click(lv, "confirm_disable_actor")
       assert html =~ "Disable"
+      assert html =~ "tokens are kept and work again if you enable it."
 
       html = render_click(lv, "cancel_disable_actor")
       refute html =~ "Service account disabled successfully"

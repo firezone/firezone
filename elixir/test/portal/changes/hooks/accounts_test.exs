@@ -198,7 +198,7 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       assert Repo.get_by(Portal.PolicyAuthorization, id: policy_authorization.id) == nil
     end
 
-    test "deletes associated client tokens when account is disabled" do
+    test "keeps client tokens when account is disabled" do
       account = account_fixture()
       client_token = client_token_fixture(account: account)
 
@@ -213,7 +213,7 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       }
 
       assert :ok == on_update(0, old_data, data)
-      assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
+      assert Repo.get_by(Portal.ClientToken, id: client_token.id)
     end
   end
 

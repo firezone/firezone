@@ -594,6 +594,7 @@ defmodule PortalWeb.ActorsTest do
 
       html = render_click(lv, "confirm_disable_actor")
       assert html =~ "Disable this actor?"
+      assert html =~ "Client sessions are kept and work again if you enable it."
 
       html = render_click(lv, "cancel_disable_actor")
       refute html =~ "Disable this actor?"

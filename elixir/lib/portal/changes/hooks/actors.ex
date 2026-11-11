@@ -29,8 +29,8 @@ defmodule Portal.Changes.Hooks.Actors do
     PubSub.Changes.broadcast(actor.account_id, :actors, change)
   end
 
-  # Delete client_tokens, portal_sessions, and OAuth grants when an actor is
-  # disabled. Re-enabling the actor would otherwise bring them all back.
+  # Client tokens are kept: a disabled actor cannot use them, and its clients
+  # connect again when the actor is enabled.
   defp handle_update_side_effects(
          %{
            "is_disabled" => false,
@@ -39,7 +39,6 @@ defmodule Portal.Changes.Hooks.Actors do
          },
          %{"is_disabled" => true}
        ) do
-    Database.delete_client_tokens_for_actor(account_id, actor_id)
     Database.delete_portal_sessions_for_actor(account_id, actor_id)
     Database.delete_oauth_grants_for_actor(account_id, actor_id)
 
