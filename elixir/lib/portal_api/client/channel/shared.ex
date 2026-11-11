@@ -92,67 +92,21 @@ defmodule PortalAPI.Client.Channel.Shared do
   @impl true
   # Called immediately after the client joins the channel
   def handle_info(:after_join, socket) do
-    # Schedule reassessing allowed resources
-    Process.send_after(
-      self(),
-      :recompute_authorized_resources,
-      @recompute_authorized_resources_every
-    )
-
-    Process.send_after(
-      self(),
-      :prune_authorizations_cache,
-      @prune_authorizations_cache_every
-    )
-
-    schedule_session_expiry(socket.assigns.subject.expires_at)
-
-    # Get initial list of authorized resources, hydrating the cache
-    {:ok, resources, [], cache} =
-      Cache.Client.recompute_connectable_resources(
-        nil,
-        socket.assigns.client,
-        socket.assigns.subject,
-        protocol_version: protocol_version(socket)
-      )
-
-    # Hydrate the policy_authorizations caches so the channel can react to filter
-    # changes and policy_authorization deletions for resources another client has been
-    # authorized to access via this one.
-    {authorizations_cache, outbound_authorizations_cache} =
-      Cache.Client.Authorizations.hydrate(socket.assigns.client)
-
-    # Initialize relays and subscribe to global relay presence
-    {:ok, relays} = select_relays(socket)
-    :ok = Presence.Relays.subscribe()
-
-    socket =
-      socket
-      # Cache relay IDs and stamp secrets for tracking
-      |> cache_relays(relays)
-      |> assign(
-        cache: cache,
-        authorizations_cache: authorizations_cache,
-        outbound_authorizations_cache: outbound_authorizations_cache,
-        pending_authorizations: %{},
-        iceless_capable: false
-      )
-      # Track client's presence and monitor tracker shard processes for crash recovery
-      |> track_presence()
-
+    # Subscribe before reading any state so no change committed after the reads is missed.
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
 
-    {:noreply, socket} = register(socket)
+    case Database.fetch_device_with_actor_and_account(socket.assigns.client) do
+      nil ->
+        {:stop, :shutdown, socket}
 
-    init(socket, resources, relays)
+      %Device{account: account, actor: actor} when account.is_disabled or actor.is_disabled ->
+        handle_info(:disconnect, socket)
 
-    :ok =
-      PortalAPI.Sockets.notify_public_key_changed(
-        socket.assigns.client,
-        socket.assigns[:previous_public_key]
-      )
-
-    {:noreply, socket}
+      %Device{} = device ->
+        socket
+        |> refresh_connect_state(device)
+        |> hydrate_and_init()
+    end
   end
 
   ####################################
@@ -2120,6 +2074,78 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp excluded_relay_ids(_payload), do: []
 
+  # The socket read these before the channel subscribed, so a change in between would be lost.
+  defp refresh_connect_state(socket, device) do
+    current = socket.assigns.client
+    account = SchemaHelpers.merge_broadcast(socket.assigns.subject.account, device.account)
+    subject = %{socket.assigns.subject | account: account}
+    client = Device.merge_broadcast(current, %{device | actor: current.actor, account: current.account})
+    socket = assign(socket, subject: subject, client: client)
+
+    assign(socket, :client, %{client | posture: load_posture_rows(socket)})
+  end
+
+  defp hydrate_and_init(socket) do
+    Process.send_after(
+      self(),
+      :recompute_authorized_resources,
+      @recompute_authorized_resources_every
+    )
+
+    Process.send_after(
+      self(),
+      :prune_authorizations_cache,
+      @prune_authorizations_cache_every
+    )
+
+    schedule_session_expiry(socket.assigns.subject.expires_at)
+
+    # Get initial list of authorized resources, hydrating the cache
+    {:ok, resources, [], cache} =
+      Cache.Client.recompute_connectable_resources(
+        nil,
+        socket.assigns.client,
+        socket.assigns.subject,
+        protocol_version: protocol_version(socket)
+      )
+
+    # Hydrate the policy_authorizations caches so the channel can react to filter
+    # changes and policy_authorization deletions for resources another client has been
+    # authorized to access via this one.
+    {authorizations_cache, outbound_authorizations_cache} =
+      Cache.Client.Authorizations.hydrate(socket.assigns.client)
+
+    # Initialize relays and subscribe to global relay presence
+    {:ok, relays} = select_relays(socket)
+    :ok = Presence.Relays.subscribe()
+
+    socket =
+      socket
+      # Cache relay IDs and stamp secrets for tracking
+      |> cache_relays(relays)
+      |> assign(
+        cache: cache,
+        authorizations_cache: authorizations_cache,
+        outbound_authorizations_cache: outbound_authorizations_cache,
+        pending_authorizations: %{},
+        iceless_capable: false
+      )
+      # Track client's presence and monitor tracker shard processes for crash recovery
+      |> track_presence()
+
+    {:noreply, socket} = register(socket)
+
+    init(socket, resources, relays)
+
+    :ok =
+      PortalAPI.Sockets.notify_public_key_changed(
+        socket.assigns.client,
+        socket.assigns[:previous_public_key]
+      )
+
+    {:noreply, socket}
+  end
+
   defp init(socket, resources, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
@@ -3286,6 +3312,20 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.exists?()
+    end
+
+    def fetch_device_with_actor_and_account(%Device{} = client) do
+      from(device in Device,
+        join: actor in Portal.Actor,
+        on: actor.account_id == device.account_id and actor.id == device.actor_id,
+        join: account in Portal.Account,
+        on: account.id == device.account_id,
+        where: device.account_id == ^client.account_id,
+        where: device.id == ^client.id,
+        preload: [actor: actor, account: account]
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.one()
     end
 
     # Nothing else clears these when a channel stops, so a cut session would

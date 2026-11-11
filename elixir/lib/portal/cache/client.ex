@@ -431,27 +431,24 @@ defmodule Portal.Cache.Client do
   def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
     policy = Portal.Cache.Cacheable.to_cache(policy)
 
-    if Map.has_key?(cache.memberships, policy.group_id) do
-      # Add policy to the cache
+    with true <- Map.has_key?(cache.memberships, policy.group_id),
+         {:ok, cache} <- put_policy_resource(cache, policy.resource_id, resource_id, subject) do
       cache = %{cache | policies: Map.put(cache.policies, policy.id, policy)}
-
-      # Maybe add resource to the cache if we don't already have it
-      cache =
-        if Map.has_key?(cache.resources, policy.resource_id) do
-          cache
-        else
-          # Need to fetch the resource from the DB
-          {:ok, resource} = Database.fetch_resource_by_id(resource_id, subject)
-          resource = Database.preload_site(resource)
-
-          resource = Portal.Cache.Cacheable.to_cache(resource)
-
-          %{cache | resources: Map.put(cache.resources, resource.id, resource)}
-        end
-
       recompute_connectable_resources(cache, client, subject)
     else
-      {:ok, [], [], cache}
+      _ -> {:ok, [], [], cache}
+    end
+  end
+
+  # A replayed insert can name a resource that has since been deleted.
+  defp put_policy_resource(cache, resource_id_bytes, resource_id, subject) do
+    if Map.has_key?(cache.resources, resource_id_bytes) do
+      {:ok, cache}
+    else
+      with {:ok, resource} <- Database.fetch_resource_by_id(resource_id, subject) do
+        resource = Portal.Cache.Cacheable.to_cache(resource)
+        {:ok, %{cache | resources: Map.put(cache.resources, resource.id, resource)}}
+      end
     end
   end
 
@@ -990,10 +987,6 @@ defmodule Portal.Cache.Client do
         {:error, :unauthorized} -> {:error, :unauthorized}
         resource -> {:ok, resource}
       end
-    end
-
-    def preload_site(resource) do
-      Safe.preload(resource, :site)
     end
 
     def get_site_by_id(site_id, subject) when is_binary(site_id) do

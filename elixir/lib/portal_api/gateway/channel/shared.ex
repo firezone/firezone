@@ -106,7 +106,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   @impl true
   def handle_info(:after_join, socket) do
-    # Initialize the cache
+    # Subscribe before reading any state so no change committed after the reads is missed.
+    :ok = PubSub.Changes.subscribe(socket.assigns.gateway.account_id)
+
     socket =
       assign(socket,
         cache: Cache.Gateway.hydrate(socket.assigns.gateway),
@@ -127,8 +129,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     # Track gateway presence and monitor tracker shard processes for crash recovery
     socket = track_presence(socket)
-
-    :ok = PubSub.Changes.subscribe(socket.assigns.gateway.account_id)
 
     {:noreply, socket} = register(socket)
 
