@@ -6,6 +6,7 @@ defmodule PortalAPI.Client.ChannelTest do
   alias Portal.Fixture
   alias Portal.Presence
   alias Portal.{PG, PubSub}
+  alias Portal.Replication.Decoder.Messages.Begin
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -530,6 +531,7 @@ defmodule PortalAPI.Client.ChannelTest do
       Portal.Changes.Hooks.DeviceTokens.on_delete(lsn, data)
 
       assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
@@ -1134,6 +1136,7 @@ defmodule PortalAPI.Client.ChannelTest do
       PG.deliver(client.id, :disconnect)
 
       assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
@@ -2008,6 +2011,41 @@ defmodule PortalAPI.Client.ChannelTest do
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
     end
 
+    test "applies a transaction that committed after a later-written one", %{
+      account: account,
+      client: client,
+      subject: subject,
+      membership: membership,
+      dns_resource: dns_resource
+    } do
+      join_channel(client, subject)
+      assert_push "init", _init_payload
+      Repo.delete!(membership)
+      other_group = group_fixture(account: account)
+      dns_resource_id = dns_resource.id
+
+      state =
+        %{}
+        |> Changes.Consumer.init_state()
+        |> Changes.Consumer.on_begin(%Begin{final_lsn: {1, 300}})
+        |> Changes.Consumer.on_write(200, :insert, "groups", nil, %{
+          "id" => other_group.id,
+          "account_id" => account.id,
+          "name" => other_group.name
+        })
+
+      state
+      |> Changes.Consumer.on_begin(%Begin{final_lsn: {1, 400}})
+      |> Changes.Consumer.on_write(100, :delete, "memberships", %{
+        "id" => membership.id,
+        "account_id" => membership.account_id,
+        "actor_id" => membership.actor_id,
+        "group_id" => membership.group_id
+      }, nil)
+
+      assert_push "resource_deleted", ^dns_resource_id
+    end
+
     test "for account updates the subject in the socket", %{
       client: client,
       subject: subject,
@@ -2529,7 +2567,8 @@ defmodule PortalAPI.Client.ChannelTest do
         old_struct: client
       })
 
-      assert_receive {:EXIT, _pid, _reason}
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
     end
 
     test "for sites pushes resource_created_or_updated for name changes", %{
@@ -2642,6 +2681,34 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "resource_created_or_updated", payload
 
       assert payload.id == resource.id
+    end
+
+    test "for disabled policy inserts keeps the resource out of the client", %{
+      client: client,
+      subject: subject,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+      resource = resource_fixture(account: account)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      policy = disabled_policy_fixture(%{account: account, group: group, resource: resource})
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: policy})
+
+      refute_push "resource_created_or_updated", _payload
+
+      state = :sys.get_state(socket.channel_pid)
+      refute Map.has_key?(state.assigns.cache.policies, Ecto.UUID.dump!(policy.id))
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+
+      resource_id = resource.id
+      assert_push "flow_creation_failed", %{reason: :not_found, resource_id: ^resource_id}
     end
 
     test "for breaking policy updates sends resource_deleted followed by resource_created_or_updated",

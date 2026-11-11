@@ -3,6 +3,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
   alias Portal.Cache
   alias Portal.Changes
   alias Portal.PG
+  alias Portal.Replication.Decoder.Messages.Begin
   import Portal.Cache.Cacheable, only: [to_cache: 1]
   import Portal.SchemaHelpers, only: [struct_from_params: 2]
   import ExUnit.CaptureLog
@@ -1361,6 +1362,58 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
     end
 
+    test "applies a transaction that committed after a later-written one", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token,
+      client: client,
+      resource: resource
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      pa_id = Ecto.UUID.generate()
+      expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        cache = Cache.Gateway.put(state.assigns.cache, pa_id, client.id, resource.id, expires_at)
+        put_in(state.assigns.cache, cache)
+      end)
+
+      other_group = group_fixture(account: account)
+
+      state =
+        %{}
+        |> Changes.Consumer.init_state()
+        |> Changes.Consumer.on_begin(%Begin{final_lsn: {1, 300}})
+        |> Changes.Consumer.on_write(200, :insert, "groups", nil, %{
+          "id" => other_group.id,
+          "account_id" => account.id,
+          "name" => other_group.name
+        })
+
+      state
+      |> Changes.Consumer.on_begin(%Begin{final_lsn: {1, 400}})
+      |> Changes.Consumer.on_write(
+        100,
+        :delete,
+        "policy_authorizations",
+        %{
+          "id" => pa_id,
+          "account_id" => account.id,
+          "initiating_device_id" => client.id,
+          "receiving_device_id" => gateway.id,
+          "resource_id" => resource.id
+        },
+        nil
+      )
+
+      assert_push "reject_access", %{client_id: client_id, resource_id: resource_id}
+      assert client_id == client.id
+      assert resource_id == resource.id
+    end
+
     test ":prune_cache removes key completely when all policy authorizations are expired", %{
       account: account,
       actor: actor,
@@ -1832,6 +1885,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       Changes.Hooks.DeviceTokens.on_delete(lsn, data)
 
       assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
@@ -1853,7 +1907,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         old_struct: gateway
       })
 
-      assert_receive {:EXIT, _pid, _reason}
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
     end
 
     test "pushes allow_access message", %{
