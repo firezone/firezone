@@ -439,6 +439,12 @@ defmodule PortalWeb.Settings.Account do
                   account tokens. Recreate every API token and reconnect your MCP clients.
                 </p>
                 <p>
+                  Before the transfer, add
+                  <code>{Page.portal_url(Page.other_region(@data_residency_region))}/auth/oidc/callback</code>
+                  as an additional redirect URI in your identity provider for every Okta and
+                  custom OIDC authentication provider, so users can sign in after the move.
+                </p>
+                <p>
                   Logs are not moved. They are deleted from the old region when the transfer
                   completes, and that region's database backups expire 30 days later.
                 </p>

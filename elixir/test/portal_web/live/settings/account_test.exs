@@ -270,6 +270,8 @@ defmodule PortalWeb.Settings.AccountTest do
       assert html =~ "wss://eu.api.firezone.dev"
       assert html =~ "headless Clients need new service"
       assert html =~ "reconnect your MCP clients"
+      assert html =~ "https://eu.app.firezone.dev/auth/oidc/callback"
+      assert html =~ "custom OIDC authentication provider"
       assert html =~ "Logs are not moved."
       assert html =~ "bill in EUR from then on"
       assert html =~ actor.email
