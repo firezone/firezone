@@ -3026,8 +3026,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                   %{
                     disconnected_ids: [relay1_id],
                     connected: [relay_view1, relay_view2]
-                  },
-                  200
+                  }
 
       assert relay_view1.id == relay2.id
       assert relay_view2.id == relay2.id
@@ -3065,8 +3064,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                   %{
                     disconnected_ids: [],
                     connected: [relay_view, _relay_view]
-                  },
-                  200
+                  }
 
       assert %{
                addr: _,
@@ -3087,8 +3085,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                   %{
                     disconnected_ids: [],
                     connected: _connected
-                  },
-                  200
+                  }
 
       # Now connect a third relay - should NOT receive relays_presence since we have >= 2 relays
       third_relay = relay_fixture(%{lat: 37.0, lon: -120.0})
@@ -4576,34 +4573,33 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      # Use a non-zero debounce so disconnect + reconnect with the same relay ID
-      # are coalesced into a single presence check.
-      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 50)
-
       relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
 
       :ok = Portal.Presence.Relays.connect(relay1)
 
       gateway = with_session(gateway, token, [])
 
-      PortalAPI.Gateway.Socket
-      |> socket("gateway:#{gateway.id}", %{
-        token_id: token.id,
-        gateway: gateway,
-        session_ref: make_ref(),
-        site: site,
-        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
-      })
-      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+      {:ok, _reply, socket} =
+        PortalAPI.Gateway.Socket
+        |> socket("gateway:#{gateway.id}", %{
+          token_id: token.id,
+          gateway: gateway,
+          session_ref: make_ref(),
+          site: site,
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+        })
+        |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
       # Disconnect then reconnect with same stamp secret (simulating transient disconnect)
-      Portal.Presence.Relays.disconnect(relay1)
-      :ok = Portal.Presence.Relays.connect(relay1)
+      while_suspended(socket.channel_pid, fn ->
+        Portal.Presence.Relays.disconnect(relay1)
+        :ok = Portal.Presence.Relays.connect(relay1)
+      end)
 
       # Should not receive any disconnect since relay is still online with same secret
       relay_id = relay1.id
@@ -4620,33 +4616,29 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      # Use a non-zero debounce so both disconnect and reconnect presence_diff events
-      # are captured in the same window and delivered as one combined message.
-      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
-
       relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
 
       :ok = Portal.Presence.Relays.connect(relay1)
 
       gateway = with_session(gateway, token, [])
 
-      PortalAPI.Gateway.Socket
-      |> socket("gateway:#{gateway.id}", %{
-        token_id: token.id,
-        gateway: gateway,
-        session_ref: make_ref(),
-        site: site,
-        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
-      })
-      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+      {:ok, _reply, socket} =
+        PortalAPI.Gateway.Socket
+        |> socket("gateway:#{gateway.id}", %{
+          token_id: token.id,
+          gateway: gateway,
+          session_ref: make_ref(),
+          site: site,
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+        })
+        |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
       # Reconnect with a different stamp secret (relay process restarted)
-      Portal.Presence.Relays.disconnect(relay1)
       new_stamp_secret = Portal.Crypto.random_token()
 
       relay1_reconnected = %{
@@ -4655,15 +4647,17 @@ defmodule PortalAPI.Gateway.ChannelTest do
           id: Portal.Relay.generate_id(new_stamp_secret)
       }
 
-      :ok = Portal.Presence.Relays.connect(relay1_reconnected)
+      while_suspended(socket.channel_pid, fn ->
+        Portal.Presence.Relays.disconnect(relay1)
+        :ok = Portal.Presence.Relays.connect(relay1_reconnected)
+      end)
 
       # Should receive disconnect since stamp_secret changed (new ID for connected, old ID for disconnected)
       assert_push "relays_presence",
                   %{
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: [relay_id]
-                  },
-                  100
+                  }
 
       # The connected relay views have the NEW ID (from the new stamp_secret)
       assert relay_view1.id == relay1_reconnected.id
@@ -4705,8 +4699,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                   %{
                     connected: [],
                     disconnected_ids: [relay_id]
-                  },
-                  100
+                  }
 
       assert relay_id == relay1.id
     end
@@ -4982,7 +4975,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Set debounce to 50ms so the test is fast but we can still observe coalescing
       Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 50)
 
-      join_channel(gateway, site, token)
+      socket = join_channel(gateway, site, token)
 
       assert_push "init", %{relays: []}
 
@@ -4992,14 +4985,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :ok = Portal.Presence.Relays.connect(relay)
 
       # Should receive exactly one relays_presence after debounce period
-      assert_push "relays_presence", %{connected: [_, _], disconnected_ids: []}, 200
+      assert_push "relays_presence", %{connected: [_, _], disconnected_ids: []}
 
       # Rapidly disconnect and reconnect the relay multiple times
       # Each triggers a presence_diff, but they should be coalesced
-      for _ <- 1..3 do
-        Portal.Presence.Relays.disconnect(relay)
-        :ok = Portal.Presence.Relays.connect(relay)
-      end
+      while_suspended(socket.channel_pid, fn ->
+        for _ <- 1..3 do
+          Portal.Presence.Relays.disconnect(relay)
+          :ok = Portal.Presence.Relays.connect(relay)
+        end
+      end)
 
       # After debounce, should receive exactly one update reflecting final state
       # Since the relay is online with the same stamp_secret, no disconnects should be reported
@@ -5020,5 +5015,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       put_in(state.assigns.cache, cache)
     end)
+  end
+
+  defp while_suspended(pid, fun) do
+    :sys.suspend(pid)
+
+    try do
+      fun.()
+    after
+      :sys.resume(pid)
+    end
   end
 end

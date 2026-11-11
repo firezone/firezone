@@ -860,8 +860,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     disconnected_ids: [relay1_id],
                     connected: [relay_view1, relay_view2]
-                  },
-                  100
+                  }
 
       assert relay1_id == relay1.id
       assert relay_view1.id == relay2.id
@@ -917,8 +916,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     disconnected_ids: [],
                     connected: [relay_view, _relay_view]
-                  },
-                  100
+                  }
 
       assert %{
                addr: _,
@@ -936,8 +934,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     disconnected_ids: [],
                     connected: connected
-                  },
-                  100
+                  }
 
       # Both relays should be in the connected list
       relay_ids = Enum.map(connected, & &1.id) |> Enum.uniq()
@@ -980,8 +977,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     disconnected_ids: [relay1_id],
                     connected: []
-                  },
-                  100
+                  }
 
       assert relay1_id == relay1.id
     end
@@ -1594,14 +1590,10 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      # Use a non-zero debounce to prevent race condition where the 0ms debounce
-      # timer fires before the test process has called connect() after disconnect()
-      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
-
       # Connect relay BEFORE client joins so it's included in init
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
-      join_channel(client, subject)
+      socket = join_channel(client, subject)
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
@@ -1609,8 +1601,10 @@ defmodule PortalAPI.Client.ChannelTest do
 
       # Disconnect and immediately reconnect with same relay (same id)
       # The CRDT state will show the relay as online when we check Presence.list()
-      Portal.Presence.Relays.disconnect(relay1)
-      :ok = Portal.Presence.Relays.connect(relay1)
+      while_suspended(socket.channel_pid, fn ->
+        Portal.Presence.Relays.disconnect(relay1)
+        :ok = Portal.Presence.Relays.connect(relay1)
+      end)
 
       # Should not receive any disconnect since relay is still online with same id
       relay_id = relay1.id
@@ -1626,30 +1620,28 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      # Use a non-zero debounce so both disconnect and reconnect presence_diff events
-      # are captured in the same window and delivered as one combined message.
-      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
-
       # Connect relay BEFORE client joins so it's included in init
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
-      join_channel(client, subject)
+      socket = join_channel(client, subject)
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
       # Disconnect and connect a new relay (different id)
-      Portal.Presence.Relays.disconnect(relay1)
-      relay2 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 =
+        while_suspended(socket.channel_pid, fn ->
+          Portal.Presence.Relays.disconnect(relay1)
+          connect_relay(%{lat: 37.0, lon: -120.0})
+        end)
 
       # Should receive disconnect for old relay and connect for new relay
       assert_push "relays_presence",
                   %{
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: [relay_id]
-                  },
-                  100
+                  }
 
       assert relay_view1.id == relay2.id
       assert relay_view2.id == relay2.id
@@ -1676,8 +1668,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     connected: [],
                     disconnected_ids: [relay_id]
-                  },
-                  100
+                  }
 
       assert relay_id == relay1.id
     end
@@ -1696,8 +1687,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: []
-                  },
-                  100
+                  }
 
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
@@ -1710,8 +1700,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     connected: [],
                     disconnected_ids: [relay1_id]
-                  },
-                  100
+                  }
 
       assert relay1_id == relay1.id
 
@@ -1722,8 +1711,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: []
-                  },
-                  100
+                  }
 
       assert relay2.id == relay_view1.id
       assert relay2.id == relay_view2.id
@@ -1936,7 +1924,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Set debounce to 10ms so the test is fast but we can still observe coalescing
       Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
 
-      join_channel(client, subject)
+      socket = join_channel(client, subject)
 
       assert_push "init", %{relays: []}
 
@@ -1946,14 +1934,16 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Portal.Presence.Relays.connect(relay)
 
       # Should receive exactly one relays_presence after debounce period
-      assert_push "relays_presence", %{connected: [_, _], disconnected_ids: []}, 200
+      assert_push "relays_presence", %{connected: [_, _], disconnected_ids: []}
 
       # Rapidly disconnect and reconnect the relay multiple times
       # Each triggers a presence_diff, but they should be coalesced
-      for _ <- 1..3 do
-        Portal.Presence.Relays.disconnect(relay)
-        :ok = Portal.Presence.Relays.connect(relay)
-      end
+      while_suspended(socket.channel_pid, fn ->
+        for _ <- 1..3 do
+          Portal.Presence.Relays.disconnect(relay)
+          :ok = Portal.Presence.Relays.connect(relay)
+        end
+      end)
 
       # After debounce, should receive exactly one update reflecting final state
       # Since the relay is online with the same stamp_secret, no disconnects should be reported
@@ -9852,5 +9842,15 @@ defmodule PortalAPI.Client.ChannelTest do
       resource_id: Ecto.UUID.generate(),
       expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
     }
+  end
+
+  defp while_suspended(pid, fun) do
+    :sys.suspend(pid)
+
+    try do
+      fun.()
+    after
+      :sys.resume(pid)
+    end
   end
 end
