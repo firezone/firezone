@@ -376,17 +376,52 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       assert evaluate(@jailbroken, device) == @failed
     end
 
-    test "the user agent decides when no row says, and nothing is dropped when neither does" do
-      assert Evaluator.platform(device(last_seen_user_agent: "Windows/11 gui-client/1.0.0")) == :windows
-      assert Evaluator.platform(device(last_seen_user_agent: "Mac OS/15.6 apple-client/1.0.0")) == :macos
-      assert Evaluator.platform(device(last_seen_user_agent: "iOS/18 apple-client/1.0.0")) == :ios
-      assert Evaluator.platform(device(last_seen_user_agent: "Android/15 android-client/1.0.0")) == :android
-      assert Evaluator.platform(device(last_seen_user_agent: "Ubuntu/24.04 headless-client/1.0.0")) == :linux
-      assert Evaluator.platform(device(last_seen_user_agent: "curl/8")) == nil
+    test "without a row naming a platform nothing is dropped" do
+      for user_agent <- [
+            "Windows/11 gui-client/1.0.0",
+            "Mac OS/15.6 apple-client/1.0.0",
+            "iOS/18 apple-client/1.0.0",
+            "Android/15 android-client/1.0.0",
+            "Ubuntu/24.04 headless-client/1.0.0",
+            "X/1 headless-client/1.0.0",
+            "curl/8"
+          ] do
+        device = device(last_seen_user_agent: user_agent)
 
-      assert evaluate(@jailbroken, device(last_seen_user_agent: "Windows/11 gui-client/1.0.0")) == {:ok, nil}
-      assert evaluate(@jailbroken, device(last_seen_user_agent: "curl/8")) == @failed
+        assert Evaluator.platform(device) == nil
+        assert evaluate(@jailbroken, device) == @failed
+        assert evaluate(@compliant, device) == @failed
+        assert evaluate(leaf("iru.enrolled", "is", true), device) == @failed
+      end
+
       assert evaluate(@jailbroken, device()) == @failed
+    end
+
+    test "a provider with a matched row keeps its rules on a platform outside its list" do
+      linux = intune(operating_system: "Linux", compliance_state: "noncompliant", jail_broken: nil)
+      device = device(posture: %{intune: [linux]})
+
+      assert Evaluator.platform(device) == :linux
+      assert evaluate(@compliant, device) == @failed
+      assert evaluate(leaf("intune.enrolled", "is", true), device) == {:ok, nil}
+      assert evaluate(@jailbroken, device) == {:ok, nil}
+      assert evaluate(%{"and" => [@jailbroken, @compliant]}, device) == @failed
+
+      compliant = %{device | posture: %{intune: [%{linux | compliance_state: "compliant"}]}}
+      assert evaluate(@compliant, compliant) == {:ok, nil}
+
+      phone = struct!(Portal.Defender.Device, os_platform: "iOS", health_status: "Inactive")
+      leaf = leaf("defender.health_status", "is", "active")
+      assert evaluate(leaf, device(posture: %{defender: [phone]})) == @failed
+    end
+
+    test "another provider's row still drops rules for a different platform" do
+      windows = intune(operating_system: "Windows", compliance_state: "compliant")
+      device = device(posture: %{intune: [windows]})
+
+      filevault = leaf("iru.filevault_enabled", "is", true)
+      assert evaluate(filevault, device) == {:ok, nil}
+      assert evaluate(%{"and" => [filevault, @compliant]}, device) == {:ok, nil}
     end
 
     test "Defender, SentinelOne and Sophos name the platform too" do
