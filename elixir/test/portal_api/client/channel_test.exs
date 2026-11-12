@@ -58,6 +58,7 @@ defmodule PortalAPI.Client.ChannelTest do
         last_seen_version: client_version,
         last_seen_at: DateTime.utc_now(),
         attested?: Keyword.get(opts, :attested?, false),
+        attested_until: Keyword.get_lazy(opts, :attested_until, fn -> attested_until(opts) end),
         posture: Keyword.get(opts, :posture, %{})
     }
 
@@ -74,6 +75,12 @@ defmodule PortalAPI.Client.ChannelTest do
       |> subscribe_and_join(channel, "client")
 
     socket
+  end
+
+  defp attested_until(opts) do
+    if Keyword.get(opts, :attested?, false) do
+      DateTime.add(DateTime.utc_now(), 1, :hour)
+    end
   end
 
   # Mirrors what Portal.Changes.Hooks.Devices builds from a WAL row: the
@@ -2479,6 +2486,39 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "resource_deleted", _payload
     end
 
+    test "for policies requiring attestation drops resources once the certificate expires", %{
+      client: client,
+      actor: actor,
+      account: account,
+      subject: subject
+    } do
+      group = group_fixture(account: account)
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
+
+      trust_anchor_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      socket = join_channel(client, subject, attested?: true)
+      assert_push "init", %{resources: resources}
+      assert Enum.any?(resources, &(&1.id == resource.id))
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        client = %{state.assigns.client | attested_until: DateTime.add(DateTime.utc_now(), -1, :second)}
+        %{state | assigns: %{state.assigns | client: client}}
+      end)
+
+      send(socket.channel_pid, :recompute_authorized_resources)
+
+      assert_push "resource_deleted", resource_id
+      assert resource_id == resource.id
+
+      assert %{assigns: %{client: updated}} = :sys.get_state(socket.channel_pid)
+      refute updated.attested?
+      assert updated.attested_until == nil
+    end
+
     test "for client address updates resends init with the new tunnel IPs", %{
       client: client,
       subject: subject,
@@ -4020,6 +4060,37 @@ defmodule PortalAPI.Client.ChannelTest do
       assert received_resource.id == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
+    end
+
+    test "ends the authorization when the attesting certificate expires", %{
+      account: account,
+      group: group,
+      site: site,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
+      trust_anchor_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+
+      attested_until = DateTime.add(DateTime.utc_now(), 10, :second)
+      socket = join_channel(client, subject, attested?: true, attested_until: attested_until)
+      assert_push "init", _init_payload
+
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
+      assert payload.resource.id == resource.id
+      assert payload.authorization_expires_at == attested_until
+      assert DateTime.compare(attested_until, socket.assigns.subject.expires_at) == :lt
     end
 
     # End-to-end ordering test for the gateway create_flow path. The invariant

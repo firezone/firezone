@@ -11,6 +11,7 @@ defmodule PortalAPI.Schemas.PoolMember do
                :posture, :account_id,
                :actor_id,
                :attested?,
+               :attested_until,
                :client_token_id,
                :device_serial,
                :device_uuid,
