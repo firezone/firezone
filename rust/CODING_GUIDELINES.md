@@ -100,8 +100,8 @@ Rules for all Rust code in this repository.
 
 ## Dependencies
 
-- Don't enable features in `[workspace.dependencies]`.
-  The workspace entry pins the version; every crate enables the features it uses in its own `Cargo.toml`.
+- Enable a feature in `[workspace.dependencies]` only if it selects a backend or behaviour for the entire build, e.g. `ring` for `rustls`.
+  Features that gate API are enabled by the crates that use that API, in their own `Cargo.toml`.
 - In `Cargo.toml`, put a comment on the same line as the dependency so it survives sorting.
 
 ## Unsafe
