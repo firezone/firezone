@@ -10,8 +10,8 @@ use crate::{
     gui::Managed,
     logging::FileCount,
     settings::{
-        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, GeneralSettings,
-        GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
+        self, AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettings,
+        GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
     },
 };
 use url::Url;
@@ -381,6 +381,32 @@ pub async fn update_state(managed: tauri::State<'_, Managed>) -> Result<(), Erro
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn reset_connlib(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
+    managed
+        .send_request(ControllerRequest::ResetConnlib)
+        .await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn load_developer_settings() -> DeveloperSettings {
+    settings::load_developer_settings()
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn save_developer_settings(developer_settings: DeveloperSettings) -> Result<(), Error> {
+    settings::save_developer(developer_settings).await?;
+
+    Ok(())
+}
+
 #[derive(Debug, specta::Type, Serialize)]
 pub struct Error(String);
 
@@ -412,6 +438,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             sign_in,
             sign_out,
             update_state,
+            reset_connlib,
+            load_developer_settings,
+            save_developer_settings,
         ])
         .typ::<Error>()
 }

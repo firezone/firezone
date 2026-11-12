@@ -119,6 +119,12 @@ fn start_minimized_default() -> bool {
     true
 }
 
+/// The hidden developer settings section on the About page.
+#[derive(Clone, Copy, Default, Deserialize, Serialize, specta::Type)]
+pub struct DeveloperSettings {
+    pub unlocked: bool,
+}
+
 #[derive(Clone, Serialize, specta::Type)]
 pub struct GeneralSettingsViewModel {
     pub start_minimized: bool,
@@ -320,6 +326,12 @@ pub fn general_settings_path() -> Result<PathBuf> {
         .join("general_settings.json"))
 }
 
+fn developer_settings_path() -> Result<PathBuf> {
+    Ok(known_dirs::settings()
+        .context("`known_dirs::settings` failed")?
+        .join("developer_settings.json"))
+}
+
 /// Saves the advanced settings to disk
 ///
 /// Owned exclusively by the privileged Tunnel service. The file lives in
@@ -357,6 +369,18 @@ pub async fn save_general(settings: &GeneralSettings) -> Result<()> {
     Ok(())
 }
 
+pub async fn save_developer(settings: DeveloperSettings) -> Result<()> {
+    let path = developer_settings_path()?;
+    let dir = path
+        .parent()
+        .context("settings path should have a parent")?;
+
+    tokio::fs::create_dir_all(dir).await?;
+    tokio::fs::write(&path, serde_json::to_string(&settings)?).await?;
+
+    Ok(())
+}
+
 /// Return advanced settings if they're stored on disk
 ///
 /// Uses std::fs, so stick it in `spawn_blocking` for async contexts
@@ -374,6 +398,13 @@ pub fn load_general_settings() -> Result<GeneralSettings> {
     let path = general_settings_path()?;
     let text = std::fs::read_to_string(path)?;
     let settings = serde_json::from_str(&text)?;
+    Ok(settings)
+}
+
+pub async fn load_developer_settings() -> Result<DeveloperSettings> {
+    let text = tokio::fs::read_to_string(developer_settings_path()?).await?;
+    let settings = serde_json::from_str(&text)?;
+
     Ok(settings)
 }
 

@@ -190,7 +190,16 @@ export default function App() {
                 />
               }
             />
-            <Route path="/about" element={<About />} />
+            <Route
+              path="/about"
+              element={
+                <About
+                  loadDeveloperSettings={commands.loadDeveloperSettings}
+                  saveDeveloperSettings={commands.saveDeveloperSettings}
+                  resetConnlib={commands.resetConnlib}
+                />
+              }
+            />
             <Route path="/colour-palette" element={<ColorPalette />} />
           </Routes>
         </main>

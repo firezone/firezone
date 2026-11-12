@@ -139,6 +139,7 @@ pub enum ControllerRequest {
     SignOut,
     UpdateState,
     SystemTrayMenu(system_tray::Event),
+    ResetConnlib,
 }
 
 // The failure flags are all mutually exclusive
@@ -745,6 +746,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 self.refresh_ui_state();
             }
+            ResetConnlib => self.send_ipc(&service::ClientMsg::Reset).await?,
         }
         Ok(())
     }

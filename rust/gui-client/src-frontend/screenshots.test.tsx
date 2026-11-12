@@ -239,8 +239,13 @@ beforeEach(async () => {
   await page.viewport(WINDOW_WIDTH, WINDOW_HEIGHT);
 
   // The app talks to the Tunnel service over Tauri's IPC, which a browser does not have.
-  // Every command is answered with `undefined`; the screens are driven by events instead.
-  mockIPC(() => {}, { shouldMockEvents: true });
+  // Every command but the developer settings load is answered with `undefined`; the screens
+  // are driven by events instead.
+  mockIPC(
+    (command) =>
+      command === "load_developer_settings" ? { unlocked: false } : undefined,
+    { shouldMockEvents: true }
+  );
   mockWindows("main");
 
   container = document.createElement("div");

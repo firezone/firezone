@@ -75,6 +75,7 @@ pub enum ClientMsg {
     /// Only a failure to persist them is reported, as [`ServerMsg::AdvancedSettingsApplied`].
     SetAdditionalHostCandidates(Vec<IpAddr>),
     SetInternetResourceState(bool),
+    Reset,
     StartTelemetry {
         release: String,
     },
@@ -842,6 +843,7 @@ impl<'a> Handler<'a> {
 
                 connlib.set_internet_resource_state(state);
             }
+            ClientMsg::Reset => self.reset_session("developer settings").await,
             ClientMsg::StartTelemetry { release } => {
                 // This is a bit hacky.
                 // It would be cleaner to pass it down from the `Cli` struct.

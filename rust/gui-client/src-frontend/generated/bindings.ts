@@ -71,6 +71,25 @@ async updateState() : Promise<Result<null, Error>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async resetConnlib() : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reset_connlib") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async loadDeveloperSettings() : Promise<DeveloperSettings> {
+    return await TAURI_INVOKE("load_developer_settings");
+},
+async saveDeveloperSettings(developerSettings: DeveloperSettings) : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_developer_settings", { developerSettings }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -110,6 +129,10 @@ api_url?: string | null }
  * The control plane a client signs in to: a Firezone Cloud deployment, or [`ControlPlane::Custom`] for any other URLs.
  */
 export type ControlPlane = "CloudUs" | "CloudEu" | "Custom"
+/**
+ * The hidden developer settings section on the About page.
+ */
+export type DeveloperSettings = { unlocked: boolean }
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel

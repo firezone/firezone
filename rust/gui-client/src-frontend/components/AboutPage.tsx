@@ -1,8 +1,44 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { DeveloperSettings } from "../generated/bindings";
 import logo from "../logo.png";
+import Button from "./Button";
+import SettingRow from "./SettingRow";
 
-export default function AboutPage() {
+const DEVELOPER_SETTINGS_UNLOCK_CLICKS = 7;
+
+interface Props {
+  loadDeveloperSettings: () => Promise<DeveloperSettings>;
+  saveDeveloperSettings: (settings: DeveloperSettings) => void;
+  resetConnlib: () => void;
+}
+
+export default function AboutPage({
+  loadDeveloperSettings,
+  saveDeveloperSettings,
+  resetConnlib,
+}: Props) {
+  const [unlocked, setUnlocked] = useState(false);
+  const [logoClicks, setLogoClicks] = useState(0);
+
+  useEffect(() => {
+    void loadDeveloperSettings().then((settings) =>
+      setUnlocked(settings.unlocked)
+    );
+  }, [loadDeveloperSettings]);
+
+  const saveUnlocked = (unlocked: boolean) => {
+    setUnlocked(unlocked);
+    setLogoClicks(0);
+    saveDeveloperSettings({ unlocked });
+  };
+
+  const clickLogo = () => {
+    const clicks = logoClicks + 1;
+    setLogoClicks(clicks);
+    if (clicks === DEVELOPER_SETTINGS_UNLOCK_CLICKS) saveUnlocked(true);
+  };
+
   const openDocumentation = () => {
     openUrl("https://www.firezone.dev/kb?utm_source=product").catch((error) =>
       console.error("Failed to open documentation URL", error)
@@ -18,7 +54,9 @@ export default function AboutPage() {
   return (
     <div className="flex min-h-full items-center justify-center bg-page p-6">
       <div className="flex w-full max-w-sm flex-col items-center text-center">
-        <img alt="Firezone Logo" className="mb-6 h-20 w-20" src={logo} />
+        <button className="mb-6" onClick={clickLogo} type="button">
+          <img alt="Firezone Logo" className="h-20 w-20" src={logo} />
+        </button>
         <p className="mb-1 text-body">Version</p>
         <p className="mb-6 text-lg font-bold text-heading">
           {__APP_VERSION__} (
@@ -40,6 +78,23 @@ export default function AboutPage() {
         >
           Documentation
         </button>
+        {unlocked && (
+          <section className="mt-6 w-full text-left">
+            <h2 className="form-label">Developer settings</h2>
+            <div className="panel divide-y divide-border">
+              <SettingRow label="Reset connlib">
+                <Button onClick={resetConnlib} type="button">
+                  Reset
+                </Button>
+              </SettingRow>
+              <SettingRow label="Hide developer settings">
+                <Button onClick={() => saveUnlocked(false)} type="button">
+                  Hide
+                </Button>
+              </SettingRow>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
