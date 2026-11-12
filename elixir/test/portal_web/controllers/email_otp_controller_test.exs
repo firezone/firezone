@@ -206,6 +206,90 @@ defmodule PortalWeb.EmailOTPControllerTest do
       refute_received {:email, _}
     end
 
+    test "rate limits all letter case and whitespace forms of an address together", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      on_exit(fn ->
+        Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, actor.email})
+      end)
+
+      [local, domain] = String.split(actor.email, "@")
+
+      for email <- [actor.email, String.upcase(actor.email), local <> "@" <> String.upcase(domain)] do
+        conn =
+          post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+            "email" => %{"email" => email}
+          })
+
+        assert flash(conn, :error) == nil
+        assert_received {:email, sent}
+        assert sent.to == [{"", actor.email}]
+      end
+
+      for email <- [String.capitalize(actor.email), " #{actor.email} "] do
+        conn =
+          post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+            "email" => %{"email" => email}
+          })
+
+        assert flash(conn, :error) ==
+                 "You're attempting to do that too quickly. Wait a few minutes and try again."
+      end
+
+      refute_received {:email, _}
+    end
+
+    test "clears the rate limit for every letter case form after a sign in", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      on_exit(fn ->
+        Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, actor.email})
+      end)
+
+      sign_in_path = ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
+      upcased_email = String.upcase(actor.email)
+
+      for _ <- 1..2 do
+        post(conn, sign_in_path, %{"email" => %{"email" => actor.email}})
+        assert_received {:email, _}
+      end
+
+      conn = post(conn, sign_in_path, %{"email" => %{"email" => upcased_email}})
+      assert_received {:email, email}
+      code = extract_code_from_email(email)
+
+      verified_conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{"secret" => code})
+
+      assert redirected_to(verified_conn) =~ "/sites"
+
+      for _ <- 1..3 do
+        conn = post(build_conn(), sign_in_path, %{"email" => %{"email" => actor.email}})
+        assert flash(conn, :error) == nil
+        assert_received {:email, _}
+      end
+    end
+
     # Note: This scenario shouldn't be possible in practice because a DB constraint
     # prevents api_client actors from having emails, but we test for defense in depth.
     test "does not send email for api_client actor type", %{
