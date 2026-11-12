@@ -1869,6 +1869,54 @@ defmodule Portal.AuthenticationTest do
       assert Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
     end
 
+    test "the client socket refuses a token owned by the legacy Gateway actor", %{account: account} do
+      legacy_actor_id = gateway_token_fixture(account: account).actor_id
+      token = client_token_fixture(account: account, secret_nonce: "nonce")
+
+      Repo.update_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id),
+        set: [actor_id: legacy_actor_id]
+      )
+
+      encoded = sign_with_salt("device", "nonce", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = use_token(encoded, build_context(type: :client))
+    end
+
+    test "the Gateway socket refuses a Site token not owned by the legacy Gateway actor", %{
+      account: account,
+      actor: actor
+    } do
+      token = gateway_token_fixture(account: account)
+
+      Repo.update_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id),
+        set: [actor_id: actor.id]
+      )
+
+      encoded = sign_with_salt("device", "", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = verify_gateway_token(encoded)
+    end
+
+    test "delete_client_tokens/1 leaves Gateway tokens", %{account: account} do
+      gateway_token = gateway_token_fixture(account: account)
+
+      assert {0, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^gateway_token.id)
+               |> delete_client_tokens()
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
+    end
+
+    test "delete_gateway_tokens/2 leaves client tokens", %{account: account, token: token} do
+      subject = admin_subject_fixture(account: account)
+
+      assert {0, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
+               |> delete_gateway_tokens(subject)
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+    end
+
     test "relay tokens signed with the device salt are refused" do
       token = relay_token_fixture()
       encoded = sign_with_salt("device", "", {nil, token.id, token.secret_fragment})
