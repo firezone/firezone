@@ -278,16 +278,42 @@ defmodule Portal.SchemaHelpersTest do
       assert %DateTimeSchema{datetime_field: ^datetime} = result
     end
 
-    test "handles invalid datetime string gracefully" do
+    test "raises on an invalid datetime string" do
       params = %{
         "datetime_field" => "invalid-datetime"
       }
 
-      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+      assert_raise SchemaHelpers.CastError, ~r/datetime_field/, fn ->
+        SchemaHelpers.struct_from_params(DateTimeSchema, params)
+      end
+    end
 
-      # Ecto casting should handle invalid datetime strings by setting to nil
-      # or keeping the original value depending on changeset validation
-      assert %DateTimeSchema{} = result
+    test "raises on an unchanged out-of-line value" do
+      params = %{"field1" => "Value 1", "list_items" => :unchanged_toast}
+
+      error =
+        assert_raise SchemaHelpers.CastError, fn ->
+          SchemaHelpers.struct_from_params(RootSchema, params)
+        end
+
+      assert error.fields == [:list_items]
+    end
+
+    test "raises on an unchanged out-of-line value in a plain field" do
+      assert_raise SchemaHelpers.CastError, ~r/field1/, fn ->
+        SchemaHelpers.struct_from_params(RootSchema, %{"field1" => :unchanged_toast})
+      end
+    end
+
+    test "raises on an invalid value inside an embed" do
+      params = %{"list_items" => [%{"list_field1" => "Item A"}, %{"list_field1" => 1}]}
+
+      error =
+        assert_raise SchemaHelpers.CastError, fn ->
+          SchemaHelpers.struct_from_params(RootSchema, params)
+        end
+
+      assert error.fields == [:list_items]
     end
 
     test "correctly casts datetime string without 'Z' suffix" do

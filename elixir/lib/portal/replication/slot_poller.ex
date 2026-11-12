@@ -317,7 +317,28 @@ defmodule Portal.Replication.SlotPoller do
     {op, old_tuple_data, tuple_data} = extract_msg_data(msg)
     {:ok, relation} = Map.fetch(relations, msg.relation_id)
 
-    {op, relation.name, zip(old_tuple_data, relation.columns), zip(tuple_data, relation.columns)}
+    old_data = zip(old_tuple_data, relation.columns)
+    data = zip(tuple_data, relation.columns)
+
+    {op, relation.name, old_data, fill_unchanged_toast(data, old_data)}
+  end
+
+  # pgoutput sends an unchanged out-of-line value only in the old tuple, which
+  # exists for REPLICA IDENTITY FULL tables. Without it the marker stays.
+  defp fill_unchanged_toast(data, old_data) when is_map(data) and is_map(old_data) do
+    Map.new(data, fn
+      {column, :unchanged_toast} -> {column, unchanged_toast_value(old_data, column)}
+      pair -> pair
+    end)
+  end
+
+  defp fill_unchanged_toast(data, _old_data), do: data
+
+  defp unchanged_toast_value(old_data, column) do
+    case Map.get(old_data, column) do
+      nil -> :unchanged_toast
+      value -> value
+    end
   end
 
   defp extract_msg_data(%Decoder.Messages.Insert{tuple_data: data}), do: {:insert, nil, data}
