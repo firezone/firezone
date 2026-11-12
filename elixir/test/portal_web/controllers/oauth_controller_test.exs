@@ -227,6 +227,7 @@ defmodule PortalWeb.OAuthControllerTest do
 
       {:ok, _lv, html} = live(conn, sign_in_path)
       assert html =~ "Brand New App"
+      refute html =~ "data:image"
 
       refute_received :metadata_fetched
       refute Portal.Repo.get_by(Portal.OAuthClient, client_id: client_id)
@@ -282,6 +283,61 @@ defmodule PortalWeb.OAuthControllerTest do
 
       refute html =~ "wants to connect to Firezone"
       refute html =~ "Other App"
+    end
+
+    test "sign-in shows the icon of an app the portal already knows", %{
+      conn: conn,
+      account: account
+    } do
+      png = "\x89PNG" <> :crypto.strong_rand_bytes(32)
+      client = oauth_client_fixture(logo_data: png, logo_content_type: "image/png")
+
+      html = sign_in_after_authorize(conn, account, client)
+
+      assert html =~ "data:image/png;base64,#{Base.encode64(png)}"
+    end
+
+    test "sign-in shows the first letter when the known app's details are stale", %{
+      conn: conn,
+      account: account
+    } do
+      png = "\x89PNG" <> :crypto.strong_rand_bytes(32)
+      expires_at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      client =
+        oauth_client_fixture(
+          client_name: "Stale App",
+          logo_data: png,
+          logo_content_type: "image/png",
+          metadata_expires_at: expires_at
+        )
+
+      test_pid = self()
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+        send(test_pid, :metadata_fetched)
+
+        Req.Test.json(conn, %{
+          "client_id" => client.client_id,
+          "client_name" => "Stale App",
+          "redirect_uris" => [redirect_uri()]
+        })
+      end)
+
+      params = authorize_params(client) |> Map.put("account_id_or_slug", account.slug)
+      conn = get(conn, ~p"/oauth/authorize?#{params}")
+      assert_received :metadata_fetched
+
+      conn = get(conn, redirected_to(conn, 302))
+      sign_in_path = redirected_to(conn, 302)
+      {:ok, _lv, html} = live(conn, sign_in_path)
+
+      assert html =~ "Stale App"
+      refute html =~ "data:image/png"
+      refute_received :metadata_fetched
+
+      row = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client.client_id)
+      assert row.metadata_expires_at == client.metadata_expires_at
     end
 
     test "sign-in says nothing when no connection is pending", %{
@@ -1142,6 +1198,14 @@ defmodule PortalWeb.OAuthControllerTest do
     |> Map.get(:query)
     |> URI.decode_query()
     |> Map.fetch!("code")
+  end
+
+  defp sign_in_after_authorize(conn, account, client) do
+    params = authorize_params(client) |> Map.put("account_id_or_slug", account.slug)
+    conn = get(conn, ~p"/oauth/authorize?#{params}")
+    conn = get(conn, redirected_to(conn, 302))
+    {:ok, _lv, html} = live(conn, redirected_to(conn, 302))
+    html
   end
 
   defp sign_in_html(path, cookie) do

@@ -29,7 +29,7 @@ defmodule PortalWeb.SignIn do
   end
 
   defp mount_account(account, params, session, socket) do
-    connecting_client = session["oauth_client"]
+    connecting_client = with_logo(session["oauth_client"])
 
     socket =
       assign(socket,
@@ -350,6 +350,15 @@ defmodule PortalWeb.SignIn do
     end
   end
 
+  defp with_logo(%Portal.OAuthClient{client_id: client_id} = client) do
+    case Database.get_fresh_logo(client_id) do
+      {data, type} -> %{client | logo_data: data, logo_content_type: type}
+      nil -> client
+    end
+  end
+
+  defp with_logo(nil), do: nil
+
   defp oauth_client(conn) do
     with %{"redirect_to" => redirect_to} <- conn.query_params,
          {:ok, client_id} <- redirect_client_id(redirect_to) do
@@ -377,6 +386,19 @@ defmodule PortalWeb.SignIn do
 
     def get_auth_provider(account, module) do
       from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def get_fresh_logo(client_id) do
+      now = DateTime.utc_now()
+
+      from(clients in Portal.OAuthClient,
+        where: clients.client_id == ^client_id,
+        where: clients.metadata_expires_at > ^now,
+        where: not is_nil(clients.logo_data) and not is_nil(clients.logo_content_type),
+        select: {clients.logo_data, clients.logo_content_type}
+      )
       |> Safe.unscoped()
       |> Safe.one()
     end
