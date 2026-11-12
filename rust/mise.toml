@@ -181,4 +181,3 @@ echo "  grep MHz /proc/cpuinfo | sort -u"
 [tasks.check]
 description = "Run all CI static analysis checks"
 depends = ["fmt-check", "clippy", "doc", "deny"]
-
