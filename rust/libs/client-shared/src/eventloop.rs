@@ -27,6 +27,7 @@ use tunnel::messages::client::{
     InitClient, Peer, PublicKeyChanged, ResourceAuthorization, ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
+use tunnel::unroutable_packet::RoutingError;
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
@@ -529,6 +530,13 @@ impl Eventloop {
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
                 || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
+            {
+                return Err(e);
+            }
+
+            if e.any_downcast_ref::<tunnel::UnroutablePacket>()
+                .is_some_and(|e| e.reason() == RoutingError::RoutingLoop)
+                && telemetry::feature_flags::fail_on_routing_loop()
             {
                 return Err(e);
             }

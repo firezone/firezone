@@ -13,7 +13,7 @@ pub use crypto::{
     PendingEncapsulate,
 };
 pub use node::{
-    ConnectionPath, Credentials, Event, IceConfig, IceRole, Node, StillConnecting, Transmit,
-    UnknownConnection,
+    ConnectionPath, Credentials, Event, IceConfig, IceRole, Node, RoutingLoop, StillConnecting,
+    Transmit, UnknownConnection,
 };
 pub use relay_client_proto::RelaySocket;

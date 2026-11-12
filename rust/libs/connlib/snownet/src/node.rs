@@ -704,6 +704,10 @@ where
     ) -> Result<Option<EncapsulateBatch<'_>>> {
         self.last_now = now;
 
+        if self.is_routing_loop(packet) {
+            return Err(RoutingLoop.into());
+        }
+
         let conn = self.connections.get_mut(&cid, now)?;
         let socket = conn.ready_socket(cid)?;
 
@@ -947,6 +951,31 @@ where
                 );
             }
         }
+    }
+
+    fn is_routing_loop(&self, packet: &IpPacket) -> bool {
+        let Some(udp) = packet.as_udp() else {
+            return false;
+        };
+        let src_port = udp.source_port();
+
+        // Our UDP sockets bypass the tunnel, so seeing one of their datagrams here means the bypass failed.
+        if !self
+            .allocations
+            .host_candidates()
+            .chain(&self.additional_host_candidates)
+            .any(|c| c.addr().port() == src_port)
+        {
+            return false;
+        }
+
+        let dst = SocketAddr::new(packet.destination(), udp.destination_port());
+
+        self.allocations.has_server(dst)
+            || self
+                .connections
+                .iter_established()
+                .any(|(_, c)| c.agent.has_remote_candidate(dst))
     }
 
     fn init_connection(
@@ -1449,6 +1478,10 @@ impl From<is::IceCreds> for Credentials {
         }
     }
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("Packet is our own UDP datagram to a relay or peer")]
+pub struct RoutingLoop;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId, RId> {
@@ -2467,6 +2500,8 @@ fn new_agent(role: IceRole) -> IceAgent {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
+    use anyhow::ErrorExt as _;
+
     use super::*;
 
     #[test]
@@ -2599,5 +2634,75 @@ mod tests {
         assert!(agent.remote_candidates().contains(&expected_candidate1));
         assert!(agent.remote_candidates().contains(&expected_candidate2));
         assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
+    }
+
+    #[test]
+    fn encapsulate_rejects_own_datagrams_to_relays_and_peers() {
+        let host = SocketAddr::from(([10, 0, 0, 1], 41000));
+        let relay = SocketAddr::from(([203, 0, 113, 1], 3478));
+        let peer = SocketAddr::from(([198, 51, 100, 1], 52625));
+        let unknown = SocketAddr::from(([192, 0, 2, 1], 52625));
+
+        for use_frostlink in [false, true] {
+            let now = Instant::now();
+            let mut node = Node::<u32, u32>::new([0; 32], now, Duration::ZERO);
+            node.set_additional_host_candidates(BTreeSet::from([host]), now);
+            node.update_relays(
+                BTreeSet::new(),
+                &BTreeSet::from([(
+                    1,
+                    RelaySocket::from(relay),
+                    "user".to_owned(),
+                    "pass".to_owned(),
+                    "firezone".to_owned(),
+                )]),
+                now,
+            );
+            node.upsert_connection(
+                1,
+                sanstun::PublicKey::from([1; 32]),
+                sanstun::StaticSecret::from(Zeroizing::new([0; 32])),
+                credentials(),
+                credentials(),
+                IceRole::Controlling,
+                IceConfig::client_default(),
+                IceConfig::client_idle(),
+                use_frostlink,
+                now,
+            );
+            let candidate = Candidate::host(peer, "udp").unwrap();
+            node.add_remote_candidate(1, crate::candidate::encode(use_frostlink, &candidate), now);
+
+            assert!(is_routing_loop(&mut node, host.port(), relay, now));
+            assert!(is_routing_loop(&mut node, host.port(), peer, now));
+            assert!(!is_routing_loop(&mut node, host.port(), unknown, now));
+            assert!(!is_routing_loop(&mut node, host.port() + 1, relay, now));
+        }
+    }
+
+    fn is_routing_loop(
+        node: &mut Node<u32, u32>,
+        src_port: u16,
+        dst: SocketAddr,
+        now: Instant,
+    ) -> bool {
+        let packet = ip_packet::make::udp_packet(
+            Ipv4Addr::new(100, 64, 0, 1),
+            dst.ip(),
+            src_port,
+            dst.port(),
+            &[],
+        )
+        .unwrap();
+        node.encapsulate(1, &packet, now)
+            .err()
+            .is_some_and(|e| e.any_is::<RoutingLoop>())
+    }
+
+    fn credentials() -> Credentials {
+        Credentials {
+            username: "ufrag".to_owned(),
+            password: "password".to_owned(),
+        }
     }
 }
