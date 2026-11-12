@@ -27,10 +27,7 @@ defmodule Portal.Device do
     token_id
   ]a
 
-  # Nodes on the previous version still write client_token_id and
-  # gateway_token_id until the columns are dropped.
-  @latest_session_columns Enum.map(@latest_session_fields, &Atom.to_string/1) ++
-                            ~w[client_token_id gateway_token_id]
+  @latest_session_columns Enum.map(@latest_session_fields, &Atom.to_string/1)
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
