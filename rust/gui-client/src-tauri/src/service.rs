@@ -76,6 +76,8 @@ pub enum ClientMsg {
     SetAdditionalHostCandidates(Vec<IpAddr>),
     SetInternetResourceState(bool),
     ManualReset,
+    /// Applies to the running session and every session started while it is on.
+    SetForceRelayedConnections(bool),
     StartTelemetry {
         release: String,
     },
@@ -252,6 +254,7 @@ struct Handler<'a> {
     advanced_settings: AdvancedSettings,
     mdm_settings: MdmSettings,
     session: Session,
+    force_relayed_connections: bool,
     telemetry_release: Option<String>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
@@ -528,6 +531,7 @@ impl<'a> Handler<'a> {
             advanced_settings,
             mdm_settings,
             session: Session::None,
+            force_relayed_connections: false,
             telemetry_release: None,
             tun_device,
             dns_notifier,
@@ -844,6 +848,13 @@ impl<'a> Handler<'a> {
                 connlib.set_internet_resource_state(state);
             }
             ClientMsg::ManualReset => self.reset_session("requested by user").await,
+            ClientMsg::SetForceRelayedConnections(enabled) => {
+                self.force_relayed_connections = enabled;
+
+                if let Some(connlib) = self.session.as_connlib() {
+                    connlib.set_force_relayed_connections(enabled);
+                }
+            }
             ClientMsg::StartTelemetry { release } => {
                 // This is a bit hacky.
                 // It would be cleaner to pass it down from the `Cli` struct.
@@ -988,6 +999,10 @@ impl<'a> Handler<'a> {
             config,
         )
         .context("Failed to start connlib")?;
+
+        if self.force_relayed_connections {
+            connlib.set_force_relayed_connections(true);
+        }
 
         analytics::new_session(device_id.id, api_url.to_string());
 

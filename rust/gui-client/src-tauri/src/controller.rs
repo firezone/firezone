@@ -4,8 +4,8 @@ use crate::{
     logging::{self, FileCount},
     service,
     settings::{
-        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettings, GeneralSettings,
-        MdmSettings, SignInSettings,
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettings,
+        DeveloperSettingsViewModel, GeneralSettings, MdmSettings, SignInSettings,
     },
     updates, uptime,
     view::{ClientSettingsForm, SessionViewModel},
@@ -39,6 +39,8 @@ const QUIT_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     developer_settings: DeveloperSettings,
+    /// Not persisted, so it is off whenever the GUI starts.
+    force_relayed_connections: bool,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
     /// Path of the legacy user-writable `advanced_settings.json`. The
@@ -88,7 +90,8 @@ pub trait GuiIntegration {
         advanced_settings: AdvancedSettings,
         signed_in_with: Option<SignInSettings>,
     ) -> Result<()>;
-    fn notify_developer_settings_changed(&self, settings: DeveloperSettings) -> Result<()>;
+    fn notify_developer_settings_changed(&self, settings: DeveloperSettingsViewModel)
+    -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
     fn notify_device_trust_changed(
         &self,
@@ -147,6 +150,7 @@ pub enum ControllerRequest {
     SystemTrayMenu(system_tray::Event),
     ResetConnlib,
     SetDeveloperSettingsUnlocked(bool),
+    SetForceRelayedConnections(bool),
 }
 
 // The failure flags are all mutually exclusive
@@ -296,6 +300,7 @@ impl<I: GuiIntegration> Controller<I> {
         let mut controller = Controller {
             general_settings,
             developer_settings,
+            force_relayed_connections: false,
             mdm_settings,
             advanced_settings,
             legacy_advanced_settings_path,
@@ -761,6 +766,19 @@ impl<I: GuiIntegration> Controller<I> {
 
                 self.integration
                     .save_developer_settings(self.developer_settings)
+                    .await?;
+
+                if !unlocked && self.force_relayed_connections {
+                    self.force_relayed_connections = false;
+                    self.send_ipc(&service::ClientMsg::SetForceRelayedConnections(false))
+                        .await?;
+                }
+
+                self.notify_settings_changed()?;
+            }
+            SetForceRelayedConnections(enabled) => {
+                self.force_relayed_connections = enabled;
+                self.send_ipc(&service::ClientMsg::SetForceRelayedConnections(enabled))
                     .await?;
 
                 self.notify_settings_changed()?;
@@ -1354,7 +1372,10 @@ impl<I: GuiIntegration> Controller<I> {
             self.signed_in_with().cloned(),
         )?;
         self.integration
-            .notify_developer_settings_changed(self.developer_settings)?;
+            .notify_developer_settings_changed(DeveloperSettingsViewModel {
+                unlocked: self.developer_settings.unlocked,
+                force_relayed_connections: self.force_relayed_connections,
+            })?;
 
         Ok(())
     }
@@ -1582,6 +1603,43 @@ mod tests {
 
         test_controller
             .wait_integration(|i| i.developer_settings.last()?.unlocked.then_some(()))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn hiding_the_developer_settings_stops_forcing_relayed_connections() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SetForceRelayedConnections(true))
+            .await
+            .unwrap();
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetForceRelayedConnections(true)),
+            "expected `SetForceRelayedConnections(true)` but got {msg:?}"
+        );
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SetDeveloperSettingsUnlocked(false))
+            .await
+            .unwrap();
+
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetForceRelayedConnections(false)),
+            "expected `SetForceRelayedConnections(false)` but got {msg:?}"
+        );
+        test_controller
+            .wait_integration(|i| {
+                let settings = i.developer_settings.last()?;
+
+                (!settings.force_relayed_connections).then_some(())
+            })
             .await;
     }
 
@@ -2901,7 +2959,7 @@ mod tests {
         sessions: Vec<SessionViewModel>,
         mdm_settings: Vec<MdmSettings>,
         general_settings: Vec<GeneralSettings>,
-        developer_settings: Vec<DeveloperSettings>,
+        developer_settings: Vec<DeveloperSettingsViewModel>,
         signed_in_with: Vec<Option<SignInSettings>>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
@@ -2949,7 +3007,10 @@ mod tests {
             Ok(())
         }
 
-        fn notify_developer_settings_changed(&self, settings: DeveloperSettings) -> Result<()> {
+        fn notify_developer_settings_changed(
+            &self,
+            settings: DeveloperSettingsViewModel,
+        ) -> Result<()> {
             self.lock().developer_settings.push(settings);
 
             Ok(())

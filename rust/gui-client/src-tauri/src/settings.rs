@@ -120,9 +120,15 @@ fn start_minimized_default() -> bool {
 }
 
 /// The hidden developer settings page, unlocked from the About page.
-#[derive(Clone, Copy, Default, Deserialize, Serialize, specta::Type)]
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
 pub struct DeveloperSettings {
     pub unlocked: bool,
+}
+
+#[derive(Clone, Copy, Serialize, specta::Type)]
+pub struct DeveloperSettingsViewModel {
+    pub unlocked: bool,
+    pub force_relayed_connections: bool,
 }
 
 #[derive(Clone, Serialize, specta::Type)]

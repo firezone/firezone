@@ -122,6 +122,7 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
             ClientMsg::SetAdditionalHostCandidates(_)
             | ClientMsg::SetInternetResourceState(_)
             | ClientMsg::ManualReset
+            | ClientMsg::SetForceRelayedConnections(_)
             | ClientMsg::StartTelemetry { .. } => {}
             ClientMsg::Panic => panic!("Explicit panic"),
         }

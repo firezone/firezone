@@ -310,6 +310,7 @@ for (const [name, screen] of Object.entries(screens)) {
         if (screen.logCount) await events.logsRecounted.emit(screen.logCount);
         await events.developerSettingsChanged.emit({
           unlocked: screen.developerSettingsUnlocked ?? false,
+          force_relayed_connections: false,
         });
       });
 
