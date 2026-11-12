@@ -31,7 +31,7 @@ defmodule Portal.Ops.RegionTransferTest do
 
     client =
       client_fixture(account: account, actor: actor)
-      |> Ecto.Changeset.change(client_token_id: client_token.id)
+      |> Ecto.Changeset.change(client_token_id: client_token.id, token_id: client_token.id)
       |> update!()
 
     %{account: account, actor: actor, gateway: gateway, client: client, store: stub_storage()}
