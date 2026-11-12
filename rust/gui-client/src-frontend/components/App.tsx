@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import About from "./AboutPage";
 import ColorPalette from "./ColorPalettePage";
+import DeveloperSettingsPage from "./DeveloperSettingsPage";
 import DeviceTrustPage from "./DeviceTrustPage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
@@ -26,6 +27,19 @@ export default function App() {
   const [logFilter, setLogFilter] = useState<LogFilterViewModel | null>(null);
   const [deviceTrustCertificate, setDeviceTrustCertificate] =
     useState<X509Certificate | null>();
+  const [developerSettingsUnlocked, setDeveloperSettingsUnlocked] =
+    useState<boolean>();
+
+  useEffect(() => {
+    void commands
+      .loadDeveloperSettings()
+      .then((settings) => setDeveloperSettingsUnlocked(settings.unlocked));
+  }, []);
+
+  const saveDeveloperSettingsUnlocked = (unlocked: boolean) => {
+    setDeveloperSettingsUnlocked(unlocked);
+    void commands.saveDeveloperSettings({ unlocked });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +104,14 @@ export default function App() {
         <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
         <Route path="/about" element={<Titlebar title="About" />} />
         <Route
+          path="/developer-settings"
+          element={
+            developerSettingsUnlocked ? (
+              <Titlebar title="Developer Settings" />
+            ) : null
+          }
+        />
+        <Route
           path="/colour-palette"
           element={<Titlebar title="Colour Palette" />}
         />
@@ -135,6 +157,16 @@ export default function App() {
                   About
                 </ReactRouterSidebarItem>
               </li>
+              {developerSettingsUnlocked && (
+                <li>
+                  <ReactRouterSidebarItem
+                    icon="code"
+                    href="/developer-settings"
+                  >
+                    Developer Settings
+                  </ReactRouterSidebarItem>
+                </li>
+              )}
               {isDev && (
                 <li className="mt-3 border-t border-border pt-3">
                   <ReactRouterSidebarItem icon="palette" href="/colour-palette">
@@ -194,10 +226,23 @@ export default function App() {
               path="/about"
               element={
                 <About
-                  loadDeveloperSettings={commands.loadDeveloperSettings}
-                  saveDeveloperSettings={commands.saveDeveloperSettings}
-                  resetConnlib={commands.resetConnlib}
+                  unlockDeveloperSettings={() =>
+                    saveDeveloperSettingsUnlocked(true)
+                  }
                 />
+              }
+            />
+            <Route
+              path="/developer-settings"
+              element={
+                developerSettingsUnlocked === false ? (
+                  <Navigate replace to="/about" />
+                ) : developerSettingsUnlocked === undefined ? null : (
+                  <DeveloperSettingsPage
+                    resetConnlib={commands.resetConnlib}
+                    hide={() => saveDeveloperSettingsUnlocked(false)}
+                  />
+                )
               }
             />
             <Route path="/colour-palette" element={<ColorPalette />} />

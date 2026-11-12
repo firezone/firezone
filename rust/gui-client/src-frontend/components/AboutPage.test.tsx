@@ -19,44 +19,13 @@ afterEach(() => {
 });
 
 test("clicking the logo seven times unlocks the developer settings", async () => {
-  const loadDeveloperSettings = () => Promise.resolve({ unlocked: false });
-  const saveDeveloperSettings = vi.fn();
-  root.render(
-    <AboutPage
-      loadDeveloperSettings={loadDeveloperSettings}
-      saveDeveloperSettings={saveDeveloperSettings}
-      resetConnlib={() => {}}
-    />
-  );
+  const unlockDeveloperSettings = vi.fn();
+  root.render(<AboutPage unlockDeveloperSettings={unlockDeveloperSettings} />);
   const logo = page.getByRole("button", { name: "Firezone Logo" });
 
   for (let i = 0; i < 6; i++) await userEvent.click(logo);
-  await expect
-    .element(page.getByText("Developer settings", { exact: true }))
-    .not.toBeInTheDocument();
+  expect(unlockDeveloperSettings).not.toHaveBeenCalled();
 
   await userEvent.click(logo);
-  await expect
-    .element(page.getByText("Developer settings", { exact: true }))
-    .toBeInTheDocument();
-  expect(saveDeveloperSettings).toHaveBeenCalledWith({ unlocked: true });
-});
-
-test("hiding the developer settings locks them again", async () => {
-  const loadDeveloperSettings = () => Promise.resolve({ unlocked: true });
-  const saveDeveloperSettings = vi.fn();
-  root.render(
-    <AboutPage
-      loadDeveloperSettings={loadDeveloperSettings}
-      saveDeveloperSettings={saveDeveloperSettings}
-      resetConnlib={() => {}}
-    />
-  );
-
-  await userEvent.click(page.getByRole("button", { name: "Hide" }));
-
-  await expect
-    .element(page.getByText("Developer settings", { exact: true }))
-    .not.toBeInTheDocument();
-  expect(saveDeveloperSettings).toHaveBeenCalledWith({ unlocked: false });
+  expect(unlockDeveloperSettings).toHaveBeenCalledOnce();
 });

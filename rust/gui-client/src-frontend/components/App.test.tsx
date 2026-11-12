@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot, Root } from "react-dom/client";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { page, userEvent } from "vitest/browser";
 
 const mocks = vi.hoisted(() => {
   function deferred<T>() {
@@ -19,6 +20,8 @@ const mocks = vi.hoisted(() => {
   return {
     subscriptions,
     updateState: vi.fn(),
+    loadDeveloperSettings: vi.fn(() => Promise.resolve({ unlocked: false })),
+    saveDeveloperSettings: vi.fn(),
     events: {
       sessionChanged: { listen: listen[0] },
       generalSettingsChanged: { listen: listen[1] },
@@ -35,7 +38,10 @@ vi.mock("../generated/bindings", () => ({
     applyLogFilter: vi.fn(),
     clearLogs: vi.fn(),
     exportLogs: vi.fn(),
+    loadDeveloperSettings: mocks.loadDeveloperSettings,
     resetClientSettings: vi.fn(),
+    resetConnlib: vi.fn(),
+    saveDeveloperSettings: mocks.saveDeveloperSettings,
     signIn: vi.fn(),
     signOut: vi.fn(),
     updateState: mocks.updateState,
@@ -76,4 +82,25 @@ test("requests initial state only after every event listener is registered", asy
   }
 
   await vi.waitFor(() => expect(mocks.updateState).toHaveBeenCalledOnce());
+});
+
+test("hiding the developer settings removes their page and returns to About", async () => {
+  mocks.loadDeveloperSettings.mockResolvedValueOnce({ unlocked: true });
+  root.render(
+    <MemoryRouter initialEntries={["/developer-settings"]}>
+      <App />
+    </MemoryRouter>
+  );
+  const developerSettingsLink = page.getByRole("link", {
+    name: "Developer Settings",
+  });
+  await expect.element(developerSettingsLink).toBeInTheDocument();
+
+  await userEvent.click(page.getByRole("button", { name: "Hide" }));
+
+  await expect
+    .element(page.getByRole("button", { name: "Firezone Logo" }))
+    .toBeInTheDocument();
+  await expect.element(developerSettingsLink).not.toBeInTheDocument();
+  expect(mocks.saveDeveloperSettings).toHaveBeenCalledWith({ unlocked: false });
 });

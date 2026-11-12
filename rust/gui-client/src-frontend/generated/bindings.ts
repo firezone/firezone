@@ -130,7 +130,7 @@ api_url?: string | null }
  */
 export type ControlPlane = "CloudUs" | "CloudEu" | "Custom"
 /**
- * The hidden developer settings section on the About page.
+ * The hidden developer settings page, unlocked from the About page.
  */
 export type DeveloperSettings = { unlocked: boolean }
 export type Error = string
