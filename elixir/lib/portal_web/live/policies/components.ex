@@ -1356,7 +1356,7 @@ defmodule PortalWeb.Policies.Components do
           :if={!@policy.is_disabled and not @confirm_disable_policy}
           phx-click="confirm_disable_policy"
           style="warning"
-          icon="ri-pause-line"
+          icon="ri-pause-circle-line"
         >
           Disable policy
         </Form.action_button>
@@ -1383,7 +1383,7 @@ defmodule PortalWeb.Policies.Components do
           :if={@policy.is_disabled}
           phx-click="enable_policy"
           style="success"
-          icon="ri-play-line"
+          icon="ri-play-circle-line"
         >
           Enable policy
         </Form.action_button>

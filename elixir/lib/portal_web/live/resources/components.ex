@@ -1562,7 +1562,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
                 >
-                  <Core.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
+                  <Core.icon name="ri-pause-circle-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
                 </button>
                 <button
                   :if={row.policy_is_disabled}
@@ -1571,7 +1571,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
                 >
-                  <Core.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
+                  <Core.icon name="ri-play-circle-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
                 </button>
                 <button
                   type="button"
