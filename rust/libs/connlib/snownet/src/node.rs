@@ -26,8 +26,8 @@ use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
 use opentelemetry::metrics::Gauge;
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::rngs::{StdRng, SysRng};
+use rand::{SeedableRng, TryRng};
 use relay_client_proto::channel_data::channel_data_packet_buffer;
 use relay_client_proto::{Allocation, RelaySocket, Socket};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -111,8 +111,6 @@ pub struct Node<TId, RId> {
     connection_count: Gauge<u64>,
     next_connection_count: Instant,
 
-    rng: StdRng,
-
     /// The number of seconds since the UNIX epoch.
     unix_ts: Duration,
     /// The [`Instant`] at the time we read the UNIX epoch above.
@@ -188,12 +186,10 @@ where
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     pub fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
-        let mut rng = StdRng::from_seed(seed);
-        let allocations = Allocations::new(&mut rng);
-        let interface = new_interface(&mut rng, now, unix_ts);
+        let allocations = Allocations::new(&mut StdRng::from_seed(seed));
+        let interface = new_interface(now, unix_ts);
 
         Self {
-            rng,
             interface,
             buffered_transmits: VecDeque::default(),
             pending_events: VecDeque::default(),
@@ -264,11 +260,7 @@ where
 
         self.connections.clear();
 
-        self.interface = new_interface(
-            &mut self.rng,
-            now,
-            self.unix_ts + now.duration_since(self.unix_now),
-        );
+        self.interface = new_interface(now, self.unix_ts + now.duration_since(self.unix_now));
 
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }
@@ -2405,9 +2397,11 @@ where
     }
 }
 
-fn new_interface(rng: &mut impl Rng, now: Instant, unix_ts: Duration) -> sanstun::Interface {
+fn new_interface(now: Instant, unix_ts: Duration) -> sanstun::Interface {
     let mut seed = Zeroizing::new([0u8; 32]);
-    rng.fill_bytes(&mut seed[..]);
+    SysRng
+        .try_fill_bytes(&mut seed[..])
+        .expect("OS RNG should be available");
 
     sanstun::Interface::new(seed, now, unix_ts).with_handshake_limit(HANDSHAKE_RATE_LIMIT)
 }
@@ -2468,6 +2462,16 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
     use super::*;
+
+    #[test]
+    fn nodes_with_same_seed_have_different_keys() {
+        let now = Instant::now();
+
+        let a = Node::<u32, u32>::new([0; 32], now, Duration::ZERO);
+        let b = Node::<u32, u32>::new([0; 32], now, Duration::ZERO);
+
+        assert_ne!(a.public_key(), b.public_key());
+    }
 
     #[test]
     fn client_default_ice_timeout() {
