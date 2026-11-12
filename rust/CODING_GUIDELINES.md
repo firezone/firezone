@@ -14,6 +14,9 @@ Where no rule fits, apply the principle.
   An exhaustive match points at every place that needs to handle a new variant, whereas an `else` swallows it silently.
 - Keep public APIs narrow.
   Changes to a module then stay contained and its concerns don't leak out.
+- Give every fact one owner.
+  A second copy, a second timer or a second computation of the same thing will eventually disagree with the first.
+  The exception is performance: a copy that saves work on the per-packet path is fine if a benchmark shows the win and the copy is documented as a cache.
 - Keep indentation low.
   Every condition that has been checked and returned from is one less thing to keep in mind while reading on.
 - Test through public APIs so that the implementation can be refactored underneath.
