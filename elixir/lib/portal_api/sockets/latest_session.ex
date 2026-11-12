@@ -545,8 +545,8 @@ defmodule PortalAPI.Sockets.LatestSession do
       end)
     end
 
-    # Nothing reads device_actors yet, so a failure here is logged rather
-    # than failing the sessions.
+    # A failure here only delays seat counts until the next connect, so it
+    # is logged rather than failing the sessions.
     def upsert_device_actors(rows, updated_ids) do
       entries =
         for %{actor_id: actor_id} = row <- rows,
