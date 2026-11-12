@@ -802,8 +802,7 @@ if config_env() == :prod do
     recipient: env_var_to_config!(:feedback_email_recipient)
 
   config :portal, Portal.Workers.SignUpReviewRequest,
-    approvers: env_var_to_config!(:sign_up_review_approvers),
-    recipient: env_var_to_config!(:sign_up_review_email_recipient)
+    approvers: env_var_to_config!(:sign_up_review_approvers)
 
   config :portal, Portal.Workers.SignUpFollowUp,
     from_email: env_var_to_config(:sign_up_follow_up_from_email),

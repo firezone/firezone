@@ -12,10 +12,7 @@ defmodule PortalWeb.SignUpReviewTest do
   @approvers ["alice@firezone.dev", "bob@firezone.dev"]
 
   setup do
-    Portal.Config.put_env_override(:portal, SignUpReviewRequest,
-      approvers: @approvers,
-      recipient: "support@firezone.dev"
-    )
+    Portal.Config.put_env_override(:portal, SignUpReviewRequest, approvers: @approvers)
 
     Portal.Repo.insert!(%Portal.KnownMxDomain{domain: "known-mail.test"})
     :ok
@@ -35,7 +32,7 @@ defmodule PortalWeb.SignUpReviewTest do
     end
 
     test "creates the account at once when review is off", %{conn: conn} do
-      Portal.Config.put_env_override(:portal, SignUpReviewRequest, approvers: [], recipient: nil)
+      Portal.Config.put_env_override(:portal, SignUpReviewRequest, approvers: [])
       stub_mx(["mx.unknown.test"])
       email = unique_email()
       stub_stripe(email)
@@ -46,7 +43,7 @@ defmodule PortalWeb.SignUpReviewTest do
       assert Portal.Repo.get_by(Portal.Account, name: "Review Corp")
     end
 
-    test "holds the sign-up and asks each approver and support when a host is unknown", %{conn: conn} do
+    test "holds the sign-up and asks each approver when a host is unknown", %{conn: conn} do
       stub_mx(["mx.known-mail.test", "mx.unknown.test"])
       email = unique_email()
 
@@ -56,8 +53,7 @@ defmodule PortalWeb.SignUpReviewTest do
       refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
 
       jobs = all_enqueued(worker: SignUpReviewRequest)
-      assert jobs |> Enum.map(&(&1.args["approver"] || "support")) |> Enum.sort() ==
-               @approvers ++ ["support"]
+      assert jobs |> Enum.map(& &1.args["approver"]) |> Enum.sort() == @approvers
       assert Enum.all?(jobs, &(&1.args["email"] == email))
       refute Enum.any?(jobs, &(&1.args["review"] =~ email))
     end
@@ -102,7 +98,7 @@ defmodule PortalWeb.SignUpReviewTest do
       verify(conn, email)
       verify(build_conn(), email)
 
-      assert length(all_enqueued(worker: SignUpReviewRequest)) == 3
+      assert length(all_enqueued(worker: SignUpReviewRequest)) == 2
     end
 
     test "sends an existing owner to sign in without a review", %{conn: conn} do
@@ -136,19 +132,6 @@ defmodule PortalWeb.SignUpReviewTest do
         assert sent.subject == "Approve sign-up: Review Corp"
         assert sent.text_body =~ "Mail servers: mx.unknown.test"
         assert sent.text_body =~ "/sign_up/review?token="
-        true
-      end)
-    end
-
-    test "sends support a copy without the link", %{conn: conn} do
-      email = hold_sign_up(conn)
-
-      assert :ok = perform_job(SignUpReviewRequest, job_for(nil).args)
-
-      assert_email_sent(fn sent ->
-        assert sent.to == [{"", "support@firezone.dev"}]
-        assert sent.reply_to == {"Review User", email}
-        refute sent.text_body =~ "/sign_up/review"
         true
       end)
     end

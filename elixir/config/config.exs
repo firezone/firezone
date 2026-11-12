@@ -395,7 +395,7 @@ config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil
 
 config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
-config :portal, Portal.Workers.SignUpReviewRequest, approvers: [], recipient: nil
+config :portal, Portal.Workers.SignUpReviewRequest, approvers: []
 
 # Log sink deliveries are POSTs (S3: PUTs), which the default `:safe_transient`
 # retry strategy never retries. Redelivery is safe: destinations dedupe on log_id.

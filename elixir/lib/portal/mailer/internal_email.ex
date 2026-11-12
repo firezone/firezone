@@ -92,22 +92,6 @@ defmodule Portal.Mailer.InternalEmail do
     """)
   end
 
-  def sign_up_review_email(%{registration: registration} = review, recipient) do
-    default_email()
-    |> to(recipient)
-    |> reply_to({registration.actor_name, registration.email})
-    |> subject("Sign-up waiting for review: #{registration.company_name}")
-    |> text_body("""
-    Sign-up waiting for review
-
-    The mail servers of this email domain are not on the list of known email providers,
-    so the account is not created yet. An approver got a link to approve it.
-    Reply to this email to contact the person.
-
-    #{sign_up_review_details(review)}
-    """)
-  end
-
   def sign_up_approval_request_email(%{registration: registration} = review, approver, url) do
     default_email()
     |> to(approver)
