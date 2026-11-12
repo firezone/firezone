@@ -2,10 +2,6 @@
 package dev.firezone.android.features.settings.ui.compose
 
 import android.app.Application
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -14,7 +10,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
@@ -32,12 +27,10 @@ class LogSettingsPageTest {
 
     private var clears = 0
     private var savedLogFilter: String? = null
-    private var resets = 0
+    private var unlocks = 0
 
     private fun showPage() {
         composeRule.setContent {
-            var showDeveloperSettings by remember { mutableStateOf(false) }
-
             LogSettingsPage(
                 config = Config("", "", "info", "", startOnLogin = false, connectOnStart = false),
                 managedStatus = ManagedConfigStatus.NOTHING_MANAGED,
@@ -45,9 +38,7 @@ class LogSettingsPageTest {
                 onLogFilterChange = { savedLogFilter = it },
                 onClearLogs = { clears++ },
                 onExportLogs = {},
-                showDeveloperSettings = showDeveloperSettings,
-                onShowDeveloperSettingsChange = { showDeveloperSettings = it },
-                onResetConnlib = { resets++ },
+                onUnlockDeveloperSettings = { unlocks++ },
                 versionName = "1.0.0",
                 buildSha = "unknown",
                 validateLogFilter = { if (it == "info,foo=bar=baz") "invalid directive" else null },
@@ -89,17 +80,13 @@ class LogSettingsPageTest {
     }
 
     @Test
-    fun `tapping the version seven times reveals the developer settings`() {
+    fun `tapping the version seven times unlocks the developer settings`() {
         showPage()
 
         repeat(6) { composeRule.onNodeWithText("Version").performClick() }
-        composeRule.onNodeWithText("Developer settings").assertDoesNotExist()
+        assertEquals(0, unlocks)
 
         composeRule.onNodeWithText("Version").performClick()
-        composeRule.onNodeWithText("Reset connlib").performScrollTo().performClick()
-        assertEquals(1, resets)
-
-        composeRule.onNodeWithText("Hide developer settings").performScrollTo().performClick()
-        composeRule.onNodeWithText("Developer settings").assertDoesNotExist()
+        assertEquals(1, unlocks)
     }
 }

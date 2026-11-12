@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
@@ -46,9 +45,7 @@ fun LogSettingsPage(
     onLogFilterChange: (String) -> Unit,
     onClearLogs: () -> Unit,
     onExportLogs: () -> Unit,
-    showDeveloperSettings: Boolean,
-    onShowDeveloperSettingsChange: (Boolean) -> Unit,
-    onResetConnlib: () -> Unit,
+    onUnlockDeveloperSettings: () -> Unit,
     versionName: String,
     buildSha: String,
     modifier: Modifier = Modifier,
@@ -103,7 +100,7 @@ fun LogSettingsPage(
                         versionTaps++
                         if (versionTaps == DEVELOPER_SETTINGS_TAPS) {
                             versionTaps = 0
-                            onShowDeveloperSettingsChange(true)
+                            onUnlockDeveloperSettings()
                         }
                     },
             ) {
@@ -125,18 +122,6 @@ fun LogSettingsPage(
                 } else {
                     Text(versionName)
                 }
-            }
-        }
-        if (showDeveloperSettings) {
-            SettingsGroup(title = stringResource(R.string.developer_settings)) {
-                SettingsRow(
-                    title = stringResource(R.string.reset_connlib),
-                    action = Modifier.clickable(role = Role.Button, onClick = onResetConnlib),
-                )
-                SettingsRow(
-                    title = stringResource(R.string.hide_developer_settings),
-                    action = Modifier.clickable(role = Role.Button) { onShowDeveloperSettingsChange(false) },
-                )
             }
         }
     }

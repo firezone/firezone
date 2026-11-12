@@ -47,10 +47,14 @@ internal enum class SettingsPage(
     GENERAL(R.string.settings_title, FirezoneIcons.DiscoverTune),
     DEVICE_TRUST(R.string.device_trust_settings_title, FirezoneIcons.VerifiedUser),
     LOGS(R.string.diagnostics_settings_title, FirezoneIcons.Description),
+    DEVELOPER(R.string.developer_settings, FirezoneIcons.Settings),
 }
 
 /** The pages to show, in order. */
-internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
+internal fun settingsPages(
+    showDeviceTrust: Boolean,
+    showDeveloperSettings: Boolean,
+): List<SettingsPage> =
     buildList {
         add(SettingsPage.GENERAL)
 
@@ -59,6 +63,10 @@ internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
         }
 
         add(SettingsPage.LOGS)
+
+        if (showDeveloperSettings) {
+            add(SettingsPage.DEVELOPER)
+        }
     }
 
 @Composable
@@ -92,12 +100,12 @@ internal fun SettingsScreen(
     versionName: String = BuildConfig.VERSION_NAME,
     buildSha: String = stringResource(R.string.git_sha),
 ) {
-    val pages = remember(showDeviceTrust) { settingsPages(showDeviceTrust) }
+    val pages = remember(showDeviceTrust, showDeveloperSettings) { settingsPages(showDeviceTrust, showDeveloperSettings) }
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
     var showResetConfirmation by rememberSaveable { mutableStateOf(false) }
 
-    // Revoking the certificate drops a page, so the index can outrun the list for a frame.
+    // Revoking the certificate or hiding the developer settings drops a page, so the index can outrun the list for a frame.
     val currentPage = pages.getOrNull(pagerState.currentPage)
 
     // The log directory grows while the app runs, and an administrator can install or revoke the
@@ -167,11 +175,16 @@ internal fun SettingsScreen(
                         onLogFilterChange = onLogFilterChange,
                         onClearLogs = onClearLogs,
                         onExportLogs = onExportLogs,
-                        showDeveloperSettings = showDeveloperSettings,
-                        onShowDeveloperSettingsChange = onShowDeveloperSettingsChange,
-                        onResetConnlib = onResetConnlib,
+                        onUnlockDeveloperSettings = { onShowDeveloperSettingsChange(true) },
                         versionName = versionName,
                         buildSha = buildSha,
+                    )
+                }
+
+                SettingsPage.DEVELOPER -> {
+                    DeveloperSettingsPage(
+                        onResetConnlib = onResetConnlib,
+                        onHide = { onShowDeveloperSettingsChange(false) },
                     )
                 }
             }
