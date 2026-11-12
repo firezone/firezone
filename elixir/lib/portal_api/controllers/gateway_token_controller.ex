@@ -11,7 +11,7 @@ defmodule PortalAPI.GatewayTokenController do
 
   # Single-owner tokens replace multi-owner Site tokens; this endpoint is
   # deprecated ahead of its own removal, independent of any API versioning.
-  @multi_owner_token_sunset_at ~D[2026-10-01]
+  @multi_owner_token_sunset_at ~D[2027-04-01]
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
