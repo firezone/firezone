@@ -17,7 +17,6 @@ defmodule Portal.Workers.SignUpReviewRequest do
     max_attempts: 10,
     unique: [period: 86_400, keys: [:email, :approver]]
 
-  use Phoenix.VerifiedRoutes, endpoint: PortalOps.Endpoint, router: PortalOps.Router
   alias Portal.Mailer
   alias PortalWeb.SignUpReview
 
@@ -48,7 +47,7 @@ defmodule Portal.Workers.SignUpReviewRequest do
   def perform(%Oban.Job{args: %{"review" => encrypted_review, "approver" => approver}}) do
     with true <- approver in approvers(),
          {:ok, review} <- SignUpReview.decrypt_review(encrypted_review) do
-      url = url(~p"/sign_up_review?token=#{SignUpReview.approval_token(encrypted_review, approver)}")
+      url = ops_url("/sign_up_review", token: SignUpReview.approval_token(encrypted_review, approver))
 
       review
       |> Mailer.InternalEmail.sign_up_approval_request_email(approver, url)
@@ -60,5 +59,19 @@ defmodule Portal.Workers.SignUpReviewRequest do
     else
       _removed_approver_or_expired -> :ok
     end
+  end
+
+  # The review page is in the private ops dashboard, so the link is built from the ops
+  # endpoint's configured URL rather than its routes.
+  defp ops_url(path, query) do
+    url = Portal.Config.fetch_env!(:portal, PortalOps.Endpoint) |> Keyword.fetch!(:url)
+
+    URI.to_string(%URI{
+      scheme: Keyword.fetch!(url, :scheme),
+      host: Keyword.fetch!(url, :host),
+      port: Keyword.fetch!(url, :port),
+      path: path,
+      query: URI.encode_query(query)
+    })
   end
 end
