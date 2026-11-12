@@ -613,6 +613,33 @@ defmodule PortalWeb.SitesTest do
       assert is_nil(Repo.get_by(Device, account_id: account.id, id: gateway.id))
     end
 
+    test "does not change a gateway of a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_gateway = gateway_fixture(account: account, site: site_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "rename_gateway", %{"id" => other_gateway.id})
+      html = render_submit(lv, "save_gateway_name", %{"name" => "renamed"})
+      assert html =~ "Failed to rename gateway."
+
+      html = render_click(lv, "confirm_rotate_gateway_token", %{"id" => other_gateway.id})
+      assert html =~ "Failed to rotate token."
+
+      html = render_click(lv, "confirm_delete_gateway", %{"id" => other_gateway.id})
+      assert html =~ "Failed to delete gateway."
+
+      gateway = Repo.get_by!(Device, account_id: account.id, id: other_gateway.id)
+      assert gateway.name == other_gateway.name
+    end
+
     test "cancel delete gateway dismisses the inline confirmation", %{
       conn: conn,
       account: account,

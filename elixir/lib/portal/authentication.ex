@@ -733,7 +733,7 @@ defmodule Portal.Authentication do
         join: actor in Actor,
         on:
           actor.account_id == gt.account_id and actor.id == gt.actor_id and
-            actor.is_disabled == false,
+            actor.is_disabled == false and actor.type == :legacy_gateway,
         left_join: device in Portal.Device,
         on: device.account_id == gt.account_id and device.id == gt.device_id,
         where: not is_nil(gt.site_id) or device.type == :gateway,
@@ -753,6 +753,8 @@ defmodule Portal.Authentication do
     end
 
     def delete_gateway_tokens(queryable, subject) do
+      queryable = where(queryable, [t], t.actor_id in subquery(legacy_gateway_actor_ids()))
+
       scoped_or_unscoped =
         if subject, do: Safe.scoped(queryable, subject), else: Safe.unscoped(queryable)
 
@@ -763,6 +765,8 @@ defmodule Portal.Authentication do
     end
 
     def delete_client_tokens(queryable, subject) do
+      queryable = where(queryable, [t], t.actor_id not in subquery(legacy_gateway_actor_ids()))
+
       scoped_or_unscoped =
         if subject, do: Safe.scoped(queryable, subject), else: Safe.unscoped(queryable)
 
@@ -788,11 +792,11 @@ defmodule Portal.Authentication do
       )
       |> where([tokens: tokens], is_nil(tokens.site_id))
       |> where([tokens: tokens, device: device], is_nil(tokens.device_id) or device.type == :client)
-      |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))
+      |> where([tokens: tokens], tokens.expires_at > ^now)
       |> where([tokens: tokens], tokens.id == ^token_id)
       |> where([tokens: tokens], tokens.account_id == ^account_id)
       |> where([account: account], account.is_disabled == false)
-      |> where([actor: actor], actor.is_disabled == false)
+      |> where([actor: actor], actor.is_disabled == false and actor.type != :legacy_gateway)
       |> select([tokens: tokens], tokens)
       |> Safe.unscoped()
       |> Safe.one()
@@ -1066,6 +1070,10 @@ defmodule Portal.Authentication do
       )
       |> Safe.unscoped()
       |> Safe.one!()
+    end
+
+    defp legacy_gateway_actor_ids do
+      from(a in Actor, where: a.type == :legacy_gateway, select: a.id)
     end
   end
 end
