@@ -636,19 +636,43 @@ public struct SettingsView: View {
     #endif
   }
 
+  @ViewBuilder
   private var developerSettingsSection: some View {
-    Section {
-      Button("Reset connlib") {
-        withErrorHandler { try await store.resetConnlib() }
+    #if os(iOS)
+      Section("Connlib") {
+        Button("Reset connlib", action: resetConnlib)
+          .disabled(store.vpnStatus != .connected)
       }
-      .disabled(store.vpnStatus != .connected)
+      Section {
+        Button("Hide Developer Settings", action: hideDeveloperSettings)
+      }
+    #elseif os(macOS)
+      Section {
+        LabeledContent("Reset connlib") {
+          Button("Reset", action: resetConnlib)
+            .disabled(store.vpnStatus != .connected)
+        }
+      } header: {
+        Text("Connlib")
+      } footer: {
+        HStack {
+          Spacer()
+          Button("Hide Developer Settings", action: hideDeveloperSettings)
+        }
+      }
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
 
-      Button("Hide developer settings") {
-        viewModel.selectedTab = .logs
-        isDeveloperSettingsUnlocked = false
-        versionTapCount = 0
-      }
-    }
+  private func resetConnlib() {
+    withErrorHandler { try await store.resetConnlib() }
+  }
+
+  private func hideDeveloperSettings() {
+    viewModel.selectedTab = .logs
+    isDeveloperSettingsUnlocked = false
+    versionTapCount = 0
   }
 
   private var resetButton: some View {
