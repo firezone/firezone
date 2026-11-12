@@ -332,6 +332,26 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  Internal HTTPS port for the `ops` application. Leave unset to serve it over
+  plain HTTP only.
+  """
+  defconfig(:phoenix_https_ops_port, :integer,
+    default: nil,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
+  JSON object mapping `ops` hostnames to their TLS certificate and key files,
+  in the same format as `PHOENIX_HTTPS_SNI_HOSTS`.
+  """
+  defconfig(:phoenix_https_ops_sni_hosts, :map, default: %{})
+
+  @doc """
   The IP address or hostname allowed as the WebSocket origin for the ops endpoint.
 
   Maps to the `OPS_WEBSOCKET_ORIGIN` environment variable.

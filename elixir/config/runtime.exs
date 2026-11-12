@@ -677,25 +677,53 @@ if config_env() == :prod do
   ##### PortalOps Endpoint ######
   ###############################
 
-  config :portal, PortalOps.Endpoint,
-    http: [
-      ip: env_var_to_config!(:phoenix_listen_address).address,
-      port: env_var_to_config!(:phoenix_http_ops_port),
-      http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-    ],
-    url: [
-      scheme: "http",
-      host: "localhost",
-      port: env_var_to_config!(:phoenix_http_ops_port),
-      path: nil
-    ],
-    secret_key_base: env_var_to_config!(:ops_secret_key_base),
-    live_view: [
-      signing_salt: env_var_to_config!(:ops_live_view_signing_salt)
-    ],
-    check_origin: [
-      "//#{env_var_to_config!(:ops_websocket_origin)}:#{env_var_to_config!(:ops_websocket_port)}"
-    ]
+  ops_https =
+    case env_var_to_config(:phoenix_https_ops_port) do
+      nil ->
+        []
+
+      port ->
+        sni_hosts = env_var_to_config!(:phoenix_https_ops_sni_hosts)
+
+        if sni_hosts == %{} do
+          raise "PHOENIX_HTTPS_OPS_SNI_HOSTS must be set when PHOENIX_HTTPS_OPS_PORT is set"
+        end
+
+        [
+          https: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: port,
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options),
+            thousand_island_options: [
+              transport_options: [sni_fun: Portal.TLS.sni_fun(sni_hosts, nil)]
+            ]
+          ]
+        ]
+    end
+
+  config :portal,
+         PortalOps.Endpoint,
+         ops_https ++
+           [
+             http: [
+               ip: env_var_to_config!(:phoenix_listen_address).address,
+               port: env_var_to_config!(:phoenix_http_ops_port),
+               http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+             ],
+             url: [
+               scheme: "http",
+               host: "localhost",
+               port: env_var_to_config!(:phoenix_http_ops_port),
+               path: nil
+             ],
+             secret_key_base: env_var_to_config!(:ops_secret_key_base),
+             live_view: [
+               signing_salt: env_var_to_config!(:ops_live_view_signing_salt)
+             ],
+             check_origin: [
+               "//#{env_var_to_config!(:ops_websocket_origin)}:#{env_var_to_config!(:ops_websocket_port)}"
+             ]
+           ]
 
   ###############################
   ##### Third-party configs #####
