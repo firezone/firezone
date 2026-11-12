@@ -10,7 +10,7 @@ use crate::{
     gui::Managed,
     logging::FileCount,
     settings::{
-        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, GeneralSettings,
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettings, GeneralSettings,
         GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
     },
 };
@@ -157,6 +157,9 @@ pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogFilterChanged(pub LogFilterViewModel);
+
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct DeveloperSettingsChanged(pub DeveloperSettings);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
@@ -381,6 +384,29 @@ pub async fn update_state(managed: tauri::State<'_, Managed>) -> Result<(), Erro
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn reset_connlib(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
+    managed
+        .send_request(ControllerRequest::ResetConnlib)
+        .await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_developer_settings_unlocked(
+    managed: tauri::State<'_, Managed>,
+    unlocked: bool,
+) -> Result<(), Error> {
+    managed
+        .send_request(ControllerRequest::SetDeveloperSettingsUnlocked(unlocked))
+        .await?;
+
+    Ok(())
+}
+
 #[derive(Debug, specta::Type, Serialize)]
 pub struct Error(String);
 
@@ -400,6 +426,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             SessionChanged,
             GeneralSettingsChanged,
             LogFilterChanged,
+            DeveloperSettingsChanged,
             LogsRecounted,
             X509CertificateChanged,
         ])
@@ -412,6 +439,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             sign_in,
             sign_out,
             update_state,
+            reset_connlib,
+            set_developer_settings_unlocked,
         ])
         .typ::<Error>()
 }

@@ -1078,7 +1078,7 @@ struct ProviderMessageCodableTests {
   func valuelessCasesRoundTrip() throws {
     let cases: [ProviderMessage] = [
       .signOut, .clearLogs, .getLogFolderSize, .exportLogs, .getEncodedFirezoneId,
-      .drainFlowLogs, .getStatus,
+      .drainFlowLogs, .getStatus, .manualReset,
     ]
 
     for message in cases {

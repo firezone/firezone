@@ -398,8 +398,8 @@ class TunnelService : VpnService() {
         sendTunnelCommand(TunnelCommand.SetDns(dnsList))
     }
 
-    fun reset() {
-        sendTunnelCommand(TunnelCommand.Reset)
+    fun reset(reason: String) {
+        sendTunnelCommand(TunnelCommand.Reset(reason))
     }
 
     private fun connect() {
@@ -682,7 +682,9 @@ class TunnelService : VpnService() {
             val fd: Int,
         ) : TunnelCommand()
 
-        data object Reset : TunnelCommand()
+        data class Reset(
+            val reason: String,
+        ) : TunnelCommand()
     }
 
     sealed class StopReason {
@@ -771,7 +773,7 @@ class TunnelService : VpnService() {
                             }
 
                             is TunnelCommand.Reset -> {
-                                session.reset("roam")
+                                session.reset(command.reason)
                             }
                         }
                     }

@@ -715,6 +715,12 @@ public final class Store: ObservableObject {
     try? manager().identityReference()
   }
 
+  func resetConnlib() async throws {
+    guard let session = try manager().session(), session.status == .connected else { return }
+
+    try await IPCClient.manualReset(session: session)
+  }
+
   func signOut() async throws {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized

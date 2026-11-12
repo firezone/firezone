@@ -27,6 +27,7 @@ class LogSettingsPageTest {
 
     private var clears = 0
     private var savedLogFilter: String? = null
+    private var unlocks = 0
 
     private fun showPage() {
         composeRule.setContent {
@@ -37,6 +38,7 @@ class LogSettingsPageTest {
                 onLogFilterChange = { savedLogFilter = it },
                 onClearLogs = { clears++ },
                 onExportLogs = {},
+                onUnlockDeveloperSettings = { unlocks++ },
                 versionName = "1.0.0",
                 buildSha = "unknown",
                 validateLogFilter = { if (it == "info,foo=bar=baz") "invalid directive" else null },
@@ -75,5 +77,16 @@ class LogSettingsPageTest {
         composeRule.onNode(hasSetTextAction()).performTextReplacement("")
         composeRule.onNodeWithText("OK").assertIsEnabled().performClick()
         assertEquals("", savedLogFilter)
+    }
+
+    @Test
+    fun `tapping the version seven times unlocks the developer settings`() {
+        showPage()
+
+        repeat(6) { composeRule.onNodeWithText("Version").performClick() }
+        assertEquals(0, unlocks)
+
+        composeRule.onNodeWithText("Version").performClick()
+        assertEquals(1, unlocks)
     }
 }

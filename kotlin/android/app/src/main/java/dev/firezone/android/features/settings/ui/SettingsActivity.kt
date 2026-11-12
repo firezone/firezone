@@ -9,12 +9,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.data.DeveloperSettings
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.permission.ui.CertificatePermissionViewModel
+import dev.firezone.android.features.session.ui.rememberTunnelService
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
 import javax.inject.Inject
@@ -24,6 +29,7 @@ internal class SettingsActivity : AppCompatActivity() {
     private val viewModel: SettingsViewModel by viewModels()
     private val deviceTrustViewModel: DeviceTrustSettingsViewModel by viewModels()
     private val certificatePermissionViewModel: CertificatePermissionViewModel by viewModels()
+    private val developerSettings by lazy { DeveloperSettings(this) }
 
     @Inject
     internal lateinit var repository: Repository
@@ -39,6 +45,8 @@ internal class SettingsActivity : AppCompatActivity() {
                 val managedStatus by viewModel.managedStatusStateFlow.collectAsStateWithLifecycle()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val deviceTrustState by deviceTrustViewModel.uiStateFlow.collectAsStateWithLifecycle()
+                val tunnelService = rememberTunnelService(flags = 0)
+                var showDeveloperSettings by remember { mutableStateOf(developerSettings.isUnlocked) }
 
                 SettingsScreen(
                     config = viewModel.config,
@@ -62,6 +70,12 @@ internal class SettingsActivity : AppCompatActivity() {
                     onResetToDefaults = viewModel::resetSettingsToDefaults,
                     onClearLogs = { viewModel.deleteLogDirectory(applicationContext) },
                     onExportLogs = { viewModel.createLogZip(this@SettingsActivity) },
+                    showDeveloperSettings = showDeveloperSettings,
+                    onShowDeveloperSettingsChange = {
+                        developerSettings.isUnlocked = it
+                        showDeveloperSettings = it
+                    },
+                    onResetConnlib = { tunnelService?.reset("requested by user") },
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,

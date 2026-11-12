@@ -36,8 +36,12 @@ interface Screen {
   /// The certificate the keystore holds, when the device trust tab is available.
   deviceTrustCertificate?: X509Certificate;
   logCount?: FileCount;
+  // Whether the user unlocked the developer settings, which adds their tab.
+  developerSettingsUnlocked?: boolean;
   // A field to type into and press Enter on, for a screen that shows a rejected value.
   input?: { label: string; value: string };
+  // The colour schemes to render, when not all of them.
+  colorSchemes?: readonly (typeof COLOR_SCHEMES)[number][];
 }
 
 const generalSettings: GeneralSettingsViewModel = {
@@ -220,6 +224,11 @@ const screens: Record<string, Screen> = {
     logFilter: { log_filter: "debug", log_filter_is_managed: true },
   },
   about: { route: "/about" },
+  "developer-settings": {
+    route: "/developer-settings",
+    developerSettingsUnlocked: true,
+    colorSchemes: ["light"],
+  },
 };
 
 // An animation makes the captured frame depend on wall-clock timing: the overview's
@@ -276,7 +285,7 @@ async function useColorScheme(colorScheme: (typeof COLOR_SCHEMES)[number]) {
 }
 
 for (const [name, screen] of Object.entries(screens)) {
-  for (const colorScheme of COLOR_SCHEMES) {
+  for (const colorScheme of screen.colorSchemes ?? COLOR_SCHEMES) {
     test(`${name}-${colorScheme}`, async () => {
       await useColorScheme(colorScheme);
 
@@ -299,6 +308,9 @@ for (const [name, screen] of Object.entries(screens)) {
             screen.deviceTrustCertificate
           );
         if (screen.logCount) await events.logsRecounted.emit(screen.logCount);
+        await events.developerSettingsChanged.emit({
+          unlocked: screen.developerSettingsUnlocked ?? false,
+        });
       });
 
       await settle();

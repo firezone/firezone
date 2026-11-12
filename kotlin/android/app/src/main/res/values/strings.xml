@@ -41,6 +41,9 @@
 	<string name="clear_logs_confirm_title">Clear log files?</string>
 	<string name="clear_logs_confirm_message">This deletes all log files on this device.</string>
 	<string name="clear_logs_confirm">Clear</string>
+	<string name="developer_settings_title">Developer</string>
+	<string name="reset_connlib">Reset connlib</string>
+	<string name="hide_developer_settings">Hide developer settings</string>
 
 	<!-- Device Trust Certificate -->
 	<string name="device_trust_certificate_title">Client certificate</string>
