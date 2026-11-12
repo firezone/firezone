@@ -54,7 +54,9 @@ Rules for all Rust code in this repository.
 - Parse at the boundary and pass the typed value on (`Url`, `SocketAddr`, `Duration`, an enum).
   Keeping a `String` around means re-parsing it later and more error cases to handle.
 - Wrap IDs, tokens and similar values in a newtype instead of passing a bare `String` around.
-- Use a dedicated enum instead of a `bool`, for parameters as well as return values.
+- Let the type say what a value means instead of giving an ordinary value a special meaning.
+  Represent a missing value with `None` and a failure with `Err`, never with a placeholder such as `0` or an unspecified address.
+  Use a dedicated enum instead of a `bool`, for parameters as well as return values.
   If the two cases of a boolean parameter share no code, write two functions.
 - Encode invariants in the type system: take ownership of a value that must not be used afterwards, tie values together with lifetimes, clean up in `Drop`.
   Avoid `Option` fields that are always `Some` after setup and state that can be derived from other state.
