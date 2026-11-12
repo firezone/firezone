@@ -2616,7 +2616,7 @@ mod tests {
                 panic!("expected a connection after saving the region");
             };
             let effective_api = mdm_settings.api_url.unwrap_or(api_url);
-            assert_eq!(connected_api, effective_api.clone());
+            assert_eq!(connected_api, effective_api);
             let integration = test_controller.integration();
             assert_eq!(
                 integration.signed_in_with.last(),

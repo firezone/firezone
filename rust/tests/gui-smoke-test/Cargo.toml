@@ -35,5 +35,5 @@ features = [
     "Win32_UI_WindowsAndMessaging",
 ]
 
-[lints]
-workspace = true
+[lints.cargo]
+unused_dependencies = "deny"
