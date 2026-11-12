@@ -211,8 +211,7 @@ defmodule PortalAPI.Gateway.Socket do
   defp apply_session(gateway, token_id, public_key, context, version) do
     %{
       gateway
-      | gateway_token_id: token_id,
-        token_id: token_id,
+      | token_id: token_id,
         public_key: public_key,
         last_seen_user_agent: context.user_agent,
         last_seen_remote_ip: context.remote_ip,
@@ -226,7 +225,7 @@ defmodule PortalAPI.Gateway.Socket do
   end
 
   defp flush_gateway_sessions(entries) do
-    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, :gateway_token_id)
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries)
 
     failed = revoked ++ missing
     failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
@@ -305,7 +304,7 @@ defmodule PortalAPI.Gateway.Socket do
       context: :gateway,
       subject: %{
         gateway_id: attrs[:device_id],
-        token_id: attrs[:gateway_token_id],
+        token_id: attrs[:token_id],
         ip: format_ip(attrs[:remote_ip]),
         ip_region: attrs[:remote_ip_location_region],
         ip_city: attrs[:remote_ip_location_city],

@@ -244,6 +244,9 @@ config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []
 
+# Tests stub the MX lookup with `resolve_mx`.
+config :portal, PortalWeb.SignUpReview, []
+
 config :portal, Portal.Telemetry, enabled: false
 
 config :opentelemetry_experimental, sdk_disabled: true

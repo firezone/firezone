@@ -2932,6 +2932,9 @@ fn encapsulate_or_buffer<'n>(
         Err(e) if e.any_is::<snownet::UnknownConnection>() => {
             return Err(e.context(UnroutablePacket::not_connected(&packet)));
         }
+        Err(e) if e.any_is::<snownet::RoutingLoop>() => {
+            return Err(e.context(UnroutablePacket::routing_loop(&packet)));
+        }
         Err(e) => return Err(e),
     };
 

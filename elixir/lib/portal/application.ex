@@ -66,19 +66,22 @@ defmodule Portal.Application do
       OpenIDConnect.Document.Cache
     ]
 
-    endpoint_children = [
-      # Builds the MCP tool table from the API spec; must be ready before the
-      # API endpoint starts serving /mcp.
-      PortalAPI.MCP.Tools,
-      # Give Phoenix socket drain enough time to gracefully close channel topics
-      # before transports are force-terminated.
-      {PortalWeb.Endpoint, shutdown: 40_000},
-      {PortalAPI.Endpoint, shutdown: 40_000},
-      {PortalOps.Endpoint, shutdown: 40_000},
-      # The public listener stops first during reverse-order shutdown, before
-      # the endpoints it dispatches into begin draining.
-      {Portal.Endpoint, shutdown: 40_000}
-    ]
+    endpoint_children =
+      [
+        # Builds the MCP tool table from the API spec; must be ready before the
+        # API endpoint starts serving /mcp.
+        PortalAPI.MCP.Tools,
+        # Give Phoenix socket drain enough time to gracefully close channel topics
+        # before transports are force-terminated.
+        {PortalWeb.Endpoint, shutdown: 40_000},
+        {PortalAPI.Endpoint, shutdown: 40_000}
+      ] ++
+        ops_endpoint() ++
+        [
+          # The public listener stops first during reverse-order shutdown, before
+          # the endpoints it dispatches into begin draining.
+          {Portal.Endpoint, shutdown: 40_000}
+        ]
 
     # Child order is chosen to make reverse-order shutdown graceful:
     # 1) Replication slot pollers stop while BEAM is still fully alive.
@@ -250,6 +253,15 @@ defmodule Portal.Application do
 
       _metadata ->
         :ok
+    end
+  end
+
+  # The ops dashboard is only compiled in from the private firezone/portal-ops repo.
+  defp ops_endpoint do
+    if Code.ensure_loaded?(PortalOps.Endpoint) do
+      [{PortalOps.Endpoint, shutdown: 40_000}]
+    else
+      []
     end
   end
 end

@@ -31,7 +31,7 @@ defmodule Portal.Ops.RegionTransferTest do
 
     client =
       client_fixture(account: account, actor: actor)
-      |> Ecto.Changeset.change(client_token_id: client_token.id, token_id: client_token.id)
+      |> Ecto.Changeset.change(token_id: client_token.id)
       |> update!()
 
     %{account: account, actor: actor, gateway: gateway, client: client, store: stub_storage()}
@@ -88,7 +88,7 @@ defmodule Portal.Ops.RegionTransferTest do
         |> Enum.filter(&(&1["nulled_columns"] != []))
         |> Map.new(&{&1["name"], Enum.sort(&1["nulled_columns"])})
 
-      assert nulled == %{"devices" => ["client_token_id", "gateway_token_id", "token_id"]}
+      assert nulled == %{"devices" => ["token_id"]}
     end
 
     test "refuses an account disabled for another reason", %{account: account, store: store} do
@@ -181,10 +181,10 @@ defmodule Portal.Ops.RegionTransferTest do
       assert imported.slug == account.slug
       assert imported.is_disabled
 
-      assert is_nil(fetch_device(gateway.id).gateway_token_id)
+      assert is_nil(fetch_device(gateway.id).token_id)
       imported_client = fetch_device(client.id)
       assert imported_client.actor_id == client.actor_id
-      assert is_nil(imported_client.client_token_id)
+      assert is_nil(imported_client.token_id)
 
       Portal.Config.put_env_override(:data_residency_region, :eu)
       assert {:ok, enabled} = RegionTransfer.enable(account.id, confirm: false)

@@ -332,6 +332,26 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  Internal HTTPS port for the `ops` application. Leave unset to serve it over
+  plain HTTP only.
+  """
+  defconfig(:phoenix_https_ops_port, :integer,
+    default: nil,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
+  JSON object mapping `ops` hostnames to their TLS certificate and key files,
+  in the same format as `PHOENIX_HTTPS_SNI_HOSTS`.
+  """
+  defconfig(:phoenix_https_ops_sni_hosts, :map, default: %{})
+
+  @doc """
   The IP address or hostname allowed as the WebSocket origin for the ops endpoint.
 
   Maps to the `OPS_WEBSOCKET_ORIGIN` environment variable.
@@ -1122,6 +1142,19 @@ defmodule Portal.Config.Definitions do
       |> Portal.Changeset.trim_change(key)
       |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
       |> Portal.Changeset.validate_email(key)
+    end
+  )
+
+  @doc """
+  Comma-separated email addresses that approve email sign-ups whose mail servers (MX
+  records) are not known. Each approver gets a personal approval link, and all of them
+  get a confirmation naming who approved. Sign-ups are never held for review
+  when this is empty.
+  """
+  defconfig(:sign_up_review_approvers, {:array, ",", :string},
+    default: [],
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_list(changeset, key, :string, &Portal.Changeset.validate_email/2)
     end
   )
 

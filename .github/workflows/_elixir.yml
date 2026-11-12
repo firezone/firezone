@@ -26,6 +26,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
+      - uses: ./.github/actions/checkout-portal-ops
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
       - uses: ./.github/actions/setup-postgres
       - uses: ./.github/actions/setup-elixir
         with:
@@ -76,6 +80,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
+      - uses: ./.github/actions/checkout-portal-ops
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
       - uses: ./.github/actions/setup-elixir
         id: setup-beam
         with:
@@ -108,6 +116,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
+      - uses: ./.github/actions/checkout-portal-ops
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}

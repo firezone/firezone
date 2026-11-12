@@ -52,7 +52,7 @@ defmodule Portal.GatewaySessionFixtures do
         :last_seen_at
       ]
     )
-    |> Ecto.Changeset.change(gateway_token_id: token.id, token_id: token.id)
+    |> Ecto.Changeset.change(token_id: token.id)
     |> Portal.Repo.update!()
   end
 end

@@ -198,6 +198,13 @@ impl Agent {
         }
     }
 
+    pub(crate) fn has_remote_candidate(&self, addr: std::net::SocketAddr) -> bool {
+        match self {
+            Self::Ice(a) => a.remote_candidates().any(|c| c.addr() == addr),
+            Self::Frostlink(agent) => agent.remote_candidates().any(|c| c.addr() == addr),
+        }
+    }
+
     pub(crate) fn remote_candidate_is_relayed(&self, addr: std::net::SocketAddr) -> bool {
         match self {
             Self::Ice(a) => a

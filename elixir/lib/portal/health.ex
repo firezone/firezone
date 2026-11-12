@@ -87,7 +87,8 @@ defmodule Portal.Health do
     api_endpoint = Keyword.fetch!(config, :api_endpoint)
     ops_endpoint = Keyword.fetch!(config, :ops_endpoint)
 
+    # The ops endpoint only exists in builds that include the private ops dashboard.
     Process.whereis(web_endpoint) != nil and Process.whereis(api_endpoint) != nil and
-      Process.whereis(ops_endpoint) != nil
+      (Process.whereis(ops_endpoint) != nil or not Code.ensure_loaded?(ops_endpoint))
   end
 end

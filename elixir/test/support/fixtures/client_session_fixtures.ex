@@ -51,7 +51,7 @@ defmodule Portal.ClientSessionFixtures do
         :last_seen_at
       ]
     )
-    |> Ecto.Changeset.change(client_token_id: token.id, token_id: token.id)
+    |> Ecto.Changeset.change(token_id: token.id)
     |> Portal.Repo.update!()
   end
 end

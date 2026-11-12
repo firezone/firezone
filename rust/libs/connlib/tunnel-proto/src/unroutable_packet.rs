@@ -76,6 +76,13 @@ impl UnroutablePacket {
         }
     }
 
+    pub fn routing_loop(packet: &IpPacket) -> Self {
+        Self {
+            five_tuple: FiveTuple::for_packet(packet),
+            error: RoutingError::RoutingLoop,
+        }
+    }
+
     pub fn reason(&self) -> RoutingError {
         self.error
     }
@@ -160,6 +167,8 @@ pub enum RoutingError {
     PacketToSelf,
     #[display("Unknown resource")]
     UnknownResource,
+    #[display("Routing loop")]
+    RoutingLoop,
     #[display("Other")]
     Other,
 }
@@ -176,6 +185,7 @@ impl From<RoutingError> for opentelemetry::Value {
             RoutingError::NotTunnelSourceIp => opentelemetry::Value::from("NotTunnelSourceIp"),
             RoutingError::PacketToSelf => opentelemetry::Value::from("PacketToSelf"),
             RoutingError::UnknownResource => opentelemetry::Value::from("UnknownResource"),
+            RoutingError::RoutingLoop => opentelemetry::Value::from("RoutingLoop"),
             RoutingError::Other => opentelemetry::Value::from("Other"),
         }
     }
