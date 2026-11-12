@@ -86,9 +86,9 @@ internal fun SessionRoute(
     )
 }
 
-/** The running tunnel, bound for as long as the session is on screen and `null` until it answers. */
+/** The running tunnel, bound for as long as the caller is on screen and `null` until it answers. */
 @Composable
-private fun rememberTunnelService(): TunnelService? {
+internal fun rememberTunnelService(flags: Int = Context.BIND_AUTO_CREATE): TunnelService? {
     val context = LocalContext.current
     var service by remember { mutableStateOf<TunnelService?>(null) }
 
@@ -109,7 +109,7 @@ private fun rememberTunnelService(): TunnelService? {
                 }
             }
 
-        context.bindService(Intent(context, TunnelService::class.java), connection, Context.BIND_AUTO_CREATE)
+        context.bindService(Intent(context, TunnelService::class.java), connection, flags)
 
         onDispose {
             context.unbindService(connection)
