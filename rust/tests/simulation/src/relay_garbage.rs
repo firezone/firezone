@@ -19,17 +19,9 @@ use rand::rngs::StdRng;
 use relay_server_proto::{Attribute, ClientSocket, Command, Server, auth::generate_password};
 use stun_codec::{
     Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
-    rfc5389::{
-        attributes::{MessageIntegrity, Nonce, Realm, Username},
-        methods::BINDING,
-    },
+    rfc5389::attributes::{MessageIntegrity, Nonce, Realm, Username},
     rfc5766::{attributes::RequestedTransport, methods::ALLOCATE},
 };
-
-use crate::relay_transition::Sender;
-
-/// The device that a foreign socket authenticates as; no other sender may use it.
-const FOREIGN_DEVICE: &str = "foreign";
 
 /// Flips the bits of `template` that are set in `mask`; what `mask` has beyond it is appended.
 pub(crate) fn mutate(template: &[u8], mask: &[u8]) -> Vec<u8> {
@@ -44,10 +36,12 @@ pub(crate) fn mutate(template: &[u8], mask: &[u8]) -> Vec<u8> {
 }
 
 /// Re-encodes a STUN message, optionally replacing the fields a fuzzer cannot guess.
+///
+/// An authenticated message is sent in the name of `device`.
 pub(crate) fn repair(
     datagram: &[u8],
     nonce: Option<&Nonce>,
-    sender: Sender,
+    device: &str,
     server: &Server<StdRng>,
 ) -> Option<Vec<u8>> {
     let message = decode(datagram)?;
@@ -56,7 +50,7 @@ pub(crate) fn repair(
         return MessageEncoder::new().encode_into_bytes(message).ok();
     };
 
-    let username = account_bound_username(message.get_attribute::<Username>()?, sender)?;
+    let username = account_bound_username(message.get_attribute::<Username>()?, device)?;
     let password = generate_password(server.auth_secret(), username.name());
     let realm = Realm::new("firezone".to_owned()).ok()?;
 
@@ -111,38 +105,6 @@ pub(crate) fn issued_nonce(
         .expect("a `401` carries a nonce")
 }
 
-/// Whether a client holding the given credentials must ignore a datagram from its relay.
-pub(crate) fn fails_integrity_check(
-    datagram: &[u8],
-    username: &Username,
-    realm: &Realm,
-    password: &str,
-) -> bool {
-    // Channel data is not authenticated.
-    if matches!(datagram.first(), Some(64..=79)) {
-        return false;
-    }
-
-    // Decoded with the client's set of attributes: a message it cannot decode is one it ignores.
-    let Ok(Ok(message)) =
-        MessageDecoder::<relay_client_proto::Attribute>::new().decode_from_bytes(datagram)
-    else {
-        return true;
-    };
-
-    // Neither are `BINDING` responses.
-    if message.method() == BINDING {
-        return false;
-    }
-
-    !message
-        .get_attribute::<MessageIntegrity>()
-        .is_some_and(|mi| {
-            mi.check_long_term_credential(username, realm, password)
-                .is_ok()
-        })
-}
-
 fn decode(datagram: &[u8]) -> Option<Message<Attribute>> {
     MessageDecoder::<Attribute>::new()
         .decode_from_bytes(datagram)
@@ -150,26 +112,19 @@ fn decode(datagram: &[u8]) -> Option<Message<Attribute>> {
         .ok()
 }
 
-/// Replaces the account tag with the hash of the account that the relay serves.
+/// Replaces the account and the device of a username, keeping its expiry.
 ///
 /// Like the nonce and HMAC, this lets the fuzzer reach authenticated paths while keeping the
-/// expiry under its control. A foreign socket gets a device of its own: the relay frees a
-/// device's previous allocation when it allocates again, which would defeat the isolation.
-fn account_bound_username(username: &Username, sender: Sender) -> Option<Username> {
+/// expiry under its control.
+fn account_bound_username(username: &Username, device: &str) -> Option<Username> {
     let parts = username.name().split(':').collect::<Vec<_>>();
-    let [expiry, _account_hash, device] = parts.as_slice() else {
+    let [expiry, _account_hash, _device] = parts.as_slice() else {
         return None;
     };
 
-    if expiry.is_empty() || device.is_empty() {
+    if expiry.is_empty() {
         return None;
     }
-
-    let device = match sender {
-        Sender::Foreign => FOREIGN_DEVICE,
-        Sender::Client if *device == FOREIGN_DEVICE => return None,
-        Sender::Client => device,
-    };
 
     Username::new(crate::relay::username(expiry, device)).ok()
 }

@@ -1,12 +1,12 @@
-//! A relay client and a relay, talking to each other over an unreliable network.
+//! A relay client and a relay, with a portal that hands the client the relay and its credentials.
 //!
-//! [`Allocation`] and the relay's `Server` are both sans-IO, so the whole world fits into
-//! one struct: the two state machines, a clock and the datagrams in flight between them.
-//! The input is a list of [`Transition`]s. There is no reference model; every transition
-//! instead checks the properties listed on [`World`].
+//! [`Allocation`] and the relay's `Server` are both sans-IO, so the world fits into one struct:
+//! the two state machines, a clock and the datagrams in flight between them. Each [`Transition`]
+//! runs until the two have settled. The [`Reference`] then says whether relaying must work, which
+//! [`World::probe`] checks end to end, and whether the transition was allowed to interrupt it.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeSet, VecDeque},
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant, SystemTime},
@@ -15,32 +15,46 @@ use std::{
 use arbitrary::Unstructured;
 use bufferpool::Bytes;
 use ip_packet::Ecn;
-use is::{Candidate, CandidateKind};
+use is::CandidateKind;
 use relay_client_proto::{Allocation, Event, RelaySocket, channel_data};
-use relay_server_proto::{AddressFamily, Command, auth};
+use relay_server_proto::{Command, auth};
 use snownet::Transmit;
-use stun_codec::rfc5389::attributes::{Realm, Username};
+use stun_codec::rfc5389::{
+    attributes::{Realm, Username},
+    methods::BINDING,
+};
 use uuid::Uuid;
 
 use crate::{
     relay_garbage as garbage,
-    relay_transition::{self as transition, Direction, Garbage, Sender, Transition},
+    relay_reference::{Environment, Observed, Reference},
+    relay_transition::{self as transition, Garbage, Loss, Target, Transition},
     sim_relay::SimRelay,
 };
 
-const MAX_TRANSITIONS: usize = 256;
+const MAX_TRANSITIONS: usize = 64;
 
-/// How long a working network gets to bring the client and the relay back in sync.
-///
-/// The client notices at its next refresh that the relay lost its allocation, which is at most
-/// five minutes away.
-const CONVERGENCE: Duration = Duration::from_secs(15 * 60);
+/// How long the credentials are valid that the portal issues.
+const CREDENTIAL_LIFETIME: Duration = Duration::from_secs(60 * 60);
+
+/// A client retransmits a request within this time, so a timer this close belongs to an
+/// exchange that is still going on.
+const RETRANSMISSION: Duration = Duration::from_secs(4);
+
+/// How often the portal hands the relay back to a client that keeps giving up on it.
+const MAX_HANDOVERS: usize = 3;
+
+/// More time than the client needs to give up on a relay that often.
+const MAX_SETTLE: Duration = Duration::from_secs(60);
 
 /// More datagrams than the client and the relay ever exchange without a timer firing.
 const MAX_DATAGRAMS_PER_INSTANT: usize = 1000;
 
-/// Longer than an input can make time pass, so the client's credentials never expire.
-const CREDENTIAL_LIFETIME: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+/// How long it takes at most until a client and a relay that went out of sync agree again.
+///
+/// The client notices a lost allocation at its next refresh; a channel that the relay bound
+/// without the client knowing is in the way until its binding is gone.
+const RESYNC: Duration = Duration::from_secs(16 * 60);
 
 const RELAY_IP4: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 1);
 const RELAY_IP6: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 1);
@@ -53,15 +67,13 @@ const CLIENT_DEVICE: &str = "client";
 const FOREIGN_IP4: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 200);
 const FOREIGN_IP6: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 2, 0, 0, 0, 0, 200);
 const FOREIGN_PORT: u16 = 7000;
+const FOREIGN_DEVICE: &str = "foreign";
 
-const PEERS: [SocketAddr; 3] = [
-    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10)), 40000),
-    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 11)), 40001),
-    SocketAddr::new(
-        IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 3, 0, 0, 0, 0, 10)),
-        40000,
-    ),
-];
+const PEER_IP4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10)), 40000);
+const PEER_IP6: SocketAddr = SocketAddr::new(
+    IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 3, 0, 0, 0, 0, 10)),
+    40000,
+);
 
 /// The smallest WireGuard data message: the relay only relays WireGuard and STUN.
 const PAYLOAD: [u8; 32] = {
@@ -74,48 +86,42 @@ pub(crate) fn run(data: &[u8], now: Instant) {
     let mut u = Unstructured::new(data);
     let relay = transition::stack(&mut u);
     let client = transition::stack(&mut u);
+
+    let mut reference = Reference::default();
     let mut world = World::new(relay, client, now);
+    world.settle();
+    world.check(&reference, true);
 
     for _ in 0..MAX_TRANSITIONS {
         if u.is_empty() {
             break;
         }
 
-        let transition = Transition::arbitrary(&mut u);
-        tracing::debug!(?transition);
+        let (transition, loss) = Transition::arbitrary(&mut u);
+        tracing::debug!(?transition, ?loss);
 
-        world.apply(transition);
+        world.apply(&transition, loss);
+        let may_interrupt = reference.apply(&transition, world.environment(), world.observed);
+        world.check(&reference, may_interrupt);
     }
-
-    world.converge();
 }
 
-/// The client, the relay and everything between them.
-///
-/// # Properties
-///
-/// - Neither state machine panics or logs an error.
-/// - Handling a timeout leaves no timer at or before the current time, and the client and
-///   the relay never exchange datagrams endlessly without time passing.
-/// - The candidates the client announces and invalidates are the ones it holds.
-/// - The relay passes data only between a client and the allocation of that client.
-/// - Nothing a foreign socket sends changes what the relay holds for the client, or reaches
-///   the client.
-/// - The client ignores what fails the integrity check.
-/// - On a working network, the client and the relay end up agreeing on the allocation. The
-///   client only gives up on a relay it cannot reach.
+/// The client, the relay, the portal and the network between them.
 struct World {
     start: Instant,
     now: Instant,
 
     relay: SimRelay,
     relay_sockets: Sockets,
-    /// How often the relay rebooted.
-    relay_generation: u64,
-    /// The client socket that each allocated port was allocated from.
-    owners: BTreeMap<u16, SocketAddr>,
+    /// How often the relay rebooted. Every boot has a secret of its own, so it is a different
+    /// relay to the portal.
+    relay_boots: u64,
 
-    /// Absent once the client gave up its allocation, until the portal announces the relay again.
+    portal_reachable: bool,
+    /// The credentials that the portal last issued.
+    credentials: Option<Credentials>,
+
+    /// Absent while the client has given up on the relay and the portal did not hand it back.
     client: Option<Client>,
     sockets: Sockets,
     roams: u16,
@@ -124,31 +130,30 @@ struct World {
     to_relay: VecDeque<Datagram>,
     to_client: VecDeque<Datagram>,
     last_from_client: Option<Datagram>,
-    last_from_relay: Option<Datagram>,
+    partitioned: bool,
+    /// What the current transition still loses.
+    loss: Loss,
+    /// Flips these bits in a copy of the relay's next control datagram and delivers it first.
+    forgery: Option<Vec<u8>>,
+
+    /// What happened during the current transition.
+    observed: Observed,
+    relay_addresses_changed: bool,
 }
 
 struct Client {
     allocation: Allocation,
-    relay_generation: u64,
-    username: Username,
-    realm: Realm,
-    password: String,
-    /// The candidates the allocation announced and did not invalidate since.
-    announced: Vec<Candidate>,
+    /// The relay addresses the allocation announced and did not invalidate since.
+    relay_addresses: BTreeSet<SocketAddr>,
 }
 
-/// What a client shows of itself.
-#[derive(Debug, PartialEq)]
-struct Observable {
-    relay_candidates: Vec<Candidate>,
-    other_candidates: Vec<Candidate>,
-    timeout: Option<Instant>,
-    active_socket: Option<SocketAddr>,
-    rtt: Option<Duration>,
-    has_credentials: bool,
+struct Credentials {
+    /// The boot of the relay that they are for.
+    relay_boot: u64,
+    expire_at: Instant,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 struct Datagram {
     src: SocketAddr,
     dst: SocketAddr,
@@ -166,13 +171,14 @@ impl World {
     fn new(relay_stack: (bool, bool), client_stack: (bool, bool), start: Instant) -> Self {
         let relay_sockets = Sockets::new(relay_stack, RELAY_IP4, RELAY_IP6, RELAY_PORT);
 
-        let mut world = Self {
+        Self {
             start,
             now: start,
             relay: new_relay(relay_sockets, 0, utc(Duration::ZERO)),
             relay_sockets,
-            relay_generation: 0,
-            owners: BTreeMap::new(),
+            relay_boots: 0,
+            portal_reachable: true,
+            credentials: None,
             client: None,
             sockets: Sockets::new(client_stack, CLIENT_IP4, CLIENT_IP6, 50000),
             roams: 0,
@@ -180,238 +186,242 @@ impl World {
             to_relay: VecDeque::new(),
             to_client: VecDeque::new(),
             last_from_client: None,
-            last_from_relay: None,
-        };
-        world.connect();
-
-        world
+            partitioned: false,
+            loss: Loss::default(),
+            forgery: None,
+            observed: Observed::default(),
+            relay_addresses_changed: false,
+        }
     }
 
-    fn apply(&mut self, transition: Transition) {
+    fn apply(&mut self, transition: &Transition, loss: Loss) {
+        self.loss = loss;
+        self.observed = Observed::default();
+        self.relay_addresses_changed = false;
+
         match transition {
-            Transition::Settle => self.settle(),
-            Transition::Deliver(Direction::ToRelay) => {
-                if let Some(datagram) = self.to_relay.pop_front() {
-                    self.deliver_to_relay(datagram);
+            Transition::Advance { duration } => self.advance(*duration),
+            Transition::RotateCredentials => {
+                if self.portal_reachable && self.client.is_some() {
+                    self.connect();
                 }
             }
-            Transition::Deliver(Direction::ToClient) => {
-                if let Some(datagram) = self.to_client.pop_front() {
-                    self.deliver_to_client(datagram);
-                }
-            }
-            Transition::Drop(Direction::ToRelay) => {
-                self.to_relay.pop_front();
-            }
-            Transition::Drop(Direction::ToClient) => {
-                self.to_client.pop_front();
-            }
-            Transition::DropAll => {
-                self.to_relay.clear();
-                self.to_client.clear();
-            }
-            Transition::Advance { duration, deliver } => self.advance(duration, deliver),
             Transition::Refresh => {
-                if let Some(client) = &mut self.client {
+                if let Some(client) = self.client.as_mut().filter(|_| self.portal_reachable) {
                     client.allocation.refresh(self.now);
+                    self.tick_client();
                 }
-                self.tick_client();
             }
-            Transition::BindChannel { peer } => {
-                if let Some(client) = &mut self.client {
-                    client
-                        .allocation
-                        .bind_channel(PEERS[peer % PEERS.len()], self.now);
-                }
-                self.tick_client();
-            }
-            Transition::SendToPeer { peer } => self.send_to_peer(PEERS[peer % PEERS.len()]),
-            Transition::PeerSends { peer } => self.peer_sends(PEERS[peer % PEERS.len()]),
             Transition::Roam { v4, v6 } => {
                 self.roams += 1;
                 self.seeds += 1;
-                self.sockets = Sockets::new((v4, v6), CLIENT_IP4, CLIENT_IP6, 50000 + self.roams);
+                self.sockets = Sockets::new((*v4, *v6), CLIENT_IP4, CLIENT_IP6, 50000 + self.roams);
 
                 if let Some(client) = &mut self.client {
                     client.allocation.restart(self.now, seed(self.seeds));
-                    client.announced.clear();
+                    self.relay_addresses_changed |= !client.relay_addresses.is_empty();
+                    client.relay_addresses.clear();
+                    self.tick_client();
                 }
-                self.tick_client();
             }
             Transition::RebootRelay => {
-                self.relay_generation += 1;
+                self.relay_boots += 1;
                 self.relay = new_relay(
                     self.relay_sockets,
-                    self.relay_generation,
+                    self.relay_boots,
                     utc(self.now - self.start),
                 );
-                self.owners.clear();
             }
-            Transition::AnnounceRelay => self.announce_relay(),
-            Transition::SetRelayCapacity { exhausted } => self.relay.out_of_capacity = exhausted,
-            Transition::GarbageToRelay {
-                sender,
+            Transition::Partition { duration } => {
+                self.partitioned = true;
+                self.advance(*duration);
+                self.partitioned = false;
+            }
+            Transition::PortalOutage => self.portal_reachable = false,
+            Transition::PortalRecovers => self.portal_reachable = true,
+            Transition::Garbage {
+                target,
                 parse,
                 authenticate,
                 datagram,
-            } => self.garbage_to_relay(sender, parse, authenticate, datagram),
-            Transition::GarbageToClient(datagram) => self.garbage_to_client(datagram),
+            } => match target {
+                Target::RelayFromForeign => {
+                    self.garbage_to_relay(false, *parse, *authenticate, datagram)
+                }
+                Target::RelayFromClient => {
+                    self.garbage_to_relay(true, *parse, *authenticate, datagram);
+                    self.advance(RESYNC);
+                }
+                Target::Client => self.garbage_to_client(datagram),
+            },
         }
-    }
 
-    /// Gives a working network time and checks where the client and the relay end up.
-    fn converge(&mut self) {
-        self.relay.out_of_capacity = false;
         self.settle();
-
-        // The second announcement is for a client that gives up during the first round.
-        for _ in 0..2 {
-            self.announce_relay();
-            self.advance(CONVERGENCE, true);
-        }
-
-        let Some(client) = &self.client else {
-            let is_reachable = (self.sockets.v4.is_some() && self.relay_sockets.v4.is_some())
-                || (self.sockets.v6.is_some() && self.relay_sockets.v6.is_some());
-            assert!(!is_reachable, "The client gave up on a relay that works");
-
-            return;
-        };
-
-        let socket = client
-            .allocation
-            .active_socket()
-            .and_then(|relay| self.sockets.of_family(relay));
-        let held_by_client = client
-            .allocation
-            .current_relay_candidates()
-            .map(|c| c.addr())
-            .collect::<BTreeSet<_>>();
-        let held_by_relay = self
-            .relay
-            .allocations
-            .iter()
-            .filter(|(_, port)| self.owners.get(&port.value()) == socket.as_ref())
-            .map(|(family, port)| match family {
-                AddressFamily::V4 => SocketAddr::new(RELAY_IP4.into(), port.value()),
-                AddressFamily::V6 => SocketAddr::new(RELAY_IP6.into(), port.value()),
-            })
-            .collect::<BTreeSet<_>>();
-
-        assert!(
-            !held_by_client.is_empty(),
-            "The client neither holds an allocation nor gives it up"
-        );
-        assert_eq!(
-            held_by_client, held_by_relay,
-            "The client and the relay disagree on the allocation"
-        );
     }
 
-    /// The portal announces the relay; a client that is connected to it does nothing.
-    fn announce_relay(&mut self) {
-        let is_connected = self
+    /// Checks the settled world against what the reference expects of the last transition.
+    fn check(&mut self, reference: &Reference, may_interrupt: bool) {
+        assert!(
+            may_interrupt || !self.relay_addresses_changed,
+            "The client's relay addresses changed in a transition that must not interrupt relaying"
+        );
+
+        if reference.must_relay(self.environment()) {
+            self.probe();
+        }
+    }
+
+    /// Sends data between a peer and the client through every relay address the client announced.
+    fn probe(&mut self) {
+        let addresses = self
             .client
             .as_ref()
-            .is_some_and(|c| c.relay_generation == self.relay_generation);
+            .map(|c| c.relay_addresses.clone())
+            .unwrap_or_default();
+        assert!(
+            !addresses.is_empty(),
+            "The client holds no relay address although relaying must work"
+        );
 
-        if !is_connected {
-            self.connect();
+        for address in addresses {
+            let peer = match address {
+                SocketAddr::V4(_) => PEER_IP4,
+                SocketAddr::V6(_) => PEER_IP6,
+            };
+
+            // The first attempt binds a channel to the peer if there is none.
+            let to_peer = self.encode_to_peer(peer).or_else(|| {
+                self.settle();
+                self.encode_to_peer(peer)
+            });
+            let relayed = to_peer
+                .and_then(|datagram| self.deliver_to_relay(datagram))
+                .expect("The client's data does not make it through the relay");
+            assert_eq!(
+                (relayed.src, relayed.dst, &relayed.payload[..]),
+                (Some(address), peer, &PAYLOAD[..]),
+                "The relay passed the client's data on to the wrong place"
+            );
+
+            let relayed = self
+                .deliver_to_relay(Datagram {
+                    src: peer,
+                    dst: address,
+                    payload: PAYLOAD.to_vec(),
+                })
+                .expect("A peer's data does not make it through the relay");
+            let src = relayed.src.expect("the relay sets a source");
+            assert!(
+                self.sockets.contains(relayed.dst),
+                "The relay passed a peer's data on to a socket the client does not have"
+            );
+
+            let client = self
+                .client
+                .as_mut()
+                .expect("the client has relay addresses");
+            let received = channel_data::decode(&relayed.payload)
+                .ok()
+                .and_then(|packet| client.allocation.decapsulate(src, packet, self.now))
+                .map(|(from, socket)| (from, socket.address()));
+            assert_eq!(
+                received,
+                Some((peer, address)),
+                "The client does not attribute a peer's data to the peer and the relay address"
+            );
+            self.tick_client();
         }
     }
 
-    /// The client starts a new allocation with credentials the portal issues for it.
+    fn encode_to_peer(&mut self, peer: SocketAddr) -> Option<Datagram> {
+        let client = self.client.as_mut()?;
+        let mut payload = channel_data::channel_data_packet_buffer(&PAYLOAD);
+        let encoded = client
+            .allocation
+            .encode_channel_data_header(peer, &mut payload, self.now);
+        self.tick_client();
+
+        let dst = encoded?.socket;
+        let src = self.sockets.of_family(dst)?;
+
+        Some(Datagram { src, dst, payload })
+    }
+
+    fn environment(&self) -> Environment {
+        Environment {
+            relay_reachable: (self.sockets.v4.is_some() && self.relay_sockets.v4.is_some())
+                || (self.sockets.v6.is_some() && self.relay_sockets.v6.is_some()),
+            portal_reachable: self.portal_reachable,
+            credentials_valid: self
+                .credentials
+                .as_ref()
+                .is_some_and(|c| c.relay_boot == self.relay_boots && self.now <= c.expire_at),
+        }
+    }
+
+    /// The portal hands the client the relay with fresh credentials; the client starts over.
     fn connect(&mut self) {
         let server = match (self.relay_sockets.v4, self.relay_sockets.v6) {
             (Some(SocketAddr::V4(v4)), Some(SocketAddr::V6(v6))) => RelaySocket::from((v4, v6)),
             (v4, v6) => RelaySocket::from(v4.or(v6).expect("the relay has a socket")),
         };
-        let expiry = (utc(self.now - self.start) + CREDENTIAL_LIFETIME)
+        // Whole seconds, because that is what a username carries.
+        let expires_after =
+            Duration::from_secs((self.now - self.start + CREDENTIAL_LIFETIME).as_secs());
+        let expiry = utc(expires_after)
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("expiry is later than the UNIX epoch")
             .as_secs();
         let username = username(expiry, CLIENT_DEVICE);
         let password = auth::generate_password(self.relay.sut.auth_secret(), &username);
-        let username = Username::new(username).expect("username is short enough");
-        let realm = Realm::new("firezone".to_owned()).expect("realm is short enough");
         self.seeds += 1;
 
-        self.client = Some(Client {
+        let previous = self.client.replace(Client {
             allocation: Allocation::new(
                 server,
-                username.clone(),
-                password.clone(),
-                realm.clone(),
+                Username::new(username).expect("username is short enough"),
+                password,
+                Realm::new("firezone".to_owned()).expect("realm is short enough"),
                 self.now,
                 seed(self.seeds),
             ),
-            relay_generation: self.relay_generation,
-            username,
-            realm,
-            password,
-            announced: Vec::new(),
+            relay_addresses: BTreeSet::new(),
         });
-        self.tick_client();
-    }
-
-    fn send_to_peer(&mut self, peer: SocketAddr) {
-        let Some(client) = &mut self.client else {
-            return;
-        };
-
-        let mut datagram = channel_data::channel_data_packet_buffer(&PAYLOAD);
-        let encoded = client
-            .allocation
-            .encode_channel_data_header(peer, &mut datagram, self.now);
-
-        if let Some(encoded) = encoded {
-            self.send_from_client(encoded.socket, datagram);
-        }
-        self.tick_client();
-    }
-
-    fn peer_sends(&mut self, peer: SocketAddr) {
-        let Some(client) = &self.client else {
-            return;
-        };
-        let socket = match peer {
-            SocketAddr::V4(_) => client.allocation.ip4_socket(),
-            SocketAddr::V6(_) => client.allocation.ip6_socket(),
-        };
-        let Some(socket) = socket else {
-            return;
-        };
-
-        self.deliver_to_relay(Datagram {
-            src: peer,
-            dst: socket.address(),
-            payload: PAYLOAD.to_vec(),
+        self.credentials = Some(Credentials {
+            relay_boot: self.relay_boots,
+            expire_at: self.start + expires_after,
         });
+        self.relay_addresses_changed |= previous.is_some_and(|c| !c.relay_addresses.is_empty());
+        self.tick_client();
     }
 
     fn garbage_to_relay(
         &mut self,
-        sender: Sender,
+        from_client: bool,
         parse: bool,
         authenticate: bool,
-        garbage: Garbage,
+        garbage: &Garbage,
     ) {
-        let template = self
-            .last_from_client
-            .as_ref()
-            .filter(|_| garbage.mutate_last);
-        let src = match sender {
-            Sender::Client => self.sockets.like(template.map(|d| d.src)),
-            Sender::Foreign if self.relay_sockets.v4.is_some() => {
-                SocketAddr::new(FOREIGN_IP4.into(), FOREIGN_PORT)
-            }
-            Sender::Foreign => SocketAddr::new(FOREIGN_IP6.into(), FOREIGN_PORT),
+        let template = self.last_from_client.clone().filter(|_| garbage.mutate);
+        let (src, device) = match from_client {
+            true => (
+                self.sockets.like(template.as_ref().map(|d| d.src)),
+                CLIENT_DEVICE,
+            ),
+            false if self.relay_sockets.v4.is_some() => (
+                SocketAddr::new(FOREIGN_IP4.into(), FOREIGN_PORT),
+                FOREIGN_DEVICE,
+            ),
+            false => (
+                SocketAddr::new(FOREIGN_IP6.into(), FOREIGN_PORT),
+                FOREIGN_DEVICE,
+            ),
         };
         let Some(dst) = self.relay_sockets.of_family(src) else {
             return;
         };
         let mut payload = garbage::mutate(
-            template.map(|d| d.payload.as_slice()).unwrap_or_default(),
+            template.map(|d| d.payload).as_deref().unwrap_or_default(),
             &garbage.bytes,
         );
 
@@ -419,7 +429,7 @@ impl World {
             let now_utc = utc(self.now - self.start);
             let nonce = authenticate
                 .then(|| garbage::issued_nonce(&mut self.relay.sut, src, self.now, now_utc));
-            let Some(repaired) = garbage::repair(&payload, nonce.as_ref(), sender, &self.relay.sut)
+            let Some(repaired) = garbage::repair(&payload, nonce.as_ref(), device, &self.relay.sut)
             else {
                 return;
             };
@@ -427,68 +437,73 @@ impl World {
             payload = repaired;
         }
 
-        self.deliver_to_relay(Datagram { src, dst, payload });
+        let relayed = self.deliver_to_relay(Datagram { src, dst, payload });
+        assert!(
+            from_client || relayed.is_none(),
+            "The relay passed on data from a foreign socket"
+        );
     }
 
-    fn garbage_to_client(&mut self, garbage: Garbage) {
-        self.tick_client();
-
-        let Some(client) = &self.client else {
+    fn garbage_to_client(&mut self, garbage: &Garbage) {
+        if garbage.mutate {
+            self.forgery = Some(garbage.bytes.clone());
             return;
-        };
-        let template = self
-            .last_from_relay
-            .as_ref()
-            .filter(|_| garbage.mutate_last);
-        let dst = self.sockets.like(template.map(|d| d.dst));
+        }
+
+        let dst = self.sockets.like(None);
         let Some(src) = self.relay_sockets.of_family(dst) else {
             return;
         };
-        let payload = garbage::mutate(
-            template.map(|d| d.payload.as_slice()).unwrap_or_default(),
-            &garbage.bytes,
-        );
 
-        let must_be_ignored = garbage::fails_integrity_check(
-            &payload,
-            &client.username,
-            &client.realm,
-            &client.password,
-        );
-        let before = (Some(client.observable()), self.to_relay.len());
-
-        self.deliver_to_client(Datagram { src, dst, payload });
-
-        if must_be_ignored {
-            let after = (
-                self.client.as_ref().map(Client::observable),
-                self.to_relay.len(),
-            );
-
-            assert_eq!(
-                before, after,
-                "The client reacted to a datagram that fails the integrity check"
-            );
-        }
+        self.deliver_to_client(Datagram {
+            src,
+            dst,
+            payload: garbage.bytes.clone(),
+        });
     }
 
-    /// Delivers datagrams until none are in flight.
+    /// Lets the client and the relay finish what they are doing, and the portal react to it.
+    ///
+    /// Time only passes for retransmissions; refreshes and keep-alives wait for `advance`.
     fn settle(&mut self) {
-        for _ in 0..MAX_DATAGRAMS_PER_INSTANT {
-            if let Some(datagram) = self.to_relay.pop_front() {
-                self.deliver_to_relay(datagram);
-            } else if let Some(datagram) = self.to_client.pop_front() {
-                self.deliver_to_client(datagram);
-            } else {
-                return;
-            }
-        }
+        let deadline = self.now + MAX_SETTLE;
+        let mut handovers = 0;
 
-        panic!("The client and the relay keep exchanging datagrams without time passing");
+        loop {
+            self.deliver_all();
+
+            let credentials_valid = self.environment().credentials_valid;
+            self.observed.credentials_lapsed |= !credentials_valid;
+
+            let lacks_relay = self.client.is_none() || !credentials_valid;
+            if lacks_relay && self.portal_reachable && handovers < MAX_HANDOVERS {
+                handovers += 1;
+                self.connect();
+                continue;
+            }
+
+            let Some(timeout) = self
+                .client
+                .as_ref()
+                .and_then(|c| c.allocation.poll_timeout())
+                .filter(|t| *t <= self.now + RETRANSMISSION)
+            else {
+                return;
+            };
+
+            self.now = timeout;
+            self.tick_relay();
+            self.tick_client();
+
+            assert!(
+                self.now <= deadline,
+                "The client and the relay do not settle"
+            );
+        }
     }
 
     /// Lets time pass, stopping at every timer of the client and the relay.
-    fn advance(&mut self, duration: Duration, deliver: bool) {
+    fn advance(&mut self, duration: Duration) {
         let target = self.now + duration;
 
         while self.now < target {
@@ -503,17 +518,28 @@ impl World {
             self.now = next_timer.map_or(target, |t| t.min(target)).max(self.now);
             self.tick_relay();
             self.tick_client();
+            self.deliver_all();
+        }
+    }
 
-            if deliver {
-                self.settle();
+    fn deliver_all(&mut self) {
+        for _ in 0..MAX_DATAGRAMS_PER_INSTANT {
+            if let Some(datagram) = self.to_relay.pop_front() {
+                self.deliver_to_relay(datagram);
+            } else if let Some(datagram) = self.to_client.pop_front() {
+                self.deliver_to_client(datagram);
+            } else {
+                return;
             }
         }
+
+        panic!("The client and the relay keep exchanging datagrams without time passing");
     }
 
     fn tick_relay(&mut self) {
         if self.relay.sut.poll_timeout().is_some_and(|t| t <= self.now) {
             self.relay.sut.handle_timeout(self.now);
-            self.drain_relay(None);
+            self.drain_relay();
         }
 
         assert!(
@@ -529,30 +555,43 @@ impl World {
         };
 
         client.allocation.handle_timeout(self.now);
-        client.drain_events();
+
+        while let Some(event) = client.allocation.poll_event() {
+            let (candidate, is_new) = match event {
+                Event::New(candidate) => (candidate, true),
+                Event::Invalid(candidate) => (candidate, false),
+            };
+            if candidate.kind() != CandidateKind::Relayed {
+                continue;
+            }
+
+            self.relay_addresses_changed = true;
+            match is_new {
+                true => client.relay_addresses.insert(candidate.addr()),
+                false => client.relay_addresses.remove(&candidate.addr()),
+            };
+        }
 
         let transmits =
             std::iter::from_fn(|| client.allocation.poll_transmit()).collect::<Vec<_>>();
+        let gave_up = client.allocation.can_be_freed();
+        let timeout = client.allocation.poll_timeout();
+
         for transmit in transmits {
             self.send_from_client(transmit.dst, transmit.payload.to_vec());
         }
 
-        let Some(client) = &mut self.client else {
-            return;
-        };
+        if let Some(reason) = gave_up {
+            tracing::debug!(%reason, "Client gives up on the relay");
 
-        if let Some(reason) = client.allocation.can_be_freed() {
-            tracing::debug!(%reason, "Client gives up its allocation");
-            self.client = None;
+            let client = self.client.take().expect("we just had a client");
+            self.relay_addresses_changed |= !client.relay_addresses.is_empty();
 
             return;
         }
 
         assert!(
-            client
-                .allocation
-                .poll_timeout()
-                .is_none_or(|t| t > self.now),
+            timeout.is_none_or(|t| t > self.now),
             "The client keeps a timer that is due after handling timeouts"
         );
     }
@@ -563,13 +602,22 @@ impl World {
             return;
         };
         let datagram = Datagram { src, dst, payload };
-
         self.last_from_client = Some(datagram.clone());
+
+        if self.partitioned {
+            return;
+        }
+        if std::mem::take(&mut self.loss.to_relay) {
+            self.observed.lost_datagram = true;
+            return;
+        }
+
         self.to_relay.push_back(datagram);
     }
 
-    fn deliver_to_relay(&mut self, datagram: Datagram) {
-        let reply = self.relay.receive(
+    /// Hands a datagram to the relay, returning the data that the relay passes on because of it.
+    fn deliver_to_relay(&mut self, datagram: Datagram) -> Option<Transmit> {
+        let relayed = self.relay.receive(
             Transmit {
                 src: Some(datagram.src),
                 dst: datagram.dst,
@@ -579,88 +627,52 @@ impl World {
             self.now,
             utc(self.now - self.start),
         );
-        self.drain_relay(Some(datagram.src));
+        self.drain_relay();
 
-        let Some(reply) = reply else {
-            return;
-        };
-        let reply_src = reply.src.expect("the relay sets a source");
-
-        if datagram.dst.port() != RELAY_PORT {
-            assert_eq!(
-                self.owners.get(&datagram.dst.port()),
-                Some(&reply.dst),
-                "The relay passed data from a peer to a client that does not hold the allocation"
-            );
-        } else if reply_src.port() != RELAY_PORT {
-            assert_eq!(
-                self.owners.get(&reply_src.port()),
-                Some(&datagram.src),
-                "The relay sent a client's data from an allocation that client does not hold"
-            );
-
-            return;
-        }
-
-        self.queue_to_client(Datagram {
-            src: reply_src,
-            dst: reply.dst,
-            payload: reply.payload.to_vec(),
-        });
+        relayed
     }
 
-    /// Carries out what the relay decided on a timeout or on a datagram from `sender`.
-    fn drain_relay(&mut self, sender: Option<SocketAddr>) {
-        let is_foreign = sender.is_some_and(|s| s.port() == FOREIGN_PORT);
-
+    fn drain_relay(&mut self) {
         while let Some(command) = self.relay.sut.next_command() {
-            let concerns = match command {
+            match command {
                 Command::SendMessage { payload, recipient } => {
                     let dst = recipient.into_socket();
                     let src = self
                         .relay_sockets
                         .of_family(dst)
                         .expect("the relay answers from the socket it was reached on");
-                    self.queue_to_client(Datagram { src, dst, payload });
 
-                    dst
+                    self.send_from_relay(Datagram { src, dst, payload });
                 }
                 Command::CreateAllocation { port, family } => {
-                    let client = sender.expect("the relay only allocates when asked to");
-                    let owner = *self.owners.entry(port.value()).or_insert(client);
-                    assert_eq!(owner, client, "The relay allocated a port twice");
                     self.relay.allocations.insert((family, port));
-
-                    client
                 }
                 Command::FreeAllocation { port, family } => {
                     self.relay.allocations.remove(&(family, port));
-
-                    // An allocation on both address families is freed with two commands.
-                    let Some(owner) = self.owners.remove(&port.value()) else {
-                        continue;
-                    };
-
-                    owner
                 }
-                Command::CreateChannelBinding { client, .. }
-                | Command::DeleteChannelBinding { client, .. } => client.into_socket(),
-            };
-
-            assert!(
-                !(is_foreign && self.sockets.contains(concerns)),
-                "A foreign socket changed what the relay holds for the client, or reached the client"
-            );
+                Command::CreateChannelBinding { .. } | Command::DeleteChannelBinding { .. } => {}
+            }
         }
     }
 
-    fn queue_to_client(&mut self, datagram: Datagram) {
+    fn send_from_relay(&mut self, datagram: Datagram) {
         // Answers to foreign sockets and to sockets the client left go nowhere.
-        if !self.sockets.contains(datagram.dst) {
+        if !self.sockets.contains(datagram.dst) || self.partitioned {
+            return;
+        }
+        if std::mem::take(&mut self.loss.to_client) {
+            self.observed.lost_datagram = true;
             return;
         }
 
-        self.last_from_relay = Some(datagram.clone());
+        if let Some(mask) = self.forgery.take() {
+            self.observed.forged_binding |= relay_client_proto::decode(&datagram.payload)
+                .is_ok_and(|message| message.is_ok_and(|m| m.method() == BINDING));
+            self.to_client.push_back(Datagram {
+                payload: garbage::mutate(&datagram.payload, &mask),
+                ..datagram.clone()
+            });
+        }
         self.to_client.push_back(datagram);
     }
 
@@ -691,70 +703,6 @@ impl World {
         }
 
         self.tick_client();
-    }
-}
-
-impl Client {
-    /// Records what the allocation announced and checks it against what it holds.
-    fn drain_events(&mut self) {
-        while let Some(event) = self.allocation.poll_event() {
-            match event {
-                Event::New(candidate) => {
-                    if !self.announced.contains(&candidate) {
-                        self.announced.push(candidate);
-                    }
-                }
-                Event::Invalid(candidate) => {
-                    let position = self
-                        .announced
-                        .iter()
-                        .position(|c| c == &candidate)
-                        .expect("The client invalidated a candidate it never announced");
-
-                    self.announced.remove(position);
-                }
-            }
-        }
-
-        let observable = self.observable();
-        let mut announced_relay_candidates = self
-            .announced
-            .iter()
-            .filter(|c| c.kind() == CandidateKind::Relayed)
-            .cloned()
-            .collect::<Vec<_>>();
-        announced_relay_candidates.sort_by_key(|c| c.addr());
-
-        assert_eq!(
-            observable.relay_candidates, announced_relay_candidates,
-            "The relay candidates the client holds are not the ones it announced"
-        );
-        for candidate in observable.other_candidates {
-            assert!(
-                self.announced.contains(&candidate),
-                "The client holds a candidate it never announced: {candidate:?}"
-            );
-        }
-    }
-
-    fn observable(&self) -> Observable {
-        let mut relay_candidates = self
-            .allocation
-            .current_relay_candidates()
-            .collect::<Vec<_>>();
-        relay_candidates.sort_by_key(|c| c.addr());
-
-        Observable {
-            relay_candidates,
-            other_candidates: self
-                .allocation
-                .host_and_server_reflexive_candidates()
-                .collect(),
-            timeout: self.allocation.poll_timeout(),
-            active_socket: self.allocation.active_socket(),
-            rtt: self.allocation.rtt(),
-            has_credentials: self.allocation.has_credentials(),
-        }
     }
 }
 
@@ -791,9 +739,9 @@ impl Sockets {
     }
 }
 
-fn new_relay(sockets: Sockets, generation: u64, now_utc: SystemTime) -> SimRelay {
+fn new_relay(sockets: Sockets, boot: u64, now_utc: SystemTime) -> SimRelay {
     SimRelay::new(
-        generation,
+        boot,
         sockets.v4.map(|_| RELAY_IP4),
         sockets.v6.map(|_| RELAY_IP6),
         now_utc,
@@ -827,13 +775,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn client_allocates_on_a_working_network() {
+    fn client_relays_data_on_a_working_network() {
         let mut world = World::new((true, true), (true, true), Instant::now());
 
-        world.apply(Transition::Settle);
+        world.settle();
 
         let client = world.client.as_ref().unwrap();
-        assert_eq!(client.allocation.current_relay_candidates().count(), 2);
-        world.converge();
+        assert_eq!(client.relay_addresses.len(), 2);
+        world.probe();
     }
 }

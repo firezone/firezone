@@ -15,5 +15,10 @@ Built with the `ijon` feature for AFL++ discovery, it records [IJON feedback](ht
 
 ## `relay`
 
-`run_relay` simulates a relay client and a relay on a network that delays and loses datagrams, with arbitrary datagrams sent to either side in between.
-There is no reference model: after every transition the simulation checks properties, e.g. that a foreign socket cannot affect the client's allocation, and at the end that the client and the relay agree on the allocation once the network works again.
+`run_relay` simulates a relay client, a relay and the portal that hands the client the relay and its credentials.
+A transition is something that happens to them: time passes, credentials are rotated or expire, the client roams, the relay reboots, the network or the portal is gone for a while, or a datagram arrives that neither side sent.
+Each transition runs until the client and the relay have settled.
+
+The reference model then answers two questions.
+Must relaying work? It must, unless the client can neither use its credentials nor get new ones, or cannot reach the relay; a probe checks that by sending data between a peer and the client through every relay address the client announced.
+Was the transition allowed to interrupt relaying? If not, the client's relay addresses must not have changed.

@@ -17,6 +17,7 @@ mod ref_gateway;
 mod reference;
 mod relay;
 mod relay_garbage;
+mod relay_reference;
 mod relay_transition;
 mod resource;
 mod sim_client;
@@ -103,8 +104,8 @@ pub fn run_tunnel(data: &[u8], now: Instant) {
 
 /// Runs the relay simulation that `data` describes, with its clock starting at `now`.
 ///
-/// Simulates a relay client and a relay on an unreliable network. Panics if either of them
-/// violates a property.
+/// Simulates a relay client, a relay and the portal and checks the client against a reference
+/// model. Panics if the client or the relay violates it.
 pub fn run_relay(data: &[u8], now: Instant) {
     let _guard = init_subscriber();
 
