@@ -88,10 +88,6 @@ run = "cargo clippy --all-targets --all-features"
 description = "Build documentation (CI check)"
 run = "cargo doc --all-features --no-deps --document-private-items"
 
-[tasks.shear]
-description = "Check for unused dependencies (CI check)"
-run = "cargo shear"
-
 [tasks.deny]
 description = "Check licenses and security advisories (CI check)"
 run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip --deny no-license-field"
@@ -186,6 +182,3 @@ echo "  grep MHz /proc/cpuinfo | sort -u"
 description = "Run all CI static analysis checks"
 depends = ["fmt-check", "clippy", "doc", "deny"]
 
-[tasks.check-all]
-description = "Run all CI static analysis checks including unused dependencies"
-depends = ["fmt-check", "clippy", "doc", "shear", "deny"]

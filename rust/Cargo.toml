@@ -326,8 +326,12 @@ too_many_arguments = "allow" # Don't care.
 large_enum_variant = "allow" # Don't care.
 type_complexity = "allow" # Don't care.
 
+[workspace.lints.cargo]
+unused_dependencies = "deny"
+unused_workspace_dependencies = "deny"
+
 [workspace.lints.rustdoc]
-private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
+private_intra_doc_links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.

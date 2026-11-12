@@ -1,5 +1,5 @@
 use super::*;
-use std::{convert::Infallible, fmt, str::FromStr};
+use std::{fmt, str::FromStr};
 
 #[derive(Eq, Clone)]
 pub struct Pattern {
@@ -121,7 +121,7 @@ impl Candidate {
 }
 
 impl FromStr for Candidate {
-    type Err = Infallible;
+    type Err = !;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self(s.replace('.', "/")))
