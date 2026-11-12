@@ -97,6 +97,11 @@ Rules for all Rust code in this repository.
   Don't describe who calls the code or repeat the value of a constant; both go stale.
 - Re-read the comments and docs of code you change.
   A comment that describes behaviour which has moved elsewhere is worse than no comment.
+
+## Dependencies
+
+- Don't enable features in `[workspace.dependencies]`.
+  The workspace entry pins the version; every crate enables the features it uses in its own `Cargo.toml`.
 - In `Cargo.toml`, put a comment on the same line as the dependency so it survives sorting.
 
 ## Unsafe
