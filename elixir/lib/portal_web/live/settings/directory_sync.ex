@@ -1543,8 +1543,8 @@ defmodule PortalWeb.Settings.DirectorySync do
               <Core.icon
                 name={
                   if @directory.is_disabled,
-                    do: "ri-checkbox-circle-line",
-                    else: "ri-close-circle-line"
+                    do: "ri-play-circle-line",
+                    else: "ri-pause-circle-line"
                 }
                 class="w-3.5 h-3.5 shrink-0"
               />

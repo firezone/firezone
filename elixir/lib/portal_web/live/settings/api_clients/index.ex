@@ -522,8 +522,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                   <Core.icon
                     name={
                       if !@actor.is_disabled,
-                        do: "ri-pause-line",
-                        else: "ri-play-line"
+                        do: "ri-pause-circle-line",
+                        else: "ri-play-circle-line"
                     }
                     class="w-3.5 h-3.5 shrink-0"
                   />

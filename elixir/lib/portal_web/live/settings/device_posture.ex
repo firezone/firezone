@@ -1245,7 +1245,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
               <Core.icon
-                name={if @provider.is_disabled, do: "ri-play-line", else: "ri-pause-line"}
+                name={if @provider.is_disabled, do: "ri-play-circle-line", else: "ri-pause-circle-line"}
                 class="w-3.5 h-3.5 shrink-0"
               />
               {if @provider.is_disabled, do: "Enable", else: "Disable"}
