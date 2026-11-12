@@ -19,14 +19,25 @@ defmodule PortalOps.SignUpReviewHTML do
       <.form for={%{}} id="sign-up-review-form" action="/sign_up_review" method="post">
         <input type="hidden" name="token" value={@token} />
         <fieldset :if={@suggested_domains != []}>
-          <legend>Trust these mail server domains for future sign-ups</legend>
+          <legend>Mail server domains to add to the list</legend>
           <label :for={domain <- @suggested_domains}>
             <input type="checkbox" name="domains[]" value={domain} checked /> <code>{domain}</code>
             <br />
           </label>
         </fieldset>
         <p :if={@error}><strong>{@error}</strong></p>
-        <button type="submit">Approve and create account</button>
+        <p>
+          <button type="submit" name="decision" value="approve_and_allow">
+            Approve and add domains to allowlist
+          </button>
+          <button type="submit" name="decision" value="approve">Approve only</button>
+        </p>
+        <p>
+          <button type="submit" name="decision" value="deny_and_deny">
+            Deny and add domains to denylist
+          </button>
+          <button type="submit" name="decision" value="deny">Deny only</button>
+        </p>
       </.form>
     </.page>
     """
@@ -38,6 +49,16 @@ defmodule PortalOps.SignUpReviewHTML do
       <p>
         Account {@account.name} is created and the welcome email is sent to {@review.registration.email}.
       </p>
+      <p :if={@domains != []}>Added to the allowlist: {Enum.join(@domains, ", ")}</p>
+    </.page>
+    """
+  end
+
+  def denied(assigns) do
+    ~H"""
+    <.page title="Sign-up denied">
+      <p>No account is created for {@review.registration.email}.</p>
+      <p :if={@domains != []}>Added to the denylist: {Enum.join(@domains, ", ")}</p>
     </.page>
     """
   end

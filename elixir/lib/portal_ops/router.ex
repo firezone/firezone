@@ -44,6 +44,6 @@ defmodule PortalOps.Router do
   scope "/", PortalOps do
     pipe_through [:browser, :admin_auth]
     get "/sign_up_review", SignUpReviewController, :show
-    post "/sign_up_review", SignUpReviewController, :approve
+    post "/sign_up_review", SignUpReviewController, :decide
   end
 end

@@ -8,6 +8,8 @@ defmodule PortalWeb.SignUpReviewTest do
   alias Portal.Workers.SignUpReviewRequest
   alias PortalWeb.SignUpReview
 
+  doctest PortalWeb.SignUpReview
+
   @sign_up_token_salt "sign_up_email_v1"
   @approvers ["alice@firezone.dev", "bob@firezone.dev"]
 
@@ -208,7 +210,7 @@ defmodule PortalWeb.SignUpReviewTest do
       assert conn.status == 401
     end
 
-    test "approving trusts the selected domains, creates the account and tells all approvers",
+    test "approve and allow adds the selected domains, creates the account and tells all approvers",
          %{conn: conn} do
       email = hold_sign_up(conn, ["mx1.mail.unknown.test", "mx2.mail.unknown.test", "mx.known-mail.test"])
       stub_stripe(email)
@@ -222,7 +224,7 @@ defmodule PortalWeb.SignUpReviewTest do
       refute html =~ ~s(value="known-mail.test")
       refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
 
-      html = ops(:post, %{"token" => token, "domains" => ["mail.unknown.test"]}) |> html_response(200)
+      html = ops(:post, %{"token" => token, "decision" => "approve_and_allow", "domains" => ["mail.unknown.test"]}) |> html_response(200)
 
       assert html =~ "Sign-up approved"
       account = Portal.Repo.get_by!(Portal.Account, name: "Review Corp")
@@ -240,14 +242,14 @@ defmodule PortalWeb.SignUpReviewTest do
       assert Enum.map(request["to"], & &1["address"]) == @approvers
       assert request["subject"] == "Sign-up approved: Review Corp"
       assert request["text_body"] =~ "Approved by: alice@firezone.dev"
-      assert request["text_body"] =~ "Newly trusted mail server domains: mail.unknown.test"
+      assert request["text_body"] =~ "Added to the allowlist: mail.unknown.test"
     end
 
-    test "approving with no domain selected trusts nothing", %{conn: conn} do
+    test "approve only creates the account and adds no domains", %{conn: conn} do
       email = hold_sign_up(conn)
       stub_stripe(email)
 
-      ops(:post, %{"token" => token("alice@firezone.dev")})
+      ops(:post, %{"token" => token("alice@firezone.dev"), "decision" => "approve", "domains" => ["unknown.test"]})
 
       assert Portal.Repo.get_by!(Portal.Account, name: "Review Corp")
       refute Portal.Repo.get(Portal.KnownMxDomain, "unknown.test")
@@ -257,20 +259,70 @@ defmodule PortalWeb.SignUpReviewTest do
       email = hold_sign_up(conn)
       stub_stripe(email)
 
-      ops(:post, %{"token" => token("alice@firezone.dev"), "domains" => ["amazonaws.com", "unknown.test"]})
+      ops(:post, %{
+        "token" => token("alice@firezone.dev"),
+        "decision" => "approve_and_allow",
+        "domains" => ["amazonaws.com", "unknown.test"]
+      })
 
       refute Portal.Repo.get(Portal.KnownMxDomain, "amazonaws.com")
       assert Portal.Repo.get(Portal.KnownMxDomain, "unknown.test")
     end
 
-    test "never changes a denied domain to allowed", %{conn: conn} do
+    test "never changes the verdict of a listed domain", %{conn: conn} do
       email = hold_sign_up(conn)
       stub_stripe(email)
-      Portal.Repo.insert!(%Portal.KnownMxDomain{domain: "unknown.test", verdict: :deny})
+      Portal.Repo.insert!(%Portal.KnownMxDomain{domain: "unknown.test", verdict: :allow})
 
-      ops(:post, %{"token" => token("alice@firezone.dev"), "domains" => ["unknown.test"]})
+      ops(:post, %{"token" => token("alice@firezone.dev"), "decision" => "deny_and_deny", "domains" => ["unknown.test"]})
 
-      assert %{verdict: :deny} = Portal.Repo.get(Portal.KnownMxDomain, "unknown.test")
+      assert %{verdict: :allow} = Portal.Repo.get(Portal.KnownMxDomain, "unknown.test")
+    end
+
+    test "deny and deny adds the selected domains, creates nothing and tells all approvers",
+         %{conn: conn} do
+      email = hold_sign_up(conn, ["mx.mail.unknown.test"])
+      token = token("alice@firezone.dev")
+
+      html =
+        ops(:post, %{"token" => token, "decision" => "deny_and_deny", "domains" => ["mail.unknown.test"]})
+        |> html_response(200)
+
+      assert html =~ "Sign-up denied"
+      refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
+      assert %{verdict: :deny} = Portal.Repo.get(Portal.KnownMxDomain, "mail.unknown.test")
+
+      assert_email_sent(fn sent ->
+        assert Enum.map(sent.to, &elem(&1, 1)) == @approvers
+        assert sent.subject == "Sign-up denied: Review Corp"
+        assert sent.text_body =~ "Denied by: alice@firezone.dev"
+        assert sent.text_body =~ "Added to the denylist: mail.unknown.test"
+        assert sent.text_body =~ email
+        true
+      end)
+
+      html = ops(:post, %{"token" => token, "decision" => "approve"}) |> html_response(200)
+      assert html =~ "now denied"
+      refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
+    end
+
+    test "deny only creates nothing and adds no domains", %{conn: conn} do
+      hold_sign_up(conn)
+
+      html =
+        ops(:post, %{"token" => token("alice@firezone.dev"), "decision" => "deny", "domains" => ["unknown.test"]})
+        |> html_response(200)
+
+      assert html =~ "Sign-up denied"
+      refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
+      refute Portal.Repo.get(Portal.KnownMxDomain, "unknown.test")
+    end
+
+    test "rejects an unknown decision", %{conn: conn} do
+      hold_sign_up(conn)
+
+      assert ops(:post, %{"token" => token("alice@firezone.dev"), "decision" => "maybe"}) |> html_response(404)
+      refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
     end
 
     test "suggests the host when its parent is a public suffix", %{conn: conn} do
@@ -287,9 +339,9 @@ defmodule PortalWeb.SignUpReviewTest do
       stub_stripe(email)
       token = token("alice@firezone.dev")
 
-      ops(:post, %{"token" => token})
+      ops(:post, %{"token" => token, "decision" => "approve"})
 
-      assert ops(:post, %{"token" => token}) |> html_response(200) =~ "Already approved"
+      assert ops(:post, %{"token" => token, "decision" => "approve"}) |> html_response(200) =~ "Already approved"
       assert [_account] = Portal.Repo.all_by(Portal.Account, name: "Review Corp")
     end
 
@@ -299,7 +351,7 @@ defmodule PortalWeb.SignUpReviewTest do
       Portal.Config.put_env_override(:portal, SignUpReviewRequest, approvers: ["bob@firezone.dev"])
 
       assert ops(:get, %{"token" => token}) |> html_response(404) =~ "Link not valid"
-      assert ops(:post, %{"token" => token}) |> html_response(404) =~ "Link not valid"
+      assert ops(:post, %{"token" => token, "decision" => "approve"}) |> html_response(404) =~ "Link not valid"
       refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
     end
 

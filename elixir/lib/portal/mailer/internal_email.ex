@@ -122,7 +122,23 @@ defmodule Portal.Mailer.InternalEmail do
 
     Approved by: #{approved_by}
     Account: #{account.name} (#{account.id})
-    Newly trusted mail server domains: #{trusted}
+    Added to the allowlist: #{trusted}
+
+    #{sign_up_review_details(review)}
+    """)
+  end
+
+  def sign_up_denied_email(%{registration: registration} = review, approvers, denied_by, domains) do
+    denied = if domains == [], do: "none", else: Enum.join(domains, ", ")
+
+    default_email()
+    |> to(approvers)
+    |> subject("Sign-up denied: #{registration.company_name}")
+    |> text_body("""
+    Sign-up denied
+
+    Denied by: #{denied_by}
+    Added to the denylist: #{denied}
 
     #{sign_up_review_details(review)}
     """)

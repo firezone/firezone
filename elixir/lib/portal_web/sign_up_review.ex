@@ -79,6 +79,18 @@ defmodule PortalWeb.SignUpReview do
 
   def verify_approval(_token), do: :error
 
+  @doc """
+  The domains an MX host matches on, from the host itself down to two labels.
+
+      iex> PortalWeb.SignUpReview.label_suffixes("mx1.mail.example.com")
+      ["mx1.mail.example.com", "mail.example.com", "example.com"]
+  """
+  @spec label_suffixes(String.t()) :: [String.t()]
+  def label_suffixes(host) do
+    labels = String.split(host, ".", trim: true)
+    for count <- length(labels)..2//-1, do: labels |> Enum.take(-count) |> Enum.join(".")
+  end
+
   defp classify(email) do
     {domain, hosts} =
       case email_domain(email) do
@@ -186,12 +198,6 @@ defmodule PortalWeb.SignUpReview do
         true -> {host, :unknown}
       end
     end)
-  end
-
-  # "mx1.mail.example.com" -> ["mx1.mail.example.com", "mail.example.com", "example.com"]
-  defp label_suffixes(host) do
-    labels = String.split(host, ".", trim: true)
-    for count <- length(labels)..2//-1, do: labels |> Enum.take(-count) |> Enum.join(".")
   end
 
   defmodule Database do
