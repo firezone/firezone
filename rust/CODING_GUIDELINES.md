@@ -87,6 +87,8 @@ Rules for all Rust code in this repository.
   Reserve `expect` for real invariants and use `debug_assert!` to make assumptions visible.
 - Don't add retry state or a timer for a failure that the next regular attempt already surfaces.
   Let it fail; the next attempt asks again.
+- Don't add a give-up timer or cooldown for a failure that the protocol's own expiry or an existing backoff already detects.
+  Two deadlines for one failure disagree, and the failure surfaces twice.
 - Make operations idempotent.
   Removing something that is already gone or applying the same update twice is not an error and does not deserve a warning.
 
