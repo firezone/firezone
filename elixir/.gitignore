@@ -58,3 +58,6 @@ npm-debug.log
 
 # Generated DB structure file
 priv/repo/structure.sql
+
+# The private ops dashboard (firezone/portal-ops), checked out here by CI.
+/ops/

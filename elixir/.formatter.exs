@@ -10,7 +10,9 @@
   plugins: [Phoenix.LiveView.HTMLFormatter, TrailingWhitespaceFormatter],
   inputs: [
     "*.{ex,exs}",
-    "{.credo,config,lib,test,priv}/**/*.{ex,exs,heex,xml.heex,html.heex}"
+    "{.credo,config,lib,test,priv}/**/*.{ex,exs,heex,xml.heex,html.heex}",
+    # The private ops dashboard, when checked out (see ops_paths/1 in mix.exs).
+    "ops/{lib,test}/**/*.{ex,exs,heex}"
   ],
   locals_without_parens: [
     assert_authenticated: 2,

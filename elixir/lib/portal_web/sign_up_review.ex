@@ -7,8 +7,8 @@ defmodule PortalWeb.SignUpReview do
     * any host matches a `:deny` domain: the sign-up is blocked
     * every host matches an `:allow` domain: the account is created as usual
     * otherwise each `SIGN_UP_REVIEW_APPROVERS` address gets a personal link to the
-      review page on the ops endpoint, see `Portal.Workers.SignUpReviewRequest` and
-      `PortalOps.SignUpReviewController`
+      review page on the ops endpoint, see `Portal.Workers.SignUpReviewRequest`. The
+      page is in the private ops dashboard (firezone/portal-ops)
 
   Google and GitHub sign-ups skip this. The links are encrypted, expire 72 hours after
   the sign-up and only work while their approver is still listed.

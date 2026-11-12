@@ -111,3 +111,61 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
           category: trivy-portal
+
+  # The image we deploy: the portal plus the private ops dashboard from the latest
+  # main of firezone/portal-ops. GHCR keeps this package private.
+  portal-ops:
+    name: portal-ops
+    runs-on: ubuntu-24.04
+    # Fork pull requests cannot read the private repo.
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: ./.github/actions/checkout-portal-ops
+        id: ops
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+      - name: Set up Docker Buildx
+        if: ${{ steps.ops.outputs.sha != '' }}
+        uses: ./.github/actions/setup-buildx
+      - uses: ./.github/actions/ghcr-docker-login
+        if: ${{ steps.ops.outputs.sha != '' }}
+        id: login
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sanitize github.ref_name
+        if: ${{ steps.ops.outputs.sha != '' }}
+        run: |
+          # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
+          REF="${{ github.ref_name }}"
+          CACHE_TAG="${REF//[\/_=]/-}"
+          echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
+      - name: Build and push the portal-ops image
+        if: ${{ steps.ops.outputs.sha != '' }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          build-args: |
+            APPLICATION_NAME=portal
+            GIT_SHA=${{ inputs.sha }}
+            COMPILER=ops-compiler
+          target: runtime
+          no-cache-filters: runtime
+          context: elixir
+          # The compiler stage is the same as the portal image's, so reuse its cache.
+          cache-from: |
+            type=gha,scope=portal-ops:${{ env.CACHE_TAG }}
+            type=gha,scope=portal-ops:main
+            type=gha,scope=portal:main
+          # Only main writes the cache.
+          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=gha,scope=portal-ops:{0},mode=max,ignore-error=true', env.CACHE_TAG) || '' }}
+          # Pull requests only check that the image builds.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ steps.login.outputs.registry }}/firezone/portal-ops:${{ inputs.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/portal-ops:${{ env.CACHE_TAG }}
+          labels: |
+            org.opencontainers.image.revision=${{ inputs.sha }}
+            dev.firezone.portal-ops.revision=${{ steps.ops.outputs.sha }}

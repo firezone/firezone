@@ -12,6 +12,14 @@
     "name": "handle_cast"
   },
   {
+    "file": "elixir/lib/portal/mailer/internal_email.ex",
+    "name": "sign_up_approved_email"
+  },
+  {
+    "file": "elixir/lib/portal/mailer/internal_email.ex",
+    "name": "sign_up_denied_email"
+  },
+  {
     "file": "elixir/lib/portal/repo/query.ex",
     "name": "by_account_id"
   },
@@ -22,6 +30,10 @@
   {
     "file": "elixir/lib/portal_web/protocols.ex",
     "name": "to_param"
+  },
+  {
+    "file": "elixir/lib/portal_web/sign_up_review.ex",
+    "name": "verify_approval"
   },
   {
     "file": "elixir/test/portal_api/controllers/integrations/okta/webhook_controller_test.exs",
