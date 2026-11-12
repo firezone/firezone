@@ -1078,7 +1078,7 @@ struct ProviderMessageCodableTests {
   func valuelessCasesRoundTrip() throws {
     let cases: [ProviderMessage] = [
       .signOut, .clearLogs, .getLogFolderSize, .exportLogs, .getEncodedFirezoneId,
-      .drainFlowLogs, .getStatus,
+      .drainFlowLogs, .getStatus, .reset,
     ]
 
     for message in cases {
@@ -1131,6 +1131,19 @@ struct ProviderMessageCodableTests {
       #expect(ips == ["192.0.2.1", "2001:db8::1"])
     } else {
       Issue.record("Expected .setAdditionalHostCandidates, got \(decoded)")
+    }
+  }
+
+  @Test(
+    "setNoDirectConnectionsOverride round-trips through JSON",
+    arguments: [true, false, nil] as [Bool?])
+  func setNoDirectConnectionsOverrideRoundTrip(value: Bool?) throws {
+    let decoded = try roundTrip(.setNoDirectConnectionsOverride(value))
+
+    if case .setNoDirectConnectionsOverride(let decodedValue) = decoded {
+      #expect(decodedValue == value)
+    } else {
+      Issue.record("Expected .setNoDirectConnectionsOverride, got \(decoded)")
     }
   }
 

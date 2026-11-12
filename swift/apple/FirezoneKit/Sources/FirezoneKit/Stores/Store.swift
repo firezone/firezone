@@ -38,6 +38,11 @@ public final class Store: ObservableObject {
   // Encapsulate Tunnel status here to make it easier for other components to observe
   @Published public private(set) var vpnStatus: NEVPNStatus?
 
+  /// Unlocked from the version row in settings until the app quits.
+  @Published var isDeveloperMenuUnlocked = false
+  /// Not persisted, so every launch leaves the feature flag in charge.
+  @Published private(set) var forceRelayedConnections = false
+
   // Hash of the last tunnel state snapshot received from the network extension.
   private var tunnelStateHash = Data()
 
@@ -324,6 +329,14 @@ public final class Store: ObservableObject {
       // Reset disconnect-alert dedup so failures during the next disconnect cycle aren't suppressed
       shownAlertIds.removeAll()
       userDefaults.removeObject(forKey: "shownAlertIds")
+      // The extension may have restarted and lost the override.
+      if isDeveloperMenuUnlocked {
+        do {
+          try await setForceRelayedConnections(forceRelayedConnections)
+        } catch {
+          Log.error(error)
+        }
+      }
     } else {
       endUpdatingState()
     }
@@ -713,6 +726,20 @@ public final class Store: ObservableObject {
   /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.
   private func identityReference() -> Data? {
     try? manager().identityReference()
+  }
+
+  func resetTunnel() async throws {
+    guard let session = try manager().session(), session.status == .connected else { return }
+
+    try await IPCClient.reset(session: session)
+  }
+
+  func setForceRelayedConnections(_ enabled: Bool) async throws {
+    // A tunnel that is not running gets the override once it connects.
+    if let session = try manager().session(), session.status == .connected {
+      try await IPCClient.setNoDirectConnectionsOverride(session: session, enabled ? true : nil)
+    }
+    forceRelayedConnections = enabled
   }
 
   func signOut() async throws {

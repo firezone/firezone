@@ -28,6 +28,7 @@ public struct SettingsView: View {
 
   @FocusState private var focusedField: Field?
   @State private var isConfirmingReset = false
+  @State private var versionTapCount = 0
 
   #if os(iOS)
     private struct LogArchive: Identifiable {
@@ -460,26 +461,9 @@ public struct SettingsView: View {
             managedNote(configuration.isLogFilterForced)
           }
           Section("About") {
-            HStack {
-              Text("Version")
-                .foregroundStyle(.secondary)
-              Spacer()
-              if let shortGitSha = BundleHelper.shortGitSha,
-                let commitURL = BundleHelper.commitURL
-              {
-                HStack(spacing: 0) {
-                  Text("\(BundleHelper.version) (")
-                  Link(shortGitSha, destination: commitURL)
-                  Text(")")
-                }
-              } else {
-                Text(BundleHelper.version)
-              }
-            }
-            .contextMenu {
-              Button("Copy") { UIPasteboard.general.string = BundleHelper.versionDescription }
-            }
+            versionRow
           }
+          DeveloperSection(store: store, perform: withErrorHandler)
         }
         .endsEditingOnTap($focusedField)
       }
@@ -522,6 +506,10 @@ public struct SettingsView: View {
             paneFooter
           }
         }
+        Section("About") {
+          versionRow
+        }
+        DeveloperSection(store: store, perform: withErrorHandler)
       }
       .formStyle(.grouped)
       .endsEditingOnTap($focusedField)
@@ -574,6 +562,44 @@ public struct SettingsView: View {
       Text(error)
         .font(.caption)
         .foregroundStyle(.red)
+    }
+  }
+
+  private var versionRow: some View {
+    Group {
+      #if os(macOS)
+        LabeledContent("Version") { versionText }
+      #elseif os(iOS)
+        HStack {
+          Text("Version")
+            .foregroundStyle(.secondary)
+          Spacer()
+          versionText
+        }
+      #endif
+    }
+    .contentShape(Rectangle())
+    .onTapGesture {
+      versionTapCount += 1
+      if versionTapCount == 7 { store.isDeveloperMenuUnlocked = true }
+    }
+    .contextMenu {
+      Button("Copy") { Clipboard.copy(BundleHelper.versionDescription) }
+    }
+  }
+
+  @ViewBuilder
+  private var versionText: some View {
+    if let shortGitSha = BundleHelper.shortGitSha,
+      let commitURL = BundleHelper.commitURL
+    {
+      HStack(spacing: 0) {
+        Text("\(BundleHelper.version) (")
+        Link(shortGitSha, destination: commitURL)
+        Text(")")
+      }
+    } else {
+      Text(BundleHelper.version)
     }
   }
 
@@ -768,6 +794,31 @@ extension View {
       #if os(iOS)
         .scrollDismissesKeyboard(.interactively)
       #endif
+  }
+}
+
+private struct DeveloperSection: View {
+  @ObservedObject var store: Store
+  let perform: @MainActor (@escaping () async throws -> Void) -> Void
+
+  var body: some View {
+    if store.isDeveloperMenuUnlocked {
+      Section("Developer") {
+        Button("Reset") {
+          perform { try await store.resetTunnel() }
+        }
+        .disabled(store.vpnStatus != .connected)
+
+        Toggle(
+          "Force relayed connections",
+          isOn: Binding(
+            get: { store.forceRelayedConnections },
+            set: { enabled in perform { try await store.setForceRelayedConnections(enabled) } }
+          )
+        )
+        .toggleStyle(.switch)
+      }
+    }
   }
 }
 

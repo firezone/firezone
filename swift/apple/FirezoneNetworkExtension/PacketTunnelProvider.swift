@@ -345,6 +345,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         completionHandler?(nil)
 
+      case .setNoDirectConnectionsOverride(let value):
+        setNoDirectConnectionsOverride(value: value)
+        completionHandler?(nil)
+
+      case .reset:
+        let adapter = self.adapter
+        Task { @Sendable in
+          await adapter?.reset(reason: "requested by the app")
+        }
+        completionHandler?(nil)
+
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
         completionHandler?(nil)
