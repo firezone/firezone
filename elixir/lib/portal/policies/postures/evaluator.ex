@@ -21,7 +21,7 @@ defmodule Portal.Policies.Postures.Evaluator do
   def evaluate(nil, %Device{}, %DateTime{}), do: {:ok, nil}
 
   def evaluate(%Postures{expr: expr}, %Device{type: :client} = device, %DateTime{} = now) do
-    case prune(expr, platform(device)) do
+    case prune(expr, platform(device), device.posture) do
       nil ->
         {:ok, nil}
 
@@ -34,41 +34,46 @@ defmodule Portal.Policies.Postures.Evaluator do
   end
 
   @doc """
-  The platform the device runs, from the matched provider rows first, since
-  an MDM's word beats the Client's own, and the user agent otherwise. `nil`
-  when nothing says.
+  The platform the device runs, as its matched provider rows report it.
+  `nil` when no row says.
   """
   @spec platform(Device.t()) :: atom() | nil
   def platform(%Device{} = device) do
-    row_platform =
-      Enum.find_value(~w[intune iru defender santa sentinelone sophos]a, fn provider ->
-        device.posture |> Map.get(provider, []) |> Enum.find_value(&row_platform/1)
-      end)
-
-    row_platform || user_agent_platform(device.last_seen_user_agent)
+    Enum.find_value(~w[intune iru defender santa sentinelone sophos]a, fn provider ->
+      device.posture |> Map.get(provider, []) |> Enum.find_value(&row_platform/1)
+    end)
   end
 
   # Rules on fields that say nothing about this platform are dropped, so a
   # requirement about jailbreaks does not fail a Windows laptop. A branch
-  # with nothing left holds. Without a known platform nothing is dropped.
-  defp prune(expr, nil), do: expr
+  # with nothing left holds. Without a known platform nothing is dropped. A
+  # provider that matched rows keeps its rules unless the field is narrower
+  # than the provider, since those rows describe this device.
+  defp prune(expr, nil, _posture), do: expr
 
-  defp prune(%Leaf{provider: provider, field: field} = leaf, platform) do
-    if platform in Fields.platforms(provider, field), do: leaf, else: nil
+  defp prune(%Leaf{provider: provider, field: field} = leaf, platform, posture) do
+    field_platforms = Fields.platforms(provider, field)
+    matched? = Map.get(posture, provider, []) != [] and field_platforms == Fields.platforms(provider)
+
+    if platform in field_platforms or matched? do
+      leaf
+    else
+      nil
+    end
   end
 
-  defp prune(%And{nodes: nodes}, platform), do: prune_nodes(nodes, platform, &%And{nodes: &1})
-  defp prune(%Or{nodes: nodes}, platform), do: prune_nodes(nodes, platform, &%Or{nodes: &1})
+  defp prune(%And{nodes: nodes}, platform, posture), do: prune_nodes(nodes, platform, posture, &%And{nodes: &1})
+  defp prune(%Or{nodes: nodes}, platform, posture), do: prune_nodes(nodes, platform, posture, &%Or{nodes: &1})
 
-  defp prune(%Not{node: node}, platform) do
-    case prune(node, platform) do
+  defp prune(%Not{node: node}, platform, posture) do
+    case prune(node, platform, posture) do
       nil -> nil
       node -> %Not{node: node}
     end
   end
 
-  defp prune_nodes(nodes, platform, build) do
-    case nodes |> Enum.map(&prune(&1, platform)) |> Enum.reject(&is_nil/1) do
+  defp prune_nodes(nodes, platform, posture, build) do
+    case nodes |> Enum.map(&prune(&1, platform, posture)) |> Enum.reject(&is_nil/1) do
       [] -> nil
       kept -> build.(kept)
     end
@@ -97,16 +102,6 @@ defmodule Portal.Policies.Postures.Evaluator do
       "linux" <> _rest -> :linux
       _other -> nil
     end
-  end
-
-  defp user_agent_platform(nil), do: nil
-  defp user_agent_platform("Windows/" <> _rest), do: :windows
-  defp user_agent_platform("Mac OS/" <> _rest), do: :macos
-  defp user_agent_platform("iOS/" <> _rest), do: :ios
-  defp user_agent_platform("Android/" <> _rest), do: :android
-
-  defp user_agent_platform(user_agent) do
-    if String.contains?(user_agent, ["headless-client/", "gui-client/"]), do: :linux, else: nil
   end
 
   defp evaluate_node(%And{nodes: nodes}, device, now) do

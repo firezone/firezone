@@ -45,6 +45,7 @@ defmodule Portal.Policies.Postures.FieldsTest do
   test "platforms/2 narrows a field to the platforms it describes" do
     assert Fields.platforms() == ~w[windows macos linux ios android]a
     assert Fields.platforms(:firezone, :hostname) == Fields.platforms()
+    assert Fields.platforms(:intune) == ~w[windows macos ios android]a
     assert Fields.platforms(:intune, :compliance_state) == ~w[windows macos ios android]a
     assert Fields.platforms(:intune, :jail_broken) == ~w[ios android]a
     assert Fields.platforms(:intune, :attestation_bit_locker_enabled) == ~w[windows]a

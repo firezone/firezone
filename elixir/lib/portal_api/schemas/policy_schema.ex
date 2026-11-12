@@ -140,10 +140,13 @@ defmodule PortalAPI.Schemas.Policy do
     result and can also match missing data; use a positive `enrolled is true`
     check when enrollment is required.
 
-    Leaves that do not apply to the device's platform are removed before
-    evaluation, including inside `or` and `not`. An expression with no
-    applicable leaves passes. If the platform is unknown, no leaves are
-    removed. Each field lists the platforms it applies to.
+    The device's platform comes from its matched provider records, such as
+    the operating system an MDM or EDR reports. Leaves that do not apply to
+    that platform are removed before evaluation, including inside `or` and
+    `not`. An expression with no applicable leaves passes. A provider with a
+    matched record keeps its leaves, except leaves on fields narrower than
+    the provider. If no record names a platform, no leaves are removed. Each
+    field lists the platforms it applies to.
     Provider `os_up_to_date` fields are computed from known OS releases;
     they are not raw provider attributes.
 

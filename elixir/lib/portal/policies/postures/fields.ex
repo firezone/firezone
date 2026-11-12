@@ -227,6 +227,10 @@ defmodule Portal.Policies.Postures.Fields do
   @spec platforms() :: [atom()]
   def platforms, do: @platforms
 
+  @doc "The platforms a provider describes."
+  @spec platforms(atom()) :: [atom()]
+  def platforms(provider), do: Map.fetch!(@provider_platforms, provider)
+
   @doc "The platforms a field says something about; a rule on it is ignored elsewhere."
   @spec platforms(atom(), atom()) :: [atom()]
   def platforms(:intune, field) when field not in [:jail_broken, :is_supervised] do
