@@ -1146,6 +1146,34 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  Comma-separated email addresses that approve email sign-ups whose mail servers (MX
+  records) are not known. Each approver gets a personal approval link, and all of them
+  get a confirmation once a sign-up is approved. Sign-ups are never held for review
+  when this is empty.
+  """
+  defconfig(:sign_up_review_approvers, {:array, ",", :string},
+    default: [],
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_list(changeset, key, :string, &Portal.Changeset.validate_email/2)
+    end
+  )
+
+  @doc """
+  Recipient address, such as the support inbox, for a copy of each sign-up review
+  request without the approval link. Its reply-to is the person signing up. No copy is
+  sent when unset or blank.
+  """
+  defconfig(:sign_up_review_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
+
+  @doc """
   Recipient address for posture provider interest and feedback emails.
   Interest registration and feedback are disabled when unset or blank.
   """
