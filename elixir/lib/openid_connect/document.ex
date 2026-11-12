@@ -6,6 +6,7 @@ defmodule OpenIDConnect.Document do
   This module caches OIDC documents and their JWKs for a limited timeframe, which is min(`@refresh_time`, `document.remaining_lifetime`).
   """
   alias OpenIDConnect.Document.Cache
+  alias Portal.Req.Bounded
 
   defstruct raw: nil,
             issuer: nil,
@@ -29,6 +30,8 @@ defmodule OpenIDConnect.Document do
                             [OpenIDConnect, :document_max_byte_size],
                             1024 * 1024
                           )
+
+  @timeout :timer.seconds(10)
 
   @doc "Returns the cached document for `uri`, fetching and caching it on a cache miss."
   def fetch_document(uri, req_opts \\ []) do
@@ -90,60 +93,15 @@ defmodule OpenIDConnect.Document do
   end
 
   defp read_response(uri, req_opts) do
-    collector = body_collector(@document_max_byte_size)
-    options = Keyword.merge([into: collector, retry: retry_option()], req_opts)
-
-    result =
-      options
-      |> Req.new()
-      |> Req.get(url: uri)
-
-    case result do
-      {:ok, %{body: {:error, :body_too_large}}} ->
-        {:error, :discovery_document_is_too_large}
-
-      {:ok, %{body: {:ok, body}} = response} ->
-        {:ok, %{response | body: IO.iodata_to_binary(body)}}
-
-      # Fallback for empty responses or when body_collector was never invoked
-      {:ok, response} ->
-        {:ok, response}
-
-      {:error, reason} ->
-        {:error, reason}
+    [url: uri, retry: retry_option(), decode_body: false]
+    |> Keyword.merge(req_opts)
+    |> Keyword.merge(max_body_bytes: @document_max_byte_size, timeout: @timeout)
+    |> Bounded.request()
+    |> case do
+      {:error, %Bounded.BodyTooLargeError{}} -> {:error, :discovery_document_is_too_large}
+      other -> other
     end
   end
-
-  defp body_collector(max_byte_size) do
-    fn {:data, data}, {req, resp} ->
-      {action, body} = collect_body_chunk(resp.body, data, max_byte_size)
-      {action, {req, %{resp | body: body}}}
-    end
-  end
-
-  defp collect_body_chunk(body, data, max_byte_size) do
-    acc = normalize_body_acc(body)
-
-    case acc do
-      {:error, _} = error ->
-        {:cont, error}
-
-      {:ok, chunks} ->
-        new_size = IO.iodata_length(chunks) + byte_size(data)
-
-        if new_size > max_byte_size do
-          # Use :cont instead of :halt because Req.Test's Plug adapter doesn't support :halt.
-          # Once we exceed the limit, we keep returning the error and ignore further data.
-          {:cont, {:error, :body_too_large}}
-        else
-          {:cont, {:ok, [chunks, data]}}
-        end
-    end
-  end
-
-  defp normalize_body_acc({:ok, _} = ok), do: ok
-  defp normalize_body_acc({:error, _} = error), do: error
-  defp normalize_body_acc(_), do: {:ok, []}
 
   defp remaining_lifetime(headers) do
     max_age = get_max_age(headers)
