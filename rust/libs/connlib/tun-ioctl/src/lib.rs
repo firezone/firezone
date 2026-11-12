@@ -41,7 +41,8 @@ impl Request<SetTunFlagsPayload> {
             // and attaching to a device that another process still holds must fail
             // instead of splitting traffic between two processes.
             payload: SetTunFlagsPayload {
-                flags: (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_VNET_HDR) as _,
+                flags: (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_VNET_HDR | IFF_BACKPRESSURE)
+                    as _,
             },
         }
     }
@@ -68,6 +69,12 @@ impl Default for Request<GetInterfaceNamePayload> {
         Self::new()
     }
 }
+
+/// Stops the device's queue instead of dropping packets when we don't read fast enough.
+///
+/// Available since Linux 7.3. Older kernels ignore flags they don't know.
+#[cfg(target_os = "linux")]
+const IFF_BACKPRESSURE: libc::c_int = 0x0080;
 
 #[cfg(target_os = "linux")]
 #[repr(C)]
