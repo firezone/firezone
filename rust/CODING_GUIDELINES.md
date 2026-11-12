@@ -65,6 +65,8 @@ Rules for all Rust code in this repository.
 - Return values or emit events instead of accepting callbacks; callbacks don't compose.
 - Don't add what nothing uses: parameters that are always passed the same value, flags, config knobs, injection seams whose only caller passes the default, API that nobody asked for.
   In the same change, remove whatever it made unnecessary: unused parameters, an `async`, a `clone`, a helper.
+- Don't write migration, cleanup or compatibility code for a state that was never released.
+  If nothing that shipped could have produced it, there is nothing to migrate.
 - Extract a helper when the same logic appears more than once.
   Inline a helper that has a single call-site and no branching: The reader pays for every indirection.
   Don't share an abstraction between call-sites it doesn't properly fit, some duplication is cheaper.
@@ -81,6 +83,8 @@ Rules for all Rust code in this repository.
   Return `Result` (or `Result<Option<T>>` if "nothing" is a valid outcome) and log at the top-level.
 - In a fallible function, return an error instead of panicking.
   Reserve `expect` for real invariants and use `debug_assert!` to make assumptions visible.
+- Don't add retry state or a timer for a failure that the next regular attempt already surfaces.
+  Let it fail; the next attempt asks again.
 - Make operations idempotent.
   Removing something that is already gone or applying the same update twice is not an error and does not deserve a warning.
 
