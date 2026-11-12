@@ -127,7 +127,7 @@ defmodule Portal.Billing do
 
   @doc """
   Monthly active seats: distinct enabled users, admins and service accounts
-  with a client device seen in the last month. Up to `adhoc_service_accounts_count`
+  who connected a client in the last month. Up to `adhoc_service_accounts_count`
   active service accounts take no seat, the others take one each.
   """
   @spec count_monthly_active_users(Portal.Account.t()) :: non_neg_integer()
@@ -923,6 +923,7 @@ defmodule Portal.Billing do
     alias Portal.Account
     alias Portal.Actor
     alias Portal.Device
+    alias Portal.DeviceActor
 
     def get_account(account_id) do
       from(a in Account, where: a.id == ^account_id)
@@ -1003,22 +1004,21 @@ defmodule Portal.Billing do
     end
 
     def count_monthly_active_actors_by_account(account_ids) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.account_id in ^account_ids)
-      |> where([devices: d], d.last_seen_at > ago(1, "month"))
-      |> join(:inner, [devices: d], a in Actor,
-        on: d.actor_id == a.id and d.account_id == a.account_id,
+      from(da in DeviceActor, as: :device_actors)
+      |> where([device_actors: da], da.account_id in ^account_ids)
+      |> where([device_actors: da], da.last_seen_at > ago(1, "month"))
+      |> join(:inner, [device_actors: da], a in Actor,
+        on: da.actor_id == a.id and da.account_id == a.account_id,
         as: :actor
       )
       |> where([actor: a], a.is_disabled == false)
       |> where([actor: a], a.type in [:account_user, :account_admin_user, :service_account])
-      |> group_by([devices: d], d.account_id)
-      |> select([devices: d, actor: a], {
-        d.account_id,
+      |> group_by([device_actors: da], da.account_id)
+      |> select([device_actors: da, actor: a], {
+        da.account_id,
         %{
-          users: filter(count(d.actor_id, :distinct), a.type != :service_account),
-          service_accounts: filter(count(d.actor_id, :distinct), a.type == :service_account)
+          users: filter(count(da.actor_id, :distinct), a.type != :service_account),
+          service_accounts: filter(count(da.actor_id, :distinct), a.type == :service_account)
         }
       })
       |> Safe.unscoped()
