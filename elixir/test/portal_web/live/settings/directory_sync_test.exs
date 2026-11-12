@@ -6,6 +6,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
   import Portal.ActorFixtures
   import Portal.EntraDirectoryFixtures
   import Portal.GoogleDirectoryFixtures
+  import Portal.GroupFixtures
   import Portal.OktaDirectoryFixtures
 
   alias Portal.Azure.ManagedIdentity
@@ -175,10 +176,29 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     |> render_click()
   end
 
+  defp request_confirm(lv, action, directory_id) do
+    open_directory_actions(lv, directory_id)
+
+    lv
+    |> element(
+      "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{directory_id}']"
+    )
+    |> render_click()
+  end
+
   defp has_directory_action_button?(html, event, directory_id) do
     html
     |> Floki.parse_fragment!()
     |> Floki.find("button[phx-click='#{event}'][phx-value-id='#{directory_id}']")
+    |> Enum.any?()
+  end
+
+  defp has_confirm_button?(html, action, directory_id) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find(
+      "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{directory_id}']"
+    )
     |> Enum.any?()
   end
 
@@ -443,6 +463,142 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       html = render(lv)
       assert html =~ "Edit Edit From Menu"
       refute has_directory_action_button?(html, "sync_directory", directory.id)
+    end
+
+    test "disables and re-enables a directory after inline confirmation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = google_directory_fixture(account: account, name: "Toggle Google", is_verified: true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = request_confirm(lv, "toggle", directory.id)
+      assert html =~ "Disable this directory?"
+
+      html =
+        lv
+        |> element("button[phx-click='toggle_directory'][phx-value-id='#{directory.id}']")
+        |> render_click()
+
+      assert html =~ "Directory disabled successfully."
+      refute html =~ "Disable this directory?"
+
+      html = request_confirm(lv, "toggle", directory.id)
+      assert html =~ "Enable this directory?"
+
+      html =
+        lv
+        |> element("button[phx-click='toggle_directory'][phx-value-id='#{directory.id}']")
+        |> render_click()
+
+      assert html =~ "Directory enabled successfully."
+    end
+
+    test "deletes a directory after inline confirmation listing what it removes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = google_directory_fixture(account: account, name: "Doomed Google")
+      base_directory = Portal.Repo.get_by!(Portal.Directory, id: directory.id)
+
+      group_fixture(account: account, directory: base_directory)
+      group_fixture(account: account, directory: base_directory)
+
+      [account: account]
+      |> actor_fixture()
+      |> Map.fetch!(:id)
+      |> mark_created_by_directory(directory)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = request_confirm(lv, "delete", directory.id)
+      assert html =~ "Delete this directory?"
+      assert html =~ "This will permanently delete 1 actor and 2 groups."
+
+      html =
+        lv
+        |> element("button[phx-click='delete_directory'][phx-value-id='#{directory.id}']")
+        |> render_click()
+
+      assert html =~ "Directory deleted successfully."
+      refute html =~ "Doomed Google"
+    end
+
+    test "omits the deletion summary for a directory with nothing synced", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = google_directory_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = request_confirm(lv, "delete", directory.id)
+
+      assert html =~ "Delete this directory? This cannot be undone."
+      refute html =~ "This will permanently delete"
+    end
+
+    test "cancelling a confirmation keeps the directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = google_directory_fixture(account: account, name: "Kept Google")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      for action <- ["delete", "toggle"] do
+        request_confirm(lv, action, directory.id)
+
+        html =
+          lv
+          |> element("button[phx-click='cancel_confirm']")
+          |> render_click()
+
+        refute html =~ "this directory?"
+        assert html =~ "Kept Google"
+      end
+
+      refute Portal.Repo.reload!(directory).is_disabled
+    end
+
+    test "an error-disabled directory has no enable action", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        google_directory_fixture(
+          account: account,
+          is_disabled: true,
+          disabled_reason: "Sync error"
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = open_directory_actions(lv, directory.id)
+
+      refute has_confirm_button?(html, "toggle", directory.id)
+      assert has_confirm_button?(html, "delete", directory.id)
     end
   end
 
