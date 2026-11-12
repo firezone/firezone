@@ -74,6 +74,26 @@ defmodule PortalAPI.ChannelCase do
     }
   end
 
+  @doc """
+  Runs `fun` once, in the querying process, right after the first query on the
+  `source` table whose parameters include `id`.
+  """
+  def after_query(source, id, fun) do
+    handler_id = {__MODULE__, make_ref()}
+    config = %{handler_id: handler_id, source: source, params: [id, Ecto.UUID.dump!(id)], fun: fun}
+    :ok = :telemetry.attach(handler_id, [:portal, :repo, :query], &__MODULE__.handle_query/4, config)
+    ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler_id) end)
+  end
+
+  @doc false
+  def handle_query(_event, _measurements, %{source: source, params: params}, %{source: source} = config) do
+    if Enum.any?(config.params, &(&1 in params)) and :telemetry.detach(config.handler_id) == :ok do
+      config.fun.()
+    end
+  end
+
+  def handle_query(_event, _measurements, _metadata, _config), do: :ok
+
   setup tags do
     # Isolate pg channels scope per test to prevent interference between async tests
     scope = :"Portal.PG.#{inspect(make_ref())}"

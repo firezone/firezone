@@ -259,6 +259,47 @@ defmodule PortalAPI.Gateway.ChannelTest do
   end
 
   describe "join/3" do
+    test "applies a change that commits while it loads its state", %{
+      account: account,
+      actor: actor,
+      client: client,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token,
+      group: group
+    } do
+      pa =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          gateway: gateway,
+          group: group
+        )
+
+      after_query("policy_authorizations", gateway.id, fn ->
+        Repo.delete!(pa)
+
+        :ok =
+          Changes.Hooks.PolicyAuthorizations.on_delete(1, %{
+            "id" => pa.id,
+            "account_id" => account.id,
+            "initiating_device_id" => client.id,
+            "receiving_device_id" => gateway.id,
+            "resource_id" => resource.id
+          })
+      end)
+
+      join_channel(gateway, site, token)
+      assert_push "init", %{authorizations: [_authorization]}
+
+      assert_push "reject_access", %{client_id: client_id, resource_id: resource_id}
+      assert client_id == client.id
+      assert resource_id == resource.id
+    end
+
     test "tracks presence after join", %{
       account: account,
       gateway: gateway,

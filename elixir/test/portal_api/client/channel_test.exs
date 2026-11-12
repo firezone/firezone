@@ -387,6 +387,56 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "join/3" do
+    test "applies a change that commits while it loads its state", %{
+      client: client,
+      subject: subject,
+      membership: membership,
+      dns_resource: dns_resource
+    } do
+      after_query("policy_authorizations", client.id, fn ->
+        Repo.delete!(membership)
+        :ok = Changes.Hooks.Memberships.on_delete(1, wal(membership))
+      end)
+
+      join_channel(client, subject)
+      assert_push "init", %{resources: resources}
+      assert Enum.any?(resources, &(&1.id == dns_resource.id))
+
+      dns_resource_id = dns_resource.id
+      assert_push "resource_deleted", ^dns_resource_id
+    end
+
+    test "disconnects when the actor is disabled before it joins", %{
+      actor: actor,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      actor |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      catch_exit(join_channel(client, subject))
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+      refute_push "init", _init_payload
+    end
+
+    test "disconnects when the account is disabled before it joins", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      account |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      catch_exit(join_channel(client, subject))
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+      refute_push "init", _init_payload
+    end
+
     test "tracks presence after join", %{account: account, client: client, subject: subject} do
       join_channel(client, subject)
       assert_push "init", _init_payload
@@ -2041,6 +2091,27 @@ defmodule PortalAPI.Client.ChannelTest do
       }, nil)
 
       assert_push "resource_deleted", ^dns_resource_id
+    end
+
+    test "for policy inserts skips a policy whose resource is gone", %{
+      account: account,
+      group: group,
+      site: site,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      resource = resource_fixture(account: account, site: site)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+      Repo.delete!(resource)
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: policy})
+
+      assert %{assigns: %{cache: cache}} = :sys.get_state(socket.channel_pid)
+      refute Map.has_key?(cache.policies, Ecto.UUID.dump!(policy.id))
+      refute_push "resource_created_or_updated", _payload
     end
 
     test "for account updates the subject in the socket", %{
@@ -9728,6 +9799,16 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert %{assigns: %{client: %{posture: %{intune: [%{entra_device_id: "entra-2"}]}}}} =
                :sys.get_state(socket.channel_pid)
+    end
+
+    test "reads the rows again when it joins", ctx do
+      compliant_policy(ctx)
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "POSTURE-SER")
+      row |> Ecto.Changeset.change(compliance_state: "noncompliant") |> Portal.Repo.update!()
+
+      join_channel(ctx.client, ctx.subject, posture: %{intune: [row]})
+
+      assert_push "init", %{resources: []}
     end
 
     test "a row about another device is ignored", ctx do
