@@ -14,14 +14,24 @@ defmodule Portal.KnownMxDomain do
   schema "known_mx_domains" do
   end
 
-  @doc "The format every stored domain must have."
+  @doc """
+  The format every stored domain must have: two or more labels of lowercase letters,
+  digits and inner hyphens, each at most 63 characters, and 253 characters in total.
+  """
   @spec format() :: Regex.t()
-  def format, do: ~r/\A[a-z0-9-]+(\.[a-z0-9-]+)+\z/
+  def format,
+    do: ~r/\A(?=.{1,253}\z)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\z/
+
+  @doc "Lowercases a domain and strips surrounding whitespace and dots."
+  @spec normalize(String.t()) :: String.t()
+  def normalize(domain) when is_binary(domain) do
+    domain |> String.trim() |> String.trim(".") |> String.downcase()
+  end
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
+    |> update_change(:domain, &normalize/1)
     |> validate_required([:domain])
-    |> validate_length(:domain, max: 253)
     |> validate_format(:domain, format())
     |> check_constraint(:domain, name: :domain_format)
     |> unique_constraint(:domain, name: :known_mx_domains_pkey)

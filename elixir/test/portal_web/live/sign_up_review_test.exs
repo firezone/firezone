@@ -68,6 +68,27 @@ defmodule PortalWeb.SignUpReviewTest do
       assert redirected_to(verify(conn, unique_email())) == ~p"/sign_up/pending"
     end
 
+    test "creates the account when a domain without MX records is itself known", %{conn: conn} do
+      stub_mx([])
+      email = "owner-#{System.unique_integer([:positive])}@mail.known-mail.test"
+      stub_stripe(email)
+
+      assert redirected_to(verify(conn, email)) =~ "/sites"
+    end
+
+    test "holds a domain without MX records as its own mail server", %{conn: conn} do
+      email = hold_sign_up(conn, [])
+      assert email =~ "@review.test"
+
+      assert %{args: %{"review" => review}} = job_for("alice@firezone.dev")
+      assert {:ok, %{mx_hosts: ["review.test"]}} = SignUpReview.decrypt_review(review)
+    end
+
+    test "holds an email without a domain", %{conn: conn} do
+      stub_resolve(fn _domain -> flunk("no lookup expected") end)
+      assert redirected_to(verify(conn, "no-at-sign")) == ~p"/sign_up/pending"
+    end
+
     test "holds the sign-up when the domain has a null MX", %{conn: conn} do
       stub_mx(["."])
       assert redirected_to(verify(conn, unique_email())) == ~p"/sign_up/pending"
@@ -78,7 +99,7 @@ defmodule PortalWeb.SignUpReviewTest do
       assert redirected_to(verify(conn, unique_email())) == ~p"/sign_up/pending"
     end
 
-    test "looks up the domain in lowercase ASCII", %{conn: conn} do
+    test "looks up the absolute domain name in lowercase ASCII", %{conn: conn} do
       test_pid = self()
 
       stub_resolve(fn domain ->
@@ -88,7 +109,7 @@ defmodule PortalWeb.SignUpReviewTest do
 
       verify(conn, "user@Bücher.Test")
 
-      assert_received {:resolved, "xn--bcher-kva.test"}
+      assert_received {:resolved, "xn--bcher-kva.test."}
     end
 
     test "asks only once per email for repeated verifications", %{conn: conn} do

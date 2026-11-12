@@ -23,6 +23,9 @@ defmodule PortalWeb.SignUpReview do
   @approver_salt "sign_up_review_approver_v1"
   @max_age 3 * 86_400
 
+  # Sign-up waits for the lookup. This is the total time, including retries.
+  @lookup_timeout :timer.seconds(3)
+
   # Second-level labels under which a "parent" domain would be a public suffix.
   @public_second_levels ~w[ac co com edu go gov ne net or org]
 
@@ -184,13 +187,28 @@ defmodule PortalWeb.SignUpReview do
   end
 
   defp classify(email) do
-    hosts =
+    {domain, hosts} =
       case email_domain(email) do
-        {:ok, domain} -> lookup_mx(domain)
-        :error -> []
+        {:ok, domain} -> {domain, mail_hosts(domain)}
+        :error -> {nil, []}
       end
 
-    if all_known?(hosts), do: :known, else: {:review, hosts}
+    if all_known?(hosts) do
+      :known
+    else
+      Logger.info("Sign-up held for review", email_domain: domain, mx_hosts: Enum.join(hosts, ","))
+      {:review, hosts}
+    end
+  end
+
+  # A domain without MX records receives mail itself (RFC 5321). A null MX (RFC 7505)
+  # says it receives none, so it stays "." and never matches.
+  defp mail_hosts(domain) do
+    case lookup_mx(domain) do
+      {:ok, []} -> [domain]
+      {:ok, hosts} -> hosts
+      :error -> []
+    end
   end
 
   defp request_review(registration_claims, mx_hosts, user_agent, real_ip) do
@@ -234,15 +252,12 @@ defmodule PortalWeb.SignUpReview do
   end
 
   defp email_domain(email) do
-    domain =
-      email
-      |> String.split("@")
-      |> List.last()
-      |> String.trim()
-      |> String.trim_trailing(".")
-
-    case domain != "" and Portal.Changeset.try_encode_domain(domain) do
-      {:ok, ascii} -> {:ok, String.downcase(ascii)}
+    with [_local | [_ | _] = rest] <- email |> String.trim() |> String.split("@"),
+         domain = Portal.KnownMxDomain.normalize(List.last(rest)),
+         true <- domain != "",
+         {:ok, ascii} <- Portal.Changeset.try_encode_domain(domain) do
+      {:ok, String.downcase(ascii)}
+    else
       _ -> :error
     end
   end
@@ -250,28 +265,30 @@ defmodule PortalWeb.SignUpReview do
   defp lookup_mx(domain) do
     resolve =
       Portal.Config.get_env(:portal, __MODULE__, [])[:resolve_mx] ||
-        (&:inet_res.resolve(&1, :in, :mx, timeout: 3_000))
+        (&:inet_res.resolve(&1, :in, :mx, [], @lookup_timeout))
 
-    case resolve.(String.to_charlist(domain)) do
+    # The trailing dot makes the name absolute, so the resolver's search domains are not tried.
+    case resolve.(~c"#{domain}.") do
       {:ok, message} ->
-        for record <- :inet_dns.msg(message, :anlist),
-            :inet_dns.rr(record, :type) == :mx,
-            {_preference, host} <- [:inet_dns.rr(record, :data)],
-            do: normalize_host(host)
+        hosts =
+          for record <- :inet_dns.msg(message, :anlist),
+              :inet_dns.rr(record, :type) == :mx,
+              {_preference, host} <- [:inet_dns.rr(record, :data)],
+              do: normalize_host(host)
+
+        {:ok, hosts}
 
       {:error, reason} ->
-        Logger.info("MX lookup failed during sign-up", domain: domain, reason: inspect(reason))
-        []
+        Logger.info("MX lookup failed during sign-up", email_domain: domain, reason: inspect(reason))
+        :error
     end
   end
 
-  # A null MX (RFC 7505) is "." and becomes "", which never matches.
   defp normalize_host(host) do
-    host
-    |> to_string()
-    |> String.trim()
-    |> String.trim_trailing(".")
-    |> String.downcase()
+    case host |> to_string() |> Portal.KnownMxDomain.normalize() do
+      "" -> "."
+      host -> host
+    end
   end
 
   defp all_known?([]), do: false
@@ -290,10 +307,10 @@ defmodule PortalWeb.SignUpReview do
       Enum.any?(label_suffixes(host), &MapSet.member?(known, &1))
   end
 
-  # "mx1.mail.example.com" -> ["mx1.mail.example.com", "mail.example.com", "example.com", "com"]
+  # "mx1.mail.example.com" -> ["mx1.mail.example.com", "mail.example.com", "example.com"]
   defp label_suffixes(host) do
-    labels = String.split(host, ".")
-    for index <- 0..(length(labels) - 1)//1, do: labels |> Enum.drop(index) |> Enum.join(".")
+    labels = String.split(host, ".", trim: true)
+    for count <- length(labels)..2//-1, do: labels |> Enum.take(-count) |> Enum.join(".")
   end
 
   # Unknown hosts minus their first label, so "mx1.example.com" suggests "example.com".

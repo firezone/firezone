@@ -64,7 +64,8 @@ defmodule Portal.Repo.Migrations.CreateKnownMxDomains do
     end
 
     create constraint(:known_mx_domains, :domain_format,
-             check: "char_length(domain) <= 253 AND domain ~ '^[a-z0-9-]+(\\.[a-z0-9-]+)+$'"
+             check:
+               "char_length(domain) <= 253 AND domain ~ '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'"
            )
 
     values = Enum.map_join(@domains, ", ", &"('#{&1}')")
