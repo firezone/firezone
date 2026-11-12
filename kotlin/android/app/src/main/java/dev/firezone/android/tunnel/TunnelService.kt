@@ -64,6 +64,7 @@ import uniffi.connlib.enforceLogSizeCap
 import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
 import uniffi.connlib.logCleanupDefaultMaxSizeMb
+import uniffi.connlib.setNoDirectConnectionsOverride
 import uniffi.connlib.startTelemetry
 import uniffi.connlib.stopTelemetry
 import uniffi.connlib.use
@@ -131,11 +132,13 @@ class TunnelService : VpnService() {
     private val _serviceState = MutableStateFlow(State.DOWN)
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
+    private val _forceRelayedConnectionsState = MutableStateFlow(false)
 
     // A `StateFlow` replays its current value to every new collector, so a newly bound session screen catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
+    val forceRelayedConnectionsState: StateFlow<Boolean> = _forceRelayedConnectionsState.asStateFlow()
 
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
@@ -355,6 +358,7 @@ class TunnelService : VpnService() {
 
         activeService = null
         unregisterReceiver(restrictionsReceiver)
+        setNoDirectConnectionsOverride(null)
         serviceScope.cancel()
 
         if (!BuildConfig.NO_TELEMETRY) {
@@ -398,8 +402,13 @@ class TunnelService : VpnService() {
         sendTunnelCommand(TunnelCommand.SetDns(dnsList))
     }
 
-    fun reset() {
-        sendTunnelCommand(TunnelCommand.Reset)
+    fun reset(reason: String) {
+        sendTunnelCommand(TunnelCommand.Reset(reason))
+    }
+
+    fun setForceRelayedConnections(enabled: Boolean) {
+        setNoDirectConnectionsOverride(if (enabled) true else null)
+        _forceRelayedConnectionsState.value = enabled
     }
 
     private fun connect() {
@@ -682,7 +691,9 @@ class TunnelService : VpnService() {
             val fd: Int,
         ) : TunnelCommand()
 
-        data object Reset : TunnelCommand()
+        data class Reset(
+            val reason: String,
+        ) : TunnelCommand()
     }
 
     sealed class StopReason {
@@ -771,7 +782,7 @@ class TunnelService : VpnService() {
                             }
 
                             is TunnelCommand.Reset -> {
-                                session.reset("roam")
+                                session.reset(command.reason)
                             }
                         }
                     }

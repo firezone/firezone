@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
@@ -27,6 +28,7 @@ class LogSettingsPageTest {
 
     private var clears = 0
     private var savedLogFilter: String? = null
+    private var resets = 0
 
     private fun showPage() {
         composeRule.setContent {
@@ -37,6 +39,9 @@ class LogSettingsPageTest {
                 onLogFilterChange = { savedLogFilter = it },
                 onClearLogs = { clears++ },
                 onExportLogs = {},
+                forceRelayedConnections = false,
+                onForceRelayedConnectionsChange = {},
+                onResetSession = { resets++ },
                 versionName = "1.0.0",
                 buildSha = "unknown",
                 validateLogFilter = { if (it == "info,foo=bar=baz") "invalid directive" else null },
@@ -75,5 +80,17 @@ class LogSettingsPageTest {
         composeRule.onNode(hasSetTextAction()).performTextReplacement("")
         composeRule.onNodeWithText("OK").assertIsEnabled().performClick()
         assertEquals("", savedLogFilter)
+    }
+
+    @Test
+    fun `tapping the version seven times reveals the developer section`() {
+        showPage()
+
+        repeat(6) { composeRule.onNodeWithText("Version").performClick() }
+        composeRule.onNodeWithText("Developer").assertDoesNotExist()
+
+        composeRule.onNodeWithText("Version").performClick()
+        composeRule.onNodeWithText("Reset").performScrollTo().performClick()
+        assertEquals(1, resets)
     }
 }

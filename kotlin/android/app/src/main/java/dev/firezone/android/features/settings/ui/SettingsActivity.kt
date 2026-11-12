@@ -15,8 +15,10 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.permission.ui.CertificatePermissionViewModel
+import dev.firezone.android.features.session.ui.rememberTunnelService
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
+import kotlinx.coroutines.flow.emptyFlow
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -39,6 +41,9 @@ internal class SettingsActivity : AppCompatActivity() {
                 val managedStatus by viewModel.managedStatusStateFlow.collectAsStateWithLifecycle()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val deviceTrustState by deviceTrustViewModel.uiStateFlow.collectAsStateWithLifecycle()
+                val tunnelService = rememberTunnelService(flags = 0)
+                val forceRelayedConnections by
+                    (tunnelService?.forceRelayedConnectionsState ?: emptyFlow()).collectAsStateWithLifecycle(false)
 
                 SettingsScreen(
                     config = viewModel.config,
@@ -62,6 +67,9 @@ internal class SettingsActivity : AppCompatActivity() {
                     onResetToDefaults = viewModel::resetSettingsToDefaults,
                     onClearLogs = { viewModel.deleteLogDirectory(applicationContext) },
                     onExportLogs = { viewModel.createLogZip(this@SettingsActivity) },
+                    forceRelayedConnections = forceRelayedConnections,
+                    onForceRelayedConnectionsChange = { tunnelService?.setForceRelayedConnections(it) },
+                    onResetSession = { tunnelService?.reset("developer menu") },
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,
