@@ -229,8 +229,10 @@ defmodule PortalWeb.OIDC do
   end
 
   def verify_token(provider, id_token, verifier) do
-    with {:ok, config} <- config_for_provider(provider) do
-      OpenIDConnect.verify(config, id_token, nonce: nonce(verifier))
+    with {:ok, config} <- config_for_provider(provider),
+         {:ok, claims} <- OpenIDConnect.verify(config, id_token, nonce: nonce(verifier)),
+         :ok <- verify_provider_issuer(claims, provider) do
+      {:ok, claims}
     end
   end
 
@@ -1053,6 +1055,13 @@ defmodule PortalWeb.OIDC do
       _ -> {:error, {:invalid_jwt, "token was issued by another tenant"}}
     end
   end
+
+  # Discovery documents with a tenant template accept any tenant's issuer.
+  defp verify_provider_issuer(%{"iss" => issuer}, %{issuer: issuer}) when is_binary(issuer),
+    do: :ok
+
+  defp verify_provider_issuer(_claims, _provider),
+    do: {:error, {:invalid_jwt, "token was issued by another issuer"}}
 
   defp verify_entra_principal_claims(%{"oid" => principal_id} = claims)
        when is_binary(principal_id) do
