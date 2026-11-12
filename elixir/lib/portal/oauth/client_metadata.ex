@@ -15,6 +15,7 @@ defmodule Portal.OAuth.ClientMetadata do
   """
 
   alias Portal.OAuthClient
+  alias Portal.Req.Bounded
   alias __MODULE__.Database
 
   require Logger
@@ -30,7 +31,9 @@ defmodule Portal.OAuth.ClientMetadata do
   # img tag it is not worth storing and serving back.
   @icon_types ~w[image/png image/jpeg image/gif image/webp image/x-icon image/vnd.microsoft.icon]
 
-  @receive_timeout :timer.seconds(5)
+  @timeout :timer.seconds(5)
+  # Shared by the logo and the favicon attempt.
+  @icon_timeout :timer.seconds(5)
   # Client ID Metadata Documents are deliberately small. Keeping the draft's
   # recommended 5 KiB limit also prevents a pre-authentication egress endpoint
   # from becoming a cheap memory-amplification primitive.
@@ -134,48 +137,20 @@ defmodule Portal.OAuth.ClientMetadata do
   end
 
   defp get(client_id, max_bytes \\ @max_body_bytes) do
-    deadline = System.monotonic_time(:millisecond) + @receive_timeout
-
-    protected_get(
-      client_id,
+    client_id
+    |> protected_get(
       headers: [{"accept", "application/json"}],
-      receive_timeout: @receive_timeout,
-      request_timeout: @receive_timeout,
-      max_retries: 0,
-      raw: true,
-      redirect: false,
-      into: &collect(&1, &2, max_bytes, deadline)
+      max_body_bytes: max_bytes,
+      timeout: @timeout,
+      redirect: false
     )
     |> case do
       {:ok, %Req.Response{status: 200} = response} -> {:ok, response}
       {:ok, %Req.Response{status: status}} -> {:error, {:unexpected_status, status}}
+      {:error, %Bounded.BodyTooLargeError{}} -> {:error, :document_too_large}
       {:error, reason} -> {:error, reason}
     end
   end
-
-  # Halting mid-body keeps an oversized or endless document from being read into
-  # memory, which a plain byte check after the fact would not.
-  defp collect(event, {request, response} = state, max_bytes, deadline) do
-    if System.monotonic_time(:millisecond) < deadline do
-      collect(event, state, max_bytes)
-    else
-      {:halt, {request, %{response | body: :timed_out}}}
-    end
-  end
-
-  defp collect({:data, data}, {request, response}, max_bytes) do
-    body = (response.body || "") <> data
-
-    if byte_size(body) > max_bytes do
-      {:halt, {request, %{response | body: :too_large}}}
-    else
-      {:cont, {request, %{response | body: body}}}
-    end
-  end
-
-  defp decode(:timed_out), do: {:error, :request_timeout}
-
-  defp decode(:too_large), do: {:error, :document_too_large}
 
   # Configured test adapters can return decoded maps directly. Real responses
   # are fetched raw and parsed only after the streaming byte limit is applied.
@@ -290,9 +265,11 @@ defmodule Portal.OAuth.ClientMetadata do
   # it just shows its initial instead. Tried in the order a client would expect
   # it to be honoured.
   defp fetch_icon(document) do
+    deadline = System.monotonic_time(:millisecond) + @icon_timeout
+
     [document["logo_uri"], favicon_uri(document["client_uri"])]
     |> Enum.reject(&is_nil/1)
-    |> Enum.find_value(&get_icon/1)
+    |> Enum.find_value(&get_icon(&1, deadline))
   end
 
   defp favicon_uri(nil), do: nil
@@ -307,21 +284,14 @@ defmodule Portal.OAuth.ClientMetadata do
     end
   end
 
-  defp get_icon(uri) do
+  defp get_icon(uri, deadline) do
     with %URI{scheme: "https"} <- URI.parse(uri),
-         {:ok, %Req.Response{status: 200, body: body} = response} when is_binary(body) <-
-           protected_get(
-             uri,
-             [
-               receive_timeout: @receive_timeout,
-               max_retries: 0,
-               redirect: true,
-               into: &collect(&1, &2, @max_icon_bytes)
-             ]
-           ),
+         timeout when timeout > 0 <- deadline - System.monotonic_time(:millisecond),
+         {:ok, %Req.Response{status: 200, body: body} = response}
+         when is_binary(body) and body != "" <-
+           protected_get(uri, max_body_bytes: @max_icon_bytes, timeout: timeout),
          type when is_binary(type) <- content_type(response),
-         true <- type in @icon_types,
-         true <- byte_size(body) in 1..@max_icon_bytes do
+         true <- type in @icon_types do
       {body, type}
     else
       _other -> nil
@@ -408,13 +378,10 @@ defmodule Portal.OAuth.ClientMetadata do
   defp protected_get(uri, opts) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
-    request =
-      (config[:req_opts] || [])
-      |> Req.new()
-      |> Portal.Req.SSRFProtection.attach(config[:ssrf_protection_opts] || [])
-      |> Req.merge(url: uri, allow_private_ips: false)
-
-    Req.get(request, opts)
+    (config[:req_opts] || [])
+    |> Req.new()
+    |> Portal.Req.SSRFProtection.attach(config[:ssrf_protection_opts] || [])
+    |> Bounded.request([url: uri, allow_private_ips: false, max_retries: 0, raw: true] ++ opts)
   end
 
   defp cache_until(%Req.Response{} = response) do

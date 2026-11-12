@@ -3,7 +3,7 @@ defmodule Portal.Req.Bounded do
   Makes an HTTP request whose cost stays bounded however the server answers.
 
   Use it for requests to addresses that a customer or a remote document
-  supplies. Accepts every `Req` option, plus:
+  supplies. Takes an optional base `Req.Request` and every `Req` option, plus:
 
     * `:max_body_bytes` - required. The body is read as a stream and the read
       stops as soon as it passes this many bytes.
@@ -34,8 +34,8 @@ defmodule Portal.Req.Bounded do
     end
   end
 
-  @spec request(keyword()) :: {:ok, Req.Response.t()} | {:error, Exception.t()}
-  def request(options) do
+  @spec request(Req.Request.t(), keyword()) :: {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def request(request \\ Req.new(), options) do
     {max_bytes, options} = Keyword.pop!(options, :max_body_bytes)
     {timeout, options} = Keyword.pop(options, :timeout, @default_timeout)
 
@@ -54,7 +54,7 @@ defmodule Portal.Req.Bounded do
     task =
       Task.async(fn ->
         Logger.metadata(metadata)
-        run(options, max_bytes)
+        run(request, options, max_bytes)
       end)
 
     case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
@@ -63,9 +63,9 @@ defmodule Portal.Req.Bounded do
     end
   end
 
-  defp run(options, max_bytes) do
-    options
-    |> Req.new()
+  defp run(request, options, max_bytes) do
+    request
+    |> Req.merge(options)
     |> Req.Request.prepend_response_steps(bounded_body: &finish(&1, max_bytes))
     |> Req.request()
   rescue
