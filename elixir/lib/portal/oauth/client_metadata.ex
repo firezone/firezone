@@ -4,7 +4,8 @@ defmodule Portal.OAuth.ClientMetadata do
 
   MCP clients identify themselves with an HTTPS URL that serves a JSON document
   describing them, so there is no registration step and no client secret. The
-  document is fetched on demand, checked, and cached.
+  document is fetched on demand and checked. It is cached only when the caller
+  asks for it with `store: true`, which only the signed-in consent screen does.
 
   The URL comes from whoever started the authorization request, so the fetch is
   treated as hostile: `Portal.Req.SSRFProtection` is attached explicitly to
@@ -39,14 +40,17 @@ defmodule Portal.OAuth.ClientMetadata do
   @max_cache :timer.hours(24)
 
   @doc """
-  Returns the client for `client_id`, fetching and caching the document when
-  the cached copy is missing or stale.
+  Returns the client for `client_id`, fetching the document when the cached
+  copy is missing or stale.
+
+  A fetched document is only returned, not stored, unless `store: true` is
+  given. Then it is cached and the returned client has an id.
   """
-  def fetch(client_id) do
+  def fetch(client_id, opts \\ []) do
     with :ok <- validate_client_id(client_id) do
       case Database.fetch_fresh_client(client_id) do
         {:ok, client} -> {:ok, client}
-        :error -> fetch_and_cache(client_id)
+        :error -> fetch_and_cache(client_id, Keyword.get(opts, :store, false))
       end
     end
   end
@@ -111,11 +115,13 @@ defmodule Portal.OAuth.ClientMetadata do
     end)
   end
 
-  defp fetch_and_cache(client_id) do
+  defp fetch_and_cache(client_id, store?) do
     with {:ok, response} <- get(client_id),
          {:ok, document} <- decode(response.body),
          :ok <- validate_document(document, client_id) do
-      upsert(document, client_id, cache_until(response), fetch_icon(document), origin(client_id))
+      document
+      |> changeset(client_id, cache_until(response), fetch_icon(document), origin(client_id))
+      |> save(store?)
     else
       {:error, reason} = error ->
         Logger.info("OAuth client metadata fetch failed",
@@ -332,7 +338,7 @@ defmodule Portal.OAuth.ClientMetadata do
     end
   end
 
-  defp upsert(document, client_id, metadata_expires_at, icon, origin) do
+  defp changeset(document, client_id, metadata_expires_at, icon, origin) do
     {ips, region, city} = origin
     {:ok, method} = authentication_method(document)
 
@@ -358,8 +364,11 @@ defmodule Portal.OAuth.ClientMetadata do
          redirect_uris resolved_ips resolved_ip_location_region
          resolved_ip_location_city metadata_expires_at]a
     )
-    |> Database.upsert_client()
+    |> OAuthClient.changeset()
   end
+
+  defp save(changeset, true), do: Database.upsert_client(changeset)
+  defp save(changeset, false), do: Ecto.Changeset.apply_action(changeset, :insert)
 
   # Where the document was actually served from. Recorded for the consent
   # screen: the name and logo are whatever the client wrote about itself, so

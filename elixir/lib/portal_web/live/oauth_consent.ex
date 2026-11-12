@@ -21,7 +21,7 @@ defmodule PortalWeb.OAuthConsent do
   def mount(params, _session, socket) do
     socket = assign(socket, page_title: "Connect an app")
 
-    case OAuth.validate_client(params) do
+    case OAuth.validate_client(params, store: true) do
       {:ok, client, redirect_uri} ->
         mount_request(socket, params, client, redirect_uri)
 

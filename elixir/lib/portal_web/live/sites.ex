@@ -1118,7 +1118,11 @@ defmodule PortalWeb.Sites do
   end
 
   def handle_event("confirm_revoke_gateway_token", %{"id" => token_id}, socket) do
-    case Database.delete_gateway_token_by_id(token_id, socket.assigns.subject) do
+    case Database.delete_gateway_token_by_id(
+           token_id,
+           socket.assigns.selected_site,
+           socket.assigns.subject
+         ) do
       {count, _} when count > 0 ->
         tokens =
           Database.list_gateway_tokens_for_site(
@@ -1549,10 +1553,10 @@ defmodule PortalWeb.Sites do
       |> Safe.all()
     end
 
-    @spec delete_gateway_token_by_id(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+    @spec delete_gateway_token_by_id(Ecto.UUID.t(), Site.t(), Portal.Authentication.Subject.t()) ::
             {non_neg_integer(), nil} | {:error, :unauthorized}
-    def delete_gateway_token_by_id(token_id, subject) do
-      from(t in DeviceToken, where: t.id == ^token_id)
+    def delete_gateway_token_by_id(token_id, site, subject) do
+      from(t in DeviceToken, where: t.id == ^token_id and t.site_id == ^site.id)
       |> Portal.Authentication.delete_gateway_tokens(subject)
     end
 

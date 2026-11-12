@@ -374,7 +374,12 @@ defmodule PortalAPI.Client.Socket do
   defp assign_connect(socket, subject, client, version, attested?, proof) do
     socket
     |> assign(:subject, Authentication.Subject.with_device(subject, client))
-    |> assign(:client, %{client | attested?: attested?, posture: posture_rows(client, subject)})
+    |> assign(:client, %{
+      client
+      | attested?: attested?,
+        attested_until: attested_until(attested?, proof),
+        posture: posture_rows(client, subject)
+    })
     |> assign(:attestation, attestation(attested?, proof))
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
@@ -399,6 +404,9 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp attestation(_attested?, _proof), do: nil
+
+  defp attested_until(true, %{not_after: %DateTime{} = not_after}), do: not_after
+  defp attested_until(_attested?, _proof), do: nil
 
   defp insert_changeset(actor, subject, attrs) do
     required_fields = ~w[firezone_id name]a
