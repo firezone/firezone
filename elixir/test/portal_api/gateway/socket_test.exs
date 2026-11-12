@@ -239,7 +239,6 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       connected_gateway = socket.assigns.gateway
       assert is_reference(socket.assigns.session_ref)
-      assert connected_gateway.gateway_token_id == token.id
       assert connected_gateway.token_id == token.id
       assert connected_gateway.last_seen_remote_ip_location_region == "Ukraine"
       assert connected_gateway.last_seen_remote_ip_location_city == "Kyiv"
@@ -348,7 +347,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       # is ignored for identification
       assert socket.assigns.gateway.id == gateway.id
       assert socket.assigns.site.id == site.id
-      assert socket.assigns.gateway.gateway_token_id == token.id
+      assert socket.assigns.gateway.token_id == token.id
     end
 
     test "takes a single-owner gateway's site from its assignment" do
