@@ -327,33 +327,16 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
-  # Backwards-compat: tolerate the pre-snownet-capabilities tuple from older
-  # gateway nodes during a rolling deploy. Default `use_iceless` to `false`.
-  def handle_info(
-        {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials},
-        socket
-      ) do
-    handle_info(
-      {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-       gateway_ipv6, preshared_key, ice_credentials, false},
-      socket
-    )
-  end
-
+  # A reply counts only for the pending request and the gateway it was sent to.
   def handle_info(
         {:connect, _socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials, use_iceless},
+         gateway_ipv6, preshared_key, ice_credentials, use_iceless, request_ref},
         socket
       ) do
     resource_id = Ecto.UUID.load!(rid_bytes)
 
-    case Map.pop(socket.assigns.pending_authorizations, resource_id) do
-      {nil, _} ->
-        # Authorization creation already timed out; ignore the late gateway response.
-        {:noreply, socket}
-
-      {{_generation, timer_ref, initiator_token, address}, remaining} ->
+    case Map.get(socket.assigns.pending_authorizations, resource_id) do
+      {^request_ref, timer_ref, initiator_token, address, ^gateway_id} ->
         Process.cancel_timer(timer_ref)
 
         reply_payload =
@@ -373,7 +356,16 @@ defmodule PortalAPI.Client.Channel.Shared do
           |> Map.merge(address_fields(address))
 
         push(socket, authorization_created_event(socket), reply_payload)
-        {:noreply, assign(socket, :pending_authorizations, remaining)}
+
+        {:noreply,
+         assign(
+           socket,
+           :pending_authorizations,
+           Map.delete(socket.assigns.pending_authorizations, resource_id)
+         )}
+
+      _other ->
+        {:noreply, socket}
     end
   end
 
@@ -381,7 +373,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   # newer request_authorization for the same resource_id (its message may already be queued).
   def handle_info({:authorization_creation_timeout, resource_id, generation}, socket) do
     case Map.get(socket.assigns.pending_authorizations, resource_id) do
-      {^generation, _timer_ref, _initiator_token, address} ->
+      {^generation, _timer_ref, _initiator_token, address, _gateway_id} ->
         push_authorization_creation_failed(socket, resource_id, :offline, address)
 
         {:noreply,
@@ -1411,6 +1403,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         gateway_public_key = gateway.public_key
 
         policy_authorization_id = Ecto.UUID.generate()
+        request_ref = make_ref()
 
         preshared_key =
           generate_preshared_key(
@@ -1459,7 +1452,8 @@ defmodule PortalAPI.Client.Channel.Shared do
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
              initiator_iceless_capable: socket.assigns.iceless_capable,
-             flow_logs_ingest_token: responder_token
+             flow_logs_ingest_token: responder_token,
+             request_ref: request_ref
            }}
 
         attrs =
@@ -1486,7 +1480,14 @@ defmodule PortalAPI.Client.Channel.Shared do
              ) do
           :ok ->
             {:noreply,
-             arm_gateway_authorization_timer(socket, resource_id, initiator_token, address)}
+             arm_gateway_authorization_timer(
+               socket,
+               resource_id,
+               request_ref,
+               gateway.id,
+               initiator_token,
+               address
+             )}
 
           {:error, _reason} ->
             push_authorization_creation_failed(socket, resource_id, :offline, address)
@@ -3032,17 +3033,22 @@ defmodule PortalAPI.Client.Channel.Shared do
     {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
   end
 
-  defp arm_gateway_authorization_timer(socket, resource_id, initiator_token, address) do
+  defp arm_gateway_authorization_timer(
+         socket,
+         resource_id,
+         generation,
+         gateway_id,
+         initiator_token,
+         address
+       ) do
     # Cancel any timer a prior in-flight request_authorization armed under this key.
     case Map.get(socket.assigns.pending_authorizations, resource_id) do
-      {_old_generation, old_timer_ref, _old_initiator_token, _old_address} ->
+      {_old_generation, old_timer_ref, _old_initiator_token, _old_address, _old_gateway_id} ->
         Process.cancel_timer(old_timer_ref)
 
       nil ->
         :ok
     end
-
-    generation = make_ref()
 
     timer_ref =
       Process.send_after(
@@ -3057,7 +3063,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       Map.put(
         socket.assigns.pending_authorizations,
         resource_id,
-        {generation, timer_ref, initiator_token, address}
+        {generation, timer_ref, initiator_token, address, gateway_id}
       )
     )
   end
