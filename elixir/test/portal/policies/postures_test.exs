@@ -180,6 +180,8 @@ defmodule Portal.Policies.PosturesTest do
       assert cast_error(intune_leaf("is", 1)) == "value: must be a string"
       assert cast_error(intune_leaf("is", "")) == "value: must not be empty"
       assert cast_error(intune_leaf("is", <<0xFF>>)) == "value: must be valid UTF-8"
+      assert cast_error(intune_leaf("is", "a" <> <<0>>)) == "value: must not contain NUL characters"
+      assert cast_error(intune_leaf("is_in", ["a", <<0>>])) =~ "must not contain NUL characters"
       assert cast_error(intune_leaf("is", String.duplicate("a", 1025))) == "value: must be at most 1024 bytes"
 
       for op <- ~w[is_not contains does_not_contain starts_with ends_with] do
