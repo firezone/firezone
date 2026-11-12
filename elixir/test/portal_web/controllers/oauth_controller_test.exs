@@ -174,9 +174,10 @@ defmodule PortalWeb.OAuthControllerTest do
       account: account,
       client: client
     } do
-      params = authorize_params(client)
+      params = authorize_params(client) |> Map.put("account_id_or_slug", account.slug)
 
-      conn = get(conn, ~p"/#{account}/oauth/authorize?#{params}")
+      conn = get(conn, ~p"/oauth/authorize?#{params}")
+      conn = get(conn, redirected_to(conn, 302))
       sign_in_path = redirected_to(conn, 302)
 
       {:ok, _lv, html} = live(conn, sign_in_path)
@@ -190,11 +191,12 @@ defmodule PortalWeb.OAuthControllerTest do
       conn: conn,
       account: account
     } do
-      # Nothing cached: the metadata document has never been fetched, which is
-      # what a real first connection looks like and what the fixture hides.
       client_id = "https://brand-new.example.test/metadata.json"
+      test_pid = self()
 
       Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+        send(test_pid, :metadata_fetched)
+
         Req.Test.json(conn, %{
           "client_id" => client_id,
           "client_name" => "Brand New App",
@@ -207,10 +209,14 @@ defmodule PortalWeb.OAuthControllerTest do
         |> authorize_params()
         |> Map.put("account_id_or_slug", account.slug)
 
-      scoped = conn |> get(~p"/oauth/authorize?#{params}") |> redirected_to(302)
-      sign_in_path = build_conn() |> get(scoped) |> redirected_to(302)
+      conn = get(conn, ~p"/oauth/authorize?#{params}")
+      assert_received :metadata_fetched
 
-      html = build_conn() |> get(sign_in_path) |> html_response(200)
+      conn = get(conn, redirected_to(conn, 302))
+      sign_in_path = redirected_to(conn, 302)
+
+      conn = get(conn, sign_in_path)
+      html = html_response(conn, 200)
 
       assert html =~ "Brand New App"
       assert html =~ "wants to connect to Firezone"
@@ -218,6 +224,64 @@ defmodule PortalWeb.OAuthControllerTest do
       # and it keeps the centered look of the consent screen rather than
       # dropping into the marketing panel of a plain sign-in
       refute html =~ "Zero complexity"
+
+      {:ok, _lv, html} = live(conn, sign_in_path)
+      assert html =~ "Brand New App"
+
+      refute_received :metadata_fetched
+      refute Portal.Repo.get_by(Portal.OAuthClient, client_id: client_id)
+    end
+
+    test "sign-in names the app only from the cookie the authorize step signed", %{
+      conn: conn,
+      account: account,
+      client: client
+    } do
+      params = authorize_params(client) |> Map.put("account_id_or_slug", account.slug)
+      authorized = get(conn, ~p"/oauth/authorize?#{params}")
+      sign_in_path = authorized |> get(redirected_to(authorized, 302)) |> redirected_to(302)
+
+      %{value: signed} = authorized.resp_cookies["oauth_client"]
+
+      unsigned =
+        {client.client_id, "Other App", []}
+        |> :erlang.term_to_binary()
+        |> Base.url_encode64()
+
+      altered =
+        String.slice(signed, 0, 20) <>
+          Enum.find(~w[A B], &(&1 != String.at(signed, 20))) <>
+          String.slice(signed, 21..-1//1)
+
+      assert sign_in_html(sign_in_path, signed) =~ client.client_name
+
+      for value <- [unsigned, altered, "garbage"] do
+        html = sign_in_html(sign_in_path, value)
+
+        refute html =~ "wants to connect to Firezone"
+        refute html =~ client.client_name
+        refute html =~ "Other App"
+      end
+    end
+
+    test "sign-in ignores a cookie signed for a different app", %{
+      conn: conn,
+      account: account,
+      client: client
+    } do
+      other = oauth_client_fixture(client_name: "Other App")
+      params = authorize_params(other) |> Map.put("account_id_or_slug", account.slug)
+      conn = get(conn, ~p"/oauth/authorize?#{params}")
+
+      sign_in_path =
+        build_conn()
+        |> get(~p"/#{account}/oauth/authorize?#{authorize_params(client)}")
+        |> redirected_to(302)
+
+      html = conn |> get(sign_in_path) |> html_response(200)
+
+      refute html =~ "wants to connect to Firezone"
+      refute html =~ "Other App"
     end
 
     test "sign-in says nothing when no connection is pending", %{
@@ -596,10 +660,10 @@ defmodule PortalWeb.OAuthControllerTest do
 
       assert conn |> get(~p"/oauth/authorize?#{params}") |> html_response(200) =~ "Consent App"
 
-      sign_in_path =
-        conn |> get(~p"/#{account}/oauth/authorize?#{params}") |> redirected_to(302)
+      flow = get(conn, ~p"/oauth/authorize?#{Map.put(params, "account_id_or_slug", account.slug)}")
+      flow = get(flow, redirected_to(flow, 302))
 
-      assert conn |> get(sign_in_path) |> html_response(200) =~ "Consent App"
+      assert flow |> get(redirected_to(flow, 302)) |> html_response(200) =~ "Consent App"
 
       refute Portal.Repo.get_by(Portal.OAuthClient, client_id: client_id)
 
@@ -1078,6 +1142,13 @@ defmodule PortalWeb.OAuthControllerTest do
     |> Map.get(:query)
     |> URI.decode_query()
     |> Map.fetch!("code")
+  end
+
+  defp sign_in_html(path, cookie) do
+    build_conn()
+    |> put_req_cookie("oauth_client", cookie)
+    |> get(path)
+    |> html_response(200)
   end
 
   defp authorize_params(client) do

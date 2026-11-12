@@ -82,7 +82,9 @@ defmodule PortalWeb.OAuthController do
     # sign-in page the person never asked for.
     case PortalWeb.Accounts.get_by_id_or_slug(slug) do
       %Portal.Account{} = account ->
-        redirect(conn, to: ~p"/#{account}/oauth/authorize?#{Map.take(params, @authorize_params)}")
+        conn
+        |> PortalWeb.Cookie.OAuthClient.put(client)
+        |> redirect(to: ~p"/#{account}/oauth/authorize?#{Map.take(params, @authorize_params)}")
 
       nil ->
         render_chooser(conn, params, client, "No account found for \"#{slug}\".")
@@ -96,7 +98,11 @@ defmodule PortalWeb.OAuthController do
       PortalWeb.Cookie.RecentAccounts.fetch(conn)
 
     case Database.get_accounts_by_ids(account_ids) do
-      [account] -> redirect(conn, to: ~p"/#{account}/oauth/authorize?#{query}")
+      [account] ->
+        conn
+        |> PortalWeb.Cookie.OAuthClient.put(client)
+        |> redirect(to: ~p"/#{account}/oauth/authorize?#{query}")
+
       accounts -> render_chooser(conn, params, client, nil, accounts)
     end
   end

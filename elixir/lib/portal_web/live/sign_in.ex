@@ -19,23 +19,17 @@ defmodule PortalWeb.SignIn do
     mount_account(account, params, session, socket)
   end
 
-  # The pending OAuth request rides through sign-in as redirect_to, so the app
-  # being connected can be named here. Nothing is stored before sign-in.
-  defp connecting_client(%{"redirect_to" => redirect_to}) when is_binary(redirect_to) do
-    with %URI{path: path, query: query} when is_binary(query) <- URI.parse(redirect_to),
-         true <- String.ends_with?(path || "", "/oauth/authorize"),
-         %{"client_id" => client_id} <- URI.decode_query(query),
-         {:ok, client} <- Portal.OAuth.ClientMetadata.fetch(client_id) do
-      client
-    else
-      _other -> nil
-    end
+  @doc """
+  Used as the session function for the sign in live_session.
+  """
+  def live_session(conn) do
+    conn
+    |> PortalWeb.Cookie.LastUsedProvider.fetch_state()
+    |> Map.put("oauth_client", oauth_client(conn))
   end
 
-  defp connecting_client(_params), do: nil
-
   defp mount_account(account, params, session, socket) do
-    connecting_client = connecting_client(params)
+    connecting_client = session["oauth_client"]
 
     socket =
       assign(socket,
@@ -355,6 +349,27 @@ defmodule PortalWeb.SignIn do
       assign(socket, :last_used_provider_id, nil)
     end
   end
+
+  defp oauth_client(conn) do
+    with %{"redirect_to" => redirect_to} <- conn.query_params,
+         {:ok, client_id} <- redirect_client_id(redirect_to) do
+      PortalWeb.Cookie.OAuthClient.fetch(conn, client_id)
+    else
+      _other -> nil
+    end
+  end
+
+  defp redirect_client_id(redirect_to) when is_binary(redirect_to) do
+    with %URI{path: path, query: query} when is_binary(query) <- URI.parse(redirect_to),
+         true <- String.ends_with?(path || "", "/oauth/authorize"),
+         %{"client_id" => client_id} when is_binary(client_id) <- URI.decode_query(query) do
+      {:ok, client_id}
+    else
+      _other -> :error
+    end
+  end
+
+  defp redirect_client_id(_redirect_to), do: :error
 
   defmodule Database do
     import Ecto.Query
