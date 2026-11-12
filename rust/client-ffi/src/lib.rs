@@ -957,6 +957,15 @@ pub fn is_log_streaming_active() -> bool {
     telemetry::feature_flags::stream_logs_active()
 }
 
+/// Overrides the `no_direct_connections` feature flag, which forces all connections through a relay.
+///
+/// `Some` takes precedence over the feature flag until cleared with `None`.
+/// The override lives as long as the process and is not persisted.
+#[uniffi::export]
+pub fn set_no_direct_connections_override(value: Option<bool>) {
+    telemetry::feature_flags::set_no_direct_connections_override(value);
+}
+
 impl From<connlib_model::ResourceView> for Resource {
     fn from(resource: connlib_model::ResourceView) -> Self {
         match resource {

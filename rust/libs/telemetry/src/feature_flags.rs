@@ -3,7 +3,7 @@ use std::{
     str::FromStr as _,
     sync::{
         LazyLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     time::Duration,
 };
@@ -72,6 +72,16 @@ pub fn no_direct_connections() -> bool {
     FEATURE_FLAGS.no_direct_connections()
 }
 
+/// Overrides the `no_direct_connections` feature flag for the lifetime of the process.
+///
+/// `Some` takes precedence over PostHog and the `FZFF_NO_DIRECT_CONNECTIONS` env variable
+/// until the override is cleared again with `None`.
+pub fn set_no_direct_connections_override(value: Option<bool>) {
+    tracing::info!(?value, "Overriding `no_direct_connections` feature flag");
+
+    FEATURE_FLAGS.set_no_direct_connections_override(value);
+}
+
 /// Number of raw samples retained per distribution series per flush interval,
 /// configured via the `stream_metrics` feature-flag payload.
 pub fn metrics_reservoir_size() -> usize {
@@ -88,7 +98,8 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         stream_metrics,
         metrics_reservoir_size: _,
         wintun_tcp_coalescing,
-        no_direct_connections,
+        no_direct_connections: _,
+        no_direct_connections_override: _,
     } = &*FEATURE_FLAGS;
 
     [
@@ -108,7 +119,7 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         ),
         (
             "no_direct_connections",
-            no_direct_connections.load(Ordering::Relaxed),
+            FEATURE_FLAGS.no_direct_connections(),
         ),
     ]
 }
@@ -250,7 +261,12 @@ struct FeatureFlags {
     metrics_reservoir_size: RwLock<MetricsReservoirSize>,
     wintun_tcp_coalescing: AtomicBool,
     no_direct_connections: AtomicBool,
+    no_direct_connections_override: AtomicU8,
 }
+
+const NO_OVERRIDE: u8 = 0;
+const OVERRIDE_FALSE: u8 = 1;
+const OVERRIDE_TRUE: u8 = 2;
 
 /// Accessors to the actual feature flags.
 ///
@@ -315,7 +331,22 @@ impl FeatureFlags {
     }
 
     fn no_direct_connections(&self) -> bool {
-        self.no_direct_connections.load(Ordering::Relaxed)
+        match self.no_direct_connections_override.load(Ordering::Relaxed) {
+            OVERRIDE_TRUE => true,
+            OVERRIDE_FALSE => false,
+            _ => self.no_direct_connections.load(Ordering::Relaxed),
+        }
+    }
+
+    fn set_no_direct_connections_override(&self, value: Option<bool>) {
+        let value = match value {
+            Some(true) => OVERRIDE_TRUE,
+            Some(false) => OVERRIDE_FALSE,
+            None => NO_OVERRIDE,
+        };
+
+        self.no_direct_connections_override
+            .store(value, Ordering::Relaxed);
     }
 
     fn metrics_reservoir_size(&self) -> usize {
@@ -528,6 +559,21 @@ mod tests {
         );
 
         assert!(flags.wintun_tcp_coalescing());
+    }
+
+    #[test]
+    fn no_direct_connections_override_wins_until_cleared() {
+        let flags = FeatureFlags::default();
+        flags.set_no_direct_connections_override(Some(true));
+
+        flags.update(
+            FeatureFlagsResponse::default(),
+            FeatureFlagPayloadsResponse::default(),
+        );
+        assert!(flags.no_direct_connections());
+
+        flags.set_no_direct_connections_override(None);
+        assert!(!flags.no_direct_connections());
     }
 
     #[test]
