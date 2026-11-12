@@ -685,7 +685,7 @@ defmodule Portal.Authentication do
       used_by_device =
         from(d in Portal.Device,
           where: d.account_id == parent_as(:tokens).account_id,
-          where: d.gateway_token_id == parent_as(:tokens).id
+          where: d.token_id == parent_as(:tokens).id
         )
 
       from(t in Portal.DeviceToken, as: :tokens)

@@ -590,7 +590,7 @@ defmodule PortalAPI.GatewayControllerTest do
       # A gateway only reports a token once it has connected with one.
       gateway =
         gateway
-        |> Ecto.Changeset.change(gateway_token_id: token.id)
+        |> Ecto.Changeset.change(gateway_token_id: token.id, token_id: token.id)
         |> Repo.update!()
 
       %{gateway: gateway, token: token}
@@ -670,7 +670,7 @@ defmodule PortalAPI.GatewayControllerTest do
       # never-connected state a freshly provisioned Gateway has.
       fresh =
         gateway_fixture(account: account, site: site)
-        |> Ecto.Changeset.change(gateway_token_id: nil)
+        |> Ecto.Changeset.change(gateway_token_id: nil, token_id: nil)
         |> Repo.update!()
 
       conn =

@@ -40,7 +40,7 @@ defmodule Portal.DeviceToken do
     field :rotated_sibling_id, :binary_id, virtual: true
 
     # Client token lists: the device that last connected with the token (see
-    # devices.client_token_id), its auth provider and whether it is online
+    # devices.token_id), its auth provider and whether it is online
     field :last_used_device, :any, virtual: true
     field :auth_provider_name, :string, virtual: true
     field :auth_provider_type, :string, virtual: true
