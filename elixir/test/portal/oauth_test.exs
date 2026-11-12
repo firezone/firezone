@@ -531,6 +531,63 @@ defmodule Portal.OAuthTest do
       assert {:ok, _} =
                OAuth.refresh(Map.merge(refresh, signed_assertion(client, keys)), @resource)
     end
+
+    test "keeps a code presented under another client for its own client", context do
+      keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
+
+      client =
+        oauth_client_fixture(
+          token_endpoint_auth_method: "private_key_jwt",
+          jwks_uri: "https://localhost/jwks.json"
+        )
+
+      other = oauth_client_fixture()
+      context = %{context | client: client}
+      Req.Test.stub(ClientMetadata, &Req.Test.json(&1, keys.jwks))
+      code = consent(context)
+      params = exchange_params(context, code)
+
+      assert {:error, "invalid_grant", _} =
+               OAuth.exchange(%{params | "client_id" => other.client_id}, @resource)
+
+      assert {:ok, _} =
+               OAuth.exchange(Map.merge(params, signed_assertion(client, keys)), @resource)
+    end
+
+    test "keeps a token family when an old refresh token comes from another client", context do
+      keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
+
+      client =
+        oauth_client_fixture(
+          token_endpoint_auth_method: "private_key_jwt",
+          jwks_uri: "https://localhost/jwks.json"
+        )
+
+      other = oauth_client_fixture()
+      context = %{context | client: client}
+      Req.Test.stub(ClientMetadata, &Req.Test.json(&1, keys.jwks))
+      refresh = refreshable_token(context)
+      params = refresh_params(context, refresh)
+
+      assert {:ok, rotated} =
+               OAuth.refresh(Map.merge(params, signed_assertion(client, keys)), @resource)
+
+      assert {:error, "invalid_grant", _} =
+               OAuth.refresh(%{params | "client_id" => other.client_id}, @resource)
+
+      current = refresh_params(context, rotated.refresh_token)
+
+      assert {:ok, latest} =
+               OAuth.refresh(Map.merge(current, signed_assertion(client, keys)), @resource)
+
+      assert {:error, "invalid_grant", _} =
+               OAuth.refresh(Map.merge(params, signed_assertion(client, keys)), @resource)
+
+      latest = refresh_params(context, latest.refresh_token)
+
+      assert {:error, "invalid_grant", _} =
+               OAuth.refresh(Map.merge(latest, signed_assertion(client, keys)), @resource)
+    end
   end
 
   describe "consent/2 and exchange/2" do
