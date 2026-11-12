@@ -37,7 +37,8 @@ Where no rule fits, apply the principle.
 - Prefer early-returns to keep the indentation of the happy-path minimal, i.e. use `let-else` instead of `if let`.
   Do cheap checks and early exits first, before mutating state or doing other work.
 - Write one match-arm per distinct case, even if the bodies are identical or create slight duplication.
-  Separate arms format better and are easier to read than combined `A | B` patterns or `matches!` guards.
+  Separate arms format better than combined `A | B` patterns or `matches!` guards, and each case can get its own log message.
+  Arms that do nothing (`=> {}`) can be combined.
 - Flatten nested conditions with match-arm guards instead of an `if` inside the arm, a `matches!` or a chain of `if let`s.
   With every combination spelled out as an arm, the compiler checks that all of them are handled.
 - Match exhaustively on our own enums instead of using `if let` or `if`-`else`.
