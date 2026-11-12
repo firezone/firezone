@@ -345,6 +345,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         completionHandler?(nil)
 
+      case .reset:
+        let adapter = self.adapter
+        Task { @Sendable in
+          await adapter?.reset(reason: "developer settings")
+        }
+        completionHandler?(nil)
+
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
         completionHandler?(nil)

@@ -12,6 +12,7 @@ public enum ProviderMessage: Codable {
   case setInternetResourceEnabled(Bool)
   case setLogFilter(String)
   case setAdditionalHostCandidates([String])
+  case reset
   case signOut
   case clearLogs
   case getLogFolderSize
@@ -30,6 +31,7 @@ public enum ProviderMessage: Codable {
     case setInternetResourceEnabled
     case setLogFilter
     case setAdditionalHostCandidates
+    case reset
     case signOut
     case clearLogs
     case getLogFolderSize
@@ -55,6 +57,8 @@ public enum ProviderMessage: Codable {
     case .setAdditionalHostCandidates:
       let value = try container.decode([String].self, forKey: .value)
       self = .setAdditionalHostCandidates(value)
+    case .reset:
+      self = .reset
     case .signOut:
       self = .signOut
     case .clearLogs:
@@ -87,6 +91,8 @@ public enum ProviderMessage: Codable {
     case .setAdditionalHostCandidates(let value):
       try container.encode(MessageType.setAdditionalHostCandidates, forKey: .type)
       try container.encode(value, forKey: .value)
+    case .reset:
+      try container.encode(MessageType.reset, forKey: .type)
     case .signOut:
       try container.encode(MessageType.signOut, forKey: .type)
     case .clearLogs:

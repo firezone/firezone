@@ -185,6 +185,11 @@ public enum IPCClient {
   }
 
   @MainActor
+  static func reset(session: any TunnelSessionProtocol) async throws {
+    _ = try await sendProviderMessage(session: session, message: .reset)
+  }
+
+  @MainActor
   static func drainFlowLogs(session: any TunnelSessionProtocol) async throws {
     let message = ProviderMessage.drainFlowLogs
     _ = try await sendProviderMessage(session: session, message: message)

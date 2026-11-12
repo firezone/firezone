@@ -28,6 +28,8 @@ public struct SettingsView: View {
 
   @FocusState private var focusedField: Field?
   @State private var isConfirmingReset = false
+  @State private var versionTapCount = 0
+  @AppStorage(DeveloperSettings.isUnlockedKey) private var isDeveloperSettingsUnlocked = false
 
   #if os(iOS)
     private struct LogArchive: Identifiable {
@@ -460,26 +462,9 @@ public struct SettingsView: View {
             managedNote(configuration.isLogFilterForced)
           }
           Section("About") {
-            HStack {
-              Text("Version")
-                .foregroundStyle(.secondary)
-              Spacer()
-              if let shortGitSha = BundleHelper.shortGitSha,
-                let commitURL = BundleHelper.commitURL
-              {
-                HStack(spacing: 0) {
-                  Text("\(BundleHelper.version) (")
-                  Link(shortGitSha, destination: commitURL)
-                  Text(")")
-                }
-              } else {
-                Text(BundleHelper.version)
-              }
-            }
-            .contextMenu {
-              Button("Copy") { UIPasteboard.general.string = BundleHelper.versionDescription }
-            }
+            versionRow
           }
+          developerSettingsSection
         }
         .endsEditingOnTap($focusedField)
       }
@@ -522,6 +507,10 @@ public struct SettingsView: View {
             paneFooter
           }
         }
+        Section("About") {
+          versionRow
+        }
+        developerSettingsSection
       }
       .formStyle(.grouped)
       .endsEditingOnTap($focusedField)
@@ -574,6 +563,61 @@ public struct SettingsView: View {
       Text(error)
         .font(.caption)
         .foregroundStyle(.red)
+    }
+  }
+
+  private var versionRow: some View {
+    Group {
+      #if os(macOS)
+        LabeledContent("Version") { versionText }
+      #elseif os(iOS)
+        HStack {
+          Text("Version")
+            .foregroundStyle(.secondary)
+          Spacer()
+          versionText
+        }
+      #endif
+    }
+    .contentShape(Rectangle())
+    .onTapGesture {
+      versionTapCount += 1
+      if versionTapCount == 7 { isDeveloperSettingsUnlocked = true }
+    }
+    .contextMenu {
+      Button("Copy") { Clipboard.copy(BundleHelper.versionDescription) }
+    }
+  }
+
+  @ViewBuilder
+  private var versionText: some View {
+    if let shortGitSha = BundleHelper.shortGitSha,
+      let commitURL = BundleHelper.commitURL
+    {
+      HStack(spacing: 0) {
+        Text("\(BundleHelper.version) (")
+        Link(shortGitSha, destination: commitURL)
+        Text(")")
+      }
+    } else {
+      Text(BundleHelper.version)
+    }
+  }
+
+  @ViewBuilder
+  private var developerSettingsSection: some View {
+    if isDeveloperSettingsUnlocked {
+      Section("Developer settings") {
+        Button("Reset connlib") {
+          withErrorHandler { try await store.resetConnlib() }
+        }
+        .disabled(store.vpnStatus != .connected)
+
+        Button("Hide developer settings") {
+          isDeveloperSettingsUnlocked = false
+          versionTapCount = 0
+        }
+      }
     }
   }
 

@@ -105,7 +105,7 @@ class SettingsViewModel: ObservableObject {
     })
     .store(in: &cancellables)
 
-    // The sign-in note depends on whether the session is running.
+    // The sign-in note and the developer settings depend on whether the session is running.
     store?.$vpnStatus
       .sink(receiveValue: { [weak self] _ in self?.objectWillChange.send() })
       .store(in: &cancellables)
