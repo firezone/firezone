@@ -8,6 +8,8 @@ use arbitrary::{Arbitrary, Unstructured};
 use clap::{Parser, ValueEnum};
 
 mod clock;
+#[cfg(fuzzing)]
+mod ijon;
 mod targets;
 
 static START_TIME: LazyLock<Instant> = LazyLock::new(clock::start_time);
@@ -20,14 +22,14 @@ fn main() -> Result<()> {
 
     let target: fn(&[u8]) = match cli.target {
         Target::IpPacket => |data| with_input(data, targets::ip_packet::test),
-        Target::Relay => targets::relay::test,
-        Target::Tunnel => targets::tunnel::test,
+        Target::Relay => |data| simulation::relay::run(data, *START_TIME),
+        Target::Tunnel => |data| simulation::tunnel::run(data, *START_TIME),
         Target::X509Claims => |data| with_input(data, targets::x509_claims::test),
     };
     if cli.replay.is_empty() {
         cfg_select! {
             fuzzing => {
-                fuzz::feedback::prepare_runtime();
+                ijon::prepare_runtime();
                 afl::fuzz(true, target);
 
                 return Ok(());

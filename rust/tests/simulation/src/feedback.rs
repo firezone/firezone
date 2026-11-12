@@ -13,8 +13,8 @@
 //! features, and observing the same value at the same site again does not make
 //! an input interesting.
 //!
-//! `prepare_runtime` enables the IJON map before discovery starts. Replay still
-//! evaluates the observations, but does not record feedback.
+//! Recording needs the `ijon` feature and a build for discovery. Every other
+//! build, replay included, evaluates the observations without recording feedback.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -42,31 +42,6 @@ use crate::{
     transition::{Destination, DnsQuery, DnsTransport, Transition},
 };
 
-// The AFL runtime defines this symbol weakly. Rust's IJON macros already emit
-// the recording calls; this is the enable flag normally emitted by its LLVM pass.
-#[cfg(fuzzing)]
-#[used]
-#[unsafe(no_mangle)]
-static mut __afl_ijon_enabled: u32 = 1;
-
-/// Prepares IJON before starting AFL's deferred forkserver.
-#[cfg(fuzzing)]
-pub fn prepare_runtime() {
-    if std::env::var_os("__AFL_SHM_ID").is_none() {
-        return;
-    }
-
-    unsafe extern "C" {
-        static mut __afl_ijon_map_increased: u32;
-    }
-
-    // AFL++ 4.40c resets the negotiated map size after sanitizer coverage
-    // initializes, but leaves this flag set. Rearm the expansion before
-    // the deferred forkserver reports its map size. See the corresponding
-    // runtime code at https://github.com/AFLplusplus/AFLplusplus/blob/e5a8ba39ecf97d05e286fdd4e01da96554dbf64f/instrumentation/afl-compiler-rt.o.c#L2312-L2340.
-    unsafe { __afl_ijon_map_increased = 0 };
-}
-
 /// Records a numeric state category as feedback for the fuzzer.
 ///
 /// Each call site records its values independently. The argument is a `u16`
@@ -76,7 +51,7 @@ macro_rules! record_value {
     ($value:expr $(,)?) => {{
         let value: u16 = $value;
         ::core::cfg_select! {
-            fuzzing => { ::afl::ijon_set!(u32::from(value)); }
+            all(fuzzing, feature = "ijon") => { ::afl::ijon_set!(u32::from(value)); }
             _ => { let _ = value; }
         }
     }};

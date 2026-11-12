@@ -212,6 +212,7 @@ defmodule PortalAPI.Gateway.Socket do
     %{
       gateway
       | gateway_token_id: token_id,
+        token_id: token_id,
         public_key: public_key,
         last_seen_user_agent: context.user_agent,
         last_seen_remote_ip: context.remote_ip,

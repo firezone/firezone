@@ -49,7 +49,7 @@ defmodule Portal.Ops.RegionTransferTest do
 
           refute Enum.any?(
                    manifest["tables"],
-                   &(&1["name"] in ~w(client_tokens device_tokens log_sink_cursors pending_identities portal_sessions api_request_logs))
+                   &(&1["name"] in ~w(device_tokens log_sink_cursors pending_identities portal_sessions api_request_logs))
                  )
         end)
 
@@ -88,7 +88,7 @@ defmodule Portal.Ops.RegionTransferTest do
         |> Enum.filter(&(&1["nulled_columns"] != []))
         |> Map.new(&{&1["name"], Enum.sort(&1["nulled_columns"])})
 
-      assert nulled == %{"devices" => ["client_token_id", "gateway_token_id"]}
+      assert nulled == %{"devices" => ["client_token_id", "gateway_token_id", "token_id"]}
     end
 
     test "refuses an account disabled for another reason", %{account: account, store: store} do

@@ -125,8 +125,10 @@ defmodule PortalAPI.Client.DeviceTrust do
           last_attested_cert_serial: String.t(),
           last_attested_cert_fingerprint: String.t(),
           last_attested_cert_issuer: binary(),
+          not_after: DateTime.t(),
           device: Portal.Device.t() | nil,
-          matched_on: :mdm_device_id | :cert_identity | nil
+          matched_on: :mdm_device_id | :cert_identity | nil,
+          trust_anchor_certificate_ids: [Ecto.UUID.t()]
         }
 
   @type prepared_authentication :: %{
@@ -202,15 +204,11 @@ defmodule PortalAPI.Client.DeviceTrust do
     with :ok <- ensure_x509_auth_feature_enabled(),
          {:ok, account, auth_provider} <- Database.fetch_x509_account(account_id),
          {:ok, anchors} <- fetch_anchors(account.id),
-         :ok <- validate_leaf(leaf, der, anchors),
+         {:ok, anchor_ids} <- validate_leaf(leaf, der, anchors),
          :ok <- ensure_account_enabled(account),
          {:ok, auth_provider} <- ensure_x509_authentication_enabled(auth_provider),
          {:ok, actor} <- Database.fetch_x509_actor(account, identity),
-         %DateTime{} = certificate_expires_at <- X509.not_after(leaf),
-         expires_at = %{
-           certificate_expires_at
-           | microsecond: {elem(certificate_expires_at.microsecond, 0), 6}
-         },
+         %DateTime{} = expires_at <- not_after(leaf),
          subject = %Subject{
            account: account,
            actor: actor,
@@ -221,7 +219,7 @@ defmodule PortalAPI.Client.DeviceTrust do
            expires_at: expires_at,
            context: context
          },
-         {:ok, proof} <- attest_validated(der, leaf, subject) do
+         {:ok, proof} <- attest_validated(der, leaf, anchor_ids, subject) do
       {:ok, subject, proof}
     else
       {:error, reason}
@@ -284,12 +282,12 @@ defmodule PortalAPI.Client.DeviceTrust do
          {:ok, der} <- presented_certificate(connect_info),
          {:ok, anchors} <- fetch_anchors(subject),
          {:ok, leaf} <- decode_leaf(der),
-         :ok <- validate_leaf(leaf, der, anchors) do
-      attest_validated(der, leaf, subject)
+         {:ok, anchor_ids} <- validate_leaf(leaf, der, anchors) do
+      attest_validated(der, leaf, anchor_ids, subject)
     end
   end
 
-  defp attest_validated(der, leaf, subject) do
+  defp attest_validated(der, leaf, anchor_ids, subject) do
     with {:ok, serial} <- cert_serial(leaf),
          {:ok, issuer} <- cert_issuer(der),
          state =
@@ -311,8 +309,10 @@ defmodule PortalAPI.Client.DeviceTrust do
          last_attested_cert_serial: serial,
          last_attested_cert_fingerprint: sha256_hex(der),
          last_attested_cert_issuer: issuer,
+         not_after: not_after(leaf),
          device: state.device,
-         matched_on: state.matched_on
+         matched_on: state.matched_on,
+         trust_anchor_certificate_ids: anchor_ids
        }}
     end
   end
@@ -423,17 +423,14 @@ defmodule PortalAPI.Client.DeviceTrust do
     end
   end
 
-  # Which anchor the chain happens to validate against says nothing about who
-  # issued the leaf: an account holding both a root and its intermediate has two
-  # anchors that can each validate the same certificate. The issuer is read off
-  # the leaf itself instead, so only the outcome matters here.
+  # An account holding both a root and its intermediate has two anchors that
+  # can each validate the same certificate, so every matching anchor is kept.
   defp validate_chain(leaf_der, anchors) do
     anchor_ders = Enum.map(anchors, & &1.der)
 
-    if Enum.any?(anchors, &chains_to?(leaf_der, &1.der, anchor_ders)) do
-      :ok
-    else
-      {:error, :untrusted_chain}
+    case anchors |> Enum.filter(&chains_to?(leaf_der, &1.der, anchor_ders)) |> Enum.map(& &1.id) do
+      [] -> {:error, :untrusted_chain}
+      ids -> {:ok, Enum.uniq(ids)}
     end
   end
 
@@ -608,6 +605,13 @@ defmodule PortalAPI.Client.DeviceTrust do
       )
 
       {:error, :malformed_cert_serial}
+    end
+  end
+
+  defp not_after(leaf) do
+    case X509.not_after(leaf) do
+      %DateTime{} = not_after -> %{not_after | microsecond: {elem(not_after.microsecond, 0), 6}}
+      nil -> nil
     end
   end
 

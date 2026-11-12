@@ -64,11 +64,16 @@ const PAYLOAD: [u8; 32] = {
     payload
 };
 
-pub fn test(data: &[u8], start: Instant) {
+/// Runs the simulation that `data` describes, with its clock starting at `now`.
+///
+/// Panics if the client or the relay violates a property.
+pub fn run(data: &[u8], now: Instant) {
+    let _guard = crate::init_subscriber();
+
     let mut u = Unstructured::new(data);
     let relay = Stack::arbitrary(&mut u);
     let client = Stack::arbitrary(&mut u);
-    let mut world = World::new(relay, client, start);
+    let mut world = World::new(relay, client, now);
 
     for _ in 0..MAX_TRANSITIONS {
         if u.is_empty() {

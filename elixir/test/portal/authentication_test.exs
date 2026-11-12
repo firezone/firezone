@@ -643,7 +643,6 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
       assert token.secret_fragment != nil
-      assert Portal.DeviceToken.single_owner?(token)
     end
 
     test "returns error when the gateway already has an active token" do
@@ -995,20 +994,67 @@ defmodule Portal.AuthenticationTest do
       refute Repo.get_by(Portal.OneTimePasscode, id: passcode.id)
     end
 
-    test "creating a new passcode deletes existing passcodes for the actor" do
+    test "creating a new passcode keeps existing passcodes for the actor valid" do
       account = account_fixture()
       actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
 
       {:ok, passcode1} = create_one_time_passcode(account, actor)
       {:ok, passcode2} = create_one_time_passcode(account, actor)
 
-      # First passcode should no longer be valid
-      assert {:error, :invalid_code} =
+      assert {:ok, _} =
                verify_one_time_passcode(account.id, actor.id, passcode1.id, passcode1.code)
 
-      # Second passcode should still be valid
       assert {:ok, _} =
                verify_one_time_passcode(account.id, actor.id, passcode2.id, passcode2.code)
+    end
+
+    test "limits the number of active passcodes per actor" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+      other_actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      passcodes =
+        for _ <- 1..5 do
+          assert {:ok, passcode} = create_one_time_passcode(account, actor)
+          passcode
+        end
+
+      assert {:error, :too_many_active_passcodes} = create_one_time_passcode(account, actor)
+      assert {:ok, _} = create_one_time_passcode(account, other_actor)
+
+      [first | rest] = passcodes
+
+      assert {:ok, _} =
+               verify_one_time_passcode(account.id, actor.id, first.id, first.code)
+
+      assert {:ok, _} = create_one_time_passcode(account, actor)
+      assert {:error, :too_many_active_passcodes} = create_one_time_passcode(account, actor)
+
+      for passcode <- rest do
+        assert {:ok, _} =
+                 verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+      end
+    end
+
+    test "expired and used up passcodes do not count towards the active passcode limit" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      for _ <- 1..4 do
+        {:ok, passcode} = create_one_time_passcode(account, actor)
+
+        passcode
+        |> Ecto.Changeset.change(expires_at: DateTime.add(DateTime.utc_now(), -1, :second))
+        |> Repo.update!()
+      end
+
+      {:ok, passcode} = create_one_time_passcode(account, actor)
+
+      passcode
+      |> Ecto.Changeset.change(attempts: Portal.OneTimePasscode.max_attempts())
+      |> Repo.update!()
+
+      assert {:ok, _} = create_one_time_passcode(account, actor)
     end
 
     test "creates token with custom nonce" do
@@ -1573,7 +1619,6 @@ defmodule Portal.AuthenticationTest do
     end
 
     test "a site token is written only to device_tokens, owned by the legacy Gateway actor", %{
-      account: account,
       site: site,
       subject: subject
     } do
@@ -1746,7 +1791,8 @@ defmodule Portal.AuthenticationTest do
         account_id: account.id,
         actor_id: actor.id,
         secret_salt: "salt",
-        secret_hash: "hash"
+        secret_hash: "hash",
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       })
 
       Repo.delete!(actor)
@@ -1821,6 +1867,54 @@ defmodule Portal.AuthenticationTest do
                |> delete_client_tokens(subject)
 
       assert Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
+    end
+
+    test "the client socket refuses a token owned by the legacy Gateway actor", %{account: account} do
+      legacy_actor_id = gateway_token_fixture(account: account).actor_id
+      token = client_token_fixture(account: account, secret_nonce: "nonce")
+
+      Repo.update_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id),
+        set: [actor_id: legacy_actor_id]
+      )
+
+      encoded = sign_with_salt("device", "nonce", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = use_token(encoded, build_context(type: :client))
+    end
+
+    test "the Gateway socket refuses a Site token not owned by the legacy Gateway actor", %{
+      account: account,
+      actor: actor
+    } do
+      token = gateway_token_fixture(account: account)
+
+      Repo.update_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id),
+        set: [actor_id: actor.id]
+      )
+
+      encoded = sign_with_salt("device", "", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = verify_gateway_token(encoded)
+    end
+
+    test "delete_client_tokens/1 leaves Gateway tokens", %{account: account} do
+      gateway_token = gateway_token_fixture(account: account)
+
+      assert {0, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^gateway_token.id)
+               |> delete_client_tokens()
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
+    end
+
+    test "delete_gateway_tokens/2 leaves client tokens", %{account: account, token: token} do
+      subject = admin_subject_fixture(account: account)
+
+      assert {0, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
+               |> delete_gateway_tokens(subject)
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
     end
 
     test "relay tokens signed with the device salt are refused" do

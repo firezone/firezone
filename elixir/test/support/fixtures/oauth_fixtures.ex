@@ -6,6 +6,7 @@ defmodule Portal.OAuthFixtures do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.AuthProviderFixtures
 
   alias Portal.Authentication
   alias Portal.OAuthClient
@@ -64,6 +65,12 @@ defmodule Portal.OAuthFixtures do
     actor = Map.get_lazy(attrs, :actor, fn -> admin_actor_fixture(account: account) end)
     scopes = Map.get(attrs, :scopes, ["policies:read"])
 
+    auth_provider =
+      Map.get_lazy(attrs, :auth_provider, fn ->
+        Portal.Repo.get_by(Portal.EmailOTP.AuthProvider, account_id: account.id) ||
+          email_otp_provider_fixture(account: account)
+      end)
+
     grant =
       Map.get_lazy(attrs, :grant, fn ->
         attrs
@@ -80,6 +87,7 @@ defmodule Portal.OAuthFixtures do
       |> Ecto.Changeset.change(%{
         account_id: account.id,
         actor_id: actor.id,
+        auth_provider_id: auth_provider.id,
         oauth_grant_id: grant.id,
         secret_salt: salt,
         secret_hash: hash,

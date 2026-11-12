@@ -26,6 +26,7 @@ defmodule Portal.Device do
     last_attested_at
     client_token_id
     gateway_token_id
+    token_id
   ]a
 
   @latest_session_columns Enum.map(@latest_session_fields, &Atom.to_string/1)
@@ -42,6 +43,7 @@ defmodule Portal.Device do
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
           attested?: boolean(),
+          attested_until: DateTime.t() | nil,
           firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
           last_seen_user_agent: String.t() | nil,
@@ -54,6 +56,7 @@ defmodule Portal.Device do
           last_seen_at: DateTime.t() | nil,
           client_token_id: Ecto.UUID.t() | nil,
           gateway_token_id: Ecto.UUID.t() | nil,
+          token_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t() | nil,
           device_serial: String.t() | nil,
@@ -136,6 +139,7 @@ defmodule Portal.Device do
     field :last_seen_at, :utc_datetime_usec
     field :client_token_id, :binary_id
     field :gateway_token_id, :binary_id
+    field :token_id, :binary_id
 
     # Virtual fields
     # The token minted with a Gateway, carried only on the provisioning response.
@@ -147,6 +151,9 @@ defmodule Portal.Device do
     # point-in-time history. Policy conditions read this, so it must describe
     # the session being evaluated and never the device's past.
     field :attested?, :boolean, virtual: true, default: false
+
+    # When the certificate that attested THIS connection expires.
+    field :attested_until, :utc_datetime_usec, virtual: true
 
     # Posture provider rows matched to this device, by provider type. Live
     # connection state loaded at connect, read by policy postures.

@@ -1,0 +1,51 @@
+[package]
+name = "simulation"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+publish = false
+
+[features]
+# Records IJON feedback when built for AFL++ discovery.
+ijon = ["dep:afl"]
+
+[dependencies]
+afl = { workspace = true, optional = true }
+anyhow = { workspace = true }
+arbitrary = { workspace = true }
+bufferpool = { workspace = true }
+bytecodec = { workspace = true }
+chrono = { workspace = true, features = ["std"] }
+connlib-model = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
+dns-over-tcp = { workspace = true }
+dns-types = { workspace = true }
+fastrand = { workspace = true }
+flow-tracker = { workspace = true }
+hex = { workspace = true }
+ip-packet = { workspace = true }
+ip_network = { workspace = true }
+ip_network_table = { workspace = true }
+is = { workspace = true }
+itertools = { workspace = true, features = ["use_std"] }
+l3-tcp = { workspace = true }
+rand = { workspace = true }
+relay-client-proto = { workspace = true }
+relay-server-proto = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+smallvec = { workspace = true }
+snownet = { workspace = true }
+socket-factory = { workspace = true }
+stun_codec = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tun = { workspace = true }
+tunnel = { workspace = true }
+tunnel-proto = { workspace = true, features = ["malicious-behaviour"] }
+uuid = { workspace = true }
+zeroize = { workspace = true }
+
+[lints]
+workspace = true

@@ -126,65 +126,6 @@ defmodule PortalWeb.OAuthControllerTest do
       assert response =~ "account slug or ID"
     end
 
-    test "records the address the metadata document was served from", %{
-      conn: conn,
-      account: account
-    } do
-      client_id = "https://localhost/metadata.json"
-
-      Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
-        Req.Test.json(conn, %{
-          "client_id" => client_id,
-          "client_name" => "Local App",
-          "redirect_uris" => [redirect_uri()]
-        })
-      end)
-
-      params =
-        %{client_id: client_id}
-        |> authorize_params()
-        |> Map.put("account_id_or_slug", account.slug)
-
-      get(conn, ~p"/oauth/authorize?#{params}")
-
-      client = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client_id)
-      assert %Postgrex.INET{address: {127, 0, 0, 1}} in client.resolved_ips
-    end
-
-    test "refreshes where the document was served from when it is fetched again", %{
-      conn: conn,
-      account: account
-    } do
-      client_id = "https://localhost/metadata.json"
-
-      oauth_client_fixture(
-        client_id: client_id,
-        resolved_ips: [%Postgrex.INET{address: {203, 0, 113, 9}}],
-        resolved_ip_location_city: "Nowhere",
-        metadata_expires_at: DateTime.add(DateTime.utc_now(), -1, :second)
-      )
-
-      Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
-        Req.Test.json(conn, %{
-          "client_id" => client_id,
-          "client_name" => "Local App",
-          "redirect_uris" => [redirect_uri()]
-        })
-      end)
-
-      params =
-        %{client_id: client_id}
-        |> authorize_params()
-        |> Map.put("account_id_or_slug", account.slug)
-
-      get(conn, ~p"/oauth/authorize?#{params}")
-
-      client = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client_id)
-      assert %Postgrex.INET{address: {127, 0, 0, 1}} in client.resolved_ips
-      refute %Postgrex.INET{address: {203, 0, 113, 9}} in client.resolved_ips
-      assert client.resolved_ip_location_city != "Nowhere"
-    end
-
     test "a document with a logo_uri that is not a string is refused, not a crash", %{
       conn: conn,
       account: account
@@ -212,59 +153,6 @@ defmodule PortalWeb.OAuthControllerTest do
       refute Portal.Repo.get_by(Portal.OAuthClient, client_id: client_id)
     end
 
-    test "stores a small icon and gives up on one that is too large", %{
-      conn: conn,
-      account: account
-    } do
-      client_id = "https://localhost/metadata.json"
-      png = "\x89PNG" <> :crypto.strong_rand_bytes(32)
-
-      Req.Test.stub(Portal.OAuth.ClientMetadata, fn
-        %{request_path: "/small.png"} = conn ->
-          conn
-          |> Plug.Conn.put_resp_content_type("image/png")
-          |> Plug.Conn.send_resp(200, png)
-
-        %{request_path: "/huge.png"} = conn ->
-          conn
-          |> Plug.Conn.put_resp_content_type("image/png")
-          |> Plug.Conn.send_resp(200, :binary.copy("x", 64 * 1024 + 1))
-
-        %{request_path: "/small.json"} = conn ->
-          Req.Test.json(conn, %{
-            "client_id" => "https://localhost/small.json",
-            "client_name" => "Small",
-            "logo_uri" => "https://localhost/small.png",
-            "redirect_uris" => [redirect_uri()]
-          })
-
-        conn ->
-          Req.Test.json(conn, %{
-            "client_id" => client_id,
-            "client_name" => "Huge",
-            "logo_uri" => "https://localhost/huge.png",
-            "redirect_uris" => [redirect_uri()]
-          })
-      end)
-
-      for id <- ["https://localhost/small.json", client_id] do
-        params =
-          %{client_id: id}
-          |> authorize_params()
-          |> Map.put("account_id_or_slug", account.slug)
-
-        get(conn, ~p"/oauth/authorize?#{params}")
-      end
-
-      small = Portal.Repo.get_by!(Portal.OAuthClient, client_id: "https://localhost/small.json")
-      assert small.logo_data == png
-      assert small.logo_content_type == "image/png"
-
-      huge = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client_id)
-      assert is_nil(huge.logo_data)
-      assert is_nil(huge.logo_content_type)
-    end
-
     test "a client that does not check out is refused before anyone signs in", %{
       conn: conn,
       account: account
@@ -286,9 +174,10 @@ defmodule PortalWeb.OAuthControllerTest do
       account: account,
       client: client
     } do
-      params = authorize_params(client)
+      params = authorize_params(client) |> Map.put("account_id_or_slug", account.slug)
 
-      conn = get(conn, ~p"/#{account}/oauth/authorize?#{params}")
+      conn = get(conn, ~p"/oauth/authorize?#{params}")
+      conn = get(conn, redirected_to(conn, 302))
       sign_in_path = redirected_to(conn, 302)
 
       {:ok, _lv, html} = live(conn, sign_in_path)
@@ -302,11 +191,12 @@ defmodule PortalWeb.OAuthControllerTest do
       conn: conn,
       account: account
     } do
-      # Nothing cached: the metadata document has never been fetched, which is
-      # what a real first connection looks like and what the fixture hides.
       client_id = "https://brand-new.example.test/metadata.json"
+      test_pid = self()
 
       Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+        send(test_pid, :metadata_fetched)
+
         Req.Test.json(conn, %{
           "client_id" => client_id,
           "client_name" => "Brand New App",
@@ -319,10 +209,14 @@ defmodule PortalWeb.OAuthControllerTest do
         |> authorize_params()
         |> Map.put("account_id_or_slug", account.slug)
 
-      scoped = conn |> get(~p"/oauth/authorize?#{params}") |> redirected_to(302)
-      sign_in_path = build_conn() |> get(scoped) |> redirected_to(302)
+      conn = get(conn, ~p"/oauth/authorize?#{params}")
+      assert_received :metadata_fetched
 
-      html = build_conn() |> get(sign_in_path) |> html_response(200)
+      conn = get(conn, redirected_to(conn, 302))
+      sign_in_path = redirected_to(conn, 302)
+
+      conn = get(conn, sign_in_path)
+      html = html_response(conn, 200)
 
       assert html =~ "Brand New App"
       assert html =~ "wants to connect to Firezone"
@@ -330,6 +224,120 @@ defmodule PortalWeb.OAuthControllerTest do
       # and it keeps the centered look of the consent screen rather than
       # dropping into the marketing panel of a plain sign-in
       refute html =~ "Zero complexity"
+
+      {:ok, _lv, html} = live(conn, sign_in_path)
+      assert html =~ "Brand New App"
+      refute html =~ "data:image"
+
+      refute_received :metadata_fetched
+      refute Portal.Repo.get_by(Portal.OAuthClient, client_id: client_id)
+    end
+
+    test "sign-in names the app only from the cookie the authorize step signed", %{
+      conn: conn,
+      account: account,
+      client: client
+    } do
+      params = authorize_params(client) |> Map.put("account_id_or_slug", account.slug)
+      authorized = get(conn, ~p"/oauth/authorize?#{params}")
+      sign_in_path = authorized |> get(redirected_to(authorized, 302)) |> redirected_to(302)
+
+      %{value: signed} = authorized.resp_cookies["oauth_client"]
+
+      unsigned =
+        {client.client_id, "Other App", []}
+        |> :erlang.term_to_binary()
+        |> Base.url_encode64()
+
+      altered =
+        String.slice(signed, 0, 20) <>
+          Enum.find(~w[A B], &(&1 != String.at(signed, 20))) <>
+          String.slice(signed, 21..-1//1)
+
+      assert sign_in_html(sign_in_path, signed) =~ client.client_name
+
+      for value <- [unsigned, altered, "garbage"] do
+        html = sign_in_html(sign_in_path, value)
+
+        refute html =~ "wants to connect to Firezone"
+        refute html =~ client.client_name
+        refute html =~ "Other App"
+      end
+    end
+
+    test "sign-in ignores a cookie signed for a different app", %{
+      conn: conn,
+      account: account,
+      client: client
+    } do
+      other = oauth_client_fixture(client_name: "Other App")
+      params = authorize_params(other) |> Map.put("account_id_or_slug", account.slug)
+      conn = get(conn, ~p"/oauth/authorize?#{params}")
+
+      sign_in_path =
+        build_conn()
+        |> get(~p"/#{account}/oauth/authorize?#{authorize_params(client)}")
+        |> redirected_to(302)
+
+      html = conn |> get(sign_in_path) |> html_response(200)
+
+      refute html =~ "wants to connect to Firezone"
+      refute html =~ "Other App"
+    end
+
+    test "sign-in shows the icon of an app the portal already knows", %{
+      conn: conn,
+      account: account
+    } do
+      png = "\x89PNG" <> :crypto.strong_rand_bytes(32)
+      client = oauth_client_fixture(logo_data: png, logo_content_type: "image/png")
+
+      html = sign_in_after_authorize(conn, account, client)
+
+      assert html =~ "data:image/png;base64,#{Base.encode64(png)}"
+    end
+
+    test "sign-in shows the first letter when the known app's details are stale", %{
+      conn: conn,
+      account: account
+    } do
+      png = "\x89PNG" <> :crypto.strong_rand_bytes(32)
+      expires_at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      client =
+        oauth_client_fixture(
+          client_name: "Stale App",
+          logo_data: png,
+          logo_content_type: "image/png",
+          metadata_expires_at: expires_at
+        )
+
+      test_pid = self()
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+        send(test_pid, :metadata_fetched)
+
+        Req.Test.json(conn, %{
+          "client_id" => client.client_id,
+          "client_name" => "Stale App",
+          "redirect_uris" => [redirect_uri()]
+        })
+      end)
+
+      params = authorize_params(client) |> Map.put("account_id_or_slug", account.slug)
+      conn = get(conn, ~p"/oauth/authorize?#{params}")
+      assert_received :metadata_fetched
+
+      conn = get(conn, redirected_to(conn, 302))
+      sign_in_path = redirected_to(conn, 302)
+      {:ok, _lv, html} = live(conn, sign_in_path)
+
+      assert html =~ "Stale App"
+      refute html =~ "data:image/png"
+      refute_received :metadata_fetched
+
+      row = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client.client_id)
+      assert row.metadata_expires_at == client.metadata_expires_at
     end
 
     test "sign-in says nothing when no connection is pending", %{
@@ -679,6 +687,155 @@ defmodule PortalWeb.OAuthControllerTest do
                location |> URI.parse() |> Map.get(:query) |> URI.decode_query()
 
       assert iss == PortalWeb.Endpoint.url()
+    end
+
+    test "only the signed-in consent screen caches a client", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_id = "https://localhost/cached-on-consent.json"
+      png = "\x89PNG" <> :crypto.strong_rand_bytes(32)
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn
+        %{request_path: "/logo.png"} = conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("image/png")
+          |> Plug.Conn.send_resp(200, png)
+
+        conn ->
+          Req.Test.json(conn, %{
+            "client_id" => client_id,
+            "client_name" => "Consent App",
+            "logo_uri" => "https://localhost/logo.png",
+            "redirect_uris" => [redirect_uri()]
+          })
+      end)
+
+      params = authorize_params(%{client_id: client_id})
+
+      assert conn |> get(~p"/oauth/authorize?#{params}") |> html_response(200) =~ "Consent App"
+
+      flow = get(conn, ~p"/oauth/authorize?#{Map.put(params, "account_id_or_slug", account.slug)}")
+      flow = get(flow, redirected_to(flow, 302))
+
+      assert flow |> get(redirected_to(flow, 302)) |> html_response(200) =~ "Consent App"
+
+      refute Portal.Repo.get_by(Portal.OAuthClient, client_id: client_id)
+
+      assert conn
+             |> authorize_oauth_conn(actor)
+             |> get(~p"/#{account}/oauth/authorize?#{params}")
+             |> html_response(200) =~ "Consent App"
+
+      client = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client_id)
+      assert client.logo_data == png
+    end
+
+    test "records the address the metadata document was served from", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_id = "https://localhost/metadata.json"
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+        Req.Test.json(conn, %{
+          "client_id" => client_id,
+          "client_name" => "Local App",
+          "redirect_uris" => [redirect_uri()]
+        })
+      end)
+
+      conn
+      |> authorize_oauth_conn(actor)
+      |> get(~p"/#{account}/oauth/authorize?#{authorize_params(%{client_id: client_id})}")
+
+      client = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client_id)
+      assert %Postgrex.INET{address: {127, 0, 0, 1}} in client.resolved_ips
+    end
+
+    test "refreshes where the document was served from when it is fetched again", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_id = "https://localhost/metadata.json"
+
+      oauth_client_fixture(
+        client_id: client_id,
+        resolved_ips: [%Postgrex.INET{address: {203, 0, 113, 9}}],
+        resolved_ip_location_city: "Nowhere",
+        metadata_expires_at: DateTime.add(DateTime.utc_now(), -1, :second)
+      )
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+        Req.Test.json(conn, %{
+          "client_id" => client_id,
+          "client_name" => "Local App",
+          "redirect_uris" => [redirect_uri()]
+        })
+      end)
+
+      conn
+      |> authorize_oauth_conn(actor)
+      |> get(~p"/#{account}/oauth/authorize?#{authorize_params(%{client_id: client_id})}")
+
+      client = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client_id)
+      assert %Postgrex.INET{address: {127, 0, 0, 1}} in client.resolved_ips
+      refute %Postgrex.INET{address: {203, 0, 113, 9}} in client.resolved_ips
+      assert client.resolved_ip_location_city != "Nowhere"
+    end
+
+    test "stores a small icon and gives up on one that is too large", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_id = "https://localhost/metadata.json"
+      png = "\x89PNG" <> :crypto.strong_rand_bytes(32)
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn
+        %{request_path: "/small.png"} = conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("image/png")
+          |> Plug.Conn.send_resp(200, png)
+
+        %{request_path: "/huge.png"} = conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("image/png")
+          |> Plug.Conn.send_resp(200, :binary.copy("x", 64 * 1024 + 1))
+
+        %{request_path: "/small.json"} = conn ->
+          Req.Test.json(conn, %{
+            "client_id" => "https://localhost/small.json",
+            "client_name" => "Small",
+            "logo_uri" => "https://localhost/small.png",
+            "redirect_uris" => [redirect_uri()]
+          })
+
+        conn ->
+          Req.Test.json(conn, %{
+            "client_id" => client_id,
+            "client_name" => "Huge",
+            "logo_uri" => "https://localhost/huge.png",
+            "redirect_uris" => [redirect_uri()]
+          })
+      end)
+
+      signed_in = authorize_oauth_conn(conn, actor)
+
+      for id <- ["https://localhost/small.json", client_id] do
+        get(signed_in, ~p"/#{account}/oauth/authorize?#{authorize_params(%{client_id: id})}")
+      end
+
+      small = Portal.Repo.get_by!(Portal.OAuthClient, client_id: "https://localhost/small.json")
+      assert small.logo_data == png
+      assert small.logo_content_type == "image/png"
+
+      huge = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client_id)
+      assert is_nil(huge.logo_data)
+      assert is_nil(huge.logo_content_type)
     end
   end
 
@@ -1041,6 +1198,21 @@ defmodule PortalWeb.OAuthControllerTest do
     |> Map.get(:query)
     |> URI.decode_query()
     |> Map.fetch!("code")
+  end
+
+  defp sign_in_after_authorize(conn, account, client) do
+    params = authorize_params(client) |> Map.put("account_id_or_slug", account.slug)
+    conn = get(conn, ~p"/oauth/authorize?#{params}")
+    conn = get(conn, redirected_to(conn, 302))
+    {:ok, _lv, html} = live(conn, redirected_to(conn, 302))
+    html
+  end
+
+  defp sign_in_html(path, cookie) do
+    build_conn()
+    |> put_req_cookie("oauth_client", cookie)
+    |> get(path)
+    |> html_response(200)
   end
 
   defp authorize_params(client) do

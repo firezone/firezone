@@ -92,67 +92,21 @@ defmodule PortalAPI.Client.Channel.Shared do
   @impl true
   # Called immediately after the client joins the channel
   def handle_info(:after_join, socket) do
-    # Schedule reassessing allowed resources
-    Process.send_after(
-      self(),
-      :recompute_authorized_resources,
-      @recompute_authorized_resources_every
-    )
-
-    Process.send_after(
-      self(),
-      :prune_authorizations_cache,
-      @prune_authorizations_cache_every
-    )
-
-    schedule_session_expiry(socket.assigns.subject.expires_at)
-
-    # Get initial list of authorized resources, hydrating the cache
-    {:ok, resources, [], cache} =
-      Cache.Client.recompute_connectable_resources(
-        nil,
-        socket.assigns.client,
-        socket.assigns.subject,
-        protocol_version: protocol_version(socket)
-      )
-
-    # Hydrate the policy_authorizations caches so the channel can react to filter
-    # changes and policy_authorization deletions for resources another client has been
-    # authorized to access via this one.
-    {authorizations_cache, outbound_authorizations_cache} =
-      Cache.Client.Authorizations.hydrate(socket.assigns.client)
-
-    # Initialize relays and subscribe to global relay presence
-    {:ok, relays} = select_relays(socket)
-    :ok = Presence.Relays.subscribe()
-
-    socket =
-      socket
-      # Cache relay IDs and stamp secrets for tracking
-      |> cache_relays(relays)
-      |> assign(
-        cache: cache,
-        authorizations_cache: authorizations_cache,
-        outbound_authorizations_cache: outbound_authorizations_cache,
-        pending_authorizations: %{},
-        iceless_capable: false
-      )
-      # Track client's presence and monitor tracker shard processes for crash recovery
-      |> track_presence()
-
+    # Subscribe before reading any state so no change committed after the reads is missed.
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
 
-    {:noreply, socket} = register(socket)
+    case Database.fetch_device_with_actor_and_account(socket.assigns.client) do
+      nil ->
+        {:stop, :shutdown, socket}
 
-    init(socket, resources, relays)
+      %Device{account: account, actor: actor} when account.is_disabled or actor.is_disabled ->
+        handle_info(:disconnect, socket)
 
-    :ok =
-      PortalAPI.Sockets.notify_public_key_changed(
-        socket.assigns.client,
-        socket.assigns[:previous_public_key]
-      )
-
-    {:noreply, socket}
+      %Device{} = device ->
+        socket
+        |> refresh_connect_state(device)
+        |> hydrate_and_init()
+    end
   end
 
   ####################################
@@ -188,6 +142,8 @@ defmodule PortalAPI.Client.Channel.Shared do
       :recompute_authorized_resources,
       @recompute_authorized_resources_every
     )
+
+    socket = expire_attestation(socket)
 
     {:ok, added_resources, removed_ids, cache} =
       Cache.Client.recompute_connectable_resources(
@@ -298,7 +254,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       # and more are now available
       needs_update =
         disconnected_ids != [] or
-          (MapSet.size(cached_relay_ids) < 2 and MapSet.size(online_relay_ids) > 0)
+          (MapSet.size(cached_relay_ids) < 2 and not MapSet.subset?(online_relay_ids, cached_relay_ids))
 
       if needs_update do
         # Select best relays from the SAME snapshot we used for disconnected_ids
@@ -371,33 +327,16 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
-  # Backwards-compat: tolerate the pre-snownet-capabilities tuple from older
-  # gateway nodes during a rolling deploy. Default `use_iceless` to `false`.
-  def handle_info(
-        {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials},
-        socket
-      ) do
-    handle_info(
-      {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-       gateway_ipv6, preshared_key, ice_credentials, false},
-      socket
-    )
-  end
-
+  # A reply counts only for the pending request and the gateway it was sent to.
   def handle_info(
         {:connect, _socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials, use_iceless},
+         gateway_ipv6, preshared_key, ice_credentials, use_iceless, request_ref},
         socket
       ) do
     resource_id = Ecto.UUID.load!(rid_bytes)
 
-    case Map.pop(socket.assigns.pending_authorizations, resource_id) do
-      {nil, _} ->
-        # Authorization creation already timed out; ignore the late gateway response.
-        {:noreply, socket}
-
-      {{_generation, timer_ref, initiator_token, address}, remaining} ->
+    case Map.get(socket.assigns.pending_authorizations, resource_id) do
+      {^request_ref, timer_ref, initiator_token, address, ^gateway_id} ->
         Process.cancel_timer(timer_ref)
 
         reply_payload =
@@ -417,7 +356,16 @@ defmodule PortalAPI.Client.Channel.Shared do
           |> Map.merge(address_fields(address))
 
         push(socket, authorization_created_event(socket), reply_payload)
-        {:noreply, assign(socket, :pending_authorizations, remaining)}
+
+        {:noreply,
+         assign(
+           socket,
+           :pending_authorizations,
+           Map.delete(socket.assigns.pending_authorizations, resource_id)
+         )}
+
+      _other ->
+        {:noreply, socket}
     end
   end
 
@@ -425,7 +373,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   # newer request_authorization for the same resource_id (its message may already be queued).
   def handle_info({:authorization_creation_timeout, resource_id, generation}, socket) do
     case Map.get(socket.assigns.pending_authorizations, resource_id) do
-      {^generation, _timer_ref, _initiator_token, address} ->
+      {^generation, _timer_ref, _initiator_token, address, _gateway_id} ->
         push_authorization_creation_failed(socket, resource_id, :offline, address)
 
         {:noreply,
@@ -1455,6 +1403,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         gateway_public_key = gateway.public_key
 
         policy_authorization_id = Ecto.UUID.generate()
+        request_ref = make_ref()
 
         preshared_key =
           generate_preshared_key(
@@ -1503,7 +1452,8 @@ defmodule PortalAPI.Client.Channel.Shared do
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
              initiator_iceless_capable: socket.assigns.iceless_capable,
-             flow_logs_ingest_token: responder_token
+             flow_logs_ingest_token: responder_token,
+             request_ref: request_ref
            }}
 
         attrs =
@@ -1530,7 +1480,14 @@ defmodule PortalAPI.Client.Channel.Shared do
              ) do
           :ok ->
             {:noreply,
-             arm_gateway_authorization_timer(socket, resource_id, initiator_token, address)}
+             arm_gateway_authorization_timer(
+               socket,
+               resource_id,
+               request_ref,
+               gateway.id,
+               initiator_token,
+               address
+             )}
 
           {:error, _reason} ->
             push_authorization_creation_failed(socket, resource_id, :offline, address)
@@ -2120,6 +2077,78 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp excluded_relay_ids(_payload), do: []
 
+  # The socket read these before the channel subscribed, so a change in between would be lost.
+  defp refresh_connect_state(socket, device) do
+    current = socket.assigns.client
+    account = SchemaHelpers.merge_broadcast(socket.assigns.subject.account, device.account)
+    subject = %{socket.assigns.subject | account: account}
+    client = Device.merge_broadcast(current, %{device | actor: current.actor, account: current.account})
+    socket = assign(socket, subject: subject, client: client)
+
+    assign(socket, :client, %{client | posture: load_posture_rows(socket)})
+  end
+
+  defp hydrate_and_init(socket) do
+    Process.send_after(
+      self(),
+      :recompute_authorized_resources,
+      @recompute_authorized_resources_every
+    )
+
+    Process.send_after(
+      self(),
+      :prune_authorizations_cache,
+      @prune_authorizations_cache_every
+    )
+
+    schedule_session_expiry(socket.assigns.subject.expires_at)
+
+    # Get initial list of authorized resources, hydrating the cache
+    {:ok, resources, [], cache} =
+      Cache.Client.recompute_connectable_resources(
+        nil,
+        socket.assigns.client,
+        socket.assigns.subject,
+        protocol_version: protocol_version(socket)
+      )
+
+    # Hydrate the policy_authorizations caches so the channel can react to filter
+    # changes and policy_authorization deletions for resources another client has been
+    # authorized to access via this one.
+    {authorizations_cache, outbound_authorizations_cache} =
+      Cache.Client.Authorizations.hydrate(socket.assigns.client)
+
+    # Subscribe before selecting relays so no relay presence change is missed.
+    :ok = Presence.Relays.subscribe()
+    {:ok, relays} = select_relays(socket)
+
+    socket =
+      socket
+      # Cache relay IDs and stamp secrets for tracking
+      |> cache_relays(relays)
+      |> assign(
+        cache: cache,
+        authorizations_cache: authorizations_cache,
+        outbound_authorizations_cache: outbound_authorizations_cache,
+        pending_authorizations: %{},
+        iceless_capable: false
+      )
+      # Track client's presence and monitor tracker shard processes for crash recovery
+      |> track_presence()
+
+    with {:noreply, socket} <- register(socket) do
+      init(socket, resources, relays)
+
+      :ok =
+        PortalAPI.Sockets.notify_public_key_changed(
+          socket.assigns.client,
+          socket.assigns[:previous_public_key]
+        )
+
+      {:noreply, socket}
+    end
+  end
+
   defp init(socket, resources, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
@@ -2288,7 +2317,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   # ACCOUNTS
 
   # Disabling an account is broadcast as an account deletion. Unlike token-backed
-  # credentials, X.509 credentials have no ClientToken row for the account hook
+  # credentials, X.509 credentials have no token row for the account hook
   # to delete, so every client channel for the account must be explicitly cut.
   defp handle_change(
          %Change{op: :delete, old_struct: %Portal.Account{id: account_id}},
@@ -3004,17 +3033,22 @@ defmodule PortalAPI.Client.Channel.Shared do
     {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
   end
 
-  defp arm_gateway_authorization_timer(socket, resource_id, initiator_token, address) do
+  defp arm_gateway_authorization_timer(
+         socket,
+         resource_id,
+         generation,
+         gateway_id,
+         initiator_token,
+         address
+       ) do
     # Cancel any timer a prior in-flight request_authorization armed under this key.
     case Map.get(socket.assigns.pending_authorizations, resource_id) do
-      {_old_generation, old_timer_ref, _old_initiator_token, _old_address} ->
+      {_old_generation, old_timer_ref, _old_initiator_token, _old_address, _old_gateway_id} ->
         Process.cancel_timer(old_timer_ref)
 
       nil ->
         :ok
     end
-
-    generation = make_ref()
 
     timer_ref =
       Process.send_after(
@@ -3029,7 +3063,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       Map.put(
         socket.assigns.pending_authorizations,
         resource_id,
-        {generation, timer_ref, initiator_token, address}
+        {generation, timer_ref, initiator_token, address, gateway_id}
       )
     )
   end
@@ -3063,12 +3097,12 @@ defmodule PortalAPI.Client.Channel.Shared do
         socket = assign(socket, :pg_scope_pid, new_pid)
 
         # The account CDC subscription is already active. Checking current state
-        # after subscribing closes the connect race: an earlier disable is seen
+        # after subscribing closes the connect race: an earlier change is seen
         # here, while a later one arrives through the CDC-derived broadcast.
-        if x509_session_enabled?(socket) do
-          register_session(socket, current_pid)
-        else
-          handle_info(:disconnect, socket)
+        cond do
+          not x509_session_enabled?(socket) -> handle_info(:disconnect, socket)
+          not trust_anchor_kept?(socket) -> close_transport(socket)
+          true -> register_session(socket, current_pid)
         end
     end
   end
@@ -3086,31 +3120,70 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp x509_session_enabled?(_socket), do: true
 
+  defp expire_attestation(%{assigns: %{client: %{attested?: true, attested_until: %DateTime{} = attested_until}}} = socket) do
+    if DateTime.compare(DateTime.utc_now(), attested_until) == :gt do
+      socket
+      |> assign(:client, %{socket.assigns.client | attested?: false, attested_until: nil})
+      |> track_presence()
+    else
+      socket
+    end
+  end
+
+  defp expire_attestation(socket), do: socket
+
   defp certificate_session?(%{assigns: %{subject: %{credential: %Credential.X509{}}}}), do: true
   defp certificate_session?(socket), do: not is_nil(socket.assigns[:attestation])
 
+  defp trust_anchor_kept?(%{assigns: %{trust_anchor_certificate_ids: [_ | _] = ids}} = socket),
+    do: Database.trust_anchor_certificate_exists?(socket.assigns.client.account_id, ids)
+
+  defp trust_anchor_kept?(_socket), do: true
+
   # Only enqueue + arm on the first successful registration; re-registrations
   # after a PG scope crash share the same channel and session row.
-  defp register_session(socket, current_pid) do
-    if is_nil(current_pid) do
-      Portal.Queue.enqueue(
-        Portal.Queue.name(:client_session_queue),
-        session_attrs(
-          socket.assigns.client,
-          socket.assigns.session_ref,
-          socket.assigns.client.attested?
-        ),
-        metadata: %{
-          subject: Authentication.Subject.to_map(socket.assigns.subject),
-          timestamp: DateTime.utc_now()
-        }
-      )
+  defp register_session(socket, nil) do
+    Portal.Queue.enqueue(
+      Portal.Queue.name(:client_session_queue),
+      session_attrs(
+        socket.assigns.client,
+        socket.assigns.session_ref,
+        socket.assigns.client.attested?
+      ),
+      metadata: %{
+        subject: Authentication.Subject.to_map(socket.assigns.subject),
+        timestamp: DateTime.utc_now()
+      }
+    )
 
-      {:noreply, arm_session_durability_timer(socket)}
-    else
-      {:noreply, socket}
+    {:noreply, arm_session_durability_timer(socket)}
+  end
+
+  # A token deletion or certificate revocation sent while the scope was down
+  # missed its PG delivery.
+  defp register_session(socket, _current_pid) do
+    cond do
+      not client_token_kept?(socket) ->
+        handle_info(:disconnect, socket)
+
+      certificate_revoked?(socket) ->
+        %{issuer: issuer, serial: serial} = socket.assigns.attestation
+        handle_info({:certificate_revoked, issuer, serial}, socket)
+
+      true ->
+        {:noreply, socket}
     end
   end
+
+  defp client_token_kept?(%{assigns: %{subject: %{credential: %Credential.ClientToken{id: id}}}} = socket),
+    do: Database.client_token_exists?(socket.assigns.client.account_id, id)
+
+  defp client_token_kept?(_socket), do: true
+
+  defp certificate_revoked?(%{assigns: %{attestation: %{issuer: issuer, serial: serial}}} = socket),
+    do: Database.certificate_revoked?(socket.assigns.client.account_id, issuer, serial)
+
+  defp certificate_revoked?(_socket), do: false
 
   # Tracks client presence and monitors Presence tracker shard processes so we
   # can re-track if any crash. Monitoring the supervisor alone is insufficient
@@ -3288,6 +3361,29 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> Portal.Safe.exists?()
     end
 
+    def fetch_device_with_actor_and_account(%Device{} = client) do
+      from(device in Device,
+        join: actor in Portal.Actor,
+        on: actor.account_id == device.account_id and actor.id == device.actor_id,
+        join: account in Portal.Account,
+        on: account.id == device.account_id,
+        where: device.account_id == ^client.account_id,
+        where: device.id == ^client.id,
+        preload: [actor: actor, account: account]
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.one()
+    end
+
+    def trust_anchor_certificate_exists?(account_id, ids) do
+      from(c in Portal.TrustAnchorCertificate,
+        where: c.account_id == ^account_id,
+        where: c.id in ^ids
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.exists?()
+    end
+
     # Nothing else clears these when a channel stops, so a cut session would
     # otherwise leave its grants behind.
     def delete_policy_authorizations(client) do
@@ -3297,6 +3393,33 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.delete_all()
+    end
+
+    def client_token_exists?(account_id, id) do
+      from(t in Portal.DeviceToken, where: t.account_id == ^account_id, where: t.id == ^id)
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.exists?()
+    end
+
+    def certificate_revoked?(account_id, issuer, serial) do
+      crl_revoked? =
+        from(r in Portal.CrlRevocation,
+          where: r.account_id == ^account_id,
+          where: r.issuer == ^issuer,
+          where: r.serial == ^serial
+        )
+        |> Portal.Safe.unscoped()
+        |> Portal.Safe.exists?()
+
+      crl_revoked? or
+        from(s in Portal.OcspStatus,
+          where: s.account_id == ^account_id,
+          where: s.issuer == ^issuer,
+          where: s.serial == ^serial,
+          where: s.status == "revoked"
+        )
+        |> Portal.Safe.unscoped()
+        |> Portal.Safe.exists?()
     end
 
     @doc """

@@ -2568,6 +2568,13 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         auth_provider: provider.auth_provider
       )
 
+      {oauth_token, _access, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(
+          account: account,
+          actor: actor,
+          auth_provider: provider.auth_provider
+        )
+
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
@@ -2588,6 +2595,34 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert row_text =~ "0"
       assert row_text =~ "client"
       assert row_text =~ "portal"
+
+      refute Repo.get_by(Portal.OAuthToken, id: oauth_token.id)
+    end
+
+    test "offers to revoke a provider that only has OAuth tokens", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+
+      {oauth_token, _access, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(
+          account: account,
+          actor: actor,
+          auth_provider: provider.auth_provider
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      lv |> request_confirm("revoke", provider.id)
+      lv |> confirm_action("revoke_sessions", provider.id)
+
+      assert render(lv) =~ "have been revoked"
+      refute Repo.get_by(Portal.OAuthToken, id: oauth_token.id)
     end
   end
 
@@ -4514,30 +4549,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       # The title should use titleize("userpass") which returns "Username & Password"
       assert html =~ "My Userpass" or html =~ "Username"
-    end
-  end
-
-  # =============================================================================
-  # DB Helper Edge Cases
-  # =============================================================================
-
-  describe "Database helper edge cases" do
-    test "revoke_sessions_for_provider handles nil provider", %{actor: actor} do
-      alias PortalWeb.Settings.Authentication.Database
-
-      # Build a proper subject from the actor
-      {:ok, subject} =
-        Portal.Authentication.build_subject(
-          %Portal.PortalSession{actor_id: actor.id, account_id: actor.account_id},
-          %Portal.Authentication.Context{
-            type: :portal,
-            user_agent: "test",
-            remote_ip: {127, 0, 0, 1}
-          }
-        )
-
-      # Should return {:ok, 0} for nil provider
-      assert {:ok, 0} = Database.revoke_sessions_for_provider(nil, subject)
     end
   end
 

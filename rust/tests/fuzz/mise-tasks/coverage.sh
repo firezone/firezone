@@ -34,14 +34,17 @@ sources=()
 while IFS= read -r directory; do
     mapfile -t -O "${#sources[@]}" sources < <(find "$directory" -type f -name '*.rs')
 done <<<"$directories"
-sources+=("$PWD/src/main.rs" "$PWD/src/clock.rs" "$PWD/src/targets/${target//-/_}.rs")
-if [ "$target" = tunnel ]; then
-    mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/src" -type f -name '*.rs' \
-        ! -path "$PWD/src/targets/*" ! -path "$PWD/src/relay/*" ! -name main.rs ! -name clock.rs)
-fi
-if [ "$target" = relay ]; then
-    mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/src/relay" -type f -name '*.rs')
-    sources+=("$PWD/src/sim_relay.rs")
-fi
+sources+=("$PWD/src/main.rs" "$PWD/src/clock.rs")
+case "$target" in
+tunnel)
+    mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/../simulation/src" -type f -name '*.rs' \
+        ! -path "$PWD/../simulation/src/relay/*")
+    ;;
+relay)
+    mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/../simulation/src/relay" -type f -name '*.rs')
+    sources+=("$PWD/../simulation/src/sim_relay.rs")
+    ;;
+*) sources+=("$PWD/src/targets/${target//-/_}.rs") ;;
+esac
 "$llvm_bin/llvm-cov" export -format=lcov -instr-profile="$temporary/coverage.profdata" \
     "$binary" "${sources[@]}" >"coverage/$target/lcov.info"

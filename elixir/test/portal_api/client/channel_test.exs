@@ -18,6 +18,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.PolicyFixtures
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
+  import Portal.RevocationFixtures
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
@@ -58,6 +59,7 @@ defmodule PortalAPI.Client.ChannelTest do
         last_seen_version: client_version,
         last_seen_at: DateTime.utc_now(),
         attested?: Keyword.get(opts, :attested?, false),
+        attested_until: Keyword.get_lazy(opts, :attested_until, fn -> attested_until(opts) end),
         posture: Keyword.get(opts, :posture, %{})
     }
 
@@ -69,11 +71,18 @@ defmodule PortalAPI.Client.ChannelTest do
         subject: subject,
         client_version: client_version,
         attestation: Keyword.get(opts, :attestation),
+        trust_anchor_certificate_ids: Keyword.get(opts, :trust_anchor_certificate_ids, []),
         previous_public_key: Keyword.get(opts, :previous_public_key)
       })
       |> subscribe_and_join(channel, "client")
 
     socket
+  end
+
+  defp attested_until(opts) do
+    if Keyword.get(opts, :attested?, false) do
+      DateTime.add(DateTime.utc_now(), 1, :hour)
+    end
   end
 
   # Mirrors what Portal.Changes.Hooks.Devices builds from a WAL row: the
@@ -157,7 +166,7 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   defp gateway_authorization_generation(channel_pid, resource_id) do
-    {generation, _timer_ref, _initiator_token, _address} =
+    {generation, _timer_ref, _initiator_token, _address, _gateway_id} =
       :sys.get_state(channel_pid).assigns.pending_authorizations |> Map.fetch!(resource_id)
 
     generation
@@ -380,6 +389,56 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "join/3" do
+    test "applies a change that commits while it loads its state", %{
+      client: client,
+      subject: subject,
+      membership: membership,
+      dns_resource: dns_resource
+    } do
+      after_query("policy_authorizations", client.id, fn ->
+        Repo.delete!(membership)
+        :ok = Changes.Hooks.Memberships.on_delete(1, wal(membership))
+      end)
+
+      join_channel(client, subject)
+      assert_push "init", %{resources: resources}
+      assert Enum.any?(resources, &(&1.id == dns_resource.id))
+
+      dns_resource_id = dns_resource.id
+      assert_push "resource_deleted", ^dns_resource_id
+    end
+
+    test "disconnects when the actor is disabled before it joins", %{
+      actor: actor,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      actor |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      catch_exit(join_channel(client, subject))
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+      refute_push "init", _init_payload
+    end
+
+    test "disconnects when the account is disabled before it joins", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      account |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      catch_exit(join_channel(client, subject))
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+      refute_push "init", _init_payload
+    end
+
     test "tracks presence after join", %{account: account, client: client, subject: subject} do
       join_channel(client, subject)
       assert_push "init", _init_payload
@@ -1045,6 +1104,95 @@ defmodule PortalAPI.Client.ChannelTest do
       end)
     end
 
+    test "disconnects on re-registration when the token no longer exists", %{
+      client: client,
+      subject: subject,
+      pg_scope: scope
+    } do
+      Process.flag(:trap_exit, true)
+      join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      restart_pg_scope(scope, fn ->
+        Repo.delete!(Repo.get_by!(Portal.DeviceToken, id: subject.credential.id))
+      end)
+
+      assert_push "disconnect", %{reason: "token_expired"}, 1000
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "disconnects on re-registration when the CRL lists the session certificate", %{
+      account: account,
+      client: client,
+      subject: subject,
+      pg_scope: scope
+    } do
+      Process.flag(:trap_exit, true)
+      attestation = %{issuer: <<"issuer-der">>, serial: "AABBCC"}
+      join_channel(client, subject, attestation: attestation)
+      assert_push "init", _init_payload
+
+      restart_pg_scope(scope, fn ->
+        crl_revocation_fixture(
+          account: account,
+          issuer: attestation.issuer,
+          serial: attestation.serial,
+          distribution_point: "http://crl.example.test/ca.crl"
+        )
+      end)
+
+      assert_push "disconnect", %{reason: "certificate_revoked"}, 1000
+      assert_receive :socket_drain
+    end
+
+    test "disconnects on re-registration when OCSP reports the session certificate revoked", %{
+      account: account,
+      client: client,
+      subject: subject,
+      pg_scope: scope
+    } do
+      Process.flag(:trap_exit, true)
+      attestation = %{issuer: <<"issuer-der">>, serial: "AABBCC"}
+      join_channel(client, subject, attestation: attestation)
+      assert_push "init", _init_payload
+
+      restart_pg_scope(scope, fn ->
+        Repo.insert!(%Portal.OcspStatus{
+          account_id: account.id,
+          issuer: attestation.issuer,
+          serial: attestation.serial,
+          status: "revoked",
+          updated_at: DateTime.utc_now()
+        })
+      end)
+
+      assert_push "disconnect", %{reason: "certificate_revoked"}, 1000
+      assert_receive :socket_drain
+    end
+
+    test "keeps the session on re-registration when another certificate is revoked", %{
+      account: account,
+      client: client,
+      subject: subject,
+      pg_scope: scope
+    } do
+      socket = join_channel(client, subject, attestation: %{issuer: <<"issuer-der">>, serial: "AABBCC"})
+      assert_push "init", _init_payload
+
+      restart_pg_scope(scope, fn ->
+        crl_revocation_fixture(
+          account: account,
+          issuer: <<"issuer-der">>,
+          serial: "DDEEFF",
+          distribution_point: "http://crl.example.test/ca.crl"
+        )
+      end)
+
+      refute_push "disconnect", _payload
+      assert Process.alive?(socket.channel_pid)
+    end
+
     test "ignores :register when already registered to the current scope", %{
       client: client,
       subject: subject
@@ -1314,6 +1462,91 @@ defmodule PortalAPI.Client.ChannelTest do
       assert Process.alive?(socket.channel_pid)
     end
 
+    test "reconnects an X.509 session that joins after its trust anchor certificate is deleted",
+         %{account: account, client: client, subject: subject} do
+      Process.flag(:trap_exit, true)
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+      trust_anchor = trust_anchor_fixture(account: account)
+      certificate_ids = Enum.map(trust_anchor.certificates, & &1.id)
+      Repo.delete!(trust_anchor)
+
+      credential = %Portal.Authentication.Credential.X509{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: provider.id
+      }
+
+      assert {:shutdown, _call} =
+               catch_exit(
+                 join_channel(client, %{subject | credential: credential},
+                   attestation: %{issuer: <<"i">>, serial: "AABBCC"},
+                   trust_anchor_certificate_ids: certificate_ids
+                 )
+               )
+
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+      refute_push "init", _init_payload
+    end
+
+    test "reconnects an attested session that joins after its trust anchor certificate is deleted",
+         %{account: account, client: client, subject: subject} do
+      Process.flag(:trap_exit, true)
+      trust_anchor = trust_anchor_fixture(account: account)
+      certificate_ids = Enum.map(trust_anchor.certificates, & &1.id)
+      Repo.delete!(trust_anchor)
+
+      assert {:shutdown, _call} =
+               catch_exit(
+                 join_channel(client, subject,
+                   attestation: %{issuer: <<"i">>, serial: "AABBCC"},
+                   trust_anchor_certificate_ids: certificate_ids
+                 )
+               )
+
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+      refute_push "init", _init_payload
+    end
+
+    test "registers a certificate session whose trust anchor certificates remain", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      trust_anchor = trust_anchor_fixture(account: account)
+
+      socket =
+        join_channel(client, subject,
+          attestation: %{issuer: <<"i">>, serial: "AABBCC"},
+          trust_anchor_certificate_ids: Enum.map(trust_anchor.certificates, & &1.id)
+        )
+
+      assert_push "init", _init_payload
+      refute_receive :socket_drain
+      assert Process.alive?(socket.channel_pid)
+    end
+
+    test "keeps a certificate session while one of its trust anchor certificates remains", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      kept = trust_anchor_fixture(account: account)
+      deleted = trust_anchor_fixture(account: account, certs: [sample_additional_ca_der()])
+      certificate_ids = Enum.map(kept.certificates ++ deleted.certificates, & &1.id)
+      Repo.delete!(deleted)
+
+      socket =
+        join_channel(client, subject,
+          attestation: %{issuer: <<"i">>, serial: "AABBCC"},
+          trust_anchor_certificate_ids: certificate_ids
+        )
+
+      assert_push "init", _init_payload
+      refute_receive :socket_drain
+      assert Process.alive?(socket.channel_pid)
+    end
+
     test "ignores a revocation of a certificate this session is not using", %{
       client: client,
       subject: subject
@@ -1568,6 +1801,35 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_info/2 for presence events" do
+    test "subscribes to relay presence before it selects relays", %{
+      client: client,
+      subject: subject
+    } do
+      trace_calls_after_query("policy_authorizations", client.id, [
+        {Portal.Presence.Relays, :subscribe, 0},
+        {Portal.Presence.Relays, :all_connected_relays, :_}
+      ])
+
+      connect_relay(%{lat: 37.0, lon: -120.0})
+      join_channel(client, subject)
+      assert_push "init", %{relays: [_, _]}
+
+      assert_receive {:trace, _pid, :call, {Portal.Presence.Relays, first_call, _args}}
+      assert first_call == :subscribe
+    end
+
+    test "does not push relays_presence when the relays are unchanged", %{
+      client: client,
+      subject: subject
+    } do
+      connect_relay(%{lat: 37.0, lon: -120.0})
+      socket = join_channel(client, subject)
+      assert_push "init", %{relays: [_, _]}
+
+      check_relay_presence(socket.channel_pid)
+
+      refute_push "relays_presence", _payload
+    end
     test "reports a relay disconnected after a later selection replaced it", %{
       client: client,
       subject: subject
@@ -2036,6 +2298,27 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "resource_deleted", ^dns_resource_id
     end
 
+    test "for policy inserts skips a policy whose resource is gone", %{
+      account: account,
+      group: group,
+      site: site,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      resource = resource_fixture(account: account, site: site)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+      Repo.delete!(resource)
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: policy})
+
+      assert %{assigns: %{cache: cache}} = :sys.get_state(socket.channel_pid)
+      refute Map.has_key?(cache.policies, Ecto.UUID.dump!(policy.id))
+      refute_push "resource_created_or_updated", _payload
+    end
+
     test "for account updates the subject in the socket", %{
       client: client,
       subject: subject,
@@ -2477,6 +2760,39 @@ defmodule PortalAPI.Client.ChannelTest do
       assert updated.attested?
       assert updated.verified_at == nil
       refute_push "resource_deleted", _payload
+    end
+
+    test "for policies requiring attestation drops resources once the certificate expires", %{
+      client: client,
+      actor: actor,
+      account: account,
+      subject: subject
+    } do
+      group = group_fixture(account: account)
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
+
+      trust_anchor_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      socket = join_channel(client, subject, attested?: true)
+      assert_push "init", %{resources: resources}
+      assert Enum.any?(resources, &(&1.id == resource.id))
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        client = %{state.assigns.client | attested_until: DateTime.add(DateTime.utc_now(), -1, :second)}
+        %{state | assigns: %{state.assigns | client: client}}
+      end)
+
+      send(socket.channel_pid, :recompute_authorized_resources)
+
+      assert_push "resource_deleted", resource_id
+      assert resource_id == resource.id
+
+      assert %{assigns: %{client: updated}} = :sys.get_state(socket.channel_pid)
+      refute updated.attested?
+      assert updated.attested_until == nil
     end
 
     test "for client address updates resends init with the new tunnel IPs", %{
@@ -4022,6 +4338,37 @@ defmodule PortalAPI.Client.ChannelTest do
       assert String.length(preshared_key) == 44
     end
 
+    test "ends the authorization when the attesting certificate expires", %{
+      account: account,
+      group: group,
+      site: site,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
+      trust_anchor_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+
+      attested_until = DateTime.add(DateTime.utc_now(), 10, :second)
+      socket = join_channel(client, subject, attested?: true, attested_until: attested_until)
+      assert_push "init", _init_payload
+
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
+      assert payload.resource.id == resource.id
+      assert payload.authorization_expires_at == attested_until
+      assert DateTime.compare(attested_until, socket.assigns.subject.expires_at) == :lt
+    end
+
     # End-to-end ordering test for the gateway create_flow path. The invariant
     # we're guarding against regressions of: a queued `policy_authorization`
     # that later fails to persist must produce a `:reject_access` AFTER the
@@ -4226,7 +4573,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
-         ice_credentials}
+         ice_credentials, false, payload.request_ref}
       )
 
       gateway_group_id = gateway.site.id
@@ -4316,7 +4663,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials}
+         payload.ice_credentials, false, payload.request_ref}
       )
 
       assert_push "flow_created", %{flow_logs_ingest_token: initiator_token}
@@ -4370,7 +4717,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials}
+         payload.ice_credentials, false, payload.request_ref}
       )
 
       assert_push "flow_created", %{flow_logs_ingest_token: initiator_token}
@@ -4393,11 +4740,12 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _init_payload
 
       timer_ref = Process.send_after(self(), :pending_flow_timeout, 60_000)
+      request_ref = make_ref()
 
       :sys.replace_state(socket.channel_pid, fn state ->
         put_in(
           state.assigns.pending_authorizations,
-          %{resource.id => {make_ref(), timer_ref, "ingest-token", nil}}
+          %{resource.id => {request_ref, timer_ref, "ingest-token", nil, gateway.id}}
         )
       end)
 
@@ -4412,7 +4760,7 @@ defmodule PortalAPI.Client.ChannelTest do
         socket.channel_pid,
         {:connect, make_ref(), Ecto.UUID.dump!(resource.id), gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
-         ice_credentials}
+         ice_credentials, false, request_ref}
       )
 
       site_id = gateway.site.id
@@ -4759,11 +5107,75 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials}
+         payload.ice_credentials, false, payload.request_ref}
       )
 
       # The late connect should be ignored — no "flow_created" push
       refute_push "flow_created", _
+    end
+
+    test "accepts {:connect, ...} only for the pending request and its gateway", %{
+      account: account,
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      for struct <- [resource, policy, membership] do
+        send(socket.channel_pid, %Changes.Change{
+          lsn: System.unique_integer([:positive, :monotonic]),
+          op: :insert,
+          struct: struct
+        })
+      end
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload1}
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+      assert_receive {:create_authorization, {^channel_pid, _socket_ref}, payload2}
+      refute payload1.request_ref == payload2.request_ref
+
+      rid_bytes = Ecto.UUID.dump!(resource.id)
+      other_site = site_fixture(account: account)
+      other_gateway = gateway_fixture(account: account, site: other_site)
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id, gateway.public_key,
+         gateway.ipv4, gateway.ipv6, payload1.preshared_key, payload1.ice_credentials, false,
+         payload1.request_ref}
+      )
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, other_site.id, other_gateway.id,
+         other_gateway.public_key, other_gateway.ipv4, other_gateway.ipv6,
+         payload2.preshared_key, payload2.ice_credentials, false, payload2.request_ref}
+      )
+
+      refute_push "flow_created", _
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id, gateway.public_key,
+         gateway.ipv4, gateway.ipv6, payload2.preshared_key, payload2.ice_credentials, false,
+         payload2.request_ref}
+      )
+
+      assert_push "flow_created", %{resource_id: resource_id, gateway_id: gateway_id}
+      assert resource_id == resource.id
+      assert gateway_id == gateway.id
     end
 
     test "v2 pushes authorization_created and ignores its timeout after success", %{
@@ -4815,7 +5227,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials}
+         payload.ice_credentials, false, payload.request_ref}
       )
 
       assert_push "authorization_created", %{resource_id: resource_id}
@@ -4866,7 +5278,7 @@ defmodule PortalAPI.Client.ChannelTest do
         channel_pid,
         {:connect, socket_ref2, Ecto.UUID.dump!(resource.id), gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload2.preshared_key,
-         payload2.ice_credentials}
+         payload2.ice_credentials, false, payload2.request_ref}
       )
 
       assert_push "flow_created", %{resource_id: resource_id}
@@ -8274,7 +8686,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, Ecto.UUID.dump!(resource_id), gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials}
+         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials, false, payload.request_ref}
       )
 
       gateway_id = gateway.id
@@ -9659,6 +10071,16 @@ defmodule PortalAPI.Client.ChannelTest do
                :sys.get_state(socket.channel_pid)
     end
 
+    test "reads the rows again when it joins", ctx do
+      compliant_policy(ctx)
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "POSTURE-SER")
+      row |> Ecto.Changeset.change(compliance_state: "noncompliant") |> Portal.Repo.update!()
+
+      join_channel(ctx.client, ctx.subject, posture: %{intune: [row]})
+
+      assert_push "init", %{resources: []}
+    end
+
     test "a row about another device is ignored", ctx do
       compliant_policy(ctx)
       socket = join_channel(ctx.client, ctx.subject)
@@ -9844,6 +10266,17 @@ defmodule PortalAPI.Client.ChannelTest do
     }
   end
 
+  defp check_relay_presence(pid) do
+    ref = make_ref()
+
+    :sys.replace_state(pid, fn state ->
+      %{state | assigns: Map.put(state.assigns, :relay_presence_ref, ref)}
+    end)
+
+    send(pid, {:check_relay_presence, ref})
+    :sys.get_state(pid)
+  end
+
   defp while_suspended(pid, fun) do
     :sys.suspend(pid)
 
@@ -9853,4 +10286,14 @@ defmodule PortalAPI.Client.ChannelTest do
       :sys.resume(pid)
     end
   end
+
+  defp restart_pg_scope(scope, while_down) do
+    old_pid = PG.scope_pid()
+    ref = Process.monitor(old_pid)
+    stop_supervised!(scope)
+    assert_receive {:DOWN, ^ref, :process, ^old_pid, _}
+    while_down.()
+    start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
+  end
+
 end

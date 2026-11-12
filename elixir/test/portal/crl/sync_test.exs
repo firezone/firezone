@@ -11,10 +11,12 @@ defmodule Portal.Crl.SyncTest do
 
   alias Portal.Crl.Sync
   alias Portal.Crypto.X509
+  alias Portal.StreamingServer
 
   @crl_url "http://crl.example.test/ca.crl"
   @mirror_url "http://mirror.example.test/ca.crl"
   @delta_url "http://crl.example.test/delta.crl"
+  @mib 1_048_576
 
   setup do
     account = account_fixture()
@@ -608,6 +610,25 @@ defmodule Portal.Crl.SyncTest do
       endpoint = Repo.one!(Portal.RevocationEndpoint)
       assert is_nil(endpoint.crl_errored_at)
       assert is_nil(endpoint.crl_error)
+    end
+
+    test "stops reading a list that passes the size limit", %{account: account, pki: pki} do
+      test_pid = self()
+      url = StreamingServer.start(&StreamingServer.send_chunks(&1, test_pid, @mib, 64))
+      Portal.Config.put_env_override(Sync, req_opts: [retry: false, allow_private_ips: true])
+
+      endpoint =
+        revocation_endpoint_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          crl_urls: [url <> "/ca.crl"]
+        )
+
+      failure(endpoint)
+
+      assert Repo.one!(Portal.RevocationEndpoint).crl_error == ":crl_too_large"
+      assert_receive {:bytes_sent, sent}, 5_000
+      assert sent < 16 * @mib
     end
 
     test "a disabled endpoint is never scheduled again", %{account: account, pki: pki} do

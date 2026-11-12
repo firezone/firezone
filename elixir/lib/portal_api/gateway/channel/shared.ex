@@ -24,6 +24,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   @session_durability_timeout :timer.seconds(15)
 
+  # A new salt keeps nodes from an earlier release from decoding this ref format.
+  @reply_ref_salt "gateway_authorization_ref"
+  @reply_ref_max_age_seconds 60
+
   # Relay credentials must be stable across reconnects so that gateways
   # don't see credential changes on every websocket connect. We use a fixed
   # far-future date rather than a dynamic offset from now.
@@ -106,7 +110,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   @impl true
   def handle_info(:after_join, socket) do
-    # Initialize the cache
+    # Subscribe before reading any state so no change committed after the reads is missed.
+    :ok = PubSub.Changes.subscribe(socket.assigns.gateway.account_id)
+
     socket =
       assign(socket,
         cache: Cache.Gateway.hydrate(socket.assigns.gateway),
@@ -128,13 +134,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     # Track gateway presence and monitor tracker shard processes for crash recovery
     socket = track_presence(socket)
 
-    :ok = PubSub.Changes.subscribe(socket.assigns.gateway.account_id)
-
     {:noreply, socket} = register(socket)
 
-    # Return all connected relays and subscribe to global relay presence
-    {:ok, relays} = select_relays(socket)
+    # Subscribe before selecting relays so no relay presence change is missed.
     :ok = Presence.Relays.subscribe()
+    {:ok, relays} = select_relays(socket)
 
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
@@ -256,7 +260,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       # and more are now available
       needs_update =
         disconnected_ids != [] or
-          (MapSet.size(cached_relay_ids) < 2 and MapSet.size(online_relay_ids) > 0)
+          (MapSet.size(cached_relay_ids) < 2 and not MapSet.subset?(online_relay_ids, cached_relay_ids))
 
       if needs_update do
         # Select best relays from the SAME snapshot we used for disconnected_ids
@@ -340,6 +344,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     initiator_iceless_capable = Map.get(payload, :initiator_iceless_capable, false)
     flow_logs_ingest_token = Map.get(payload, :flow_logs_ingest_token)
+    request_ref = Map.get(payload, :request_ref)
 
     rid_bytes = Ecto.UUID.dump!(resource.id)
 
@@ -356,7 +361,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         rid_bytes,
         preshared_key,
         ice_credentials,
-        use_iceless
+        use_iceless,
+        request_ref
       })
 
     event = socket.assigns.channel_protocol.create_authorization_event()
@@ -595,9 +601,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   # Another channel joined our gateway id group: a duplicate connection raced
   # past the connect-time check. First wins — we were here first, so tell the
-  # newcomers to disconnect (their :disconnect handler pushes token_expired
-  # and stops). Two simultaneous cross-node joins can each observe the other
-  # and boot each other, but gateway reconnect backoff jitter settles that
+  # newcomers to close. Two simultaneous cross-node joins can each observe the
+  # other and boot each other, but gateway reconnect backoff jitter settles that
   # within a round or two.
   def handle_info({_ref, :join, gateway_id, pids}, socket)
       when gateway_id == socket.assigns.gateway.id do
@@ -606,10 +611,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         gateway_id: socket.assigns.gateway.id
       )
 
-      send(pid, :disconnect)
+      send(pid, :duplicate_connection)
     end
 
     {:noreply, socket}
+  end
+
+  # No "token_expired" push: the gateway exits on it, but a duplicate must reconnect.
+  def handle_info(:duplicate_connection, socket) do
+    close_transport(socket)
   end
 
   def handle_info({_ref, :leave, gateway_id, _pids}, socket)
@@ -645,10 +655,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   @impl true
   def handle_in("authorization_created", %{"ref" => signed_ref}, socket) do
     case decode_ref(socket, signed_ref) do
-      {:ok, ref_tuple} ->
-        {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_iceless} =
-          ref_tuple
-
+      {:ok,
+       {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_iceless,
+        request_ref}} ->
         send(
           channel_pid,
           {
@@ -662,13 +671,14 @@ defmodule PortalAPI.Gateway.Channel.Shared do
             socket.assigns.gateway.ipv6,
             preshared_key,
             ice_credentials,
-            use_iceless
+            use_iceless,
+            request_ref
           }
         )
 
         {:reply, :ok, socket}
 
-      {:error, :invalid_ref} ->
+      _other ->
         Logger.error("Gateway replied with an invalid ref")
         {:reply, {:error, %{reason: :invalid_ref}}, socket}
     end
@@ -693,7 +703,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
         {:reply, :ok, socket}
 
-      {:error, :invalid_ref} ->
+      _other ->
         Logger.error("Gateway replied with an invalid ref")
         {:reply, {:error, %{reason: :invalid_ref}}, socket}
     end
@@ -765,27 +775,27 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   defp encode_ref(socket, tuple) do
     ref =
-      tuple
+      {socket.assigns.gateway.id, tuple}
       |> :erlang.term_to_binary()
       |> Base.url_encode64()
 
     key_base = socket.endpoint.config(:secret_key_base)
-    Plug.Crypto.sign(key_base, "gateway_reply_ref", ref)
+    Plug.Crypto.sign(key_base, @reply_ref_salt, ref)
   end
 
   defp decode_ref(socket, signed_ref) do
     key_base = socket.endpoint.config(:secret_key_base)
+    gateway_id = socket.assigns.gateway.id
 
     with {:ok, ref} <-
-           Plug.Crypto.verify(key_base, "gateway_reply_ref", signed_ref, max_age: :infinity) do
-      tuple =
-        ref
-        |> Base.url_decode64!()
-        |> Plug.Crypto.non_executable_binary_to_term([:safe])
-
+           Plug.Crypto.verify(key_base, @reply_ref_salt, signed_ref,
+             max_age: @reply_ref_max_age_seconds
+           ),
+         {:ok, binary} <- Base.url_decode64(ref),
+         {^gateway_id, tuple} <- Plug.Crypto.non_executable_binary_to_term(binary, [:safe]) do
       {:ok, tuple}
     else
-      {:error, :invalid} -> {:error, :invalid_ref}
+      _other -> {:error, :invalid_ref}
     end
   end
 
@@ -1140,20 +1150,28 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         {_ref, _members} = PG.monitor(socket.assigns.gateway.id)
 
         socket = assign(socket, :pg_scope_pid, new_pid)
+        register_session(socket, current_pid)
+    end
+  end
 
-        # Only enqueue + arm on the first successful registration; re-registrations
-        # after a PG scope crash share the same channel and session row.
-        if is_nil(current_pid) do
-          Portal.Queue.enqueue(
-            :gateway_session_queue,
-            session_attrs(socket.assigns.gateway, socket.assigns.session_ref),
-            metadata: %{timestamp: DateTime.utc_now()}
-          )
+  # Only enqueue + arm on the first successful registration; re-registrations
+  # after a PG scope crash share the same channel and session row.
+  defp register_session(socket, nil) do
+    Portal.Queue.enqueue(
+      :gateway_session_queue,
+      session_attrs(socket.assigns.gateway, socket.assigns.session_ref),
+      metadata: %{timestamp: DateTime.utc_now()}
+    )
 
-          {:noreply, arm_session_durability_timer(socket)}
-        else
-          {:noreply, socket}
-        end
+    {:noreply, arm_session_durability_timer(socket)}
+  end
+
+  # A token deleted while the scope was down missed its PG disconnect.
+  defp register_session(socket, _current_pid) do
+    if Database.token_exists?(socket.assigns.gateway.account_id, socket.assigns.token_id) do
+      {:noreply, socket}
+    else
+      handle_info(:disconnect, socket)
     end
   end
 
@@ -1250,6 +1268,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       from(a in Account, where: a.id == ^id)
       |> Safe.unscoped()
       |> Safe.one!()
+    end
+
+    def token_exists?(account_id, id) do
+      from(t in Portal.DeviceToken, where: t.account_id == ^account_id, where: t.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
   end
 end
