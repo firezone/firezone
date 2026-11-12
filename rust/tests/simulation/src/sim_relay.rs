@@ -73,7 +73,7 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn explode(
+    fn explode(
         &self,
         username: &str,
         auth_secret: &SecretString,

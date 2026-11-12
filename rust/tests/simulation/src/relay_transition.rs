@@ -6,7 +6,7 @@ use arbitrary::Unstructured;
 ///
 /// Credential rotation is missing: an `Allocation` cannot take new credentials.
 #[derive(Debug, Clone, PartialEq)]
-pub(super) enum Transition {
+pub(crate) enum Transition {
     /// Delivers datagrams in both directions until none are in flight.
     Settle,
     /// Delivers the oldest datagram in flight in one direction.
@@ -62,13 +62,13 @@ pub(super) enum Transition {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum Direction {
+pub(crate) enum Direction {
     ToRelay,
     ToClient,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum Sender {
+pub(crate) enum Sender {
     /// A socket on the internet that has nothing to do with the client.
     Foreign,
     /// The client's own socket, as if the client had gone out of sync with the relay.
@@ -76,15 +76,15 @@ pub(super) enum Sender {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct Garbage {
+pub(crate) struct Garbage {
     /// Start from the last datagram the impersonated side sent instead of from nothing.
-    pub(super) mutate_last: bool,
-    pub(super) bytes: Vec<u8>,
+    pub(crate) mutate_last: bool,
+    pub(crate) bytes: Vec<u8>,
 }
 
 impl Transition {
     /// Reads one transition from the input; an exhausted input yields [`Transition::Settle`].
-    pub(super) fn arbitrary(u: &mut Unstructured<'_>) -> Self {
+    pub(crate) fn arbitrary(u: &mut Unstructured<'_>) -> Self {
         const DURATIONS: [u64; 8] = [1, 2, 5, 10, 30, 120, 400, 1000];
 
         match int(u, 31) {
@@ -134,10 +134,19 @@ impl Garbage {
     }
 }
 
-pub(super) fn int(u: &mut Unstructured<'_>, max: u8) -> usize {
+/// Whether a host has IPv4 and IPv6.
+pub(crate) fn stack(u: &mut Unstructured<'_>) -> (bool, bool) {
+    match int(u, 2) {
+        1 => (true, false),
+        2 => (false, true),
+        _ => (true, true),
+    }
+}
+
+fn int(u: &mut Unstructured<'_>, max: u8) -> usize {
     usize::from(u.int_in_range(0..=max).unwrap_or(0))
 }
 
-pub(super) fn bool(u: &mut Unstructured<'_>) -> bool {
+fn bool(u: &mut Unstructured<'_>) -> bool {
     int(u, 1) == 1
 }

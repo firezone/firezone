@@ -16,10 +16,7 @@ use std::{
 
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::rngs::StdRng;
-use relay_server_proto::{
-    Attribute, ClientSocket, Command, Server,
-    auth::{AccountId, generate_password, hash_account_id},
-};
+use relay_server_proto::{Attribute, ClientSocket, Command, Server, auth::generate_password};
 use stun_codec::{
     Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
     rfc5389::{
@@ -28,10 +25,14 @@ use stun_codec::{
     },
     rfc5766::{attributes::RequestedTransport, methods::ALLOCATE},
 };
-use uuid::Uuid;
+
+use crate::relay_transition::Sender;
+
+/// The device that a foreign socket authenticates as; no other sender may use it.
+const FOREIGN_DEVICE: &str = "foreign";
 
 /// Flips the bits of `template` that are set in `mask`; what `mask` has beyond it is appended.
-pub(super) fn mutate(template: &[u8], mask: &[u8]) -> Vec<u8> {
+pub(crate) fn mutate(template: &[u8], mask: &[u8]) -> Vec<u8> {
     let mut datagram = template.to_vec();
     datagram.resize(template.len().max(mask.len()), 0);
 
@@ -43,12 +44,10 @@ pub(super) fn mutate(template: &[u8], mask: &[u8]) -> Vec<u8> {
 }
 
 /// Re-encodes a STUN message, optionally replacing the fields a fuzzer cannot guess.
-///
-/// `device_prefix` keeps the username apart from the ones of other senders.
-pub(super) fn repair(
+pub(crate) fn repair(
     datagram: &[u8],
     nonce: Option<&Nonce>,
-    device_prefix: &str,
+    sender: Sender,
     server: &Server<StdRng>,
 ) -> Option<Vec<u8>> {
     let message = decode(datagram)?;
@@ -57,7 +56,7 @@ pub(super) fn repair(
         return MessageEncoder::new().encode_into_bytes(message).ok();
     };
 
-    let username = account_bound_username(message.get_attribute::<Username>()?, device_prefix)?;
+    let username = account_bound_username(message.get_attribute::<Username>()?, sender)?;
     let password = generate_password(server.auth_secret(), username.name());
     let realm = Realm::new("firezone".to_owned()).ok()?;
 
@@ -83,7 +82,7 @@ pub(super) fn repair(
 }
 
 /// Obtains a nonce the way a client does, by provoking a `401` and reading it back.
-pub(super) fn issued_nonce(
+pub(crate) fn issued_nonce(
     server: &mut Server<StdRng>,
     sender: SocketAddr,
     now: Instant,
@@ -112,50 +111,36 @@ pub(super) fn issued_nonce(
         .expect("a `401` carries a nonce")
 }
 
-/// How a client holding the given credentials treats a datagram from its relay.
-#[derive(Debug, PartialEq)]
-pub(super) enum Verdict {
-    /// Not a message the client authenticates: `BINDING` and channel data.
-    Unauthenticated,
-    /// A message with a valid HMAC.
-    Authentic,
-    /// Anything else. The client must ignore it.
-    Rejected,
-}
-
-pub(super) fn verdict(
+/// Whether a client holding the given credentials must ignore a datagram from its relay.
+pub(crate) fn fails_integrity_check(
     datagram: &[u8],
     username: &Username,
     realm: &Realm,
     password: &str,
-) -> Verdict {
+) -> bool {
+    // Channel data is not authenticated.
     if matches!(datagram.first(), Some(64..=79)) {
-        return Verdict::Unauthenticated;
+        return false;
     }
 
     // Decoded with the client's set of attributes: a message it cannot decode is one it ignores.
     let Ok(Ok(message)) =
         MessageDecoder::<relay_client_proto::Attribute>::new().decode_from_bytes(datagram)
     else {
-        return Verdict::Rejected;
+        return true;
     };
 
+    // Neither are `BINDING` responses.
     if message.method() == BINDING {
-        return Verdict::Unauthenticated;
+        return false;
     }
 
-    let is_authentic = message
+    !message
         .get_attribute::<MessageIntegrity>()
         .is_some_and(|mi| {
             mi.check_long_term_credential(username, realm, password)
                 .is_ok()
-        });
-
-    if is_authentic {
-        Verdict::Authentic
-    } else {
-        Verdict::Rejected
-    }
+        })
 }
 
 fn decode(datagram: &[u8]) -> Option<Message<Attribute>> {
@@ -165,11 +150,12 @@ fn decode(datagram: &[u8]) -> Option<Message<Attribute>> {
         .ok()
 }
 
-/// Replaces the account tag with the enabled account's hash.
+/// Replaces the account tag with the hash of the account that the relay serves.
 ///
-/// Like the nonce and HMAC, this lets the fuzzer reach authenticated paths while keeping
-/// the expiry and the device part under its control.
-fn account_bound_username(username: &Username, device_prefix: &str) -> Option<Username> {
+/// Like the nonce and HMAC, this lets the fuzzer reach authenticated paths while keeping the
+/// expiry under its control. A foreign socket gets a device of its own: the relay frees a
+/// device's previous allocation when it allocates again, which would defeat the isolation.
+fn account_bound_username(username: &Username, sender: Sender) -> Option<Username> {
     let parts = username.name().split(':').collect::<Vec<_>>();
     let [expiry, _account_hash, device] = parts.as_slice() else {
         return None;
@@ -179,9 +165,11 @@ fn account_bound_username(username: &Username, device_prefix: &str) -> Option<Us
         return None;
     }
 
-    Username::new(format!(
-        "{expiry}:{}:{device_prefix}{device}",
-        hash_account_id(&AccountId::from(Uuid::nil()))
-    ))
-    .ok()
+    let device = match sender {
+        Sender::Foreign => FOREIGN_DEVICE,
+        Sender::Client if *device == FOREIGN_DEVICE => return None,
+        Sender::Client => device,
+    };
+
+    Username::new(crate::relay::username(expiry, device)).ok()
 }

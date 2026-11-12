@@ -15,7 +15,9 @@ mod probe;
 mod ref_client;
 mod ref_gateway;
 mod reference;
-pub mod relay;
+mod relay;
+mod relay_garbage;
+mod relay_transition;
 mod resource;
 mod sim_client;
 mod sim_gateway;
@@ -28,8 +30,15 @@ mod sut;
 mod tcp;
 mod transition;
 
+use std::time::Instant;
+
+use chrono::{DateTime, Utc};
 use tracing_subscriber::{
     EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
+};
+
+use crate::{
+    arb::Generator, assertions::check_invariants, flux_capacitor::FluxCapacitor, sut::TunnelTest,
 };
 
 type QueryId = u16;
@@ -51,56 +60,55 @@ type DeviceListing = (
     Option<String>,
 );
 
-/// Simulates clients, gateways, relays and the portal and checks the tunnel state machines against a reference model.
-pub mod tunnel {
-    use std::time::Instant;
+const MAX_TRANSITIONS: usize = 20;
 
-    use chrono::{DateTime, Utc};
+/// Runs the tunnel simulation that `data` describes, with its clock starting at `now`.
+///
+/// Simulates clients, gateways, relays and the portal and checks the tunnel state machines
+/// against a reference model. Panics if the tunnel violates an invariant.
+pub fn run_tunnel(data: &[u8], now: Instant) {
+    let _guard = init_subscriber();
 
-    use super::{
-        arb::Generator, assertions::check_invariants, feedback, flux_capacitor::FluxCapacitor,
-        init_subscriber, sut::TunnelTest,
-    };
+    let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
+    let flux_capacitor = FluxCapacitor::new(now, utc_start);
+    let mut generator = Generator::new(data);
+    let domain_tree = generator.domain_tree();
+    let mut portal = generator.portal(&domain_tree);
+    let mut reference = generator.reference_state(&portal, domain_tree);
+    let mut feedback_recorder = feedback::Recorder::default();
 
-    const MAX_TRANSITIONS: usize = 20;
+    let mut tunnel = TunnelTest::init_test(&reference, &mut portal, flux_capacitor.clone());
+    check_invariants(&reference, &tunnel, &portal);
 
-    /// Runs the simulation that `data` describes, with its clock starting at `now`.
-    ///
-    /// Panics if the tunnel violates an invariant.
-    pub fn run(data: &[u8], now: Instant) {
-        let _guard = init_subscriber();
-
-        let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
-        let flux_capacitor = FluxCapacitor::new(now, utc_start);
-        let mut generator = Generator::new(data);
-        let domain_tree = generator.domain_tree();
-        let mut portal = generator.portal(&domain_tree);
-        let mut reference = generator.reference_state(&portal, domain_tree);
-        let mut feedback_recorder = feedback::Recorder::default();
-
-        let mut tunnel = TunnelTest::init_test(&reference, &mut portal, flux_capacitor.clone());
-        check_invariants(&reference, &tunnel, &portal);
-
-        for applied in 0..MAX_TRANSITIONS {
-            if generator.is_empty() {
-                break;
-            }
-
-            let transition = generator.transition(&reference, &portal, flux_capacitor.now());
-
-            tracing::debug!("Applying transition {applied}: {transition:?}");
-            feedback_recorder.observe(&transition, &reference, flux_capacitor.now());
-
-            reference.invalidate(&transition, &portal);
-            tunnel.invalidate(&reference);
-
-            portal.apply(&transition, &reference);
-            reference = reference.apply(&transition, &portal, flux_capacitor.now());
-            tunnel = tunnel.apply(transition, &reference, &mut portal);
-            check_invariants(&reference, &tunnel, &portal);
-            feedback_recorder.record(&reference, &tunnel, &portal);
+    for applied in 0..MAX_TRANSITIONS {
+        if generator.is_empty() {
+            break;
         }
+
+        let transition = generator.transition(&reference, &portal, flux_capacitor.now());
+
+        tracing::debug!("Applying transition {applied}: {transition:?}");
+        feedback_recorder.observe(&transition, &reference, flux_capacitor.now());
+
+        reference.invalidate(&transition, &portal);
+        tunnel.invalidate(&reference);
+
+        portal.apply(&transition, &reference);
+        reference = reference.apply(&transition, &portal, flux_capacitor.now());
+        tunnel = tunnel.apply(transition, &reference, &mut portal);
+        check_invariants(&reference, &tunnel, &portal);
+        feedback_recorder.record(&reference, &tunnel, &portal);
     }
+}
+
+/// Runs the relay simulation that `data` describes, with its clock starting at `now`.
+///
+/// Simulates a relay client and a relay on an unreliable network. Panics if either of them
+/// violates a property.
+pub fn run_relay(data: &[u8], now: Instant) {
+    let _guard = init_subscriber();
+
+    relay::run(data, now);
 }
 
 /// Initializes a subscriber that panics on error events.

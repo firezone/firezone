@@ -38,12 +38,9 @@ sources+=("$PWD/src/main.rs" "$PWD/src/clock.rs")
 case "$target" in
 tunnel)
     mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/../simulation/src" -type f -name '*.rs' \
-        ! -path "$PWD/../simulation/src/relay/*")
+        ! -name 'relay*.rs')
     ;;
-relay)
-    mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/../simulation/src/relay" -type f -name '*.rs')
-    sources+=("$PWD/../simulation/src/sim_relay.rs")
-    ;;
+relay) sources+=("$PWD"/../simulation/src/relay*.rs "$PWD/../simulation/src/sim_relay.rs") ;;
 *) sources+=("$PWD/src/targets/${target//-/_}.rs") ;;
 esac
 "$llvm_bin/llvm-cov" export -format=lcov -instr-profile="$temporary/coverage.profdata" \
