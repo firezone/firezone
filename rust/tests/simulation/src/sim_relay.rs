@@ -33,6 +33,12 @@ pub(crate) struct SimRelay {
     created_at: SystemTime,
 }
 
+/// How long the credentials are valid that the tunnel simulation hands out.
+///
+/// Deliberately out of reach: a run simulates ~2h at most, so nothing expires.
+/// Shortening it would need the tunnel's reference model to predict the expiry first.
+const VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
+
 pub(crate) fn map_explode<'a>(
     relays: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
     username: impl Into<String>,
@@ -44,6 +50,7 @@ pub(crate) fn map_explode<'a>(
             &username,
             r.inner().sut.auth_secret(),
             r.inner().sut.public_address(),
+            r.inner().created_at + VALIDITY,
         );
 
         (*id, socket, username, password, realm)
@@ -73,11 +80,13 @@ impl SimRelay {
         }
     }
 
-    fn explode(
+    /// The relay's socket, and credentials for `username` that expire at `expires_at`.
+    pub(crate) fn explode(
         &self,
         username: &str,
         auth_secret: &SecretString,
         public_address: IpStack,
+        expires_at: SystemTime,
     ) -> (RelaySocket, String, String, String) {
         let relay_socket = match public_address {
             relay_server_proto::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
@@ -90,7 +99,7 @@ impl SimRelay {
             },
         };
 
-        let (username, password) = self.make_credentials(username, auth_secret);
+        let (username, password) = self.make_credentials(username, auth_secret, expires_at);
 
         (relay_socket, username, password, "firezone".to_owned())
     }
@@ -259,13 +268,13 @@ impl SimRelay {
         })
     }
 
-    fn make_credentials(&self, username: &str, auth_secret: &SecretString) -> (String, String) {
-        // Deliberately out of reach: a run simulates ~2h at most, so nothing expires.
-        // Shortening it would cover the relay's expiry and re-auth paths, which nothing
-        // does today, but the reference model needs to predict that first.
-        const VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
-
-        let secs = (self.created_at + VALIDITY)
+    fn make_credentials(
+        &self,
+        username: &str,
+        auth_secret: &SecretString,
+        expires_at: SystemTime,
+    ) -> (String, String) {
+        let secs = expires_at
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("expiry must be later than UNIX_EPOCH")
             .as_secs();

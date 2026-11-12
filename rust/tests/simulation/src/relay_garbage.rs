@@ -16,12 +16,16 @@ use std::{
 
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::rngs::StdRng;
-use relay_server_proto::{Attribute, ClientSocket, Command, Server, auth::generate_password};
+use relay_server_proto::{
+    Attribute, ClientSocket, Command, Server,
+    auth::{AccountId, generate_password, hash_account_id},
+};
 use stun_codec::{
     Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
     rfc5389::attributes::{MessageIntegrity, Nonce, Realm, Username},
     rfc5766::{attributes::RequestedTransport, methods::ALLOCATE},
 };
+use uuid::Uuid;
 
 /// Flips the bits of `template` that are set in `mask`; what `mask` has beyond it is appended.
 pub(crate) fn mutate(template: &[u8], mask: &[u8]) -> Vec<u8> {
@@ -126,5 +130,7 @@ fn account_bound_username(username: &Username, device: &str) -> Option<Username>
         return None;
     }
 
-    Username::new(crate::relay::username(expiry, device)).ok()
+    let account = hash_account_id(&AccountId::from(Uuid::nil()));
+
+    Username::new(format!("{expiry}:{account}:{device}")).ok()
 }
