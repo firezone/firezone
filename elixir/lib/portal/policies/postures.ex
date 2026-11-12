@@ -397,6 +397,7 @@ defmodule Portal.Policies.Postures do
       not is_binary(value) -> error(at, "must be a string")
       value == "" -> error(at, "must not be empty")
       not String.valid?(value) -> error(at, "must be valid UTF-8")
+      String.contains?(value, <<0>>) -> error(at, "must not contain NUL characters")
       byte_size(value) > max_bytes -> error(at, "must be at most #{max_bytes} bytes")
       true -> {:ok, value}
     end

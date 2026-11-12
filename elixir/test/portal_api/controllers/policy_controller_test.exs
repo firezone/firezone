@@ -1351,6 +1351,7 @@ defmodule PortalAPI.PolicyControllerTest do
       for invalid <- [
             %{"field" => "intune.enrolled", "op" => "gt", "value" => true},
             %{"and" => []},
+            %{"not" => %{"field" => "defender.vm_id", "op" => "is_in", "value" => ["a", <<0>>]}},
             Enum.reduce(1..11, @postures, fn _, inner -> %{"not" => inner} end)
           ] do
         assert %{"status" => 422} = json_response(put_policy(conn, actor, policy, %{"postures" => invalid}), 422)
