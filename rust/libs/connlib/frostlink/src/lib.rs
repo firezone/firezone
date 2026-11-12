@@ -48,6 +48,8 @@
 //! clearing the primary and re-probing every pair. A new candidate is the same
 //! kind of signal and does the same. Pairs already probing keep their state.
 
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 mod agent;
 mod candidate;
 mod event;

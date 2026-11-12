@@ -4,6 +4,7 @@
 //! This makes it easier to directly take the values from the network buffer and use them in these structs (and vice-versa).
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod payload;
 mod rate_limit;

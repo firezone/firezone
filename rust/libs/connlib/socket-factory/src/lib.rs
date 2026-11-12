@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use anyhow::{Context as _, Result};
 use bufferpool::Bytes;
 use ip_packet::{Ecn, Ipv4HeaderSlice, Ipv6HeaderSlice, UdpSlice};
@@ -307,7 +309,7 @@ impl UdpSocket {
     }
 
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
-    pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
+    pub fn into_perf(self) -> PerfUdpSocket {
         let quinn_state = self.state;
 
         #[cfg(apple)]
@@ -325,7 +327,7 @@ impl UdpSocket {
 
         let wildcard = OwnedSocket::new(self.inner, quinn_state, false);
 
-        Ok(PerfUdpSocket {
+        PerfUdpSocket {
             pool: SocketPool::new(wildcard),
             recv_buf_size,
             batch_histogram: otel_instruments::network_packets_batch_count(),
@@ -335,7 +337,7 @@ impl UdpSocket {
             send_blocked_histogram: otel_instruments::network_send_blocked_duration(),
             source_ip_resolver: self.source_ip_resolver,
             port: self.port,
-        })
+        }
     }
 
     /// Configures a new source IP resolver for this UDP socket.

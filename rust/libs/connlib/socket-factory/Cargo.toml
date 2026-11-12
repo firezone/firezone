@@ -34,3 +34,6 @@ bufferpool = { workspace = true }
 derive_more = { workspace = true, features = ["deref"] }
 ip-packet = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
+
+[lints]
+workspace = true
