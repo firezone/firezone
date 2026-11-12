@@ -68,6 +68,10 @@ pub fn wintun_tcp_coalescing() -> bool {
     FEATURE_FLAGS.wintun_tcp_coalescing()
 }
 
+pub fn no_direct_connections() -> bool {
+    FEATURE_FLAGS.no_direct_connections()
+}
+
 /// Number of raw samples retained per distribution series per flush interval,
 /// configured via the `stream_metrics` feature-flag payload.
 pub fn metrics_reservoir_size() -> usize {
@@ -84,6 +88,7 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         stream_metrics,
         metrics_reservoir_size: _,
         wintun_tcp_coalescing,
+        no_direct_connections,
     } = &*FEATURE_FLAGS;
 
     [
@@ -100,6 +105,10 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         (
             "wintun_tcp_coalescing",
             wintun_tcp_coalescing.load(Ordering::Relaxed),
+        ),
+        (
+            "no_direct_connections",
+            no_direct_connections.load(Ordering::Relaxed),
         ),
     ]
 }
@@ -219,6 +228,8 @@ struct FeatureFlagsResponse {
     stream_metrics: bool,
     #[serde(default)]
     wintun_tcp_coalescing: bool,
+    #[serde(default)]
+    no_direct_connections: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -238,6 +249,7 @@ struct FeatureFlags {
     stream_metrics: AtomicBool,
     metrics_reservoir_size: RwLock<MetricsReservoirSize>,
     wintun_tcp_coalescing: AtomicBool,
+    no_direct_connections: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -255,6 +267,7 @@ impl FeatureFlags {
             stream_logs,
             stream_metrics,
             wintun_tcp_coalescing,
+            no_direct_connections,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -264,6 +277,8 @@ impl FeatureFlags {
             .store(drop_llmnr_nxdomain_responses, Ordering::Relaxed);
         self.wintun_tcp_coalescing
             .store(wintun_tcp_coalescing, Ordering::Relaxed);
+        self.no_direct_connections
+            .store(no_direct_connections, Ordering::Relaxed);
 
         self.stream_metrics.store(stream_metrics, Ordering::Relaxed);
         *self.metrics_reservoir_size.write() =
@@ -299,6 +314,10 @@ impl FeatureFlags {
         self.wintun_tcp_coalescing.load(Ordering::Relaxed)
     }
 
+    fn no_direct_connections(&self) -> bool {
+        self.no_direct_connections.load(Ordering::Relaxed)
+    }
+
     fn metrics_reservoir_size(&self) -> usize {
         self.metrics_reservoir_size.read().0
     }
@@ -317,6 +336,7 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
         stream_logs: env_or("FZFF_stream_logs", flags.stream_logs),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
         wintun_tcp_coalescing: env_or("FZFF_WINTUN_TCP_COALESCING", flags.wintun_tcp_coalescing),
+        no_direct_connections: env_or("FZFF_NO_DIRECT_CONNECTIONS", flags.no_direct_connections),
     }
 }
 

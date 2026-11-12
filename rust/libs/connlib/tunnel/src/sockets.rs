@@ -551,7 +551,14 @@ impl ThreadedUdpSocket {
                     let mut outbound = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
 
                     async move {
-                        let send = async |datagram| {
+                        let send = async |datagram: DatagramOut| {
+                            // `src` is set exactly for datagrams that bypass our own relay.
+                            if datagram.src.is_some()
+                                && telemetry::feature_flags::no_direct_connections()
+                            {
+                                return Ok(());
+                            }
+
                             let Err(e) = socket.send(datagram).await else {
                                 return Ok(());
                             };
