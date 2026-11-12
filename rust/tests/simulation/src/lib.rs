@@ -1,4 +1,4 @@
-//! Simulates clients, gateways, relays and the portal in-process and checks them against a reference model.
+//! Deterministic, in-process simulations of connlib's components.
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
@@ -46,7 +46,7 @@ type DeviceListing = (
     Option<String>,
 );
 
-/// Provides the tunnel simulation and its reference model.
+/// Simulates clients, gateways, relays and the portal and checks the tunnel state machines against a reference model.
 pub mod tunnel {
     use std::time::Instant;
 
@@ -69,7 +69,7 @@ pub mod tunnel {
     ///
     /// Panics if the tunnel violates an invariant.
     pub fn run(data: &[u8], now: Instant) {
-        let _guard = init_fuzz_subscriber();
+        let _guard = init_subscriber();
 
         let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
         let flux_capacitor = FluxCapacitor::new(now, utc_start);
@@ -103,11 +103,10 @@ pub mod tunnel {
         }
     }
 
-    /// Initializes an error-detecting subscriber for the current fuzz case.
+    /// Initializes a subscriber that panics on error events.
     ///
-    /// Mass fuzzing writes no logs; setting `RUST_LOG` additionally writes a
-    /// trace to stderr when reproducing a saved crash.
-    fn init_fuzz_subscriber() -> tracing::subscriber::DefaultGuard {
+    /// It writes no logs by default; setting `RUST_LOG` additionally writes a trace to stderr.
+    fn init_subscriber() -> tracing::subscriber::DefaultGuard {
         const DEFAULT_FILTER: &str =
             "debug,tunnel_proto=trace,simulation=debug,ip_packet=trace,frostlink=trace";
 

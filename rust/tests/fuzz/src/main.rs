@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     let target: fn(&[u8]) = match cli.target {
         Target::IpPacket => |data| with_input(data, targets::ip_packet::test),
         Target::RelayProto => |data| with_input(data, targets::relay_proto::test),
-        Target::Tunnel => targets::tunnel::test,
+        Target::Tunnel => |data| simulation::tunnel::run(data, *START_TIME),
         Target::X509Claims => |data| with_input(data, targets::x509_claims::test),
     };
     if cli.replay.is_empty() {
