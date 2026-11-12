@@ -153,7 +153,7 @@
           responseHandler(nil)
         }
       case .setInternetResourceEnabled, .setLogFilter, .setAdditionalHostCandidates, .manualReset,
-        .signOut, .getEncodedFirezoneId, .drainFlowLogs:
+        .setForceRelayedConnections, .signOut, .getEncodedFirezoneId, .drainFlowLogs:
         responseHandler(nil)
       }
     }

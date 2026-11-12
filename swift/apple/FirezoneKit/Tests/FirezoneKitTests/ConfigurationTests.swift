@@ -1112,6 +1112,17 @@ struct ProviderMessageCodableTests {
     }
   }
 
+  @Test("setForceRelayedConnections round-trips through JSON")
+  func setForceRelayedConnectionsRoundTrip() throws {
+    let decoded = try roundTrip(.setForceRelayedConnections(true))
+
+    if case .setForceRelayedConnections(let enabled) = decoded {
+      #expect(enabled == true)
+    } else {
+      Issue.record("Expected .setForceRelayedConnections, got \(decoded)")
+    }
+  }
+
   @Test("setLogFilter round-trips through JSON")
   func setLogFilterRoundTrip() throws {
     let decoded = try roundTrip(.setLogFilter("debug,connlib=trace"))
