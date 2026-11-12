@@ -18,6 +18,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.PolicyFixtures
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
+  import Portal.RevocationFixtures
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
@@ -1061,18 +1062,84 @@ defmodule PortalAPI.Client.ChannelTest do
       join_channel(client, subject)
       assert_push "init", _init_payload
 
-      old_pid = PG.scope_pid()
-      ref = Process.monitor(old_pid)
-      stop_supervised!(scope)
-      assert_receive {:DOWN, ^ref, :process, ^old_pid, _}
-
-      Repo.delete!(Repo.get_by!(Portal.DeviceToken, id: subject.credential.id))
-
-      start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
+      restart_pg_scope(scope, fn ->
+        Repo.delete!(Repo.get_by!(Portal.DeviceToken, id: subject.credential.id))
+      end)
 
       assert_push "disconnect", %{reason: "token_expired"}, 1000
       assert_receive :socket_drain
       assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "disconnects on re-registration when the CRL lists the session certificate", %{
+      account: account,
+      client: client,
+      subject: subject,
+      pg_scope: scope
+    } do
+      Process.flag(:trap_exit, true)
+      attestation = %{issuer: <<"issuer-der">>, serial: "AABBCC"}
+      join_channel(client, subject, attestation: attestation)
+      assert_push "init", _init_payload
+
+      restart_pg_scope(scope, fn ->
+        crl_revocation_fixture(
+          account: account,
+          issuer: attestation.issuer,
+          serial: attestation.serial,
+          distribution_point: "http://crl.example.test/ca.crl"
+        )
+      end)
+
+      assert_push "disconnect", %{reason: "certificate_revoked"}, 1000
+      assert_receive :socket_drain
+    end
+
+    test "disconnects on re-registration when OCSP reports the session certificate revoked", %{
+      account: account,
+      client: client,
+      subject: subject,
+      pg_scope: scope
+    } do
+      Process.flag(:trap_exit, true)
+      attestation = %{issuer: <<"issuer-der">>, serial: "AABBCC"}
+      join_channel(client, subject, attestation: attestation)
+      assert_push "init", _init_payload
+
+      restart_pg_scope(scope, fn ->
+        Repo.insert!(%Portal.OcspStatus{
+          account_id: account.id,
+          issuer: attestation.issuer,
+          serial: attestation.serial,
+          status: "revoked",
+          updated_at: DateTime.utc_now()
+        })
+      end)
+
+      assert_push "disconnect", %{reason: "certificate_revoked"}, 1000
+      assert_receive :socket_drain
+    end
+
+    test "keeps the session on re-registration when another certificate is revoked", %{
+      account: account,
+      client: client,
+      subject: subject,
+      pg_scope: scope
+    } do
+      socket = join_channel(client, subject, attestation: %{issuer: <<"issuer-der">>, serial: "AABBCC"})
+      assert_push "init", _init_payload
+
+      restart_pg_scope(scope, fn ->
+        crl_revocation_fixture(
+          account: account,
+          issuer: <<"issuer-der">>,
+          serial: "DDEEFF",
+          distribution_point: "http://crl.example.test/ca.crl"
+        )
+      end)
+
+      refute_push "disconnect", _payload
+      assert Process.alive?(socket.channel_pid)
     end
 
     test "ignores :register when already registered to the current scope", %{
@@ -9947,4 +10014,14 @@ defmodule PortalAPI.Client.ChannelTest do
       :sys.resume(pid)
     end
   end
+
+  defp restart_pg_scope(scope, while_down) do
+    old_pid = PG.scope_pid()
+    ref = Process.monitor(old_pid)
+    stop_supervised!(scope)
+    assert_receive {:DOWN, ^ref, :process, ^old_pid, _}
+    while_down.()
+    start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
+  end
+
 end
