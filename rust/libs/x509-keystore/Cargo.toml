@@ -6,18 +6,19 @@ authors = ["Firezone, Inc."]
 license = { workspace = true }
 
 [dependencies]
-anyhow = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 x509-claims = { workspace = true }
 x509-credential = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+anyhow = { workspace = true }
 secrecy = { workspace = true }
 sha2 = { workspace = true }
 tracing = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+anyhow = { workspace = true }
 sha2 = { workspace = true }
 tracing = { workspace = true }
 windows = { workspace = true, features = [
