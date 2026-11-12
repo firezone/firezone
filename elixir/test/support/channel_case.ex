@@ -94,6 +94,17 @@ defmodule PortalAPI.ChannelCase do
 
   def handle_query(_event, _measurements, _metadata, _config), do: :ok
 
+  @doc """
+  Sends `{:trace, pid, :call, mfa}` to the test process for each call to `mfas`
+  that the querying process makes after the query matched by `after_query/3`.
+  """
+  def trace_calls_after_query(source, id, mfas) do
+    session = :trace.session_create(__MODULE__, self(), [])
+    ExUnit.Callbacks.on_exit(fn -> :trace.session_destroy(session) end)
+    for mfa <- mfas, do: :trace.function(session, mfa, true, [:local])
+    after_query(source, id, fn -> :trace.process(session, self(), true, [:call]) end)
+  end
+
   setup tags do
     # Isolate pg channels scope per test to prevent interference between async tests
     scope = :"Portal.PG.#{inspect(make_ref())}"

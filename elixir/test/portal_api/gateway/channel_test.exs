@@ -4673,6 +4673,37 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
   # Relay presence tests (CRDT-based, no debouncing)
   describe "handle_info/3 for presence events" do
+    test "subscribes to relay presence before it selects relays", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      trace_calls_after_query("policy_authorizations", gateway.id, [
+        {Portal.Presence.Relays, :subscribe, 0},
+        {Portal.Presence.Relays, :all_connected_relays, :_}
+      ])
+
+      connect_relay(%{lat: 37.0, lon: -120.0})
+      join_channel(gateway, site, token)
+      assert_push "init", %{relays: [_, _]}
+
+      assert_receive {:trace, _pid, :call, {Portal.Presence.Relays, first_call, _args}}
+      assert first_call == :subscribe
+    end
+
+    test "does not push relays_presence when the relays are unchanged", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      connect_relay(%{lat: 37.0, lon: -120.0})
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: [_, _]}
+
+      check_relay_presence(socket.channel_pid)
+
+      refute_push "relays_presence", _payload
+    end
     test "reports a relay disconnected after a later selection replaced it", %{
       gateway: gateway,
       site: site,
@@ -5139,6 +5170,17 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       put_in(state.assigns.cache, cache)
     end)
+  end
+
+  defp check_relay_presence(pid) do
+    ref = make_ref()
+
+    :sys.replace_state(pid, fn state ->
+      %{state | assigns: Map.put(state.assigns, :relay_presence_ref, ref)}
+    end)
+
+    send(pid, {:check_relay_presence, ref})
+    :sys.get_state(pid)
   end
 
   defp while_suspended(pid, fun) do

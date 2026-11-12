@@ -254,7 +254,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       # and more are now available
       needs_update =
         disconnected_ids != [] or
-          (MapSet.size(cached_relay_ids) < 2 and MapSet.size(online_relay_ids) > 0)
+          (MapSet.size(cached_relay_ids) < 2 and not MapSet.subset?(online_relay_ids, cached_relay_ids))
 
       if needs_update do
         # Select best relays from the SAME snapshot we used for disconnected_ids
@@ -2118,9 +2118,9 @@ defmodule PortalAPI.Client.Channel.Shared do
     {authorizations_cache, outbound_authorizations_cache} =
       Cache.Client.Authorizations.hydrate(socket.assigns.client)
 
-    # Initialize relays and subscribe to global relay presence
-    {:ok, relays} = select_relays(socket)
+    # Subscribe before selecting relays so no relay presence change is missed.
     :ok = Presence.Relays.subscribe()
+    {:ok, relays} = select_relays(socket)
 
     socket =
       socket
