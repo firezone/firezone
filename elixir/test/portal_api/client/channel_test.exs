@@ -1436,6 +1436,27 @@ defmodule PortalAPI.Client.ChannelTest do
       assert Process.alive?(socket.channel_pid)
     end
 
+    test "keeps a certificate session while one of its trust anchor certificates remains", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      kept = trust_anchor_fixture(account: account)
+      deleted = trust_anchor_fixture(account: account, certs: [sample_additional_ca_der()])
+      certificate_ids = Enum.map(kept.certificates ++ deleted.certificates, & &1.id)
+      Repo.delete!(deleted)
+
+      socket =
+        join_channel(client, subject,
+          attestation: %{issuer: <<"i">>, serial: "AABBCC"},
+          trust_anchor_certificate_ids: certificate_ids
+        )
+
+      assert_push "init", _init_payload
+      refute_receive :socket_drain
+      assert Process.alive?(socket.channel_pid)
+    end
+
     test "ignores a revocation of a certificate this session is not using", %{
       client: client,
       subject: subject

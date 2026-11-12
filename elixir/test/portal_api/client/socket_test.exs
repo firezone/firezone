@@ -629,10 +629,12 @@ defmodule PortalAPI.Client.SocketTest do
     setup :setup_device_trust
 
     test "attests the device from the presented certificate", %{
+      account: account,
       pki: pki,
       token: token,
       trust_anchor: trust_anchor
     } do
+      trust_anchor_fixture(account: account)
       connect_info = attested_connect_info(pki, token)
 
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)

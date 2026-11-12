@@ -3095,7 +3095,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         # here, while a later one arrives through the CDC-derived broadcast.
         cond do
           not x509_session_enabled?(socket) -> handle_info(:disconnect, socket)
-          not trust_anchor_certificates_kept?(socket) -> close_transport(socket)
+          not trust_anchor_kept?(socket) -> close_transport(socket)
           true -> register_session(socket, current_pid)
         end
     end
@@ -3129,10 +3129,10 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp certificate_session?(%{assigns: %{subject: %{credential: %Credential.X509{}}}}), do: true
   defp certificate_session?(socket), do: not is_nil(socket.assigns[:attestation])
 
-  defp trust_anchor_certificates_kept?(%{assigns: %{trust_anchor_certificate_ids: [_ | _] = ids}} = socket),
-    do: Database.trust_anchor_certificates_exist?(socket.assigns.client.account_id, ids)
+  defp trust_anchor_kept?(%{assigns: %{trust_anchor_certificate_ids: [_ | _] = ids}} = socket),
+    do: Database.trust_anchor_certificate_exists?(socket.assigns.client.account_id, ids)
 
-  defp trust_anchor_certificates_kept?(_socket), do: true
+  defp trust_anchor_kept?(_socket), do: true
 
   # Only enqueue + arm on the first successful registration; re-registrations
   # after a PG scope crash share the same channel and session row.
@@ -3347,16 +3347,13 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> Portal.Safe.one()
     end
 
-    def trust_anchor_certificates_exist?(account_id, ids) do
-      count =
-        from(c in Portal.TrustAnchorCertificate,
-          where: c.account_id == ^account_id,
-          where: c.id in ^ids
-        )
-        |> Portal.Safe.unscoped()
-        |> Portal.Safe.aggregate(:count)
-
-      count == length(ids)
+    def trust_anchor_certificate_exists?(account_id, ids) do
+      from(c in Portal.TrustAnchorCertificate,
+        where: c.account_id == ^account_id,
+        where: c.id in ^ids
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.exists?()
     end
 
     # Nothing else clears these when a channel stops, so a cut session would
