@@ -242,6 +242,7 @@ defmodule PortalAPI.Client.Socket do
     %{
       client
       | client_token_id: token_id,
+        token_id: token_id,
         public_key: public_key,
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
