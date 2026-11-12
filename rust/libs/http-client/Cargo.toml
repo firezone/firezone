@@ -15,7 +15,7 @@ http = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["client", "http1", "http2"] }
 hyper-util = { workspace = true, features = ["tokio"] }
-rustls = { workspace = true, features = ["ring"] }
+rustls = { workspace = true }
 rustls-pki-types = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }

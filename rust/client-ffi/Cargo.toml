@@ -23,7 +23,7 @@ logging = { workspace = true, features = ["telemetry"] }
 opentelemetry = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
-rustls = { workspace = true, features = ["ring"] }
+rustls = { workspace = true }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }

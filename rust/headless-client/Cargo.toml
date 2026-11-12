@@ -31,7 +31,7 @@ opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
 otel-attributes = { workspace = true }
 phoenix-channel = { workspace = true }
 rpassword = { workspace = true }
-rustls = { workspace = true, features = ["ring"] }
+rustls = { workspace = true }
 secrecy = { workspace = true }
 telemetry = { workspace = true }
 # This actually relies on many other features in Tokio, so this will probably

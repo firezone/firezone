@@ -121,7 +121,7 @@ crc32fast = "1.5.0"
 criterion = { version = "0.8.2", default-features = false }
 cryptoki = "0.12.0"
 dashmap = "6.2.1"
-dbus-secret-service-keyring-store = "1.0.0"
+dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 deadline-map = { path = "libs/connlib/deadline-map" }
 derive_more = { version = "2.1.1", default-features = false }
 desktop-notifications = { path = "libs/desktop-notifications" }
@@ -171,7 +171,7 @@ jsonschema = { version = "0.59.0", default-features = false }
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.2"
-ksni = { version = "0.3.4", default-features = false }
+ksni = { version = "0.3.4", default-features = false, features = ["async-io"] }
 l3-tcp = { path = "libs/connlib/l3-tcp" }
 l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
@@ -205,11 +205,11 @@ png = "0.18.1"
 prefetch = { path = "libs/prefetch" }
 proc-macro2 = "1.0.106"
 proptest = "1.9.0"
-quinn-udp = "0.6.0"
+quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"
 rangemap = "1.7.1"
-rcgen = { version = "0.14.9", default-features = false }
+rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
 relay-client-proto = { path = "relay/client-proto" }
 relay-server-proto = { path = "relay/server-proto" }
 reqwest = { version = "0.13.4", default-features = false }
@@ -218,8 +218,8 @@ ring = "0.17.14"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
-rtnetlink = { version = "0.23.0", default-features = false }
-rustls = { version = "0.23.40", default-features = false }
+rtnetlink = { version = "0.23.0", default-features = false, features = ["tokio_socket"] }
+rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"
 sadness-generator = "0.7.0"
@@ -276,7 +276,7 @@ tracing-core = "0.1.36"
 tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" } # Contains `dbg!` but for `tracing`.
-tracing-subscriber = "0.3.23"
+tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
 tun-android = { path = "libs/connlib/tun-android" }
 tun-apple = { path = "libs/connlib/tun-apple" }

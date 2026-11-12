@@ -82,9 +82,9 @@ zip = { workspace = true, features = ["deflate", "time"] }
 tauri = { workspace = true, features = ["tray-icon"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-dbus-secret-service-keyring-store = { workspace = true, features = ["crypto-rust"] }
+dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
-ksni = { workspace = true, features = ["async-io"] } # Tray icon for Linux.
+ksni = { workspace = true } # Tray icon for Linux.
 mimalloc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 tracing-journald = { workspace = true }

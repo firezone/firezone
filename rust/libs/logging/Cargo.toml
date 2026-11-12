@@ -25,7 +25,7 @@ tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-log = { workspace = true }
 tracing-macros = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter", "json", "parking_lot"] }
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 
 [target.'cfg(windows)'.dependencies]
 thiserror = { workspace = true }

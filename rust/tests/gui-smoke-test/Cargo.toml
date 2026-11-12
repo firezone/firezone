@@ -9,7 +9,7 @@ anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 subprocess = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter", "parking_lot"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 serde_json = { workspace = true }

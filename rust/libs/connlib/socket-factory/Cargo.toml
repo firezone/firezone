@@ -12,7 +12,7 @@ ip-packet = { workspace = true }
 memchr = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
-quinn-udp = { workspace = true, features = ["fast-apple-datapath"] }
+quinn-udp = { workspace = true }
 smallvec = { workspace = true, features = ["const_generics"] }
 socket2 = { workspace = true, features = ["all"] }
 thiserror = { workspace = true }
