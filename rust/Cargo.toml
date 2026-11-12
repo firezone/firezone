@@ -100,7 +100,7 @@ aya-ebpf = "0.3.0"
 aya-log = "0.4.0"
 aya-log-ebpf = "0.3.0"
 backoff = { path = "libs/backoff" }
-backon = { version = "1.6.0", default-features = false, features = ["std"] }
+backon = { version = "1.6.0", default-features = false }
 base64 = { version = "0.23.0", default-features = false }
 bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
@@ -110,7 +110,7 @@ bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
 caps = "0.5.6"
-chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
+chrono = { version = "0.4.45", default-features = false }
 clap = "4.6.1"
 clap_complete = "4.6.9"
 client-ipc = { path = "gui-client/src-ipc" }
@@ -121,7 +121,7 @@ crc32fast = "1.5.0"
 criterion = { version = "0.8.2", default-features = false }
 cryptoki = "0.12.0"
 dashmap = "6.2.1"
-dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
+dbus-secret-service-keyring-store = "1.0.0"
 deadline-map = { path = "libs/connlib/deadline-map" }
 derive_more = { version = "2.1.1", default-features = false }
 desktop-notifications = { path = "libs/desktop-notifications" }
@@ -161,7 +161,7 @@ humantime = "2.3.0"
 hyper = "1.10.1"
 hyper-util = "0.1.20"
 incremental-inet-checksum = { path = "libs/incremental-inet-checksum" }
-ingot = { version = "0.2.1", default-features = false, features = ["alloc"] }
+ingot = { version = "0.2.1", default-features = false }
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
@@ -171,7 +171,7 @@ jsonschema = { version = "0.59.0", default-features = false }
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.2"
-ksni = { version = "0.3.4", default-features = false, features = ["async-io"] }
+ksni = { version = "0.3.4", default-features = false }
 l3-tcp = { path = "libs/connlib/l3-tcp" }
 l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
@@ -205,11 +205,11 @@ png = "0.18.1"
 prefetch = { path = "libs/prefetch" }
 proc-macro2 = "1.0.106"
 proptest = "1.9.0"
-quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
+quinn-udp = "0.6.0"
 quote = "1.0.45"
 rand = "0.10.1"
 rangemap = "1.7.1"
-rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
+rcgen = { version = "0.14.9", default-features = false }
 relay-client-proto = { path = "relay/client-proto" }
 relay-server-proto = { path = "relay/server-proto" }
 reqwest = { version = "0.13.4", default-features = false }
@@ -218,8 +218,8 @@ ring = "0.17.14"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
-rtnetlink = { version = "0.23.0", default-features = false, features = ["tokio_socket"] }
-rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
+rtnetlink = { version = "0.23.0", default-features = false }
+rustls = { version = "0.23.40", default-features = false }
 rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"
 sadness-generator = "0.7.0"
@@ -244,7 +244,7 @@ socket2 = { version = "0.6.4" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
 str0m-proto = "0.7"
-strum = { version = "0.28.0", features = ["derive"] }
+strum = "0.28.0"
 stun_codec = "0.4.0"
 subprocess = "1.1.0"
 subtle = "2.5.0"
@@ -255,7 +255,7 @@ tauri-build = { version = "2.7.0", default-features = false }
 tauri-plugin-dialog = "2.8.0"
 tauri-plugin-opener = "2.7.0"
 tauri-runtime = "2.12.0"
-tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+tauri-specta = "=2.0.0-rc.21"
 tauri-utils = { version = "2.10.0", default-features = false }
 telemetry = { path = "libs/telemetry" }
 tempfile = "3.26.0"
@@ -276,7 +276,7 @@ tracing-core = "0.1.36"
 tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" } # Contains `dbg!` but for `tracing`.
-tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
+tracing-subscriber = "0.3.23"
 tun = { path = "libs/connlib/tun" }
 tun-android = { path = "libs/connlib/tun-android" }
 tun-apple = { path = "libs/connlib/tun-apple" }

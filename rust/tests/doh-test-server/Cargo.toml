@@ -15,8 +15,8 @@ dns-types = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true }
 hyper-util = { workspace = true, features = ["server-auto", "tokio"] }
-rcgen = { workspace = true }
-rustls = { workspace = true }
+rcgen = { workspace = true, features = ["ring"] }
+rustls = { workspace = true, features = ["ring"] }
 tokio = { workspace = true, features = ["net", "rt"] }
 tokio-rustls = { workspace = true }
 tokio-util = { workspace = true, features = ["rt"] }

@@ -9,7 +9,7 @@ license = { workspace = true }
 anyhow = { workspace = true }
 backoff = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["clock", "oldtime", "serde"] } # `oldtime` and `serde` are not used here; they stay enabled for the binaries that depend on this crate.
 futures = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
@@ -17,7 +17,7 @@ libc = { workspace = true }
 logging = { workspace = true }
 os_info = { workspace = true }
 rand = { workspace = true }
-rustls = { workspace = true }
+rustls = { workspace = true, features = ["ring"] }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

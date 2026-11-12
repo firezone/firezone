@@ -6,7 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 base64 = { workspace = true, features = ["std"] }
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["clock", "oldtime", "serde"] } # `clock` and `oldtime` are not used here; they stay enabled for the binaries that depend on this crate.
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 fast-random-state = { workspace = true }

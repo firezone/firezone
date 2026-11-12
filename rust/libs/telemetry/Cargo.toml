@@ -24,7 +24,7 @@ socket-factory = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true, features = ["env-filter", "parking_lot"] }
 tunnel-bypass-resolver = { workspace = true }
 uuid = { workspace = true }
 

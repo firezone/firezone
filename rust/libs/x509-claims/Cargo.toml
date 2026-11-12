@@ -13,7 +13,7 @@ uuid = { workspace = true }
 x509-parser = { workspace = true }
 
 [dev-dependencies]
-rcgen = { workspace = true }
+rcgen = { workspace = true, features = ["ring"] }
 
 [lints]
 workspace = true
