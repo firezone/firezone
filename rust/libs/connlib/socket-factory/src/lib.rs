@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use anyhow::{Context as _, Result};
 use bufferpool::Bytes;
 use ip_packet::{Ecn, Ipv4HeaderSlice, Ipv6HeaderSlice, UdpSlice};
@@ -307,6 +309,7 @@ impl UdpSocket {
     }
 
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
+    #[expect(clippy::unnecessary_wraps, reason = "Public API used by other crates")]
     pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
         let quinn_state = self.state;
 
@@ -901,6 +904,13 @@ fn is_icmp_unreachable(e: &io::Error) -> bool {
 }
 
 /// Whether a failed send should be retried for the given attempt.
+#[cfg_attr(
+    target_os = "windows",
+    expect(
+        clippy::needless_bool,
+        reason = "Same shape as the checks for other platforms"
+    )
+)]
 fn should_retry(e: &io::Error, attempt: u32) -> bool {
     let Some(raw_os_error) = e.raw_os_error() else {
         return false;

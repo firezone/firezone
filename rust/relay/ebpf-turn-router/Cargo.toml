@@ -22,5 +22,5 @@ which = { workspace = true }
 hex-literal = { workspace = true }
 ip-packet = { workspace = true }
 
-[lints.cargo]
-unused_dependencies = "deny"
+[lints]
+workspace = true

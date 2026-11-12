@@ -1,5 +1,7 @@
 //! Integration tests for [`socket_factory::PerfUdpSocket`], exercising it through its public API.
 
+#![allow(clippy::unwrap_used)]
+
 use ip_packet::Ecn;
 use socket_factory::{DatagramOut, udp};
 

@@ -13,5 +13,5 @@ anyhow = "1.0.102"
 [dev-dependencies]
 thiserror = { workspace = true }
 
-[lints.cargo]
-unused_dependencies = "deny"
+[lints]
+workspace = true
