@@ -22,9 +22,26 @@ defmodule Portal.Policies.Evaluator do
   end
 
   # Reported as the property the old condition used, which Clients already know.
-  defp ensure_attested({:ok, _expires_at}, true, %Device{attested?: false}), do: {:error, [:device_attested]}
-  defp ensure_attested({:error, violated}, true, %Device{attested?: false}), do: {:error, [:device_attested | violated]}
+  defp ensure_attested(result, true, %Device{} = client) do
+    case {result, attested_until(client)} do
+      {{:ok, expires_at}, %DateTime{} = attested_until} -> {:ok, min_expires_at(expires_at, attested_until)}
+      {{:ok, _expires_at}, nil} -> {:error, [:device_attested]}
+      {{:error, violated}, %DateTime{}} -> {:error, violated}
+      {{:error, violated}, nil} -> {:error, [:device_attested | violated]}
+    end
+  end
+
   defp ensure_attested(result, _require_attestation, %Device{}), do: result
+
+  defp attested_until(%Device{attested?: true, attested_until: %DateTime{} = attested_until}) do
+    if DateTime.compare(current_time(), attested_until) == :gt do
+      nil
+    else
+      attested_until
+    end
+  end
+
+  defp attested_until(%Device{}), do: nil
 
   def ensure_conforms([], %Device{type: :client}, _auth_provider_id) do
     {:ok, nil}

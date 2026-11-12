@@ -1428,6 +1428,27 @@ defmodule PortalWeb.SitesTest do
       refute Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
     end
 
+    test "does not revoke a token that is not one of the site's tokens", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_site_token = gateway_token_fixture(account: account)
+      client_token = client_token_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}?tab=tokens")
+
+      for token <- [other_site_token, client_token] do
+        html = render_click(lv, "confirm_revoke_gateway_token", %{"id" => token.id})
+        assert html =~ "Failed to revoke token."
+        assert Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
+      end
+    end
+
     test "cancel revoke single token dismisses the inline confirmation", %{
       conn: conn,
       account: account,

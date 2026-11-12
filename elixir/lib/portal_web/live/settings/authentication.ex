@@ -2461,8 +2461,6 @@ defmodule PortalWeb.Settings.Authentication do
     end
 
     # Already handled by cascade delete
-    def revoke_sessions_for_provider(nil, _subject), do: {:ok, 0}
-
     def revoke_sessions_for_provider(provider, subject) do
       Safe.transact(fn ->
         {client_tokens_deleted, _} =

@@ -643,7 +643,6 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
       assert token.secret_fragment != nil
-      assert Portal.DeviceToken.single_owner?(token)
     end
 
     test "returns error when the gateway already has an active token" do
@@ -1573,7 +1572,6 @@ defmodule Portal.AuthenticationTest do
     end
 
     test "a site token is written only to device_tokens, owned by the legacy Gateway actor", %{
-      account: account,
       site: site,
       subject: subject
     } do

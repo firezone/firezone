@@ -189,6 +189,8 @@ defmodule PortalAPI.Client.Channel.Shared do
       @recompute_authorized_resources_every
     )
 
+    socket = expire_attestation(socket)
+
     {:ok, added_resources, removed_ids, cache} =
       Cache.Client.recompute_connectable_resources(
         socket.assigns.cache,
@@ -636,7 +638,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     # Important: We push disconnect before closing the socket to prevent the client from
     # attempting to immediately reconnect
     push(socket, "disconnect", %{reason: "token_expired"})
-    {:stop, :shutdown, socket}
+    close_transport(socket)
   end
 
   # Flush-failure disconnects are PG-delivered by device id but target one
@@ -671,12 +673,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
       Database.delete_policy_authorizations(socket.assigns.client)
       push(socket, "disconnect", %{reason: "certificate_revoked"})
-
-      # Stopping the channel alone leaves the transport up, and a client may
-      # rejoin on it without running Socket.connect/3 again, which is where the
-      # revoked certificate would be refused. Draining forces a new connect.
-      send(socket.transport_pid, :socket_drain)
-      {:stop, :shutdown, socket}
+      close_transport(socket)
     else
       {:noreply, socket}
     end
@@ -2243,8 +2240,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          socket
        ) do
     if certificate_session?(socket) do
-      send(socket.transport_pid, :socket_drain)
-      {:stop, :shutdown, socket}
+      close_transport(socket)
     else
       {:noreply, socket}
     end
@@ -2294,13 +2290,13 @@ defmodule PortalAPI.Client.Channel.Shared do
   # ACCOUNTS
 
   # Disabling an account is broadcast as an account deletion. Unlike token-backed
-  # credentials, X.509 credentials have no ClientToken row for the account hook
+  # credentials, X.509 credentials have no token row for the account hook
   # to delete, so every client channel for the account must be explicitly cut.
   defp handle_change(
          %Change{op: :delete, old_struct: %Portal.Account{id: account_id}},
          %{assigns: %{client: %{account_id: account_id}}} = socket
        ) do
-    disconnect_account(socket)
+    handle_info(:disconnect, socket)
   end
 
   # Keep the channel fail-closed if an account-disabled update is ever broadcast
@@ -2313,7 +2309,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          },
          socket
        ) do
-    disconnect_account(socket)
+    handle_info(:disconnect, socket)
   end
 
   defp handle_change(
@@ -2422,7 +2418,7 @@ defmodule PortalAPI.Client.Channel.Shared do
        when id == client_id do
     # Deleting a client won't necessary delete its tokens in the case of a headless client.
     # So we explicitly handle the deleted client here by forcing it to reconnect.
-    {:stop, :shutdown, socket}
+    close_transport(socket)
   end
 
   # SITES
@@ -2694,12 +2690,11 @@ defmodule PortalAPI.Client.Channel.Shared do
     DateTime.compare(expires_at, DateTime.utc_now()) != :gt
   end
 
-  # A channel stop alone can leave the transport available for a reactive rejoin,
-  # which would bypass Socket.connect/3 and its account-enabled check. Drain the
-  # transport so the next attempt must authenticate again.
-  defp disconnect_account(socket) do
+  # Stopping the channel alone leaves the transport up, and a rejoin on it reuses
+  # the assigns from Socket.connect/3 without checking them again.
+  defp close_transport(socket) do
     send(socket.transport_pid, :socket_drain)
-    handle_info(:disconnect, socket)
+    {:stop, :shutdown, socket}
   end
 
   # Shared eviction path for the CDC delete handler, the direct `:reject_access`
@@ -3092,6 +3087,18 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp x509_session_enabled?(_socket), do: true
+
+  defp expire_attestation(%{assigns: %{client: %{attested?: true, attested_until: %DateTime{} = attested_until}}} = socket) do
+    if DateTime.compare(DateTime.utc_now(), attested_until) == :gt do
+      socket
+      |> assign(:client, %{socket.assigns.client | attested?: false, attested_until: nil})
+      |> track_presence()
+    else
+      socket
+    end
+  end
+
+  defp expire_attestation(socket), do: socket
 
   defp certificate_session?(%{assigns: %{subject: %{credential: %Credential.X509{}}}}), do: true
   defp certificate_session?(socket), do: not is_nil(socket.assigns[:attestation])

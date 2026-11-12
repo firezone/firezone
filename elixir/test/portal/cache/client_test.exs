@@ -621,6 +621,25 @@ defmodule Portal.Cache.ClientTest do
       assert {:ok, [], [], ^cache} =
                Cache.add_policy(cache, policy, client, subject)
     end
+
+    test "returns the cache unchanged when the policy is disabled", %{
+      account: account,
+      actor: actor,
+      subject: subject,
+      client: client
+    } do
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      {:ok, _, _, cache} =
+        Cache.recompute_connectable_resources(nil, client, subject)
+
+      resource = resource_fixture(account: account)
+      policy = disabled_policy_fixture(%{account: account, group: group, resource: resource})
+
+      assert {:ok, [], [], ^cache} =
+               Cache.add_policy(cache, policy, client, subject)
+    end
   end
 
   describe "update_policy/2 no-op when not in cache" do

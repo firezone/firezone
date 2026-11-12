@@ -92,6 +92,53 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
       assert broadcast_policy.resource_id == data["resource_id"]
     end
 
+    test "group re-attach broadcasts created policy" do
+      account = account_fixture()
+      policy = policy_fixture(account: account)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
+
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => account.id,
+        "group_id" => nil,
+        "resource_id" => policy.resource_id,
+        "is_disabled" => false
+      }
+
+      data = Map.put(old_data, "group_id", policy.group_id)
+
+      assert :ok == on_update(0, old_data, data)
+      assert_receive %Change{op: :insert, struct: %Policy{id: policy_id}, lsn: 0}
+      assert policy_id == policy.id
+    end
+
+    test "group re-attach of a disabled policy broadcasts updated policy" do
+      account = account_fixture()
+      policy = disabled_policy_fixture(%{account: account})
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
+
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => account.id,
+        "group_id" => nil,
+        "resource_id" => policy.resource_id,
+        "is_disabled" => true
+      }
+
+      data = Map.put(old_data, "group_id", policy.group_id)
+
+      assert :ok == on_update(0, old_data, data)
+
+      assert_receive %Change{
+        op: :update,
+        struct: %Policy{is_disabled: true, group_id: group_id},
+        lsn: 0
+      }
+
+      assert group_id == policy.group_id
+      refute_received %Change{op: :insert}
+    end
+
     test "non-breaking update broadcasts updated policy" do
       account = account_fixture()
       policy = policy_fixture(account: account)

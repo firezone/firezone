@@ -1728,7 +1728,9 @@ defmodule PortalWeb.OIDCControllerTest do
           assert query["state"] == "client-state"
           assert query["nonce"] == "client-nonce"
 
-          assert query["error"] ==
+          refute Map.has_key?(query, "error")
+
+          assert flash(conn, :error) ==
                    "The authorization code has expired or was already used. Please try signing in again."
         end)
 
@@ -1762,6 +1764,36 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
       assert flash(conn, :error) == "Unable to verify your identity token. Please try signing in again."
+    end
+
+    test "accepts an ID token from the provider's issuer when discovery lists a tenant template",
+         ctx do
+      tenant_id = Ecto.UUID.generate()
+      provider = tenant_template_provider(ctx.account, tenant_id)
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, tid: tenant_id)
+
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "rejects an ID token from an issuer other than the provider's", ctx do
+      provider = tenant_template_provider(ctx.account, Ecto.UUID.generate())
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      other_tenant_id = Ecto.UUID.generate()
+
+      setup_successful_auth(ctx, actor,
+        iss: "https://login.microsoftonline.com/#{other_tenant_id}/v2.0",
+        tid: other_tenant_id
+      )
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+      assert flash(conn, :error) == "Unable to verify your identity token. Please try signing in again."
+      refute conn.resp_cookies["sess_#{ctx.account.id}"]
+      refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
     end
 
     test "recreated user with a new idp_id overwrites their identity in place", ctx do
@@ -3777,17 +3809,16 @@ defmodule PortalWeb.OIDCControllerTest do
         assert failed_query["state"] == params["state"]
         assert failed_query["nonce"] == params["nonce"]
         assert failed_query["redirect_to"] == params["redirect_to"]
-        assert failed_query["error"] =~ "Unable to fetch discovery document"
+        refute Map.has_key?(failed_query, "error")
+        assert flash(failed_conn, :error) =~ "Unable to fetch discovery document"
 
         Mocks.OIDC.stub_discovery_document()
-
-        retry_params = Map.drop(failed_query, ["error"])
 
         retry_conn =
           get(
             recycle(conn),
             "/#{account.slug}/sign_in",
-            retry_params
+            failed_query
           )
 
         provider_retry_path = redirected_to(retry_conn)
@@ -3837,7 +3868,9 @@ defmodule PortalWeb.OIDCControllerTest do
           assert query["state"] == "client-state"
           assert query["nonce"] == "client-nonce"
 
-          assert query["error"] ==
+          refute Map.has_key?(query, "error")
+
+          assert flash(conn, :error) ==
                    "Unable to fetch discovery document: Connection refused. The identity provider may be down."
         end)
 
@@ -3857,6 +3890,17 @@ defmodule PortalWeb.OIDCControllerTest do
   defp setup_oidc_provider(account, opts \\ []) do
     provider = oidc_provider_fixture(:mock, Keyword.put(opts, :account, account))
     %{provider: provider}
+  end
+
+  defp tenant_template_provider(account, tenant_id) do
+    Mocks.OIDC.set_discovery_document_overrides(%{
+      "issuer" => "https://login.microsoftonline.com/{tenantid}/v2.0"
+    })
+
+    oidc_provider_fixture(:mock,
+      account: account,
+      issuer: "https://login.microsoftonline.com/#{tenant_id}/v2.0"
+    )
   end
 
   defp unique_email do
@@ -4636,7 +4680,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
     claims =
       %{
-        "iss" => provider.issuer,
+        "iss" => Keyword.get(opts, :iss, provider.issuer),
         "email" => email,
         "sub" => sub,
         "aud" => provider.client_id,
@@ -4649,6 +4693,7 @@ defmodule PortalWeb.OIDCControllerTest do
       |> maybe_add_claim("family_name", opts)
       |> maybe_add_claim("preferred_username", opts)
       |> maybe_add_claim("nickname", opts)
+      |> maybe_add_claim("tid", opts)
 
     Mocks.OIDC.sign_openid_connect_token(claims)
   end
