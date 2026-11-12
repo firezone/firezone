@@ -637,6 +637,30 @@ defmodule PortalAPI.Gateway.ChannelTest do
       end)
     end
 
+    test "disconnects on re-registration when the token no longer exists", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      pg_scope: scope
+    } do
+      Process.flag(:trap_exit, true)
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      old_pid = PG.scope_pid()
+      ref = Process.monitor(old_pid)
+      stop_supervised!(scope)
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, _}
+
+      Repo.delete!(token)
+
+      start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
+
+      assert_push "disconnect", %{reason: "token_expired"}, 1000
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
     test "ignores :register when already registered to the current scope", %{
       gateway: gateway,
       site: site,

@@ -1150,20 +1150,28 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         {_ref, _members} = PG.monitor(socket.assigns.gateway.id)
 
         socket = assign(socket, :pg_scope_pid, new_pid)
+        register_session(socket, current_pid)
+    end
+  end
 
-        # Only enqueue + arm on the first successful registration; re-registrations
-        # after a PG scope crash share the same channel and session row.
-        if is_nil(current_pid) do
-          Portal.Queue.enqueue(
-            :gateway_session_queue,
-            session_attrs(socket.assigns.gateway, socket.assigns.session_ref),
-            metadata: %{timestamp: DateTime.utc_now()}
-          )
+  # Only enqueue + arm on the first successful registration; re-registrations
+  # after a PG scope crash share the same channel and session row.
+  defp register_session(socket, nil) do
+    Portal.Queue.enqueue(
+      :gateway_session_queue,
+      session_attrs(socket.assigns.gateway, socket.assigns.session_ref),
+      metadata: %{timestamp: DateTime.utc_now()}
+    )
 
-          {:noreply, arm_session_durability_timer(socket)}
-        else
-          {:noreply, socket}
-        end
+    {:noreply, arm_session_durability_timer(socket)}
+  end
+
+  # A token deleted while the scope was down missed its PG disconnect.
+  defp register_session(socket, _current_pid) do
+    if Database.token_exists?(socket.assigns.gateway.account_id, socket.assigns.token_id) do
+      {:noreply, socket}
+    else
+      handle_info(:disconnect, socket)
     end
   end
 
@@ -1260,6 +1268,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       from(a in Account, where: a.id == ^id)
       |> Safe.unscoped()
       |> Safe.one!()
+    end
+
+    def token_exists?(account_id, id) do
+      from(t in Portal.DeviceToken, where: t.account_id == ^account_id, where: t.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
   end
 end

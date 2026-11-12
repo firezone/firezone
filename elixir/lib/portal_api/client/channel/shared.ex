@@ -3137,26 +3137,48 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # Only enqueue + arm on the first successful registration; re-registrations
   # after a PG scope crash share the same channel and session row.
-  defp register_session(socket, current_pid) do
-    if is_nil(current_pid) do
-      Portal.Queue.enqueue(
-        Portal.Queue.name(:client_session_queue),
-        session_attrs(
-          socket.assigns.client,
-          socket.assigns.session_ref,
-          socket.assigns.client.attested?
-        ),
-        metadata: %{
-          subject: Authentication.Subject.to_map(socket.assigns.subject),
-          timestamp: DateTime.utc_now()
-        }
-      )
+  defp register_session(socket, nil) do
+    Portal.Queue.enqueue(
+      Portal.Queue.name(:client_session_queue),
+      session_attrs(
+        socket.assigns.client,
+        socket.assigns.session_ref,
+        socket.assigns.client.attested?
+      ),
+      metadata: %{
+        subject: Authentication.Subject.to_map(socket.assigns.subject),
+        timestamp: DateTime.utc_now()
+      }
+    )
 
-      {:noreply, arm_session_durability_timer(socket)}
-    else
-      {:noreply, socket}
+    {:noreply, arm_session_durability_timer(socket)}
+  end
+
+  # A token deletion or certificate revocation sent while the scope was down
+  # missed its PG delivery.
+  defp register_session(socket, _current_pid) do
+    cond do
+      not client_token_kept?(socket) ->
+        handle_info(:disconnect, socket)
+
+      certificate_revoked?(socket) ->
+        %{issuer: issuer, serial: serial} = socket.assigns.attestation
+        handle_info({:certificate_revoked, issuer, serial}, socket)
+
+      true ->
+        {:noreply, socket}
     end
   end
+
+  defp client_token_kept?(%{assigns: %{subject: %{credential: %Credential.ClientToken{id: id}}}} = socket),
+    do: Database.client_token_exists?(socket.assigns.client.account_id, id)
+
+  defp client_token_kept?(_socket), do: true
+
+  defp certificate_revoked?(%{assigns: %{attestation: %{issuer: issuer, serial: serial}}} = socket),
+    do: Database.certificate_revoked?(socket.assigns.client.account_id, issuer, serial)
+
+  defp certificate_revoked?(_socket), do: false
 
   # Tracks client presence and monitors Presence tracker shard processes so we
   # can re-track if any crash. Monitoring the supervisor alone is insufficient
@@ -3357,6 +3379,33 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.delete_all()
+    end
+
+    def client_token_exists?(account_id, id) do
+      from(t in Portal.DeviceToken, where: t.account_id == ^account_id, where: t.id == ^id)
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.exists?()
+    end
+
+    def certificate_revoked?(account_id, issuer, serial) do
+      crl_revoked? =
+        from(r in Portal.CrlRevocation,
+          where: r.account_id == ^account_id,
+          where: r.issuer == ^issuer,
+          where: r.serial == ^serial
+        )
+        |> Portal.Safe.unscoped()
+        |> Portal.Safe.exists?()
+
+      crl_revoked? or
+        from(s in Portal.OcspStatus,
+          where: s.account_id == ^account_id,
+          where: s.issuer == ^issuer,
+          where: s.serial == ^serial,
+          where: s.status == "revoked"
+        )
+        |> Portal.Safe.unscoped()
+        |> Portal.Safe.exists?()
     end
 
     @doc """
