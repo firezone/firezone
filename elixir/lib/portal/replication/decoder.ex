@@ -167,18 +167,22 @@ defmodule Portal.Replication.Decoder do
   into an Elixir term.
 
   The replication stream runs in text format, so `json`/`jsonb` arrive as JSON
-  strings, `bytea` arrives as the Postgres hex literal (`\\x...`), and `bool`
-  arrives as `t`/`f` (the `boolout` representation, which Ecto's boolean cast
-  does not accept). Everything else is passed through as-is and cast later by
-  the consuming schema's Ecto type.
+  strings, arrays arrive as Postgres array literals (`{a,"b c",NULL}`), `bytea`
+  arrives as the Postgres hex literal (`\\x...`), and `bool` arrives as `t`/`f`
+  (the `boolout` representation, which Ecto's boolean cast does not accept).
+  Everything else is passed through as-is and cast later by the consuming
+  schema's Ecto type. A value that does not parse is passed through as-is too,
+  so the cast rejects it instead of it becoming an empty value.
   """
-
-  # Postgrex uses `_jsonb` to mean `jsonb[]`. These array types are returned as string literals from
-  # Postgrex and need to be split, and then double-decoded.
-  def decode_value({value, %{type: type} = column})
-      when type in ["_json", "_jsonb"] and is_binary(value) do
-    decoded_list = parse_postgres_jsonb_array(value)
-    {column.name, decoded_list}
+  def decode_value({"{" <> _ = value, %{type: "_" <> element_type} = column}) do
+    with {:ok, elements} <- parse_array(value),
+         {:ok, decoded} <- decode_array_elements(elements, element_type) do
+      {column.name, decoded}
+    else
+      :error ->
+        Logger.warning("Failed to decode array, using as-is", column: column.name)
+        {column.name, value}
+    end
   end
 
   def decode_value({"t", %{type: "bool"} = column}), do: {column.name, true}
@@ -222,40 +226,65 @@ defmodule Portal.Replication.Decoder do
     {column.name, value}
   end
 
-  defp parse_postgres_jsonb_array("{}"), do: []
+  defp decode_array_elements(elements, element_type) when element_type in ["json", "jsonb"] do
+    Enum.reduce_while(elements, {:ok, []}, fn
+      nil, {:ok, acc} ->
+        {:cont, {:ok, [nil | acc]}}
 
-  defp parse_postgres_jsonb_array("{" <> content) do
-    content
-    |> String.trim_trailing("}")
-    |> split_json_array_elements()
-    |> Enum.map(&double_decode_json/1)
-  end
-
-  defp parse_postgres_jsonb_array(_), do: []
-
-  # Split JSON elements in PostgreSQL array using regex
-  defp split_json_array_elements(content) do
-    ~r/,(?=(?:[^"]*"[^"]*")*[^"]*$)(?![^{]*})/
-    |> Regex.split(content)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-  end
-
-  # PostgreSQL double-encodes JSON in arrays, so we need to decode twice
-  defp double_decode_json(json_str) do
-    with {:ok, first} <- JSON.decode(json_str),
-         {:ok, second} <- JSON.decode(first) do
-      second
-    else
-      {:error, reason} ->
-        Logger.warning("Failed to decode JSON, using as-is",
-          json: json_str,
-          reason: reason
-        )
-
-        json_str
+      element, {:ok, acc} ->
+        case JSON.decode(element) do
+          {:ok, decoded} -> {:cont, {:ok, [decoded | acc]}}
+          {:error, _reason} -> {:halt, :error}
+        end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      :error -> :error
     end
   end
+
+  defp decode_array_elements(elements, _element_type), do: {:ok, elements}
+
+  # One-dimensional array literals as written by array_out
+  defp parse_array("{}"), do: {:ok, []}
+  defp parse_array("{" <> rest), do: parse_array_elements(rest, [])
+
+  defp parse_array_elements(<<?", rest::binary>>, acc) do
+    case parse_quoted_element(rest, []) do
+      {:ok, element, rest} -> parse_array_separator(rest, [element | acc])
+      :error -> :error
+    end
+  end
+
+  defp parse_array_elements(rest, acc) do
+    case :binary.match(rest, [",", "}"]) do
+      {0, _} ->
+        :error
+
+      {position, _} ->
+        {element, rest} = :erlang.split_binary(rest, position)
+        parse_array_separator(rest, [unquoted_element(element) | acc])
+
+      :nomatch ->
+        :error
+    end
+  end
+
+  defp parse_array_separator(<<?,, rest::binary>>, acc), do: parse_array_elements(rest, acc)
+  defp parse_array_separator("}", acc), do: {:ok, Enum.reverse(acc)}
+  defp parse_array_separator(_rest, _acc), do: :error
+
+  defp parse_quoted_element(<<?\\, char, rest::binary>>, acc), do: parse_quoted_element(rest, [char | acc])
+
+  defp parse_quoted_element(<<?", rest::binary>>, acc) do
+    {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
+  end
+
+  defp parse_quoted_element(<<char, rest::binary>>, acc), do: parse_quoted_element(rest, [char | acc])
+  defp parse_quoted_element(<<>>, _acc), do: :error
+
+  defp unquoted_element("NULL"), do: nil
+  defp unquoted_element(element), do: element
 
   @doc """
   Parses logical replication messages from Postgres

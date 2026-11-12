@@ -582,7 +582,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     # Important: We push disconnect before closing the socket to prevent the gateway from
     # attempting to immediately reconnect
     push(socket, "disconnect", %{reason: "token_expired"})
-    {:stop, :shutdown, socket}
+    close_transport(socket)
   end
 
   # Flush-failure disconnects are PG-delivered by device id but target one
@@ -595,9 +595,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   # Another channel joined our gateway id group: a duplicate connection raced
   # past the connect-time check. First wins — we were here first, so tell the
-  # newcomers to disconnect (their :disconnect handler pushes token_expired
-  # and stops). Two simultaneous cross-node joins can each observe the other
-  # and boot each other, but gateway reconnect backoff jitter settles that
+  # newcomers to close. Two simultaneous cross-node joins can each observe the
+  # other and boot each other, but gateway reconnect backoff jitter settles that
   # within a round or two.
   def handle_info({_ref, :join, gateway_id, pids}, socket)
       when gateway_id == socket.assigns.gateway.id do
@@ -606,10 +605,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         gateway_id: socket.assigns.gateway.id
       )
 
-      send(pid, :disconnect)
+      send(pid, :duplicate_connection)
     end
 
     {:noreply, socket}
+  end
+
+  # No "token_expired" push: the gateway exits on it, but a duplicate must reconnect.
+  def handle_info(:duplicate_connection, socket) do
+    close_transport(socket)
   end
 
   def handle_info({_ref, :leave, gateway_id, _pids}, socket)
@@ -949,7 +953,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
            assigns: %{gateway: %{id: gateway_id}}
          } = socket
        ) do
-    {:stop, :shutdown, socket}
+    close_transport(socket)
   end
 
   # RESOURCES
@@ -1202,6 +1206,13 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       remote_ip_location_lon: gateway.last_seen_remote_ip_location_lon,
       version: gateway.last_seen_version
     }
+  end
+
+  # Stopping the channel alone leaves the transport up, and a rejoin on it reuses
+  # the assigns from Socket.connect/3 without checking them again.
+  defp close_transport(socket) do
+    send(socket.transport_pid, :socket_drain)
+    {:stop, :shutdown, socket}
   end
 
   defp abnormal_exit?(:normal), do: false

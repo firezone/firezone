@@ -1,6 +1,10 @@
 defmodule Portal.Crypto do
   alias Portal.Device
 
+  @user_friendly_alphabet "abcdefghijkmnopqrstuvwxyz123456789"
+  @user_friendly_alphabet_size byte_size(@user_friendly_alphabet)
+  @user_friendly_byte_limit div(256, @user_friendly_alphabet_size) * @user_friendly_alphabet_size
+
   @doc """
   Generates a WireGuard pre-shared key for a client-gateway or client-to-client pair.
   A distinct salt prefix is used for each pair type to avoid key reuse.
@@ -75,23 +79,23 @@ defmodule Portal.Crypto do
   end
 
   defp encode_random_token(binary, length, :user_friendly) do
-    encode_random_token(binary, length, :url_encode64)
-    |> String.downcase()
-    |> replace_ambiguous_characters()
-    |> String.slice(0, length)
+    encode_user_friendly(binary, length, [])
   end
 
-  defp replace_ambiguous_characters(binary, acc \\ "")
+  defp encode_user_friendly(_binary, 0, acc), do: IO.iodata_to_binary(acc)
 
-  defp replace_ambiguous_characters("", acc), do: acc
+  defp encode_user_friendly(<<>>, remaining, acc),
+    do: encode_user_friendly(:crypto.strong_rand_bytes(remaining), remaining, acc)
 
-  for {mapping, replacement} <- Enum.zip(~c"-+/lO0=_", ~c"ptusxyzw") do
-    defp replace_ambiguous_characters(<<unquote(mapping)::utf8, rest::binary>>, acc),
-      do: replace_ambiguous_characters(rest, <<acc::binary, unquote(replacement)::utf8>>)
+  # Drop bytes past the last full multiple of the alphabet size so every symbol is equally likely.
+  defp encode_user_friendly(<<byte, rest::binary>>, remaining, acc)
+       when byte < @user_friendly_byte_limit do
+    symbol = :binary.part(@user_friendly_alphabet, rem(byte, @user_friendly_alphabet_size), 1)
+    encode_user_friendly(rest, remaining - 1, [acc, symbol])
   end
 
-  defp replace_ambiguous_characters(<<char::utf8, rest::binary>>, acc),
-    do: replace_ambiguous_characters(rest, <<acc::binary, char::utf8>>)
+  defp encode_user_friendly(<<_byte, rest::binary>>, remaining, acc),
+    do: encode_user_friendly(rest, remaining, acc)
 
   def hash(:argon2, value) when byte_size(value) > 0 do
     Argon2.hash_pwd_salt(value)

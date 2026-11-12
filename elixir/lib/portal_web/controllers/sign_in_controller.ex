@@ -29,7 +29,7 @@ defmodule PortalWeb.SignInController do
         redirect(conn, external: "#{scheme}://#{url}?#{query}")
 
       nil ->
-        redirect(conn, to: client_auth_error_path(account, %{}, @default_client_auth_error))
+        redirect(conn, to: ~p"/#{account}/sign_in/client_auth_error")
     end
   end
 
@@ -37,10 +37,7 @@ defmodule PortalWeb.SignInController do
     account = conn.assigns.account
     retry_params = PortalWeb.Authentication.take_sign_in_params(params)
 
-    error =
-      params["error"] ||
-        Phoenix.Flash.get(conn.assigns[:flash] || %{}, :error) ||
-        @default_client_auth_error
+    error = Phoenix.Flash.get(conn.assigns.flash, :error) || @default_client_auth_error
 
     render(conn, :client_auth_error,
       layout: false,
@@ -68,15 +65,6 @@ defmodule PortalWeb.SignInController do
     maybe_host = if uri.host == "", do: "", else: "#{uri.host}:#{uri.port}/"
 
     {uri.scheme, "#{maybe_host}handle_client_sign_in_callback"}
-  end
-
-  defp client_auth_error_path(account, params, error) do
-    query =
-      params
-      |> PortalWeb.Authentication.take_sign_in_params()
-      |> Map.put("error", error)
-
-    ~p"/#{account}/sign_in/client_auth_error?#{query}"
   end
 
   defp retry_path(account, params) when map_size(params) == 0, do: ~p"/#{account}/sign_in"

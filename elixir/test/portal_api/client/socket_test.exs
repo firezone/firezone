@@ -633,6 +633,11 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
       assert socket.assigns.client.attested?
+
+      {:ok, leaf} = Portal.Crypto.X509.decode_der_certificate(connect_info.peer_data.ssl_cert, :otp)
+      not_after = Portal.Crypto.X509.not_after(leaf)
+      assert socket.assigns.client.attested_until == %{not_after | microsecond: {0, 6}}
+
       assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert socket.assigns.client.last_attested_cert_fingerprint
 
