@@ -199,14 +199,12 @@ defmodule Portal.Authentication do
   # One-Time Passcodes
 
   @otp_expiration_seconds 15 * 60
+  @max_active_one_time_passcodes 5
 
   def create_one_time_passcode(%Portal.Account{} = account, %Portal.Actor{} = actor) do
     code = Portal.Crypto.random_token(6, encoder: :user_friendly)
     code_hash = Portal.Crypto.hash(:argon2, code)
     expires_at = DateTime.utc_now() |> DateTime.add(@otp_expiration_seconds, :second)
-
-    # Delete existing passcodes for this actor first
-    :ok = Database.delete_one_time_passcodes_for_actor(account, actor)
 
     %OneTimePasscode{
       account_id: account.id,
@@ -215,7 +213,7 @@ defmodule Portal.Authentication do
       code: code,
       expires_at: expires_at
     }
-    |> Database.insert_one_time_passcode()
+    |> Database.insert_one_time_passcode(@max_active_one_time_passcodes)
   end
 
   def verify_one_time_passcode(account_id, actor_id, passcode_id, entered_code) do
@@ -885,10 +883,34 @@ defmodule Portal.Authentication do
 
     # One-Time Passcode functions
 
-    def insert_one_time_passcode(passcode) do
-      passcode
-      |> Safe.unscoped()
-      |> Safe.insert()
+    def insert_one_time_passcode(%OneTimePasscode{} = passcode, max_active) do
+      Safe.transact(fn ->
+        from(a in Actor,
+          where: a.account_id == ^passcode.account_id,
+          where: a.id == ^passcode.actor_id,
+          lock: "FOR UPDATE"
+        )
+        |> Safe.unscoped()
+        |> Safe.one()
+
+        active_count =
+          from(otp in OneTimePasscode,
+            where: otp.account_id == ^passcode.account_id,
+            where: otp.actor_id == ^passcode.actor_id,
+            where: otp.expires_at > ^DateTime.utc_now(),
+            where: otp.attempts < ^OneTimePasscode.max_attempts()
+          )
+          |> Safe.unscoped()
+          |> Safe.aggregate(:count)
+
+        if active_count < max_active do
+          passcode
+          |> Safe.unscoped()
+          |> Safe.insert()
+        else
+          {:error, :too_many_active_passcodes}
+        end
+      end)
     end
 
     def consume_one_time_passcode_attempt(account_id, actor_id, id) do
@@ -911,17 +933,6 @@ defmodule Portal.Authentication do
         {1, [passcode]} -> {:ok, Safe.preload(passcode, :actor)}
         {0, _} -> {:error, :not_found}
       end
-    end
-
-    def delete_one_time_passcodes_for_actor(account, actor) do
-      from(otp in OneTimePasscode,
-        where: otp.account_id == ^account.id,
-        where: otp.actor_id == ^actor.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-
-      :ok
     end
 
     def delete_exhausted_one_time_passcode(%OneTimePasscode{} = passcode) do
