@@ -1195,11 +1195,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket2 = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      # The established channel observes the new join in its gateway id
-      # group and tells the newcomer to disconnect
+      # The established channel observes the new join in its gateway id group
+      # and closes the newcomer without token_expired, which makes gateways exit
       channel2 = socket2.channel_pid
       assert_receive {:EXIT, ^channel2, :shutdown}
-      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
+      refute_push "disconnect", _payload
 
       assert Process.alive?(socket1.channel_pid)
     end
@@ -1250,8 +1251,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Simulate a duplicate connection registering from another node
       :ok = PG.join(gateway.id)
 
-      # The established channel tells the newcomer to disconnect and stays up
-      assert_receive :disconnect
+      # The established channel tells the newcomer to close and stays up
+      assert_receive :duplicate_connection
       assert Process.alive?(socket.channel_pid)
       refute_push "disconnect", _payload
     end
