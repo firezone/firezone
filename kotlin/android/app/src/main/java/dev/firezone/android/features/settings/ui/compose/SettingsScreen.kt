@@ -91,6 +91,8 @@ internal fun SettingsScreen(
     showDeveloperSettings: Boolean,
     onShowDeveloperSettingsChange: (Boolean) -> Unit,
     onResetConnlib: () -> Unit,
+    forceRelayedConnections: Boolean,
+    onForceRelayedConnectionsChange: (Boolean) -> Unit,
     onLogsShown: () -> Unit,
     onSelectCertificate: () -> Unit,
     onDeviceTrustShown: () -> Unit,
@@ -183,6 +185,8 @@ internal fun SettingsScreen(
 
                 SettingsPage.DEVELOPER -> {
                     DeveloperSettingsPage(
+                        forceRelayedConnections = forceRelayedConnections,
+                        onForceRelayedConnectionsChange = onForceRelayedConnectionsChange,
                         onResetConnlib = onResetConnlib,
                         onHide = { onShowDeveloperSettingsChange(false) },
                     )

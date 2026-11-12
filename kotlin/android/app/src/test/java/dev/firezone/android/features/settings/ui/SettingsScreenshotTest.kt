@@ -261,6 +261,8 @@ private fun SettingsScreenSample(
         showDeveloperSettings = showDeveloperSettings,
         onShowDeveloperSettingsChange = {},
         onResetConnlib = {},
+        forceRelayedConnections = false,
+        onForceRelayedConnectionsChange = {},
         onLogsShown = {},
         onSelectCertificate = {},
         onDeviceTrustShown = {},

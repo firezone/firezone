@@ -22,6 +22,7 @@ import dev.firezone.android.features.permission.ui.CertificatePermissionViewMode
 import dev.firezone.android.features.session.ui.rememberTunnelService
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
+import kotlinx.coroutines.flow.emptyFlow
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -47,6 +48,8 @@ internal class SettingsActivity : AppCompatActivity() {
                 val deviceTrustState by deviceTrustViewModel.uiStateFlow.collectAsStateWithLifecycle()
                 val tunnelService = rememberTunnelService(flags = 0)
                 var showDeveloperSettings by remember { mutableStateOf(developerSettings.isUnlocked) }
+                val forceRelayedConnections by (tunnelService?.forceRelayedConnections ?: emptyFlow())
+                    .collectAsStateWithLifecycle(false)
 
                 SettingsScreen(
                     config = viewModel.config,
@@ -74,8 +77,11 @@ internal class SettingsActivity : AppCompatActivity() {
                     onShowDeveloperSettingsChange = {
                         developerSettings.isUnlocked = it
                         showDeveloperSettings = it
+                        if (!it && forceRelayedConnections) tunnelService?.setForceRelayedConnections(false)
                     },
                     onResetConnlib = { tunnelService?.reset("requested by user") },
+                    forceRelayedConnections = forceRelayedConnections,
+                    onForceRelayedConnectionsChange = { tunnelService?.setForceRelayedConnections(it) },
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,
