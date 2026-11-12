@@ -1791,7 +1791,8 @@ defmodule Portal.AuthenticationTest do
         account_id: account.id,
         actor_id: actor.id,
         secret_salt: "salt",
-        secret_hash: "hash"
+        secret_hash: "hash",
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       })
 
       Repo.delete!(actor)

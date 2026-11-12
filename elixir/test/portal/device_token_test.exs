@@ -3,6 +3,7 @@ defmodule Portal.DeviceTokenTest do
   import Ecto.Changeset
   import Portal.TokenFixtures
   import Portal.AccountFixtures
+  import Portal.ActorFixtures
   import Portal.DeviceFixtures
   import Portal.SiteFixtures
 
@@ -50,6 +51,34 @@ defmodule Portal.DeviceTokenTest do
       assert {:ok, token} = Repo.insert(changeset)
       assert token.account_id == site.account_id
       assert token.site_id == site.id
+    end
+  end
+
+  describe "expiry" do
+    test "rejects a token bound to no Site or device without an expiry" do
+      actor = actor_fixture()
+
+      changeset =
+        %DeviceToken{}
+        |> change(attrs(%{account_id: actor.account_id, actor_id: actor.id}))
+        |> DeviceToken.changeset()
+
+      assert {:error, changeset} = Repo.insert(changeset)
+      assert {:expires_at, {"is invalid", _}} = hd(changeset.errors)
+    end
+
+    test "accepts a token bound to no Site or device with an expiry" do
+      actor = actor_fixture()
+      expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
+
+      changeset =
+        %DeviceToken{}
+        |> change(
+          attrs(%{account_id: actor.account_id, actor_id: actor.id, expires_at: expires_at})
+        )
+        |> DeviceToken.changeset()
+
+      assert {:ok, _token} = Repo.insert(changeset)
     end
   end
 
