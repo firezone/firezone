@@ -88,7 +88,7 @@ defmodule Portal.Ops.RegionTransferTest do
         |> Enum.filter(&(&1["nulled_columns"] != []))
         |> Map.new(&{&1["name"], Enum.sort(&1["nulled_columns"])})
 
-      assert nulled == %{"devices" => ["client_token_id", "gateway_token_id"]}
+      assert nulled == %{"devices" => ["client_token_id", "gateway_token_id", "token_id"]}
     end
 
     test "refuses an account disabled for another reason", %{account: account, store: store} do
