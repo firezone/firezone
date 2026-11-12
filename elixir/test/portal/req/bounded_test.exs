@@ -45,10 +45,19 @@ defmodule Portal.Req.BoundedTest do
           Plug.Conn.send_resp(conn, 503, "")
         end)
 
-      assert {:error, %Req.TransportError{reason: :timeout}} =
-               request(url: url, max_body_bytes: @mib, timeout: 500, retry_log_level: false)
+      started = System.monotonic_time(:millisecond)
 
-      assert_received :requested
+      assert {:error, %Req.TransportError{reason: :timeout}} =
+               request(
+                 url: url,
+                 max_body_bytes: @mib,
+                 timeout: 2_000,
+                 retry_delay: fn _attempt -> :timer.minutes(1) end,
+                 retry_log_level: false
+               )
+
+      assert System.monotonic_time(:millisecond) - started < :timer.seconds(30)
+      assert_receive :requested
     end
 
     test "follows at most three redirects by default" do
