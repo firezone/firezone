@@ -352,7 +352,9 @@ defmodule PortalWeb.SignIn do
 
   defp with_logo(%Portal.OAuthClient{client_id: client_id} = client) do
     case Database.get_fresh_logo(client_id) do
-      {data, type} -> %{client | logo_data: data, logo_content_type: type}
+      %{logo_data: data, logo_content_type: type} ->
+        %{client | logo_data: data, logo_content_type: type}
+
       nil -> client
     end
   end
@@ -397,7 +399,7 @@ defmodule PortalWeb.SignIn do
         where: clients.client_id == ^client_id,
         where: clients.metadata_expires_at > ^now,
         where: not is_nil(clients.logo_data) and not is_nil(clients.logo_content_type),
-        select: {clients.logo_data, clients.logo_content_type}
+        select: map(clients, [:logo_data, :logo_content_type])
       )
       |> Safe.unscoped()
       |> Safe.one()
