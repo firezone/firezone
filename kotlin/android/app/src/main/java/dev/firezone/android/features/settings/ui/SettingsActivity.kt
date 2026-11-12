@@ -75,7 +75,7 @@ internal class SettingsActivity : AppCompatActivity() {
                         developerSettings.isUnlocked = it
                         showDeveloperSettings = it
                     },
-                    onResetConnlib = { tunnelService?.reset("developer settings") },
+                    onResetConnlib = { tunnelService?.reset("requested by user") },
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,

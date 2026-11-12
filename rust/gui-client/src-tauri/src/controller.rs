@@ -746,7 +746,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 self.refresh_ui_state();
             }
-            ResetConnlib => self.send_ipc(&service::ClientMsg::Reset).await?,
+            ResetConnlib => self.send_ipc(&service::ClientMsg::ManualReset).await?,
         }
         Ok(())
     }

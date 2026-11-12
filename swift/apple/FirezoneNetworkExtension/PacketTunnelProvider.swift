@@ -345,10 +345,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         completionHandler?(nil)
 
-      case .reset:
+      case .manualReset:
         let adapter = self.adapter
         Task { @Sendable in
-          await adapter?.reset(reason: "developer settings")
+          await adapter?.reset(reason: "requested by user")
         }
         completionHandler?(nil)
 

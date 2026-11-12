@@ -152,7 +152,7 @@
           Log.warning("MockTunnelSession: failed to encode the log chunk: \(error)")
           responseHandler(nil)
         }
-      case .setInternetResourceEnabled, .setLogFilter, .setAdditionalHostCandidates, .reset,
+      case .setInternetResourceEnabled, .setLogFilter, .setAdditionalHostCandidates, .manualReset,
         .signOut, .getEncodedFirezoneId, .drainFlowLogs:
         responseHandler(nil)
       }
