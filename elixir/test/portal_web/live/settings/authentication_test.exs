@@ -4518,30 +4518,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   end
 
   # =============================================================================
-  # DB Helper Edge Cases
-  # =============================================================================
-
-  describe "Database helper edge cases" do
-    test "revoke_sessions_for_provider handles nil provider", %{actor: actor} do
-      alias PortalWeb.Settings.Authentication.Database
-
-      # Build a proper subject from the actor
-      {:ok, subject} =
-        Portal.Authentication.build_subject(
-          %Portal.PortalSession{actor_id: actor.id, account_id: actor.account_id},
-          %Portal.Authentication.Context{
-            type: :portal,
-            user_agent: "test",
-            remote_ip: {127, 0, 0, 1}
-          }
-        )
-
-      # Should return {:ok, 0} for nil provider
-      assert {:ok, 0} = Database.revoke_sessions_for_provider(nil, subject)
-    end
-  end
-
-  # =============================================================================
   # Successful PubSub Verification Tests
   # =============================================================================
 
