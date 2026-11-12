@@ -21,6 +21,8 @@ Where no rule fits, apply the principle.
   A long comment, a new abstraction or a large diff tells the reader that something important is happening before they can check.
   If it isn't, they learn to skim, including the one comment that does encode a subtle invariant.
   The goal is proportion, not minimalism: a real invariant earns a real comment.
+- Reliability comes first: Firezone is a connectivity product.
+  A dropped packet is retransmitted by the host's network stack, but a panic takes down the entire application or background service.
 - Keep indentation low.
   Every condition that has been checked and returned from is one less thing to keep in mind while reading on.
 - Test through public APIs so that the implementation can be refactored underneath.
@@ -37,6 +39,7 @@ Where no rule fits, apply the principle.
 - Write one match-arm per distinct case, even if the bodies are identical or create slight duplication.
   Separate arms format better and are easier to read than combined `A | B` patterns or `matches!` guards.
 - Flatten nested conditions with match-arm guards instead of an `if` inside the arm, a `matches!` or a chain of `if let`s.
+  With every combination spelled out as an arm, the compiler checks that all of them are handled.
 - Match exhaustively on our own enums instead of using `if let` or `if`-`else`.
   Adding a variant should produce a compile error in every place that needs to handle it, not silently fall into the `else`.
 - Split a compound boolean condition into separate branches when the cases are actually different, even if that duplicates a line.
@@ -81,7 +84,7 @@ Where no rule fits, apply the principle.
 - Let the type say what a value means instead of giving an ordinary value a special meaning.
   Represent a missing value with `None` and a failure with `Err`, never with a placeholder such as `0` or an unspecified address.
   Use a dedicated enum instead of a `bool`, for parameters as well as return values.
-  If the two cases of a boolean parameter share no code, write two functions.
+- If the two cases of a parameter share no code, write two functions.
 - Encode invariants in the type system: take ownership of a value that must not be used afterwards, tie values together with lifetimes, clean up in `Drop`.
   Avoid `Option` fields that are always `Some` after setup and state that can be derived from other state.
 - Prefer defaults (`#[serde(default)]`, `clap`'s `default_value`, `Default`) over an `Option` that every consumer has to unwrap.
@@ -93,9 +96,10 @@ Where no rule fits, apply the principle.
   In the same change, remove whatever it made unnecessary: unused parameters, an `async`, a `clone`, a helper.
 - Don't write migration, cleanup or compatibility code for a state that was never released.
   If nothing that shipped could have produced it, there is nothing to migrate.
-- Extract a helper when the same logic appears more than once.
-  Inline a helper that has a single call-site and no branching: The reader pays for every indirection.
-  Don't share an abstraction between call-sites it doesn't properly fit, some duplication is cheaper.
+- Decide between sharing and duplicating code by its reason to change.
+  Code that changes for the same reason lives in one place, otherwise a later change updates one copy and misses the other.
+  Code that changes for different reasons can be duplicated, even if it looks the same today.
+- Inline a helper that has a single call-site and no branching: The reader pays for every indirection.
 
 ## Error handling
 
@@ -107,7 +111,7 @@ Where no rule fits, apply the principle.
   Logging and returning an error results in duplicate logs.
 - Don't make errors disappear by converting them into an `Option` or dropping the `Result`.
   Return `Result` (or `Result<Option<T>>` if "nothing" is a valid outcome) and log at the top-level.
-- In a fallible function, return an error instead of panicking.
+- Return an error instead of panicking: A panic takes down the entire application or background service.
   Reserve `expect` for real invariants and use `debug_assert!` to make assumptions visible.
 - Don't add retry state or a timer for a failure that the next regular attempt already surfaces.
   Let it fail; the next attempt asks again.
@@ -149,6 +153,7 @@ Where no rule fits, apply the principle.
 - Follow the arrange - act - assert pattern.
 - Test only our own code.
   Don't test third-party behaviour, derived `serde` impls or functions that only forward to an inner method.
+  The exception are snapshot tests that lock in an API contract, such as the wire format of a message.
 - Assert on observable behaviour (return values, emitted events) using the exact expected value.
   Don't compute the expectation with the code under test.
 - Write one test per behaviour instead of one combined test.
@@ -180,6 +185,8 @@ Where no rule fits, apply the principle.
 
 - Keep the diff minimal: every hunk serves the purpose of the PR.
   Don't reorder, move, rename or reformat code that the change doesn't need to touch.
+- Whenever the design of a change moves, re-evaluate what the earlier design introduced: abstractions, helpers, parameters, widened visibility.
+  Remove everything the current design no longer needs.
 - Send refactorings that prepare a feature as their own PR, ahead of the feature.
 - Don't regenerate `Cargo.lock`.
   Start from the lockfile on `main` (`git checkout main -- rust/Cargo.lock`) and let `cargo` apply only what the `Cargo.toml` change requires.

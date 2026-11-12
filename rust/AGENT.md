@@ -20,7 +20,7 @@ Follow the [Rust coding guidelines](CODING_GUIDELINES.md).
 - A log message says what happened, nothing else.
   Don't repeat what a span, the module path or another log already says, and don't describe what happens next.
 - Use the same message for the same event across code paths (e.g. Client and Gateway) and keep messages for different events unique so they can be found with `grep`.
-- Embed errors in the message using the alternate format, which prints the entire chain of causes: `tracing::debug!("Failed to read config: {e:#}")`.
+- Embed an `anyhow::Error` in the message using the alternate format, which prints the entire chain of causes: `tracing::debug!("Failed to read config: {e:#}")`.
 - Log a `Duration` with its `Debug` representation (`?elapsed`) and log points in time as a duration relative to now.
 - Prefer logging values instead of formatting them into the message. For example, use:
 
@@ -38,4 +38,3 @@ Follow the [Rust coding guidelines](CODING_GUIDELINES.md).
 
 - Run the quick checks for the crates you changed: `cargo fmt`, `cargo clippy --all-targets --all-features -p <crate>` and `cargo test -p <crate>`.
   Leave release builds and full-workspace rebuilds to CI.
-- Read `git diff origin/main...HEAD` hunk by hunk and revert everything the final design no longer needs.
