@@ -696,7 +696,7 @@ defmodule Portal.Repo.Seeds do
        resource_row(name: "Old staging DB", address: "10.0.0.55"), nil},
       {60 * 5, admin_subj, "policies", :update, policy_b, policy_b_updated},
       {60 * 6, admin_subj, "sites", :insert, nil, site_row(name: "us-east-2")},
-      {60 * 8, admin_subj, "gateway_tokens", :insert, nil,
+      {60 * 8, admin_subj, "device_tokens", :insert, nil,
        gateway_token_row(name: "us-east-2 provisioning")},
       {60 * 12, admin_subj, "api_tokens", :insert, nil,
        api_token_row(name: "terraform-ci")},

@@ -29,8 +29,7 @@ defmodule PortalWeb.OAuthController do
   def start(conn, params) do
     # Resolved before sign-in on purpose. A bad client or redirect URI is the
     # caller's mistake, so saying so now beats making someone authenticate
-    # first. It also caches the client's metadata, which is what lets sign-in
-    # name the app it is being asked to connect.
+    # first. Nothing is cached until the signed-in consent screen.
     case OAuth.validate_client(params) do
       {:ok, client, _redirect_uri} -> choose_account(conn, params, client)
       {:error, error, description} -> render_error(conn, error, description)

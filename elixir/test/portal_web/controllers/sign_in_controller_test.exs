@@ -78,16 +78,10 @@ defmodule PortalWeb.SignInControllerTest do
       account: account
     } do
       conn = get(conn, ~p"/#{account}/sign_in/client_redirect")
-      redirect_path = redirected_to(conn, 302)
-      assert redirect_path =~ ~p"/#{account}/sign_in/client_auth_error"
+      assert redirected_to(conn, 302) == ~p"/#{account}/sign_in/client_auth_error"
 
-      query =
-        redirect_path
-        |> URI.parse()
-        |> Map.fetch!(:query)
-        |> URI.decode_query()
-
-      assert query["error"] == "Please close this window and start the sign in process again."
+      html = conn |> recycle() |> get(redirected_to(conn, 302)) |> html_response(200)
+      assert html =~ "Please close this window and start the sign in process again."
     end
 
     test "displays account name on client auth error page", %{conn: conn, account: account} do
@@ -95,14 +89,30 @@ defmodule PortalWeb.SignInControllerTest do
       assert html_response(conn, 200) =~ account.name
     end
 
+    test "shows only server set messages", %{conn: conn, account: account} do
+      html =
+        conn
+        |> get(~p"/#{account}/sign_in/client_auth_error?#{%{"error" => "Call 555-0100 now."}}")
+        |> html_response(200)
+
+      refute html =~ "555-0100"
+      assert html =~ "Please close this window and start the sign in process again."
+    end
+
     test "displays the error and retry link with params preserved", %{
       conn: conn,
       account: account
     } do
       conn =
-        get(
-          conn,
-          ~p"/#{account}/sign_in/client_auth_error?#{%{"as" => "client", "state" => "retry-state", "nonce" => "retry-nonce", "error" => "The authorization code has expired or was already used. Please try signing in again."}}"
+        conn
+        |> init_test_session(%{
+          "phoenix_flash" => %{
+            "error" =>
+              "The authorization code has expired or was already used. Please try signing in again."
+          }
+        })
+        |> get(
+          ~p"/#{account}/sign_in/client_auth_error?#{%{"as" => "client", "state" => "retry-state", "nonce" => "retry-nonce"}}"
         )
 
       html = html_response(conn, 200)

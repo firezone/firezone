@@ -595,9 +595,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   # Another channel joined our gateway id group: a duplicate connection raced
   # past the connect-time check. First wins — we were here first, so tell the
-  # newcomers to disconnect (their :disconnect handler pushes token_expired
-  # and stops). Two simultaneous cross-node joins can each observe the other
-  # and boot each other, but gateway reconnect backoff jitter settles that
+  # newcomers to close. Two simultaneous cross-node joins can each observe the
+  # other and boot each other, but gateway reconnect backoff jitter settles that
   # within a round or two.
   def handle_info({_ref, :join, gateway_id, pids}, socket)
       when gateway_id == socket.assigns.gateway.id do
@@ -606,10 +605,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         gateway_id: socket.assigns.gateway.id
       )
 
-      send(pid, :disconnect)
+      send(pid, :duplicate_connection)
     end
 
     {:noreply, socket}
+  end
+
+  # No "token_expired" push: the gateway exits on it, but a duplicate must reconnect.
+  def handle_info(:duplicate_connection, socket) do
+    close_transport(socket)
   end
 
   def handle_info({_ref, :leave, gateway_id, _pids}, socket)

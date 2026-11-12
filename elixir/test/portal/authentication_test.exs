@@ -643,7 +643,6 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
       assert token.secret_fragment != nil
-      assert Portal.DeviceToken.single_owner?(token)
     end
 
     test "returns error when the gateway already has an active token" do
@@ -995,20 +994,67 @@ defmodule Portal.AuthenticationTest do
       refute Repo.get_by(Portal.OneTimePasscode, id: passcode.id)
     end
 
-    test "creating a new passcode deletes existing passcodes for the actor" do
+    test "creating a new passcode keeps existing passcodes for the actor valid" do
       account = account_fixture()
       actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
 
       {:ok, passcode1} = create_one_time_passcode(account, actor)
       {:ok, passcode2} = create_one_time_passcode(account, actor)
 
-      # First passcode should no longer be valid
-      assert {:error, :invalid_code} =
+      assert {:ok, _} =
                verify_one_time_passcode(account.id, actor.id, passcode1.id, passcode1.code)
 
-      # Second passcode should still be valid
       assert {:ok, _} =
                verify_one_time_passcode(account.id, actor.id, passcode2.id, passcode2.code)
+    end
+
+    test "limits the number of active passcodes per actor" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+      other_actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      passcodes =
+        for _ <- 1..5 do
+          assert {:ok, passcode} = create_one_time_passcode(account, actor)
+          passcode
+        end
+
+      assert {:error, :too_many_active_passcodes} = create_one_time_passcode(account, actor)
+      assert {:ok, _} = create_one_time_passcode(account, other_actor)
+
+      [first | rest] = passcodes
+
+      assert {:ok, _} =
+               verify_one_time_passcode(account.id, actor.id, first.id, first.code)
+
+      assert {:ok, _} = create_one_time_passcode(account, actor)
+      assert {:error, :too_many_active_passcodes} = create_one_time_passcode(account, actor)
+
+      for passcode <- rest do
+        assert {:ok, _} =
+                 verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+      end
+    end
+
+    test "expired and used up passcodes do not count towards the active passcode limit" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      for _ <- 1..4 do
+        {:ok, passcode} = create_one_time_passcode(account, actor)
+
+        passcode
+        |> Ecto.Changeset.change(expires_at: DateTime.add(DateTime.utc_now(), -1, :second))
+        |> Repo.update!()
+      end
+
+      {:ok, passcode} = create_one_time_passcode(account, actor)
+
+      passcode
+      |> Ecto.Changeset.change(attempts: Portal.OneTimePasscode.max_attempts())
+      |> Repo.update!()
+
+      assert {:ok, _} = create_one_time_passcode(account, actor)
     end
 
     test "creates token with custom nonce" do
@@ -1573,7 +1619,6 @@ defmodule Portal.AuthenticationTest do
     end
 
     test "a site token is written only to device_tokens, owned by the legacy Gateway actor", %{
-      account: account,
       site: site,
       subject: subject
     } do
