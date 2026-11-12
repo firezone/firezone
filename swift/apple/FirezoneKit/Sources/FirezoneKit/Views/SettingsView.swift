@@ -65,7 +65,7 @@ public struct SettingsView: View {
       case .settings: return "Settings"
       case .deviceTrust: return "Device Trust"
       case .logs: return "Diagnostics"
-      case .developer: return "Developer Settings"
+      case .developer: return "Developer"
       }
     }
 
@@ -639,7 +639,7 @@ public struct SettingsView: View {
   @ViewBuilder
   private var developerSettingsSection: some View {
     #if os(iOS)
-      Section("Connlib") {
+      Section {
         Button("Reset connlib", action: resetConnlib)
           .disabled(store.vpnStatus != .connected)
       }
@@ -652,8 +652,6 @@ public struct SettingsView: View {
           Button("Reset", action: resetConnlib)
             .disabled(store.vpnStatus != .connected)
         }
-      } header: {
-        Text("Connlib")
       } footer: {
         HStack {
           Spacer()

@@ -91,9 +91,7 @@ test("hiding the developer settings removes their page and returns to About", as
       <App />
     </MemoryRouter>
   );
-  const developerSettingsLink = page.getByRole("link", {
-    name: "Developer Settings",
-  });
+  const developerSettingsLink = page.getByRole("link", { name: "Developer" });
   await expect.element(developerSettingsLink).toBeInTheDocument();
 
   await userEvent.click(

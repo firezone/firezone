@@ -106,9 +106,7 @@ export default function App() {
         <Route
           path="/developer-settings"
           element={
-            developerSettingsUnlocked ? (
-              <Titlebar title="Developer Settings" />
-            ) : null
+            developerSettingsUnlocked ? <Titlebar title="Developer" /> : null
           }
         />
         <Route
@@ -163,7 +161,7 @@ export default function App() {
                     icon="code"
                     href="/developer-settings"
                   >
-                    Developer Settings
+                    Developer
                   </ReactRouterSidebarItem>
                 </li>
               )}

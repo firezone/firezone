@@ -40,6 +40,8 @@ interface Screen {
   developerSettingsUnlocked?: boolean;
   // A field to type into and press Enter on, for a screen that shows a rejected value.
   input?: { label: string; value: string };
+  // The colour schemes to render, when not all of them.
+  colorSchemes?: readonly (typeof COLOR_SCHEMES)[number][];
 }
 
 const generalSettings: GeneralSettingsViewModel = {
@@ -225,6 +227,7 @@ const screens: Record<string, Screen> = {
   "developer-settings": {
     route: "/developer-settings",
     developerSettingsUnlocked: true,
+    colorSchemes: ["light"],
   },
 };
 
@@ -278,7 +281,7 @@ async function useColorScheme(colorScheme: (typeof COLOR_SCHEMES)[number]) {
 }
 
 for (const [name, screen] of Object.entries(screens)) {
-  for (const colorScheme of COLOR_SCHEMES) {
+  for (const colorScheme of screen.colorSchemes ?? COLOR_SCHEMES) {
     test(`${name}-${colorScheme}`, async () => {
       await useColorScheme(colorScheme);
 

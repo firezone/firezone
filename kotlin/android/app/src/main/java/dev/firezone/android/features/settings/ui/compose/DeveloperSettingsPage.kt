@@ -28,7 +28,7 @@ fun DeveloperSettingsPage(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        SettingsGroup(title = stringResource(R.string.developer_settings)) {
+        SettingsGroup {
             SettingsRow(
                 title = stringResource(R.string.reset_connlib),
                 action = Modifier.clickable(role = Role.Button, onClick = onResetConnlib),

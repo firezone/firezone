@@ -106,7 +106,7 @@ class SettingsScreenshotTest {
     fun developerSettings() =
         captureSettingsPage(
             "settings-developer",
-            R.string.developer_settings,
+            R.string.developer_settings_title,
             showDeveloperSettings = true,
         )
 

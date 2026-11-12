@@ -47,7 +47,7 @@ internal enum class SettingsPage(
     GENERAL(R.string.settings_title, FirezoneIcons.DiscoverTune),
     DEVICE_TRUST(R.string.device_trust_settings_title, FirezoneIcons.VerifiedUser),
     LOGS(R.string.diagnostics_settings_title, FirezoneIcons.Description),
-    DEVELOPER(R.string.developer_settings, FirezoneIcons.Settings),
+    DEVELOPER(R.string.developer_settings_title, FirezoneIcons.Settings),
 }
 
 /** The pages to show, in order. */

@@ -123,18 +123,16 @@
       }
     }
 
-    /// The Developer Settings tab, which only an unlocked app shows.
+    /// The Developer tab, which only an unlocked app shows, photographed in light only.
     func testDeveloperSettings() throws {
-      for appearance in Appearance.allCases {
-        let app = launchApp(
-          scenario: "connected", appearance: appearance, window: "settings",
-          unlockingDeveloperSettings: true)
-        defer { app.terminate() }
+      let app = launchApp(
+        scenario: "connected", appearance: .light, window: "settings",
+        unlockingDeveloperSettings: true)
+      defer { app.terminate() }
 
-        let window = try onlyWindow(of: app)
-        try selectTab("Developer Settings", showing: "Reset connlib", in: window)
-        capture(window, as: "settings-developer", in: appearance)
-      }
+      let window = try onlyWindow(of: app)
+      try selectTab("Developer", showing: "Reset connlib", in: window)
+      capture(window, as: "settings-developer", in: .light)
     }
 
     /// The About panel the menu's "About Firezone" opens, which names the commit the

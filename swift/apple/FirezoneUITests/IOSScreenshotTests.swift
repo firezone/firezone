@@ -219,14 +219,16 @@
       }
     }
 
-    /// The Developer Settings tab, which only an unlocked app shows.
+    /// The Developer tab, which only an unlocked app shows, photographed in light only.
     func testDeveloperSettings() throws {
       let appearance = try currentAppearance()
+      try XCTSkipIf(appearance != .light, "the Developer tab is photographed in light only")
+
       let app = launchApp(scenario: "connected", unlockingDeveloperSettings: true)
       defer { app.terminate() }
 
       try openSettings(in: app, on: "settings-developer")
-      try selectTab("Developer Settings", showing: "Reset connlib", in: app)
+      try selectTab("Developer", showing: "Reset connlib", in: app)
       deliver(app, as: "settings-developer", in: appearance)
     }
   }

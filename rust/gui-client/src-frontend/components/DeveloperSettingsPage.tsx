@@ -11,16 +11,13 @@ export default function DeveloperSettingsPage({ resetConnlib, hide }: Props) {
   return (
     <div className="page">
       <div className="space-y-3">
-        <section>
-          <h2 className="form-label">Connlib</h2>
-          <div className="panel divide-y divide-border">
-            <SettingRow label="Reset connlib">
-              <Button onClick={resetConnlib} type="button">
-                Reset
-              </Button>
-            </SettingRow>
-          </div>
-        </section>
+        <div className="panel divide-y divide-border">
+          <SettingRow label="Reset connlib">
+            <Button onClick={resetConnlib} type="button">
+              Reset
+            </Button>
+          </SettingRow>
+        </div>
 
         <div className="flex justify-end border-t border-border pt-3">
           <Button onClick={hide} type="button">
