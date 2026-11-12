@@ -1,8 +1,10 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
   alias Portal.{Banner, Billing, EmailSuppression, Mailer, SlugRegistry}
+  alias Portal.MXDomain
   alias Portal.Workers.{DeleteAccount, SyncStripeCustomer}
   alias Portal.Ops.AuthProviderNotices
+  require Logger
 
   @max_bcc_per_message 50
   @max_recipients_per_send_window 100
@@ -265,6 +267,54 @@ defmodule Portal.Ops do
 
   def clear_banner do
     Database.delete_all(Banner)
+  end
+
+  @doc """
+  Rates a mail server domain `:good` or `:bad`, replacing any earlier rating.
+
+  The domain covers every mail server under it, so `mail.tm` covers `in.mail.tm`.
+  Sign-ups whose mail servers fall under a `:bad` domain get no verification
+  email, so a bad domain needs a `note` saying why it was added. Only applies to
+  this region's database; run it in every region that should block the domain.
+
+      iex> add_mx_domain("mail.tm", :bad, "Disposable email service behind fldubai.com sign-ups")
+      {:ok, %Portal.MXDomain{domain: "mail.tm", rating: :bad, ...}}
+  """
+  @spec add_mx_domain(String.t(), MXDomain.rating(), String.t() | nil) ::
+          {:ok, MXDomain.t()} | {:error, Ecto.Changeset.t()}
+  def add_mx_domain(domain, rating, note \\ nil) do
+    result = Database.upsert_mx_domain(%{domain: domain, rating: rating, note: note})
+
+    with {:ok, mx_domain} <- result do
+      Logger.info("MX domain rated",
+        mx_domain: mx_domain.domain,
+        rating: mx_domain.rating,
+        note: mx_domain.note
+      )
+    end
+
+    result
+  end
+
+  @doc """
+  Removes a mail server domain's rating.
+  """
+  @spec remove_mx_domain(String.t()) :: {:ok, MXDomain.t()} | {:error, :not_found}
+  def remove_mx_domain(domain) do
+    domain = MXDomain.normalize_domain(domain)
+
+    with {:ok, mx_domain} <- Database.delete_mx_domain(domain) do
+      Logger.info("MX domain rating removed", mx_domain: mx_domain.domain, rating: mx_domain.rating)
+      {:ok, mx_domain}
+    end
+  end
+
+  @doc """
+  Lists rated mail server domains, optionally only those with the given rating.
+  """
+  @spec list_mx_domains(MXDomain.rating() | nil) :: [MXDomain.t()]
+  def list_mx_domains(rating \\ nil) when rating in [nil, :good, :bad] do
+    Database.list_mx_domains(rating)
   end
 
   def queue_admin_email(subject, html_body, plaintext_body) do
@@ -658,6 +708,7 @@ defmodule Portal.Ops do
   defmodule Database do
     import Ecto.Query
     alias Portal.{Account, Actor, ExternalIdentity, Safe}
+    alias Portal.MXDomain
     alias Portal.Workers.DeleteSubscription
 
     def delete_disabled_account(id) do
@@ -704,6 +755,34 @@ defmodule Portal.Ops do
       |> Safe.unscoped()
       |> Safe.delete()
     end
+
+    def upsert_mx_domain(attrs) do
+      %MXDomain{}
+      |> Ecto.Changeset.cast(attrs, [:domain, :rating, :note])
+      |> Safe.unscoped()
+      |> Safe.insert(
+        on_conflict: {:replace, [:rating, :note, :updated_at]},
+        conflict_target: :domain,
+        returning: true
+      )
+    end
+
+    def delete_mx_domain(domain) do
+      case from(d in MXDomain, where: d.domain == ^domain) |> Safe.unscoped() |> Safe.one() do
+        nil -> {:error, :not_found}
+        mx_domain -> mx_domain |> Safe.unscoped() |> Safe.delete()
+      end
+    end
+
+    def list_mx_domains(rating) do
+      from(d in MXDomain, order_by: [asc: d.rating, asc: d.domain])
+      |> filter_mx_rating(rating)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    defp filter_mx_rating(query, nil), do: query
+    defp filter_mx_rating(query, rating), do: where(query, [d], d.rating == ^rating)
 
     # Temporary selectors for the verified-organization rollout notices.
     @google_issuers ["https://accounts.google.com", "accounts.google.com"]
