@@ -182,11 +182,7 @@ defmodule Portal.Policies.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %{
-          property: :client_verified,
-          operator: :is,
-          values: ["true"]
-        },
+        %{property: :client_verified},
         %Device{type: :client, verified_at: verified_at},
         _auth_provider_id
       ) do
@@ -195,18 +191,6 @@ defmodule Portal.Policies.Evaluator do
     else
       {:ok, nil}
     end
-  end
-
-  def fetch_conformation_expiration(
-        %{
-          property: :client_verified,
-          operator: :is,
-          values: _other
-        },
-        %Device{type: :client},
-        _auth_provider_id
-      ) do
-    {:ok, nil}
   end
 
   def fetch_conformation_expiration(

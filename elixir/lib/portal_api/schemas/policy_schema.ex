@@ -26,8 +26,7 @@ defmodule PortalAPI.Schemas.Policy do
         `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a
         comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an
         IANA timezone name, e.g. `"M/09:00-17:00/America/New_York"`.
-      * `client_verified` with `is`: `values` is a single-element list
-        containing `"true"` or `"false"`.
+      * `client_verified` with `is`: `values` must be `["true"]`.
       """,
       type: :object,
       properties: %{
