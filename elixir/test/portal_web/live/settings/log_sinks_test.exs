@@ -86,6 +86,25 @@ defmodule PortalWeb.Settings.LogSinksTest do
     |> render_click()
   end
 
+  defp request_confirm(lv, action, sink_id) do
+    open_sink_actions(lv, sink_id)
+
+    lv
+    |> element(
+      "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{sink_id}']"
+    )
+    |> render_click()
+  end
+
+  defp has_sink_action_button?(html, action, sink_id) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find(
+      "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{sink_id}']"
+    )
+    |> Enum.any?()
+  end
+
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
       path = ~p"/#{account}/settings/log_sinks"
@@ -1278,7 +1297,8 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks")
 
-      open_sink_actions(lv, sink.id)
+      html = request_confirm(lv, "delete", sink.id)
+      assert html =~ "Delete this log sink?"
 
       lv
       |> element("button[phx-click='delete_sink'][phx-value-id='#{sink.id}']")
@@ -1297,7 +1317,8 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks")
 
-      open_sink_actions(lv, sink.id)
+      html = request_confirm(lv, "toggle", sink.id)
+      assert html =~ "Disable this log sink?"
 
       lv
       |> element("button[phx-click='toggle_sink'][phx-value-id='#{sink.id}']")
@@ -1307,7 +1328,8 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert updated.is_disabled
       assert updated.disabled_reason == "Disabled by admin"
 
-      open_sink_actions(lv, sink.id)
+      html = request_confirm(lv, "toggle", sink.id)
+      assert html =~ "Enable this log sink?"
 
       lv
       |> element("button[phx-click='toggle_sink'][phx-value-id='#{sink.id}']")
@@ -1339,8 +1361,52 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       html = open_sink_actions(lv, sink.id)
 
-      refute html =~ "toggle-sink-#{sink.id}"
-      assert html =~ "delete-sink-#{sink.id}"
+      refute has_sink_action_button?(html, "toggle", sink.id)
+      assert has_sink_action_button?(html, "delete", sink.id)
+    end
+
+    test "cancelling a confirmation keeps the sink", %{conn: conn, account: account, actor: actor} do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      for action <- ["delete", "toggle"] do
+        request_confirm(lv, action, sink.id)
+
+        html =
+          lv
+          |> element("button[phx-click='cancel_confirm']")
+          |> render_click()
+
+        refute html =~ "this log sink?"
+        assert html =~ sink.name
+      end
+
+      updated = reload_sink(sink)
+      refute updated.is_disabled
+    end
+
+    test "confirming one sink does not affect other rows", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = splunk_log_sink_fixture(account: account)
+      other = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      html = request_confirm(lv, "delete", sink.id)
+
+      assert has_element?(lv, "button[phx-click='delete_sink'][phx-value-id='#{sink.id}']")
+      refute has_element?(lv, "button[phx-click='delete_sink'][phx-value-id='#{other.id}']")
+      assert html =~ other.name
     end
 
     test "deliver now enqueues a sync job", %{conn: conn, account: account, actor: actor} do
