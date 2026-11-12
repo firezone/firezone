@@ -2,6 +2,23 @@
 
 Rules for all Rust code in this repository.
 
+## Principles
+
+Most of the rules below follow from a few principles.
+Where no rule fits, apply the principle.
+
+- Code should be understandable in isolation.
+  What a value means should be visible where it is defined, not only where it is checked.
+- Let the compiler catch bugs: what doesn't compile cannot fail at runtime.
+  A newtype enforces its invariant once, at construction, so it never has to be checked again.
+  An exhaustive match points at every place that needs to handle a new variant, whereas an `else` swallows it silently.
+- Keep public APIs narrow.
+  Changes to a module then stay contained and its concerns don't leak out.
+- Keep indentation low.
+  Every condition that has been checked and returned from is one less thing to keep in mind while reading on.
+- Test through public APIs so that the implementation can be refactored underneath.
+  A test that has to change together with the implementation can encode the same bug in both.
+
 ## Code style
 
 - Prefer a functional style (i.e. iterators) over imperative code, especially when you are expressing data transformations.
@@ -13,8 +30,8 @@ Rules for all Rust code in this repository.
 - Write one match-arm per distinct case, even if the bodies are identical or create slight duplication.
   Separate arms format better and are easier to read than combined `A | B` patterns or `matches!` guards.
 - Flatten nested conditions with match-arm guards instead of an `if` inside the arm, a `matches!` or a chain of `if let`s.
-- Match exhaustively on our own enums instead of using `if let`.
-  Adding a variant should produce a compile error in every place that needs to handle it.
+- Match exhaustively on our own enums instead of using `if let` or `if`-`else`.
+  Adding a variant should produce a compile error in every place that needs to handle it, not silently fall into the `else`.
 - Split a compound boolean condition into separate branches when the cases are actually different, even if that duplicates a line.
   There is less boolean logic to parse and each case can get its own log or error message.
 - Order functions within a module from high to low priority: Public API first, then sorted roughly in order of how they are called.
