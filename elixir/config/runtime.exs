@@ -710,10 +710,11 @@ if config_env() == :prod do
                port: env_var_to_config!(:phoenix_http_ops_port),
                http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
              ],
+             # The address people reach, used in links such as sign-up review emails.
              url: [
-               scheme: "http",
-               host: "localhost",
-               port: env_var_to_config!(:phoenix_http_ops_port),
+               scheme: if(ops_https == [], do: "http", else: "https"),
+               host: env_var_to_config!(:ops_websocket_origin),
+               port: env_var_to_config!(:ops_websocket_port),
                path: nil
              ],
              secret_key_base: env_var_to_config!(:ops_secret_key_base),
@@ -800,6 +801,9 @@ if config_env() == :prod do
 
   config :portal, Portal.Mailer.InternalEmail,
     recipient: env_var_to_config!(:feedback_email_recipient)
+
+  config :portal, Portal.Workers.SignUpReviewRequest,
+    approvers: env_var_to_config!(:sign_up_review_approvers)
 
   config :portal, Portal.Workers.SignUpFollowUp,
     from_email: env_var_to_config(:sign_up_follow_up_from_email),

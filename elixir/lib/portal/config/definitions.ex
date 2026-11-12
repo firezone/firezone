@@ -1146,6 +1146,19 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  Comma-separated email addresses that approve email sign-ups whose mail servers (MX
+  records) are not known. Each approver gets a personal approval link, and all of them
+  get a confirmation naming who approved. Sign-ups are never held for review
+  when this is empty.
+  """
+  defconfig(:sign_up_review_approvers, {:array, ",", :string},
+    default: [],
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_list(changeset, key, :string, &Portal.Changeset.validate_email/2)
+    end
+  )
+
+  @doc """
   Recipient address for posture provider interest and feedback emails.
   Interest registration and feedback are disabled when unset or blank.
   """

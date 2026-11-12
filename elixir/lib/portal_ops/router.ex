@@ -40,4 +40,11 @@ defmodule PortalOps.Router do
       metrics: Portal.Telemetry,
       live_socket_path: "/dashboard/live"
   end
+
+  # The personal approval link is the credential, so no basic auth.
+  scope "/", PortalOps do
+    pipe_through :browser
+    get "/sign_up_review", SignUpReviewController, :show
+    post "/sign_up_review", SignUpReviewController, :decide
+  end
 end
