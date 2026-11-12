@@ -17,6 +17,10 @@ Where no rule fits, apply the principle.
 - Give every fact one owner.
   A second copy, a second timer or a second computation of the same thing will eventually disagree with the first.
   The exception is performance: a copy that saves work on the per-packet path is fine if a benchmark shows the win and the copy is documented as a cache.
+- Size attracts attention, so make it proportional to what matters.
+  A long comment, a new abstraction or a large diff tells the reader that something important is happening before they can check.
+  If it isn't, they learn to skim, including the one comment that does encode a subtle invariant.
+  The goal is proportion, not minimalism: a real invariant earns a real comment.
 - Keep indentation low.
   Every condition that has been checked and returned from is one less thing to keep in mind while reading on.
 - Test through public APIs so that the implementation can be refactored underneath.
