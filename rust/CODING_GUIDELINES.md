@@ -129,6 +129,10 @@ Rules for all Rust code in this repository.
   Don't compute the expectation with the code under test.
 - Write one test per behaviour instead of one combined test.
   Share setup through fixtures and helpers that take what varies as a parameter.
+- Build the real value a dependency produces (e.g. a `tungstenite::Error::Http`) and feed it through the public input, instead of a look-alike type or a `#[cfg(test)]` setter on a production type.
+  A look-alike encodes your assumption about the dependency, which is what the test should check.
+- For a deterministic RNG, use a seeded `StdRng`.
+  Write your own only when the test depends on its exact output.
 - For connlib behaviour that only matters in the context of packet flow, extend the `tunnel` target of the [fuzzer](tests/fuzz) (a new `Transition`, sampling a new input) instead of writing unit tests that construct `ClientState` or `GatewayState`.
   Self-contained unit tests for small components and wire formats are fine.
 
