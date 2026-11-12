@@ -43,6 +43,14 @@ public struct NetworkSettings: Equatable, Sendable {
     // This enforces that Payload can only be created within this file (via NetworkSettings methods).
     fileprivate let searchDomain: String?
 
+    /// Every prefix the tunnel routes, as the destinations the application filter guards.
+    public var routeCidrs: [String] {
+      (routes4 + routes6).map { "\($0.address)/\($0.prefix)" }
+    }
+
+    /// The tunnel's DNS servers, which the application filter must not block.
+    public var dnsServerAddresses: [String] { dnsServers }
+
     /// Build NEPacketTunnelNetworkSettings from this payload.
     public func build() -> NEPacketTunnelNetworkSettings {
       // Set tunnel addresses and routes

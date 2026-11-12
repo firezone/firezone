@@ -10,6 +10,9 @@ members = [
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
+    "libs/app-filter",
+    "libs/app-filter-ebpf",
+    "libs/app-filter-ebpf-shared",
     "libs/async-runtime",
     "libs/atomicfs",
     "libs/backoff",
@@ -89,6 +92,8 @@ edition = "2024"
 admx-macro = { path = "gui-client/src-admx-macro" }
 afl = "0.18.2"
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
+app-filter = { path = "libs/app-filter" }
+app-filter-ebpf-shared = { path = "libs/app-filter-ebpf-shared" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
 async-runtime = { path = "libs/async-runtime" }
@@ -354,4 +359,7 @@ lto = "fat"
 codegen-units = 1
 
 [profile.release.package.ebpf-turn-router]
+debug = 2
+
+[profile.release.package.app-filter-ebpf]
 debug = 2

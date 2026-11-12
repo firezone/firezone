@@ -150,6 +150,11 @@ impl TunDeviceManager {
         })
     }
 
+    /// Linux identifies the tunnel by name, not by LUID.
+    pub fn luid(&self) -> Option<u64> {
+        None
+    }
+
     pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
         create_tun_device()?;
         let fd = open_tun()?;

@@ -6,6 +6,7 @@
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use anyhow::{Context as _, Result, anyhow};
+use app_filter::{Policy, ProtectedDestinations};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
@@ -149,6 +150,13 @@ struct Cli {
         hide = true
     )]
     additional_host_candidates: Vec<IpAddr>,
+
+    /// Comma-separated absolute paths of the only executables that may send traffic into the tunnel.
+    ///
+    /// Other programs keep their ordinary internet access unless the Internet Resource is active.
+    /// Unset means every program may use the tunnel.
+    #[arg(long, env = "FIREZONE_ALLOWED_APPLICATIONS")]
+    allowed_applications: Option<String>,
 
     /// A filesystem path where the token can be found
     // Apparently passing secrets through stdin is the most secure method, but
@@ -491,6 +499,10 @@ fn try_main() -> Result<()> {
         let tun = tun_device.make_tun()?;
         session.set_tun(tun);
 
+        let policy = Policy::from_mdm_value(cli.allowed_applications.as_deref());
+        let mut app_filter = app_filter::Enforcer::new(&policy)
+            .context("Failed to set up the application filter")?;
+
         let result = loop {
             let event = tokio::select! {
                 () = terminate.recv() => {
@@ -531,10 +543,15 @@ fn try_main() -> Result<()> {
                 client_shared::Event::TunInterfaceUpdated(config) => {
                     let tun_ip_stack = tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
                     dns_controller.set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain).await?;
-                    tun_device.set_routes(config.routes.into_iter().filter(|r| match r {
+                    let routes = config.routes.into_iter().filter(|r| match r {
                         IpNetwork::V4(_) => tun_ip_stack.supports_ipv4(),
                         IpNetwork::V6(_) => tun_ip_stack.supports_ipv6(),
-                    })).await?;
+                    }).collect::<Vec<_>>();
+                    tun_device.set_routes(routes.iter().copied()).await?;
+                    app_filter.apply(
+                        &ProtectedDestinations::new(routes, config.dns_by_sentinel.sentinel_ips()),
+                        &app_filter::Interface { luid: tun_device.luid() },
+                    )?;
 
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
                     // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>
@@ -557,6 +574,7 @@ fn try_main() -> Result<()> {
             }
         };
 
+        drop(app_filter);
         drop(session);
 
         // Drain the event-stream to allow the event-loop to gracefully shutdown.

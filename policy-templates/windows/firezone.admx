@@ -166,5 +166,20 @@
         <text id="supportURL" valueName="supportURL" required="true" />
       </elements>
     </policy>
+
+    <policy
+      name="allowedApplications"
+      class="Machine"
+      displayName="$(string.allowedApplications)"
+      explainText="$(string.allowedApplications_explain)"
+      key="Software\Policies\Firezone"
+      presentation="$(presentation.allowedApplications)"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_21" />
+      <elements>
+        <text id="allowedApplications" valueName="allowedApplications" required="true" />
+      </elements>
+    </policy>
   </policies>
 </policyDefinitions>

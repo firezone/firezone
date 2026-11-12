@@ -17,6 +17,10 @@ impl TunDeviceManager {
         bail!("Not implemented")
     }
 
+    pub fn luid(&self) -> Option<u64> {
+        None
+    }
+
     #[expect(
         clippy::unused_async,
         reason = "Signture must match other operating systems"

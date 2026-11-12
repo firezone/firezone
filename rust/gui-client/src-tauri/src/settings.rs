@@ -45,6 +45,8 @@ pub struct MdmSettings {
     pub start_on_login: Option<bool>,
     pub check_for_updates: Option<bool>,
     pub support_url: Option<Url>,
+    /// Comma-separated application identifiers that may use the tunnel; unset means every application may.
+    pub allowed_applications: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

@@ -33,6 +33,7 @@ public enum ConfigurationDefaults {
   public static let disableUpdateCheck = false
   public static let internetResourceEnabled = false
   public static let additionalHostCandidates = ""
+  public static let allowedApplications = ""
 }
 
 @MainActor
@@ -58,6 +59,7 @@ public class Configuration: ObservableObject {
     public static let startOnLogin = "startOnLogin"
     public static let disableUpdateCheck = "disableUpdateCheck"
     public static let supportURL = "supportURL"
+    public static let allowedApplications = "allowedApplications"
     public static let userDefaultsMigrated = "userDefaultsMigrated"
     static let lastCustomAuthURL = "lastCustomAuthURL"
     static let lastCustomApiURL = "lastCustomApiURL"
@@ -99,13 +101,14 @@ public class Configuration: ObservableObject {
       key: Keys.internetResourceEnabled, default: ConfigurationDefaults.internetResourceEnabled),
     .string(
       key: Keys.additionalHostCandidates, default: ConfigurationDefaults.additionalHostCandidates),
+    .string(key: Keys.allowedApplications, default: ConfigurationDefaults.allowedApplications),
   ]
 
   // Subset of provider entries whose MDM forced values are cached in
   // providerConfiguration as "forced.<key>" so the network extension can apply
   // them at tunnel start without having to contact the GUI.
   nonisolated static let forwardedForcedKeys: Set<String> = [
-    Keys.apiURL, Keys.logFilter, Keys.accountSlug,
+    Keys.apiURL, Keys.logFilter, Keys.accountSlug, Keys.allowedApplications,
   ]
 
   private var cancellables = Set<AnyCancellable>()
@@ -190,6 +193,14 @@ public class Configuration: ObservableObject {
     set {
       setProviderValue(newValue.joined(separator: ","), forKey: Keys.additionalHostCandidates)
     }
+  }
+
+  /// Comma-separated signing identifiers of the only apps that may use the tunnel; blank means every app may.
+  var allowedApplications: String {
+    effectiveString(Keys.allowedApplications, default: ConfigurationDefaults.allowedApplications)
+  }
+  var isApplicationFilterEnabled: Bool {
+    !AppFilterPolicy.parseAllowedApps(allowedApplications).isEmpty
   }
 
   /// The URLs last saved with the Custom control plane picked, so that picking Custom again brings them

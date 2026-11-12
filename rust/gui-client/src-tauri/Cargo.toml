@@ -13,6 +13,7 @@ enum_representation = "discriminated"
 
 [dependencies]
 anyhow = { workspace = true }
+app-filter = { workspace = true }
 arboard = { workspace = true }
 async-runtime = { workspace = true }
 backoff = { workspace = true }
