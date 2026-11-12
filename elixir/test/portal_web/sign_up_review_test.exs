@@ -204,10 +204,12 @@ defmodule PortalWeb.SignUpReviewTest do
       refute conn.resp_body =~ "Review sign-up"
     end
 
-    test "needs the ops credentials", %{conn: conn} do
+    test "needs no ops credentials", %{conn: conn} do
       hold_sign_up(conn)
+
       conn = dispatch(build_conn(), PortalOps.Endpoint, :get, "/sign_up_review", %{"token" => token("alice@firezone.dev")})
-      assert conn.status == 401
+
+      assert html_response(conn, 200) =~ "Review sign-up"
     end
 
     test "approve and allow adds the selected domains, creates the account and tells all approvers",
@@ -382,12 +384,7 @@ defmodule PortalWeb.SignUpReviewTest do
   end
 
   defp ops(method, params) do
-    username = Application.fetch_env!(:portal, :ops_admin_username)
-    password = Application.fetch_env!(:portal, :ops_admin_password)
-
-    build_conn()
-    |> put_req_header("authorization", "Basic " <> Base.encode64("#{username}:#{password}"))
-    |> dispatch(PortalOps.Endpoint, method, "/sign_up_review", params)
+    dispatch(build_conn(), PortalOps.Endpoint, method, "/sign_up_review", params)
   end
 
   defp verify(conn, email) do

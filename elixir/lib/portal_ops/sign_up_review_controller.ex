@@ -1,7 +1,8 @@
 defmodule PortalOps.SignUpReviewController do
   @moduledoc """
   The review page for email sign-ups held by `PortalWeb.SignUpReview`. It is only on the
-  ops endpoint, so approvers must reach the ops hostname to use their links.
+  ops endpoint, so approvers must reach the ops hostname to use their links. It has no
+  basic auth: the personal, encrypted link is the credential.
 
   Opening the page changes nothing, so mail scanners that open links cannot act. The
   approver approves or denies the sign-up, and can add the selected mail server domains
