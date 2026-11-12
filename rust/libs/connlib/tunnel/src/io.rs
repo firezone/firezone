@@ -324,6 +324,10 @@ impl Io {
         self.sockets.listen_port()
     }
 
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        self.sockets.set_force_relayed_connections(enabled);
+    }
+
     pub fn reset(&mut self) {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();

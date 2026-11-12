@@ -310,6 +310,30 @@ async fn send_errors_do_not_hold_up_later_datagrams() {
 }
 
 #[tokio::test]
+async fn forced_relayed_connections_drop_direct_datagrams_across_rebinds() {
+    let peer = tokio::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))
+        .await
+        .unwrap();
+    let peer_addr = peer.local_addr().unwrap();
+    let mut io = Io::real();
+
+    io.set_force_relayed_connections(true);
+    io.sockets.rebind();
+    io.send_network(snownet::Transmit {
+        src: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)),
+        ..transmit(peer_addr, 8)
+    });
+    io.send_network(transmit(peer_addr, 4));
+    poll_fn(|cx| io.flush(cx)).await.unwrap();
+
+    let (len, _) = tokio::time::timeout(Duration::from_secs(5), peer.recv_from(&mut [0; 16]))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(len, 4);
+}
+
+#[tokio::test]
 async fn rebind_dns_clears_all_servers_on_failure() {
     let _guard = logging::test("debug");
 

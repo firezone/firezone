@@ -139,6 +139,13 @@ impl Session {
         let _ = self.channel.send(Command::SetAdditionalHostCandidates(ips));
     }
 
+    /// Forces all connections of this [`Session`] through a relay while `enabled`.
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        let _ = self
+            .channel
+            .send(Command::SetForceRelayedConnections(enabled));
+    }
+
     /// Sets a new [`Tun`] device handle.
     pub fn set_tun(&self, new_tun: Box<dyn Tun>) {
         let _ = self.channel.send(Command::SetTun(new_tun));

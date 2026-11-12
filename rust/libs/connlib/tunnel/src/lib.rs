@@ -320,6 +320,11 @@ impl ClientTunnel {
             .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
     }
 
+    /// Drops every datagram sent directly to a peer while `enabled`, forcing connections through a relay.
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        self.io.set_force_relayed_connections(enabled);
+    }
+
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
         let resolvers = self.role_state.update_system_resolvers(resolvers);
         self.io
