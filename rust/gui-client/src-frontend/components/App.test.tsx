@@ -96,7 +96,9 @@ test("hiding the developer settings removes their page and returns to About", as
   });
   await expect.element(developerSettingsLink).toBeInTheDocument();
 
-  await userEvent.click(page.getByRole("button", { name: "Hide" }));
+  await userEvent.click(
+    page.getByRole("button", { name: "Hide Developer Settings" })
+  );
 
   await expect
     .element(page.getByRole("button", { name: "Firezone Logo" }))
