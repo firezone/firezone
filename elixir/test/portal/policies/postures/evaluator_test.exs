@@ -232,6 +232,23 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       assert pass?("device_name", "does_not_match", "^desk", device_name: "Laptop-01")
       refute pass?("device_name", "does_not_match", "^lap", device_name: "Laptop-01")
     end
+
+    test "regexes ignore case in the pattern" do
+      assert pass?("device_name", "matches", "^KIOSK-", device_name: "KIOSK-01")
+      assert pass?("device_name", "matches", "^Kiosk-", device_name: "kiosk-01")
+      assert pass?("device_name", "matches", "^ÉCRAN", device_name: "écran-01")
+      refute pass?("device_name", "does_not_match", "^KIOSK-", device_name: "KIOSK-01")
+      refute pass?("device_name", "does_not_match", "^KIOSK-", device_name: "kiosk-01")
+      assert pass?("device_name", "does_not_match", "^KIOSK-", device_name: "Laptop-01")
+    end
+
+    test "a regex that exceeds its backtracking budget fails both operators" do
+      pattern = "^(a+)+$"
+      value = String.duplicate("a", 40) <> "b"
+
+      refute pass?("device_name", "matches", pattern, device_name: value)
+      refute pass?("device_name", "does_not_match", pattern, device_name: value)
+    end
   end
 
   describe "evaluate/3 booleans and numbers" do

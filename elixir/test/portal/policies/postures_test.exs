@@ -399,10 +399,13 @@ defmodule Portal.Policies.PosturesTest do
       assert Postures.compare_versions([1, 10], [1, 9]) == :gt
     end
 
-    test "safe_match?/2 matches, misses, and gives up on a pathological pattern" do
-      assert Postures.safe_match?("^comp", "compliant")
-      refute Postures.safe_match?("^comp", "noncompliant")
-      refute Postures.safe_match?("^(a+)+$", String.duplicate("a", 40) <> "b")
+    test "regex_match/2 matches, misses, ignores case, and errors when it cannot finish" do
+      assert Postures.regex_match("^comp", "compliant") == :match
+      assert Postures.regex_match("^COMP", "compliant") == :match
+      assert Postures.regex_match("^comp", "noncompliant") == :nomatch
+      assert Postures.regex_match("^(a+)+$", String.duplicate("a", 40) <> "b") == :error
+      assert Postures.regex_match("(", "compliant") == :error
+      assert Postures.regex_match("^comp", <<0xFF, 0xFE>>) == :error
     end
   end
 end
