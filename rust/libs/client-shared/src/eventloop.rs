@@ -74,7 +74,6 @@ pub struct Eventloop {
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     logged_permission_denied: bool,
-    logged_routing_loop: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
 }
@@ -221,7 +220,6 @@ impl Eventloop {
             local_flow_logs,
             cmd_rx,
             logged_permission_denied: false,
-            logged_routing_loop: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
             portal_event_rx,
             portal_cmd_tx,
@@ -545,15 +543,6 @@ impl Eventloop {
 
             if let Some(e) = e.any_downcast_ref::<tunnel::UnroutablePacket>() {
                 tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
-
-                if e.reason() == RoutingError::RoutingLoop
-                    && !mem::replace(&mut self.logged_routing_loop, true)
-                {
-                    tracing::warn!(
-                        "Routing loop: dropped our own UDP datagram read from the TUN device"
-                    );
-                }
-
                 continue;
             }
 
