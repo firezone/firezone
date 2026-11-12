@@ -125,6 +125,7 @@ defmodule PortalAPI.Client.DeviceTrust do
           last_attested_cert_serial: String.t(),
           last_attested_cert_fingerprint: String.t(),
           last_attested_cert_issuer: binary(),
+          not_after: DateTime.t(),
           device: Portal.Device.t() | nil,
           matched_on: :mdm_device_id | :cert_identity | nil
         }
@@ -206,11 +207,7 @@ defmodule PortalAPI.Client.DeviceTrust do
          :ok <- ensure_account_enabled(account),
          {:ok, auth_provider} <- ensure_x509_authentication_enabled(auth_provider),
          {:ok, actor} <- Database.fetch_x509_actor(account, identity),
-         %DateTime{} = certificate_expires_at <- X509.not_after(leaf),
-         expires_at = %{
-           certificate_expires_at
-           | microsecond: {elem(certificate_expires_at.microsecond, 0), 6}
-         },
+         %DateTime{} = expires_at <- not_after(leaf),
          subject = %Subject{
            account: account,
            actor: actor,
@@ -311,6 +308,7 @@ defmodule PortalAPI.Client.DeviceTrust do
          last_attested_cert_serial: serial,
          last_attested_cert_fingerprint: sha256_hex(der),
          last_attested_cert_issuer: issuer,
+         not_after: not_after(leaf),
          device: state.device,
          matched_on: state.matched_on
        }}
@@ -608,6 +606,13 @@ defmodule PortalAPI.Client.DeviceTrust do
       )
 
       {:error, :malformed_cert_serial}
+    end
+  end
+
+  defp not_after(leaf) do
+    case X509.not_after(leaf) do
+      %DateTime{} = not_after -> %{not_after | microsecond: {elem(not_after.microsecond, 0), 6}}
+      nil -> nil
     end
   end
 

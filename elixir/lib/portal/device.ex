@@ -42,6 +42,7 @@ defmodule Portal.Device do
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
           attested?: boolean(),
+          attested_until: DateTime.t() | nil,
           firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
           last_seen_user_agent: String.t() | nil,
@@ -147,6 +148,9 @@ defmodule Portal.Device do
     # point-in-time history. Policy conditions read this, so it must describe
     # the session being evaluated and never the device's past.
     field :attested?, :boolean, virtual: true, default: false
+
+    # When the certificate that attested THIS connection expires.
+    field :attested_until, :utc_datetime_usec, virtual: true
 
     # Posture provider rows matched to this device, by provider type. Live
     # connection state loaded at connect, read by policy postures.

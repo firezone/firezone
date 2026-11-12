@@ -6,6 +6,7 @@ defmodule PortalAPI.Client.ChannelTest do
   alias Portal.Fixture
   alias Portal.Presence
   alias Portal.{PG, PubSub}
+  alias Portal.Replication.Decoder.Messages.Begin
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -57,6 +58,7 @@ defmodule PortalAPI.Client.ChannelTest do
         last_seen_version: client_version,
         last_seen_at: DateTime.utc_now(),
         attested?: Keyword.get(opts, :attested?, false),
+        attested_until: Keyword.get_lazy(opts, :attested_until, fn -> attested_until(opts) end),
         posture: Keyword.get(opts, :posture, %{})
     }
 
@@ -73,6 +75,12 @@ defmodule PortalAPI.Client.ChannelTest do
       |> subscribe_and_join(channel, "client")
 
     socket
+  end
+
+  defp attested_until(opts) do
+    if Keyword.get(opts, :attested?, false) do
+      DateTime.add(DateTime.utc_now(), 1, :hour)
+    end
   end
 
   # Mirrors what Portal.Changes.Hooks.Devices builds from a WAL row: the
@@ -530,6 +538,7 @@ defmodule PortalAPI.Client.ChannelTest do
       Portal.Changes.Hooks.DeviceTokens.on_delete(lsn, data)
 
       assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
@@ -858,8 +867,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     disconnected_ids: [relay1_id],
                     connected: [relay_view1, relay_view2]
-                  },
-                  100
+                  }
 
       assert relay1_id == relay1.id
       assert relay_view1.id == relay2.id
@@ -915,8 +923,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     disconnected_ids: [],
                     connected: [relay_view, _relay_view]
-                  },
-                  100
+                  }
 
       assert %{
                addr: _,
@@ -934,8 +941,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     disconnected_ids: [],
                     connected: connected
-                  },
-                  100
+                  }
 
       # Both relays should be in the connected list
       relay_ids = Enum.map(connected, & &1.id) |> Enum.uniq()
@@ -978,8 +984,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     disconnected_ids: [relay1_id],
                     connected: []
-                  },
-                  100
+                  }
 
       assert relay1_id == relay1.id
     end
@@ -1134,6 +1139,7 @@ defmodule PortalAPI.Client.ChannelTest do
       PG.deliver(client.id, :disconnect)
 
       assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive :socket_drain
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
@@ -1591,14 +1597,10 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      # Use a non-zero debounce to prevent race condition where the 0ms debounce
-      # timer fires before the test process has called connect() after disconnect()
-      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
-
       # Connect relay BEFORE client joins so it's included in init
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
-      join_channel(client, subject)
+      socket = join_channel(client, subject)
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
@@ -1606,8 +1608,10 @@ defmodule PortalAPI.Client.ChannelTest do
 
       # Disconnect and immediately reconnect with same relay (same id)
       # The CRDT state will show the relay as online when we check Presence.list()
-      Portal.Presence.Relays.disconnect(relay1)
-      :ok = Portal.Presence.Relays.connect(relay1)
+      while_suspended(socket.channel_pid, fn ->
+        Portal.Presence.Relays.disconnect(relay1)
+        :ok = Portal.Presence.Relays.connect(relay1)
+      end)
 
       # Should not receive any disconnect since relay is still online with same id
       relay_id = relay1.id
@@ -1623,30 +1627,28 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      # Use a non-zero debounce so both disconnect and reconnect presence_diff events
-      # are captured in the same window and delivered as one combined message.
-      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
-
       # Connect relay BEFORE client joins so it's included in init
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
-      join_channel(client, subject)
+      socket = join_channel(client, subject)
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
       # Disconnect and connect a new relay (different id)
-      Portal.Presence.Relays.disconnect(relay1)
-      relay2 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 =
+        while_suspended(socket.channel_pid, fn ->
+          Portal.Presence.Relays.disconnect(relay1)
+          connect_relay(%{lat: 37.0, lon: -120.0})
+        end)
 
       # Should receive disconnect for old relay and connect for new relay
       assert_push "relays_presence",
                   %{
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: [relay_id]
-                  },
-                  100
+                  }
 
       assert relay_view1.id == relay2.id
       assert relay_view2.id == relay2.id
@@ -1673,8 +1675,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     connected: [],
                     disconnected_ids: [relay_id]
-                  },
-                  100
+                  }
 
       assert relay_id == relay1.id
     end
@@ -1693,8 +1694,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: []
-                  },
-                  100
+                  }
 
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
@@ -1707,8 +1707,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     connected: [],
                     disconnected_ids: [relay1_id]
-                  },
-                  100
+                  }
 
       assert relay1_id == relay1.id
 
@@ -1719,8 +1718,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: []
-                  },
-                  100
+                  }
 
       assert relay2.id == relay_view1.id
       assert relay2.id == relay_view2.id
@@ -1933,7 +1931,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Set debounce to 10ms so the test is fast but we can still observe coalescing
       Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
 
-      join_channel(client, subject)
+      socket = join_channel(client, subject)
 
       assert_push "init", %{relays: []}
 
@@ -1943,14 +1941,16 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Portal.Presence.Relays.connect(relay)
 
       # Should receive exactly one relays_presence after debounce period
-      assert_push "relays_presence", %{connected: [_, _], disconnected_ids: []}, 200
+      assert_push "relays_presence", %{connected: [_, _], disconnected_ids: []}
 
       # Rapidly disconnect and reconnect the relay multiple times
       # Each triggers a presence_diff, but they should be coalesced
-      for _ <- 1..3 do
-        Portal.Presence.Relays.disconnect(relay)
-        :ok = Portal.Presence.Relays.connect(relay)
-      end
+      while_suspended(socket.channel_pid, fn ->
+        for _ <- 1..3 do
+          Portal.Presence.Relays.disconnect(relay)
+          :ok = Portal.Presence.Relays.connect(relay)
+        end
+      end)
 
       # After debounce, should receive exactly one update reflecting final state
       # Since the relay is online with the same stamp_secret, no disconnects should be reported
@@ -2006,6 +2006,41 @@ defmodule PortalAPI.Client.ChannelTest do
       send(socket.channel_pid, %Changes.Change{lsn: 50})
 
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
+    end
+
+    test "applies a transaction that committed after a later-written one", %{
+      account: account,
+      client: client,
+      subject: subject,
+      membership: membership,
+      dns_resource: dns_resource
+    } do
+      join_channel(client, subject)
+      assert_push "init", _init_payload
+      Repo.delete!(membership)
+      other_group = group_fixture(account: account)
+      dns_resource_id = dns_resource.id
+
+      state =
+        %{}
+        |> Changes.Consumer.init_state()
+        |> Changes.Consumer.on_begin(%Begin{final_lsn: {1, 300}})
+        |> Changes.Consumer.on_write(200, :insert, "groups", nil, %{
+          "id" => other_group.id,
+          "account_id" => account.id,
+          "name" => other_group.name
+        })
+
+      state
+      |> Changes.Consumer.on_begin(%Begin{final_lsn: {1, 400}})
+      |> Changes.Consumer.on_write(100, :delete, "memberships", %{
+        "id" => membership.id,
+        "account_id" => membership.account_id,
+        "actor_id" => membership.actor_id,
+        "group_id" => membership.group_id
+      }, nil)
+
+      assert_push "resource_deleted", ^dns_resource_id
     end
 
     test "for account updates the subject in the socket", %{
@@ -2451,6 +2486,39 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "resource_deleted", _payload
     end
 
+    test "for policies requiring attestation drops resources once the certificate expires", %{
+      client: client,
+      actor: actor,
+      account: account,
+      subject: subject
+    } do
+      group = group_fixture(account: account)
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
+
+      trust_anchor_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      socket = join_channel(client, subject, attested?: true)
+      assert_push "init", %{resources: resources}
+      assert Enum.any?(resources, &(&1.id == resource.id))
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        client = %{state.assigns.client | attested_until: DateTime.add(DateTime.utc_now(), -1, :second)}
+        %{state | assigns: %{state.assigns | client: client}}
+      end)
+
+      send(socket.channel_pid, :recompute_authorized_resources)
+
+      assert_push "resource_deleted", resource_id
+      assert resource_id == resource.id
+
+      assert %{assigns: %{client: updated}} = :sys.get_state(socket.channel_pid)
+      refute updated.attested?
+      assert updated.attested_until == nil
+    end
+
     test "for client address updates resends init with the new tunnel IPs", %{
       client: client,
       subject: subject,
@@ -2529,7 +2597,8 @@ defmodule PortalAPI.Client.ChannelTest do
         old_struct: client
       })
 
-      assert_receive {:EXIT, _pid, _reason}
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
     end
 
     test "for sites pushes resource_created_or_updated for name changes", %{
@@ -2642,6 +2711,34 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "resource_created_or_updated", payload
 
       assert payload.id == resource.id
+    end
+
+    test "for disabled policy inserts keeps the resource out of the client", %{
+      client: client,
+      subject: subject,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+      resource = resource_fixture(account: account)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      policy = disabled_policy_fixture(%{account: account, group: group, resource: resource})
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: policy})
+
+      refute_push "resource_created_or_updated", _payload
+
+      state = :sys.get_state(socket.channel_pid)
+      refute Map.has_key?(state.assigns.cache.policies, Ecto.UUID.dump!(policy.id))
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+
+      resource_id = resource.id
+      assert_push "flow_creation_failed", %{reason: :not_found, resource_id: ^resource_id}
     end
 
     test "for breaking policy updates sends resource_deleted followed by resource_created_or_updated",
@@ -3963,6 +4060,37 @@ defmodule PortalAPI.Client.ChannelTest do
       assert received_resource.id == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
+    end
+
+    test "ends the authorization when the attesting certificate expires", %{
+      account: account,
+      group: group,
+      site: site,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
+      trust_anchor_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+
+      attested_until = DateTime.add(DateTime.utc_now(), 10, :second)
+      socket = join_channel(client, subject, attested?: true, attested_until: attested_until)
+      assert_push "init", _init_payload
+
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
+      assert payload.resource.id == resource.id
+      assert payload.authorization_expires_at == attested_until
+      assert DateTime.compare(attested_until, socket.assigns.subject.expires_at) == :lt
     end
 
     # End-to-end ordering test for the gateway create_flow path. The invariant
@@ -9850,5 +9978,15 @@ defmodule PortalAPI.Client.ChannelTest do
       resource_id: Ecto.UUID.generate(),
       expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
     }
+  end
+
+  defp while_suspended(pid, fun) do
+    :sys.suspend(pid)
+
+    try do
+      fun.()
+    after
+      :sys.resume(pid)
+    end
   end
 end

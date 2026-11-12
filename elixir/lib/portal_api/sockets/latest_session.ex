@@ -193,11 +193,6 @@ defmodule PortalAPI.Sockets.LatestSession do
       last_attested_cert_serial: :string
     }
 
-    @token_schemas %{
-      client_token_id: Portal.DeviceToken,
-      gateway_token_id: Portal.DeviceToken
-    }
-
     def missing_token_ids(entries, token_field) do
       probe_rows =
         entries
@@ -207,8 +202,7 @@ defmodule PortalAPI.Sockets.LatestSession do
         |> Enum.reject(&is_nil(&1.token_id))
         |> Enum.uniq()
 
-      schema = Map.fetch!(@token_schemas, token_field)
-      existing = existing_token_ids(schema, probe_rows)
+      existing = existing_token_ids(probe_rows)
 
       probe_rows
       |> Enum.map(& &1.token_id)
@@ -216,10 +210,10 @@ defmodule PortalAPI.Sockets.LatestSession do
       |> MapSet.new()
     end
 
-    defp existing_token_ids(_schema, []), do: MapSet.new()
+    defp existing_token_ids([]), do: MapSet.new()
 
-    defp existing_token_ids(schema, probe_rows) do
-      from(t in schema,
+    defp existing_token_ids(probe_rows) do
+      from(t in Portal.DeviceToken,
         join: v in values(probe_rows, @token_probe_types),
         on: t.account_id == v.account_id and t.id == v.token_id,
         select: t.id

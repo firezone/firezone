@@ -49,7 +49,7 @@ defmodule Portal.Ops.RegionTransferTest do
 
           refute Enum.any?(
                    manifest["tables"],
-                   &(&1["name"] in ~w(client_tokens device_tokens log_sink_cursors pending_identities portal_sessions api_request_logs))
+                   &(&1["name"] in ~w(device_tokens log_sink_cursors pending_identities portal_sessions api_request_logs))
                  )
         end)
 

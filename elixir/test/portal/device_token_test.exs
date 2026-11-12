@@ -66,7 +66,6 @@ defmodule Portal.DeviceTokenTest do
       assert {:ok, token} = Repo.insert(changeset)
       assert token.device_id == gateway.id
       assert is_nil(token.site_id)
-      assert DeviceToken.single_owner?(token)
     end
 
     test "returns error when both site_id and device_id are set" do

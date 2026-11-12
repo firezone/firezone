@@ -665,7 +665,12 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete_session", %{"id" => session_id}, socket) do
-    session = Database.get_portal_session_by_id(session_id, socket.assigns.subject)
+    session =
+      Database.get_portal_session_by_id(
+        session_id,
+        socket.assigns.selected_actor.id,
+        socket.assigns.subject
+      )
 
     if session do
       :ok =
@@ -701,7 +706,11 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete_identity", %{"id" => identity_id}, socket) do
-    case Database.get_identity_by_id(identity_id, socket.assigns.subject) do
+    case Database.get_identity_by_id(
+           identity_id,
+           socket.assigns.selected_actor.id,
+           socket.assigns.subject
+         ) do
       nil ->
         {:noreply, put_flash(socket, :error, "Identity not found")}
 
@@ -1605,9 +1614,9 @@ defmodule PortalWeb.Actors do
       end)
     end
 
-    def get_identity_by_id(identity_id, subject) do
+    def get_identity_by_id(identity_id, actor_id, subject) do
       from(i in ExternalIdentity, as: :identities)
-      |> where([identities: i], i.id == ^identity_id)
+      |> where([identities: i], i.id == ^identity_id and i.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.one()
     end
@@ -1665,9 +1674,9 @@ defmodule PortalWeb.Actors do
       |> Presence.PortalSessions.preload_portal_sessions_presence()
     end
 
-    def get_portal_session_by_id(session_id, subject) do
+    def get_portal_session_by_id(session_id, actor_id, subject) do
       from(ps in PortalSession, as: :portal_sessions)
-      |> where([portal_sessions: ps], ps.id == ^session_id)
+      |> where([portal_sessions: ps], ps.id == ^session_id and ps.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.one()
     end

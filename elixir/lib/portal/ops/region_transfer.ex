@@ -34,7 +34,7 @@ defmodule Portal.Ops.RegionTransfer do
   # cursors into logs that stay here (the destination seeds new ones), and the
   # log tables, which are deleted with the account in the source region.
   # Nullable foreign keys from moved tables to these are exported as NULL.
-  @skipped_tables ~w(api_request_logs change_logs client_tokens device_tokens feedback_submissions flow_logs log_sink_cursors oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes pending_identities policy_authorizations portal_sessions session_logs)
+  @skipped_tables ~w(api_request_logs change_logs device_tokens feedback_submissions flow_logs log_sink_cursors oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes pending_identities policy_authorizations portal_sessions session_logs)
 
   @doc "Disables the account and uploads it to the other region."
   def export(account_id, opts \\ []) do

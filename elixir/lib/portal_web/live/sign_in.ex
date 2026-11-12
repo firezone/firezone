@@ -20,13 +20,13 @@ defmodule PortalWeb.SignIn do
   end
 
   # The pending OAuth request rides through sign-in as redirect_to, so the app
-  # being connected can be named here. Read from the cache only: this page
-  # renders before the request has been validated, so it must not fetch.
+  # being connected can be named here. Nothing is stored before sign-in.
   defp connecting_client(%{"redirect_to" => redirect_to}) when is_binary(redirect_to) do
     with %URI{path: path, query: query} when is_binary(query) <- URI.parse(redirect_to),
          true <- String.ends_with?(path || "", "/oauth/authorize"),
-         %{"client_id" => client_id} <- URI.decode_query(query) do
-      Portal.OAuth.cached_client(client_id)
+         %{"client_id" => client_id} <- URI.decode_query(query),
+         {:ok, client} <- Portal.OAuth.ClientMetadata.fetch(client_id) do
+      client
     else
       _other -> nil
     end
