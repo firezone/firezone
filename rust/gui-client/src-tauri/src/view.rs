@@ -10,8 +10,8 @@ use crate::{
     gui::Managed,
     logging::FileCount,
     settings::{
-        self, AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettings,
-        GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettings, GeneralSettings,
+        GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
     },
 };
 use url::Url;
@@ -157,6 +157,9 @@ pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogFilterChanged(pub LogFilterViewModel);
+
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct DeveloperSettingsChanged(pub DeveloperSettings);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
@@ -393,16 +396,13 @@ pub async fn reset_connlib(managed: tauri::State<'_, Managed>) -> Result<(), Err
 
 #[tauri::command]
 #[specta::specta]
-pub async fn load_developer_settings() -> DeveloperSettings {
-    settings::load_developer_settings()
-        .await
-        .unwrap_or_default()
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn save_developer_settings(developer_settings: DeveloperSettings) -> Result<(), Error> {
-    settings::save_developer(developer_settings).await?;
+pub async fn set_developer_settings_unlocked(
+    managed: tauri::State<'_, Managed>,
+    unlocked: bool,
+) -> Result<(), Error> {
+    managed
+        .send_request(ControllerRequest::SetDeveloperSettingsUnlocked(unlocked))
+        .await?;
 
     Ok(())
 }
@@ -426,6 +426,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             SessionChanged,
             GeneralSettingsChanged,
             LogFilterChanged,
+            DeveloperSettingsChanged,
             LogsRecounted,
             X509CertificateChanged,
         ])
@@ -439,8 +440,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             sign_out,
             update_state,
             reset_connlib,
-            load_developer_settings,
-            save_developer_settings,
+            set_developer_settings_unlocked,
         ])
         .typ::<Error>()
 }

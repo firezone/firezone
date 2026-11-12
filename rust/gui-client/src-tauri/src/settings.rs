@@ -401,8 +401,8 @@ pub fn load_general_settings() -> Result<GeneralSettings> {
     Ok(settings)
 }
 
-pub async fn load_developer_settings() -> Result<DeveloperSettings> {
-    let text = tokio::fs::read_to_string(developer_settings_path()?).await?;
+pub fn load_developer_settings() -> Result<DeveloperSettings> {
+    let text = std::fs::read_to_string(developer_settings_path()?)?;
     let settings = serde_json::from_str(&text)?;
 
     Ok(settings)

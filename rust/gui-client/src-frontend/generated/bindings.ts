@@ -80,12 +80,9 @@ async resetConnlib() : Promise<Result<null, Error>> {
     else return { status: "error", error: e  as any };
 }
 },
-async loadDeveloperSettings() : Promise<DeveloperSettings> {
-    return await TAURI_INVOKE("load_developer_settings");
-},
-async saveDeveloperSettings(developerSettings: DeveloperSettings) : Promise<Result<null, Error>> {
+async setDeveloperSettingsUnlocked(unlocked: boolean) : Promise<Result<null, Error>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("save_developer_settings", { developerSettings }) };
+    return { status: "ok", data: await TAURI_INVOKE("set_developer_settings_unlocked", { unlocked }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -97,12 +94,14 @@ async saveDeveloperSettings(developerSettings: DeveloperSettings) : Promise<Resu
 
 
 export const events = __makeEvents__<{
+developerSettingsChanged: DeveloperSettingsChanged,
 generalSettingsChanged: GeneralSettingsChanged,
 logFilterChanged: LogFilterChanged,
 logsRecounted: LogsRecounted,
 sessionChanged: SessionChanged,
 x509CertificateChanged: X509CertificateChanged
 }>({
+developerSettingsChanged: "developer-settings-changed",
 generalSettingsChanged: "general-settings-changed",
 logFilterChanged: "log-filter-changed",
 logsRecounted: "logs-recounted",
@@ -133,6 +132,7 @@ export type ControlPlane = "CloudUs" | "CloudEu" | "Custom"
  * The hidden developer settings page, unlocked from the About page.
  */
 export type DeveloperSettings = { unlocked: boolean }
+export type DeveloperSettingsChanged = DeveloperSettings
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel

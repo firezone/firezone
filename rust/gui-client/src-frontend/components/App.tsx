@@ -11,6 +11,7 @@ import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import Titlebar from "./Titlebar";
 import {
   commands,
+  DeveloperSettings,
   events,
   FileCount,
   GeneralSettingsViewModel,
@@ -27,19 +28,8 @@ export default function App() {
   const [logFilter, setLogFilter] = useState<LogFilterViewModel | null>(null);
   const [deviceTrustCertificate, setDeviceTrustCertificate] =
     useState<X509Certificate | null>();
-  const [developerSettingsUnlocked, setDeveloperSettingsUnlocked] =
-    useState<boolean>();
-
-  useEffect(() => {
-    void commands
-      .loadDeveloperSettings()
-      .then((settings) => setDeveloperSettingsUnlocked(settings.unlocked));
-  }, []);
-
-  const saveDeveloperSettingsUnlocked = (unlocked: boolean) => {
-    setDeveloperSettingsUnlocked(unlocked);
-    void commands.saveDeveloperSettings({ unlocked });
-  };
+  const [developerSettings, setDeveloperSettings] =
+    useState<DeveloperSettings | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +47,10 @@ export default function App() {
       events.logFilterChanged.listen((event) => {
         console.log("log_filter_changed", { log_filter: event.payload });
         setLogFilter(event.payload);
+      }),
+      events.developerSettingsChanged.listen((event) => {
+        console.log("developer_settings_changed", { settings: event.payload });
+        setDeveloperSettings(event.payload);
       }),
       events.logsRecounted.listen((event) => {
         console.log("logs_recounted", { file_count: event.payload });
@@ -106,7 +100,7 @@ export default function App() {
         <Route
           path="/developer-settings"
           element={
-            developerSettingsUnlocked ? <Titlebar title="Developer" /> : null
+            developerSettings?.unlocked ? <Titlebar title="Developer" /> : null
           }
         />
         <Route
@@ -155,7 +149,7 @@ export default function App() {
                   About
                 </ReactRouterSidebarItem>
               </li>
-              {developerSettingsUnlocked && (
+              {developerSettings?.unlocked && (
                 <li>
                   <ReactRouterSidebarItem
                     icon="code"
@@ -225,7 +219,7 @@ export default function App() {
               element={
                 <About
                   unlockDeveloperSettings={() =>
-                    saveDeveloperSettingsUnlocked(true)
+                    commands.setDeveloperSettingsUnlocked(true)
                   }
                 />
               }
@@ -233,12 +227,12 @@ export default function App() {
             <Route
               path="/developer-settings"
               element={
-                developerSettingsUnlocked === false ? (
+                developerSettings?.unlocked === false ? (
                   <Navigate replace to="/about" />
-                ) : developerSettingsUnlocked === undefined ? null : (
+                ) : developerSettings === null ? null : (
                   <DeveloperSettingsPage
                     resetConnlib={commands.resetConnlib}
-                    hide={() => saveDeveloperSettingsUnlocked(false)}
+                    hide={() => commands.setDeveloperSettingsUnlocked(false)}
                   />
                 )
               }

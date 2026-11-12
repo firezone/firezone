@@ -246,6 +246,10 @@ let root: Root;
 
 beforeEach(async () => {
   await page.viewport(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+  // The app talks to the Tunnel service over Tauri's IPC, which a browser does not have.
+  // Every command is answered with `undefined`; the screens are driven by events instead.
+  mockIPC(() => {}, { shouldMockEvents: true });
   mockWindows("main");
 
   container = document.createElement("div");
@@ -285,17 +289,6 @@ for (const [name, screen] of Object.entries(screens)) {
     test(`${name}-${colorScheme}`, async () => {
       await useColorScheme(colorScheme);
 
-      // The app talks to the Tunnel service over Tauri's IPC, which a browser does not have.
-      // Every command but the developer settings load is answered with `undefined`; the
-      // screens are driven by events instead.
-      mockIPC(
-        (command) =>
-          command === "load_developer_settings"
-            ? { unlocked: screen.developerSettingsUnlocked ?? false }
-            : undefined,
-        { shouldMockEvents: true }
-      );
-
       await act(async () => {
         root.render(
           <MemoryRouter initialEntries={[screen.route]}>
@@ -315,6 +308,9 @@ for (const [name, screen] of Object.entries(screens)) {
             screen.deviceTrustCertificate
           );
         if (screen.logCount) await events.logsRecounted.emit(screen.logCount);
+        await events.developerSettingsChanged.emit({
+          unlocked: screen.developerSettingsUnlocked ?? false,
+        });
       });
 
       await settle();
