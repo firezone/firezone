@@ -87,10 +87,10 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       assert Process.alive?(pid)
     end
 
-    test "handles goodbye notification from connected nodes" do
+    test "forgets a connected node on goodbye without disconnecting it" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_strategy(channel_name: channel_name)
+      pid = start_strategy(channel_name: channel_name, list_nodes: [:other@node])
 
       # First connect the node via heartbeat
       send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
@@ -104,7 +104,11 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         end)
 
       assert log =~ "Received goodbye from node"
-      assert Process.alive?(pid)
+      refute_received {:disconnected, :other@node}
+
+      state = :sys.get_state(pid)
+      refute :other@node in state.connected_nodes
+      refute Map.has_key?(state.node_timestamps, :other@node)
     end
 
     test "ignores goodbye from nodes that were never connected" do
@@ -229,7 +233,14 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       pid =
         start_supervised!(
           {PostgresStrategy,
-           [build_state(channel_name: channel_name, heartbeat_interval: 50, missed_heartbeats: 1)]}
+           [
+             build_state(
+               channel_name: channel_name,
+               heartbeat_interval: 50,
+               missed_heartbeats: 1,
+               list_nodes: [:stale@node]
+             )
+           ]}
         )
       wait_for_started(pid)
 
@@ -254,6 +265,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         end)
 
       assert log =~ "Disconnecting stale nodes"
+      assert_received {:disconnected, :stale@node}
 
       # Verify node was removed
       final_state = :sys.get_state(pid)
@@ -563,8 +575,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     %{
       topology: :test_topology,
       connect: {__MODULE__, connect_fn, []},
-      disconnect: {__MODULE__, :mock_disconnect, []},
-      list_nodes: {__MODULE__, :mock_list_nodes, []},
+      disconnect: {__MODULE__, :mock_disconnect, [self()]},
+      list_nodes: {__MODULE__, :mock_list_nodes, [Keyword.get(opts, :list_nodes, [])]},
       config:
         [
           repo: Keyword.get(opts, :repo, Portal.Repo),
@@ -581,8 +593,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     %{
       topology: :test_topology,
       connect: {__MODULE__, :mock_connect, []},
-      disconnect: {__MODULE__, :mock_disconnect, []},
-      list_nodes: {__MODULE__, :mock_list_nodes, []},
+      disconnect: {__MODULE__, :mock_disconnect, [self()]},
+      list_nodes: {__MODULE__, :mock_list_nodes, [[]]},
       config: [
         repo: __MODULE__.InvalidRepo,
         channel_name: "test_cluster",
@@ -626,8 +638,12 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
   # Mock functions for Cluster.Strategy callbacks
   def mock_connect(_node), do: true
-  def mock_disconnect(_node), do: true
-  def mock_list_nodes, do: []
+  def mock_list_nodes(nodes), do: nodes
+
+  def mock_disconnect(test_pid, node) do
+    send(test_pid, {:disconnected, node})
+    true
+  end
   def mock_connect_failing(_node), do: false
 
   def mock_configure(opts, test_pid) do

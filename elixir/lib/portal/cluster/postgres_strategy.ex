@@ -9,7 +9,7 @@ defmodule Portal.Cluster.PostgresStrategy do
 
   - Heartbeat-based discovery via PostgreSQL NOTIFY
   - Automatic disconnect after missed heartbeats
-  - Graceful shutdown broadcasts goodbye for immediate disconnect
+  - Graceful shutdown broadcasts goodbye so peers stop tracking the node
   - Cloud-agnostic: works anywhere you have PostgreSQL
 
   ## Configuration
@@ -254,11 +254,9 @@ defmodule Portal.Cluster.PostgresStrategy do
         connected_nodes: List.delete(state.connected_nodes, node)
     }
 
+    # No disconnect: the node is still draining, and staggered disconnects trip `global`
     if was_connected do
-      Logger.info("Received goodbye from node, disconnecting", node: node)
-
-      Cluster.Strategy.disconnect_nodes(state.topology, state.disconnect, state.list_nodes, [node])
-
+      Logger.info("Received goodbye from node", node: node)
       maybe_log_threshold_error(state, [node])
     else
       state
