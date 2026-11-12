@@ -123,6 +123,20 @@
       }
     }
 
+    /// The Developer Settings tab, which only an unlocked app shows.
+    func testDeveloperSettings() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(
+          scenario: "connected", appearance: appearance, window: "settings",
+          unlockingDeveloperSettings: true)
+        defer { app.terminate() }
+
+        let window = try onlyWindow(of: app)
+        try selectTab("Developer Settings", showing: "Reset connlib", in: window)
+        capture(window, as: "settings-developer", in: appearance)
+      }
+    }
+
     /// The About panel the menu's "About Firezone" opens, which names the commit the
     /// app was built from.
     func testAboutPanel() throws {
@@ -229,7 +243,8 @@
     }
 
     private func launchApp(
-      scenario: String, appearance: Appearance, window: String
+      scenario: String, appearance: Appearance, window: String,
+      unlockingDeveloperSettings: Bool = false
     ) -> XCUIApplication {
       let app = XCUIApplication()
       app.launchArguments = [
@@ -237,6 +252,11 @@
         "--mock-appearance", appearance.rawValue,
         "--mock-window", window,
       ]
+      if unlockingDeveloperSettings {
+        // The argument domain holds the unlock for this launch only, where a written
+        // default would put the tab on every screen photographed after it.
+        app.launchArguments += ["-isDeveloperSettingsUnlocked", "YES"]
+      }
       app.launch()
 
       // The app opens Settings itself, which a menu bar app cannot always rely on.

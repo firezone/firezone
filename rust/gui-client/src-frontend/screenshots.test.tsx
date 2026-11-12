@@ -36,6 +36,8 @@ interface Screen {
   /// The certificate the keystore holds, when the device trust tab is available.
   deviceTrustCertificate?: X509Certificate;
   logCount?: FileCount;
+  // Whether the user unlocked the developer settings, which adds their tab.
+  developerSettingsUnlocked?: boolean;
   // A field to type into and press Enter on, for a screen that shows a rejected value.
   input?: { label: string; value: string };
 }
@@ -220,6 +222,10 @@ const screens: Record<string, Screen> = {
     logFilter: { log_filter: "debug", log_filter_is_managed: true },
   },
   about: { route: "/about" },
+  "developer-settings": {
+    route: "/developer-settings",
+    developerSettingsUnlocked: true,
+  },
 };
 
 // An animation makes the captured frame depend on wall-clock timing: the overview's
@@ -237,15 +243,6 @@ let root: Root;
 
 beforeEach(async () => {
   await page.viewport(WINDOW_WIDTH, WINDOW_HEIGHT);
-
-  // The app talks to the Tunnel service over Tauri's IPC, which a browser does not have.
-  // Every command but the developer settings load is answered with `undefined`; the screens
-  // are driven by events instead.
-  mockIPC(
-    (command) =>
-      command === "load_developer_settings" ? { unlocked: false } : undefined,
-    { shouldMockEvents: true }
-  );
   mockWindows("main");
 
   container = document.createElement("div");
@@ -284,6 +281,17 @@ for (const [name, screen] of Object.entries(screens)) {
   for (const colorScheme of COLOR_SCHEMES) {
     test(`${name}-${colorScheme}`, async () => {
       await useColorScheme(colorScheme);
+
+      // The app talks to the Tunnel service over Tauri's IPC, which a browser does not have.
+      // Every command but the developer settings load is answered with `undefined`; the
+      // screens are driven by events instead.
+      mockIPC(
+        (command) =>
+          command === "load_developer_settings"
+            ? { unlocked: screen.developerSettingsUnlocked ?? false }
+            : undefined,
+        { shouldMockEvents: true }
+      );
 
       await act(async () => {
         root.render(
