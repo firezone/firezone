@@ -16,5 +16,5 @@ aya = { workspace = true, optional = true }
 [dev-dependencies]
 network-types = { workspace = true }
 
-[lints.cargo]
-unused_dependencies = "deny"
+[lints]
+workspace = true

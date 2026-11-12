@@ -9,7 +9,6 @@ anyhow = { workspace = true }
 bufferpool = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 ip-packet = { workspace = true }
-memchr = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 quinn-udp = { workspace = true }
@@ -29,11 +28,15 @@ libc = { workspace = true }
 libc = { workspace = true }
 parking_lot = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+memchr = { workspace = true }
+
 [dev-dependencies]
 bufferpool = { workspace = true }
 derive_more = { workspace = true, features = ["deref"] }
 ip-packet = { workspace = true }
+memchr = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
 
-[lints.cargo]
-unused_dependencies = "deny"
+[lints]
+workspace = true

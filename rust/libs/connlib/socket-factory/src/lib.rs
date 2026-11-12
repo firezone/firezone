@@ -903,6 +903,13 @@ fn is_icmp_unreachable(e: &io::Error) -> bool {
 }
 
 /// Whether a failed send should be retried for the given attempt.
+#[cfg_attr(
+    target_os = "windows",
+    expect(
+        clippy::needless_bool,
+        reason = "Same shape as the checks for other platforms"
+    )
+)]
 fn should_retry(e: &io::Error, attempt: u32) -> bool {
     let Some(raw_os_error) = e.raw_os_error() else {
         return false;
