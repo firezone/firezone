@@ -58,12 +58,14 @@ public struct SettingsView: View {
     case settings
     case deviceTrust
     case logs
+    case developer
 
     var title: String {
       switch self {
       case .settings: return "Settings"
       case .deviceTrust: return "Device Trust"
       case .logs: return "Diagnostics"
+      case .developer: return "Developer Settings"
       }
     }
 
@@ -73,6 +75,7 @@ public struct SettingsView: View {
         case .settings: return "gearshape"
         case .deviceTrust: return "checkmark.shield"
         case .logs: return "stethoscope"
+        case .developer: return "hammer"
         }
       }
     #endif
@@ -145,6 +148,14 @@ public struct SettingsView: View {
               }
               .badge(viewModel.isLogFilterValid() ? nil : "!")
               .tag(Tab.logs)
+            if isDeveloperSettingsUnlocked {
+              developerTab
+                .tabItem {
+                  Image(systemName: "hammer")
+                  Text(Tab.developer.title)
+                }
+                .tag(Tab.developer)
+            }
           }
           .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -168,6 +179,11 @@ public struct SettingsView: View {
         logsTab
           .tabItem { Label(Tab.logs.title, systemImage: Tab.logs.systemImage) }
           .tag(Tab.logs)
+        if isDeveloperSettingsUnlocked {
+          developerTab
+            .tabItem { Label(Tab.developer.title, systemImage: Tab.developer.systemImage) }
+            .tag(Tab.developer)
+        }
       }
     #else
       #error("Unsupported platform")
@@ -464,7 +480,6 @@ public struct SettingsView: View {
           Section("About") {
             versionRow
           }
-          developerSettingsSection
         }
         .endsEditingOnTap($focusedField)
       }
@@ -510,7 +525,6 @@ public struct SettingsView: View {
         Section("About") {
           versionRow
         }
-        developerSettingsSection
       }
       .formStyle(.grouped)
       .endsEditingOnTap($focusedField)
@@ -604,19 +618,35 @@ public struct SettingsView: View {
     }
   }
 
-  @ViewBuilder
-  private var developerSettingsSection: some View {
-    if isDeveloperSettingsUnlocked {
-      Section("Developer settings") {
-        Button("Reset connlib") {
-          withErrorHandler { try await store.resetConnlib() }
-        }
-        .disabled(store.vpnStatus != .connected)
+  private var developerTab: some View {
+    #if os(iOS)
+      Form {
+        developerSettingsSection
+      }
+    #elseif os(macOS)
+      Form {
+        developerSettingsSection
+      }
+      .formStyle(.grouped)
+      .scrollDisabled(true)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(width: Self.paneWidth)
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
 
-        Button("Hide developer settings") {
-          isDeveloperSettingsUnlocked = false
-          versionTapCount = 0
-        }
+  private var developerSettingsSection: some View {
+    Section {
+      Button("Reset connlib") {
+        withErrorHandler { try await store.resetConnlib() }
+      }
+      .disabled(store.vpnStatus != .connected)
+
+      Button("Hide developer settings") {
+        viewModel.selectedTab = .logs
+        isDeveloperSettingsUnlocked = false
+        versionTapCount = 0
       }
     }
   }

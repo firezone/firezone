@@ -134,7 +134,7 @@ class SettingsViewModel: ObservableObject {
       controlPlane = detectControlPlane()
     case .logs:
       if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
-    case .deviceTrust:
+    case .deviceTrust, .developer:
       break
     }
 
@@ -176,7 +176,7 @@ class SettingsViewModel: ObservableObject {
       if !configuration.isLogFilterForced, isLogFilterValid() {
         configuration.logFilter = logFilter
       }
-    case .deviceTrust:
+    case .deviceTrust, .developer:
       break
     }
 
@@ -377,7 +377,7 @@ class SettingsViewModel: ObservableObject {
     case .logs:
       shouldDisableResetButton =
         configuration.isLogFilterForced || logFilter == ConfigurationDefaults.logFilter
-    case .deviceTrust:
+    case .deviceTrust, .developer:
       shouldDisableResetButton = true
     }
   }
