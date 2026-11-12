@@ -54,9 +54,8 @@ impl Sockets {
         let (event_tx, event_rx) = mpsc::channel(1_024);
 
         std::thread::spawn(move || {
-            if let Err(e) = mio_worker_task(event_tx.clone(), poll) {
-                let _ = event_tx.blocking_send(Event::Crashed(e));
-            }
+            let Err(e) = mio_worker_task(event_tx.clone(), poll);
+            let _ = event_tx.blocking_send(Event::Crashed(e));
         });
 
         Ok(Self {
@@ -244,7 +243,7 @@ fn not_connected(port: u16, address_family: AddressFamily) -> io::Error {
 /// The [`mio`] worker task which checks for read-readiness on any of our sockets.
 ///
 /// Sockets are (de)registered by the main eventloop through a cloned [`mio::Registry`].
-fn mio_worker_task(event_tx: mpsc::Sender<Event>, mut poll: mio::Poll) -> Result<()> {
+fn mio_worker_task(event_tx: mpsc::Sender<Event>, mut poll: mio::Poll) -> Result<!> {
     let mut events = mio::Events::with_capacity(1024);
 
     loop {
