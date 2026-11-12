@@ -57,6 +57,7 @@ defmodule Portal.DeviceToken do
     |> assoc_constraint(:device)
     |> assoc_constraint(:site)
     |> check_constraint(:site_id, name: :device_tokens_device_or_site)
+    |> check_constraint(:expires_at, name: :device_tokens_unbound_expires)
     |> unique_constraint(:device_id, name: :device_tokens_device_rotated_state_index)
   end
 
