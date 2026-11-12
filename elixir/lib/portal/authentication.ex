@@ -113,7 +113,7 @@ defmodule Portal.Authentication do
 
   # Gateway Tokens
 
-  def build_gateway_token(%Portal.Site{} = site) do
+  def create_gateway_token(%Portal.Site{} = site, %Subject{} = subject) do
     {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
     %Portal.DeviceToken{
@@ -123,10 +123,6 @@ defmodule Portal.Authentication do
       secret_salt: secret_salt,
       secret_hash: secret_hash
     }
-  end
-
-  def create_gateway_token(%Portal.Site{} = site, %Subject{} = subject) do
-    build_gateway_token(site)
     |> Database.insert_gateway_token(subject)
   end
 
@@ -456,10 +452,6 @@ defmodule Portal.Authentication do
         {:error, _} -> nil
       end
     end)
-  end
-
-  def fetch_token(account_id, token_id, %Context{} = context) do
-    Database.fetch_token_for_use(account_id, token_id, context)
   end
 
   def use_token(encoded_token, %Context{} = context)

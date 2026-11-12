@@ -941,7 +941,6 @@ defmodule PortalWeb.OIDCController do
       account_id: identity.account_id,
       actor_id: identity.actor_id,
       auth_provider_id: provider.id,
-      identity_id: identity.id,
       expires_at: expires_at
     }
 

@@ -2288,7 +2288,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   # ACCOUNTS
 
   # Disabling an account is broadcast as an account deletion. Unlike token-backed
-  # credentials, X.509 credentials have no ClientToken row for the account hook
+  # credentials, X.509 credentials have no token row for the account hook
   # to delete, so every client channel for the account must be explicitly cut.
   defp handle_change(
          %Change{op: :delete, old_struct: %Portal.Account{id: account_id}},
