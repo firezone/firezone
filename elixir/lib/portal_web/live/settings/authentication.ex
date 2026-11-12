@@ -1344,7 +1344,8 @@ defmodule PortalWeb.Settings.Authentication do
   defp provider_action_allowed?(type), do: type not in ["email_otp", "userpass", "x509"]
 
   defp provider_has_sessions?(provider) do
-    provider.client_tokens_count > 0 or provider.portal_sessions_count > 0
+    provider.client_tokens_count > 0 or provider.portal_sessions_count > 0 or
+      provider.oauth_tokens_count > 0
   end
 
   defp provider_pending_state(provider, %{id: id, action: action}) when id == provider.id,
@@ -2453,10 +2454,21 @@ defmodule PortalWeb.Settings.Authentication do
         |> Safe.all()
         |> Map.new()
 
+      oauth_tokens_counts =
+        from(t in Portal.OAuthToken,
+          where: t.auth_provider_id in ^provider_ids,
+          group_by: t.auth_provider_id,
+          select: {t.auth_provider_id, count(t.id)}
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Map.new()
+
       Enum.map(providers, fn provider ->
         provider
         |> Map.put(:client_tokens_count, Map.get(client_tokens_counts, provider.id, 0))
         |> Map.put(:portal_sessions_count, Map.get(portal_sessions_counts, provider.id, 0))
+        |> Map.put(:oauth_tokens_count, Map.get(oauth_tokens_counts, provider.id, 0))
       end)
     end
 
@@ -2472,7 +2484,16 @@ defmodule PortalWeb.Settings.Authentication do
           |> Safe.scoped(subject)
           |> Safe.delete_all()
 
-        {:ok, client_tokens_deleted + portal_sessions_deleted}
+        from(c in Portal.OAuthAuthorizationCode, where: c.auth_provider_id == ^provider.id)
+        |> Safe.scoped(subject)
+        |> Safe.delete_all()
+
+        {oauth_tokens_deleted, _} =
+          from(t in Portal.OAuthToken, where: t.auth_provider_id == ^provider.id)
+          |> Safe.scoped(subject)
+          |> Safe.delete_all()
+
+        {:ok, client_tokens_deleted + portal_sessions_deleted + oauth_tokens_deleted}
       end)
     end
   end
