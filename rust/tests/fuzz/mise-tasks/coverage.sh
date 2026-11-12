@@ -36,8 +36,7 @@ while IFS= read -r directory; do
 done <<<"$directories"
 sources+=("$PWD/src/main.rs" "$PWD/src/clock.rs" "$PWD/src/targets/${target//-/_}.rs")
 if [ "$target" = tunnel ]; then
-    mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/src" -type f -name '*.rs' \
-        ! -path "$PWD/src/targets/*" ! -name main.rs ! -name clock.rs)
+    mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/../simulation/src" -type f -name '*.rs')
 fi
 "$llvm_bin/llvm-cov" export -format=lcov -instr-profile="$temporary/coverage.profdata" \
     "$binary" "${sources[@]}" >"coverage/$target/lcov.info"

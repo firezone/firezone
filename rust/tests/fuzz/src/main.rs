@@ -8,6 +8,8 @@ use arbitrary::{Arbitrary, Unstructured};
 use clap::{Parser, ValueEnum};
 
 mod clock;
+#[cfg(fuzzing)]
+mod ijon;
 mod targets;
 
 static START_TIME: LazyLock<Instant> = LazyLock::new(clock::start_time);
@@ -27,7 +29,7 @@ fn main() -> Result<()> {
     if cli.replay.is_empty() {
         cfg_select! {
             fuzzing => {
-                fuzz::feedback::prepare_runtime();
+                ijon::prepare_runtime();
                 afl::fuzz(true, target);
 
                 return Ok(());
