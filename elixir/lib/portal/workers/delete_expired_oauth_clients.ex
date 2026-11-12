@@ -2,9 +2,8 @@ defmodule Portal.Workers.DeleteExpiredOAuthClients do
   @moduledoc """
   Oban worker that evicts cached OAuth client metadata nobody depends on.
 
-  The authorization endpoint is public, so anyone who controls one HTTPS host
-  can make the portal cache a document for every path on it. A client is kept
-  for as long as a grant or a pending code points at it; the rest go once their
+  Clients are cached from the signed-in consent screen. A client is kept for as
+  long as a grant or a pending code points at it; the rest go once their
   document has been stale for a while.
   """
 

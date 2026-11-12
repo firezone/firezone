@@ -5,13 +5,11 @@ defmodule Portal.Changes.Hooks.DeviceTokens do
   alias Portal.PubSub
   import Portal.SchemaHelpers
 
-  # Gateway tokens are broadcast too. Listeners count tokens per auth
-  # provider, and Gateway tokens have none, so the counts do not change.
   @impl true
   def on_insert(lsn, data) do
     token = struct_from_params(Portal.DeviceToken, data)
     change = %Change{lsn: lsn, op: :insert, struct: token}
-    PubSub.Changes.broadcast(token.account_id, :client_tokens, change)
+    broadcast(token, change)
   end
 
   @impl true
@@ -23,6 +21,12 @@ defmodule Portal.Changes.Hooks.DeviceTokens do
     PG.deliver(token.id, :disconnect)
 
     change = %Change{lsn: lsn, op: :delete, old_struct: token}
+    broadcast(token, change)
+  end
+
+  defp broadcast(%Portal.DeviceToken{auth_provider_id: nil}, _change), do: :ok
+
+  defp broadcast(token, change) do
     PubSub.Changes.broadcast(token.account_id, :client_tokens, change)
   end
 end

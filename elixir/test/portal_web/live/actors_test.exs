@@ -469,6 +469,51 @@ defmodule PortalWeb.ActorsTest do
       refute Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
     end
 
+    test "does not revoke an identity of a different actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      identity = identity_fixture(account: account, actor: actor_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "delete_identity", %{"id" => identity.id})
+
+      assert html =~ "Identity not found"
+      assert Portal.Repo.get_by(Portal.ExternalIdentity, account_id: account.id, id: identity.id)
+    end
+
+    test "does not revoke a portal session of a different actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      auth_provider = userpass_provider_fixture(account: account).auth_provider
+
+      session =
+        portal_session_fixture(
+          account: account,
+          actor: actor_fixture(account: account),
+          auth_provider: auth_provider
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=portal_sessions")
+
+      html = render_click(lv, "delete_session", %{"id" => session.id})
+
+      assert html =~ "Session not found"
+      assert Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
+    end
+
     test "shows client session details in the client sessions tab", %{
       conn: conn,
       account: account,

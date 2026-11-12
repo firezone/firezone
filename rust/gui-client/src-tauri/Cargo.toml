@@ -17,7 +17,7 @@ arboard = { workspace = true }
 async-runtime = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["clock"] }
 clap = { workspace = true, features = ["derive", "env"] }
 client-ipc = { workspace = true }
 client-shared = { workspace = true }
@@ -53,13 +53,13 @@ serde_variant = { workspace = true }
 socket-factory = { workspace = true }
 specta = { workspace = true, features = ["url"] }
 specta-typescript = { workspace = true }
-strum = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
 subtle = { workspace = true }
 tauri = { workspace = true, features = ["image-png"] }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-runtime = { workspace = true }
-tauri-specta = { workspace = true }
+tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 tauri-utils = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }

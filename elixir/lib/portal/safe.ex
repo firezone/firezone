@@ -904,6 +904,7 @@ defmodule Portal.Safe do
   def permit(_action, Portal.OAuthGrant, :account_admin_user), do: :ok
   def permit(_action, Portal.OAuthAuthorizationCode, :account_admin_user), do: :ok
   def permit(:read, Portal.OAuthToken, :account_admin_user), do: :ok
+  def permit(:delete_all, Portal.OAuthToken, :account_admin_user), do: :ok
   def permit(_action, Portal.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Directory, :api_client), do: :ok
   def permit(_action, Portal.AuthProvider, :account_admin_user), do: :ok
