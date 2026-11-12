@@ -536,6 +536,13 @@ impl Eventloop {
                 return Err(e);
             }
 
+            if e.any_downcast_ref::<tunnel::UnroutablePacket>()
+                .is_some_and(|e| e.reason() == RoutingError::RoutingLoop)
+                && telemetry::feature_flags::fail_on_routing_loop()
+            {
+                return Err(e);
+            }
+
             if let Some(e) = e.any_downcast_ref::<tunnel::UnroutablePacket>() {
                 tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
 
