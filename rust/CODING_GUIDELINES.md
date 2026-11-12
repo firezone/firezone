@@ -66,8 +66,9 @@ Where no rule fits, apply the principle.
   Importing a trait `as _` and giving per-platform modules a common name (`use linux as platform`) are fine.
 - Use `#[expect(...)]` instead of `#[allow(...)]` so the attribute fails once it is no longer necessary, and apply it to the smallest item possible.
   Prefix an intentionally unused binding with `_` instead of allowing `dead_code`.
-- Keep `#[cfg]`s out of function bodies and call-sites.
+- Hide platform differences behind a cross-platform API so that callers need no `#[cfg(target_os)]`.
   Give each platform a module with the same API, including a no-op or stub where a platform has nothing to do, and gate once at the module level.
+  This is about platforms only: gate a call-site on a Cargo feature or `debug_assertions` directly instead of writing a stub for it.
 
 ## Naming
 
