@@ -100,8 +100,8 @@ defmodule Portal.Mailer.InternalEmail do
     |> text_body("""
     Sign-up waiting for your approval
 
-    The mail servers of this email domain are not on the list of known email providers,
-    so the account is not created yet.
+    Some mail servers of this email domain are not on the list of known email
+    providers, so the account is not created yet.
 
     #{sign_up_review_details(review)}
 
@@ -183,16 +183,24 @@ defmodule Portal.Mailer.InternalEmail do
     Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.fetch!(:recipient)
   end
 
-  defp sign_up_review_details(%{registration: registration, mx_hosts: mx_hosts}) do
-    hosts = if mx_hosts == [], do: "none found", else: Enum.join(mx_hosts, ", ")
+  defp sign_up_review_details(%{registration: registration, mail_servers: mail_servers}) do
+    hosts =
+      if mail_servers == [] do
+        " none found"
+      else
+        Enum.map_join(mail_servers, fn {host, verdict} -> "\n  #{host} (#{verdict_label(verdict)})" end)
+      end
 
     """
     Name: #{registration.actor_name} <#{registration.email}>
     Company: #{registration.company_name}
     Region: #{region()}
-    Mail servers: #{hosts}\
+    Mail servers:#{hosts}\
     """
   end
+
+  defp verdict_label(:allow), do: "allowed"
+  defp verdict_label(:unknown), do: "unknown"
 
   defp region do
     Portal.Config.fetch_env!(:portal, :data_residency_region)

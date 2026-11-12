@@ -5,7 +5,7 @@ defmodule Portal.KnownMxDomainTest do
 
   defp changeset(domain) do
     %KnownMxDomain{}
-    |> Ecto.Changeset.cast(%{domain: domain}, [:domain])
+    |> Ecto.Changeset.cast(%{domain: domain, verdict: :allow}, [:domain, :verdict])
     |> KnownMxDomain.changeset()
   end
 
@@ -28,9 +28,20 @@ defmodule Portal.KnownMxDomainTest do
     end
   end
 
+  test "needs a verdict of allow or deny" do
+    refute %KnownMxDomain{} |> Ecto.Changeset.cast(%{domain: "example.com"}, [:domain]) |> KnownMxDomain.changeset() |> Map.get(:valid?)
+    refute %KnownMxDomain{} |> Ecto.Changeset.cast(%{domain: "example.com", verdict: "maybe"}, [:domain, :verdict]) |> Map.get(:valid?)
+  end
+
   test "the database rejects a domain the changeset would refuse" do
     assert_raise Postgrex.Error, ~r/domain_format/, fn ->
-      Portal.Repo.insert_all("known_mx_domains", [%{domain: "-bad-.com"}])
+      Portal.Repo.insert_all("known_mx_domains", [%{domain: "-bad-.com", verdict: "allow"}])
+    end
+  end
+
+  test "the database rejects an unknown verdict" do
+    assert_raise Postgrex.Error, ~r/verdict_values/, fn ->
+      Portal.Repo.insert_all("known_mx_domains", [%{domain: "example.com", verdict: "maybe"}])
     end
   end
 end

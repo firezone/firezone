@@ -1,8 +1,9 @@
 defmodule Portal.KnownMxDomain do
   @moduledoc """
-  Mail server domains of known-good email providers. An email sign-up goes ahead
-  without review when every MX host of the email domain is one of these domains or
-  ends with `.` plus one of them. Stored as lowercase ASCII without a trailing dot.
+  Mail server domains with a verdict. An MX host matches a domain when it is that
+  domain or ends with `.` plus that domain. An email sign-up is blocked when any MX
+  host matches a `:deny` domain, and goes ahead without review when every MX host
+  matches an `:allow` domain. Stored as lowercase ASCII without a trailing dot.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -12,6 +13,7 @@ defmodule Portal.KnownMxDomain do
   @primary_key {:domain, :string, autogenerate: false}
 
   schema "known_mx_domains" do
+    field :verdict, Ecto.Enum, values: [:allow, :deny]
   end
 
   @doc """
@@ -31,9 +33,10 @@ defmodule Portal.KnownMxDomain do
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> update_change(:domain, &normalize/1)
-    |> validate_required([:domain])
+    |> validate_required([:domain, :verdict])
     |> validate_format(:domain, format())
     |> check_constraint(:domain, name: :domain_format)
+    |> check_constraint(:verdict, name: :verdict_values)
     |> unique_constraint(:domain, name: :known_mx_domains_pkey)
   end
 end

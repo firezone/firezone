@@ -3,7 +3,7 @@ defmodule Portal.Workers.SignUpReviewRequest do
   Asks for a review of an email sign-up whose mail servers are not known.
 
   Each `SIGN_UP_REVIEW_APPROVERS` address gets its own job and email with a personal
-  approval link and a reply-to of the person signing up, so a retry resends to one
+  approval link on the ops endpoint and a reply-to of the person signing up, so a retry resends to one
   approver only. The link is made when the email is sent, so it is never stored in
   the job.
 
@@ -17,7 +17,9 @@ defmodule Portal.Workers.SignUpReviewRequest do
     max_attempts: 10,
     unique: [period: 86_400, keys: [:email, :approver]]
 
+  use Phoenix.VerifiedRoutes, endpoint: PortalOps.Endpoint, router: PortalOps.Router
   alias Portal.Mailer
+  alias PortalWeb.SignUpReview
 
   @doc "Approver addresses, lowercased. Review is off when there are none."
   def approvers do
@@ -45,8 +47,8 @@ defmodule Portal.Workers.SignUpReviewRequest do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"review" => encrypted_review, "approver" => approver}}) do
     with true <- approver in approvers(),
-         {:ok, review} <- PortalWeb.SignUpReview.decrypt_review(encrypted_review) do
-      url = PortalWeb.SignUpReview.approval_url(encrypted_review, approver)
+         {:ok, review} <- SignUpReview.decrypt_review(encrypted_review) do
+      url = url(~p"/sign_up_review?token=#{SignUpReview.approval_token(encrypted_review, approver)}")
 
       review
       |> Mailer.InternalEmail.sign_up_approval_request_email(approver, url)

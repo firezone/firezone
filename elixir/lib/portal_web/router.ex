@@ -87,7 +87,6 @@ defmodule PortalWeb.Router do
       live "/sign_up/github", SignUp, :github
       live "/verify_sign_up", SignUp, :verify
       live "/sign_up/pending", SignUp, :pending
-      live "/sign_up/review", SignUpReview
       live "/find_account", FindAccount
       # Maintained from the LaunchHN - show SignUp form
       live "/try", SignUp, :choose

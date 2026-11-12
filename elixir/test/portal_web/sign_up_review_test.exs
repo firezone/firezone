@@ -14,12 +14,13 @@ defmodule PortalWeb.SignUpReviewTest do
   setup do
     Portal.Config.put_env_override(:portal, SignUpReviewRequest, approvers: @approvers)
 
-    Portal.Repo.insert!(%Portal.KnownMxDomain{domain: "known-mail.test"})
+    Portal.Repo.insert!(%Portal.KnownMxDomain{domain: "known-mail.test", verdict: :allow})
+    Portal.Repo.insert!(%Portal.KnownMxDomain{domain: "disposable.test", verdict: :deny})
     :ok
   end
 
   describe "verify" do
-    test "creates the account at once when every MX host is known", %{conn: conn} do
+    test "creates the account at once when every MX host is allowed", %{conn: conn} do
       stub_mx(["mx1.known-mail.test", "MX2.Known-Mail.Test."])
       email = unique_email()
       stub_stripe(email)
@@ -33,7 +34,7 @@ defmodule PortalWeb.SignUpReviewTest do
 
     test "creates the account at once when review is off", %{conn: conn} do
       Portal.Config.put_env_override(:portal, SignUpReviewRequest, approvers: [])
-      stub_mx(["mx.unknown.test"])
+      stub_mx(["mx.disposable.test"])
       email = unique_email()
       stub_stripe(email)
 
@@ -43,7 +44,24 @@ defmodule PortalWeb.SignUpReviewTest do
       assert Portal.Repo.get_by(Portal.Account, name: "Review Corp")
     end
 
-    test "holds the sign-up and asks each approver when a host is unknown", %{conn: conn} do
+    test "blocks the sign-up when any MX host is denied", %{conn: conn} do
+      stub_mx(["mx.known-mail.test", "mx.unknown.test", "mx.disposable.test"])
+
+      conn = verify(conn, unique_email())
+
+      assert_blocked(conn)
+      refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
+      assert [] == all_enqueued(worker: SignUpReviewRequest)
+    end
+
+    test "a denied domain wins over an allowed subdomain", %{conn: conn} do
+      Portal.Repo.insert!(%Portal.KnownMxDomain{domain: "mail.disposable.test", verdict: :allow})
+      stub_mx(["mx.mail.disposable.test"])
+
+      assert_blocked(verify(conn, unique_email()))
+    end
+
+    test "holds the sign-up with the breakdown when allowed and unknown hosts mix", %{conn: conn} do
       stub_mx(["mx.known-mail.test", "mx.unknown.test"])
       email = unique_email()
 
@@ -56,19 +74,22 @@ defmodule PortalWeb.SignUpReviewTest do
       assert jobs |> Enum.map(& &1.args["approver"]) |> Enum.sort() == @approvers
       assert Enum.all?(jobs, &(&1.args["email"] == email))
       refute Enum.any?(jobs, &(&1.args["review"] =~ email))
+
+      assert {:ok, %{mail_servers: [{"mx.known-mail.test", :allow}, {"mx.unknown.test", :unknown}]}} =
+               SignUpReview.decrypt_review(hd(jobs).args["review"])
     end
 
     test "does not match a host that only ends with the same characters", %{conn: conn} do
-      stub_mx(["mx.notknown-mail.test"])
+      stub_mx(["mx.notknown-mail.test", "mx.notdisposable.test"])
       assert redirected_to(verify(conn, unique_email())) == ~p"/sign_up/pending"
     end
 
-    test "holds the sign-up when the domain has no MX records", %{conn: conn} do
+    test "holds the sign-up when the domain does not exist", %{conn: conn} do
       stub_resolve(fn _domain -> {:error, :nxdomain} end)
       assert redirected_to(verify(conn, unique_email())) == ~p"/sign_up/pending"
     end
 
-    test "creates the account when a domain without MX records is itself known", %{conn: conn} do
+    test "creates the account when a domain without MX records is itself allowed", %{conn: conn} do
       stub_mx([])
       email = "owner-#{System.unique_integer([:positive])}@mail.known-mail.test"
       stub_stripe(email)
@@ -76,12 +97,19 @@ defmodule PortalWeb.SignUpReviewTest do
       assert redirected_to(verify(conn, email)) =~ "/sites"
     end
 
+    test "blocks a domain without MX records that is itself denied", %{conn: conn} do
+      stub_mx([])
+      email = "owner-#{System.unique_integer([:positive])}@disposable.test"
+
+      assert_blocked(verify(conn, email))
+    end
+
     test "holds a domain without MX records as its own mail server", %{conn: conn} do
       email = hold_sign_up(conn, [])
       assert email =~ "@review.test"
 
       assert %{args: %{"review" => review}} = job_for("alice@firezone.dev")
-      assert {:ok, %{mx_hosts: ["review.test"]}} = SignUpReview.decrypt_review(review)
+      assert {:ok, %{mail_servers: [{"review.test", :unknown}]}} = SignUpReview.decrypt_review(review)
     end
 
     test "holds an email without a domain", %{conn: conn} do
@@ -122,8 +150,8 @@ defmodule PortalWeb.SignUpReviewTest do
       assert length(all_enqueued(worker: SignUpReviewRequest)) == 2
     end
 
-    test "sends an existing owner to sign in without a review", %{conn: conn} do
-      stub_mx(["mx.unknown.test"])
+    test "sends an existing owner to sign in without a check", %{conn: conn} do
+      stub_mx(["mx.disposable.test"])
       email = unique_email()
       account = account_fixture(metadata: %{stripe: %{billing_email: email}})
 
@@ -141,8 +169,8 @@ defmodule PortalWeb.SignUpReviewTest do
   end
 
   describe "SignUpReviewRequest" do
-    test "emails each approver a personal link", %{conn: conn} do
-      email = hold_sign_up(conn)
+    test "emails each approver a personal ops link with the mail server breakdown", %{conn: conn} do
+      email = hold_sign_up(conn, ["mx.known-mail.test", "mx.unknown.test"])
       job = job_for("alice@firezone.dev")
 
       assert :ok = perform_job(SignUpReviewRequest, job.args)
@@ -151,8 +179,8 @@ defmodule PortalWeb.SignUpReviewTest do
         assert sent.to == [{"", "alice@firezone.dev"}]
         assert sent.reply_to == {"Review User", email}
         assert sent.subject == "Approve sign-up: Review Corp"
-        assert sent.text_body =~ "Mail servers: mx.unknown.test"
-        assert sent.text_body =~ "/sign_up/review?token="
+        assert sent.text_body =~ "Mail servers:\n  mx.known-mail.test (allowed)\n  mx.unknown.test (unknown)"
+        assert sent.text_body =~ PortalOps.Endpoint.url() <> "/sign_up_review?token="
         true
       end)
     end
@@ -166,23 +194,39 @@ defmodule PortalWeb.SignUpReviewTest do
     end
   end
 
-  describe "approval page" do
+  describe "review page on the ops endpoint" do
+    test "is not on the main endpoint", %{conn: conn} do
+      hold_sign_up(conn)
+      conn = get(build_conn(), "/sign_up_review", %{"token" => token("alice@firezone.dev")})
+      assert conn.status != 200
+      refute conn.resp_body =~ "Review sign-up"
+    end
+
+    test "needs the ops credentials", %{conn: conn} do
+      hold_sign_up(conn)
+      conn = dispatch(build_conn(), PortalOps.Endpoint, :get, "/sign_up_review", %{"token" => token("alice@firezone.dev")})
+      assert conn.status == 401
+    end
+
     test "approving trusts the selected domains, creates the account and tells all approvers",
          %{conn: conn} do
       email = hold_sign_up(conn, ["mx1.mail.unknown.test", "mx2.mail.unknown.test", "mx.known-mail.test"])
       stub_stripe(email)
+      token = token("alice@firezone.dev")
 
-      {:ok, lv, html} = live(conn, approval_path("alice@firezone.dev"))
+      html = ops(:get, %{"token" => token}) |> html_response(200)
       assert html =~ email
-      assert html =~ "mail.unknown.test"
+      assert html =~ "mx.known-mail.test</code> (allowed)"
+      assert html =~ "mx1.mail.unknown.test</code> (unknown)"
+      assert html =~ ~s(value="mail.unknown.test")
       refute html =~ ~s(value="known-mail.test")
       refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
 
-      html = lv |> form("#sign-up-review-form", %{"domains" => ["mail.unknown.test"]}) |> render_submit()
+      html = ops(:post, %{"token" => token, "domains" => ["mail.unknown.test"]}) |> html_response(200)
 
       assert html =~ "Sign-up approved"
       account = Portal.Repo.get_by!(Portal.Account, name: "Review Corp")
-      assert Portal.Repo.get(Portal.KnownMxDomain, "mail.unknown.test")
+      assert %{verdict: :allow} = Portal.Repo.get(Portal.KnownMxDomain, "mail.unknown.test")
 
       assert_email_sent(fn sent ->
         assert sent.to == [{"", email}]
@@ -203,8 +247,7 @@ defmodule PortalWeb.SignUpReviewTest do
       email = hold_sign_up(conn)
       stub_stripe(email)
 
-      {:ok, lv, _html} = live(conn, approval_path("alice@firezone.dev"))
-      render_submit(lv, "approve", %{})
+      ops(:post, %{"token" => token("alice@firezone.dev")})
 
       assert Portal.Repo.get_by!(Portal.Account, name: "Review Corp")
       refute Portal.Repo.get(Portal.KnownMxDomain, "unknown.test")
@@ -214,17 +257,26 @@ defmodule PortalWeb.SignUpReviewTest do
       email = hold_sign_up(conn)
       stub_stripe(email)
 
-      {:ok, lv, _html} = live(conn, approval_path("alice@firezone.dev"))
-      render_submit(lv, "approve", %{"domains" => ["amazonaws.com", "unknown.test"]})
+      ops(:post, %{"token" => token("alice@firezone.dev"), "domains" => ["amazonaws.com", "unknown.test"]})
 
       refute Portal.Repo.get(Portal.KnownMxDomain, "amazonaws.com")
       assert Portal.Repo.get(Portal.KnownMxDomain, "unknown.test")
     end
 
+    test "never changes a denied domain to allowed", %{conn: conn} do
+      email = hold_sign_up(conn)
+      stub_stripe(email)
+      Portal.Repo.insert!(%Portal.KnownMxDomain{domain: "unknown.test", verdict: :deny})
+
+      ops(:post, %{"token" => token("alice@firezone.dev"), "domains" => ["unknown.test"]})
+
+      assert %{verdict: :deny} = Portal.Repo.get(Portal.KnownMxDomain, "unknown.test")
+    end
+
     test "suggests the host when its parent is a public suffix", %{conn: conn} do
       hold_sign_up(conn, ["mail.co.uk"])
 
-      {:ok, _lv, html} = live(conn, approval_path("alice@firezone.dev"))
+      html = ops(:get, %{"token" => token("alice@firezone.dev")}) |> html_response(200)
 
       assert html =~ ~s(value="mail.co.uk")
       refute html =~ ~s(value="co.uk")
@@ -233,31 +285,27 @@ defmodule PortalWeb.SignUpReviewTest do
     test "a second approval reports the existing account", %{conn: conn} do
       email = hold_sign_up(conn)
       stub_stripe(email)
-      path = approval_path("alice@firezone.dev")
+      token = token("alice@firezone.dev")
 
-      {:ok, first, _html} = live(conn, path)
-      {:ok, second, _html} = live(build_conn(), path)
-      render_submit(first, "approve", %{})
+      ops(:post, %{"token" => token})
 
-      assert render_submit(second, "approve", %{}) =~ "Already approved"
+      assert ops(:post, %{"token" => token}) |> html_response(200) =~ "Already approved"
       assert [_account] = Portal.Repo.all_by(Portal.Account, name: "Review Corp")
     end
 
     test "rejects a link whose approver was removed", %{conn: conn} do
       hold_sign_up(conn)
-      path = approval_path("alice@firezone.dev")
+      token = token("alice@firezone.dev")
       Portal.Config.put_env_override(:portal, SignUpReviewRequest, approvers: ["bob@firezone.dev"])
 
-      {:ok, _lv, html} = live(conn, path)
-      assert html =~ "Link not valid"
+      assert ops(:get, %{"token" => token}) |> html_response(404) =~ "Link not valid"
+      assert ops(:post, %{"token" => token}) |> html_response(404) =~ "Link not valid"
+      refute Portal.Repo.get_by(Portal.Account, name: "Review Corp")
     end
 
-    test "rejects a tampered or missing token", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/sign_up/review?token=nope")
-      assert html =~ "Link not valid"
-
-      {:ok, _lv, html} = live(conn, ~p"/sign_up/review")
-      assert html =~ "Link not valid"
+    test "rejects a tampered or missing token" do
+      assert ops(:get, %{"token" => "nope"}) |> html_response(404) =~ "Link not valid"
+      assert ops(:get, %{}) |> html_response(404) =~ "Link not valid"
     end
   end
 
@@ -268,13 +316,26 @@ defmodule PortalWeb.SignUpReviewTest do
     email
   end
 
-  defp approval_path(approver) do
-    %URI{path: path, query: query} = URI.parse(SignUpReview.approval_url(job_for(approver).args["review"], approver))
-    "#{path}?#{query}"
+  defp assert_blocked(conn) do
+    assert redirected_to(conn) =~ "/verify_sign_up?token="
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not allowed"
+  end
+
+  defp token(approver) do
+    SignUpReview.approval_token(job_for(approver).args["review"], approver)
   end
 
   defp job_for(approver) do
     Enum.find(all_enqueued(worker: SignUpReviewRequest), &(&1.args["approver"] == approver))
+  end
+
+  defp ops(method, params) do
+    username = Application.fetch_env!(:portal, :ops_admin_username)
+    password = Application.fetch_env!(:portal, :ops_admin_password)
+
+    build_conn()
+    |> put_req_header("authorization", "Basic " <> Base.encode64("#{username}:#{password}"))
+    |> dispatch(PortalOps.Endpoint, method, "/sign_up_review", params)
   end
 
   defp verify(conn, email) do

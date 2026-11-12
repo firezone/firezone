@@ -1,7 +1,7 @@
 defmodule Portal.Repo.Migrations.CreateKnownMxDomains do
   use Ecto.Migration
 
-  @domains ~w[
+  @allowed ~w[
     aliyun.com
     antispameurope.com
     app.hey.com
@@ -58,18 +58,38 @@ defmodule Portal.Repo.Migrations.CreateKnownMxDomains do
     zohocloud.ca
   ]
 
+  # Mail servers of disposable email services seen in past sign-ups.
+  @denied ~w[
+    10minutemail.com
+    beavis99.com
+    beavis99.net
+    mail.tm
+    wabblywabble.com
+    wallywatts.com
+    yopmail.com
+  ]
+
   def up do
     create table(:known_mx_domains, primary_key: false) do
       add :domain, :text, primary_key: true
+      add :verdict, :text, null: false
     end
+
+    create constraint(:known_mx_domains, :verdict_values, check: "verdict IN ('allow', 'deny')")
 
     create constraint(:known_mx_domains, :domain_format,
              check:
                "char_length(domain) <= 253 AND domain ~ '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'"
            )
 
-    values = Enum.map_join(@domains, ", ", &"('#{&1}')")
-    execute("INSERT INTO known_mx_domains (domain) VALUES #{values} ON CONFLICT DO NOTHING")
+    values =
+      Enum.map_join(
+        Enum.map(@allowed, &{&1, "allow"}) ++ Enum.map(@denied, &{&1, "deny"}),
+        ", ",
+        fn {domain, verdict} -> "('#{domain}', '#{verdict}')" end
+      )
+
+    execute("INSERT INTO known_mx_domains (domain, verdict) VALUES #{values} ON CONFLICT DO NOTHING")
   end
 
   def down do

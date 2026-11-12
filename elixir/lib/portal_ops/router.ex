@@ -40,4 +40,10 @@ defmodule PortalOps.Router do
       metrics: Portal.Telemetry,
       live_socket_path: "/dashboard/live"
   end
+
+  scope "/", PortalOps do
+    pipe_through [:browser, :admin_auth]
+    get "/sign_up_review", SignUpReviewController, :show
+    post "/sign_up_review", SignUpReviewController, :approve
+  end
 end
