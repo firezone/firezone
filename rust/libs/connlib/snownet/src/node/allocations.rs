@@ -122,11 +122,8 @@ where
         self.inner.values().any(|a| a.server().matches(socket))
     }
 
-    pub(crate) fn has_host_candidate_port(&self, port: u16) -> bool {
-        self.inner
-            .values()
-            .flat_map(|a| a.host_candidates())
-            .any(|c| c.addr().port() == port)
+    pub(crate) fn host_candidates(&self) -> impl Iterator<Item = &Candidate> {
+        self.inner.values().flat_map(|a| a.host_candidates())
     }
 
     pub(crate) fn get_mut_by_server(&mut self, socket: SocketAddr) -> MutAllocationRef<'_, RId> {

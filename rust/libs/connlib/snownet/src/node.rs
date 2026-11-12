@@ -704,8 +704,8 @@ where
     ) -> Result<Option<EncapsulateBatch<'_>>> {
         self.last_now = now;
 
-        if let Some(remote) = self.routing_loop(packet) {
-            return Err(RoutingLoop { remote }.into());
+        if self.is_routing_loop(packet) {
+            return Err(RoutingLoop.into());
         }
 
         let conn = self.connections.get_mut(&cid, now)?;
@@ -953,40 +953,29 @@ where
         }
     }
 
-    fn routing_loop(&self, packet: &IpPacket) -> Option<RemoteKind> {
-        let udp = packet.as_udp()?;
+    fn is_routing_loop(&self, packet: &IpPacket) -> bool {
+        let Some(udp) = packet.as_udp() else {
+            return false;
+        };
         let src_port = udp.source_port();
 
         // Our UDP sockets bypass the tunnel, so seeing one of their datagrams here means the bypass failed.
-        if !self.allocations.has_host_candidate_port(src_port)
-            && !self
-                .additional_host_candidates
-                .iter()
-                .any(|c| c.addr().port() == src_port)
+        if !self
+            .allocations
+            .host_candidates()
+            .chain(&self.additional_host_candidates)
+            .any(|c| c.addr().port() == src_port)
         {
-            return None;
+            return false;
         }
 
-        self.remote_kind(SocketAddr::new(
-            packet.destination(),
-            udp.destination_port(),
-        ))
-    }
+        let dst = SocketAddr::new(packet.destination(), udp.destination_port());
 
-    fn remote_kind(&self, socket: SocketAddr) -> Option<RemoteKind> {
-        if self.allocations.has_server(socket) {
-            return Some(RemoteKind::Relay);
-        }
-
-        if self
-            .connections
-            .iter_established()
-            .any(|(_, c)| c.agent.has_remote_candidate(socket))
-        {
-            return Some(RemoteKind::Peer);
-        }
-
-        None
+        self.allocations.has_server(dst)
+            || self
+                .connections
+                .iter_established()
+                .any(|(_, c)| c.agent.has_remote_candidate(dst))
     }
 
     fn init_connection(
@@ -1491,16 +1480,8 @@ impl From<is::IceCreds> for Credentials {
 }
 
 #[derive(thiserror::Error, Debug)]
-#[error("Packet is our own UDP datagram to a {remote:?}")]
-pub struct RoutingLoop {
-    remote: RemoteKind,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum RemoteKind {
-    Relay,
-    Peer,
-}
+#[error("Packet is our own UDP datagram to a relay or peer")]
+pub struct RoutingLoop;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId, RId> {
@@ -2692,25 +2673,19 @@ mod tests {
             let candidate = Candidate::host(peer, "udp").unwrap();
             node.add_remote_candidate(1, crate::candidate::encode(use_frostlink, &candidate), now);
 
-            assert_eq!(
-                routing_loop(&mut node, host.port(), relay, now),
-                Some(RemoteKind::Relay)
-            );
-            assert_eq!(
-                routing_loop(&mut node, host.port(), peer, now),
-                Some(RemoteKind::Peer)
-            );
-            assert_eq!(routing_loop(&mut node, host.port(), unknown, now), None);
-            assert_eq!(routing_loop(&mut node, host.port() + 1, relay, now), None);
+            assert!(is_routing_loop(&mut node, host.port(), relay, now));
+            assert!(is_routing_loop(&mut node, host.port(), peer, now));
+            assert!(!is_routing_loop(&mut node, host.port(), unknown, now));
+            assert!(!is_routing_loop(&mut node, host.port() + 1, relay, now));
         }
     }
 
-    fn routing_loop(
+    fn is_routing_loop(
         node: &mut Node<u32, u32>,
         src_port: u16,
         dst: SocketAddr,
         now: Instant,
-    ) -> Option<RemoteKind> {
+    ) -> bool {
         let packet = ip_packet::make::udp_packet(
             Ipv4Addr::new(100, 64, 0, 1),
             dst.ip(),
@@ -2719,9 +2694,9 @@ mod tests {
             &[],
         )
         .unwrap();
-        let error = node.encapsulate(1, &packet, now).err()?;
-
-        Some(error.any_downcast_ref::<RoutingLoop>()?.remote)
+        node.encapsulate(1, &packet, now)
+            .err()
+            .is_some_and(|e| e.any_is::<RoutingLoop>())
     }
 
     fn credentials() -> Credentials {
