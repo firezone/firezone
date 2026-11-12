@@ -81,10 +81,9 @@ defmodule Portal.Application do
     ]
 
     # Child order is chosen to make reverse-order shutdown graceful:
-    # 1) Portal.Cluster sends goodbye while DB/PubSub are healthy.
-    # 2) Replication slot pollers stop while BEAM is still fully alive.
-    # 3) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
-    # 4) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
+    # 1) Replication slot pollers stop while BEAM is still fully alive.
+    # 2) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
+    # 3) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
     base_children ++
       client_session_queue() ++
       gateway_session_queue() ++
