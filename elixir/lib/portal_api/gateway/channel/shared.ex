@@ -136,9 +136,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     {:noreply, socket} = register(socket)
 
-    # Return all connected relays and subscribe to global relay presence
-    {:ok, relays} = select_relays(socket)
+    # Subscribe before selecting relays so no relay presence change is missed.
     :ok = Presence.Relays.subscribe()
+    {:ok, relays} = select_relays(socket)
 
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
@@ -260,7 +260,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       # and more are now available
       needs_update =
         disconnected_ids != [] or
-          (MapSet.size(cached_relay_ids) < 2 and MapSet.size(online_relay_ids) > 0)
+          (MapSet.size(cached_relay_ids) < 2 and not MapSet.subset?(online_relay_ids, cached_relay_ids))
 
       if needs_update do
         # Select best relays from the SAME snapshot we used for disconnected_ids
