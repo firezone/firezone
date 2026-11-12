@@ -241,8 +241,7 @@ defmodule PortalAPI.Client.Socket do
   defp apply_session(client, token_id, public_key, subject, version) do
     %{
       client
-      | client_token_id: token_id,
-        token_id: token_id,
+      | token_id: token_id,
         public_key: public_key,
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
@@ -256,7 +255,7 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp flush_client_sessions(entries) do
-    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, :client_token_id)
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries)
 
     failed = revoked ++ missing
     failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
@@ -337,7 +336,7 @@ defmodule PortalAPI.Client.Socket do
       subject:
         Map.merge(subject || %{}, %{
           device_id: attrs[:device_id],
-          token_id: attrs[:client_token_id]
+          token_id: attrs[:token_id]
         })
     }
   end

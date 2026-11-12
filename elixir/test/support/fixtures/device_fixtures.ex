@@ -398,7 +398,7 @@ defmodule Portal.DeviceFixtures do
           :last_seen_at
         ]
       )
-      |> Ecto.Changeset.change(gateway_token_id: token.id, token_id: token.id)
+      |> Ecto.Changeset.change(token_id: token.id)
       |> Portal.Repo.update!()
 
     Portal.Repo.preload(gateway, :site)
@@ -424,7 +424,7 @@ defmodule Portal.DeviceFixtures do
 
     case Map.get(attrs, :token) do
       nil -> client
-      token -> client |> Ecto.Changeset.change(client_token_id: token.id, token_id: token.id) |> Portal.Repo.update!()
+      token -> client |> Ecto.Changeset.change(token_id: token.id) |> Portal.Repo.update!()
     end
   end
 
