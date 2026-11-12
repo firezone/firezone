@@ -2136,17 +2136,17 @@ defmodule PortalAPI.Client.Channel.Shared do
       # Track client's presence and monitor tracker shard processes for crash recovery
       |> track_presence()
 
-    {:noreply, socket} = register(socket)
+    with {:noreply, socket} <- register(socket) do
+      init(socket, resources, relays)
 
-    init(socket, resources, relays)
+      :ok =
+        PortalAPI.Sockets.notify_public_key_changed(
+          socket.assigns.client,
+          socket.assigns[:previous_public_key]
+        )
 
-    :ok =
-      PortalAPI.Sockets.notify_public_key_changed(
-        socket.assigns.client,
-        socket.assigns[:previous_public_key]
-      )
-
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   defp init(socket, resources, relays) do
@@ -3097,12 +3097,12 @@ defmodule PortalAPI.Client.Channel.Shared do
         socket = assign(socket, :pg_scope_pid, new_pid)
 
         # The account CDC subscription is already active. Checking current state
-        # after subscribing closes the connect race: an earlier disable is seen
+        # after subscribing closes the connect race: an earlier change is seen
         # here, while a later one arrives through the CDC-derived broadcast.
-        if x509_session_enabled?(socket) do
-          register_session(socket, current_pid)
-        else
-          handle_info(:disconnect, socket)
+        cond do
+          not x509_session_enabled?(socket) -> handle_info(:disconnect, socket)
+          not trust_anchor_kept?(socket) -> close_transport(socket)
+          true -> register_session(socket, current_pid)
         end
     end
   end
@@ -3134,6 +3134,11 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp certificate_session?(%{assigns: %{subject: %{credential: %Credential.X509{}}}}), do: true
   defp certificate_session?(socket), do: not is_nil(socket.assigns[:attestation])
+
+  defp trust_anchor_kept?(%{assigns: %{trust_anchor_certificate_ids: [_ | _] = ids}} = socket),
+    do: Database.trust_anchor_certificate_exists?(socket.assigns.client.account_id, ids)
+
+  defp trust_anchor_kept?(_socket), do: true
 
   # Only enqueue + arm on the first successful registration; re-registrations
   # after a PG scope crash share the same channel and session row.
@@ -3368,6 +3373,15 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.one()
+    end
+
+    def trust_anchor_certificate_exists?(account_id, ids) do
+      from(c in Portal.TrustAnchorCertificate,
+        where: c.account_id == ^account_id,
+        where: c.id in ^ids
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.exists?()
     end
 
     # Nothing else clears these when a channel stops, so a cut session would
