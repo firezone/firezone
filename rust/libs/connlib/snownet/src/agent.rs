@@ -214,7 +214,7 @@ impl Agent {
         }
     }
 
-    /// Whether a round trip completed on `path`. Always `false` on `Self::Ice`.
+    /// Whether the peer answered a probe on `path`. Always `false` on `Self::Ice`.
     pub(crate) fn is_validated(&self, path: (std::net::SocketAddr, std::net::SocketAddr)) -> bool {
         match self {
             Self::Ice(_) => false,

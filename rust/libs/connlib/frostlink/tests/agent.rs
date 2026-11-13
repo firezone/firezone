@@ -882,13 +882,14 @@ fn a_probe_reply_validates_its_path() {
 }
 
 #[test]
-fn the_primary_is_validated() {
+fn a_handshake_does_not_validate_the_primary_it_seeds() {
     let mut a = agent_with_relay_pairs();
     let t0 = Instant::now();
 
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
 
-    assert!(a.is_validated((addr(2), addr(4))));
+    assert_eq!(a.primary(), Some((addr(2), addr(4))));
+    assert!(!a.is_validated((addr(2), addr(4))));
 }
 
 #[test]
@@ -970,6 +971,34 @@ fn an_init_on_a_refused_path_is_answered_where_its_copy_arrives() {
         .collect::<Vec<_>>();
     assert_eq!(responses, vec![(addr(2), addr(4))]);
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
+}
+
+#[test]
+fn a_copy_of_an_answered_init_does_not_seed_the_primary() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let mut hs = Handshake::new(now);
+    a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(2), addr(4)),
+        now,
+    )
+    .unwrap();
+    a.add_remote_candidate(Candidate::server_reflexive(addr(5), addr(5)), now);
+    assert_eq!(a.primary(), None);
+
+    a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(2), addr(4)),
+        now,
+    )
+    .unwrap();
+
+    assert_eq!(a.primary(), None);
 }
 
 #[test]

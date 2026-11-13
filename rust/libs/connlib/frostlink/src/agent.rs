@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
+use std::mem;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
@@ -188,6 +189,9 @@ struct ResponderDedup {
     init: InitId,
     response_bytes: sanstun::Datagram,
     cached_at: Instant,
+    /// Whether the init arrived on a refused path. Its first copy on another
+    /// path then seeds the primary in its place.
+    on_refused_path: bool,
 }
 
 /// Front-loaded gaps before a pair settles into the steady [`PROBE_INTERVAL`]:
@@ -442,10 +446,11 @@ impl Agent {
         self.primary
     }
 
-    /// Returns whether a round trip completed on `path`: it is the primary or the peer answered a
-    /// probe on it.
+    /// Returns whether the peer answered a probe on `path`.
+    ///
+    /// A handshake does not validate the path it arrived on: its source can be spoofed.
     pub fn is_validated(&self, path: (SocketAddr, SocketAddr)) -> bool {
-        self.primary == Some(path) || self.pairs.get(&path).is_some_and(|s| s.rtt.is_some())
+        self.pairs.get(&path).is_some_and(|s| s.rtt.is_some())
     }
 
     /// Stops using `path` until the next [`Self::rebuild`].
@@ -568,8 +573,14 @@ impl Agent {
                     payload: Payload::Ciphertext(response),
                 });
 
-                // The init itself may have arrived on a refused path.
-                self.seed_primary(path);
+                if self
+                    .responder_dedup
+                    .as_mut()
+                    .is_some_and(|d| mem::take(&mut d.on_refused_path))
+                {
+                    self.register_peer_reflexive(path, now);
+                    self.seed_primary(path);
+                }
 
                 return Ok(());
             }
@@ -587,6 +598,7 @@ impl Agent {
                 init: init_id,
                 response_bytes: response,
                 cached_at: now,
+                on_refused_path: true,
             });
 
             return Ok(());
@@ -625,6 +637,7 @@ impl Agent {
             init: init_id,
             response_bytes: response.clone(),
             cached_at: now,
+            on_refused_path: false,
         });
         self.pending_transmits.push_back(Transmit {
             local: path.0,
