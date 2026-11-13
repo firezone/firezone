@@ -362,11 +362,41 @@ fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option
     candidates().nth(index)
 }
 
+/// Whether Clients that draw the same NAT are put behind one [`SharedNat`](crate::sim_net::SharedNat).
+///
+/// Off because connlib does not hold up behind such a NAT: TODO.
+const SAMPLE_SHARED_NAT: bool = false;
+
 fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
-    portal
+    let mut clients = portal
         .client_tunnel_ips()
         .map(|(id, tun4, tun6)| (id, arb_client_host(g, id, tun4, tun6)))
-        .collect::<BTreeMap<_, _>>()
+        .collect::<BTreeMap<_, _>>();
+
+    // TODO: Remove the Frostlink condition with classic ICE: the reference model cannot
+    // tell which of its connections survive the port changes of such a NAT.
+    if SAMPLE_SHARED_NAT && portal.frostlink() && same_nat(&clients) {
+        let nat_ip4 = g.nat_ip4();
+
+        for client in clients.values_mut() {
+            let ip4 = client.ip4.unwrap_or_else(|| g.socket_ip4());
+
+            client.join_shared_nat(nat_ip4);
+            client.update_interface(Some(ip4), None);
+            client.port = 52625;
+        }
+    }
+
+    clients
+}
+
+fn same_nat(clients: &BTreeMap<ClientId, Host<RefClient>>) -> bool {
+    let mut edges = clients.values().map(|client| client.edge_config());
+    let Some(first @ EdgeConfig::Nat(..)) = edges.next() else {
+        return false;
+    };
+
+    edges.all(|edge| edge == first)
 }
 
 fn arb_client_host(
