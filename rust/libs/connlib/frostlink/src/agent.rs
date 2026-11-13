@@ -473,6 +473,34 @@ impl Agent {
         true
     }
 
+    /// Probes `path` anew, as if the peer never answered on it.
+    ///
+    /// If it is the primary, the best other measured pair takes over until `path` answers again.
+    pub fn reprobe_path(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
+        self.last_now = Some(now);
+
+        let Some(state) = self.pairs.get_mut(&path) else {
+            return;
+        };
+        state.restart(now);
+
+        if self.primary != Some(path) {
+            return;
+        }
+
+        tracing::trace!(local = %path.0, remote = %path.1, "Re-probing primary");
+
+        self.primary = None;
+        self.select_primary();
+
+        match self.primary.and_then(|p| self.pairs.get_mut(&p)) {
+            // A pair that went quiet has to resume the cadence of a primary.
+            Some(state) if !state.is_probing() => state.probes.keepalive(now),
+            Some(_) => {}
+            None => self.clear_and_reprobe(now),
+        }
+    }
+
     pub fn relay_pairs(&self) -> impl Iterator<Item = (SocketAddr, SocketAddr)> + '_ {
         self.pairs
             .iter()

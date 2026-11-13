@@ -672,26 +672,23 @@ where
         } = batch;
 
         let path = (dst, src);
-        let path_owner = if probes.is_empty() {
-            None
+        let path_taken = if probes.is_empty() {
+            false
         } else {
             let (_, conn) = self
                 .connections
                 .get_established_mut_by_tunnel_id(tunnel, now)?;
 
             // Its own paths need no search, which covers the keepalives of the primary.
-            if conn.agent.is_validated(path) {
-                None
-            } else {
-                self.connections.path_owner(path)
-            }
+            !conn.agent.is_validated(path)
+                && self.contest_path(path, |c| c.tunnel.id() == tunnel, now)
         };
 
         let (cid, conn) = self
             .connections
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
-        if path_owner.is_some_and(|owner| owner != cid) {
+        if path_taken {
             conn.refuse_path(cid, path, &self.paths_refused, now);
         }
 
@@ -1251,11 +1248,19 @@ where
         };
 
         let path = (destination, from);
-        let path_owner = match &parsed_packet {
-            sanstun::ReceivedMessage::HandshakeInitiation(_) => self.connections.path_owner(path),
-            sanstun::ReceivedMessage::HandshakeResponse(_) => self.connections.path_owner(path),
+        let path_taken = match &parsed_packet {
+            sanstun::ReceivedMessage::HandshakeInitiation(init) => {
+                let sender = init.peer_static_public();
+
+                self.contest_path(path, |c| c.remote_pub_key == sender, now)
+            }
+            sanstun::ReceivedMessage::HandshakeResponse(response) => {
+                let tunnel = response.tunnel_id();
+
+                self.contest_path(path, |c| c.tunnel.id() == tunnel, now)
+            }
             sanstun::ReceivedMessage::CookieReply(_)
-            | sanstun::ReceivedMessage::TransportData(_) => None,
+            | sanstun::ReceivedMessage::TransportData(_) => false,
         };
 
         let connection = match &parsed_packet {
@@ -1279,7 +1284,7 @@ where
         };
         let tunnel = conn.tunnel.id();
 
-        if path_owner.is_some_and(|owner| owner != cid) {
+        if path_taken {
             conn.refuse_path(cid, path, &self.paths_refused, now);
         }
 
@@ -1308,6 +1313,29 @@ where
                 ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
             }
         }
+    }
+
+    /// Returns whether a packet arrived on a `path` that a connection other than its receiver owns.
+    ///
+    /// The NAT in front of the two peers then maps both to the same socket and delivers what
+    /// we send on `path` to the one that sent last: the sender of the packet. The owner
+    /// therefore probes the path anew before it sends on it again.
+    fn contest_path(
+        &mut self,
+        path: (SocketAddr, SocketAddr),
+        is_receiver: impl Fn(&Connection<RId>) -> bool,
+        now: Instant,
+    ) -> bool {
+        let Some(owner) = self.connections.path_owner_mut(path) else {
+            return false;
+        };
+        if is_receiver(owner) {
+            return false;
+        }
+
+        owner.agent.reprobe_path(path, now);
+
+        true
     }
 
     /// Sends `message` back to `remote` on the path a packet from it arrived on at `local`.
@@ -2207,9 +2235,6 @@ where
     }
 
     /// Makes the agent stop using `path`, which another connection owns.
-    ///
-    /// The NAT in front of the two peers maps both to the same socket, so what we send on
-    /// `path` reaches only one of them.
     fn refuse_path<TId>(
         &mut self,
         cid: TId,

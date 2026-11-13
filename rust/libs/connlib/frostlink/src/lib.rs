@@ -48,13 +48,19 @@
 //! clearing the primary and re-probing every pair. A new candidate is the same
 //! kind of signal and does the same. Pairs already probing keep their state.
 //!
-//! ## Refused paths
+//! ## Shared paths
 //!
-//! An agent only knows its own connection. Whoever owns several can tell it to
-//! refuse a path ([`Agent::refuse_path`]), e.g. one that a NAT also hands to
-//! another peer: the agent then neither probes it nor answers probes or
-//! handshakes on it, so neither end validates it and it never becomes the
-//! primary. Data arriving on it is unaffected.
+//! A NAT may hand the remote socket of a path to a second peer as well and
+//! deliver what is sent there to whichever of the two sent last. An agent only
+//! knows its own connection, so whoever owns several has to notice and tell
+//! the two agents involved:
+//!
+//! - [`Agent::refuse_path`] for the agent that came second: it neither probes
+//!   the path nor answers probes or handshakes on it, so neither end validates
+//!   it and it never becomes the primary. Data arriving on it is unaffected.
+//! - [`Agent::reprobe_path`] for the agent that validated the path, whenever
+//!   the other peer sent on it: the path has to answer a probe again, and the
+//!   best other measured pair is the primary until it does.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 

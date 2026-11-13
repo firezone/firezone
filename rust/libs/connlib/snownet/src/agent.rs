@@ -234,6 +234,18 @@ impl Agent {
         }
     }
 
+    /// No-op on `Self::Ice`.
+    pub(crate) fn reprobe_path(
+        &mut self,
+        path: (std::net::SocketAddr, std::net::SocketAddr),
+        now: Instant,
+    ) {
+        match self {
+            Self::Ice(_) => {}
+            Self::Frostlink(agent) => agent.reprobe_path(path, now),
+        }
+    }
+
     pub(crate) fn handle_stun_packet(&mut self, now: Instant, p: StunPacket<'_>) -> bool {
         match self {
             Self::Ice(a) => a.handle_packet(now, p),

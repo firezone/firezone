@@ -856,7 +856,7 @@ fn a_peer_reflexive_remote_stays_peer_reflexive_until_signaled() {
     );
 }
 
-// --- refused paths ---
+// --- paths shared with another connection ---
 
 #[test]
 fn a_probe_request_does_not_validate_its_path() {
@@ -890,6 +890,47 @@ fn a_handshake_does_not_validate_the_primary_it_seeds() {
 
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
     assert!(!a.is_validated((addr(2), addr(4))));
+}
+
+#[test]
+fn reprobing_the_primary_hands_over_to_the_best_other_measured_pair() {
+    let (mut a, t0) = direct_primary_with_measured_relay();
+
+    a.reprobe_path((addr(1), addr(3)), t0 + secs(1));
+
+    assert_eq!(a.primary(), Some((addr(2), addr(4))));
+    assert!(!a.is_validated((addr(1), addr(3))));
+}
+
+#[test]
+fn a_reprobed_path_is_the_primary_again_once_it_answers() {
+    let (mut a, t0) = direct_primary_with_measured_relay();
+    a.reprobe_path((addr(1), addr(3)), t0 + secs(1));
+
+    let probes = a.tick(t0 + secs(1));
+    a.ack_probe(&probes, (addr(1), addr(3)), t0 + secs(1) + ms(30));
+
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+}
+
+#[test]
+fn a_quiet_pair_keeps_alive_once_it_takes_over_from_a_reprobed_primary() {
+    let (mut a, t0) = direct_primary_with_measured_relay();
+    let _ = a.advance(t0, t0 + secs(60));
+
+    a.reprobe_path((addr(1), addr(3)), t0 + secs(60));
+    let activity = a.advance(t0 + secs(60), t0 + secs(120));
+
+    assert_eq!(activity.probes_for((addr(2), addr(4))).len(), 2);
+}
+
+#[test]
+fn reprobing_the_only_measured_pair_clears_the_primary() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+
+    a.reprobe_path((addr(1), addr(3)), t0 + secs(1));
+
+    assert_eq!(a.primary(), None);
 }
 
 #[test]
@@ -1218,6 +1259,22 @@ fn direct_primary_with_relay_fallback() -> (Agent, Instant) {
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
 
     let probes = a.tick(t0);
+    a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(30));
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+    a.drain_events();
+    let _ = a.transmits();
+
+    (a, t0)
+}
+
+/// A host↔host primary at `(1, 3)` and a measured relay pair `(2, 4)`.
+fn direct_primary_with_measured_relay() -> (Agent, Instant) {
+    let mut a = agent_with_relay_pairs();
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    let probes = a.tick(t0);
+    a.ack_probe(&probes, (addr(2), addr(4)), t0 + ms(30));
     a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(30));
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     a.drain_events();

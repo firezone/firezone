@@ -378,10 +378,14 @@ where
     }
 
     /// Returns the connection that owns `path`: the one whose agent validated it.
-    pub(crate) fn path_owner(&self, path: (SocketAddr, SocketAddr)) -> Option<TId> {
+    pub(crate) fn path_owner_mut(
+        &mut self,
+        path: (SocketAddr, SocketAddr),
+    ) -> Option<&mut Connection<RId>> {
         self.established
-            .iter()
-            .find_map(|(id, c)| c.agent.is_validated(path).then_some(id))
+            .filter_mut(|c| c.agent.is_validated(path))
+            .map(|(_, c)| c)
+            .next()
     }
 
     pub(crate) fn is_closing(&self, id: &TId) -> bool {
