@@ -843,7 +843,7 @@ where
             != Some(&verified_username.allocation_key)
         {
             let (error_response, msg) = make_error_response(WrongCredentials, request);
-            tracing::warn!(target: "relay", %sender, "{msg}: Allocation belongs to a different device");
+            tracing::debug!(target: "relay", %sender, "{msg}: Allocation belongs to a different device");
 
             return Err(error_response);
         }
@@ -905,7 +905,7 @@ where
             != Some(&verified_username.allocation_key)
         {
             let (error_response, msg) = make_error_response(WrongCredentials, request);
-            tracing::warn!(target: "relay", %sender, "{msg}: Allocation belongs to a different device");
+            tracing::debug!(target: "relay", %sender, "{msg}: Allocation belongs to a different device");
 
             return Err(error_response);
         }
