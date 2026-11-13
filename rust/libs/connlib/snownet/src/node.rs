@@ -780,6 +780,10 @@ where
             });
         }
 
+        if gc.socket_taken {
+            self.pending_events.push_back(Event::SocketTaken);
+        }
+
         self.connections.clear_relays(gc.removed.into_iter());
 
         self.connections.handle_timeout(
@@ -1518,6 +1522,13 @@ pub enum Event<TId, RId> {
     NoRelays {
         blocked: Vec<RId>,
     },
+
+    /// A relay sees our socket as the one of another client's allocation.
+    ///
+    /// The NAT in front of us maps both of us to the same public socket.
+    /// Upper layers should bind to a different local port and call [`Node::reset`].
+    /// The relay stays blocked for as long as they don't.
+    SocketTaken,
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]

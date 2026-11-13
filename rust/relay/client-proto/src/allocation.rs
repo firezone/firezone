@@ -30,7 +30,7 @@ use stun_codec::{
         attributes::{
             ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
         },
-        errors::{AllocationMismatch, AllocationQuotaReached},
+        errors::{AllocationMismatch, AllocationQuotaReached, WrongCredentials},
         methods::{ALLOCATE, CHANNEL_BIND, REFRESH},
     },
     rfc8656::attributes::AdditionalAddressFamily,
@@ -241,6 +241,9 @@ pub enum FreeReason {
     UnhandledResponse,
     #[error("allocation quota reached")]
     AllocationQuotaReached,
+    /// The relay sees our socket as the one of another client's allocation.
+    #[error("socket is taken by another client")]
+    SocketTaken,
 }
 
 impl Allocation {
@@ -555,6 +558,12 @@ impl Allocation {
             if error.code() == AllocationQuotaReached::CODEPOINT && message.method() == ALLOCATE {
                 self.buffered_channel_bindings.clear();
                 self.explicit_failure = Some(FreeReason::AllocationQuotaReached);
+
+                return true;
+            }
+
+            if error.code() == WrongCredentials::CODEPOINT {
+                self.explicit_failure = Some(FreeReason::SocketTaken);
 
                 return true;
             }
@@ -2876,6 +2885,33 @@ mod tests {
         );
     }
 
+    #[test]
+    fn deleting_allocation_of_another_client_frees_allocation() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(allocation_mismatch(&allocate), now);
+        let delete = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(wrong_credentials(&delete), now);
+
+        assert_eq!(allocation.can_be_freed(), Some(FreeReason::SocketTaken));
+    }
+
+    #[test]
+    fn channel_binding_on_allocation_of_another_client_frees_allocation() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1, now)
+            .with_allocate_response(&[RELAY_ADDR_IP4], now);
+
+        allocation.bind_channel(PEER2_IP4, now);
+        let channel_bind = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(wrong_credentials(&channel_bind), now);
+
+        assert_eq!(allocation.can_be_freed(), Some(FreeReason::SocketTaken));
+    }
+
     fn allocate_success_without_lifetime(allocate: &Message<Attribute>) -> Message<Attribute> {
         let mut response = allocate_success(allocate);
         response.add_attribute(XorRelayAddress::new(RELAY_ADDR_IP4));
@@ -3225,6 +3261,17 @@ mod tests {
             request.transaction_id(),
         );
         message.add_attribute(ErrorCode::from(AllocationMismatch));
+
+        message
+    }
+
+    fn wrong_credentials(request: &Message<Attribute>) -> Message<Attribute> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(WrongCredentials));
 
         message
     }

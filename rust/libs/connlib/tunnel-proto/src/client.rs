@@ -2300,6 +2300,9 @@ impl ClientState {
                         excluded_relay_ids: blocked,
                     });
                 }
+                snownet::Event::SocketTaken => {
+                    self.buffered_events.push_back(ClientEvent::SocketTaken);
+                }
             }
         }
 

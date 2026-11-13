@@ -167,6 +167,10 @@ impl Sockets {
         self.listen_port
     }
 
+    pub fn set_listen_port(&mut self, port: u16) {
+        self.listen_port = port;
+    }
+
     fn bind(
         &mut self,
         socket_factory: &Arc<dyn SocketFactory<UdpSocket>>,

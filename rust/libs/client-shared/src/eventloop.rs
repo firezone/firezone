@@ -1,4 +1,4 @@
-use crate::{ConnectedAs, PHOENIX_TOPIC, SessionConfig};
+use crate::{ConnectedAs, PHOENIX_TOPIC, SessionConfig, free_udp_port};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -9,7 +9,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{
     collections::BTreeSet,
     io,
@@ -50,6 +50,11 @@ use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, 
 /// That however means we need to define a more explicit eviction policy to stop the cache from growing.
 static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::new(BTreeSet::new());
 
+/// How long we stay on a port before moving to another one because of [`ClientEvent::SocketTaken`].
+///
+/// Bounds how often a relay can make us reset our connections.
+const MIN_REBIND_INTERVAL: Duration = Duration::from_secs(60);
+
 pub struct Eventloop {
     clock: Clock,
     tunnel: Option<ClientTunnel>,
@@ -74,6 +79,9 @@ pub struct Eventloop {
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     logged_permission_denied: bool,
+
+    additional_host_candidates: Vec<IpAddr>,
+    last_rebind: Option<Instant>,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
 }
@@ -195,7 +203,7 @@ impl Eventloop {
         )
         .context("Failed to create tunnel")?;
         tunnel.update_system_resolvers(dns_servers.clone());
-        tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
+        tunnel.set_additional_host_candidates(additional_host_candidates.clone(), clock.now());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
         let public_key = PublicKeyParam(tunnel.public_key().to_bytes());
@@ -220,6 +228,8 @@ impl Eventloop {
             local_flow_logs,
             cmd_rx,
             logged_permission_denied: false,
+            additional_host_candidates,
+            last_rebind: None,
             tunnel_errors: otel_instruments::tunnel_errors(),
             portal_event_rx,
             portal_cmd_tx,
@@ -349,7 +359,8 @@ impl Eventloop {
                     return Ok(ControlFlow::Continue(()));
                 };
 
-                tunnel.set_additional_host_candidates(ips, now);
+                tunnel.set_additional_host_candidates(ips.clone(), now);
+                self.additional_host_candidates = ips;
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -358,26 +369,30 @@ impl Eventloop {
 
                 tunnel.set_tun(tun);
             }
-            Command::Reset(reason) => {
-                let now = self.clock.now();
-                let Some(tunnel) = self.tunnel.as_mut() else {
-                    return Ok(ControlFlow::Continue(()));
-                };
-
-                tunnel.state_mut().set_portal_connected(false);
-                tunnel.reset(&reason, now);
-                tunnel_bypass_resolver::reset_sockets();
-                telemetry::reset_ingest();
-                self.portal_cmd_tx
-                    .send(PortalCommand::Connect(PublicKeyParam(
-                        tunnel.public_key().to_bytes(),
-                    )))
-                    .await
-                    .context("Failed to connect phoenix-channel")?;
-            }
+            Command::Reset(reason) => self.reset(&reason).await?,
         }
 
         Ok(ControlFlow::Continue(()))
+    }
+
+    async fn reset(&mut self, reason: &str) -> Result<()> {
+        let now = self.clock.now();
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return Ok(());
+        };
+
+        tunnel.state_mut().set_portal_connected(false);
+        tunnel.reset(reason, now);
+        tunnel_bypass_resolver::reset_sockets();
+        telemetry::reset_ingest();
+        self.portal_cmd_tx
+            .send(PortalCommand::Connect(PublicKeyParam(
+                tunnel.public_key().to_bytes(),
+            )))
+            .await
+            .context("Failed to connect phoenix-channel")?;
+
+        Ok(())
     }
 
     async fn handle_tunnel_event(&mut self, event: Result<ClientEvent, TunnelError>) -> Result<()> {
@@ -504,8 +519,41 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
+            Ok(ClientEvent::SocketTaken) => self.rebind_to_new_port().await?,
             Err(error) => self.handle_tunnel_error(error)?,
         }
+
+        Ok(())
+    }
+
+    async fn rebind_to_new_port(&mut self) -> Result<()> {
+        let now = self.clock.now();
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return Ok(());
+        };
+
+        if let Some(last_rebind) = self.last_rebind
+            && now.duration_since(last_rebind) < MIN_REBIND_INTERVAL
+        {
+            tracing::debug!(since_last_rebind = ?now.duration_since(last_rebind), "Not rebinding to a new port again");
+
+            return Ok(());
+        }
+
+        let port = match free_udp_port() {
+            Ok(port) => port,
+            Err(e) => {
+                tracing::debug!("Failed to find a free UDP port: {e}");
+
+                return Ok(());
+            }
+        };
+
+        tunnel.set_listen_port(port);
+        tunnel.set_additional_host_candidates(self.additional_host_candidates.clone(), now);
+        self.last_rebind = Some(now);
+
+        self.reset("socket is taken by another client").await?;
 
         Ok(())
     }

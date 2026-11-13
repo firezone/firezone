@@ -314,6 +314,11 @@ impl ClientTunnel {
         self.io.reset();
     }
 
+    /// Sets the port our UDP sockets bind to from the next [`ClientTunnel::reset`] onwards.
+    pub fn set_listen_port(&mut self, port: u16) {
+        self.io.set_listen_port(port);
+    }
+
     /// Advertises the given local IPs as additional host candidates on our UDP port.
     pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
         self.role_state
