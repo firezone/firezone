@@ -273,8 +273,8 @@ impl EventStream {
 }
 
 /// The settings a [`Session`] starts with.
+#[derive(Default)]
 pub struct SessionConfig {
-    pub(crate) listen_port: u16,
     pub(crate) is_internet_resource_active: bool,
     pub(crate) dns_servers: Vec<IpAddr>,
     pub(crate) additional_host_candidates: Vec<IpAddr>,
@@ -283,18 +283,6 @@ pub struct SessionConfig {
 }
 
 impl SessionConfig {
-    /// Creates the settings of a session whose UDP sockets listen on `listen_port`.
-    pub fn new(listen_port: u16) -> Self {
-        Self {
-            listen_port,
-            is_internet_resource_active: false,
-            dns_servers: Vec::new(),
-            additional_host_candidates: Vec::new(),
-            flow_logs_dir: None,
-            local_flow_logs: false,
-        }
-    }
-
     pub fn with_internet_resource_active(mut self, active: bool) -> Self {
         self.is_internet_resource_active = active;
         self
@@ -322,10 +310,7 @@ impl SessionConfig {
 }
 
 /// Finds a UDP port that is free on both IP stacks.
-///
-/// Clients listen on a port of their own instead of a well-known one, so that several of them
-/// behind the same NAT don't compete for its mapping.
-pub fn free_udp_port() -> io::Result<u16> {
+pub(crate) fn free_udp_port() -> io::Result<u16> {
     const ATTEMPTS: usize = 5;
 
     for _ in 0..ATTEMPTS {

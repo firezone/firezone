@@ -265,14 +265,13 @@ impl ClientTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        listen_port: u16,
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
         now: Instant,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(
-                Sockets::new(udp_socket_factory.clone(), listen_port),
+                Sockets::new(udp_socket_factory.clone()),
                 CryptoWorkers::default(),
                 resolver::spawn(
                     tcp_socket_factory.clone(),
@@ -547,13 +546,12 @@ impl GatewayTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        listen_port: u16,
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(
-                Sockets::new(udp_socket_factory.clone(), listen_port),
+                Sockets::new(udp_socket_factory.clone()),
                 CryptoWorkers::default(),
                 resolver::spawn(
                     tcp_socket_factory.clone(),

@@ -78,8 +78,8 @@ pub(crate) struct SimClient {
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tcp::Client,
 
-    /// When the client last moved to a new port because its socket was taken.
-    pub(crate) last_rebind: Option<Instant>,
+    /// How many times the client moved to a new port because its socket was taken.
+    pub(crate) num_rebinds: u32,
 }
 
 impl SimClient {
@@ -111,7 +111,7 @@ impl SimClient {
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
             tcp_client: crate::tcp::Client::new(now, os),
             dns_resource_record_cache: Default::default(),
-            last_rebind: None,
+            num_rebinds: 0,
         }
     }
 
