@@ -1291,7 +1291,7 @@ impl TunnelTest {
         let portal_unreachable = self
             .client_portal_offline_until
             .is_some_and(|(cid, until)| cid == src && now < until);
-        if portal_unreachable {
+        if portal_unreachable && !matches!(event, ClientEvent::SocketTaken) {
             tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
             return;
@@ -1553,6 +1553,13 @@ impl TunnelTest {
                     c.tunnel
                         .inner_mut()
                         .reset("socket is taken by another client", now);
+                });
+
+                if portal_unreachable {
+                    return;
+                }
+
+                client.exec_mut(|c| {
                     c.sut_mut().set_portal_connected(true);
                     c.update_relays(iter::empty(), self.relays.iter(), now);
                     c.sut_mut().set_resources(resources, now);
