@@ -380,12 +380,16 @@ defmodule Portal.Telemetry do
   end
 
   @doc """
-  Records a flow-log upload the portal refused because the reporting device
-  (`:device`) or its account (`:account`) was out of rows.
+  Records a flow-log upload the portal refused because its source IP was out of
+  requests (`:ip`), or the reporting device (`:device`) or its account
+  (`:account`) was out of rows. The IP limit runs before the token is read, so
+  its role is `:unknown`.
   """
+  @spec flow_log_upload_denied(:ip, :unknown) :: :ok
   @spec flow_log_upload_denied(:device | :account, :initiator | :responder) :: :ok
   def flow_log_upload_denied(bucket, role)
-      when bucket in [:device, :account] and role in [:initiator, :responder] do
+      when (bucket == :ip and role == :unknown) or
+             (bucket in [:device, :account] and role in [:initiator, :responder]) do
     :telemetry.execute([:portal, :flow_logs, :upload_denied], %{count: 1}, %{
       bucket: bucket,
       role: role
@@ -673,7 +677,7 @@ defmodule Portal.Telemetry do
       meter,
       :"portal.flow_logs.uploads_denied",
       %{
-        description: "Flow-log uploads refused by a row limit, by bucket and reporter role",
+        description: "Flow-log uploads refused by a rate limit, by bucket (ip, device, account) and reporter role",
         unit: :"1"
       }
     )

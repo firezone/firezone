@@ -331,8 +331,9 @@ defmodule PortalAPI.FlowLogControllerTest do
       :telemetry.attach(
         handler_id,
         [:portal, :flow_logs, :upload_denied],
-        fn event, measurements, metadata, _config ->
-          send(test_pid, {event, measurements, metadata})
+        fn
+          _event, _measurements, %{bucket: :ip}, _config -> :ok
+          event, measurements, metadata, _config -> send(test_pid, {event, measurements, metadata})
         end,
         nil
       )

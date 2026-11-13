@@ -30,6 +30,33 @@ defmodule PortalAPI.Plugs.IngestionRateLimitTest do
       assert String.to_integer(retry_after) > 0
     end
 
+    test "counts a denied request", %{unique_ip: unique_ip} do
+      test_pid = self()
+      handler_id = "test-ingestion-ip-denied-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :flow_logs, :upload_denied],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      opts = IngestionRateLimit.init(refill_rate: 1, capacity: 1)
+
+      conn = build_conn() |> Map.put(:remote_ip, unique_ip) |> IngestionRateLimit.call(opts)
+      refute conn.halted
+
+      conn = build_conn() |> Map.put(:remote_ip, unique_ip) |> IngestionRateLimit.call(opts)
+      assert conn.status == 429
+
+      assert_received {[:portal, :flow_logs, :upload_denied], %{count: 1},
+                       %{bucket: :ip, role: :unknown}}
+    end
+
     test "different IPs have independent buckets", %{unique_ip: unique_ip} do
       opts = IngestionRateLimit.init(refill_rate: 1, capacity: 1)
       other_ip = put_elem(unique_ip, 0, 11)

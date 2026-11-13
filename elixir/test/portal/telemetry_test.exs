@@ -628,6 +628,18 @@ defmodule Portal.TelemetryTest do
       assert_receive {[:portal, :flow_logs, :upload_denied], %{count: 1},
                       %{bucket: :account, role: :responder}}
     end
+
+    test "accepts an IP denial only with an unknown role" do
+      assert :ok = Portal.Telemetry.flow_log_upload_denied(:ip, :unknown)
+
+      assert_raise FunctionClauseError, fn ->
+        Portal.Telemetry.flow_log_upload_denied(:ip, :initiator)
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        Portal.Telemetry.flow_log_upload_denied(:device, :unknown)
+      end
+    end
   end
 
   describe "flow_log_upload_unauthorized/1" do
