@@ -482,7 +482,8 @@ fn share_nat<'a, T: 'a>(
         return;
     };
 
-    // TODO: Sample overloading for classic ICE too once it refuses shared paths.
+    // TODO: Sample overloading for classic ICE too: the reference model cannot tell which of its
+    // connections keep a direct path through such a NAT when the relays are gone.
     let assignment = if portal.frostlink() && first.latency().as_millis() % 2 == 1 {
         PortAssignment::Overloading
     } else {

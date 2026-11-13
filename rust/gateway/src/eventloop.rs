@@ -364,7 +364,8 @@ impl Eventloop {
         tunnel.set_additional_host_candidates(self.additional_host_candidates.clone(), now);
         self.num_rebinds += 1;
 
-        // The reset may give us a new key, which the portal hands out to Clients; rejoining also brings back relays the reset dropped.
+        // Resetting may give us a new key, which the portal hands out to Clients, and rejoining
+        // brings back the relays that freed our allocation.
         tunnel.state_mut().set_portal_connected(false);
         tunnel.reset("socket is taken by another client", now);
         self.portal_cmd_tx
