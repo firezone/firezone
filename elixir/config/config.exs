@@ -643,8 +643,8 @@ config :portal, PortalAPI.Sockets.RateLimit,
 # or many devices behind one NAT, sends many requests in each pass. The row
 # limits below cap the volume; this only stops a flood of requests.
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
-  refill_rate: 20,
-  capacity: 1_200
+  refill_rate: 100,
+  capacity: 1_000
 
 # Flow-log rows per reporting device and per account, charged after the ingest
 # token is verified. An initiator reports its own flows; a
