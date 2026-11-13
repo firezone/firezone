@@ -265,6 +265,9 @@ if config_env() == :prod do
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
 
+    # Log an error when outbound emails stop getting delivery reports
+    {"* * * * *", Portal.Workers.CheckOutboundEmailDeliveryLag},
+
     # Delete policy_authorizations whose device postures stopped holding
     {"*/15 * * * *", Portal.Workers.DeleteStalePostureAuthorizations},
 
