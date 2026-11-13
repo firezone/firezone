@@ -47,6 +47,14 @@
 //! init with no data in between — is taken as distress ([`REKEY_DISTRESS_ATTEMPTS`]),
 //! clearing the primary and re-probing every pair. A new candidate is the same
 //! kind of signal and does the same. Pairs already probing keep their state.
+//!
+//! ## Refused paths
+//!
+//! An agent only knows its own connection. Whoever owns several can tell it to
+//! refuse a path ([`Agent::refuse_path`]), e.g. one that a NAT also hands to
+//! another peer: the agent then neither probes it nor answers probes or
+//! handshakes on it, so neither end validates it and it never becomes the
+//! primary. Data arriving on it is unaffected.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 

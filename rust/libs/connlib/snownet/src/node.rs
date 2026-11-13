@@ -25,7 +25,7 @@ use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
-use opentelemetry::metrics::Gauge;
+use opentelemetry::metrics::{Counter, Gauge};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay_client_proto::channel_data::channel_data_packet_buffer;
@@ -110,6 +110,7 @@ pub struct Node<TId, RId> {
 
     connection_count: Gauge<u64>,
     next_connection_count: Instant,
+    paths_refused: Counter<u64>,
 
     rng: StdRng,
 
@@ -205,6 +206,7 @@ where
             buffered_candidates: Default::default(),
             connection_count: otel_instruments::connection_count(),
             next_connection_count: now,
+            paths_refused: otel_instruments::connection_paths_refused(),
             unix_now: now,
             unix_ts,
         }
@@ -669,11 +671,31 @@ where
             probes,
         } = batch;
 
+        let path = (dst, src);
+        let path_owner = if probes.is_empty() {
+            None
+        } else {
+            let (_, conn) = self
+                .connections
+                .get_established_mut_by_tunnel_id(tunnel, now)?;
+
+            // Saves the search for the probes of an established path, e.g. the primary's keepalives.
+            if conn.agent.is_validated(path) {
+                None
+            } else {
+                self.connections.path_owner(path)
+            }
+        };
+
         let (cid, conn) = self
             .connections
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
-        let packets = conn.commit_decrypted(cid, (dst, src), data, probes, now);
+        if path_owner.is_some_and(|owner| owner != cid) {
+            conn.refuse_path(cid, path, &self.paths_refused, now);
+        }
+
+        let packets = conn.commit_decrypted(cid, path, data, probes, now);
         conn.handle_tunnel_events(
             cid,
             &mut self.allocations,
@@ -1228,6 +1250,14 @@ where
             }
         };
 
+        let path = (destination, from);
+        let path_owner = match &parsed_packet {
+            sanstun::ReceivedMessage::HandshakeInitiation(_) => self.connections.path_owner(path),
+            sanstun::ReceivedMessage::HandshakeResponse(_) => self.connections.path_owner(path),
+            sanstun::ReceivedMessage::CookieReply(_)
+            | sanstun::ReceivedMessage::TransportData(_) => None,
+        };
+
         let connection = match &parsed_packet {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
             sanstun::ReceivedMessage::HandshakeInitiation(init) => self
@@ -1248,6 +1278,10 @@ where
             Err(e) => return ControlFlow::Break(Err(e)),
         };
         let tunnel = conn.tunnel.id();
+
+        if path_owner.is_some_and(|owner| owner != cid) {
+            conn.refuse_path(cid, path, &self.paths_refused, now);
+        }
 
         let control_flow = conn.decapsulate(
             cid,
@@ -2170,6 +2204,28 @@ where
         }
 
         Ok(committed)
+    }
+
+    /// Makes the agent stop using `path`, which another connection owns.
+    ///
+    /// The NAT in front of the two peers maps both to the same socket, so what we send on
+    /// `path` reaches only one of them.
+    fn refuse_path<TId>(
+        &mut self,
+        cid: TId,
+        path: (SocketAddr, SocketAddr),
+        paths_refused: &Counter<u64>,
+        now: Instant,
+    ) where
+        TId: fmt::Display,
+    {
+        if !self.agent.refuse_path(path, now) {
+            return;
+        }
+
+        tracing::debug!(%cid, local = %path.0, remote = %path.1, "Refused path owned by another connection");
+
+        paths_refused.add(1, &[]);
     }
 
     fn restore_rekey_attempt_time(&mut self) {

@@ -3,6 +3,7 @@ use std::{
     fmt,
     hash::Hash,
     iter, mem,
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -374,6 +375,13 @@ where
             .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
         Ok(connection)
+    }
+
+    /// Returns the connection that owns `path`: the one whose agent validated it.
+    pub(crate) fn path_owner(&self, path: (SocketAddr, SocketAddr)) -> Option<TId> {
+        self.established
+            .iter()
+            .find_map(|(id, c)| c.agent.is_validated(path).then_some(id))
     }
 
     pub(crate) fn is_closing(&self, id: &TId) -> bool {

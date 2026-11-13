@@ -16,6 +16,8 @@ pub struct Agent {
     remotes: Vec<Candidate>,
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
     primary: Option<(SocketAddr, SocketAddr)>,
+    /// Paths that must not be used; see [`Self::refuse_path`].
+    refused: BTreeSet<(SocketAddr, SocketAddr)>,
 
     /// `true` once the session is usable, so probes can ride it: our init was
     /// answered, or the peer's transport data decrypted under the session we
@@ -336,6 +338,9 @@ impl Agent {
         if pair.0.is_ipv4() != pair.1.is_ipv4() {
             return;
         }
+        if self.refused.contains(&pair) {
+            return;
+        }
 
         let id = self.next_pair_id;
         self.next_pair_id = self.next_pair_id.wrapping_add(1);
@@ -437,6 +442,32 @@ impl Agent {
         self.primary
     }
 
+    /// Returns whether a round trip completed on `path`: it is the primary or the peer answered a
+    /// probe on it.
+    pub fn is_validated(&self, path: (SocketAddr, SocketAddr)) -> bool {
+        self.primary == Some(path) || self.pairs.get(&path).is_some_and(|s| s.rtt.is_some())
+    }
+
+    /// Stops using `path` until the next [`Self::rebuild`].
+    ///
+    /// The path is not probed, probes and handshakes arriving on it go unanswered and it never
+    /// becomes the primary. Returns whether the path was newly refused.
+    pub fn refuse_path(&mut self, path: (SocketAddr, SocketAddr), now: Instant) -> bool {
+        self.last_now = Some(now);
+
+        if !self.refused.insert(path) {
+            return false;
+        }
+
+        self.pairs.remove(&path);
+
+        if self.primary == Some(path) {
+            self.clear_and_reprobe(now);
+        }
+
+        true
+    }
+
     pub fn relay_pairs(&self) -> impl Iterator<Item = (SocketAddr, SocketAddr)> + '_ {
         self.pairs
             .iter()
@@ -504,7 +535,7 @@ impl Agent {
     /// Runs `init`, received on `path`, through `tunnel`.
     ///
     /// An accepted init's response is cached and queued on `path`. A copy of an init we already
-    /// accepted is answered with the cached response.
+    /// accepted is answered with the cached response. Nothing is queued on a refused path.
     pub fn handle_handshake_initiation(
         &mut self,
         tunnel: &mut sanstun::Tunnel,
@@ -523,6 +554,12 @@ impl Agent {
                     .cached_response(init_id, now)
                     .ok_or(sanstun::Error::ReplayedHandshakeInitiation)?;
 
+                if self.refused.contains(&path) {
+                    tracing::trace!(local = %path.0, remote = %path.1, "Not answering HandshakeInit on refused path");
+
+                    return Ok(());
+                }
+
                 tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
 
                 self.pending_transmits.push_back(Transmit {
@@ -531,6 +568,9 @@ impl Agent {
                     payload: Payload::Ciphertext(response),
                 });
 
+                // The init itself may have arrived on a refused path.
+                self.seed_primary(path);
+
                 return Ok(());
             }
             Err(e) => return Err(e),
@@ -538,6 +578,19 @@ impl Agent {
         self.last_now = Some(now);
 
         tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
+
+        // `tunnel` only accepts an init once, so its copies on other paths are answered from the cache.
+        if self.refused.contains(&path) {
+            tracing::trace!(local = %path.0, remote = %path.1, "Not answering HandshakeInit on refused path");
+
+            self.responder_dedup = Some(ResponderDedup {
+                init: init_id,
+                response_bytes: response,
+                cached_at: now,
+            });
+
+            return Ok(());
+        }
 
         self.register_peer_reflexive(path, now);
 
@@ -552,9 +605,7 @@ impl Agent {
         // peer's primary, which may be a better tier we haven't validated
         // for our own sending, so it must not move our primary; probing
         // decides. Hence we only adopt on the establishing init.
-        if !self.session_confirmed && self.primary.is_none() && self.pairs.contains_key(&path) {
-            self.set_primary(path);
-        }
+        self.seed_primary(path);
 
         // Distinct inits with no data in between mean the peer isn't
         // hearing us: WireGuard distress.
@@ -586,8 +637,9 @@ impl Agent {
 
     /// Runs `response`, received on `path` as `datagram`, through `tunnel`.
     ///
-    /// Duplicates are dropped before they reach `tunnel`; an accepted response
-    /// confirms the session and its keepalive is queued on `path`.
+    /// Duplicates and responses on a refused path are dropped before they reach
+    /// `tunnel`; an accepted response confirms the session and its keepalive is
+    /// queued on `path`.
     pub fn handle_handshake_response(
         &mut self,
         tunnel: &mut sanstun::Tunnel,
@@ -596,6 +648,12 @@ impl Agent {
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> Result<(), sanstun::Error> {
+        if self.refused.contains(&path) {
+            tracing::trace!(local = %path.0, remote = %path.1, "Dropped HandshakeResponse on refused path");
+
+            return Ok(());
+        }
+
         if self.forwarded_response.as_deref() == Some(datagram) {
             tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
 
@@ -624,6 +682,13 @@ impl Agent {
         });
 
         Ok(())
+    }
+
+    /// Adopts the `path` of an init as the primary while there is neither a primary nor a session.
+    fn seed_primary(&mut self, path: (SocketAddr, SocketAddr)) {
+        if !self.session_confirmed && self.primary.is_none() && self.pairs.contains_key(&path) {
+            self.set_primary(path);
+        }
     }
 
     fn cached_response(&self, init: InitId, now: Instant) -> Option<sanstun::Datagram> {
@@ -658,6 +723,12 @@ impl Agent {
     /// Answers a probe request or measures the pair a probe reply arrived on.
     pub fn handle_probe(&mut self, probe: Probe, pair: (SocketAddr, SocketAddr), now: Instant) {
         self.handle_inbound_data(now);
+
+        if self.refused.contains(&pair) {
+            tracing::trace!(local = %pair.0, remote = %pair.1, "Dropped probe on refused path");
+
+            return;
+        }
 
         match probe.kind {
             crate::icmpv6::Echo::Request => {

@@ -856,6 +856,135 @@ fn a_peer_reflexive_remote_stays_peer_reflexive_until_signaled() {
     );
 }
 
+// --- refused paths ---
+
+#[test]
+fn a_probe_request_does_not_validate_its_path() {
+    let mut a = agent_with_relay_pairs();
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    a.handle_probe(echo_request(0, 1), (addr(1), addr(3)), t0);
+
+    assert!(!a.is_validated((addr(1), addr(3))));
+}
+
+#[test]
+fn a_probe_reply_validates_its_path() {
+    let mut a = agent_with_relay_pairs();
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    let probes = a.tick(t0);
+    a.ack_probe(&probes, (addr(2), addr(3)), t0 + ms(30));
+
+    assert!(a.is_validated((addr(2), addr(3))));
+}
+
+#[test]
+fn the_primary_is_validated() {
+    let mut a = agent_with_relay_pairs();
+    let t0 = Instant::now();
+
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    assert!(a.is_validated((addr(2), addr(4))));
+}
+
+#[test]
+fn a_refused_path_is_not_probed() {
+    let mut a = agent_with_relay_pairs();
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    assert!(a.refuse_path((addr(1), addr(3)), t0));
+    assert!(!a.refuse_path((addr(1), addr(3)), t0));
+    a.add_remote_candidate(Candidate::server_reflexive(addr(5), addr(5)), t0);
+
+    let activity = a.advance(t0, t0 + secs(60));
+    assert_eq!(activity.probes_for((addr(1), addr(3))).len(), 0);
+    assert_ne!(activity.probes_for((addr(2), addr(3))).len(), 0);
+}
+
+#[test]
+fn a_probe_on_a_refused_path_is_ignored() {
+    let mut a = agent_with_relay_pairs();
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+    let probes = a.tick(t0);
+    let probe = extract_probe_for(&probes, (addr(1), addr(3)));
+    a.refuse_path((addr(1), addr(3)), t0);
+    a.refuse_path((addr(1), addr(9)), t0);
+
+    a.handle_probe(echo_request(0, 1), (addr(1), addr(9)), t0);
+    a.handle_probe(
+        echo_reply(probe.id, probe.seq),
+        (addr(1), addr(3)),
+        t0 + ms(30),
+    );
+
+    assert_eq!(a.transmits(), vec![]);
+    assert_eq!(remote_kind(&a, addr(9)), None);
+    assert_eq!(a.primary(), Some((addr(2), addr(4))));
+}
+
+#[test]
+fn refusing_the_primary_clears_it() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+
+    a.refuse_path((addr(1), addr(3)), t0);
+
+    assert_eq!(a.primary(), None);
+}
+
+#[test]
+fn an_init_on_a_refused_path_is_answered_where_its_copy_arrives() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let mut hs = Handshake::new(now);
+    a.refuse_path((addr(2), addr(3)), now);
+
+    a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(2), addr(3)),
+        now,
+    )
+    .unwrap();
+    assert_eq!(a.transmits(), vec![]);
+    assert_eq!(a.primary(), None);
+
+    a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(2), addr(4)),
+        now,
+    )
+    .unwrap();
+    let responses = a
+        .transmits()
+        .into_iter()
+        .map(|t| (t.local, t.remote))
+        .collect::<Vec<_>>();
+    assert_eq!(responses, vec![(addr(2), addr(4))]);
+    assert_eq!(a.primary(), Some((addr(2), addr(4))));
+}
+
+#[test]
+fn a_response_on_a_refused_path_is_ignored() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    a.refuse_path((addr(2), addr(4)), now);
+
+    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
+    assert_eq!(a.primary(), None);
+
+    bootstrap_primary(&mut a, (addr(2), addr(3)), now);
+    assert_eq!(a.primary(), Some((addr(2), addr(3))));
+}
+
 // --- test harness ---
 
 type Pair = (SocketAddr, SocketAddr);

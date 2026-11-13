@@ -127,6 +127,17 @@ pub fn connection_count() -> Gauge<u64> {
         .build()
 }
 
+/// How many paths a connection was refused because another connection owns them.
+pub fn connection_paths_refused() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("tunnel.connection.path.refused")
+        .with_description(
+            "Number of network paths refused to a connection because another connection owns them.",
+        )
+        .with_unit("{path}")
+        .build()
+}
+
 /// Measures how long connlib takes to recursively resolve a DNS query against an upstream resolver.
 pub fn dns_lookup_duration() -> Histogram<f64> {
     connlib_meter()

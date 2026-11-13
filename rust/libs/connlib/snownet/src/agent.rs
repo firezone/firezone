@@ -214,6 +214,26 @@ impl Agent {
         }
     }
 
+    /// Whether a round trip completed on `path`. Always `false` on `Self::Ice`.
+    pub(crate) fn is_validated(&self, path: (std::net::SocketAddr, std::net::SocketAddr)) -> bool {
+        match self {
+            Self::Ice(_) => false,
+            Self::Frostlink(agent) => agent.is_validated(path),
+        }
+    }
+
+    /// Returns whether `path` was newly refused. No-op on `Self::Ice`.
+    pub(crate) fn refuse_path(
+        &mut self,
+        path: (std::net::SocketAddr, std::net::SocketAddr),
+        now: Instant,
+    ) -> bool {
+        match self {
+            Self::Ice(_) => false,
+            Self::Frostlink(agent) => agent.refuse_path(path, now),
+        }
+    }
+
     pub(crate) fn handle_stun_packet(&mut self, now: Instant, p: StunPacket<'_>) -> bool {
         match self {
             Self::Ice(a) => a.handle_packet(now, p),
