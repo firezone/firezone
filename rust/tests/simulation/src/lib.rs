@@ -110,12 +110,16 @@ pub mod tunnel {
         const DEFAULT_FILTER: &str =
             "debug,tunnel_proto=trace,simulation=debug,ip_packet=trace,frostlink=trace";
 
-        let log_layer = std::env::var("RUST_LOG").ok().map(|filter| {
-            tracing_subscriber::fmt::layer()
-                .with_writer(std::io::stderr)
-                .with_ansi(false)
-                .with_filter(EnvFilter::new(format!("{DEFAULT_FILTER},{filter}")))
-        });
+        // Building the layer creates hash maps and `std` seeds each hash map from how many the thread built before it.
+        // Without `RUST_LOG` we therefore build it too, with everything filtered out.
+        let filter = match std::env::var("RUST_LOG") {
+            Ok(filter) => format!("{DEFAULT_FILTER},{filter}"),
+            Err(_) => "off".to_owned(),
+        };
+        let log_layer = tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stderr)
+            .with_ansi(false)
+            .with_filter(EnvFilter::new(filter));
 
         tracing_subscriber::registry()
             .with(PanicOnErrorEvents::new())
