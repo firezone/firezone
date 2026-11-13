@@ -199,6 +199,9 @@ defmodule PortalWeb.SignIn.Email do
       as={:email}
       action={@resend_action}
       method="post"
+      phx-update="ignore"
+      phx-hook="AttachDisableSubmit"
+      phx-submit={JS.dispatch("form:disable_and_submit", to: "#resend-email")}
     >
       <Form.input type="hidden" name="email[email]" value={@email} />
       <Form.input :for={{key, value} <- @redirect_params} type="hidden" name={key} value={value} />
@@ -207,7 +210,7 @@ defmodule PortalWeb.SignIn.Email do
         class="relative w-full flex items-center justify-center px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
       >
         <Core.icon name="ri-loop-left-line" class="absolute left-4 w-4 h-4 text-body" />
-        Resend email
+        <span data-disable-with="Sending...">Resend email</span>
       </button>
     </.form>
     """
