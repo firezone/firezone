@@ -82,7 +82,7 @@ defmodule Portal.FlowLogTokenTest do
       token =
         FlowLogToken.mint(account, flow_log_token_claims(), DateTime.add(DateTime.utc_now(), 3600, :second))
 
-      assert {:error, :invalid} = FlowLogToken.verify(token)
+      assert {:error, :unknown_account} = FlowLogToken.verify(token)
     end
 
     test "rejects a malformed token" do
@@ -102,6 +102,33 @@ defmodule Portal.FlowLogTokenTest do
         |> elem(1)
 
       assert {:error, :invalid} = FlowLogToken.verify(forged)
+    end
+  end
+
+  describe "unverified_account_id/1" do
+    test "returns the account_id claim without verifying the token" do
+      account = %Portal.Account{
+        id: Ecto.UUID.generate(),
+        ingest_signing_key: :crypto.strong_rand_bytes(32)
+      }
+
+      token =
+        FlowLogToken.mint(account, flow_log_token_claims(), DateTime.add(DateTime.utc_now(), 3600, :second))
+
+      assert FlowLogToken.unverified_account_id(token) == account.id
+    end
+
+    test "returns nil for a token without a UUID account_id" do
+      token =
+        :crypto.strong_rand_bytes(32)
+        |> JOSE.JWK.from_oct()
+        |> JOSE.JWT.sign(%{"alg" => "HS256"}, %{"account_id" => "not-a-uuid"})
+        |> JOSE.JWS.compact()
+        |> elem(1)
+
+      assert FlowLogToken.unverified_account_id(token) == nil
+      assert FlowLogToken.unverified_account_id("not-a-jwt") == nil
+      assert FlowLogToken.unverified_account_id(nil) == nil
     end
   end
 end
