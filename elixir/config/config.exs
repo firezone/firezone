@@ -638,15 +638,16 @@ config :portal, PortalAPI.Sockets.RateLimit,
   refill_rate: 1,
   capacity: 1
 
-# Flow-log ingestion: 1 request per second per source IP, no burst. Each request
-# batches up to 10k records, so one per second is ample for reporters.
+# Flow-log requests per source IP, checked before the ingest token. Uploaders
+# send one request per policy authorization, so a Gateway serving many clients,
+# or many devices behind one NAT, sends many requests in each pass. The row
+# limits below cap the volume; this only stops a flood of requests.
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
-  refill_rate: 1,
-  capacity: 1
+  refill_rate: 20,
+  capacity: 1_200
 
 # Flow-log rows per reporting device and per account, charged after the ingest
-# token is verified. The IP limit above already caps one uploader at one batch
-# (1,000 rows by default) per second. An initiator reports its own flows; a
+# token is verified. An initiator reports its own flows; a
 # responder (usually a Gateway) reports a row for every client it serves, so it
 # has a larger bucket. The capacities let a device that was offline drain its
 # spool, and are larger than the 10k-row request limit. The account values are

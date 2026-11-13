@@ -405,7 +405,7 @@ config :portal, PortalAPI.Plugs.MCPRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
-# The ingestion endpoint defaults to a strict 1 req/s per IP; keep it effectively
+# The ingestion endpoint limits requests per IP; keep it effectively
 # disabled in general tests (which share localhost) to avoid cross-test 429s.
 # Dedicated rate-limit tests pass strict opts directly to the plug instead.
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
