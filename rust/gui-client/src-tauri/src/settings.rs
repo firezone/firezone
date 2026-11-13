@@ -123,6 +123,9 @@ fn start_minimized_default() -> bool {
 #[derive(Clone, Copy, Default, Deserialize, Serialize)]
 pub struct DeveloperSettings {
     pub unlocked: bool,
+    /// Not persisted, so it is off whenever the GUI starts.
+    #[serde(skip)]
+    pub force_relayed_connections: bool,
 }
 
 #[derive(Clone, Copy, Serialize, specta::Type)]

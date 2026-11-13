@@ -39,8 +39,6 @@ const QUIT_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     developer_settings: DeveloperSettings,
-    /// Not persisted, so it is off whenever the GUI starts.
-    force_relayed_connections: bool,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
     /// Path of the legacy user-writable `advanced_settings.json`. The
@@ -300,7 +298,6 @@ impl<I: GuiIntegration> Controller<I> {
         let mut controller = Controller {
             general_settings,
             developer_settings,
-            force_relayed_connections: false,
             mdm_settings,
             advanced_settings,
             legacy_advanced_settings_path,
@@ -768,8 +765,8 @@ impl<I: GuiIntegration> Controller<I> {
                     .save_developer_settings(self.developer_settings)
                     .await?;
 
-                if !unlocked && self.force_relayed_connections {
-                    self.force_relayed_connections = false;
+                if !unlocked && self.developer_settings.force_relayed_connections {
+                    self.developer_settings.force_relayed_connections = false;
                     self.send_ipc(&service::ClientMsg::SetForceRelayedConnections(false))
                         .await?;
                 }
@@ -777,7 +774,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.notify_settings_changed()?;
             }
             SetForceRelayedConnections(enabled) => {
-                self.force_relayed_connections = enabled;
+                self.developer_settings.force_relayed_connections = enabled;
                 self.send_ipc(&service::ClientMsg::SetForceRelayedConnections(enabled))
                     .await?;
 
@@ -1374,7 +1371,7 @@ impl<I: GuiIntegration> Controller<I> {
         self.integration
             .notify_developer_settings_changed(DeveloperSettingsViewModel {
                 unlocked: self.developer_settings.unlocked,
-                force_relayed_connections: self.force_relayed_connections,
+                force_relayed_connections: self.developer_settings.force_relayed_connections,
             })?;
 
         Ok(())
