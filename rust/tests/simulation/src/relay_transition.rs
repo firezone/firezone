@@ -116,6 +116,18 @@ impl Transition {
 }
 
 impl Garbage {
+    /// Flips the bits of `template` that are set in our bytes; what we have beyond it is appended.
+    pub(crate) fn apply_to(&self, template: &[u8]) -> Vec<u8> {
+        let mut datagram = template.to_vec();
+        datagram.resize(template.len().max(self.bytes.len()), 0);
+
+        for (byte, mask) in datagram.iter_mut().zip(&self.bytes) {
+            *byte ^= mask;
+        }
+
+        datagram
+    }
+
     fn arbitrary(u: &mut Unstructured<'_>) -> Self {
         let mutate = bool(u);
         let len = int(u, 255).min(u.len());

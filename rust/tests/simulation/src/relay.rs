@@ -13,7 +13,6 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use arbitrary::Unstructured;
 use bufferpool::Bytes;
 use chrono::DateTime;
 use ip_packet::Ecn;
@@ -28,14 +27,12 @@ use stun_codec::rfc5389::{
 use crate::{
     buffered_transmits::BufferedTransmits,
     flux_capacitor::FluxCapacitor,
-    relay_garbage as garbage,
     relay_reference::{Environment, Observed, Reference},
-    relay_transition::{self as transition, Garbage, Loss, Target, Transition},
+    relay_transition::{Garbage, Loss, Target, Transition},
     sim_net::{EdgeConfig, ExecMutScope, Host, PollTimeout},
     sim_relay::SimRelay,
+    stun,
 };
-
-const MAX_TRANSITIONS: usize = 64;
 
 /// How long the credentials are valid that the portal issues.
 const CREDENTIAL_LIFETIME: Duration = Duration::from_secs(60 * 60);
@@ -86,32 +83,8 @@ const PAYLOAD: [u8; 32] = {
     payload
 };
 
-pub(crate) fn run(data: &[u8], now: Instant) {
-    let mut u = Unstructured::new(data);
-    let relay = transition::stack(&mut u);
-    let client = transition::stack(&mut u);
-
-    let mut reference = Reference::default();
-    let mut world = World::new(relay, client, now);
-    world.settle();
-    world.check(&reference, true);
-
-    for _ in 0..MAX_TRANSITIONS {
-        if u.is_empty() {
-            break;
-        }
-
-        let (transition, loss) = Transition::arbitrary(&mut u);
-        tracing::debug!(?transition, ?loss);
-
-        world.apply(&transition, loss);
-        let may_interrupt = reference.apply(&transition, world.environment(), world.observed);
-        world.check(&reference, may_interrupt);
-    }
-}
-
 /// The client, the relay, the portal and the network between them.
-struct World {
+pub(crate) struct World {
     clock: FluxCapacitor,
     transmits: BufferedTransmits,
 
@@ -134,10 +107,10 @@ struct World {
     /// What the current transition still loses.
     loss: Loss,
     /// Flips these bits in a copy of the relay's next control datagram and delivers it first.
-    forgery: Option<Vec<u8>>,
+    forgery: Option<Garbage>,
 
     /// What happened during the current transition.
-    observed: Observed,
+    pub(crate) observed: Observed,
 }
 
 #[derive(Default)]
@@ -158,7 +131,11 @@ struct Credentials {
 }
 
 impl World {
-    fn new(relay_stack: (bool, bool), client_stack: (bool, bool), start: Instant) -> Self {
+    pub(crate) fn new(
+        relay_stack: (bool, bool),
+        client_stack: (bool, bool),
+        start: Instant,
+    ) -> Self {
         let clock = FluxCapacitor::new(start, DateTime::UNIX_EPOCH);
         let (ip4, ip6) = interfaces(client_stack, CLIENT_IP4, CLIENT_IP6);
 
@@ -180,7 +157,7 @@ impl World {
         }
     }
 
-    fn apply(&mut self, transition: &Transition, loss: Loss) {
+    pub(crate) fn apply(&mut self, transition: &Transition, loss: Loss) {
         let now = self.clock.now::<Instant>();
         self.loss = loss;
         self.observed = Observed::default();
@@ -256,7 +233,7 @@ impl World {
     }
 
     /// Checks the settled world against what the reference expects of the last transition.
-    fn check(&mut self, reference: &Reference, may_interrupt: bool) {
+    pub(crate) fn check(&mut self, reference: &Reference, may_interrupt: bool) {
         assert!(
             may_interrupt || !self.client.inner().relay_addresses_changed,
             "The client's relay addresses changed in a transition that must not interrupt relaying"
@@ -335,7 +312,7 @@ impl World {
         true
     }
 
-    fn environment(&self) -> Environment {
+    pub(crate) fn environment(&self) -> Environment {
         let now = self.clock.now::<SystemTime>();
 
         Environment {
@@ -416,22 +393,19 @@ impl World {
         let Some(dst) = self.relay.sending_socket_for(src.ip()) else {
             return;
         };
-        let mut payload = garbage::mutate(
+        let mut payload = garbage.apply_to(
             template
                 .as_ref()
                 .map(|t| &t.payload[..])
                 .unwrap_or_default(),
-            &garbage.bytes,
         );
 
         if parse {
             let now_utc = self.clock.now();
-            let nonce = authenticate.then(|| {
-                self.relay
-                    .exec_mut(|r| garbage::issued_nonce(&mut r.sut, src, now, now_utc))
-            });
+            let nonce =
+                authenticate.then(|| self.relay.exec_mut(|r| r.issue_nonce(src, now, now_utc)));
             let Some(repaired) =
-                garbage::repair(&payload, nonce.as_ref(), device, &self.relay.inner().sut)
+                stun::repair(&payload, nonce.as_ref(), device, &self.relay.inner().sut)
             else {
                 return;
             };
@@ -444,7 +418,7 @@ impl World {
 
     fn garbage_to_client(&mut self, garbage: &Garbage) {
         if garbage.mutate {
-            self.forgery = Some(garbage.bytes.clone());
+            self.forgery = Some(garbage.clone());
             return;
         }
 
@@ -461,7 +435,7 @@ impl World {
     ///
     /// Time only passes for the network and for retransmissions; refreshes and keep-alives wait
     /// for `advance`.
-    fn settle(&mut self) {
+    pub(crate) fn settle(&mut self) {
         let deadline = self.clock.now::<Instant>() + MAX_SETTLE;
         let mut handovers = 0;
 
@@ -572,11 +546,11 @@ impl World {
                 return;
             }
 
-            if let Some(mask) = self.forgery.take() {
+            if let Some(garbage) = self.forgery.take() {
                 self.observed.forged_binding |= relay_client_proto::decode(&transmit.payload)
                     .is_ok_and(|message| message.is_ok_and(|m| m.method() == BINDING));
 
-                let forged = datagram(Some(src), dst, &garbage::mutate(&transmit.payload, &mask));
+                let forged = datagram(Some(src), dst, &garbage.apply_to(&transmit.payload));
                 self.client.exec_mut(|c| c.handle_input(forged, now));
             }
         }

@@ -4,7 +4,9 @@ use super::probe::{
     ProbeId, ProbeRequest, RejectionRemote, RejectionResponse, Remote, Route, TcpFlow,
     TraceRequirement, UdpFlow,
 };
-use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
+use super::{
+    ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, tunnel_transition::*,
+};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
 use dns_types::{DomainName, RecordType, prelude::*};
 use ip_packet::Protocol;

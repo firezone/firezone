@@ -2,7 +2,6 @@ use super::{
     DeviceListing, DeviceListingQuery, QueryId,
     dns_records::DnsRecords,
     probe::Remote,
-    reference::PrivateKey,
     resource::{
         CidrResource, DevicePoolResource, DnsResource, EditEffect, InternetResource, Resource,
         classify,
@@ -10,7 +9,8 @@ use super::{
     sim_client::SimClient,
     sim_net::ExecMutScope,
     site_network::{RouteType, Routes},
-    transition::{Destination, DnsQuery, DnsTransport},
+    tunnel_reference::PrivateKey,
+    tunnel_transition::{Destination, DnsQuery, DnsTransport},
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,

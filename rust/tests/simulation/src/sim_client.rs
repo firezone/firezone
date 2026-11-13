@@ -7,12 +7,12 @@ use super::{
         CompletedStream, ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest,
         ReceivedResponse, Remote, SubmittedRequest,
     },
-    reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
     sim_tunnel::SimTunnel,
     site_network::{IcmpError, icmp_error_reply},
-    transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
+    tunnel_reference::PrivateKey,
+    tunnel_transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceView};

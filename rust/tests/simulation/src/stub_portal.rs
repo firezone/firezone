@@ -14,11 +14,11 @@ use tunnel_proto::messages::client::FailReason;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
 use crate::ref_client::protocol_filter_allows;
-use crate::reference::ReferenceState;
 use crate::resource::{self as client, DevicePoolResource};
 use crate::sim_net::Host;
 use crate::sim_relay::SimRelay;
-use crate::transition::Transition;
+use crate::tunnel_reference::ReferenceState;
+use crate::tunnel_transition::Transition;
 
 /// The TTL the portal gives the names a PTR query in the device domain lists.
 ///

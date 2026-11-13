@@ -1,43 +1,24 @@
-//! Datagrams that neither the client nor the relay sent.
+//! Makes a fuzzer's STUN messages acceptable to the relay.
 //!
-//! Left alone, the bytes of the input are unlikely to be a well-formed message
-//! and exercise the decoders. Asked to authenticate, [`repair`] fills in the two
-//! fields no mutation could ever guess, the nonce the relay minted and the HMAC
-//! over the message, so the input reaches the code behind the authentication check.
+//! Left alone, the bytes of an input are unlikely to be a well-formed message and exercise
+//! the decoders. [`repair`] fills in the two fields no mutation could ever guess, the nonce
+//! the relay minted and the HMAC over the message, so the input reaches the code behind the
+//! authentication check.
 //!
-//! The repair deliberately goes through `stun_codec` rather than the relay's own
-//! decoder: using the code under test to decide what to feed it would hide its
-//! bugs from us.
-
-use std::{
-    net::SocketAddr,
-    time::{Instant, SystemTime},
-};
+//! The repair deliberately goes through `stun_codec` rather than the relay's own decoder:
+//! using the code under test to decide what to feed it would hide its bugs from us.
 
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::rngs::StdRng;
 use relay_server_proto::{
-    Attribute, ClientSocket, Command, Server,
+    Attribute, Server,
     auth::{AccountId, generate_password, hash_account_id},
 };
 use stun_codec::{
-    Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
+    Message, MessageDecoder, MessageEncoder,
     rfc5389::attributes::{MessageIntegrity, Nonce, Realm, Username},
-    rfc5766::{attributes::RequestedTransport, methods::ALLOCATE},
 };
 use uuid::Uuid;
-
-/// Flips the bits of `template` that are set in `mask`; what `mask` has beyond it is appended.
-pub(crate) fn mutate(template: &[u8], mask: &[u8]) -> Vec<u8> {
-    let mut datagram = template.to_vec();
-    datagram.resize(template.len().max(mask.len()), 0);
-
-    for (byte, mask) in datagram.iter_mut().zip(mask) {
-        *byte ^= mask;
-    }
-
-    datagram
-}
 
 /// Re-encodes a STUN message, optionally replacing the fields a fuzzer cannot guess.
 ///
@@ -77,36 +58,6 @@ pub(crate) fn repair(
     authenticated.add_attribute(integrity);
 
     MessageEncoder::new().encode_into_bytes(authenticated).ok()
-}
-
-/// Obtains a nonce the way a client does, by provoking a `401` and reading it back.
-pub(crate) fn issued_nonce(
-    server: &mut Server<StdRng>,
-    sender: SocketAddr,
-    now: Instant,
-    now_utc: SystemTime,
-) -> Nonce {
-    let mut allocate = Message::<Attribute>::new(
-        MessageClass::Request,
-        ALLOCATE,
-        TransactionId::new([0u8; 12]),
-    );
-    allocate.add_attribute(RequestedTransport::new(17));
-
-    let bytes = MessageEncoder::new()
-        .encode_into_bytes(allocate)
-        .expect("a well-formed ALLOCATE encodes");
-    server.handle_client_input(&bytes, ClientSocket::new(sender), now, now_utc);
-
-    let Some(Command::SendMessage { payload, .. }) = server.next_command() else {
-        panic!("the relay answers an unauthenticated ALLOCATE");
-    };
-
-    decode(&payload)
-        .expect("the relay's response decodes")
-        .get_attribute::<Nonce>()
-        .cloned()
-        .expect("a `401` carries a nonce")
 }
 
 fn decode(datagram: &[u8]) -> Option<Message<Attribute>> {

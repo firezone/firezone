@@ -10,7 +10,7 @@ use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::site_network::{IcmpError, RouteType};
-use crate::transition::{DPort, Destination, Identifier, SPort, Seq};
+use crate::tunnel_transition::{DPort, Destination, Identifier, SPort, Seq};
 
 pub(crate) const DNS_NAT_SESSION_TTL: Duration = Duration::from_secs(2 * 60);
 

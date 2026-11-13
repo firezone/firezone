@@ -7,10 +7,10 @@ use tunnel_proto::{
 
 use super::{
     probe::{FlowId, ProbeId, Route, TcpFlow},
-    reference::PrivateKey,
     resource::{EditEffect, Resource, ResourceEdit, classify},
     sim_net::Host,
     stub_portal::PeerAuthorization,
+    tunnel_reference::PrivateKey,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},

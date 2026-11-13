@@ -15,10 +15,10 @@ use tunnel_proto::{dns, messages::Filter};
 
 use crate::dns_records::DnsRecords;
 use crate::probe::{FlowId, IcmpFlow, UdpFlow};
-use crate::reference::{ReferenceState, has_expired, is_held};
 use crate::resource as client;
 use crate::stub_portal::StubPortal;
-use crate::transition::{Destination, Seq};
+use crate::tunnel_reference::{ReferenceState, has_expired, is_held};
+use crate::tunnel_transition::{Destination, Seq};
 
 impl ReferenceState {
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {

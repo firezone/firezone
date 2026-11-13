@@ -15,8 +15,8 @@ use ip_network::{
 use smallvec::SmallVec;
 
 use crate::probe::{FlowId, ProbeId};
-use crate::reference::PrivateKey;
-use crate::transition::{DPort, Identifier, SPort, Seq};
+use crate::tunnel_reference::PrivateKey;
+use crate::tunnel_transition::{DPort, Identifier, SPort, Seq};
 
 struct Ipv4Cursor {
     iter: Ipv4RangeIterator,
