@@ -10,9 +10,9 @@ use ip_packet::Protocol;
 use tunnel_proto::messages::{Filter, PortRange};
 
 use super::context::Generator;
-use crate::reference::ReferenceState;
 use crate::stub_portal::StubPortal;
-use crate::transition::{Destination, Transition};
+use crate::tunnel_reference::ReferenceState;
+use crate::tunnel_transition::{Destination, Transition};
 
 /// Represents a semantic destination selected by the state-aware grammar.
 #[derive(Clone)]

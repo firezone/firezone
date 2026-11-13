@@ -22,11 +22,11 @@ use crate::dns_records::DnsRecords;
 use crate::os::SimulatedOs;
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
-use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
 use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
 use crate::site_network::{IcmpError, RouteType, Routes};
 use crate::stub_portal::{PoolMembers, StubPortal};
+use crate::tunnel_reference::ReferenceState;
 
 pub(super) fn generate(
     g: &mut Generator,

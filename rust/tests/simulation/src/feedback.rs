@@ -32,14 +32,14 @@ use crate::{
         ExpectedProbe, FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionRemote, Remote,
         Route, SubmittedRequest,
     },
-    reference::ReferenceState,
     resource::{EditEffect, Resource, ResourceEdit, classify},
     sim_gateway::DnsResolution,
     sim_net::EdgeConfig,
     site_network::RouteType,
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::{Destination, DnsQuery, DnsTransport, Transition},
+    tunnel_reference::ReferenceState,
+    tunnel_transition::{Destination, DnsQuery, DnsTransport, Transition},
 };
 
 /// Records a numeric state category as feedback for the fuzzer.

@@ -18,8 +18,10 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username};
-use stun_codec::rfc5766::{errors::InsufficientCapacity, methods::ALLOCATE};
-use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
+use stun_codec::rfc5766::{
+    attributes::RequestedTransport, errors::InsufficientCapacity, methods::ALLOCATE,
+};
+use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId};
 use uuid::Uuid;
 
 pub(crate) struct SimRelay {
@@ -33,6 +35,12 @@ pub(crate) struct SimRelay {
     created_at: SystemTime,
 }
 
+/// How long the credentials are valid that the tunnel simulation hands out.
+///
+/// Deliberately out of reach: a run simulates ~2h at most, so nothing expires.
+/// Shortening it would need the tunnel's reference model to predict the expiry first.
+const VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
+
 pub(crate) fn map_explode<'a>(
     relays: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
     username: impl Into<String>,
@@ -44,6 +52,7 @@ pub(crate) fn map_explode<'a>(
             &username,
             r.inner().sut.auth_secret(),
             r.inner().sut.public_address(),
+            r.inner().created_at + VALIDITY,
         );
 
         (*id, socket, username, password, realm)
@@ -73,11 +82,13 @@ impl SimRelay {
         }
     }
 
-    fn explode(
+    /// The relay's socket, and credentials for `username` that expire at `expires_at`.
+    pub(crate) fn explode(
         &self,
         username: &str,
         auth_secret: &SecretString,
         public_address: IpStack,
+        expires_at: SystemTime,
     ) -> (RelaySocket, String, String, String) {
         let relay_socket = match public_address {
             relay_server_proto::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
@@ -90,9 +101,44 @@ impl SimRelay {
             },
         };
 
-        let (username, password) = self.make_credentials(username, auth_secret);
+        let (username, password) = self.make_credentials(username, auth_secret, expires_at);
 
         (relay_socket, username, password, "firezone".to_owned())
+    }
+
+    /// Obtains a nonce for `client` the way a client does, by provoking a `401` and reading it back.
+    pub(crate) fn issue_nonce(
+        &mut self,
+        client: SocketAddr,
+        now: Instant,
+        now_utc: SystemTime,
+    ) -> Nonce {
+        let mut allocate = Message::<Attribute>::new(
+            MessageClass::Request,
+            ALLOCATE,
+            TransactionId::new([0u8; 12]),
+        );
+        allocate.add_attribute(RequestedTransport::new(17));
+
+        let bytes = MessageEncoder::new()
+            .encode_into_bytes(allocate)
+            .expect("a well-formed ALLOCATE encodes");
+        self.sut
+            .handle_client_input(&bytes, ClientSocket::new(client), now, now_utc);
+
+        let Some(relay_server_proto::Command::SendMessage { payload, .. }) =
+            self.sut.next_command()
+        else {
+            panic!("the relay answers an unauthenticated ALLOCATE");
+        };
+
+        MessageDecoder::<Attribute>::new()
+            .decode_from_bytes(&payload)
+            .expect("the relay's response decodes")
+            .expect("the relay's response is a valid message")
+            .get_attribute::<Nonce>()
+            .cloned()
+            .expect("a `401` carries a nonce")
     }
 
     fn matching_listen_socket(
@@ -259,13 +305,13 @@ impl SimRelay {
         })
     }
 
-    fn make_credentials(&self, username: &str, auth_secret: &SecretString) -> (String, String) {
-        // Deliberately out of reach: a run simulates ~2h at most, so nothing expires.
-        // Shortening it would cover the relay's expiry and re-auth paths, which nothing
-        // does today, but the reference model needs to predict that first.
-        const VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
-
-        let secs = (self.created_at + VALIDITY)
+    fn make_credentials(
+        &self,
+        username: &str,
+        auth_secret: &SecretString,
+        expires_at: SystemTime,
+    ) -> (String, String) {
+        let secs = expires_at
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("expiry must be later than UNIX_EPOCH")
             .as_secs();

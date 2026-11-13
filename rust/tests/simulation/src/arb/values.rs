@@ -8,7 +8,7 @@ use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
 
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
-use crate::reference::ReferenceState;
+use crate::tunnel_reference::ReferenceState;
 
 pub(super) fn arb_system_dns_servers(g: &mut Generator) -> Vec<IpAddr> {
     arb_do53_subset(g)

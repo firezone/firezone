@@ -3,11 +3,11 @@ use super::{
     dns_records::DnsRecords,
     dns_server_resource::DnsServers,
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
-    reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
     sim_tunnel::SimTunnel,
     site_network::SiteNetwork,
+    tunnel_reference::PrivateKey,
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId, ResourceId};

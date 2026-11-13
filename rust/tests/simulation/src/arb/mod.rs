@@ -10,9 +10,9 @@ use std::time::Instant;
 
 use dns_types::DomainName;
 
-use crate::reference::ReferenceState;
 use crate::stub_portal::StubPortal;
-use crate::transition::Transition;
+use crate::tunnel_reference::ReferenceState;
+use crate::tunnel_transition::Transition;
 
 mod context;
 mod dns_queries;

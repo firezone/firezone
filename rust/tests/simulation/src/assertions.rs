@@ -7,13 +7,13 @@ use super::{
     },
     ref_client::RefClient,
     ref_gateway::RefGateway,
-    reference::ReferenceState,
     resource::Resource,
     sim_client::SimClient,
     site_network::{IcmpError, icmp_error_reply},
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::Destination,
+    tunnel_reference::ReferenceState,
+    tunnel_transition::Destination,
 };
 use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};

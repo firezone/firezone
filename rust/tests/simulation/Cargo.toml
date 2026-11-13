@@ -25,9 +25,11 @@ hex = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 ip_network_table = { workspace = true }
+is = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l3-tcp = { workspace = true }
 rand = { workspace = true }
+relay-client-proto = { workspace = true }
 relay-server-proto = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 serde_json = { workspace = true }

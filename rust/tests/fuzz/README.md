@@ -3,7 +3,7 @@
 One executable exercises four targets, each with its own corpus:
 
 - `ip-packet`: packet parsing and mutation.
-- `relay-proto`: relay message handling, including authenticated requests.
+- `relay`: the [relay simulation](../simulation/README.md), a relay client and a relay checked against a reference model.
 - `tunnel`: the [tunnel simulation](../simulation/README.md), checked against a reference model.
 - `x509-claims`: certificate parsing and identity claims.
 

@@ -22,11 +22,11 @@ use super::values::{
 use super::{dns_queries, packets};
 use crate::dns_records::record_ip;
 use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
-use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::sim_net::{EdgeConfig, Host};
 use crate::stub_portal::StubPortal;
-use crate::transition::{Destination, Seq, Transition};
+use crate::tunnel_reference::ReferenceState;
+use crate::tunnel_transition::{Destination, Seq, Transition};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TransitionKind {
@@ -260,7 +260,7 @@ pub(super) fn generate(
         K::RoamClient => {
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let (ip4, ip6) = arb_socket_ip_stack(g);
-            // Mirror `transition::roam_client`: both windows in 0..3000ms.
+            // Mirror `tunnel_transition::roam_client`: both windows in 0..3000ms.
             let dead_window = Duration::from_millis(g.count(0, 2999) as u64);
             let portal_window = Duration::from_millis(g.count(0, 2999) as u64);
             Transition::RoamClient {

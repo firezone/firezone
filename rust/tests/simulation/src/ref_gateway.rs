@@ -1,9 +1,9 @@
 use super::{
     dns_records::DnsRecords,
-    reference::PrivateKey,
     sim_gateway::SimGateway,
     sim_net::ExecMutScope,
     site_network::{Routes, SiteNetwork},
+    tunnel_reference::PrivateKey,
 };
 use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;

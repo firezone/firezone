@@ -9,9 +9,9 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use super::values::arb_domain_matching_dns_resource;
-use crate::reference::ReferenceState;
 use crate::stub_portal::StubPortal;
-use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition};
+use crate::tunnel_reference::ReferenceState;
+use crate::tunnel_transition::{DnsQuery, DnsTransport, IpFamily, Transition};
 
 #[derive(Clone)]
 pub(super) struct DnsQueryTarget {
