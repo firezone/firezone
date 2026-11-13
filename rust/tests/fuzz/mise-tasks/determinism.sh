@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check that AFL++ observes identical coverage when replaying identical inputs"
+#MISE description="Check that identical inputs produce identical AFL++ coverage and that logging does not change a run"
 #MISE raw=true
 #USAGE arg "<target>"
 set -euo pipefail
@@ -99,5 +99,19 @@ for run in 1 2; do
         fi
     done
 done
+
+# Logging must not change what an input does: the randomness left after replaying the inputs is the same with and without it.
+build_replay
+fingerprint() {
+    "$replay_binary" "$target" --replay "$temporary/inputs" 2>/dev/null |
+        sed -n 's/^Randomness fingerprint: //p'
+}
+quiet="$(unset RUST_LOG && fingerprint)"
+logged="$(RUST_LOG=trace fingerprint)"
+if [ -z "$quiet" ] || [ "$quiet" != "$logged" ]; then
+    echo "$target consumed randomness differently with logging enabled ($quiet without, $logged with)" >&2
+    exit 1
+fi
+
 replayed=("$temporary/inputs"/*-0)
-echo "$target: ${#replayed[@]} of ${#inputs[@]} inputs match across two forkservers; $samples inputs also match across five children each."
+echo "$target: ${#replayed[@]} of ${#inputs[@]} inputs match across two forkservers; $samples inputs also match across five children each; logging leaves the runs unchanged."
