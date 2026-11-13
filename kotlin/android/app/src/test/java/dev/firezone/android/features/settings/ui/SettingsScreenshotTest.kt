@@ -102,6 +102,14 @@ class SettingsScreenshotTest {
             managedStatus = ManagedConfigStatus.NOTHING_MANAGED.copy(isLogFilterManaged = true),
         )
 
+    @Test
+    fun developerSettings() =
+        captureSettingsPage(
+            "settings-developer",
+            R.string.developer_settings_title,
+            showDeveloperSettings = true,
+        )
+
     private fun captureDeviceTrustPage(
         name: String,
         state: DeviceTrustSettingsViewModel.UiState,
@@ -116,9 +124,12 @@ class SettingsScreenshotTest {
         controlPlane: ControlPlane = ControlPlane.CLOUD_US,
         managedStatus: ManagedConfigStatus = ManagedConfigStatus.NOTHING_MANAGED,
         signedInWith: SignInSettings? = null,
+        showDeveloperSettings: Boolean = false,
     ) {
         composeRule.setContent {
-            FirezoneTheme { SettingsScreenSample(deviceTrustState, config, controlPlane, managedStatus, signedInWith) }
+            FirezoneTheme {
+                SettingsScreenSample(deviceTrustState, config, controlPlane, managedStatus, signedInWith, showDeveloperSettings)
+            }
         }
         composeRule.onNode(hasText(RuntimeEnvironment.getApplication().getString(tabLabel)) and isSelectable()).performClick()
         composeRule.waitForIdle()
@@ -227,6 +238,7 @@ private fun SettingsScreenSample(
     controlPlane: ControlPlane,
     managedStatus: ManagedConfigStatus,
     signedInWith: SignInSettings?,
+    showDeveloperSettings: Boolean,
 ) {
     SettingsScreen(
         config = config,
@@ -246,6 +258,11 @@ private fun SettingsScreenSample(
         onResetToDefaults = {},
         onClearLogs = {},
         onExportLogs = {},
+        showDeveloperSettings = showDeveloperSettings,
+        onShowDeveloperSettingsChange = {},
+        onResetConnlib = {},
+        forceRelayedConnections = false,
+        onForceRelayedConnectionsChange = {},
         onLogsShown = {},
         onSelectCertificate = {},
         onDeviceTrustShown = {},

@@ -14,7 +14,10 @@ use std::time::{Duration, Instant};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::{Arc, Mutex, PoisonError},
+    sync::{
+        Arc, Mutex, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
     task::{Context, Poll},
 };
 use tokio::sync::mpsc::{
@@ -110,6 +113,8 @@ pub(crate) struct Sockets {
     overflow_v6: VecDeque<Outbound>,
     /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
     bind_errors: VecDeque<anyhow::Error>,
+    /// Shared with the send task of every socket, so it outlives [`Sockets::rebind`].
+    force_relayed_connections: Arc<AtomicBool>,
     packet_counter: Counter<u64>,
     dropped_packets: Counter<u64>,
 
@@ -140,6 +145,7 @@ impl Sockets {
             overflow_v4: VecDeque::new(),
             overflow_v6: VecDeque::new(),
             bind_errors: VecDeque::new(),
+            force_relayed_connections: Arc::default(),
             packet_counter: otel_instruments::network_packets(),
             dropped_packets: otel_instruments::network_packet_dropped(),
             recv_batches: Some(Vec::with_capacity(2 * UDP_RECV_BATCH_LIMIT)),
@@ -167,12 +173,22 @@ impl Sockets {
         self.listen_port
     }
 
+    /// Drops every datagram sent directly to a peer while `enabled`, leaving only those via a relay.
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        self.force_relayed_connections
+            .store(enabled, Ordering::Relaxed);
+    }
+
     fn bind(
         &mut self,
         socket_factory: &Arc<dyn SocketFactory<UdpSocket>>,
         addr: SocketAddr,
     ) -> Option<ThreadedUdpSocket> {
-        match ThreadedUdpSocket::new(socket_factory.clone(), addr) {
+        match ThreadedUdpSocket::new(
+            socket_factory.clone(),
+            addr,
+            self.force_relayed_connections.clone(),
+        ) {
             Ok(socket) => Some(socket),
             Err(e) => {
                 // A family we cannot bind is survivable on its own - the other one carries the
@@ -480,7 +496,11 @@ fn channels(addr: SocketAddr) -> (MainThreadEnds, SocketThreadEnds) {
 }
 
 impl ThreadedUdpSocket {
-    fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
+    fn new(
+        sf: Arc<dyn SocketFactory<UdpSocket>>,
+        preferred_addr: SocketAddr,
+        force_relayed_connections: Arc<AtomicBool>,
+    ) -> io::Result<Self> {
         let (
             main_thread_ends,
             SocketThreadEnds {
@@ -551,7 +571,16 @@ impl ThreadedUdpSocket {
                     let mut outbound = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
 
                     async move {
-                        let send = async |datagram| {
+                        let send = async |datagram: DatagramOut| {
+                            // Only datagrams sent directly to a peer have a `src`.
+                            if datagram.src.is_some()
+                                && force_relayed_connections.load(Ordering::Relaxed)
+                            {
+                                tracing::trace!(dst = %datagram.dst, "Forcing relayed connections; dropping direct datagram");
+
+                                return Ok(());
+                            }
+
                             let Err(e) = socket.send(datagram).await else {
                                 return Ok(());
                             };
@@ -885,7 +914,7 @@ fn listen(
     let mut last_err = None;
 
     for addr in addresses {
-        match sf.bind(*addr).and_then(|s| s.into_perf()) {
+        match sf.bind(*addr).map(UdpSocket::into_perf) {
             Ok(s) => return Ok(s),
             Err(e) => {
                 tracing::debug!(%addr, "Failed to listen on UDP socket: {e}");

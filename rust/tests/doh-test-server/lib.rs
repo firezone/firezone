@@ -1,4 +1,4 @@
-use std::{convert::Infallible, net::Ipv4Addr, sync::Arc};
+use std::{net::Ipv4Addr, sync::Arc};
 
 use anyhow::Result;
 use base64::{Engine as _, prelude::BASE64_URL_SAFE_NO_PAD};
@@ -73,7 +73,7 @@ async fn serve(listener: TcpListener, acceptor: TlsAcceptor, answer: Ipv4Addr) {
                 return;
             };
             let service = hyper::service::service_fn(move |request| async move {
-                Ok::<_, Infallible>(handle(request, answer))
+                Ok::<_, !>(handle(request, answer))
             });
 
             let _ = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new())

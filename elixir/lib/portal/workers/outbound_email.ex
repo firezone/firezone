@@ -113,8 +113,13 @@ defmodule Portal.Workers.OutboundEmail do
   defp response_message_id(response) when is_map(response), do: response[:id] || response["id"]
   defp response_message_id(_response), do: nil
 
+  # ACS reads operation_id and Resend reads idempotency_key, so a retried job sends once.
   defp put_operation_id(%Swoosh.Email{} = email, job_id) do
-    Swoosh.Email.put_provider_option(email, :operation_id, job_operation_id(job_id))
+    operation_id = job_operation_id(job_id)
+
+    email
+    |> Swoosh.Email.put_provider_option(:operation_id, operation_id)
+    |> Swoosh.Email.put_provider_option(:idempotency_key, operation_id)
   end
 
   defp job_operation_id(job_id) do

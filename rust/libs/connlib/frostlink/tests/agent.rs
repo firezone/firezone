@@ -5,6 +5,8 @@
 //! handling (WireGuard distress, new candidates, roam). Flow-level coverage
 //! lives in the tunnel proptest.
 
+#![allow(clippy::unwrap_used)]
+
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
@@ -894,6 +896,10 @@ fn parse_probe(packet: &IpPacket) -> Option<ProbeFields> {
         return None;
     }
     let icmp = packet.as_icmpv6()?;
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "We only want to match on these variants"
+    )]
     let (kind, header) = match icmp.icmp_type() {
         Icmpv6Type::EchoRequest(h) => (EchoKind::Request, h),
         Icmpv6Type::EchoReply(h) => (EchoKind::Reply, h),

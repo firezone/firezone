@@ -483,6 +483,12 @@ impl Session {
 
         self.inner.reset(reason)
     }
+
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        tracing::debug!(enabled, "Received set_force_relayed_connections command");
+
+        self.inner.set_force_relayed_connections(enabled);
+    }
 }
 
 #[cfg(target_os = "android")]

@@ -12,3 +12,6 @@ anyhow = "1.0.102"
 
 [dev-dependencies]
 thiserror = { workspace = true }
+
+[lints]
+workspace = true

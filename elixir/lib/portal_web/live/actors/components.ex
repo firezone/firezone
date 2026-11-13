@@ -950,7 +950,7 @@ defmodule PortalWeb.Actors.Components do
                 not @confirm_disable_actor
             }
             style="warning"
-            icon="ri-pause-line"
+            icon="ri-pause-circle-line"
             phx-click="confirm_disable_actor"
           >
             Disable
@@ -995,7 +995,7 @@ defmodule PortalWeb.Actors.Components do
           <Form.action_button
             :if={@actor.is_disabled}
             style="success"
-            icon="ri-play-line"
+            icon="ri-play-circle-line"
             phx-click="enable"
             phx-value-id={@actor.id}
           >

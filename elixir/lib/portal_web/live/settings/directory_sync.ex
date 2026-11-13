@@ -74,7 +74,13 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp init_if_connected(socket) do
     if connected?(socket),
       do: init(socket, new: true),
-      else: assign(socket, directories: nil, verification_error: nil, open_directory_actions_id: nil)
+      else:
+        assign(socket,
+          directories: nil,
+          verification_error: nil,
+          open_directory_actions_id: nil,
+          pending_confirm: nil
+        )
   end
 
   defp init(socket, opts \\ []) do
@@ -86,8 +92,14 @@ defmodule PortalWeb.Settings.DirectorySync do
       |> assign_new(:directories, fn -> directories end)
       |> assign_new(:verification_error, fn -> nil end)
       |> assign_new(:open_directory_actions_id, fn -> nil end)
+      |> assign_new(:pending_confirm, fn -> nil end)
     else
-      assign(socket, directories: directories, verification_error: nil, open_directory_actions_id: nil)
+      assign(socket,
+        directories: directories,
+        verification_error: nil,
+        open_directory_actions_id: nil,
+        pending_confirm: nil
+      )
     end
   end
 
@@ -108,7 +120,8 @@ defmodule PortalWeb.Settings.DirectorySync do
        verifying: false,
        form: to_form(changeset),
        public_jwk: nil,
-       open_directory_actions_id: nil
+       open_directory_actions_id: nil,
+       pending_confirm: nil
      )}
   end
 
@@ -147,7 +160,8 @@ defmodule PortalWeb.Settings.DirectorySync do
        public_jwk: public_jwk,
        is_legacy: is_legacy,
        okta_setup_tab: "ui",
-       open_directory_actions_id: nil
+       open_directory_actions_id: nil,
+       pending_confirm: nil
      )}
   end
 
@@ -161,7 +175,8 @@ defmodule PortalWeb.Settings.DirectorySync do
        directory: directory,
        type: "okta",
        okta_setup_tab: "ui",
-       open_directory_actions_id: nil
+       open_directory_actions_id: nil,
+       pending_confirm: nil
      )}
   end
 
@@ -284,6 +299,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   def handle_event("delete_directory", %{"id" => id}, socket) do
     directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end)
+    socket = assign(socket, pending_confirm: nil)
 
     case directory && Database.delete_directory(directory, socket.assigns.subject) do
       nil ->
@@ -305,6 +321,8 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   def handle_event("toggle_directory", %{"id" => id}, socket) do
+    socket = assign(socket, pending_confirm: nil)
+
     case Enum.find(socket.assigns.directories, &(&1.id == id)) do
       nil -> {:noreply, socket}
       directory -> toggle_directory(directory, socket)
@@ -360,6 +378,31 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   def handle_event("close_directory_actions", _params, socket) do
     {:noreply, assign(socket, open_directory_actions_id: nil)}
+  end
+
+  def handle_event("request_confirm", %{"id" => id, "action" => "delete"}, socket) do
+    case Enum.find(socket.assigns.directories, &(&1.id == id)) do
+      nil ->
+        {:noreply, assign(socket, open_directory_actions_id: nil)}
+
+      directory ->
+        stats = Database.count_deletion_stats(directory, socket.assigns.subject)
+
+        {:noreply,
+         assign(socket,
+           pending_confirm: %{id: id, action: "delete", stats: stats},
+           open_directory_actions_id: nil
+         )}
+    end
+  end
+
+  def handle_event("request_confirm", %{"id" => id, "action" => "toggle"}, socket) do
+    {:noreply,
+     assign(socket, pending_confirm: %{id: id, action: "toggle"}, open_directory_actions_id: nil)}
+  end
+
+  def handle_event("cancel_confirm", _params, socket) do
+    {:noreply, assign(socket, pending_confirm: nil)}
   end
 
   defp toggle_directory_changeset(directory, true) do
@@ -648,7 +691,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 <table class="w-full text-sm border-collapse">
                   <thead class="sticky top-0 z-10 bg-raised">
                     <tr class="border-b border-border-strong">
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-72">
                         Directory
                       </th>
                       <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
@@ -657,16 +700,16 @@ defmodule PortalWeb.Settings.DirectorySync do
                       <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
                         Tenant
                       </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-24">
                         Identities
                       </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-24">
                         Groups
                       </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-32">
                         Last Full Sync
                       </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-32">
                         Last Update
                       </th>
                       <th class="px-6 py-2.5 w-14"></th>
@@ -678,9 +721,9 @@ defmodule PortalWeb.Settings.DirectorySync do
                       type={directory_type(directory)}
                       account={@account}
                       directory={directory}
-                      subject={@subject}
                       most_recent_job={directory.most_recent_job}
                       open_directory_actions_id={@open_directory_actions_id}
+                      pending_confirm={@pending_confirm}
                     />
                   </tbody>
                 </table>
@@ -1296,24 +1339,43 @@ defmodule PortalWeb.Settings.DirectorySync do
   attr :type, :string, required: true
   attr :account, :any, required: true
   attr :directory, :any, required: true
-  attr :subject, :any, required: true
   attr :most_recent_job, :map, default: nil
   attr :open_directory_actions_id, :string, default: nil
+  attr :pending_confirm, :map, default: nil
 
   defp directory_row(assigns) do
     is_legacy = assigns.type == "google" && assigns.directory.legacy_service_account_key != nil
     toggle_disabled = assigns.directory.is_disabled and not assigns.account.features.idp_sync
-    assigns = assign(assigns, is_legacy: is_legacy, toggle_disabled: toggle_disabled)
+    pending_confirm = directory_pending_confirm(assigns.directory, assigns.pending_confirm)
+
+    assigns =
+      assign(assigns,
+        is_legacy: is_legacy,
+        toggle_disabled: toggle_disabled,
+        is_pending_toggle: match?(%{action: "toggle"}, pending_confirm),
+        is_pending_delete: match?(%{action: "delete"}, pending_confirm),
+        deletion_summary: deletion_summary(pending_confirm[:stats])
+      )
 
     ~H"""
-    <tr class="border-b border-border hover:bg-raised">
+    <tr class={[
+      "border-b transition-colors",
+      @is_pending_toggle && "border-warning/30 bg-warning-light",
+      @is_pending_delete && "border-danger/30 bg-danger-light",
+      !@is_pending_toggle && !@is_pending_delete && "border-border hover:bg-raised"
+    ]}>
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
           <Core.provider_icon provider={@type} size="lg" />
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <span
-                class="text-sm font-medium text-heading truncate"
+                class={[
+                  "text-sm font-medium truncate",
+                  @is_pending_toggle && "text-warning",
+                  @is_pending_delete && "text-danger",
+                  !@is_pending_toggle && !@is_pending_delete && "text-heading"
+                ]}
                 title={@directory.name}
               >
                 {@directory.name}
@@ -1324,6 +1386,58 @@ defmodule PortalWeb.Settings.DirectorySync do
           </div>
         </div>
       </td>
+      <%= cond do %>
+        <% @is_pending_toggle -> %>
+          <td colspan="7" class="px-6 py-3">
+            <div class="flex items-center gap-4">
+              <span class="text-xs text-warning">
+                {if @directory.is_disabled,
+                  do: "Enable this directory?",
+                  else: "Disable this directory? It will no longer sync while disabled."}
+              </span>
+              <div class="flex items-center gap-2 ml-auto shrink-0">
+                <Form.button phx-click="cancel_confirm" size="xs">
+                  Cancel
+                </Form.button>
+                <Form.button
+                  phx-click="toggle_directory"
+                  phx-value-id={@directory.id}
+                  size="xs"
+                  style="warning"
+                >
+                  {if @directory.is_disabled, do: "Enable", else: "Disable"}
+                </Form.button>
+              </div>
+            </div>
+          </td>
+        <% @is_pending_delete -> %>
+          <td colspan="7" class="px-6 py-3">
+            <div class="flex items-center gap-4">
+              <div class="text-xs text-danger space-y-1">
+                <p>Delete this directory? This cannot be undone.</p>
+                <p
+                  :if={@deletion_summary}
+                  id={"directory-#{@directory.id}-deletion-stats"}
+                >
+                  This will permanently delete {@deletion_summary}.
+                </p>
+              </div>
+              <div class="flex items-center gap-2 ml-auto shrink-0">
+                <Form.button phx-click="cancel_confirm" size="xs">
+                  Cancel
+                </Form.button>
+                <Form.button
+                  phx-click="delete_directory"
+                  phx-value-id={@directory.id}
+                  size="xs"
+                  style="danger"
+                >
+                  Delete
+                </Form.button>
+              </div>
+            </div>
+          </td>
+        <% true -> %>
       <td class="px-6 py-3 w-28">
         <.directory_status_badge directory={@directory} />
       </td>
@@ -1418,61 +1532,44 @@ defmodule PortalWeb.Settings.DirectorySync do
               <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
               Re-verify to enable
             </Navigation.link>
-            <Form.button_with_confirmation
+            <button
               :if={not (@directory.is_disabled and @directory.disabled_reason == "Sync error")}
-              id={"toggle-directory-#{@directory.id}"}
-              on_confirm="toggle_directory"
-              on_confirm_id={@directory.id}
-              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body border-0 bg-transparent"
+              type="button"
+              phx-click="request_confirm"
+              phx-value-id={@directory.id}
+              phx-value-action="toggle"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
               <Core.icon
                 name={
                   if @directory.is_disabled,
-                    do: "ri-checkbox-circle-line",
-                    else: "ri-close-circle-line"
+                    do: "ri-play-circle-line",
+                    else: "ri-pause-circle-line"
                 }
                 class="w-3.5 h-3.5 shrink-0"
               />
               {if @directory.is_disabled, do: "Enable", else: "Disable"}
-              <:dialog_title>
-                {if @directory.is_disabled, do: "Enable", else: "Disable"} Directory
-              </:dialog_title>
-              <:dialog_content>
-                <p>
-                  Are you sure you want to {if @directory.is_disabled,
-                    do: "enable",
-                    else: "disable"} <strong>{@directory.name}</strong>?
-                </p>
-                <%= if not @directory.is_disabled do %>
-                  <p class="mt-2">This directory will no longer sync while disabled.</p>
-                <% end %>
-              </:dialog_content>
-              <:dialog_confirm_button>
-                {if @directory.is_disabled, do: "Enable", else: "Disable"}
-              </:dialog_confirm_button>
-              <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-            </Form.button_with_confirmation>
+            </button>
             <div class="my-1 border-t border-border"></div>
-            <Form.button_with_confirmation
-              id={"delete-directory-#{@directory.id}"}
-              on_confirm="delete_directory"
-              on_confirm_id={@directory.id}
-              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error border-0 bg-transparent"
+            <button
+              type="button"
+              phx-click="request_confirm"
+              phx-value-id={@directory.id}
+              phx-value-action="delete"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
             >
               <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
-              <:dialog_title>Delete Directory</:dialog_title>
-              <:dialog_content>
-                <.deletion_stats directory={@directory} subject={@subject} />
-              </:dialog_content>
-              <:dialog_confirm_button>Delete</:dialog_confirm_button>
-              <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-            </Form.button_with_confirmation>
+            </button>
           </Core.actions_dropdown>
         </div>
       </td>
+      <% end %>
     </tr>
     """
   end
+
+  defp directory_pending_confirm(%{id: id}, %{id: id} = pending_confirm), do: pending_confirm
+  defp directory_pending_confirm(_directory, _pending_confirm), do: nil
 
   attr :directory, :any, required: true
 
@@ -1517,46 +1614,22 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
-  attr :directory, :any, required: true
-  attr :subject, :any, required: true
+  defp deletion_summary(nil), do: nil
 
-  defp deletion_stats(assigns) do
-    stats = Database.count_deletion_stats(assigns.directory, assigns.subject)
-    total = stats.actors + stats.identities + stats.groups + stats.policies
-    assigns = assign(assigns, stats: stats, total: total)
-
-    ~H"""
-    <div>
-      <p class="text-body">
-        Are you sure you want to delete <strong>{@directory.name}</strong>?
-      </p>
-      <%= if @total > 0 do %>
-        <p class="mt-3 text-body">
-          This will permanently delete:
-        </p>
-        <ul class="list-disc list-inside mt-2 text-body space-y-1">
-          <li :if={@stats.actors > 0}>
-            <strong>{@stats.actors}</strong> {ngettext("actor", "actors", @stats.actors)}
-          </li>
-          <li :if={@stats.identities > 0}>
-            <strong>{@stats.identities}</strong> {ngettext(
-              "identity",
-              "identities",
-              @stats.identities
-            )}
-          </li>
-          <li :if={@stats.groups > 0}>
-            <strong>{@stats.groups}</strong> {ngettext("group", "groups", @stats.groups)}
-          </li>
-          <li :if={@stats.policies > 0}>
-            <strong>{@stats.policies}</strong> {ngettext("policy", "policies", @stats.policies)}
-          </li>
-        </ul>
-      <% else %>
-        <p class="mt-2 text-body">This action cannot be undone.</p>
-      <% end %>
-    </div>
-    """
+  defp deletion_summary(stats) do
+    [
+      {stats.actors, ngettext("actor", "actors", stats.actors)},
+      {stats.identities, ngettext("identity", "identities", stats.identities)},
+      {stats.groups, ngettext("group", "groups", stats.groups)},
+      {stats.policies, ngettext("policy", "policies", stats.policies)}
+    ]
+    |> Enum.filter(fn {count, _noun} -> count > 0 end)
+    |> Enum.map(fn {count, noun} -> "#{count} #{noun}" end)
+    |> case do
+      [] -> nil
+      [only] -> only
+      parts -> Enum.join(Enum.drop(parts, -1), ", ") <> " and " <> List.last(parts)
+    end
   end
 
   attr :form, :any, required: true

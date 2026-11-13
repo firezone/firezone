@@ -42,17 +42,6 @@ run = "rustup toolchain install nightly-2026-10-17 --profile minimal --component
 # Individual checks (matching CI)
 # =============================================================================
 
-[tasks.workspace-crates]
-description = "List the name and directory of every crate in the workspace, as JSON"
-shell = "bash -c"
-hide = true
-run = '''
-set -euo pipefail
-
-cargo metadata --format-version=1 --no-deps |
-  jq -ce '[.packages[] | {name, dir: (.manifest_path | sub("/Cargo.toml$"; "") + "/")}]'
-'''
-
 [tasks.mobile-test-packages]
 description = "Print `-p` flags for `client-ffi` and every workspace crate it depends on for the given target"
 usage = 'arg "<triple>"'
@@ -87,10 +76,6 @@ run = "cargo clippy --all-targets --all-features"
 [tasks.doc]
 description = "Build documentation (CI check)"
 run = "cargo doc --all-features --no-deps --document-private-items"
-
-[tasks.shear]
-description = "Check for unused dependencies (CI check)"
-run = "cargo shear"
 
 [tasks.deny]
 description = "Check licenses and security advisories (CI check)"
@@ -185,7 +170,3 @@ echo "  grep MHz /proc/cpuinfo | sort -u"
 [tasks.check]
 description = "Run all CI static analysis checks"
 depends = ["fmt-check", "clippy", "doc", "deny"]
-
-[tasks.check-all]
-description = "Run all CI static analysis checks including unused dependencies"
-depends = ["fmt-check", "clippy", "doc", "shear", "deny"]

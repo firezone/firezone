@@ -1176,7 +1176,7 @@ async fn send_datagram(
 
 /// Bind a GSO-enabled UDP socket, enlarging its buffers on a best-effort basis.
 fn bind_socket(addr: SocketAddr) -> Result<PerfUdpSocket> {
-    let mut socket = socket_factory::udp(addr)?.into_perf()?;
+    let mut socket = socket_factory::udp(addr)?.into_perf();
 
     socket.set_buffer_sizes(
         socket_factory::SEND_BUFFER_SIZE,

@@ -56,12 +56,9 @@ mod platform {
     /// On Windows, some users will run as admin, and the GUI does work correctly,
     /// unlike on Linux where most distros don't like to mix root GUI apps with X11 / Wayland.
     #[expect(clippy::unnecessary_wraps)]
-    pub fn gui_check() -> Result<bool, Error> {
+    pub fn gui_check() -> Result<bool, !> {
         Ok(true)
     }
-
-    #[derive(Debug, Clone, Copy, thiserror::Error)]
-    pub enum Error {}
 }
 
 #[cfg(target_os = "macos")]
@@ -69,12 +66,9 @@ mod platform {
     use anyhow::Result;
 
     #[expect(clippy::unnecessary_wraps)]
-    pub fn gui_check() -> Result<bool, Error> {
+    pub fn gui_check() -> Result<bool, !> {
         Ok(true)
     }
-
-    #[derive(Debug, Clone, Copy, thiserror::Error)]
-    pub enum Error {}
 }
 
 #[cfg(test)]

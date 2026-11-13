@@ -224,6 +224,33 @@ defmodule Portal.Workers.OutboundEmailTest do
 
       assert_received {:operation_id, "00000000-0000-0000-0000-00000000002a"}
     end
+
+    test "delivers through Resend with an idempotency key derived from job id" do
+      account = account_fixture()
+
+      Portal.Config.put_env_override(:portal, Portal.Mailer.Secondary,
+        adapter: Swoosh.Adapters.Resend,
+        api_key: "re_test",
+        req_opts: [plug: {Req.Test, Swoosh.Adapters.Resend}, retry: false]
+      )
+
+      test_pid = self()
+
+      Req.Test.stub(Swoosh.Adapters.Resend, fn conn ->
+        send(test_pid, {:resend_request, conn.request_path, request_header(conn, "idempotency-key")})
+        Req.Test.json(conn, %{"id" => "resend-message-42"})
+      end)
+
+      job = %Oban.Job{id: 42, args: queued_args(account.id)}
+      assert :ok = Worker.perform(job)
+
+      assert_received {:resend_request, "/emails", "00000000-0000-0000-0000-00000000002a"}
+
+      assert Repo.get_by!(Portal.OutboundEmail,
+               account_id: account.id,
+               message_id: "resend-message-42"
+             )
+    end
   end
 
   defp queued_args(account_id) do

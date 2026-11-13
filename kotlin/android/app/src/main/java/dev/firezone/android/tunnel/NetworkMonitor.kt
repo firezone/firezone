@@ -36,7 +36,7 @@ class NetworkMonitor(
         if (lastNetwork != network) {
             lastNetwork = network
             Log.d(TAG, "Default network changed to $network")
-            tunnelService.reset()
+            tunnelService.reset("roam")
         }
 
         super.onLinkPropertiesChanged(network, linkProperties)

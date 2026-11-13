@@ -4,8 +4,8 @@ use crate::{
     logging::{self, FileCount},
     service,
     settings::{
-        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, GeneralSettings, MdmSettings,
-        SignInSettings,
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettings,
+        DeveloperSettingsViewModel, GeneralSettings, MdmSettings, SignInSettings,
     },
     updates, uptime,
     view::{ClientSettingsForm, SessionViewModel},
@@ -38,6 +38,7 @@ const QUIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
+    developer_settings: DeveloperSettings,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
     /// Path of the legacy user-writable `advanced_settings.json`. The
@@ -87,6 +88,8 @@ pub trait GuiIntegration {
         advanced_settings: AdvancedSettings,
         signed_in_with: Option<SignInSettings>,
     ) -> Result<()>;
+    fn notify_developer_settings_changed(&self, settings: DeveloperSettingsViewModel)
+    -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
     fn notify_device_trust_changed(
         &self,
@@ -107,6 +110,10 @@ pub trait GuiIntegration {
 
     fn save_general_settings(&self, settings: &GeneralSettings)
     -> impl Future<Output = Result<()>>;
+    fn save_developer_settings(
+        &self,
+        settings: DeveloperSettings,
+    ) -> impl Future<Output = Result<()>>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -139,6 +146,9 @@ pub enum ControllerRequest {
     SignOut,
     UpdateState,
     SystemTrayMenu(system_tray::Event),
+    ResetConnlib,
+    SetDeveloperSettingsUnlocked(bool),
+    SetForceRelayedConnections(bool),
 }
 
 // The failure flags are all mutually exclusive
@@ -212,6 +222,7 @@ impl<I: GuiIntegration> Controller<I> {
         integration: I,
         ctrl_rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
+        developer_settings: DeveloperSettings,
         legacy_advanced_settings_path: PathBuf,
         log_filter_reloader: FilterReloadHandle,
         telemetry_allowed: bool,
@@ -286,6 +297,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         let mut controller = Controller {
             general_settings,
+            developer_settings,
             mdm_settings,
             advanced_settings,
             legacy_advanced_settings_path,
@@ -744,6 +756,29 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration.notify_logs_recounted(&file_count)?;
 
                 self.refresh_ui_state();
+            }
+            ResetConnlib => self.send_ipc(&service::ClientMsg::ManualReset).await?,
+            SetDeveloperSettingsUnlocked(unlocked) => {
+                self.developer_settings.unlocked = unlocked;
+
+                self.integration
+                    .save_developer_settings(self.developer_settings)
+                    .await?;
+
+                if !unlocked && self.developer_settings.force_relayed_connections {
+                    self.developer_settings.force_relayed_connections = false;
+                    self.send_ipc(&service::ClientMsg::SetForceRelayedConnections(false))
+                        .await?;
+                }
+
+                self.notify_settings_changed()?;
+            }
+            SetForceRelayedConnections(enabled) => {
+                self.developer_settings.force_relayed_connections = enabled;
+                self.send_ipc(&service::ClientMsg::SetForceRelayedConnections(enabled))
+                    .await?;
+
+                self.notify_settings_changed()?;
             }
         }
         Ok(())
@@ -1333,6 +1368,11 @@ impl<I: GuiIntegration> Controller<I> {
             self.advanced_settings.clone(),
             self.signed_in_with().cloned(),
         )?;
+        self.integration
+            .notify_developer_settings_changed(DeveloperSettingsViewModel {
+                unlocked: self.developer_settings.unlocked,
+                force_relayed_connections: self.developer_settings.force_relayed_connections,
+            })?;
 
         Ok(())
     }
@@ -1543,6 +1583,61 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         assert_eq!(test_controller.integration().shown_overview_page.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn unlocking_the_developer_settings_notifies_the_gui() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SetDeveloperSettingsUnlocked(true))
+            .await
+            .unwrap();
+
+        test_controller
+            .wait_integration(|i| i.developer_settings.last()?.unlocked.then_some(()))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn hiding_the_developer_settings_stops_forcing_relayed_connections() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SetForceRelayedConnections(true))
+            .await
+            .unwrap();
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetForceRelayedConnections(true)),
+            "expected `SetForceRelayedConnections(true)` but got {msg:?}"
+        );
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SetDeveloperSettingsUnlocked(false))
+            .await
+            .unwrap();
+
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetForceRelayedConnections(false)),
+            "expected `SetForceRelayedConnections(false)` but got {msg:?}"
+        );
+        test_controller
+            .wait_integration(|i| {
+                let settings = i.developer_settings.last()?;
+
+                (!settings.force_relayed_connections).then_some(())
+            })
+            .await;
     }
 
     #[tokio::test]
@@ -2616,7 +2711,7 @@ mod tests {
                 panic!("expected a connection after saving the region");
             };
             let effective_api = mdm_settings.api_url.unwrap_or(api_url);
-            assert_eq!(connected_api, effective_api.clone());
+            assert_eq!(connected_api, effective_api);
             let integration = test_controller.integration();
             assert_eq!(
                 integration.signed_in_with.last(),
@@ -2861,6 +2956,7 @@ mod tests {
         sessions: Vec<SessionViewModel>,
         mdm_settings: Vec<MdmSettings>,
         general_settings: Vec<GeneralSettings>,
+        developer_settings: Vec<DeveloperSettingsViewModel>,
         signed_in_with: Vec<Option<SignInSettings>>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
@@ -2904,6 +3000,15 @@ mod tests {
             guard.general_settings.push(general_settings);
             guard.signed_in_with.push(signed_in_with);
             guard.advanced_settings.push(advanced_settings);
+
+            Ok(())
+        }
+
+        fn notify_developer_settings_changed(
+            &self,
+            settings: DeveloperSettingsViewModel,
+        ) -> Result<()> {
+            self.lock().developer_settings.push(settings);
 
             Ok(())
         }
@@ -2998,6 +3103,10 @@ mod tests {
         }
 
         async fn save_general_settings(&self, _: &GeneralSettings) -> Result<()> {
+            Ok(())
+        }
+
+        async fn save_developer_settings(&self, _: DeveloperSettings) -> Result<()> {
             Ok(())
         }
     }
@@ -3184,6 +3293,7 @@ mod tests {
                 integration.clone(),
                 ctrl_rx,
                 general_settings,
+                DeveloperSettings::default(),
                 legacy_advanced_settings_path.clone(),
                 log_filter_reloader,
                 false,

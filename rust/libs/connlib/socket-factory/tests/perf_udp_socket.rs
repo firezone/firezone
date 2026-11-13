@@ -1,5 +1,7 @@
 //! Integration tests for [`socket_factory::PerfUdpSocket`], exercising it through its public API.
 
+#![allow(clippy::unwrap_used)]
+
 use ip_packet::Ecn;
 use socket_factory::{DatagramOut, udp};
 
@@ -16,10 +18,7 @@ async fn sends_and_receives_a_datagram() {
     let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let peer_addr = peer.local_addr().unwrap();
 
-    let socket = udp("127.0.0.1:0".parse().unwrap())
-        .unwrap()
-        .into_perf()
-        .unwrap();
+    let socket = udp("127.0.0.1:0".parse().unwrap()).unwrap().into_perf();
 
     socket
         .send(DatagramOut {
@@ -69,7 +68,7 @@ async fn explicit_source_round_trips_before_and_after_promotion() {
         .as_socket()
         .unwrap()
         .port();
-    let socket = socket.into_perf().unwrap();
+    let socket = socket.into_perf();
     let source = std::net::SocketAddr::from(([127, 0, 0, 1], port));
 
     for datagrams in [1, 16] {
@@ -128,7 +127,7 @@ async fn receives_after_many_icmp_errors() {
         .unwrap()
         .as_socket()
         .unwrap();
-    let mut socket = socket.into_perf().unwrap();
+    let mut socket = socket.into_perf();
     socket.set_buffer_sizes(64 * 1024, 16 * 1024);
 
     for _ in 0..1000 {

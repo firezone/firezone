@@ -42,7 +42,7 @@ pub(crate) fn capture(submenu: &str, output: &Path) -> Result<()> {
 
     tracing::info!("=== tray screenshot: GUI starts against the mock Tunnel service ===");
     let gui = app
-        .gui_command(&["--mock-tunnel", "--skip-portal-auth", "--no-error-dialog"])?
+        .gui_command(&["--mock-tunnel", "--skip-portal-auth", "--no-error-dialog"])
         .start()
         .context("Failed to start the GUI")?;
 
@@ -340,7 +340,7 @@ fn request(app: &App, command: &str) -> Result<bool> {
     tracing::info!("Asking the running instance to {command}");
 
     let request = app
-        .gui_command(&[command])?
+        .gui_command(&[command])
         .start()
         .with_context(|| format!("Failed to spawn `{command}`"))?;
     let Some(status) = request

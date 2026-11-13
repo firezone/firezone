@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import About from "./AboutPage";
 import ColorPalette from "./ColorPalettePage";
+import DeveloperSettingsPage from "./DeveloperSettingsPage";
 import DeviceTrustPage from "./DeviceTrustPage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
@@ -10,6 +11,7 @@ import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import Titlebar from "./Titlebar";
 import {
   commands,
+  DeveloperSettingsViewModel,
   events,
   FileCount,
   GeneralSettingsViewModel,
@@ -26,6 +28,8 @@ export default function App() {
   const [logFilter, setLogFilter] = useState<LogFilterViewModel | null>(null);
   const [deviceTrustCertificate, setDeviceTrustCertificate] =
     useState<X509Certificate | null>();
+  const [developerSettings, setDeveloperSettings] =
+    useState<DeveloperSettingsViewModel | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +47,10 @@ export default function App() {
       events.logFilterChanged.listen((event) => {
         console.log("log_filter_changed", { log_filter: event.payload });
         setLogFilter(event.payload);
+      }),
+      events.developerSettingsChanged.listen((event) => {
+        console.log("developer_settings_changed", { settings: event.payload });
+        setDeveloperSettings(event.payload);
       }),
       events.logsRecounted.listen((event) => {
         console.log("logs_recounted", { file_count: event.payload });
@@ -90,6 +98,12 @@ export default function App() {
         <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
         <Route path="/about" element={<Titlebar title="About" />} />
         <Route
+          path="/developer-settings"
+          element={
+            developerSettings?.unlocked ? <Titlebar title="Developer" /> : null
+          }
+        />
+        <Route
           path="/colour-palette"
           element={<Titlebar title="Colour Palette" />}
         />
@@ -135,6 +149,16 @@ export default function App() {
                   About
                 </ReactRouterSidebarItem>
               </li>
+              {developerSettings?.unlocked && (
+                <li>
+                  <ReactRouterSidebarItem
+                    icon="code"
+                    href="/developer-settings"
+                  >
+                    Developer
+                  </ReactRouterSidebarItem>
+                </li>
+              )}
               {isDev && (
                 <li className="mt-3 border-t border-border pt-3">
                   <ReactRouterSidebarItem icon="palette" href="/colour-palette">
@@ -190,7 +214,35 @@ export default function App() {
                 />
               }
             />
-            <Route path="/about" element={<About />} />
+            <Route
+              path="/about"
+              element={
+                <About
+                  unlockDeveloperSettings={() =>
+                    commands.setDeveloperSettingsUnlocked(true)
+                  }
+                />
+              }
+            />
+            <Route
+              path="/developer-settings"
+              element={
+                developerSettings?.unlocked === false ? (
+                  <Navigate replace to="/about" />
+                ) : developerSettings === null ? null : (
+                  <DeveloperSettingsPage
+                    resetConnlib={commands.resetConnlib}
+                    forceRelayedConnections={
+                      developerSettings.force_relayed_connections
+                    }
+                    setForceRelayedConnections={
+                      commands.setForceRelayedConnections
+                    }
+                    hide={() => commands.setDeveloperSettingsUnlocked(false)}
+                  />
+                )
+              }
+            />
             <Route path="/colour-palette" element={<ColorPalette />} />
           </Routes>
         </main>

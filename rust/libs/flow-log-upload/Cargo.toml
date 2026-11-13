@@ -21,7 +21,9 @@ tokio = { workspace = true, features = ["rt", "net", "time"] }
 tracing = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
-windows-security = { workspace = true } # Locks the spool (Bearer tokens) to SYSTEM/Administrators on Windows; empty crate elsewhere.
+
+[target.'cfg(windows)'.dependencies]
+windows-security = { workspace = true } # Locks the spool (Bearer tokens) to SYSTEM/Administrators.
 
 [dev-dependencies]
 chrono = { workspace = true, features = ["clock"] }

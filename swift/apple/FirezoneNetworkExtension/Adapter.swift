@@ -455,6 +455,10 @@ actor Adapter {
     sendCommand(.setAdditionalHostCandidates(ips))
   }
 
+  func setForceRelayedConnections(_ enabled: Bool) {
+    sendCommand(.setForceRelayedConnections(enabled))
+  }
+
   // MARK: - Network settings
 
   /// Apply network settings via channel to PacketTunnelProvider.

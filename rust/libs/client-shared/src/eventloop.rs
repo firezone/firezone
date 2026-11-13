@@ -86,6 +86,7 @@ pub enum Command {
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
     SetAdditionalHostCandidates(Vec<IpAddr>),
+    SetForceRelayedConnections(bool),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -350,6 +351,15 @@ impl Eventloop {
                 };
 
                 tunnel.set_additional_host_candidates(ips, now);
+            }
+            Command::SetForceRelayedConnections(enabled) => {
+                let Some(tunnel) = self.tunnel.as_ref() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tracing::info!(enabled, "Setting force relayed connections");
+
+                tunnel.set_force_relayed_connections(enabled);
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
