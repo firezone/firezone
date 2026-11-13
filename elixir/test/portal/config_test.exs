@@ -295,6 +295,20 @@ defmodule Portal.ConfigTest do
              }) == [{"api-key", "a,b=c"}, {"x-tenant", "1"}]
     end
 
+    test "parses the sign-up review approvers" do
+      assert env_var_to_config!(Portal.Config.Definitions, :sign_up_review_approvers, %{}) == []
+
+      assert env_var_to_config!(Portal.Config.Definitions, :sign_up_review_approvers, %{
+               "SIGN_UP_REVIEW_APPROVERS" => "alice@example.com,bob@example.com"
+             }) == ["alice@example.com", "bob@example.com"]
+
+      assert_raise RuntimeError, ~r/SIGN_UP_REVIEW_APPROVERS/, fn ->
+        env_var_to_config!(Portal.Config.Definitions, :sign_up_review_approvers, %{
+          "SIGN_UP_REVIEW_APPROVERS" => "alice@example.com,not-an-email"
+        })
+      end
+    end
+
     test "rejects malformed OTLP headers without leaking their values" do
       for headers <- ["api-key", "=s3cr3t", "api-key=a,s3cr3t", "api-key=s3cr3t%zz"] do
         error =

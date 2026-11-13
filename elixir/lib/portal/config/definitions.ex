@@ -1154,7 +1154,7 @@ defmodule Portal.Config.Definitions do
   defconfig(:sign_up_review_approvers, {:array, ",", :string},
     default: [],
     changeset: fn changeset, key ->
-      Portal.Changeset.validate_list(changeset, key, :string, &Portal.Changeset.validate_email/2)
+      Portal.Changeset.validate_email(changeset, key)
     end
   )
 
