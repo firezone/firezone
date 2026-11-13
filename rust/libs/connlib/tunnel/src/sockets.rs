@@ -26,6 +26,10 @@ use tokio::sync::mpsc::{
 };
 use tokio::sync::oneshot;
 
+const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
+const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
+const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
+
 /// How many outgoing UDP batches the send task drains from a socket's channel per wakeup.
 ///
 /// The outbound queue is sized as a small multiple of this (see [`QUEUE_SIZE`]), and every queued
@@ -125,21 +129,18 @@ pub(crate) struct Sockets {
 }
 
 impl Sockets {
-    /// Creates sockets for both families, bound to the unspecified address on `listen_port`.
-    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>, listen_port: u16) -> Self {
-        let mut sockets = Self::without_sockets(Some(socket_factory), listen_port);
+    /// Creates sockets for both families, bound to the unspecified address.
+    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
+        let mut sockets = Self::without_sockets(Some(socket_factory));
         sockets.rebind();
 
         sockets
     }
 
-    fn without_sockets(
-        socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>,
-        listen_port: u16,
-    ) -> Self {
+    fn without_sockets(socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>) -> Self {
         Self {
             socket_factory,
-            listen_port,
+            listen_port: DEFAULT_LISTEN_PORT,
             socket_v4: None,
             socket_v6: None,
             overflow_v4: VecDeque::new(),
@@ -832,7 +833,7 @@ impl Sockets {
         let sockets = Self {
             socket_v4: Some(socket_v4),
             socket_v6: Some(socket_v6),
-            ..Self::without_sockets(None, 0)
+            ..Self::without_sockets(None)
         };
 
         (sockets, ends_v4, ends_v6)

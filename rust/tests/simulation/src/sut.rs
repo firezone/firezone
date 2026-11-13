@@ -31,8 +31,8 @@ use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, messages::Interface};
 
-/// How long the Client event loop stays on a port before it moves to another one.
-const MIN_REBIND_INTERVAL: Duration = Duration::from_secs(60);
+/// How many times the Client event loop moves to another port before it fails the session.
+const MAX_REBINDS: u32 = 50;
 
 /// The actual system-under-test.
 ///
@@ -1478,11 +1478,8 @@ impl TunnelTest {
                 let resources = ref_state.clients[&src].inner().resource_descriptions();
                 let client = self.clients.get_mut(&src).unwrap();
 
-                if client
-                    .inner()
-                    .last_rebind
-                    .is_some_and(|at| now.duration_since(at) < MIN_REBIND_INTERVAL)
-                {
+                if client.inner().num_rebinds >= MAX_REBINDS {
+                    tracing::error!(%src, "Socket is still taken after rebinding to {MAX_REBINDS} different ports");
                     return;
                 }
 
@@ -1490,7 +1487,7 @@ impl TunnelTest {
                 let port = client.port.wrapping_add(1).max(1);
                 client.port = port;
                 client.exec_mut(|c| {
-                    c.last_rebind = Some(now);
+                    c.num_rebinds += 1;
                     c.tunnel.inner_mut().set_listen_port(port);
                     c.tunnel
                         .inner_mut()

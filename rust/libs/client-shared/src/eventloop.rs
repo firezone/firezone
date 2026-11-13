@@ -9,7 +9,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{
     collections::BTreeSet,
     io,
@@ -50,10 +50,10 @@ use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, 
 /// That however means we need to define a more explicit eviction policy to stop the cache from growing.
 static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::new(BTreeSet::new());
 
-/// How long we stay on a port before moving to another one because of [`ClientEvent::SocketTaken`].
+/// How many times a session moves to another port because of [`ClientEvent::SocketTaken`] before it fails.
 ///
-/// Bounds how often a relay can make us reset our connections.
-const MIN_REBIND_INTERVAL: Duration = Duration::from_secs(60);
+/// Every move picks a free port, so running into this means something is broken.
+const MAX_REBINDS: u32 = 50;
 
 pub struct Eventloop {
     clock: Clock,
@@ -81,7 +81,7 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     additional_host_candidates: Vec<IpAddr>,
-    last_rebind: Option<Instant>,
+    num_rebinds: u32,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
 }
@@ -183,7 +183,6 @@ impl Eventloop {
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Result<Self> {
         let SessionConfig {
-            listen_port,
             is_internet_resource_active,
             dns_servers,
             additional_host_candidates,
@@ -197,7 +196,6 @@ impl Eventloop {
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
-            listen_port,
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
@@ -230,7 +228,7 @@ impl Eventloop {
             cmd_rx,
             logged_permission_denied: false,
             additional_host_candidates,
-            last_rebind: None,
+            num_rebinds: 0,
             tunnel_errors: otel_instruments::tunnel_errors(),
             portal_event_rx,
             portal_cmd_tx,
@@ -542,12 +540,10 @@ impl Eventloop {
             return Ok(());
         };
 
-        if let Some(last_rebind) = self.last_rebind
-            && now.duration_since(last_rebind) < MIN_REBIND_INTERVAL
-        {
-            tracing::debug!(since_last_rebind = ?now.duration_since(last_rebind), "Not rebinding to a new port again");
-
-            return Ok(());
+        if self.num_rebinds >= MAX_REBINDS {
+            anyhow::bail!(
+                "Socket is still taken by another client after rebinding to {MAX_REBINDS} different ports"
+            );
         }
 
         let port = match free_udp_port() {
@@ -561,7 +557,7 @@ impl Eventloop {
 
         tunnel.set_listen_port(port);
         tunnel.set_additional_host_candidates(self.additional_host_candidates.clone(), now);
-        self.last_rebind = Some(now);
+        self.num_rebinds += 1;
 
         self.reset("socket is taken by another client").await?;
 
