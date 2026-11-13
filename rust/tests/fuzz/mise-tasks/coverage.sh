@@ -20,25 +20,6 @@ trap 'rm -rf "$temporary"' EXIT
 LLVM_PROFILE_FILE="$temporary/%p-%m.profraw" "$binary" "$target" --replay "corpus/$target"
 "$llvm_bin/llvm-profdata" merge -sparse "$temporary"/*.profraw -o "$temporary/coverage.profdata"
 
-case "$target" in
-relay-proto) package=relay-server-proto ;;
-*) package="$target" ;;
-esac
-packages="$(cargo tree --locked -p "$package" --edges normal --prefix none --format '{p}' \
-    --target x86_64-unknown-linux-gnu | cut -d ' ' -f 1 | sort -u | jq -Rsc 'split("\n")[:-1]')"
-crates="$(mise run -q //rust:workspace-crates)"
-directories="$(jq -r --argjson packages "$packages" \
-    '.[] | select(.name as $name | $packages | index($name)) | .dir' <<<"$crates")"
-[ -n "$directories" ]
-sources=()
-while IFS= read -r directory; do
-    mapfile -t -O "${#sources[@]}" sources < <(find "$directory" -type f -name '*.rs')
-done <<<"$directories"
-sources+=("$PWD/src/main.rs" "$PWD/src/clock.rs")
-if [ "$target" = tunnel ]; then
-    mapfile -t -O "${#sources[@]}" sources < <(find "$PWD/../simulation/src" -type f -name '*.rs')
-else
-    sources+=("$PWD/src/targets/${target//-/_}.rs")
-fi
+# Dependencies and generated code are not ours to cover.
 "$llvm_bin/llvm-cov" export -format=lcov -instr-profile="$temporary/coverage.profdata" \
-    "$binary" "${sources[@]}" >"coverage/$target/lcov.info"
+    -ignore-filename-regex='/(\.cargo|rustc|target)/' "$binary" >"coverage/$target/lcov.info"
