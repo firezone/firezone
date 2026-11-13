@@ -31,6 +31,9 @@ use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, messages::Interface};
 
+/// How long the Client event loop stays on a port before it moves to another one.
+const MIN_REBIND_INTERVAL: Duration = Duration::from_secs(60);
+
 /// The actual system-under-test.
 ///
 /// The fuzzer manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
@@ -1470,6 +1473,31 @@ impl TunnelTest {
                 );
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
+            }
+            ClientEvent::SocketTaken => {
+                let resources = ref_state.clients[&src].inner().resource_descriptions();
+                let client = self.clients.get_mut(&src).unwrap();
+
+                if client
+                    .inner()
+                    .last_rebind
+                    .is_some_and(|at| now.duration_since(at) < MIN_REBIND_INTERVAL)
+                {
+                    return;
+                }
+
+                // Mimic the event loop: listen on a new port, reset and reconnect to the portal.
+                let port = client.port.wrapping_add(1).max(1);
+                client.port = port;
+                client.exec_mut(|c| {
+                    c.last_rebind = Some(now);
+                    c.tunnel.inner_mut().set_listen_port(port);
+                    c.tunnel
+                        .inner_mut()
+                        .reset("socket is taken by another client", now);
+                    c.update_relays(iter::empty(), self.relays.iter(), now);
+                    c.sut_mut().set_resources(resources, now);
+                });
             }
             ClientEvent::DeviceDomainQueried { domain } => {
                 // Mimic the portal: every device resolves, access is asked for per flow.

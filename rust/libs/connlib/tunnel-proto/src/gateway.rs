@@ -655,6 +655,10 @@ impl GatewayState {
                         excluded_relay_ids: blocked,
                     });
                 }
+                // Admins forward our port, so we stay on it.
+                snownet::Event::SocketTaken => {
+                    tracing::debug!("Ignoring that our socket is taken by another client");
+                }
             }
         }
 
