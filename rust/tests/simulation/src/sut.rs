@@ -3,7 +3,7 @@ use super::dns_records::record_ip;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
-use super::sim_net::{Host, HostId, RoutingTable};
+use super::sim_net::{Host, HostId, RoutingTable, SharedNat};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
@@ -11,6 +11,7 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
+use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, StaticSecret};
 use ip_packet::IpPacket;
 use rand::SeedableRng;
@@ -49,6 +50,8 @@ pub struct TunnelTest {
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
     network: RoutingTable,
+    /// The NATs that several hosts sit behind, by public address.
+    shared_nats: BTreeMap<IpAddr, SharedNat>,
     icmp_flows: BTreeMap<FlowId, ResolvedIcmpFlow>,
     udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
     tcp_flows: BTreeMap<FlowId, ResolvedTcpFlow>,
@@ -165,6 +168,7 @@ impl TunnelTest {
         let mut this = Self {
             flux_capacitor,
             network: ref_state.network.clone(),
+            shared_nats: Default::default(),
             client_portal_offline_until: None,
             clients,
             gateways,
@@ -1162,10 +1166,15 @@ impl TunnelTest {
     /// It routes by the wire destination and passes the packet through the
     /// receiving host's network edge, which may translate or drop it.
     fn dispatch_transmit(&mut self, transmit: Transmit, at: Instant) {
+        let dst = transmit.dst;
         let src = transmit
             .src
             .expect("`src` should always be set in these tests");
-        let dst = transmit.dst;
+        let src = self.shared_nat_egress(src, dst, at);
+        let transmit = Transmit {
+            src: Some(src),
+            ..transmit
+        };
 
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
             tracing::error!("Unhandled packet: {src} -> {dst}");
@@ -1211,10 +1220,59 @@ impl TunnelTest {
                     .expect("unknown relay")
                     .receive(transmit, at);
             }
+            HostId::SharedNat => match self.shared_nat_ingress(src, dst) {
+                Ok((id, local_dst)) => self.clients.get_mut(&id).unwrap().receive(
+                    Transmit {
+                        dst: local_dst,
+                        ..transmit
+                    },
+                    at,
+                ),
+                Err(e) => {
+                    tracing::debug!(%src, %dst, "Shared NAT dropped packet: {e:#}")
+                }
+            },
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
             }
         }
+    }
+
+    /// Passes an outbound packet through the [`SharedNat`] in front of its sender, if there is one.
+    fn shared_nat_egress(&mut self, src: SocketAddr, dst: SocketAddr, at: Instant) -> SocketAddr {
+        let Some(HostId::Client(id)) = self.network.host_by_ip(src.ip()) else {
+            return src;
+        };
+        let Some(ip4) = self.clients[&id].shared_nat_ip4() else {
+            return src;
+        };
+
+        self.shared_nats
+            .entry(ip4.into())
+            .or_insert_with(|| SharedNat::new(ip4))
+            .egress(src, dst, at)
+    }
+
+    /// Finds the client, and its socket, that the [`SharedNat`] at `dst` delivers a packet from `src` to.
+    fn shared_nat_ingress(
+        &self,
+        src: SocketAddr,
+        dst: SocketAddr,
+    ) -> Result<(ClientId, SocketAddr)> {
+        let nat = self
+            .shared_nats
+            .get(&dst.ip())
+            .context("no host has sent through the NAT")?;
+        let local_dst = nat.ingress(src, dst)?;
+
+        let Some(HostId::Client(id)) = self.network.host_by_ip(local_dst.ip()) else {
+            bail!("host roamed away or is offline");
+        };
+        if self.clients[&id].port != local_dst.port() {
+            bail!("host no longer listens on the port");
+        }
+
+        Ok((id, local_dst))
     }
 
     fn on_client_event(
