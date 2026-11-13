@@ -679,7 +679,7 @@ where
                 .connections
                 .get_established_mut_by_tunnel_id(tunnel, now)?;
 
-            // Saves the search for the probes of an established path, e.g. the primary's keepalives.
+            // Its own paths need no search, which covers the keepalives of the primary.
             if conn.agent.is_validated(path) {
                 None
             } else {
