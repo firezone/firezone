@@ -1491,9 +1491,11 @@ impl TunnelTest {
                 client.exec_mut(|c| {
                     c.num_rebinds += 1;
                     c.tunnel.inner_mut().set_listen_port(port);
+                    c.sut_mut().set_portal_connected(false);
                     c.tunnel
                         .inner_mut()
                         .reset("socket is taken by another client", now);
+                    c.sut_mut().set_portal_connected(true);
                     c.update_relays(iter::empty(), self.relays.iter(), now);
                     c.sut_mut().set_resources(resources, now);
                 });

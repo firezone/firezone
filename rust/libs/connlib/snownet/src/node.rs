@@ -1527,7 +1527,7 @@ pub enum Event<TId, RId> {
     ///
     /// The NAT in front of us maps both of us to the same public socket.
     /// Upper layers should bind to a different local port and call [`Node::reset`].
-    /// The relay stays blocked for as long as they don't.
+    /// Until then, the relay is blocked like after any other failure.
     SocketTaken,
 }
 
