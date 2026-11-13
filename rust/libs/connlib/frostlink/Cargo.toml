@@ -6,6 +6,8 @@ license = { workspace = true }
 
 [dependencies]
 ip-packet = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
+otel-instruments = { workspace = true }
 sanstun = { workspace = true }
 tracing = { workspace = true }
 

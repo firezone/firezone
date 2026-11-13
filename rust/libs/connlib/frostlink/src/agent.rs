@@ -8,6 +8,7 @@ use crate::event::{Event, Payload, Transmit};
 use crate::icmpv6::Probe;
 use crate::retransmit::PairRetransmit;
 use crate::score::{PairScore, pair_score};
+use opentelemetry::KeyValue;
 
 /// Frostlink path selection for a single WireGuard connection.
 #[derive(Default)]
@@ -16,6 +17,7 @@ pub struct Agent {
     remotes: Vec<Candidate>,
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
     primary: Option<(SocketAddr, SocketAddr)>,
+    primary_since: Option<Instant>,
 
     /// `true` once the session is usable, so probes can ride it: our init was
     /// answered, or the peer's transport data decrypted under the session we
@@ -229,27 +231,59 @@ const MAX_REMOTE_PER_KIND: usize = 6;
 const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
 const PRIMARY_HYSTERESIS_FLOOR: Duration = Duration::from_millis(10);
 
-/// Whether a measured pair should displace the primary: a better bucket, a
+/// Whether, and why, a measured pair should displace the primary: a better bucket, a
 /// clear RTT win within the same bucket, or a higher priority when the RTTs are
 /// a wash-out. The margin keeps jitter between two live pairs from flapping the
 /// primary; the wash-out band is half of it so that two pairs whose RTTs differ
 /// by about the margin can't flap between an RTT win and a priority win.
-fn beats_primary(new: &PairScore, cur: &PairScore, cur_rtt: Option<Duration>) -> bool {
+fn beats_primary(
+    new: &PairScore,
+    cur: &PairScore,
+    cur_rtt: Option<Duration>,
+) -> Option<PrimaryEnd> {
     if new.bucket != cur.bucket {
-        return new.bucket < cur.bucket;
+        return (new.bucket < cur.bucket).then_some(PrimaryEnd::Tier);
     }
 
-    let Some(cur_rtt) = cur_rtt else {
-        return false;
-    };
-
+    let cur_rtt = cur_rtt?;
     let margin = PRIMARY_HYSTERESIS_FLOOR.max(cur_rtt.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
 
     if new.rtt + margin < cur_rtt {
-        return true;
+        return Some(PrimaryEnd::Rtt);
     }
 
-    new.rtt.abs_diff(cur_rtt) < margin / 2 && new.priority < cur.priority
+    (new.rtt.abs_diff(cur_rtt) < margin / 2 && new.priority < cur.priority)
+        .then_some(PrimaryEnd::Priority)
+}
+
+/// Why a path stopped being the primary.
+#[derive(Clone, Copy)]
+enum PrimaryEnd {
+    /// A pair in a better bucket took over.
+    Tier,
+    /// A pair in the same bucket with a clearly lower RTT took over.
+    Rtt,
+    /// A pair with a higher priority took over while the RTTs were a wash-out.
+    Priority,
+    /// A new candidate cleared the primary to re-probe.
+    NewCandidate,
+    /// One of the primary's candidates was removed.
+    CandidateRemoved,
+    /// WireGuard re-keys went unanswered on the primary.
+    Distress,
+}
+
+impl PrimaryEnd {
+    fn as_str(self) -> &'static str {
+        match self {
+            PrimaryEnd::Tier => "tier",
+            PrimaryEnd::Rtt => "rtt",
+            PrimaryEnd::Priority => "priority",
+            PrimaryEnd::NewCandidate => "new_candidate",
+            PrimaryEnd::CandidateRemoved => "candidate_removed",
+            PrimaryEnd::Distress => "distress",
+        }
+    }
 }
 
 impl Agent {
@@ -272,7 +306,7 @@ impl Agent {
         }
 
         // A new candidate may offer a better path than the incumbent; re-probe.
-        self.clear_and_reprobe(now);
+        self.clear_and_reprobe(PrimaryEnd::NewCandidate, now);
 
         true
     }
@@ -324,7 +358,7 @@ impl Agent {
             self.add_pair(local, c, now);
         }
 
-        self.clear_and_reprobe(now);
+        self.clear_and_reprobe(PrimaryEnd::NewCandidate, now);
     }
 
     /// Creates a pair. It probes once there is a session to ride: if one is
@@ -369,7 +403,7 @@ impl Agent {
         self.pairs.retain(|(local, _), _| *local != removed);
 
         if self.primary.is_some_and(|(local, _)| local == removed) {
-            self.clear_and_reprobe(now);
+            self.clear_and_reprobe(PrimaryEnd::CandidateRemoved, now);
         }
 
         true
@@ -386,7 +420,7 @@ impl Agent {
         self.pairs.retain(|(_, remote), _| *remote != removed);
 
         if self.primary.is_some_and(|(_, remote)| remote == removed) {
-            self.clear_and_reprobe(now);
+            self.clear_and_reprobe(PrimaryEnd::CandidateRemoved, now);
         }
 
         true
@@ -497,7 +531,7 @@ impl Agent {
         // `handle_handshake_response`).
         if self.primary.is_some() && self.unanswered_rekeys == REKEY_DISTRESS_ATTEMPTS {
             tracing::debug!("Unanswered re-keys; clearing primary and re-probing");
-            self.clear_and_reprobe(now);
+            self.clear_and_reprobe(PrimaryEnd::Distress, now);
         }
     }
 
@@ -553,7 +587,7 @@ impl Agent {
         // for our own sending, so it must not move our primary; probing
         // decides. Hence we only adopt on the establishing init.
         if !self.session_confirmed && self.primary.is_none() && self.pairs.contains_key(&path) {
-            self.set_primary(path);
+            self.set_primary(path, now);
         }
 
         // Distinct inits with no data in between mean the peer isn't
@@ -561,7 +595,7 @@ impl Agent {
         self.peer_rekeys = self.peer_rekeys.saturating_add(1);
         if self.primary.is_some() && self.peer_rekeys == REKEY_DISTRESS_ATTEMPTS {
             tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; clearing primary and re-probing");
-            self.clear_and_reprobe(now);
+            self.clear_and_reprobe(PrimaryEnd::Distress, now);
         }
 
         // The response MUST go back on the path the init arrived on,
@@ -615,7 +649,7 @@ impl Agent {
 
         // A response is bidirectionally validated, so it is safe to
         // adopt as a (tier-ranked) preliminary primary before probing.
-        self.promote_from_handshake(path);
+        self.promote_from_handshake(path, now);
 
         self.pending_transmits.push_back(Transmit {
             local: path.0,
@@ -710,7 +744,7 @@ impl Agent {
                 tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
 
                 // A probe reply is bidirectionally validated: it may promote.
-                self.select_primary();
+                self.select_primary(now);
             }
         }
     }
@@ -908,7 +942,8 @@ impl Agent {
         }
     }
 
-    fn clear_and_reprobe(&mut self, now: Instant) {
+    fn clear_and_reprobe(&mut self, reason: PrimaryEnd, now: Instant) {
+        self.end_primary(reason, now);
         let former = self.primary.take();
         // Before the session is confirmed there is nothing to probe;
         // `confirm_session` starts every pair once it is.
@@ -946,17 +981,18 @@ impl Agent {
     /// A handshake proves its path works both ways but carries no RTT, so it can
     /// only seed or improve the primary *by tier* — never displace a
     /// better-tier incumbent.
-    fn promote_from_handshake(&mut self, path: (SocketAddr, SocketAddr)) {
+    fn promote_from_handshake(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
         if !self.pairs.contains_key(&path) {
             return;
         }
         match self.primary {
-            None => self.set_primary(path),
+            None => self.set_primary(path, now),
             Some(primary) if primary != path => {
                 let new = pair_score(path, &self.pairs[&path]);
                 let cur = pair_score(primary, &self.pairs[&primary]);
                 if new.bucket < cur.bucket {
-                    self.set_primary(path);
+                    self.end_primary(PrimaryEnd::Tier, now);
+                    self.set_primary(path, now);
                 }
             }
             Some(_) => {}
@@ -967,12 +1003,12 @@ impl Agent {
     /// pair takes over an empty primary, or displaces the incumbent only when it
     /// beats it (see [`beats_primary`]). A worse pair never demotes a working
     /// primary.
-    fn select_primary(&mut self) {
+    fn select_primary(&mut self, now: Instant) {
         let measured = self.pairs.iter().filter(|(_, s)| s.rtt.is_some());
 
         let Some(primary) = self.primary else {
             if let Some((best, _)) = measured.min_by_key(|(k, s)| pair_score(**k, s)) {
-                self.set_primary(*best);
+                self.set_primary(*best, now);
             }
             return;
         };
@@ -980,21 +1016,38 @@ impl Agent {
         let cur = pair_score(primary, &self.pairs[&primary]);
         let cur_rtt = self.pairs[&primary].rtt.map(|r| r.smoothed);
 
-        let Some((best, _)) = measured
+        let Some((best, reason, _)) = measured
             .filter(|(k, _)| **k != primary)
-            .map(|(k, s)| (*k, pair_score(*k, s)))
-            .filter(|(_, new)| beats_primary(new, &cur, cur_rtt))
-            .min_by(|(_, a), (_, b)| a.cmp(b))
+            .filter_map(|(k, s)| {
+                let new = pair_score(*k, s);
+                let reason = beats_primary(&new, &cur, cur_rtt)?;
+
+                Some((*k, reason, new))
+            })
+            .min_by(|(_, _, a), (_, _, b)| a.cmp(b))
         else {
             return;
         };
 
-        self.set_primary(best);
+        self.end_primary(reason, now);
+        self.set_primary(best, now);
     }
 
-    fn set_primary(&mut self, path: (SocketAddr, SocketAddr)) {
+    fn end_primary(&mut self, reason: PrimaryEnd, now: Instant) {
+        let Some(since) = self.primary_since.take() else {
+            return;
+        };
+
+        otel_instruments::frostlink_primary_duration().record(
+            now.saturating_duration_since(since).as_secs_f64(),
+            &[KeyValue::new("frostlink.primary.end", reason.as_str())],
+        );
+    }
+
+    fn set_primary(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
         let from = self.primary;
         self.primary = Some(path);
+        self.primary_since = Some(now);
 
         // Distress is measured per primary: a fresh one starts with a clean
         // slate so a count that climbed on a previous (or no) primary — e.g.

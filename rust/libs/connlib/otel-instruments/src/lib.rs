@@ -50,6 +50,16 @@ pub fn network_retries() -> Histogram<u64> {
         .build()
 }
 
+/// How long a frostlink path stayed the primary before it was replaced or cleared.
+pub fn frostlink_primary_duration() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("connlib.frostlink.primary.duration")
+        .with_description("How long a path stayed the primary before it was replaced or cleared.")
+        .with_unit("s")
+        .with_boundaries(vec![1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 900.0, 3600.0])
+        .build()
+}
+
 /// Records how long a UDP send waits for socket capacity before making progress or failing.
 pub fn network_send_blocked_duration() -> Histogram<f64> {
     connlib_meter()
