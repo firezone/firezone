@@ -1166,10 +1166,10 @@ impl TunnelTest {
     /// It routes by the wire destination and passes the packet through the
     /// receiving host's network edge, which may translate or drop it.
     fn dispatch_transmit(&mut self, transmit: Transmit, at: Instant) {
-        let dst = transmit.dst;
         let src = transmit
             .src
             .expect("`src` should always be set in these tests");
+        let dst = transmit.dst;
         let src = self.shared_nat_egress(src, dst, at);
         let transmit = Transmit {
             src: Some(src),
