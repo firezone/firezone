@@ -15,6 +15,7 @@
 //! rewinds that one too.
 
 use std::ffi::{c_uint, c_void};
+use std::hash::{BuildHasher as _, RandomState};
 use std::sync::Mutex;
 
 use rand::{Rng as _, SeedableRng as _, rngs::StdRng};
@@ -30,6 +31,16 @@ pub fn reset(seed: u64) {
     with_rng(|rng| *rng = StdRng::seed_from_u64(seed));
 
     fastrand::seed(seed);
+}
+
+/// Draws a number that depends on how much randomness the process has consumed so far.
+///
+/// It mixes the next value of the global entropy stream and of the current thread's `fastrand`
+/// generator into a fresh `std` hasher, whose seed advances with every hasher the thread builds.
+pub fn fingerprint() -> u64 {
+    let stream = with_rng(|rng| rng.next_u64());
+
+    RandomState::new().hash_one((stream, fastrand::u64(..)))
 }
 
 /// # Safety
