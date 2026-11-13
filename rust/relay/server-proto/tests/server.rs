@@ -11,8 +11,10 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Username};
-use stun_codec::rfc5766::attributes::{ChannelNumber, RequestedTransport, XorPeerAddress};
-use stun_codec::rfc5766::errors::{AllocationQuotaReached, Forbidden};
+use stun_codec::rfc5766::attributes::{
+    ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress,
+};
+use stun_codec::rfc5766::errors::{AllocationQuotaReached, Forbidden, WrongCredentials};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Method, TransactionId};
 use uuid::Uuid;
@@ -80,6 +82,80 @@ fn renewed_credentials_replace_device_allocation_at_limit() {
         Some(Command::CreateAllocation { .. })
     ));
     assert_eq!(relay.server.num_allocations(), 1);
+}
+
+#[test]
+fn refresh_from_other_device_is_rejected() {
+    let mut relay = TestRelay::with_allocation();
+    let owner = relay.username.clone();
+
+    relay.username = username(relay.account, EXPIRY, "b");
+    let response = relay.send(REFRESH, []);
+
+    assert_eq!(
+        response.get_attribute::<ErrorCode>().map(|e| e.code()),
+        Some(WrongCredentials::CODEPOINT)
+    );
+    relay.username = owner;
+    assert_eq!(
+        relay.send(REFRESH, []).class(),
+        MessageClass::SuccessResponse
+    );
+}
+
+#[test]
+fn delete_from_other_device_keeps_allocation() {
+    let mut relay = TestRelay::with_allocation();
+
+    relay.username = username(relay.account, EXPIRY, "b");
+    let response = relay.send(REFRESH, [Attribute::Lifetime(Lifetime::from_u32(0))]);
+
+    assert_eq!(
+        response.get_attribute::<ErrorCode>().map(|e| e.code()),
+        Some(WrongCredentials::CODEPOINT)
+    );
+    assert_eq!(relay.server.num_allocations(), 1);
+    assert_eq!(relay.next_command(), None);
+}
+
+#[test]
+fn channel_bind_from_other_device_is_rejected() {
+    let mut relay = TestRelay::with_allocation();
+
+    relay.username = username(relay.account, EXPIRY, "b");
+    let response = relay.channel_bind(SocketAddr::from(([198, 51, 100, 2], 50_001)));
+
+    assert_eq!(
+        response.get_attribute::<ErrorCode>().map(|e| e.code()),
+        Some(WrongCredentials::CODEPOINT)
+    );
+    assert_eq!(relay.server.num_active_channels(), 0);
+    assert_eq!(relay.next_command(), None);
+}
+
+#[test]
+fn refresh_from_other_account_is_rejected() {
+    let mut relay = TestRelay::with_allocation();
+    let other_account = auth::AccountId::from(Uuid::from_u128(1));
+    relay.server.add_account(other_account, None);
+
+    relay.username = username(other_account, EXPIRY, DEVICE);
+    let response = relay.send(REFRESH, []);
+
+    assert_eq!(
+        response.get_attribute::<ErrorCode>().map(|e| e.code()),
+        Some(WrongCredentials::CODEPOINT)
+    );
+}
+
+#[test]
+fn refresh_with_renewed_credentials_succeeds() {
+    let mut relay = TestRelay::with_allocation();
+
+    relay.username = username(relay.account, EXPIRY + 1, DEVICE);
+    let response = relay.send(REFRESH, []);
+
+    assert_eq!(response.class(), MessageClass::SuccessResponse);
 }
 
 #[test]
