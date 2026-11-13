@@ -3,6 +3,7 @@ use std::{
     fmt,
     hash::Hash,
     iter, mem,
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -359,7 +360,7 @@ where
         bail!("STUN message is not a BINDING")
     }
 
-    fn get_mut_including_closing(
+    pub(crate) fn get_mut_including_closing(
         &mut self,
         id: &TId,
         now: Instant,
@@ -374,6 +375,17 @@ where
             .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
         Ok(connection)
+    }
+
+    /// Returns the connection that owns `path`, see [`Connection::owns_path`].
+    pub(crate) fn path_owner_mut(
+        &mut self,
+        path: (SocketAddr, SocketAddr),
+        allocations: &Allocations<RId>,
+    ) -> Option<(TId, &mut Connection<RId>)> {
+        self.established
+            .filter_mut(|c| c.owns_path(path, allocations))
+            .next()
     }
 
     pub(crate) fn is_closing(&self, id: &TId) -> bool {

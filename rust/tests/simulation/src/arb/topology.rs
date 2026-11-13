@@ -25,7 +25,7 @@ use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
-use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
+use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, PortAssignment, RoutingTable};
 use crate::site_network::{IcmpError, RouteType, Routes};
 use crate::stub_portal::{PoolMembers, StubPortal};
 
@@ -386,7 +386,7 @@ fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Hos
     );
     twin.update_interface(Some(g.socket_ip4()), None);
 
-    share_nat(g, [&mut sharing, &mut twin]);
+    share_nat(g, portal, [&mut sharing, &mut twin]);
 
     BTreeMap::from([(first.0, sharing), (second.0, separate), (third.0, twin)])
 }
@@ -461,7 +461,7 @@ fn arb_gateways(
     // Several Gateways of a site are deployed side by side for high availability.
     for gateways in gateways_by_site.values_mut() {
         if gateways.len() > 1 {
-            share_nat(g, gateways.iter_mut().map(|(_, host)| host));
+            share_nat(g, portal, gateways.iter_mut().map(|(_, host)| host));
         }
     }
 
@@ -470,14 +470,25 @@ fn arb_gateways(
 
 /// Moves `hosts` behind one [`SharedNat`](crate::sim_net::SharedNat).
 ///
-/// The NAT takes its filtering and expiry from what the first host drew for a NAT of its own, so
-/// it consumes no input.
-fn share_nat<'a, T: 'a>(g: &mut Generator, hosts: impl IntoIterator<Item = &'a mut Host<T>>) {
+/// The NAT takes its filtering and expiry from what the first host drew for a NAT of its own
+/// and its port assignment from the parity of that host's latency, so it consumes no input.
+fn share_nat<'a, T: 'a>(
+    g: &mut Generator,
+    portal: &StubPortal,
+    hosts: impl IntoIterator<Item = &'a mut Host<T>>,
+) {
     let mut hosts = hosts.into_iter().peekable();
     let Some(first) = hosts.peek() else {
         return;
     };
 
+    // TODO: Sample overloading for classic ICE too: the reference model cannot tell which of its
+    // connections keep a direct path through such a NAT when the relays are gone.
+    let assignment = if portal.frostlink() && first.latency().as_millis() % 2 == 1 {
+        PortAssignment::Overloading
+    } else {
+        PortAssignment::Compliant
+    };
     let (filter, expiry) = match first.edge_config() {
         EdgeConfig::Nat(_, filter, expiry) => (filter, expiry),
         EdgeConfig::Open | EdgeConfig::SharedNat(..) => (
@@ -494,7 +505,7 @@ fn share_nat<'a, T: 'a>(g: &mut Generator, hosts: impl IntoIterator<Item = &'a m
     for host in hosts {
         let ip4 = host.ip4.unwrap_or_else(|| g.socket_ip4());
 
-        host.join_shared_nat(nat_ip4, filter, expiry);
+        host.join_shared_nat(nat_ip4, assignment, filter, expiry);
         host.update_interface(Some(ip4), None);
         host.port = 52625;
     }

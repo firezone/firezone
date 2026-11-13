@@ -289,6 +289,7 @@ where
 
     /// Performs garbage-collection across all our allocations.
     pub(crate) fn gc(&mut self, now: Instant) -> Gc<RId> {
+        let mut socket_taken = false;
         let removed = self
             .inner
             .extract_if(|rid, allocation| match allocation.can_be_freed() {
@@ -305,6 +306,10 @@ where
                         | FreeReason::AllocationQuotaReached => {
                             self.blocked.insert(*rid, now + BLOCK_DURATION);
                         }
+                        FreeReason::SocketTaken => {
+                            self.blocked.insert(*rid, now + BLOCK_DURATION);
+                            socket_taken = true;
+                        }
                         FreeReason::NoResponseReceived => {}
                     }
 
@@ -318,6 +323,7 @@ where
         Gc {
             removed_last: !removed.is_empty() && self.inner.is_empty(),
             removed,
+            socket_taken,
         }
     }
 
@@ -416,6 +422,8 @@ pub(crate) struct Gc<RId> {
     pub(crate) removed: SmallVec<[RId; 2]>,
     /// Whether we removed the last remaining allocation.
     pub(crate) removed_last: bool,
+    /// Whether a relay sees our socket as the one of another client's allocation.
+    pub(crate) socket_taken: bool,
 }
 
 #[cfg(test)]

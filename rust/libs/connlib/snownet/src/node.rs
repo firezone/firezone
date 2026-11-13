@@ -25,7 +25,7 @@ use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
-use opentelemetry::metrics::Gauge;
+use opentelemetry::metrics::{Counter, Gauge};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay_client_proto::channel_data::channel_data_packet_buffer;
@@ -110,6 +110,7 @@ pub struct Node<TId, RId> {
 
     connection_count: Gauge<u64>,
     next_connection_count: Instant,
+    paths_refused: Counter<u64>,
 
     rng: StdRng,
 
@@ -205,6 +206,7 @@ where
             buffered_candidates: Default::default(),
             connection_count: otel_instruments::connection_count(),
             next_connection_count: now,
+            paths_refused: otel_instruments::connection_paths_refused(),
             unix_now: now,
             unix_ts,
         }
@@ -669,11 +671,28 @@ where
             probes,
         } = batch;
 
+        let path = (dst, src);
+        let path_taken = if probes.is_empty() {
+            false
+        } else {
+            let (_, conn) = self
+                .connections
+                .get_established_mut_by_tunnel_id(tunnel, now)?;
+
+            // Its own paths need no search, which covers the keepalives of the primary.
+            !conn.agent.is_validated(path)
+                && self.contest_path(path, |_, c| c.tunnel.id() == tunnel, now)
+        };
+
         let (cid, conn) = self
             .connections
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
-        let packets = conn.commit_decrypted(cid, (dst, src), data, probes, now);
+        if path_taken {
+            conn.refuse_path(cid, path, &self.paths_refused, now);
+        }
+
+        let packets = conn.commit_decrypted(cid, path, data, probes, now);
         conn.handle_tunnel_events(
             cid,
             &mut self.allocations,
@@ -778,6 +797,10 @@ where
             self.pending_events.push_back(Event::NoRelays {
                 blocked: self.allocations.blocked(now).collect(),
             });
+        }
+
+        if gc.socket_taken {
+            self.pending_events.push_back(Event::SocketTaken);
         }
 
         self.connections.clear_relays(gc.removed.into_iter());
@@ -1166,14 +1189,27 @@ where
             return ControlFlow::Continue(());
         };
 
-        let (_, c) = match self.connections.get_established_mut_for_stun_message(
+        let cid = match self.connections.get_established_mut_for_stun_message(
             &message,
             &mut self.inflight_stun_requests,
             now,
         ) {
+            Ok((cid, _)) => cid,
+            Err(e) => return ControlFlow::Break(Err(e)),
+        };
+
+        let path = (destination, from);
+        let path_taken = self.contest_path(path, |id, _| id == cid, now);
+        let c = match self.connections.get_mut_including_closing(&cid, now) {
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
+
+        if path_taken {
+            c.refuse_path(cid, path, &self.paths_refused, now);
+
+            return ControlFlow::Break(Ok(()));
+        }
 
         let handled = c.agent.handle_stun_packet(
             now,
@@ -1224,6 +1260,22 @@ where
             }
         };
 
+        let path = (destination, from);
+        let path_taken = match &parsed_packet {
+            sanstun::ReceivedMessage::HandshakeInitiation(init) => {
+                let sender = init.peer_static_public();
+
+                self.contest_path(path, |_, c| c.remote_pub_key == sender, now)
+            }
+            sanstun::ReceivedMessage::HandshakeResponse(response) => {
+                let tunnel = response.tunnel_id();
+
+                self.contest_path(path, |_, c| c.tunnel.id() == tunnel, now)
+            }
+            sanstun::ReceivedMessage::CookieReply(_)
+            | sanstun::ReceivedMessage::TransportData(_) => false,
+        };
+
         let connection = match &parsed_packet {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
             sanstun::ReceivedMessage::HandshakeInitiation(init) => self
@@ -1244,6 +1296,16 @@ where
             Err(e) => return ControlFlow::Break(Err(e)),
         };
         let tunnel = conn.tunnel.id();
+
+        if path_taken {
+            conn.refuse_path(cid, path, &self.paths_refused, now);
+
+            match conn.agent {
+                // An ICE agent keeps no state for refused paths, so the handshake is dropped here.
+                Agent::Ice(..) => return ControlFlow::Break(Ok(())),
+                Agent::Frostlink(_) => {}
+            }
+        }
 
         let control_flow = conn.decapsulate(
             cid,
@@ -1270,6 +1332,30 @@ where
                 ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
             }
         }
+    }
+
+    /// Returns whether a packet arrived on a `path` that a connection other than its receiver owns.
+    ///
+    /// The NAT in front of the two peers then maps both to the same socket and delivers what
+    /// we send on `path` to the one that sent last: the sender of the packet. The owner
+    /// therefore probes the path anew before it sends on it again.
+    fn contest_path(
+        &mut self,
+        path: (SocketAddr, SocketAddr),
+        is_receiver: impl Fn(TId, &Connection<RId>) -> bool,
+        now: Instant,
+    ) -> bool {
+        let Some((owner_id, owner)) = self.connections.path_owner_mut(path, &self.allocations)
+        else {
+            return false;
+        };
+        if is_receiver(owner_id, owner) {
+            return false;
+        }
+
+        owner.agent.reprobe_path(path, now);
+
+        true
     }
 
     /// Sends `message` back to `remote` on the path a packet from it arrived on at `local`.
@@ -1518,6 +1604,13 @@ pub enum Event<TId, RId> {
     NoRelays {
         blocked: Vec<RId>,
     },
+
+    /// A relay sees our socket as the one of another client's allocation.
+    ///
+    /// The NAT in front of us maps both of us to the same public socket.
+    /// Upper layers should bind to a different local port and call [`Node::reset`].
+    /// Until then, the relay is blocked like after any other failure.
+    SocketTaken,
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
@@ -1906,7 +1999,7 @@ where
             match event {
                 sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
                     Agent::Frostlink(agent) => agent.send_handshake_initiation(init, now),
-                    Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
+                    Agent::Ice(..) => self.buffer_or_send(&cid, init, allocations, transmits, now),
                 },
                 sanstun::Event::SendKeepalive(keepalive) => {
                     self.buffer_or_send(&cid, keepalive, allocations, transmits, now)
@@ -2068,7 +2161,7 @@ where
                     Agent::Frostlink(agent) => {
                         agent.handle_handshake_initiation(&mut self.tunnel, init, path, now)
                     }
-                    Agent::Ice(_) => self
+                    Agent::Ice(..) => self
                         .tunnel
                         .handle_handshake_initiation(init, now)
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
@@ -2085,7 +2178,7 @@ where
                         path,
                         now,
                     ),
-                    Agent::Ice(_) => self
+                    Agent::Ice(..) => self
                         .tunnel
                         .handle_handshake_response(response, now)
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
@@ -2159,6 +2252,49 @@ where
         }
 
         Ok(committed)
+    }
+
+    /// Whether this connection validated `path`: Frostlink by an answered probe, ICE by nominating it.
+    fn owns_path(&self, path: (SocketAddr, SocketAddr), allocations: &Allocations<RId>) -> bool
+    where
+        RId: Ord + Hash + fmt::Display + Copy,
+    {
+        let peer_socket = match &self.agent {
+            Agent::Frostlink(agent) => return agent.is_validated(path),
+            Agent::Ice(..) => self.state.peer_socket(),
+        };
+        let is_relay_socket = |local| {
+            self.relay
+                .and_then(|relay| allocations.get_by_id(&relay))
+                .is_some_and(|allocation| allocation.has_socket(local))
+        };
+
+        match peer_socket {
+            Some(PeerSocket::PeerToPeer { source, dest }) => (source, dest) == path,
+            Some(PeerSocket::PeerToRelay { source, dest }) => (source, dest) == path,
+            Some(PeerSocket::RelayToPeer { dest }) => dest == path.1 && is_relay_socket(path.0),
+            Some(PeerSocket::RelayToRelay { dest }) => dest == path.1 && is_relay_socket(path.0),
+            None => false,
+        }
+    }
+
+    /// Makes the agent stop using `path`, which another connection owns.
+    fn refuse_path<TId>(
+        &mut self,
+        cid: TId,
+        path: (SocketAddr, SocketAddr),
+        paths_refused: &Counter<u64>,
+        now: Instant,
+    ) where
+        TId: fmt::Display,
+    {
+        if !self.agent.refuse_path(path, now) {
+            return;
+        }
+
+        tracing::debug!(%cid, local = %path.0, remote = %path.1, "Refused path owned by another connection");
+
+        paths_refused.add(1, &[]);
     }
 
     fn restore_rekey_attempt_time(&mut self) {

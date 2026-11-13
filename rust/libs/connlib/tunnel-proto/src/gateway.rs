@@ -655,6 +655,9 @@ impl GatewayState {
                         excluded_relay_ids: blocked,
                     });
                 }
+                snownet::Event::SocketTaken => {
+                    self.buffered_events.push_back(GatewayEvent::SocketTaken);
+                }
             }
         }
 
@@ -673,6 +676,13 @@ impl GatewayState {
                     candidates,
                 })
         }
+    }
+
+    pub fn reset(&mut self, now: Instant, reason: &str) {
+        tracing::info!("Resetting network state ({reason})");
+
+        self.node.reset(now);
+        self.drain_node_events();
     }
 
     pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {

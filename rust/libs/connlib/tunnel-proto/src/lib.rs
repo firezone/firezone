@@ -102,6 +102,8 @@ pub enum ClientEvent {
     NoRelays {
         excluded_relay_ids: Vec<RelayId>,
     },
+    /// Another client behind our NAT uses the same public socket as we do; a different local port gets us our own.
+    SocketTaken,
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
@@ -150,6 +152,8 @@ pub enum GatewayEvent {
     NoRelays {
         excluded_relay_ids: Vec<RelayId>,
     },
+    /// Another client behind our NAT uses the same public socket as we do; a different local port gets us our own.
+    SocketTaken,
 }
 
 #[derive(Debug, thiserror::Error)]

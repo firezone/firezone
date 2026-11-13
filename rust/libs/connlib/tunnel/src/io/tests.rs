@@ -365,7 +365,7 @@ impl Io {
         let (resolver, _) = resolver::channels();
 
         Io::new(
-            Sockets::new(udp.clone(), 0),
+            Sockets::new(udp.clone()),
             CryptoWorkers::default(),
             resolver,
             Arc::new(socket_factory::tcp),
