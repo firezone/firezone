@@ -57,7 +57,8 @@ defmodule Portal.Telemetry do
     flow_logs: %{
       handler_id: "portal-flow-log-metrics",
       events: [
-        [:portal, :flow_logs, :upload_denied]
+        [:portal, :flow_logs, :upload_denied],
+        [:portal, :flow_logs, :upload_unauthorized]
       ]
     }
   }
@@ -395,6 +396,18 @@ defmodule Portal.Telemetry do
     })
   end
 
+  @doc """
+  Records a flow-log upload the portal refused with a 401, by why its ingest
+  token was rejected.
+  """
+  @spec flow_log_upload_unauthorized(
+          :missing | :malformed | :unknown_account | :invalid | :expired | :uploads_disabled
+        ) :: :ok
+  def flow_log_upload_unauthorized(reason)
+      when reason in [:missing, :malformed, :unknown_account, :invalid, :expired, :uploads_disabled] do
+    :telemetry.execute([:portal, :flow_logs, :upload_unauthorized], %{count: 1}, %{reason: reason})
+  end
+
   defp register_otel_instruments do
     meter = :opentelemetry_experimental.get_meter()
     node_attrs = %{"node_name" => System.get_env("NODE_NAME", to_string(node()))}
@@ -667,6 +680,12 @@ defmodule Portal.Telemetry do
         description: "Flow-log uploads refused by a rate limit, by bucket (ip, device, account) and reporter role",
         unit: :"1"
       }
+    )
+
+    :otel_meter.create_counter(
+      meter,
+      :"portal.flow_logs.uploads_unauthorized",
+      %{description: "Flow-log uploads refused with a 401, by reason", unit: :"1"}
     )
 
     :ok
@@ -955,6 +974,23 @@ defmodule Portal.Telemetry do
         "flow_logs.role" => to_string(role),
         "node_name" => config.node_name
       }
+    )
+
+    :ok
+  end
+
+  def handle_flow_log_metric(
+        [:portal, :flow_logs, :upload_unauthorized],
+        %{count: count},
+        %{reason: reason},
+        config
+      ) do
+    :otel_counter.add(
+      :otel_ctx.get_current(),
+      :opentelemetry_experimental.get_meter(),
+      :"portal.flow_logs.uploads_unauthorized",
+      count,
+      %{"flow_logs.reason" => to_string(reason), "node_name" => config.node_name}
     )
 
     :ok

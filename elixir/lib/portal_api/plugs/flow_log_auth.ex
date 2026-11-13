@@ -8,6 +8,7 @@ defmodule PortalAPI.Plugs.FlowLogAuth do
   """
 
   import Plug.Conn
+  require Logger
 
   alias Portal.FlowLogToken
   alias PortalAPI.ProblemDetails
@@ -15,18 +16,43 @@ defmodule PortalAPI.Plugs.FlowLogAuth do
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
+    token = bearer_token(conn)
+
+    with {:ok, token} <- token,
          {:ok, claims, account} <- FlowLogToken.verify(token),
          :ok <- ensure_uploads_enabled(claims) do
       conn
       |> assign(:flow_log_claims, claims)
       |> assign(:flow_log_account, account)
     else
-      {:error, :uploads_disabled} ->
-        ProblemDetails.send(conn, 401, "Flow log uploads are not enabled for this authorization")
-
-      _ -> ProblemDetails.send(conn, 401, "Authentication credentials were missing or invalid.")
+      {:error, reason} ->
+        unauthorized(conn, reason, token)
     end
+  end
+
+  defp bearer_token(conn) do
+    case get_req_header(conn, "authorization") do
+      ["Bearer " <> token] -> {:ok, token}
+      _ -> {:error, :missing}
+    end
+  end
+
+  defp unauthorized(conn, reason, token) do
+    account_id =
+      case token do
+        {:ok, token} -> FlowLogToken.unverified_account_id(token)
+        _ -> nil
+      end
+
+    Logger.info("Flow log upload unauthorized", reason: reason, account_id: account_id)
+    Portal.Telemetry.flow_log_upload_unauthorized(reason)
+
+    detail =
+      if reason == :uploads_disabled,
+        do: "Flow log uploads are not enabled for this authorization",
+        else: "Authentication credentials were missing or invalid."
+
+    ProblemDetails.send(conn, 401, detail)
   end
 
   defp ensure_uploads_enabled(%{"uploads_enabled" => true}), do: :ok

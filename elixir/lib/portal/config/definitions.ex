@@ -209,12 +209,12 @@ defmodule Portal.Config.Definitions do
   @doc """
   The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
-  defconfig(:api_ingestion_refill_rate, :integer, default: 1)
+  defconfig(:api_ingestion_refill_rate, :integer, default: 100)
 
   @doc """
   The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
   """
-  defconfig(:api_ingestion_capacity, :integer, default: 1)
+  defconfig(:api_ingestion_capacity, :integer, default: 1_000)
 
   @doc """
   How often, in seconds, clients and gateways upload batched flow logs to the ingest API.

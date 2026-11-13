@@ -642,7 +642,40 @@ defmodule Portal.TelemetryTest do
     end
   end
 
+  describe "flow_log_upload_unauthorized/1" do
+    test "emits the reason" do
+      test_pid = self()
+      handler_id = "test-flow-logs-unauthorized-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :flow_logs, :upload_unauthorized],
+        fn event, measurements, metadata, _config ->
+          if self() == test_pid, do: send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      assert :ok = Portal.Telemetry.flow_log_upload_unauthorized(:unknown_account)
+
+      assert_receive {[:portal, :flow_logs, :upload_unauthorized], %{count: 1},
+                      %{reason: :unknown_account}}
+    end
+  end
+
   describe "handle_flow_log_metric/4" do
+    test "returns :ok for an unauthorized upload" do
+      assert :ok =
+               Portal.Telemetry.handle_flow_log_metric(
+                 [:portal, :flow_logs, :upload_unauthorized],
+                 %{count: 1},
+                 %{reason: :expired},
+                 @config
+               )
+    end
+
     test "returns :ok for a denied upload" do
       assert :ok =
                Portal.Telemetry.handle_flow_log_metric(

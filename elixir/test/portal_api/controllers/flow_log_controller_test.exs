@@ -1,6 +1,7 @@
 defmodule PortalAPI.FlowLogControllerTest do
   use PortalAPI.ConnCase, async: true
 
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.FlowLogFixtures
 
@@ -185,6 +186,69 @@ defmodule PortalAPI.FlowLogControllerTest do
              } = json_response(conn, 401)
 
       assert Repo.all(FlowLog) == []
+    end
+
+    test "counts and logs each rejected token by reason", %{conn: conn, account: account} do
+      test_pid = self()
+      handler_id = "test-flow-log-unauthorized-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :flow_logs, :upload_unauthorized],
+        fn event, measurements, metadata, _config ->
+          if self() == test_pid, do: send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      unknown = %Portal.Account{id: Ecto.UUID.generate(), ingest_signing_key: :crypto.strong_rand_bytes(32)}
+      impostor = %{account | ingest_signing_key: :crypto.strong_rand_bytes(32)}
+      past = DateTime.add(DateTime.utc_now(), -40 * 86_400, :second)
+
+      cases = [
+        {:missing, nil, nil},
+        {:malformed, "not-a-jwt", nil},
+        {:unknown_account, FlowLogToken.mint(unknown, flow_log_token_claims(), expires_at()), unknown.id},
+        {:invalid, FlowLogToken.mint(impostor, flow_log_token_claims(), expires_at()), account.id},
+        {:expired, FlowLogToken.mint(account, flow_log_token_claims(), past), account.id},
+        {:uploads_disabled,
+         FlowLogToken.mint(account, flow_log_token_claims(%{"uploads_enabled" => false}), expires_at()),
+         account.id}
+      ]
+
+      for {reason, token, account_id} <- cases do
+        request = if token, do: put_req_header(conn, "authorization", "Bearer " <> token), else: conn
+
+        {response, log} = with_log(fn -> post_logs(request, [build_record()]) end)
+
+        assert %{"status" => 401} = json_response(response, 401)
+        assert_received {[:portal, :flow_logs, :upload_unauthorized], %{count: 1}, %{reason: ^reason}}
+        assert log =~ "Flow log upload unauthorized"
+        assert log =~ "reason=#{reason}"
+        if account_id, do: assert(log =~ "account_id=#{account_id}")
+      end
+    end
+
+    test "sends the same response for an unknown account and a bad signature", %{
+      conn: conn,
+      account: account
+    } do
+      unknown = %Portal.Account{id: Ecto.UUID.generate(), ingest_signing_key: :crypto.strong_rand_bytes(32)}
+      impostor = %{account | ingest_signing_key: :crypto.strong_rand_bytes(32)}
+
+      [unknown_response, invalid_response] =
+        for signer <- [unknown, impostor] do
+          token = FlowLogToken.mint(signer, flow_log_token_claims(), expires_at())
+
+          conn
+          |> put_req_header("authorization", "Bearer " <> token)
+          |> post_logs([build_record()])
+          |> json_response(401)
+        end
+
+      assert unknown_response == invalid_response
     end
 
     test "rejects a rate-limited malformed JSON request before decoding it", %{
