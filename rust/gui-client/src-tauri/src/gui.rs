@@ -323,9 +323,8 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         // The checker always runs; the controller enforces the `checkForUpdates`
         // MDM policy once it receives the authoritative settings over IPC.
         tokio::spawn(async move {
-            if let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await {
-                tracing::error!("Error in updates::checker_task: {error:#}");
-            }
+            let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await;
+            tracing::error!("Error in updates::checker_task: {error:#}");
         });
 
         if config.smoke_test {
