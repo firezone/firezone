@@ -412,6 +412,10 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+config :portal,
+  otel_ingest_jwt_private_key:
+    "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUZYellNWTBXekx0QmlrRkI4c2k2UkFaVjE1djB3UGhhajNQeDZLVlhXM1YKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo="
+
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",

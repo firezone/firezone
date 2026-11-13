@@ -252,6 +252,63 @@ defmodule Portal.Ops do
     end)
   end
 
+  @doc """
+  Sets the metrics the Clients and Gateways of every account on `plan` export to
+  those matching `patterns`, in which `*` matches any run of characters (`["*"]`
+  for all). `plan` is a `Portal.Billing.plan_type/1` value. Channels push the new
+  `metrics_config` on their next token refresh.
+  """
+  def set_plan_metrics(plan, patterns) when is_atom(plan) or is_binary(plan) do
+    with {:ok, metrics} <- Database.upsert_plan_metrics(%{plan: to_string(plan), patterns: patterns}) do
+      {:ok, metrics.patterns}
+    end
+  end
+
+  @doc """
+  Sets the metrics the account's Clients and Gateways export on top of those of
+  its plan to those matching `patterns`. Their channels push the new
+  `metrics_config` once the change arrives through replication.
+  """
+  def set_account_metrics(account_id, patterns) do
+    with {:ok, metrics} <-
+           Database.upsert_account_metrics(%{account_id: account_id, patterns: patterns}) do
+      {:ok, metrics.patterns}
+    end
+  end
+
+  @doc """
+  Removes the patterns set with `set_plan_metrics/2`.
+  """
+  def remove_plan_metrics(plan) when is_atom(plan) or is_binary(plan),
+    do: Database.delete_metrics(Portal.PlanMetrics, :plan, to_string(plan))
+
+  @doc """
+  Removes the patterns set with `set_account_metrics/2`.
+  """
+  def remove_account_metrics(account_id),
+    do: Database.delete_metrics(Portal.AccountMetrics, :account_id, account_id)
+
+  @doc """
+  The patterns set with `set_plan_metrics/2`, or `nil`.
+  """
+  def get_plan_metrics(plan) when is_atom(plan) or is_binary(plan),
+    do: Database.get_patterns(Portal.PlanMetrics, :plan, to_string(plan))
+
+  @doc """
+  The patterns set with `set_account_metrics/2`, or `nil`.
+  """
+  def get_account_metrics(account_id),
+    do: Database.get_patterns(Portal.AccountMetrics, :account_id, account_id)
+
+  @doc """
+  The metric name patterns the account's Clients and Gateways export.
+  """
+  def effective_metrics(account_id) do
+    account_id
+    |> Database.fetch_account!()
+    |> Portal.AccountMetrics.effective_patterns()
+  end
+
   @doc"""
   Set a banner for all accounts. Banners can render HTML tags.
   The available colors are: :warning, :info, :error, :success, :announcement
@@ -883,6 +940,42 @@ defmodule Portal.Ops do
       )
       |> Safe.unscoped()
       |> Safe.update_all([])
+    end
+
+    def upsert_plan_metrics(attrs) do
+      %Portal.PlanMetrics{}
+      |> Ecto.Changeset.cast(attrs, [:plan, :patterns])
+      |> Safe.unscoped()
+      |> Safe.insert(on_conflict: {:replace, [:patterns, :updated_at]}, conflict_target: :plan)
+    end
+
+    def upsert_account_metrics(attrs) do
+      %Portal.AccountMetrics{}
+      |> Ecto.Changeset.cast(attrs, [:account_id, :patterns])
+      |> Safe.unscoped()
+      |> Safe.insert(
+        on_conflict: {:replace, [:patterns, :updated_at]},
+        conflict_target: :account_id
+      )
+    end
+
+    def delete_metrics(schema, key, value) do
+      case from(m in schema, where: field(m, ^key) == ^value) |> Safe.unscoped() |> Safe.delete_all() do
+        {1, _} -> :ok
+        {0, _} -> {:error, :not_found}
+      end
+    end
+
+    def get_patterns(schema, key, value) do
+      from(m in schema, where: field(m, ^key) == ^value, select: m.patterns)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def fetch_account!(account_id) do
+      from(a in Account, where: a.id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.one!()
     end
 
     defp maybe_filter_account_ids(query, :all) do
