@@ -10,7 +10,6 @@ publish = false
 ijon = ["dep:afl"]
 
 [dependencies]
-afl = { workspace = true, optional = true }
 anyhow = { workspace = true }
 arbitrary = { workspace = true }
 bufferpool = { workspace = true }
@@ -44,6 +43,9 @@ tunnel = { workspace = true }
 tunnel-proto = { workspace = true, features = ["malicious-behaviour"] }
 uuid = { workspace = true }
 zeroize = { workspace = true }
+
+[target.'cfg(fuzzing)'.dependencies]
+afl = { workspace = true, optional = true }
 
 [lints]
 workspace = true

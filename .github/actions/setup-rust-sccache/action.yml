@@ -10,6 +10,9 @@ runs:
   using: "composite"
   steps:
     - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      with:
+        # Since 0.17, sccache expands Cargo's `@argfile` and exceeds Windows' command-line limit: https://github.com/mozilla/sccache/issues/2397
+        version: ${{ runner.os == 'Windows' && 'v0.16.0' || '' }}
 
     - name: Cache registry
       uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3

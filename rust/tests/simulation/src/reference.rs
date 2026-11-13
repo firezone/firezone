@@ -135,13 +135,11 @@ impl ReferenceState {
 
                             // TODO: PRODUCTION CODE CANNOT DO THIS.
                             // Remove all prior DNS records.
-                            client.dns_records.retain(|domain, _| {
-                                if is_subdomain(domain, &r.address) {
-                                    return false;
-                                }
-
-                                true
-                            });
+                            for _ in client
+                                .dns_records
+                                .extract_if(.., |domain, _| is_subdomain(domain, &r.address))
+                            {
+                            }
                         }
                         client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
                         client::Resource::Internet(r) => client.add_internet_resource(r.clone()),

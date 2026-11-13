@@ -276,13 +276,11 @@ impl TunnelTest {
                         // Flush DNS.
                         match &resource {
                             client::Resource::Dns(r) => {
-                                c.dns_records.retain(|domain, _| {
-                                    if is_subdomain(domain, &r.address) {
-                                        return false;
-                                    }
-
-                                    true
-                                });
+                                for _ in c
+                                    .dns_records
+                                    .extract_if(|domain, _| is_subdomain(domain, &r.address))
+                                {
+                                }
                             }
                             client::Resource::Cidr(_)
                             | client::Resource::Internet(_)

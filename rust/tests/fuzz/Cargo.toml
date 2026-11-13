@@ -6,7 +6,6 @@ license = { workspace = true }
 publish = false
 
 [dependencies]
-afl = { workspace = true }
 anyhow = { workspace = true }
 arbitrary = { workspace = true, features = ["derive"] }
 bytecodec = { workspace = true }
@@ -21,6 +20,9 @@ simulation = { workspace = true, features = ["ijon"] }
 stun_codec = { workspace = true }
 uuid = { workspace = true }
 x509-claims = { workspace = true }
+
+[target.'cfg(fuzzing)'.dependencies]
+afl = { workspace = true }
 
 [lints]
 workspace = true
