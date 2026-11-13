@@ -36,7 +36,7 @@ use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
 };
 use stun_codec::rfc5766::errors::{
-    AllocationMismatch, AllocationQuotaReached, Forbidden, InsufficientCapacity,
+    AllocationMismatch, AllocationQuotaReached, Forbidden, InsufficientCapacity, WrongCredentials,
 };
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::rfc8656::attributes::{
@@ -839,9 +839,11 @@ where
             return Err(error_response);
         };
 
-        if allocation.account != verified_username.account.id {
-            let (error_response, msg) = make_error_response(Unauthorized, request);
-            tracing::warn!(target: "relay", %sender, "{msg}: Credential belongs to a different account");
+        if self.allocations_by_device.get_by_right(&allocation.port)
+            != Some(&verified_username.allocation_key)
+        {
+            let (error_response, msg) = make_error_response(WrongCredentials, request);
+            tracing::warn!(target: "relay", %sender, "{msg}: Allocation belongs to a different device");
 
             return Err(error_response);
         }
@@ -899,9 +901,11 @@ where
             return Err(error_response);
         };
 
-        if allocation.account != verified_username.account.id {
-            let (error_response, msg) = make_error_response(Unauthorized, request);
-            tracing::warn!(target: "relay", %sender, "{msg}: Credential belongs to a different account");
+        if self.allocations_by_device.get_by_right(&allocation.port)
+            != Some(&verified_username.allocation_key)
+        {
+            let (error_response, msg) = make_error_response(WrongCredentials, request);
+            tracing::warn!(target: "relay", %sender, "{msg}: Allocation belongs to a different device");
 
             return Err(error_response);
         }
