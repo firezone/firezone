@@ -364,7 +364,10 @@ fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option
 
 /// Whether Clients that draw the same NAT are put behind one [`SharedNat`](crate::sim_net::SharedNat).
 ///
-/// Off because connlib does not hold up behind such a NAT: TODO.
+/// Off because connlib does not hold up behind such a NAT: two Clients that share a
+/// public socket towards a Gateway receive each other's packets and nothing detects it.
+///
+/// The decision draws nothing from the input, so every input decodes the same either way.
 const SAMPLE_SHARED_NAT: bool = false;
 
 fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
@@ -374,10 +377,11 @@ fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Hos
         .collect::<BTreeMap<_, _>>();
 
     // TODO: Remove the Frostlink condition with classic ICE: the reference model cannot
-    // tell which of its connections survive the port changes of such a NAT.
+    // tell which of its connections have a direct path through such a NAT.
     if SAMPLE_SHARED_NAT && portal.frostlink() && same_nat(&clients) {
         let nat_ip4 = g.nat_ip4();
 
+        // The NAT only translates IPv4 and two hosts only compete for a port they both listen on.
         for client in clients.values_mut() {
             let ip4 = client.ip4.unwrap_or_else(|| g.socket_ip4());
 
