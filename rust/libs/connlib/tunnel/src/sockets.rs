@@ -885,7 +885,7 @@ fn listen(
     let mut last_err = None;
 
     for addr in addresses {
-        match sf.bind(*addr).and_then(|s| s.into_perf()) {
+        match sf.bind(*addr).map(UdpSocket::into_perf) {
             Ok(s) => return Ok(s),
             Err(e) => {
                 tracing::debug!(%addr, "Failed to listen on UDP socket: {e}");

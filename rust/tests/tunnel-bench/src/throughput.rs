@@ -530,7 +530,7 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
         .build()
         .unwrap();
     let _guard = runtime.enter();
-    let mut socket = socket_factory::udp(socket).unwrap().into_perf().unwrap();
+    let mut socket = socket_factory::udp(socket).unwrap().into_perf();
     socket.set_buffer_sizes(
         socket_factory::SEND_BUFFER_SIZE,
         socket_factory::RECV_BUFFER_SIZE,

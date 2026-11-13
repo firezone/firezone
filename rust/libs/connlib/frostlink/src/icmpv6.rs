@@ -31,6 +31,10 @@ impl Probe {
         }
 
         let icmp = packet.as_icmpv6()?;
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "We only want to match on these variants"
+        )]
         let (kind, header) = match icmp.icmp_type() {
             Icmpv6Type::EchoRequest(h) => (Echo::Request, h),
             Icmpv6Type::EchoReply(h) => (Echo::Reply, h),

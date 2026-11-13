@@ -104,7 +104,7 @@ fn starts_and_quits(app: &App) -> Result<()> {
     std::thread::sleep(Duration::from_millis(500)); // Wait for tunnel service to boot to write firezone-id.json
 
     let gui = app
-        .gui_command(&["smoke-test"])? // Disable deep links because they don't work in the headless CI environment
+        .gui_command(&["smoke-test"]) // Disable deep links because they don't work in the headless CI environment
         .start()?;
 
     gui.wait()?.fz_exit_ok().context("GUI process")?;
@@ -120,7 +120,7 @@ fn handles_crash(app: &App) -> Result<()> {
         "=== crash test: the GUI will deliberately SIGSEGV; any 'Segmentation fault' message that follows is expected ==="
     );
     let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
-    let gui = app.gui_command(&["--crash"])?.start()?;
+    let gui = app.gui_command(&["--crash"]).start()?;
 
     // Ignore exit status here since we asked the GUI to crash on purpose
     gui.wait()?;
@@ -149,7 +149,7 @@ fn binary_allowlist_rejection_test(app: &App) -> Result<()> {
         .context("Built GUI path is not valid UTF-8")?;
 
     let gui = app
-        .gui_command_from(built_gui_str, &["smoke-test"])?
+        .gui_command_from(built_gui_str, &["smoke-test"])
         .start()?;
     let exit_status = gui.wait()?;
     if exit_status.success() {
@@ -191,7 +191,7 @@ fn single_instance_test(app: &App) -> Result<()> {
     );
 
     let first = app
-        .gui_command(&["single-instance"])?
+        .gui_command(&["single-instance"])
         .stdout(subprocess::Redirection::Pipe)
         .start()?;
 
@@ -200,7 +200,7 @@ fn single_instance_test(app: &App) -> Result<()> {
     std::thread::sleep(Duration::from_millis(500));
 
     let second = app
-        .gui_command(&["single-instance"])?
+        .gui_command(&["single-instance"])
         .stdout(subprocess::Redirection::Pipe)
         .start()?;
     let second_capture = second
@@ -239,7 +239,7 @@ fn single_instance_test(app: &App) -> Result<()> {
 
 fn replicate_6791(app: &App) -> Result<()> {
     tracing::info!("=== manual: replicate #6791 ===");
-    app.gui_command(&["replicate6791"])?.start()?.wait()?;
+    app.gui_command(&["replicate6791"]).start()?.wait()?;
     tracing::info!("=== manual: replicate #6791 complete ===");
 
     Ok(())
@@ -248,7 +248,7 @@ fn replicate_6791(app: &App) -> Result<()> {
 fn quits_after_timeout(app: &App) -> Result<()> {
     tracing::info!("=== manual: --quit-after 10s ===");
     let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
-    let gui = app.gui_command(&["--quit-after", "10"])?.start()?;
+    let gui = app.gui_command(&["--quit-after", "10"]).start()?;
 
     // Expect exit codes of 0
     gui.wait()?.fz_exit_ok().context("GUI process")?;
@@ -290,13 +290,13 @@ impl App {
     }
 
     // `args` can't just be appended because of the `xvfb-run` wrapper
-    fn gui_command(&self, args: &[&str]) -> Result<Exec> {
+    fn gui_command(&self, args: &[&str]) -> Exec {
         // Launch the root-installed copy so `/proc/<pid>/exe` matches the
         // allowlisted path the tunnel daemon enforces.
         self.gui_command_from(INSTALLED_GUI_PATH, args)
     }
 
-    fn gui_command_from(&self, gui_path: &str, args: &[&str]) -> Result<Exec> {
+    fn gui_command_from(&self, gui_path: &str, args: &[&str]) -> Exec {
         let args: Vec<_> = [
             "--auto-servernum",
             gui_path,
@@ -310,7 +310,7 @@ impl App {
 
         tracing::debug!(?xvfb);
 
-        let cmd = Exec::cmd("sudo") // We need `sudo` to run `su`
+        Exec::cmd("sudo") // We need `sudo` to run `su`
             .args([
                 "--preserve-env",
                 "su",      // We need `su` to get a login shell as ourself
@@ -320,8 +320,7 @@ impl App {
                 "--command",
                 &xvfb,
             ])
-            .env("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); // Might help with CI
-        Ok(cmd)
+            .env("WEBKIT_DISABLE_COMPOSITING_MODE", "1") // Might help with CI
     }
 }
 
@@ -364,27 +363,28 @@ fn install_gui_at_canonical_path() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 impl App {
+    #[expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")]
     fn new() -> Result<Self> {
         Ok(Self {})
     }
 
-    fn gui_command(&self, args: &[&str]) -> Result<Exec> {
-        Ok(Exec::cmd(gui_path())
+    fn gui_command(&self, args: &[&str]) -> Exec {
+        Exec::cmd(gui_path())
             .arg("--no-deep-links")
             .arg("--no-elevation-check")
-            .args(args))
+            .args(args)
     }
 }
 
 #[cfg(target_os = "windows")]
 impl App {
+    #[expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")]
     fn new() -> Result<Self> {
         Ok(Self {})
     }
 
-    // Strange signature needed to match Linux
-    fn gui_command(&self, args: &[&str]) -> Result<Exec> {
-        Ok(Exec::cmd(gui_path())
+    fn gui_command(&self, args: &[&str]) -> Exec {
+        Exec::cmd(gui_path())
             .arg("--no-deep-links")
             .arg("--no-elevation-check")
             // The smoke test runs the Tunnel binary as an unprivileged
@@ -393,7 +393,7 @@ impl App {
             // the GUI to skip that check. The flag only exists in debug
             // builds; release builds reject it.
             .arg("--skip-peer-verification")
-            .args(args))
+            .args(args)
     }
 }
 

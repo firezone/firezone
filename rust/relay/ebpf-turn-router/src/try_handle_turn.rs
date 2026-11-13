@@ -514,8 +514,9 @@ fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
 fn ensure_udp(proto: Result<IpProto, IpError>) -> Result<(), Error> {
     let proto = proto.map_err(|_| Error::NotUdp)?;
 
-    match proto {
-        IpProto::Udp => Ok(()),
-        _ => Err(Error::NotUdp),
+    if proto != IpProto::Udp {
+        return Err(Error::NotUdp);
     }
+
+    Ok(())
 }

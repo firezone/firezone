@@ -534,10 +534,7 @@ mod tests {
             ("0.0.0.0:0", IpAddr::V4(Ipv4Addr::LOCALHOST)),
             ("[::]:0", IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)),
         ] {
-            let socket = crate::udp(local.parse().unwrap())
-                .unwrap()
-                .into_perf()
-                .unwrap();
+            let socket = crate::udp(local.parse().unwrap()).unwrap().into_perf();
             let destination = SocketAddr::new(source, 9);
 
             for datagrams in [1, PROMOTE_BATCH_SIZE] {
