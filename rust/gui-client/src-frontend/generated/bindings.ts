@@ -87,6 +87,14 @@ async setDeveloperSettingsUnlocked(unlocked: boolean) : Promise<Result<null, Err
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async setForceRelayedConnections(enabled: boolean) : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_force_relayed_connections", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -128,11 +136,8 @@ api_url?: string | null }
  * The control plane a client signs in to: a Firezone Cloud deployment, or [`ControlPlane::Custom`] for any other URLs.
  */
 export type ControlPlane = "CloudUs" | "CloudEu" | "Custom"
-/**
- * The hidden developer settings page, unlocked from the About page.
- */
-export type DeveloperSettings = { unlocked: boolean }
-export type DeveloperSettingsChanged = DeveloperSettings
+export type DeveloperSettingsChanged = DeveloperSettingsViewModel
+export type DeveloperSettingsViewModel = { unlocked: boolean; force_relayed_connections: boolean }
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel

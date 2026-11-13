@@ -17,6 +17,8 @@ import dev.firezone.android.R
 
 @Composable
 fun DeveloperSettingsPage(
+    forceRelayedConnections: Boolean,
+    onForceRelayedConnectionsChange: (Boolean) -> Unit,
     onResetConnlib: () -> Unit,
     onHide: () -> Unit,
     modifier: Modifier = Modifier,
@@ -32,6 +34,12 @@ fun DeveloperSettingsPage(
             SettingsRow(
                 title = stringResource(R.string.reset_connlib),
                 action = Modifier.clickable(role = Role.Button, onClick = onResetConnlib),
+            )
+            SwitchPreferenceRow(
+                title = stringResource(R.string.force_relayed_connections),
+                checked = forceRelayedConnections,
+                isManaged = false,
+                onCheckedChange = onForceRelayedConnectionsChange,
             )
             SettingsRow(
                 title = stringResource(R.string.hide_developer_settings),

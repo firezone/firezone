@@ -9,8 +9,8 @@ use crate::{
     launch_lock::{self, FirstInstance, LaunchLock},
     logging::FileCount,
     settings::{
-        self, AdvancedSettings, DeveloperSettings, GeneralSettings, GeneralSettingsViewModel,
-        LogFilterViewModel, MdmSettings, SignInSettings,
+        self, AdvancedSettings, DeveloperSettings, DeveloperSettingsViewModel, GeneralSettings,
+        GeneralSettingsViewModel, LogFilterViewModel, MdmSettings, SignInSettings,
     },
     updates,
     view::{
@@ -137,7 +137,10 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
-    fn notify_developer_settings_changed(&self, settings: DeveloperSettings) -> Result<()> {
+    fn notify_developer_settings_changed(
+        &self,
+        settings: DeveloperSettingsViewModel,
+    ) -> Result<()> {
         DeveloperSettingsChanged(settings)
             .emit(&self.app)
             .context("Failed to emit `developer_settings_changed` event")

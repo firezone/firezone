@@ -43,6 +43,7 @@
 	<string name="clear_logs_confirm">Clear</string>
 	<string name="developer_settings_title">Developer</string>
 	<string name="reset_connlib">Reset connlib</string>
+	<string name="force_relayed_connections">Force relayed connections</string>
 	<string name="hide_developer_settings">Hide developer settings</string>
 
 	<!-- Device Trust Certificate -->

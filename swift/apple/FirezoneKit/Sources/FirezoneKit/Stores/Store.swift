@@ -28,6 +28,9 @@ public final class Store: ObservableObject {
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
 
+  /// Not persisted, so it starts off with every launch and is re-sent to each session that connects.
+  @Published private(set) var forceRelayedConnections = false
+
   /// How a running session reads once the portal has named the actor.
   var sessionHeading: String {
     guard let actorName else { return "Signed in" }
@@ -319,6 +322,9 @@ public final class Store: ObservableObject {
     self.vpnStatus = newVPNStatus
 
     if newVPNStatus == .connected {
+      if forceRelayedConnections {
+        do { try await sendForceRelayedConnections() } catch { Log.error(error) }
+      }
       beginUpdatingState()
       fetchAndCacheFirezoneId()
       // Reset disconnect-alert dedup so failures during the next disconnect cycle aren't suppressed
@@ -719,6 +725,18 @@ public final class Store: ObservableObject {
     guard let session = try manager().session(), session.status == .connected else { return }
 
     try await IPCClient.manualReset(session: session)
+  }
+
+  func setForceRelayedConnections(_ enabled: Bool) async throws {
+    forceRelayedConnections = enabled
+
+    try await sendForceRelayedConnections()
+  }
+
+  private func sendForceRelayedConnections() async throws {
+    guard let session = try manager().session(), session.status == .connected else { return }
+
+    try await IPCClient.setForceRelayedConnections(session: session, forceRelayedConnections)
   }
 
   func signOut() async throws {

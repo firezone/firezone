@@ -110,6 +110,10 @@ class SettingsViewModel: ObservableObject {
       .sink(receiveValue: { [weak self] _ in self?.objectWillChange.send() })
       .store(in: &cancellables)
 
+    store?.$forceRelayedConnections
+      .sink(receiveValue: { [weak self] _ in self?.objectWillChange.send() })
+      .store(in: &cancellables)
+
     $selectedTab
       .receive(on: RunLoop.main)
       .sink(receiveValue: { [weak self] _ in

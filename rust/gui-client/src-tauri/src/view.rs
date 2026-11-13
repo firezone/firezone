@@ -10,8 +10,8 @@ use crate::{
     gui::Managed,
     logging::FileCount,
     settings::{
-        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettings, GeneralSettings,
-        GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettingsViewModel,
+        GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
     },
 };
 use url::Url;
@@ -159,7 +159,7 @@ pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
 pub struct LogFilterChanged(pub LogFilterViewModel);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct DeveloperSettingsChanged(pub DeveloperSettings);
+pub struct DeveloperSettingsChanged(pub DeveloperSettingsViewModel);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
@@ -407,6 +407,19 @@ pub async fn set_developer_settings_unlocked(
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn set_force_relayed_connections(
+    managed: tauri::State<'_, Managed>,
+    enabled: bool,
+) -> Result<(), Error> {
+    managed
+        .send_request(ControllerRequest::SetForceRelayedConnections(enabled))
+        .await?;
+
+    Ok(())
+}
+
 #[derive(Debug, specta::Type, Serialize)]
 pub struct Error(String);
 
@@ -441,6 +454,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             update_state,
             reset_connlib,
             set_developer_settings_unlocked,
+            set_force_relayed_connections,
         ])
         .typ::<Error>()
 }

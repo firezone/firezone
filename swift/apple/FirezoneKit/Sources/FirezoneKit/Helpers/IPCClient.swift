@@ -190,6 +190,15 @@ public enum IPCClient {
   }
 
   @MainActor
+  static func setForceRelayedConnections(
+    session: any TunnelSessionProtocol,
+    _ enabled: Bool
+  ) async throws {
+    let message = ProviderMessage.setForceRelayedConnections(enabled)
+    _ = try await sendProviderMessage(session: session, message: message)
+  }
+
+  @MainActor
   static func drainFlowLogs(session: any TunnelSessionProtocol) async throws {
     let message = ProviderMessage.drainFlowLogs
     _ = try await sendProviderMessage(session: session, message: message)

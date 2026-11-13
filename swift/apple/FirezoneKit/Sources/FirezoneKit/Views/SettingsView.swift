@@ -642,6 +642,8 @@ public struct SettingsView: View {
       Section {
         Button("Reset connlib", action: resetConnlib)
           .disabled(store.vpnStatus != .connected)
+        Toggle("Force relayed connections", isOn: forceRelayedConnections)
+          .toggleStyle(.switch)
       }
       Section {
         Button("Hide Developer Settings", action: hideDeveloperSettings)
@@ -652,6 +654,8 @@ public struct SettingsView: View {
           Button("Reset", action: resetConnlib)
             .disabled(store.vpnStatus != .connected)
         }
+        Toggle("Force relayed connections", isOn: forceRelayedConnections)
+          .toggleStyle(.switch)
       } footer: {
         HStack {
           Spacer()
@@ -663,6 +667,15 @@ public struct SettingsView: View {
     #endif
   }
 
+  private var forceRelayedConnections: Binding<Bool> {
+    Binding(
+      get: { store.forceRelayedConnections },
+      set: { enabled in
+        withErrorHandler { try await store.setForceRelayedConnections(enabled) }
+      }
+    )
+  }
+
   private func resetConnlib() {
     withErrorHandler { try await store.resetConnlib() }
   }
@@ -671,6 +684,9 @@ public struct SettingsView: View {
     viewModel.selectedTab = .logs
     isDeveloperSettingsUnlocked = false
     versionTapCount = 0
+    if store.forceRelayedConnections {
+      withErrorHandler { try await store.setForceRelayedConnections(false) }
+    }
   }
 
   private var resetButton: some View {

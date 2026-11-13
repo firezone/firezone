@@ -11,7 +11,7 @@ import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import Titlebar from "./Titlebar";
 import {
   commands,
-  DeveloperSettings,
+  DeveloperSettingsViewModel,
   events,
   FileCount,
   GeneralSettingsViewModel,
@@ -29,7 +29,7 @@ export default function App() {
   const [deviceTrustCertificate, setDeviceTrustCertificate] =
     useState<X509Certificate | null>();
   const [developerSettings, setDeveloperSettings] =
-    useState<DeveloperSettings | null>(null);
+    useState<DeveloperSettingsViewModel | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,6 +232,12 @@ export default function App() {
                 ) : developerSettings === null ? null : (
                   <DeveloperSettingsPage
                     resetConnlib={commands.resetConnlib}
+                    forceRelayedConnections={
+                      developerSettings.force_relayed_connections
+                    }
+                    setForceRelayedConnections={
+                      commands.setForceRelayedConnections
+                    }
                     hide={() => commands.setDeveloperSettingsUnlocked(false)}
                   />
                 )

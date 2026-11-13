@@ -3,7 +3,7 @@ import { createRoot, Root } from "react-dom/client";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
-import type { DeveloperSettings } from "../generated/bindings";
+import type { DeveloperSettingsViewModel } from "../generated/bindings";
 
 const mocks = vi.hoisted(() => {
   function deferred<T>() {
@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => {
       developerSettingsChanged: {
         listen: vi.fn<
           (
-            listener: (event: { payload: DeveloperSettings }) => void
+            listener: (event: { payload: DeveloperSettingsViewModel }) => void
           ) => Promise<() => void>
         >(() => subscriptions[5].promise),
       },
@@ -100,7 +100,7 @@ test("hiding the developer settings removes their page and returns to About", as
   );
   await vi.waitFor(() => expect(listen).toHaveBeenCalledOnce());
   const [listener] = listen.mock.calls[0];
-  listener({ payload: { unlocked: true } });
+  listener({ payload: { unlocked: true, force_relayed_connections: false } });
   const developerSettingsLink = page.getByRole("link", { name: "Developer" });
   await expect.element(developerSettingsLink).toBeInTheDocument();
 
@@ -108,7 +108,7 @@ test("hiding the developer settings removes their page and returns to About", as
     page.getByRole("button", { name: "Hide Developer Settings" })
   );
   expect(mocks.setDeveloperSettingsUnlocked).toHaveBeenCalledWith(false);
-  listener({ payload: { unlocked: false } });
+  listener({ payload: { unlocked: false, force_relayed_connections: false } });
 
   await expect
     .element(page.getByRole("button", { name: "Firezone Logo" }))

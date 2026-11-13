@@ -1,13 +1,23 @@
-import React from "react";
+import React, { useId } from "react";
 import Button from "./Button";
+import { ManagedToggleSwitch } from "./ManagedInput";
 import SettingRow from "./SettingRow";
 
 interface Props {
   resetConnlib: () => void;
+  forceRelayedConnections: boolean;
+  setForceRelayedConnections: (enabled: boolean) => void;
   hide: () => void;
 }
 
-export default function DeveloperSettingsPage({ resetConnlib, hide }: Props) {
+export default function DeveloperSettingsPage({
+  resetConnlib,
+  forceRelayedConnections,
+  setForceRelayedConnections,
+  hide,
+}: Props) {
+  const forceRelayedConnectionsInputId = useId();
+
   return (
     <div className="page">
       <div className="space-y-3">
@@ -16,6 +26,17 @@ export default function DeveloperSettingsPage({ resetConnlib, hide }: Props) {
             <Button onClick={resetConnlib} type="button">
               Reset
             </Button>
+          </SettingRow>
+          <SettingRow
+            inputId={forceRelayedConnectionsInputId}
+            label="Force relayed connections"
+          >
+            <ManagedToggleSwitch
+              checked={forceRelayedConnections}
+              id={forceRelayedConnectionsInputId}
+              managed={false}
+              onChange={setForceRelayedConnections}
+            />
           </SettingRow>
         </div>
 
