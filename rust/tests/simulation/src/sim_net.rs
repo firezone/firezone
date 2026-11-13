@@ -98,6 +98,9 @@ pub(crate) enum EdgeConfig {
     Open,
     /// A NAT with the given mapping, filtering and expiry behaviour.
     Nat(Mapping, FilterMode, Expiry),
+    /// A [`SharedNat`] with the given filtering and expiry behaviour, that the host sits behind
+    /// together with every other host of that NAT.
+    SharedNat(FilterMode, Expiry),
 }
 
 /// Whether two hosts behind the given edges can establish a direct path by hole-punching.
@@ -126,7 +129,11 @@ pub(crate) fn direct_path_possible(
     }
 
     fn port_filtered(e: EdgeConfig) -> bool {
-        matches!(e, EdgeConfig::Nat(_, FilterMode::PortRestricted, _))
+        matches!(
+            e,
+            EdgeConfig::Nat(_, FilterMode::PortRestricted, _)
+                | EdgeConfig::SharedNat(FilterMode::PortRestricted, _)
+        )
     }
 
     !(symmetric(a) && port_filtered(b) || symmetric(b) && port_filtered(a))
@@ -137,6 +144,10 @@ pub(crate) fn direct_path_possible(
 enum Edge {
     Open,
     Nat(Nat),
+    /// The public address and the behaviour of the [`SharedNat`] in front of the host.
+    ///
+    /// Packets pass the host's end untranslated; the device translates them on the network.
+    SharedNat(Ipv4Addr, FilterMode, Expiry),
 }
 
 /// A NAT device.
@@ -312,6 +323,128 @@ impl Nat {
     }
 }
 
+/// A NAT device in front of several hosts.
+///
+/// It keeps the public port of an internal socket for every destination and never assigns a port
+/// that a live mapping of another internal socket holds, per
+/// [RFC 4787, REQ-1 and REQ-3](https://datatracker.ietf.org/doc/html/rfc4787#section-12). It
+/// prefers the host's own source port and otherwise takes the next free port of a counter.
+///
+/// An inbound packet is delivered to the host whose mapping on the public port admits its
+/// source, preferring a mapping towards that source and then the host that sent last. Mappings
+/// expire and filter like the bindings of a [`Nat`].
+///
+/// Only IPv4 is translated; IPv6 passes unfiltered.
+#[derive(Debug)]
+pub(crate) struct SharedNat {
+    ip4: Ipv4Addr,
+    filter: FilterMode,
+    expiry: Expiry,
+    next_port: u16,
+    /// Per internal socket and destination.
+    mappings: BTreeMap<(SocketAddr, SocketAddr), SharedMapping>,
+}
+
+#[derive(Debug)]
+struct SharedMapping {
+    port: u16,
+    /// When the internal socket last sent to the destination; the state backing [`FilterMode`].
+    sent_at: Instant,
+    /// When the mapping last carried traffic that refreshes it.
+    refreshed_at: Instant,
+}
+
+impl SharedNat {
+    pub(crate) fn new(ip4: Ipv4Addr, filter: FilterMode, expiry: Expiry) -> Self {
+        Self {
+            ip4,
+            filter,
+            expiry,
+            next_port: 42000,
+            mappings: BTreeMap::default(),
+        }
+    }
+
+    pub(crate) fn ip4(&self) -> Ipv4Addr {
+        self.ip4
+    }
+
+    pub(crate) fn egress(&mut self, src: SocketAddr, dst: SocketAddr, now: Instant) -> SocketAddr {
+        if dst.is_ipv6() {
+            return src;
+        }
+
+        let timeout = self.expiry.timeout;
+        for _ in self.mappings.extract_if(.., |_, mapping| {
+            now.duration_since(mapping.refreshed_at) >= timeout
+        }) {}
+
+        let port = match self.mappings.get(&(src, dst)) {
+            Some(mapping) => mapping.port,
+            None => self.assign_port(src),
+        };
+        self.mappings.insert(
+            (src, dst),
+            SharedMapping {
+                port,
+                sent_at: now,
+                refreshed_at: now,
+            },
+        );
+
+        SocketAddr::new(self.ip4.into(), port)
+    }
+
+    /// Returns the internal socket that a packet from `src` to the public socket `dst` is delivered to.
+    pub(crate) fn ingress(
+        &mut self,
+        src: SocketAddr,
+        dst: SocketAddr,
+        now: Instant,
+    ) -> Result<SocketAddr> {
+        let timeout = self.expiry.timeout;
+        let fresh = move |at: Instant| now.duration_since(at) < timeout;
+        let filter = self.filter;
+
+        let ((internal, _), mapping) = self
+            .mappings
+            .iter_mut()
+            .filter(|((_, remote), mapping)| {
+                let sent_to = fresh(mapping.sent_at).then_some(remote);
+
+                mapping.port == dst.port()
+                    && fresh(mapping.refreshed_at)
+                    && filter.accepts(sent_to.into_iter(), src)
+            })
+            .max_by_key(|((_, remote), mapping)| (*remote == src, mapping.sent_at))
+            .context("no NAT mapping admits the sender")?;
+
+        if self.expiry.inbound_refreshes {
+            mapping.refreshed_at = now;
+        }
+
+        Ok(*internal)
+    }
+
+    fn assign_port(&mut self, src: SocketAddr) -> u16 {
+        if let Some(mapping) = self
+            .mappings
+            .iter()
+            .find_map(|((internal, _), mapping)| (*internal == src).then_some(mapping))
+        {
+            return mapping.port;
+        }
+
+        let mut port = src.port();
+        while self.mappings.values().any(|mapping| mapping.port == port) {
+            port = self.next_port;
+            self.next_port += 1;
+        }
+
+        port
+    }
+}
+
 impl<T> Host<T> {
     pub(crate) fn new(
         inner: T,
@@ -325,6 +458,7 @@ impl<T> Host<T> {
             EdgeConfig::Nat(mapping, filter, expiry) => {
                 Edge::Nat(Nat::new(mapping, filter, expiry, nat_ip4))
             }
+            EdgeConfig::SharedNat(filter, expiry) => Edge::SharedNat(nat_ip4, filter, expiry),
         };
 
         Self {
@@ -383,29 +517,49 @@ impl<T> Host<T> {
         match &mut self.edge {
             Edge::Open => {}
             Edge::Nat(nat) => nat.clear(),
+            Edge::SharedNat(..) => {}
         }
     }
 
-    /// The public IPv4 address of this host's NAT, if it sits behind one.
+    /// The public IPv4 address of this host's own NAT, if it sits behind one.
     pub(crate) fn nat_ip4(&self) -> Option<Ipv4Addr> {
         match &self.edge {
             Edge::Nat(nat) => Some(nat.ip4),
             Edge::Open => None,
+            Edge::SharedNat(..) => None,
+        }
+    }
+
+    /// The [`SharedNat`] in front of this host, if it sits behind one, as yet without mappings.
+    pub(crate) fn shared_nat(&self) -> Option<SharedNat> {
+        match self.edge {
+            Edge::SharedNat(ip4, filter, expiry) => Some(SharedNat::new(ip4, filter, expiry)),
+            Edge::Open => None,
+            Edge::Nat(_) => None,
         }
     }
 
     /// Moves this host's NAT to a new public address, e.g. because it roamed to a different network.
+    ///
+    /// A host behind a [`SharedNat`] roams within the network of that NAT and stays behind it.
     pub(crate) fn migrate_nat(&mut self, ip4: Ipv4Addr) {
         match &mut self.edge {
             Edge::Open => {}
             Edge::Nat(nat) => nat.migrate(ip4),
+            Edge::SharedNat(..) => {}
         }
+    }
+
+    /// Moves this host behind the [`SharedNat`] with the public address `ip4` and the given behaviour.
+    pub(crate) fn join_shared_nat(&mut self, ip4: Ipv4Addr, filter: FilterMode, expiry: Expiry) {
+        self.edge = Edge::SharedNat(ip4, filter, expiry);
     }
 
     pub(crate) fn edge_config(&self) -> EdgeConfig {
         match &self.edge {
             Edge::Open => EdgeConfig::Open,
             Edge::Nat(nat) => EdgeConfig::Nat(nat.mapping, nat.filter, nat.expiry),
+            Edge::SharedNat(_, filter, expiry) => EdgeConfig::SharedNat(*filter, *expiry),
         }
     }
 
@@ -423,6 +577,7 @@ impl<T> Host<T> {
         let source = match &mut self.edge {
             Edge::Open => src,
             Edge::Nat(nat) => nat.egress(src, dst, now),
+            Edge::SharedNat(..) => src,
         };
 
         Ok(source)
@@ -442,6 +597,10 @@ impl<T> Host<T> {
         let destination = match &mut self.edge {
             Edge::Open => dst,
             Edge::Nat(nat) => nat.ingress(src, dst, now)?,
+            Edge::SharedNat(..) if dst.is_ipv4() => {
+                bail!("IPv4 address behind NAT is not routable")
+            }
+            Edge::SharedNat(..) => dst,
         };
 
         Ok(destination)
@@ -570,6 +729,9 @@ impl RoutingTable {
         for ip in interface_ips.into_iter().chain(nat_ips) {
             self.routes.insert(ip, id);
         }
+        if let Edge::SharedNat(ip, ..) = host.edge {
+            self.routes.insert(ip, HostId::SharedNat);
+        }
 
         true
     }
@@ -609,6 +771,8 @@ pub(crate) enum HostId {
     Client(ClientId),
     Gateway(GatewayId),
     Relay(RelayId),
+    /// A [`SharedNat`], which knows the host behind it that a packet is for.
+    SharedNat,
     Stale,
 }
 
