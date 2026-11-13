@@ -3,7 +3,7 @@
   stdenv,
   fzLib,
   firezone-gui-client-frontend,
-  cargo-tauri,
+  installShellFiles,
   pkg-config,
   wrapGAppsHook3,
   copyDesktopItems,
@@ -28,11 +28,10 @@ let
     pname = "firezone-gui-client";
 
     # The workspace Cargo.lock lives at the source root, so cargoRoot stays
-    # unset; the Tauri hook cd's into the project via buildAndTestSubdir.
+    # unset; buildAndTestSubdir picks the package to build.
     buildAndTestSubdir = "gui-client/src-tauri";
 
-    # What `cargo tauri build` adds to a desktop release build (see
-    # tauri-cli's `Rust::build_options`).
+    # Embeds the frontend instead of loading it from the Vite dev server.
     buildFeatures = [ "tauri/custom-protocol" ];
 
     # The workspace pulls Apple-specific crates into the test graph.
@@ -61,7 +60,7 @@ fzLib.buildRustPackage (
     cargoArtifacts = fzLib.cargoArtifactsFor common;
 
     nativeBuildInputs = common.nativeBuildInputs ++ [
-      cargo-tauri.hook
+      installShellFiles
       wrapGAppsHook3
       copyDesktopItems
     ];
@@ -84,27 +83,10 @@ fzLib.buildRustPackage (
       # directory only holds a .gitkeep.
       rm -rf gui-client/dist
       ln -s ${firezone-gui-client-frontend} gui-client/dist
-
-      # The Nix Tauri hook installs from the deb bundle, which copies the
-      # tunnel binary and the completions from paths that assume no --target
-      # triple in the cargo target directory. Every `files` entry has to be
-      # listed: a path left behind is only found when the bundle step fails.
-      substituteInPlace gui-client/src-tauri/tauri.conf.json \
-        --replace-fail '../../target/release/firezone-client-tunnel' \
-          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-client-tunnel' \
-        --replace-fail '"../../target/release/firezone-cli"' \
-          '"../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-cli"' \
-        --replace-fail '../../target/release/completions/firezone.bash' \
-          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions/firezone.bash' \
-        --replace-fail '../../target/release/completions/_firezone' \
-          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions/_firezone' \
-        --replace-fail '../../target/release/completions/firezone.fish' \
-          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions/firezone.fish'
     '';
 
-    # The `firezone` CLI is a workspace member of its own, so the Tauri hook's
-    # single `cargo tauri build` never compiles it, yet the deb bundle it
-    # installs from expects the binary to be there.
+    # The `firezone` CLI is a workspace member of its own, so the build of
+    # buildAndTestSubdir never compiles it.
     preBuild = ''
       cargo build --release --offline -j $NIX_BUILD_CORES -p firezone-cli
     '';
@@ -120,11 +102,9 @@ fzLib.buildRustPackage (
       # register-sparse only does anything on Windows.
       rm -f $out/bin/register-sparse
 
-      # Cargo names the binary after the crate (firezone-gui-client); the
-      # packaged name everywhere else is the Tauri mainBinaryName.
-      if [ -e $out/bin/firezone-gui-client ] && [ ! -e $out/bin/firezone-client-gui ]; then
-        mv $out/bin/firezone-gui-client $out/bin/firezone-client-gui
-      fi
+      # The names the Linux packages install them under.
+      mv $out/bin/firezone-gui-client $out/bin/firezone-client-gui
+      mv $out/bin/firezone-cli $out/bin/firezone
 
       install -Dm644 gui-client/src-tauri/icons/32x32.png \
         $out/share/icons/hicolor/32x32/apps/firezone-client-gui.png
@@ -132,6 +112,16 @@ fzLib.buildRustPackage (
         $out/share/icons/hicolor/128x128/apps/firezone-client-gui.png
       install -Dm644 "gui-client/src-tauri/icons/128x128@2x.png" \
         $out/share/icons/hicolor/256x256/apps/firezone-client-gui.png
+      install -Dm644 gui-client/src-tauri/icons/icon.png \
+        $out/share/icons/hicolor/512x512/apps/firezone-client-gui.png
+      install -Dm644 gui-client/src-tauri/linux_package/dev.firezone.client.metainfo.xml \
+        $out/share/metainfo/dev.firezone.client.metainfo.xml
+
+      completions=target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions
+      installShellCompletion --cmd firezone \
+        --bash $completions/firezone.bash \
+        --zsh $completions/_firezone \
+        --fish $completions/firezone.fish
     '';
 
     # dontWrapGApps disables the automatic wrapping, so wrap only the GUI

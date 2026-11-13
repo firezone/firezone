@@ -69,9 +69,9 @@ under the hood.
 mise run build
 
 # Linux:
-# The release exe and deb package are up in the workspace.
-stat ../target/release/firezone-client-gui
-stat ../target/release/bundle/deb/*.deb
+# The release binary and the deb and rpm packages are up in the workspace.
+stat ../target/release/firezone-gui-client
+stat ../target/release/firezone-client-gui.deb ../target/release/firezone-client-gui.rpm
 
 # Windows:
 # The release exe and MSI installer should be up in the workspace.
