@@ -681,7 +681,7 @@ where
 
             // Its own paths need no search, which covers the keepalives of the primary.
             !conn.agent.is_validated(path)
-                && self.contest_path(path, |c| c.tunnel.id() == tunnel, now)
+                && self.contest_path(path, |_, c| c.tunnel.id() == tunnel, now)
         };
 
         let (cid, conn) = self
@@ -1189,14 +1189,27 @@ where
             return ControlFlow::Continue(());
         };
 
-        let (_, c) = match self.connections.get_established_mut_for_stun_message(
+        let cid = match self.connections.get_established_mut_for_stun_message(
             &message,
             &mut self.inflight_stun_requests,
             now,
         ) {
+            Ok((cid, _)) => cid,
+            Err(e) => return ControlFlow::Break(Err(e)),
+        };
+
+        let path = (destination, from);
+        let path_taken = self.contest_path(path, |id, _| id == cid, now);
+        let c = match self.connections.get_mut_including_closing(&cid, now) {
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
+
+        if path_taken {
+            c.refuse_path(cid, path, &self.paths_refused, now);
+
+            return ControlFlow::Break(Ok(()));
+        }
 
         let handled = c.agent.handle_stun_packet(
             now,
@@ -1252,12 +1265,12 @@ where
             sanstun::ReceivedMessage::HandshakeInitiation(init) => {
                 let sender = init.peer_static_public();
 
-                self.contest_path(path, |c| c.remote_pub_key == sender, now)
+                self.contest_path(path, |_, c| c.remote_pub_key == sender, now)
             }
             sanstun::ReceivedMessage::HandshakeResponse(response) => {
                 let tunnel = response.tunnel_id();
 
-                self.contest_path(path, |c| c.tunnel.id() == tunnel, now)
+                self.contest_path(path, |_, c| c.tunnel.id() == tunnel, now)
             }
             sanstun::ReceivedMessage::CookieReply(_)
             | sanstun::ReceivedMessage::TransportData(_) => false,
@@ -1286,6 +1299,12 @@ where
 
         if path_taken {
             conn.refuse_path(cid, path, &self.paths_refused, now);
+
+            match conn.agent {
+                // An ICE agent keeps no state for refused paths, so the handshake is dropped here.
+                Agent::Ice(..) => return ControlFlow::Break(Ok(())),
+                Agent::Frostlink(_) => {}
+            }
         }
 
         let control_flow = conn.decapsulate(
@@ -1323,13 +1342,14 @@ where
     fn contest_path(
         &mut self,
         path: (SocketAddr, SocketAddr),
-        is_receiver: impl Fn(&Connection<RId>) -> bool,
+        is_receiver: impl Fn(TId, &Connection<RId>) -> bool,
         now: Instant,
     ) -> bool {
-        let Some(owner) = self.connections.path_owner_mut(path) else {
+        let Some((owner_id, owner)) = self.connections.path_owner_mut(path, &self.allocations)
+        else {
             return false;
         };
-        if is_receiver(owner) {
+        if is_receiver(owner_id, owner) {
             return false;
         }
 
@@ -1979,7 +1999,7 @@ where
             match event {
                 sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
                     Agent::Frostlink(agent) => agent.send_handshake_initiation(init, now),
-                    Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
+                    Agent::Ice(..) => self.buffer_or_send(&cid, init, allocations, transmits, now),
                 },
                 sanstun::Event::SendKeepalive(keepalive) => {
                     self.buffer_or_send(&cid, keepalive, allocations, transmits, now)
@@ -2141,7 +2161,7 @@ where
                     Agent::Frostlink(agent) => {
                         agent.handle_handshake_initiation(&mut self.tunnel, init, path, now)
                     }
-                    Agent::Ice(_) => self
+                    Agent::Ice(..) => self
                         .tunnel
                         .handle_handshake_initiation(init, now)
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
@@ -2158,7 +2178,7 @@ where
                         path,
                         now,
                     ),
-                    Agent::Ice(_) => self
+                    Agent::Ice(..) => self
                         .tunnel
                         .handle_handshake_response(response, now)
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
@@ -2232,6 +2252,30 @@ where
         }
 
         Ok(committed)
+    }
+
+    /// Whether this connection validated `path`: Frostlink by an answered probe, ICE by nominating it.
+    fn owns_path(&self, path: (SocketAddr, SocketAddr), allocations: &Allocations<RId>) -> bool
+    where
+        RId: Ord + Hash + fmt::Display + Copy,
+    {
+        let peer_socket = match &self.agent {
+            Agent::Frostlink(agent) => return agent.is_validated(path),
+            Agent::Ice(..) => self.state.peer_socket(),
+        };
+        let is_relay_socket = |local| {
+            self.relay
+                .and_then(|relay| allocations.get_by_id(&relay))
+                .is_some_and(|allocation| allocation.has_socket(local))
+        };
+
+        match peer_socket {
+            Some(PeerSocket::PeerToPeer { source, dest }) => (source, dest) == path,
+            Some(PeerSocket::PeerToRelay { source, dest }) => (source, dest) == path,
+            Some(PeerSocket::RelayToPeer { dest }) => dest == path.1 && is_relay_socket(path.0),
+            Some(PeerSocket::RelayToRelay { dest }) => dest == path.1 && is_relay_socket(path.0),
+            None => false,
+        }
     }
 
     /// Makes the agent stop using `path`, which another connection owns.

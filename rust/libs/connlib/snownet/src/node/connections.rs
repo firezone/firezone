@@ -360,7 +360,7 @@ where
         bail!("STUN message is not a BINDING")
     }
 
-    fn get_mut_including_closing(
+    pub(crate) fn get_mut_including_closing(
         &mut self,
         id: &TId,
         now: Instant,
@@ -377,14 +377,14 @@ where
         Ok(connection)
     }
 
-    /// Returns the connection that owns `path`: the one whose agent validated it.
+    /// Returns the connection that owns `path`, see [`Connection::owns_path`].
     pub(crate) fn path_owner_mut(
         &mut self,
         path: (SocketAddr, SocketAddr),
-    ) -> Option<&mut Connection<RId>> {
+        allocations: &Allocations<RId>,
+    ) -> Option<(TId, &mut Connection<RId>)> {
         self.established
-            .filter_mut(|c| c.agent.is_validated(path))
-            .map(|(_, c)| c)
+            .filter_mut(|c| c.owns_path(path, allocations))
             .next()
     }
 
