@@ -1220,18 +1220,11 @@ impl TunnelTest {
                     .expect("unknown relay")
                     .receive(transmit, at);
             }
-            HostId::SharedNat => match self.shared_nat_ingress(src, dst) {
-                Ok((id, local_dst)) => self.clients.get_mut(&id).unwrap().receive(
-                    Transmit {
-                        dst: local_dst,
-                        ..transmit
-                    },
-                    at,
-                ),
-                Err(e) => {
+            HostId::SharedNat => {
+                if let Err(e) = self.shared_nat_ingress(src, transmit, at) {
                     tracing::debug!(%src, %dst, "Shared NAT dropped packet: {e:#}")
                 }
-            },
+            }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
             }
@@ -1240,39 +1233,61 @@ impl TunnelTest {
 
     /// Passes an outbound packet through the [`SharedNat`] in front of its sender, if there is one.
     fn shared_nat_egress(&mut self, src: SocketAddr, dst: SocketAddr, at: Instant) -> SocketAddr {
-        let Some(HostId::Client(id)) = self.network.host_by_ip(src.ip()) else {
-            return src;
+        let nat = match self.network.host_by_ip(src.ip()) {
+            Some(HostId::Client(id)) => self.clients[&id].shared_nat(),
+            Some(HostId::Gateway(id)) => self.gateways[&id].shared_nat(),
+            Some(HostId::Relay(_) | HostId::SharedNat | HostId::Stale) | None => None,
         };
-        let Some(ip4) = self.clients[&id].shared_nat_ip4() else {
+        let Some(nat) = nat else {
             return src;
         };
 
         self.shared_nats
-            .entry(ip4.into())
-            .or_insert_with(|| SharedNat::new(ip4))
+            .entry(nat.ip4().into())
+            .or_insert(nat)
             .egress(src, dst, at)
     }
 
-    /// Finds the client, and its socket, that the [`SharedNat`] at `dst` delivers a packet from `src` to.
+    /// Hands `transmit` to the host, and its socket, that the [`SharedNat`] at its destination delivers it to.
     fn shared_nat_ingress(
-        &self,
+        &mut self,
         src: SocketAddr,
-        dst: SocketAddr,
-    ) -> Result<(ClientId, SocketAddr)> {
-        let nat = self
+        transmit: Transmit,
+        at: Instant,
+    ) -> Result<()> {
+        let local_dst = self
             .shared_nats
-            .get(&dst.ip())
-            .context("no host has sent through the NAT")?;
-        let local_dst = nat.ingress(src, dst)?;
-
-        let Some(HostId::Client(id)) = self.network.host_by_ip(local_dst.ip()) else {
-            bail!("host roamed away or is offline");
+            .get_mut(&transmit.dst.ip())
+            .context("no host has sent through the NAT")?
+            .ingress(src, transmit.dst, at)?;
+        let transmit = Transmit {
+            dst: local_dst,
+            ..transmit
         };
-        if self.clients[&id].port != local_dst.port() {
-            bail!("host no longer listens on the port");
+
+        match self.network.host_by_ip(local_dst.ip()) {
+            Some(HostId::Client(id)) => {
+                let client = self.clients.get_mut(&id).unwrap();
+                if client.port != local_dst.port() {
+                    bail!("host no longer listens on the port");
+                }
+
+                client.receive(transmit, at);
+            }
+            Some(HostId::Gateway(id)) => {
+                let gateway = self.gateways.get_mut(&id).unwrap();
+                if gateway.port != local_dst.port() {
+                    bail!("host no longer listens on the port");
+                }
+
+                gateway.receive(transmit, at);
+            }
+            Some(HostId::Relay(_) | HostId::SharedNat | HostId::Stale) | None => {
+                bail!("host roamed away or is offline")
+            }
         }
 
-        Ok((id, local_dst))
+        Ok(())
     }
 
     fn on_client_event(

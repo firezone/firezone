@@ -257,6 +257,16 @@ impl<'a> Generator<'a> {
         PrivateKey(bytes)
     }
 
+    /// Like [`Generator::fresh_private_key`], but consumes no input.
+    pub(super) fn fresh_private_key_without_input(&mut self) -> PrivateKey {
+        let n = self.next_key;
+        self.next_key += 1;
+        let mut bytes = [0u8; 32];
+        bytes[0..4].copy_from_slice(&n.to_be_bytes());
+
+        PrivateKey(bytes)
+    }
+
     pub(super) fn fresh_probe_id(&mut self) -> ProbeId {
         let n = self.next_probe;
         self.next_probe += 1;
