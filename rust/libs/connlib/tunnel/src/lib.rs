@@ -40,7 +40,7 @@ pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
 pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
-pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
+pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped, free_udp_port};
 pub use utils::turn;
 
 /// How many times we will at most loop before force-yielding from [`Tunnel::poll_next_event`].
@@ -194,6 +194,7 @@ pub trait Role: Sized {
     ) -> Poll<Result<Self::Event, TunnelError>>;
     fn poll_timeout(&mut self) -> Option<Instant>;
     fn handle_timeout(&mut self, now: Instant);
+    fn reset(&mut self, now: Instant, reason: &str);
 }
 
 impl Role for ClientState {
@@ -214,6 +215,10 @@ impl Role for ClientState {
     fn handle_timeout(&mut self, now: Instant) {
         ClientState::handle_timeout(self, now);
     }
+
+    fn reset(&mut self, now: Instant, reason: &str) {
+        ClientState::reset(self, now, reason);
+    }
 }
 
 impl Role for GatewayState {
@@ -233,6 +238,10 @@ impl Role for GatewayState {
 
     fn handle_timeout(&mut self, now: Instant) {
         GatewayState::handle_timeout(self, now);
+    }
+
+    fn reset(&mut self, now: Instant, reason: &str) {
+        GatewayState::reset(self, now, reason);
     }
 }
 
@@ -258,6 +267,24 @@ impl<R: Role> Tunnel<R> {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.role_state.handle_timeout(now);
+    }
+
+    pub fn reset(&mut self, reason: &str, now: Instant) {
+        if self
+            .role_state
+            .poll_timeout()
+            .is_some_and(|timeout| timeout <= now)
+        {
+            self.role_state.handle_timeout(now);
+        }
+
+        self.role_state.reset(now, reason);
+        self.io.reset();
+    }
+
+    /// Sets the port our UDP sockets bind to from the next [`Tunnel::reset`] onwards.
+    pub fn set_listen_port(&mut self, port: u16) {
+        self.io.set_listen_port(port);
     }
 }
 
@@ -298,24 +325,6 @@ impl ClientTunnel {
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
-    }
-
-    pub fn reset(&mut self, reason: &str, now: Instant) {
-        if self
-            .role_state
-            .poll_timeout()
-            .is_some_and(|timeout| timeout <= now)
-        {
-            self.role_state.handle_timeout(now);
-        }
-
-        self.role_state.reset(now, reason);
-        self.io.reset();
-    }
-
-    /// Sets the port our UDP sockets bind to from the next [`ClientTunnel::reset`] onwards.
-    pub fn set_listen_port(&mut self, port: u16) {
-        self.io.set_listen_port(port);
     }
 
     /// Advertises the given local IPs as additional host candidates on our UDP port.

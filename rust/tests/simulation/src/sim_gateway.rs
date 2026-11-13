@@ -39,6 +39,10 @@ pub(crate) struct SimGateway {
     clients_by_ip: BTreeMap<IpAddr, ClientId>,
 
     site_specific_dns_records: DnsRecords,
+
+    /// How many times the Gateway moved to a new port because its socket was taken.
+    pub(crate) num_rebinds: u32,
+
     /// The DNS servers on the Gateway's tunnel IPs.
     dns_servers: DnsServers,
     network: SiteNetwork,
@@ -78,6 +82,7 @@ impl SimGateway {
             authorized_resources: Default::default(),
             client_keys: Default::default(),
             clients_by_ip: Default::default(),
+            num_rebinds: 0,
         }
     }
 
@@ -102,6 +107,7 @@ impl SimGateway {
             sut.set_max_dns_domains_per_client(max);
         }
         self.tunnel = SimTunnel::new(sut);
+        self.num_rebinds = 0;
 
         for client in self
             .authorized_resources

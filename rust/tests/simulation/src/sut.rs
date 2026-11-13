@@ -32,7 +32,7 @@ use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, messages::Interface};
 
-/// How many times the Client event loop moves to another port before it fails the session.
+/// How many times the Client and Gateway event loops move to another port before they fail.
 const MAX_REBINDS: u32 = 50;
 
 /// The actual system-under-test.
@@ -1814,6 +1814,42 @@ fn on_gateway_event(
                 now,
             );
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
+        }
+        GatewayEvent::SocketTaken => {
+            if gateway.inner().num_rebinds >= MAX_REBINDS {
+                tracing::error!(%src, "Socket is still taken after rebinding to {MAX_REBINDS} different ports");
+                return;
+            }
+
+            // Mimic the event loop: listen on a new port, reset and rejoin the portal, which
+            // sends `init` and tells the Clients if our key changed.
+            let port = gateway.port.wrapping_add(1).max(1);
+            gateway.port = port;
+            let previous_key = gateway.inner().sut().public_key();
+            gateway.exec_mut(|g| {
+                g.num_rebinds += 1;
+                g.tunnel.inner_mut().set_listen_port(port);
+                g.sut_mut().set_portal_connected(false);
+                g.tunnel
+                    .inner_mut()
+                    .reset("socket is taken by another client", now);
+                g.sut_mut().set_portal_connected(true);
+                g.update_relays(iter::empty(), relays.iter(), now);
+            });
+
+            let public_key = gateway.inner().sut().public_key();
+            if public_key == previous_key {
+                return;
+            }
+            for client in clients.values_mut() {
+                client.exec_mut(|c| {
+                    c.sut_mut().handle_public_key_changed(
+                        ClientOrGatewayId::Gateway(src),
+                        public_key,
+                        now,
+                    )
+                });
+            }
         }
     }
 }

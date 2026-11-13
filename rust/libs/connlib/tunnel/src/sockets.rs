@@ -30,6 +30,28 @@ const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
 const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
 
+/// Finds a UDP port that is free on both IP stacks.
+pub fn free_udp_port() -> io::Result<u16> {
+    const ATTEMPTS: usize = 5;
+
+    for _ in 0..ATTEMPTS {
+        let port = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?
+            .local_addr()?
+            .port();
+
+        match std::net::UdpSocket::bind((Ipv6Addr::UNSPECIFIED, port)) {
+            Err(e) if e.kind() == io::ErrorKind::AddrInUse => continue,
+            // Anything else means there is no IPv6 stack to collide on.
+            Ok(_) | Err(_) => return Ok(port),
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::AddrInUse,
+        "Failed to find a UDP port that is free for IPv4 and IPv6",
+    ))
+}
+
 /// How many outgoing UDP batches the send task drains from a socket's channel per wakeup.
 ///
 /// The outbound queue is sized as a small multiple of this (see [`QUEUE_SIZE`]), and every queued

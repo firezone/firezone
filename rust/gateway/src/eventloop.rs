@@ -35,6 +35,11 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 /// How long we allow a DNS resolution via hickory.
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How many times the Gateway moves to another port because of [`GatewayEvent::SocketTaken`] before it fails.
+///
+/// Every move picks a free port, so running into this means something is broken.
+const MAX_REBINDS: u32 = 50;
+
 pub struct Eventloop {
     clock: Clock,
     // Tunnel is `Option` because we need to take ownership on shutdown.
@@ -61,11 +66,15 @@ pub struct Eventloop {
 
     logged_permission_denied: bool,
 
+    additional_host_candidates: Vec<IpAddr>,
+    num_rebinds: u32,
+
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
 enum PortalCommand {
+    Connect(PublicKeyParam),
     Send(EgressMessages),
     Close,
 }
@@ -88,6 +97,7 @@ impl Eventloop {
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
         account_slug: account_slug::Cache,
+        additional_host_candidates: Vec<IpAddr>,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -118,6 +128,8 @@ impl Eventloop {
                 1000,
             ),
             logged_permission_denied: false,
+            additional_host_candidates,
+            num_rebinds: 0,
             tunnel_errors: otel_instruments::tunnel_errors(),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
             portal_event_rx,
@@ -320,8 +332,47 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
+            Ok(GatewayEvent::SocketTaken) => self.rebind_to_new_port().await?,
             Err(error) => self.handle_tunnel_error(error)?,
         }
+
+        Ok(())
+    }
+
+    async fn rebind_to_new_port(&mut self) -> Result<()> {
+        let now = self.clock.now();
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return Ok(());
+        };
+
+        if self.num_rebinds >= MAX_REBINDS {
+            anyhow::bail!(
+                "Socket is still taken by another client after rebinding to {MAX_REBINDS} different ports"
+            );
+        }
+
+        let port = match tunnel::free_udp_port() {
+            Ok(port) => port,
+            Err(e) => {
+                tracing::debug!("Failed to find a free UDP port: {e}");
+
+                return Ok(());
+            }
+        };
+
+        tunnel.set_listen_port(port);
+        tunnel.set_additional_host_candidates(self.additional_host_candidates.clone(), now);
+        self.num_rebinds += 1;
+
+        // The reset may give us a new key, which the portal hands out to Clients; rejoining also brings back relays the reset dropped.
+        tunnel.state_mut().set_portal_connected(false);
+        tunnel.reset("socket is taken by another client", now);
+        self.portal_cmd_tx
+            .send(PortalCommand::Connect(PublicKeyParam(
+                tunnel.public_key().to_bytes(),
+            )))
+            .await
+            .context("Failed to connect phoenix-channel")?;
 
         Ok(())
     }
@@ -638,7 +689,7 @@ fn dns_resolver() -> Result<TokioResolver> {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    public_key: PublicKeyParam,
+    mut public_key: PublicKeyParam,
     event_tx: mpsc::Sender<Result<PortalEvent, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     resolver: TokioResolver,
@@ -698,6 +749,12 @@ async fn phoenix_channel_event_loop(
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
                 break;
+            }
+            Either::Right((Some(PortalCommand::Connect(new_public_key)), _)) => {
+                public_key = new_public_key;
+
+                let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
+                portal.connect(ips, Duration::ZERO, public_key.clone());
             }
             Either::Right((Some(PortalCommand::Send(msg)), _)) => {
                 match portal.send(PHOENIX_TOPIC, msg) {

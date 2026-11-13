@@ -151,6 +151,7 @@ impl SimClient {
         );
         sut.set_flow_logs_enabled(true);
         let old = std::mem::replace(&mut self.tunnel, SimTunnel::new(sut));
+        self.num_rebinds = 0;
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();

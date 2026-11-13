@@ -300,7 +300,7 @@ async fn try_main(cli: Cli) -> Result<()> {
             clock.now(),
         )
         .context("Failed to create tunnel")?;
-        tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
+        tunnel.set_additional_host_candidates(additional_host_candidates.clone(), clock.now());
 
         let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)
             .context("Failed to create TUN device manager")?;
@@ -318,6 +318,7 @@ async fn try_main(cli: Cli) -> Result<()> {
             flow_logs_dir,
             local_flow_logs,
             account_slug,
+            additional_host_candidates,
         )?
         .run()
         .await

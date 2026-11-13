@@ -1,4 +1,4 @@
-use crate::{ConnectedAs, PHOENIX_TOPIC, SessionConfig, free_udp_port};
+use crate::{ConnectedAs, PHOENIX_TOPIC, SessionConfig};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -546,7 +546,7 @@ impl Eventloop {
             );
         }
 
-        let port = match free_udp_port() {
+        let port = match tunnel::free_udp_port() {
             Ok(port) => port,
             Err(e) => {
                 tracing::debug!("Failed to find a free UDP port: {e}");
