@@ -257,7 +257,7 @@ defmodule Portal.Google.SyncTest do
       assert actor.email == "new@example.com"
     end
 
-    test "keeps the picture that sign-in saved on an identity" do
+    test "writes the directory photo URL to picture for the REST API" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
       base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
@@ -315,7 +315,7 @@ defmodule Portal.Google.SyncTest do
       assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       assert Repo.get_by!(Portal.ExternalIdentity, account_id: account.id, id: identity.id).picture ==
-               "https://lh3.googleusercontent.com/a/sign-in-photo"
+               "https://www.google.com/s2/photos/private/thumbnail"
     end
 
     test "performs successful sync with groups, org units, and user identity sync" do
