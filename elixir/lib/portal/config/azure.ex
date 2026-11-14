@@ -6,6 +6,9 @@ defmodule Portal.Config.Azure do
   Settings are read from `config/runtime.exs`, before any application starts,
   so requests go through `:httpc` instead of Req. Key Vault references are
   resolved to their secret values. Only keys without a label are read.
+
+  Each key's `mode` tag says whether a running portal may apply a change to it
+  (`live`) or needs a restart (`boot`). Keys without the tag are `boot`.
   """
 
   @app_configuration_resource "https://azconfig.io"
@@ -19,11 +22,13 @@ defmodule Portal.Config.Azure do
           (url :: String.t(), headers :: [{String.t(), String.t()}] ->
              {:ok, status :: pos_integer(), body :: binary()} | {:error, term()})
 
+  @type setting :: %{value: String.t(), mode: :live | :boot}
+
   @doc """
-  Returns every setting in the store as a map of key to value, with Key Vault
-  references replaced by their secret values. Raises if anything fails.
+  Returns every setting in the store with its mode, with Key Vault references
+  replaced by their secret values. Raises if anything fails.
   """
-  @spec fetch_settings!(String.t(), String.t() | nil, http_get()) :: %{String.t() => String.t()}
+  @spec fetch_settings!(String.t(), String.t() | nil, http_get()) :: %{String.t() => setting()}
   def fetch_settings!(endpoint, client_id, http_get \\ &http_get/2) do
     endpoint = String.trim_trailing(endpoint, "/")
     store_token = access_token!(@app_configuration_resource, client_id, http_get)
@@ -42,7 +47,7 @@ defmodule Portal.Config.Azure do
         do: access_token!(@key_vault_resource, client_id, http_get)
 
     Map.new(items, fn item ->
-      {item["key"], resolve_value!(item, vault_token, http_get)}
+      {item["key"], %{value: resolve_value!(item, vault_token, http_get), mode: mode(item)}}
     end)
   end
 
@@ -65,6 +70,9 @@ defmodule Portal.Config.Azure do
       item["value"]
     end
   end
+
+  defp mode(%{"tags" => %{"mode" => "live"}}), do: :live
+  defp mode(_item), do: :boot
 
   defp key_vault_reference?(%{"content_type" => content_type}) when is_binary(content_type),
     do: String.starts_with?(content_type, @key_vault_reference_content_type)

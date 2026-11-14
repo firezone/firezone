@@ -17,20 +17,35 @@ defmodule Portal.Config do
 
     case Fetcher.fetch_source_and_config(Definitions, :config_adapter, env) do
       {:ok, _source, :environment} -> env
-      {:ok, _source, :azure} -> Map.merge(env, azure_settings!(env))
+      {:ok, _source, :azure} -> Map.merge(env, azure_values(azure_settings!(env)))
       {:error, reason} -> Errors.raise_error!(reason)
     end
   end
 
+  @doc false
+  # The App Configuration settings read at boot, with their modes. Only
+  # Portal.Config.Watcher replaces them, when it applies a live change.
+  def azure_settings, do: :persistent_term.get(@azure_settings_key, nil)
+
+  @doc false
+  def put_azure_settings(settings), do: :persistent_term.put(@azure_settings_key, settings)
+
+  @doc false
+  def fetch_azure_settings!(env \\ System.get_env()) do
+    endpoint =
+      env_var_to_config!(Definitions, :azure_app_configuration_endpoint, env) ||
+        raise "AZURE_APP_CONFIGURATION_ENDPOINT must be set when CONFIG_ADAPTER is azure"
+
+    Azure.fetch_settings!(endpoint, env_var_to_config(Definitions, :azure_client_id, env))
+  end
+
+  defp azure_values(settings), do: Map.new(settings, fn {key, %{value: value}} -> {key, value} end)
+
   defp azure_settings!(env) do
     case :persistent_term.get(@azure_settings_key, nil) do
       nil ->
-        endpoint =
-          env_var_to_config!(Definitions, :azure_app_configuration_endpoint, env) ||
-            raise "AZURE_APP_CONFIGURATION_ENDPOINT must be set when CONFIG_ADAPTER is azure"
-
-        settings = Azure.fetch_settings!(endpoint, env_var_to_config(Definitions, :azure_client_id, env))
-        :persistent_term.put(@azure_settings_key, settings)
+        settings = fetch_azure_settings!(env)
+        put_azure_settings(settings)
         settings
 
       settings ->
