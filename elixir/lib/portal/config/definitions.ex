@@ -232,10 +232,10 @@ defmodule Portal.Config.Definitions do
   defconfig(:flow_logs_upload_batch_size, :integer, default: 1_000)
 
   @doc """
-  The base URL clients and gateways POST flow logs to.
+  The base URL clients and gateways POST flow logs to. Unset disables uploads.
   """
   defconfig(:flow_logs_api_url, :string,
-    default: "https://flow-api.firezone.dev/",
+    default: nil,
     changeset: fn changeset, key ->
       changeset
       |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
