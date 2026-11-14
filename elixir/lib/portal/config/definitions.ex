@@ -1319,6 +1319,12 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:acs_event_grid_webhook_signing_secret, :string, sensitive: true, default: nil)
 
+  @doc """
+  Resend API key used to move outbound email to Resend from the remote console
+  when Azure Communication Services is down.
+  """
+  defconfig(:resend_api_key, :string, sensitive: true, default: nil)
+
   ##############################################
   ## Billing flags
   ##############################################
