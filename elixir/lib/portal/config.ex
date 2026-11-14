@@ -31,12 +31,44 @@ defmodule Portal.Config do
   def put_azure_settings(settings), do: :persistent_term.put(@azure_settings_key, settings)
 
   @doc false
+  # Reads the store and, when a cache path is set, keeps a copy of what it read.
   def fetch_azure_settings!(env \\ System.get_env()) do
-    endpoint =
-      env_var_to_config!(Definitions, :azure_app_configuration_endpoint, env) ||
-        raise "AZURE_APP_CONFIGURATION_ENDPOINT must be set when CONFIG_ADAPTER is azure"
+    endpoints =
+      case env_var_to_config!(Definitions, :azure_app_configuration_endpoint, env) do
+        [_ | _] = endpoints -> endpoints
+        _unset -> raise "AZURE_APP_CONFIGURATION_ENDPOINT must be set when CONFIG_ADAPTER is azure"
+      end
 
-    Azure.fetch_settings!(endpoint, env_var_to_config(Definitions, :azure_client_id, env))
+    settings =
+      Azure.fetch_settings!(endpoints, env_var_to_config(Definitions, :azure_client_id, env))
+
+    if cache_path = env_var_to_config(Definitions, :azure_app_configuration_cache_path, env) do
+      write_cache(cache_path, settings)
+    end
+
+    settings
+  end
+
+  @doc false
+  # Boots from the cached copy when the store cannot be read.
+  def load_azure_settings!(fetch, cache_path) do
+    fetch.()
+  rescue
+    exception ->
+      with path when is_binary(path) <- cache_path,
+           {:ok, settings} <- Azure.read_cache(path) do
+        IO.puts(:stderr, "App Configuration unavailable, booting from #{path}: " <> Exception.message(exception))
+        settings
+      else
+        _ -> reraise exception, __STACKTRACE__
+      end
+  end
+
+  defp write_cache(path, settings) do
+    Azure.write_cache!(path, settings)
+  rescue
+    exception ->
+      IO.puts(:stderr, "Could not write #{path}: " <> Exception.message(exception))
   end
 
   defp azure_values(settings), do: Map.new(settings, fn {key, %{value: value}} -> {key, value} end)
@@ -44,7 +76,8 @@ defmodule Portal.Config do
   defp azure_settings!(env) do
     case :persistent_term.get(@azure_settings_key, nil) do
       nil ->
-        settings = fetch_azure_settings!(env)
+        cache_path = env_var_to_config(Definitions, :azure_app_configuration_cache_path, env)
+        settings = load_azure_settings!(fn -> fetch_azure_settings!(env) end, cache_path)
         put_azure_settings(settings)
         settings
 

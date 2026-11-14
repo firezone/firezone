@@ -37,7 +37,7 @@ defmodule Portal.Config.AzureTest do
         {"#{@endpoint}/kv?after=1", page([%{"key" => "WEB_EXTERNAL_URL", "value" => "https://app.example.com"}])}
       ])
 
-    assert Azure.fetch_settings!(@endpoint <> "/", "client-id", http_get) == %{
+    assert Azure.fetch_settings!([@endpoint <> "/"], "client-id", http_get) == %{
              "LOG_LEVEL" => %{value: "info", mode: :live},
              "WEB_EXTERNAL_URL" => %{value: "https://app.example.com", mode: :boot}
            }
@@ -64,7 +64,7 @@ defmodule Portal.Config.AzureTest do
         {"https://fzconfigtest.vault.azure.net/secrets/secret-key-base/v1", {:ok, 200, JSON.encode!(%{"value" => "s3cret"})}}
       ])
 
-    assert Azure.fetch_settings!(@endpoint, "client-id", http_get) == %{
+    assert Azure.fetch_settings!([@endpoint], "client-id", http_get) == %{
              "SECRET_KEY_BASE" => %{value: "s3cret", mode: :boot}
            }
 
@@ -88,7 +88,7 @@ defmodule Portal.Config.AzureTest do
       ])
 
     assert_raise RuntimeError, "SECRET_KEY_BASE references a secret outside Azure Key Vault", fn ->
-      Azure.fetch_settings!(@endpoint, "client-id", http_get)
+      Azure.fetch_settings!([@endpoint], "client-id", http_get)
     end
 
     refute_received {:get, "https://attacker.example.com" <> _, _headers}
@@ -101,8 +101,82 @@ defmodule Portal.Config.AzureTest do
         {"#{@endpoint}/kv", {:ok, 403, "do not leak this body"}}
       ])
 
-    assert_raise RuntimeError, "request to fzconfigtest.azconfig.io failed with HTTP 403", fn ->
-      Azure.fetch_settings!(@endpoint, "client-id", http_get)
+    assert_raise RuntimeError,
+                 "no App Configuration endpoint could be read: request to fzconfigtest.azconfig.io failed with HTTP 403",
+                 fn ->
+      Azure.fetch_settings!([@endpoint], "client-id", http_get)
     end
+  end
+
+  test "falls back to the next endpoint" do
+    replica = "https://fzconfigtest-westus3.azconfig.io"
+
+    http_get =
+      http_get([
+        {imds("https://azconfig.io"), token("store-token")},
+        {"#{@endpoint}/kv", {:error, :timeout}},
+        {"#{replica}/kv", page([%{"key" => "LOG_LEVEL", "value" => "info"}])}
+      ])
+
+    assert Azure.fetch_settings!([@endpoint, replica], "client-id", http_get) == %{
+             "LOG_LEVEL" => %{value: "info", mode: :boot}
+           }
+  end
+
+  test "names every endpoint when none can be read" do
+    replica = "https://fzconfigtest-westus3.azconfig.io"
+
+    http_get =
+      http_get([
+        {imds("https://azconfig.io"), token("store-token")},
+        {"#{@endpoint}/kv", {:ok, 503, "busy"}},
+        {"#{replica}/kv", {:ok, 503, "busy"}}
+      ])
+
+    assert_raise RuntimeError,
+                 "no App Configuration endpoint could be read: " <>
+                   "request to fzconfigtest.azconfig.io failed with HTTP 503; " <>
+                   "request to fzconfigtest-westus3.azconfig.io failed with HTTP 503",
+                 fn -> Azure.fetch_settings!([@endpoint, replica], "client-id", http_get) end
+  end
+
+  test "leaves out empty values" do
+    http_get =
+      http_get([
+        {imds("https://azconfig.io"), token("store-token")},
+        {"#{@endpoint}/kv",
+         page([
+           %{"key" => "FEEDBACK_EMAIL_RECIPIENT", "value" => ""},
+           %{"key" => "LOG_LEVEL", "value" => "info"}
+         ])}
+      ])
+
+    assert Azure.fetch_settings!([@endpoint], "client-id", http_get) == %{
+             "LOG_LEVEL" => %{value: "info", mode: :boot}
+           }
+  end
+
+  @tag :tmp_dir
+  test "round-trips the cache file with owner-only permissions", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "settings.json")
+
+    settings = %{
+      "LOG_LEVEL" => %{value: "info", mode: :boot},
+      "SECRET_KEY_BASE" => %{value: "s3cret", mode: :live}
+    }
+
+    assert Azure.write_cache!(path, settings) == :ok
+    assert Azure.read_cache(path) == {:ok, settings}
+    assert Bitwise.band(File.stat!(path).mode, 0o777) == 0o600
+    refute File.exists?(path <> ".tmp")
+  end
+
+  @tag :tmp_dir
+  test "reports a missing or broken cache file", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "settings.json")
+    assert Azure.read_cache(path) == :error
+
+    File.write!(path, "not json")
+    assert Azure.read_cache(path) == :error
   end
 end

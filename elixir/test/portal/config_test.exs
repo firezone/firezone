@@ -463,6 +463,34 @@ defmodule Portal.ConfigTest do
     end
   end
 
+  describe "load_azure_settings!/2" do
+    @tag :tmp_dir
+    test "boots from the cache when the store cannot be read", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "settings.json")
+      cached = %{"LOG_LEVEL" => %{value: "info", mode: :boot}}
+      Portal.Config.Azure.write_cache!(path, cached)
+
+      assert ExUnit.CaptureIO.capture_io(:stderr, fn ->
+               assert Portal.Config.load_azure_settings!(fn -> raise "HTTP 503" end, path) ==
+                        cached
+             end) =~ "App Configuration unavailable"
+    end
+
+    @tag :tmp_dir
+    test "fails when the store cannot be read and there is no cache", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "settings.json")
+
+      assert_raise RuntimeError, "HTTP 503", fn ->
+        Portal.Config.load_azure_settings!(fn -> raise "HTTP 503" end, path)
+      end
+    end
+
+    test "uses the store when it can be read" do
+      settings = %{"LOG_LEVEL" => %{value: "debug", mode: :boot}}
+      assert Portal.Config.load_azure_settings!(fn -> settings end, nil) == settings
+    end
+  end
+
   describe "merge_env_override/3 and delete_env_override/3" do
     @client Portal.Google.APIClient
 
