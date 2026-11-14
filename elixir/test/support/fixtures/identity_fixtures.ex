@@ -72,6 +72,7 @@ defmodule Portal.IdentityFixtures do
         :preferred_username,
         :profile,
         :picture,
+        :directory_picture,
         :firezone_avatar_url,
         :avatar_etag,
         :avatar_source

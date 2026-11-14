@@ -27,6 +27,9 @@ defmodule Portal.ExternalIdentity do
     field :profile, :string
     field :picture, :string
 
+    # The photo URL from directory sync. `picture` is the sign-in claim.
+    field :directory_picture, :string
+
     # For hosting the picture internally
     field :firezone_avatar_url, :string
 

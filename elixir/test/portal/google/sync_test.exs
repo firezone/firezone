@@ -257,7 +257,7 @@ defmodule Portal.Google.SyncTest do
       assert actor.email == "new@example.com"
     end
 
-    test "writes the directory photo URL to picture for the REST API" do
+    test "writes the directory photo URL to directory_picture and leaves picture alone" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
       base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
@@ -314,8 +314,9 @@ defmodule Portal.Google.SyncTest do
 
       assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
-      assert Repo.get_by!(Portal.ExternalIdentity, account_id: account.id, id: identity.id).picture ==
-               "https://www.google.com/s2/photos/private/thumbnail"
+      identity = Repo.get_by!(Portal.ExternalIdentity, account_id: account.id, id: identity.id)
+      assert identity.picture == "https://lh3.googleusercontent.com/a/sign-in-photo"
+      assert identity.directory_picture == "https://www.google.com/s2/photos/private/thumbnail"
     end
 
     test "performs successful sync with groups, org units, and user identity sync" do
@@ -2702,7 +2703,7 @@ defmodule Portal.Google.SyncTest do
           given_name: nil,
           family_name: nil,
           preferred_username: nil,
-          picture: nil
+          directory_picture: nil
         }
       ]
 
@@ -2764,7 +2765,7 @@ defmodule Portal.Google.SyncTest do
                    given_name: "Recreated",
                    family_name: "User",
                    preferred_username: "recreated@example.com",
-                   picture: nil
+                   directory_picture: nil
                  }
                ])
 
@@ -2806,7 +2807,7 @@ defmodule Portal.Google.SyncTest do
                    given_name: "OIDC",
                    family_name: "User",
                    preferred_username: "oidc@example.com",
-                   picture: nil
+                   directory_picture: nil
                  }
                ])
 
@@ -2847,7 +2848,7 @@ defmodule Portal.Google.SyncTest do
                    given_name: "Old",
                    family_name: "User",
                    preferred_username: "renamed@example.com",
-                   picture: nil
+                   directory_picture: nil
                  },
                  %{
                    idp_id: "new-subject-id",
@@ -2856,7 +2857,7 @@ defmodule Portal.Google.SyncTest do
                    given_name: "New",
                    family_name: "User",
                    preferred_username: "swap@example.com",
-                   picture: nil
+                   directory_picture: nil
                  }
                ])
     end

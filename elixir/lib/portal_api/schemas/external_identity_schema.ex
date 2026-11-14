@@ -6,7 +6,8 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.ExternalIdentity, internal: [:avatar_etag, :avatar_source, :directory_name, :updated_at]}
+             for: Portal.ExternalIdentity,
+             internal: [:avatar_etag, :avatar_source, :directory_name, :directory_picture, :updated_at]}
     OpenApiSpex.schema(%{
       title: "ExternalIdentity",
       description: "External Identity",
@@ -89,7 +90,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
           example: "https://example.com/avatar.jpg",
           type: :string,
           nullable: true,
-          description: "Profile picture URL"
+          description: "Profile picture URL, from the identity provider at sign-in or else from directory sync"
         },
         firezone_avatar_url: %Schema{
           example: "https://avatars.firezone.dev/u/2551705710219359.png",
@@ -137,7 +138,8 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
       %{
         email: identity.email || identity.idp_id,
         idp_id: identity.idp_id |> String.split(":", parts: 2) |> List.last(),
-        synced_at: synced_at(identity.sync_state)
+        synced_at: synced_at(identity.sync_state),
+        picture: identity.picture || identity.directory_picture
       }
     end
 

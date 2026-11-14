@@ -4931,7 +4931,7 @@
             "type": "string"
           },
           "picture": {
-            "description": "Profile picture URL",
+            "description": "Profile picture URL, from the identity provider at sign-in or else from directory sync",
             "example": "https://example.com/avatar.jpg",
             "nullable": true,
             "type": "string"
