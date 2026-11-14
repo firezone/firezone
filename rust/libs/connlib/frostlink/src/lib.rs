@@ -46,7 +46,11 @@
 //! the agent, a second unanswered re-key (ours) — or a second distinct peer
 //! init with no data in between — is taken as distress ([`REKEY_DISTRESS_ATTEMPTS`]),
 //! clearing the primary and re-probing every pair. A new candidate is the same
-//! kind of signal and does the same. Pairs already probing keep their state.
+//! kind of signal and does the same, and so do
+//! [`PRIMARY_KEEPALIVE_DISTRESS_ATTEMPTS`] consecutive unanswered keepalive
+//! probes on the primary: that catches a primary that only fails towards the
+//! peer, whose data then keeps resetting re-key distress. Pairs already probing
+//! keep their state.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -58,8 +62,8 @@ mod retransmit;
 mod score;
 
 pub use agent::{
-    Agent, PRIMARY_KEEPALIVE, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_INTERVAL,
-    REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
+    Agent, PRIMARY_KEEPALIVE, PRIMARY_KEEPALIVE_DISTRESS_ATTEMPTS, PROBE_BUDGET, PROBE_BURST_GAPS,
+    PROBE_INTERVAL, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
 };
 pub use candidate::{Address, Candidate, CandidateKind, ParseCandidateError};
 pub use event::{Event, Payload, Transmit};

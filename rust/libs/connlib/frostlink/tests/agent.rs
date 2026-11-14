@@ -395,13 +395,23 @@ fn a_non_primary_pair_goes_quiet_after_its_probe_budget() {
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
     a.drain_events();
 
-    // (1,3) never answers; with a primary in hand it hunts only PROBE_BUDGET
-    // times, then stops.
+    // (1,3) never answers; with a live primary in hand it hunts only
+    // PROBE_BUDGET times, then stops.
+    let primary = (addr(2), addr(4));
     let dead = (addr(1), addr(3));
-    let activity = a.advance(t0, t0 + secs(60));
+    let mut fired = 0;
+    let mut t = t0;
+    while t < t0 + secs(60) {
+        let next = t + secs(1);
+        let activity = a.advance(t, next);
+        for probe in activity.probes_for(primary) {
+            a.handle_probe(echo_reply(probe.id, probe.seq), primary, next);
+        }
+        fired += activity.probes_for(dead).len();
+        t = next;
+    }
     assert_eq!(
-        activity.probes_for(dead).len() as u32,
-        PROBE_BUDGET,
+        fired as u32, PROBE_BUDGET,
         "a non-primary pair fires exactly its budget then goes quiet",
     );
 }
@@ -633,6 +643,56 @@ fn unauthenticated_peer_data_does_not_reset_the_peer_rekey_count() {
         None,
         "forged data between re-keys must not mask distress",
     );
+}
+
+#[test]
+fn a_primary_that_stops_answering_keepalives_fails_over_while_peer_data_still_arrives() {
+    // The peer's NAT mapping moved: its data still reaches us from the new
+    // mapping, but whatever now sits behind the old one cannot answer our
+    // probes. Peer data keeps resetting re-key distress, so only the silent
+    // keepalives can reveal that the primary is one-way.
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+
+    let relay = (addr(2), addr(4));
+    let mut t = t0 + secs(1);
+    while t < t0 + secs(180) {
+        let next = t + secs(1);
+        let activity = a.advance(t, next);
+        for probe in activity.probes_for(relay) {
+            a.handle_probe(echo_reply(probe.id, probe.seq), relay, next);
+        }
+        a.handle_inbound_data(next);
+        t = next;
+    }
+
+    assert_eq!(
+        a.primary(),
+        Some(relay),
+        "a primary whose keepalives go unanswered fails over to a pair that answers",
+    );
+}
+
+#[test]
+fn a_primary_that_answers_its_keepalives_stays() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+    let primary = (addr(1), addr(3));
+
+    let mut t = t0 + secs(1);
+    while t < t0 + secs(300) {
+        let next = t + secs(1);
+        let activity = a.advance(t, next);
+        for probe in activity.probes_for(primary) {
+            a.handle_probe(echo_reply(probe.id, probe.seq), primary, t + ms(30));
+        }
+        assert!(
+            activity.events.is_empty(),
+            "an answering primary never changes: {:?}",
+            activity.events,
+        );
+        t = next;
+    }
+
+    assert_eq!(a.primary(), Some(primary));
 }
 
 // --- new candidate ---
