@@ -5,7 +5,9 @@ defmodule Portal.Config.WatcherTest do
   setup do
     app = :"watcher_test_#{System.unique_integer([:positive])}"
     {:ok, storage} = Agent.start_link(fn -> nil end)
-    on_exit(fn -> Application.delete_env(app, :settings) end)
+    on_exit(fn ->
+      for key <- [:feedback, :mailer], do: Application.delete_env(app, key)
+    end)
     %{app: app, storage: storage}
   end
 
@@ -64,6 +66,21 @@ defmodule Portal.Config.WatcherTest do
 
     assert Watcher.reload(state(context, latest)) == :applied
     assert Application.get_env(app, :mailer) == [adapter: :resend]
+  end
+
+  test "keeps a manual override next to a changed key in the same entry", %{app: app} = context do
+    current = settings([{"OUTBOUND_EMAIL_FROM", "a@example.com", :live}])
+    Agent.update(context.storage, fn _ -> current end)
+    Application.put_env(app, :mailer, adapter: :resend, from_email: "a@example.com")
+    latest = settings([{"OUTBOUND_EMAIL_FROM", "b@example.com", :live}])
+
+    read_config = fn ->
+      settings = Agent.get(context.storage, & &1)
+      [{app, [mailer: [adapter: :acs, from_email: settings["OUTBOUND_EMAIL_FROM"].value]]}]
+    end
+
+    assert Watcher.reload(state(context, latest, read_config: read_config)) == :applied
+    assert Application.get_env(app, :mailer) == [adapter: :resend, from_email: "b@example.com"]
   end
 
   test "waits for a restart when a boot setting changed", %{app: app} = context do

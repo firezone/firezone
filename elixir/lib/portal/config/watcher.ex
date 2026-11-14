@@ -5,8 +5,8 @@ defmodule Portal.Config.Watcher do
   Every minute it reads the store again. When only `live` settings changed, it
   evaluates `config/runtime.exs` with the old settings and with the new ones,
   and puts only the application environment entries that differ between those
-  two. Entries changed by hand from the remote console are left alone unless
-  the new settings change them too. When any `boot` setting changed, it applies
+  two, down to the keys inside a keyword list. Values changed by hand from the
+  remote console are left alone unless the new settings change them too. When any `boot` setting changed, it applies
   nothing and waits for the next restart.
 
   If the new settings do not evaluate, the node keeps the old ones.
@@ -91,8 +91,9 @@ defmodule Portal.Config.Watcher do
 
     for {app, entries} <- new_config,
         {key, value} <- entries,
-        get_in(old_config, [app, key]) != value do
-      Application.put_env(app, key, value)
+        old_value = get_in(old_config, [app, key]),
+        old_value != value do
+      Application.put_env(app, key, merge_changes(Application.get_env(app, key), old_value, value))
     end
 
     Logger.info("Applied live settings", keys: Enum.join(changed, ","))
@@ -107,6 +108,17 @@ defmodule Portal.Config.Watcher do
       )
 
       :rejected
+  end
+
+  # Within a keyword list (e.g. Portal.Mailer), only the changed keys are
+  # replaced, so a key overridden by hand next to them keeps its value.
+  defp merge_changes(current, old_value, new_value) do
+    if Keyword.keyword?(current) and Keyword.keyword?(old_value) and Keyword.keyword?(new_value) do
+      changed = Enum.reject(new_value, fn {key, value} -> Keyword.get(old_value, key) == value end)
+      Keyword.merge(current, changed)
+    else
+      new_value
+    end
   end
 
   defp read_runtime_config do
