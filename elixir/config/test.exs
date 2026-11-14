@@ -193,6 +193,12 @@ config :portal, Portal.Ops.RegionTransfer.Storage,
     retry: false
   ]
 
+config :portal, Portal.Avatars.Storage,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Storage},
+    retry: false
+  ]
+
 config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",

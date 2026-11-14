@@ -114,6 +114,11 @@ defmodule Portal.Google.Sync do
     )
 
     {:ok, _job} =
+      %{account_id: directory.account_id, directory_id: directory.id}
+      |> Google.Avatars.new()
+      |> Oban.insert()
+
+    {:ok, _job} =
       %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
       |> Google.Subscriptions.new()
       |> Oban.insert()

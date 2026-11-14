@@ -30,6 +30,9 @@ defmodule Portal.ExternalIdentity do
     # For hosting the picture internally
     field :firezone_avatar_url, :string
 
+    # Provider version of the profile photo copied to Portal.Avatars.Storage
+    field :avatar_etag, :string
+
     has_one :sync_state, Portal.ExternalIdentitySyncState,
       foreign_key: :external_identity_id,
       references: :id

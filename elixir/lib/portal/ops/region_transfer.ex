@@ -34,6 +34,10 @@ defmodule Portal.Ops.RegionTransfer do
   # cursors into logs that stay here (the destination seeds new ones), and the
   # log tables, which are deleted with the account in the source region.
   # Nullable foreign keys from moved tables to these are exported as NULL.
+  # Profile photos stay in this region's container, so the destination fetches
+  # them again from the directory.
+  @nulled_columns %{"external_identities" => ["avatar_etag"]}
+
   @skipped_tables ~w(api_request_logs change_logs device_tokens feedback_submissions flow_logs log_sink_cursors oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes pending_identities policy_authorizations portal_sessions session_logs)
 
   @doc "Disables the account and uploads it to the other region."
@@ -120,8 +124,8 @@ defmodule Portal.Ops.RegionTransfer do
     end
   end
 
-  # Tables in foreign key order, each with the columns that point at a skipped
-  # table and are exported as NULL. Raises before anything is disabled when a
+  # Tables in foreign key order, each with the columns that are exported as
+  # NULL: those in @nulled_columns and those that point at a skipped table. Raises before anything is disabled when a
   # moved table cannot be loaded on its own.
   defp plan_export do
     all_tables = Database.list_account_tables()
@@ -129,7 +133,7 @@ defmodule Portal.Ops.RegionTransfer do
     foreign_keys = Database.foreign_keys(all_tables)
 
     nulled =
-      for {table, ref, columns} <- foreign_keys, table in tables, ref in @skipped_tables, reduce: %{} do
+      for {table, ref, columns} <- foreign_keys, table in tables, ref in @skipped_tables, reduce: @nulled_columns do
         acc ->
           if columns == [] do
             raise "#{table} has a NOT NULL foreign key to the skipped table #{ref}"

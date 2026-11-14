@@ -40,7 +40,9 @@ defmodule Portal.Actor do
     embeds_one :preferences, Portal.Actor.Preferences, on_replace: :update
 
     field :last_seen_at, :utc_datetime_usec, virtual: true
-    field :identity_count, :integer, virtual: true
+    field :avatar_identity_id, :binary_id, virtual: true
+    field :avatar_etag, :string, virtual: true
+    field :identity_issuers, {:array, :string}, virtual: true, default: []
     field :is_disabled, :boolean, default: false, read_after_writes: true
 
     belongs_to :directory, Portal.Directory, foreign_key: :created_by_directory_id

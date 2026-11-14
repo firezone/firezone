@@ -1078,10 +1078,13 @@ defmodule PortalWeb.Actors do
         >
           <:col :let={actor} field={{:actors, :name}} label="name">
             <div class="flex items-center gap-2.5">
-              <ActorComponents.actor_type_icon_with_badge actor={actor} />
-              <div>
-                <div class="font-medium text-heading group-hover:text-brand transition-colors">
-                  {actor.name}
+              <ActorComponents.actor_avatar account={@account} actor={actor} />
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-medium text-heading group-hover:text-brand transition-colors truncate">
+                    {actor.name}
+                  </span>
+                  <ActorComponents.identity_provider_icons actor={actor} />
                 </div>
                 <div class="font-mono text-[11px] text-subtle mt-0.5">
                   {actor.id}
@@ -1309,12 +1312,14 @@ defmodule PortalWeb.Actors do
             actors.email,
             actors.id
           ),
-        identity_count:
+        identity_issuers:
           fragment(
-            "(SELECT COUNT(*) FROM external_identities WHERE actor_id = ?)",
+            "ARRAY(SELECT DISTINCT issuer FROM external_identities WHERE account_id = ? AND actor_id = ? AND issuer IS NOT NULL ORDER BY issuer)",
+            actors.account_id,
             actors.id
           )
       })
+      |> with_avatar()
     end
 
     def count_actors(subject) do
@@ -1521,6 +1526,7 @@ defmodule PortalWeb.Actors do
         from(a in Actor, as: :actors)
         |> where([actors: a], a.id == ^id)
         |> where([actors: a], a.type != :api_client)
+        |> with_avatar()
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -1843,6 +1849,26 @@ defmodule PortalWeb.Actors do
       |> where([memberships: m], m.group_id == ^group_id and m.actor_id == ^actor.id)
       |> Safe.scoped(subject)
       |> Safe.one()
+    end
+
+    # The photo of the identity that sync updated last.
+    defp with_avatar(queryable) do
+      avatar =
+        from(i in ExternalIdentity,
+          where: i.account_id == parent_as(:actors).account_id,
+          where: i.actor_id == parent_as(:actors).id,
+          where: not is_nil(i.avatar_etag),
+          order_by: [desc: i.updated_at, desc: i.id],
+          limit: 1,
+          select: %{account_id: i.account_id, id: i.id, etag: i.avatar_etag}
+        )
+
+      queryable
+      |> join(:left_lateral, [actors: actors], avatar in subquery(avatar),
+        on: avatar.account_id == actors.account_id,
+        as: :avatar
+      )
+      |> select_merge([avatar: avatar], %{avatar_identity_id: avatar.id, avatar_etag: avatar.etag})
     end
   end
 end

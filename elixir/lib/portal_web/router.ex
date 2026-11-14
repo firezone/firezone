@@ -283,6 +283,8 @@ defmodule PortalWeb.Router do
       PortalWeb.Plugs.EnsureAdmin
     ]
 
+    get "/avatars/:id", AvatarController, :show
+
     live_session :ensure_authenticated,
       on_mount: [
         PortalWeb.LiveHooks.PutDynamicRepo,

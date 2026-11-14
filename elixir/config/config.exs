@@ -47,6 +47,7 @@ config :portal, run_manual_migrations: false
 config :portal, data_residency_region: :on_prem
 config :portal, slug_registry_table_url: nil
 config :portal, region_transfer_outbox_url: nil, region_transfer_inbox_url: nil
+config :portal, avatars_container_url: nil
 
 config :portal, Portal.Repo,
   hostname: "localhost",
@@ -252,6 +253,12 @@ config :portal, Portal.FlowLogToken.AccountCache, max_entries: 100_000
 config :portal, Portal.Ops.RegionTransfer.Storage,
   req_opts: [
     receive_timeout: 60_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.Avatars.Storage,
+  req_opts: [
+    receive_timeout: 15_000,
     retry: :transient
   ]
 
