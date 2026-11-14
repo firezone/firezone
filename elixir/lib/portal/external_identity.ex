@@ -30,7 +30,9 @@ defmodule Portal.ExternalIdentity do
     # For hosting the picture internally
     field :firezone_avatar_url, :string
 
-    # Provider version of the profile photo copied to Portal.Avatars.Storage
+    # The profile photo copied to Portal.Avatars.Storage: where it came from
+    # and its version there
+    field :avatar_source, Ecto.Enum, values: [:directory, :picture]
     field :avatar_etag, :string
 
     has_one :sync_state, Portal.ExternalIdentitySyncState,

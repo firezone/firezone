@@ -193,6 +193,18 @@ config :portal, Portal.Ops.RegionTransfer.Storage,
     retry: false
   ]
 
+config :portal, Portal.Avatars.Picture,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Picture},
+    retry: false
+  ],
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
+  ]
+
 config :portal, Portal.Avatars.Storage,
   req_opts: [
     plug: {Req.Test, Portal.Avatars.Storage},

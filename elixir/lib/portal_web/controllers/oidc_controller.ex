@@ -352,6 +352,7 @@ defmodule PortalWeb.OIDCController do
          :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, params) do
+      :ok = Portal.Avatars.Picture.enqueue(identity)
       conn = Cookie.LastUsedProvider.put(conn, provider.id)
       signed_in(conn, context_type, account, identity, session_or_token, provider, tokens, params)
     else
@@ -789,6 +790,8 @@ defmodule PortalWeb.OIDCController do
          :ok <- check_admin(identity, context_type),
          :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, identity, provider, params) do
+      :ok = Portal.Avatars.Picture.enqueue(identity)
+
       {:ok,
        %{
          conn: conn,

@@ -73,7 +73,8 @@ defmodule Portal.IdentityFixtures do
         :profile,
         :picture,
         :firezone_avatar_url,
-        :avatar_etag
+        :avatar_etag,
+        :avatar_source
       ])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:actor, actor)

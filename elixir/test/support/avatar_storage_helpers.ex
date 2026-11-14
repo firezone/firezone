@@ -29,7 +29,7 @@ defmodule Portal.AvatarStorageHelpers do
         "PUT" ->
           {:ok, body, conn} = read_body(conn)
           [type] = get_req_header(conn, "x-ms-blob-content-type")
-          Agent.update(store, &Map.put(&1, name, {body, type}))
+          Agent.update(store, &Map.put(&1, name, {body, type, DateTime.utc_now()}))
           send_resp(conn, 201, "")
 
         "DELETE" ->
@@ -38,13 +38,19 @@ defmodule Portal.AvatarStorageHelpers do
 
         "GET" when conn.request_path == "/avatars" ->
           prefix = fetch_query_params(conn).query_params["prefix"]
-          names = store |> Agent.get(&Map.keys/1) |> Enum.filter(&String.starts_with?(&1, prefix))
-          blobs = Enum.map_join(names, &"<Blob><Name>#{&1}</Name></Blob>")
+          blobs =
+            for {name, {_body, _type, modified}} <- Agent.get(store, & &1),
+                String.starts_with?(name, prefix),
+                into: "" do
+              modified = Calendar.strftime(modified, "%a, %d %b %Y %H:%M:%S GMT")
+              "<Blob><Name>#{name}</Name><Properties><Last-Modified>#{modified}</Last-Modified></Properties></Blob>"
+            end
+
           send_resp(conn, 200, "<EnumerationResults><Blobs>#{blobs}</Blobs><NextMarker /></EnumerationResults>")
 
         "GET" ->
           case Agent.get(store, &Map.fetch(&1, name)) do
-            {:ok, {body, _type}} -> send_resp(conn, 200, body)
+            {:ok, {body, _type, _modified}} -> send_resp(conn, 200, body)
             :error -> send_resp(conn, 404, "")
           end
       end
@@ -53,10 +59,20 @@ defmodule Portal.AvatarStorageHelpers do
     store
   end
 
-  def blobs(store), do: Agent.get(store, & &1)
+  @doc """
+  The stored blobs as `%{name => {body, content_type}}`.
+  """
+  def blobs(store), do: Agent.get(store, &Map.new(&1, fn {name, {body, type, _modified}} -> {name, {body, type}} end))
 
-  def blob_name(identity), do: "#{identity.account_id}/#{identity.directory_id}/#{identity.id}"
+  def blob_name(identity), do: "#{identity.account_id}/#{identity.id}"
 
-  def put_blob(store, name, body, type \\ "image/jpeg"),
-    do: Agent.update(store, &Map.put(&1, name, {body, type}))
+  @doc """
+  Seeds a blob. It is a day old unless `:modified_at` says otherwise, so prune
+  treats it as settled.
+  """
+  def put_blob(store, name, body, opts \\ []) do
+    type = Keyword.get(opts, :type, "image/jpeg")
+    modified = Keyword.get_lazy(opts, :modified_at, fn -> DateTime.add(DateTime.utc_now(), -1, :day) end)
+    Agent.update(store, &Map.put(&1, name, {body, type, modified}))
+  end
 end

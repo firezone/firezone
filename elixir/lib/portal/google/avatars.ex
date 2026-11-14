@@ -33,7 +33,7 @@ defmodule Portal.Google.Avatars do
       |> Avatars.list_identities(directory_id)
       |> Avatars.reconcile(photo_etags(access_token), &fetch_photos(access_token, &1))
 
-      Avatars.prune(account_id, directory_id)
+      Avatars.prune(account_id)
     end
 
     :ok

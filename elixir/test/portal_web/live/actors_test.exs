@@ -1754,6 +1754,24 @@ defmodule PortalWeb.ActorsTest do
       refute has_element?(lv, "#actor-#{user.id} [title='Admin']")
     end
 
+    test "prefers a directory photo over a newer sign-in photo", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      directory: directory
+    } do
+      user = actor_fixture(account: account, type: :account_user)
+
+      synced =
+        directory_identity_fixture(directory: directory, actor: user, avatar_source: :directory, avatar_etag: "graph")
+
+      identity_fixture(account: account, actor: user, avatar_source: :picture, avatar_etag: "sha")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      assert has_element?(lv, "#actor-#{user.id} img[src^='/#{account.slug}/avatars/#{synced.id}?v=']")
+    end
+
     test "shows the type icon and a shield on an admin without a photo", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
 

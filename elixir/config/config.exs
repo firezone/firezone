@@ -256,6 +256,12 @@ config :portal, Portal.Ops.RegionTransfer.Storage,
     retry: :transient
   ]
 
+config :portal, Portal.Avatars.Picture,
+  req_opts: [
+    retry: :transient,
+    max_retries: 2
+  ]
+
 config :portal, Portal.Avatars.Storage,
   req_opts: [
     receive_timeout: 15_000,

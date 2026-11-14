@@ -6,6 +6,7 @@ defmodule Portal.Avatars.Storage do
 
   @api_version "2020-12-06"
   @scope "https://storage.azure.com/"
+  @months ~w[Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec]
 
   def put!(name, body, content_type) do
     %Req.Response{status: 201} =
@@ -37,7 +38,7 @@ defmodule Portal.Avatars.Storage do
   end
 
   @doc """
-  Lists the names of the blobs that start with `prefix`.
+  Lists the blobs that start with `prefix` as `{name, last_modified}`.
   """
   def list!(prefix), do: list!(prefix, nil, [])
 
@@ -49,12 +50,26 @@ defmodule Portal.Avatars.Storage do
     %Req.Response{status: 200, body: body} =
       request!(:get, container_url(), params: params, decode_body: false)
 
-    names = for [_match, name] <- Regex.scan(~r{<Name>([^<]+)</Name>}, body), do: name
+    names =
+      for [blob] <- Regex.scan(~r{<Blob>.*?</Blob>}s, body),
+          [_match, name] <- [Regex.run(~r{<Name>([^<]+)</Name>}, blob)],
+          [_match, modified] <- [Regex.run(~r{<Last-Modified>([^<]+)</Last-Modified>}, blob)],
+          do: {name, parse_http_date!(modified)}
 
     case Regex.run(~r{<NextMarker>([^<]+)</NextMarker>}, body) do
       [_match, next] -> list!(prefix, next, acc ++ names)
       nil -> acc ++ names
     end
+  end
+
+  # RFC 1123, as in "Sat, 14 Nov 2026 13:59:43 GMT".
+  defp parse_http_date!(value) do
+    [_match, day, month, year, time] =
+      Regex.run(~r/^\w{3}, (\d{2}) (\w{3}) (\d{4}) (\d{2}:\d{2}:\d{2}) GMT$/, value)
+
+    month = Enum.find_index(@months, &(&1 == month)) + 1
+    date = Date.new!(String.to_integer(year), month, String.to_integer(day))
+    DateTime.new!(date, Time.from_iso8601!(time), "Etc/UTC")
   end
 
   defp request!(method, url, opts) do

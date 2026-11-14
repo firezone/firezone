@@ -1851,14 +1851,14 @@ defmodule PortalWeb.Actors do
       |> Safe.one()
     end
 
-    # The photo of the identity that sync updated last.
+    # A directory photo first, then the newest sign-in photo.
     defp with_avatar(queryable) do
       avatar =
         from(i in ExternalIdentity,
           where: i.account_id == parent_as(:actors).account_id,
           where: i.actor_id == parent_as(:actors).id,
           where: not is_nil(i.avatar_etag),
-          order_by: [desc: i.updated_at, desc: i.id],
+          order_by: [desc: i.avatar_source == :directory, desc: i.updated_at, desc: i.id],
           limit: 1,
           select: %{account_id: i.account_id, id: i.id, etag: i.avatar_etag}
         )

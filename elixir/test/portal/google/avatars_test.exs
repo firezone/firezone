@@ -30,8 +30,8 @@ defmodule Portal.Google.AvatarsTest do
   end
 
   test "only downloads photos whose version changed", %{directory: directory, store: store} do
-    same = directory_identity_fixture(directory: directory, idp_id: "user-1", avatar_etag: "etag-1")
-    changed = directory_identity_fixture(directory: directory, idp_id: "user-2", avatar_etag: "old")
+    same = directory_identity_fixture(directory: directory, idp_id: "user-1", avatar_source: :directory, avatar_etag: "etag-1")
+    changed = directory_identity_fixture(directory: directory, idp_id: "user-2", avatar_source: :directory, avatar_etag: "old")
     put_blob(store, blob_name(same), jpeg())
     put_blob(store, blob_name(changed), jpeg())
     stub_google(%{"user-1" => {"etag-1", png()}, "user-2" => {"etag-2", png()}})
@@ -49,7 +49,7 @@ defmodule Portal.Google.AvatarsTest do
   end
 
   test "deletes the photo of a user who removed it", %{directory: directory, store: store} do
-    identity = directory_identity_fixture(directory: directory, idp_id: "user-1", avatar_etag: "etag-1")
+    identity = directory_identity_fixture(directory: directory, idp_id: "user-1", avatar_source: :directory, avatar_etag: "etag-1")
     put_blob(store, blob_name(identity), jpeg())
     stub_google(%{"user-1" => :none})
 
@@ -60,7 +60,7 @@ defmodule Portal.Google.AvatarsTest do
   end
 
   test "leaves users that are not in the list alone", %{directory: directory, store: store} do
-    identity = directory_identity_fixture(directory: directory, idp_id: "user-1", avatar_etag: "etag-1")
+    identity = directory_identity_fixture(directory: directory, idp_id: "user-1", avatar_source: :directory, avatar_etag: "etag-1")
     put_blob(store, blob_name(identity), jpeg())
     stub_google(%{})
 

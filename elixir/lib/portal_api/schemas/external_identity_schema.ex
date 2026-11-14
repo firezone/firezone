@@ -6,7 +6,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.ExternalIdentity, internal: [:avatar_etag, :directory_name, :updated_at]}
+             for: Portal.ExternalIdentity, internal: [:avatar_etag, :avatar_source, :directory_name, :updated_at]}
     OpenApiSpex.schema(%{
       title: "ExternalIdentity",
       description: "External Identity",

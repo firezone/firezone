@@ -36,7 +36,7 @@ defmodule Portal.Ops.RegionTransfer do
   # Nullable foreign keys from moved tables to these are exported as NULL.
   # Profile photos stay in this region's container, so the destination fetches
   # them again from the directory.
-  @nulled_columns %{"external_identities" => ["avatar_etag"]}
+  @nulled_columns %{"external_identities" => ["avatar_etag", "avatar_source"]}
 
   @skipped_tables ~w(api_request_logs change_logs device_tokens feedback_submissions flow_logs log_sink_cursors oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes pending_identities policy_authorizations portal_sessions session_logs)
 

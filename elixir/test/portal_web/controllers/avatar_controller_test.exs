@@ -13,7 +13,7 @@ defmodule PortalWeb.AvatarControllerTest do
     directory = entra_directory_fixture(account: account)
     identity = directory_identity_fixture(directory: directory, avatar_etag: "etag-1")
     store = stub_avatar_storage()
-    put_blob(store, blob_name(identity), png(), "text/html")
+    put_blob(store, blob_name(identity), png(), type: "text/html")
 
     %{account: account, admin: admin, identity: identity, store: store}
   end
