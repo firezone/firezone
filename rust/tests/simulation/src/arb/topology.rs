@@ -8,6 +8,7 @@ use connlib_model::{ClientId, GatewayId, RelayId, Site, SiteId};
 use dns_types::{DomainName, OwnedRecordData};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use smallvec::SmallVec;
+use tracing::Span;
 use tunnel_proto::MaliciousBehaviour;
 use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53};
 
@@ -149,9 +150,9 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
         .collect::<SmallVec<[_; 3]>>();
     g.allocate_site_subnets(&regular_sites);
 
-    let clients = (0..2)
+    let mut clients = (0..2)
         .map(|_| (g.fresh_client_id(), g.tunnel_ip4(), g.tunnel_ip6()))
-        .collect::<SmallVec<[_; 2]>>();
+        .collect::<SmallVec<[_; 3]>>();
 
     let upstream_do53 = arb_upstream_do53_servers(g);
     let upstream_doh = arb_upstream_doh_servers(g);
@@ -161,6 +162,11 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
     let device_pool_resources = (0..g.count(0, 3))
         .map(|_| arb_device_pool_resource(g, &clients))
         .collect::<SmallVec<[_; 3]>>();
+
+    // A third Client lets two of them share a NAT next to one that does not. It joins
+    // after the pools so it draws no input for their member lists: only pools of all
+    // Clients admit it.
+    clients.push((g.fresh_client_id(), g.tunnel_ip4(), g.tunnel_ip6()));
 
     let internet_resource = arb_internet_resource(g, &internet_site);
 
@@ -363,10 +369,26 @@ fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option
 }
 
 fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
-    portal
+    let [first, second, third] = portal
         .client_tunnel_ips()
-        .map(|(id, tun4, tun6)| (id, arb_client_host(g, id, tun4, tun6)))
-        .collect::<BTreeMap<_, _>>()
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("portal has three clients");
+
+    let mut sharing = arb_client_host(g, first.0, first.1, first.2);
+    let separate = arb_client_host(g, second.0, second.1, second.2);
+
+    // The third Client copies the draws of the first one, so it consumes no input.
+    let key = g.fresh_private_key_without_input();
+    let mut twin = sharing.map(
+        |client, _, _| client.with_identity(third.0, key, third.1, third.2),
+        Span::none(),
+    );
+    twin.update_interface(Some(g.socket_ip4()), None);
+
+    share_nat(g, [&mut sharing, &mut twin]);
+
+    BTreeMap::from([(first.0, sharing), (second.0, separate), (third.0, twin)])
 }
 
 fn arb_client_host(
@@ -411,27 +433,71 @@ fn arb_gateways(
     domain_tree: &[DomainName],
     sites: &BTreeMap<SiteId, SiteView>,
 ) -> BTreeMap<GatewayId, Host<RefGateway>> {
-    portal
-        .gateway_tunnel_ips()
-        .map(|(id, tun4, tun6, site_id)| {
-            let site = sites[&site_id].clone();
-            let site_specific = arb_site_specific_dns_records(g, portal, site_id, domain_tree);
-            let inner = RefGateway::from_parts(
-                g.fresh_private_key(),
-                tun4,
-                tun6,
-                site.routes,
-                site_specific,
-                site.unresolvable_names,
-                arb_max_dns_domains_per_client(g),
-            );
-            let latency = g.latency(200);
-            let edge = arb_edge_config(g);
-            let host = Host::new(inner, latency, 52625, edge, g.nat_ip4());
-            let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
-            (id, host)
-        })
-        .collect::<BTreeMap<_, _>>()
+    let mut gateways_by_site = BTreeMap::<SiteId, Vec<(GatewayId, Host<RefGateway>)>>::new();
+
+    for (id, tun4, tun6, site_id) in portal.gateway_tunnel_ips() {
+        let site = sites[&site_id].clone();
+        let site_specific = arb_site_specific_dns_records(g, portal, site_id, domain_tree);
+        let inner = RefGateway::from_parts(
+            g.fresh_private_key(),
+            tun4,
+            tun6,
+            site.routes,
+            site_specific,
+            site.unresolvable_names,
+            arb_max_dns_domains_per_client(g),
+        );
+        let latency = g.latency(200);
+        let edge = arb_edge_config(g);
+        let host = Host::new(inner, latency, 52625, edge, g.nat_ip4());
+        let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
+
+        gateways_by_site
+            .entry(site_id)
+            .or_default()
+            .push((id, host));
+    }
+
+    // Several Gateways of a site are deployed side by side for high availability.
+    for gateways in gateways_by_site.values_mut() {
+        if gateways.len() > 1 {
+            share_nat(g, gateways.iter_mut().map(|(_, host)| host));
+        }
+    }
+
+    gateways_by_site.into_values().flatten().collect()
+}
+
+/// Moves `hosts` behind one [`SharedNat`](crate::sim_net::SharedNat).
+///
+/// The NAT takes its filtering and expiry from what the first host drew for a NAT of its own, so
+/// it consumes no input.
+fn share_nat<'a, T: 'a>(g: &mut Generator, hosts: impl IntoIterator<Item = &'a mut Host<T>>) {
+    let mut hosts = hosts.into_iter().peekable();
+    let Some(first) = hosts.peek() else {
+        return;
+    };
+
+    let (filter, expiry) = match first.edge_config() {
+        EdgeConfig::Nat(_, filter, expiry) => (filter, expiry),
+        EdgeConfig::Open | EdgeConfig::SharedNat(..) => (
+            FilterMode::Open,
+            Expiry {
+                timeout: Duration::from_secs(300),
+                inbound_refreshes: true,
+            },
+        ),
+    };
+    let nat_ip4 = g.nat_ip4();
+
+    // The NAT only translates IPv4 and two hosts only compete for a port they both listen on.
+    for host in hosts {
+        let ip4 = host.ip4.unwrap_or_else(|| g.socket_ip4());
+
+        host.join_shared_nat(nat_ip4, filter, expiry);
+        host.update_interface(Some(ip4), None);
+        host.port = 52625;
+    }
 }
 
 fn arb_max_dns_domains_per_client(g: &mut Generator) -> Option<usize> {

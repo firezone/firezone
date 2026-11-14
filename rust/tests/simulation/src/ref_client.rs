@@ -120,6 +120,26 @@ pub struct RefClient {
 }
 
 impl RefClient {
+    /// Returns a fresh client with the settings of this one under another identity.
+    pub(crate) fn with_identity(
+        &self,
+        id: ClientId,
+        key: PrivateKey,
+        tunnel_ip4: Ipv4Addr,
+        tunnel_ip6: Ipv6Addr,
+    ) -> Self {
+        Self::new(
+            id,
+            key,
+            tunnel_ip4,
+            tunnel_ip6,
+            self.system_dns_resolvers.clone(),
+            self.internet_resource_active,
+            self.malicious_behaviour,
+            self.os,
+        )
+    }
+
     /// Construct a fresh [`RefClient`] with all derived collections empty.
     ///
     /// The structured generator supplies all independent values; this
