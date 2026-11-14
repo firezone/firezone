@@ -8,7 +8,10 @@ defmodule Portal.Config.Azure do
   resolved to their secret values. Only keys without a label are read.
 
   Each key's `mode` tag says whether a running portal may apply a change to it
-  (`live`) or needs a restart (`boot`). Keys without the tag are `boot`.
+  (`live`) or needs a restart (`boot`). Keys without the tag are `boot`. Keys
+  with an empty value are left out, so they fall back like a missing key.
+
+  Endpoints are tried in order, so a replica can serve when the primary cannot.
   """
 
   @app_configuration_resource "https://azconfig.io"
@@ -26,21 +29,17 @@ defmodule Portal.Config.Azure do
 
   @doc """
   Returns every setting in the store with its mode, with Key Vault references
-  replaced by their secret values. Raises if anything fails.
+  replaced by their secret values. Raises if no endpoint can be read.
   """
-  @spec fetch_settings!(String.t(), String.t() | nil, http_get()) :: %{String.t() => setting()}
-  def fetch_settings!(endpoint, client_id, http_get \\ &http_get/2) do
-    endpoint = String.trim_trailing(endpoint, "/")
+  @spec fetch_settings!([String.t()], String.t() | nil, http_get()) ::
+          %{String.t() => setting()}
+  def fetch_settings!([_ | _] = endpoints, client_id, http_get \\ &http_get/2) do
     store_token = access_token!(@app_configuration_resource, client_id, http_get)
 
     items =
-      list_key_values!(
-        "#{endpoint}/kv?label=%00&api-version=#{@app_configuration_api_version}",
-        endpoint,
-        store_token,
-        http_get,
-        []
-      )
+      endpoints
+      |> list_first_readable!(store_token, http_get, [])
+      |> Enum.reject(&(&1["value"] in [nil, ""]))
 
     vault_token =
       if Enum.any?(items, &key_vault_reference?/1),
@@ -49,6 +48,62 @@ defmodule Portal.Config.Azure do
     Map.new(items, fn item ->
       {item["key"], %{value: resolve_value!(item, vault_token, http_get), mode: mode(item)}}
     end)
+  end
+
+  defp list_first_readable!([], _token, _http_get, errors) do
+    raise "no App Configuration endpoint could be read: " <> Enum.join(Enum.reverse(errors), "; ")
+  end
+
+  defp list_first_readable!([endpoint | rest], token, http_get, errors) do
+    endpoint = String.trim_trailing(endpoint, "/")
+    url = "#{endpoint}/kv?label=%00&api-version=#{@app_configuration_api_version}"
+
+    try do
+      list_key_values!(url, endpoint, token, http_get, [])
+    rescue
+      # Our own errors never include response bodies; other exceptions might.
+      exception in RuntimeError ->
+        list_first_readable!(rest, token, http_get, [exception.message | errors])
+
+      exception ->
+        list_first_readable!(rest, token, http_get, [inspect(exception.__struct__) | errors])
+    end
+  end
+
+  @doc """
+  Writes settings to `path` with mode 0600, replacing the file atomically.
+  """
+  @spec write_cache!(Path.t(), %{String.t() => setting()}) :: :ok
+  # The path comes from AZURE_APP_CONFIGURATION_CACHE_PATH, never from a request.
+  # sobelow_skip ["Traversal.FileModule"]
+  def write_cache!(path, settings) do
+    json =
+      JSON.encode!(Map.new(settings, fn {key, %{value: value, mode: mode}} ->
+        {key, %{"value" => value, "mode" => Atom.to_string(mode)}}
+      end))
+
+    tmp_path = path <> ".tmp"
+    File.write!(tmp_path, "")
+    File.chmod!(tmp_path, 0o600)
+    File.write!(tmp_path, json)
+    File.rename!(tmp_path, path)
+  end
+
+  @doc """
+  Reads settings written by `write_cache!/2`.
+  """
+  @spec read_cache(Path.t()) :: {:ok, %{String.t() => setting()}} | :error
+  # sobelow_skip ["Traversal.FileModule"]
+  def read_cache(path) do
+    with {:ok, json} <- File.read(path),
+         {:ok, %{} = cached} <- JSON.decode(json) do
+      {:ok,
+       Map.new(cached, fn {key, %{"value" => value, "mode" => mode}} ->
+         {key, %{value: value, mode: if(mode == "live", do: :live, else: :boot)}}
+       end)}
+    else
+      _other -> :error
+    end
   end
 
   defp list_key_values!(url, endpoint, token, http_get, acc) do

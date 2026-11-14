@@ -68,10 +68,19 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Endpoint of the Azure App Configuration store, e.g.
-  `https://fzconfigprod.azconfig.io`. Required when `CONFIG_ADAPTER` is `azure`.
+  Comma-separated endpoints of the Azure App Configuration store, primary first
+  and then its replicas, e.g.
+  `https://fzconfigprod.azconfig.io,https://fzconfigprod-westus3.azconfig.io`.
+  They are tried in order. Required when `CONFIG_ADAPTER` is `azure`.
   """
-  defconfig(:azure_app_configuration_endpoint, :string, default: nil)
+  defconfig(:azure_app_configuration_endpoint, {:array, ",", :string}, default: [])
+
+  @doc """
+  File that keeps the last settings read from App Configuration. When no
+  endpoint can be read at boot, the portal boots from this file instead.
+  It holds secrets, so it is written with mode 0600.
+  """
+  defconfig(:azure_app_configuration_cache_path, :string, default: nil)
 
   ##############################################
   ## Background Jobs
