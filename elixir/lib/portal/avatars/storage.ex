@@ -38,27 +38,33 @@ defmodule Portal.Avatars.Storage do
   end
 
   @doc """
-  Lists the blobs that start with `prefix` as `{name, last_modified}`.
+  Streams the blobs that start with `prefix` as `{name, last_modified}`, one
+  page of up to 5000 at a time.
   """
-  def list!(prefix), do: list!(prefix, nil, [])
+  def stream!(prefix) do
+    Stream.unfold(:first, fn
+      :done -> nil
+      marker -> list_page!(prefix, marker)
+    end)
+  end
 
-  defp list!(prefix, marker, acc) do
+  defp list_page!(prefix, marker) do
     params =
       [restype: "container", comp: "list", prefix: prefix]
-      |> then(&if(marker, do: &1 ++ [marker: marker], else: &1))
+      |> then(&if(marker == :first, do: &1, else: &1 ++ [marker: marker]))
 
     %Req.Response{status: 200, body: body} =
       request!(:get, container_url(), params: params, decode_body: false)
 
-    names =
+    blobs =
       for [blob] <- Regex.scan(~r{<Blob>.*?</Blob>}s, body),
           [_match, name] <- [Regex.run(~r{<Name>([^<]+)</Name>}, blob)],
           [_match, modified] <- [Regex.run(~r{<Last-Modified>([^<]+)</Last-Modified>}, blob)],
           do: {name, parse_http_date!(modified)}
 
     case Regex.run(~r{<NextMarker>([^<]+)</NextMarker>}, body) do
-      [_match, next] -> list!(prefix, next, acc ++ names)
-      nil -> acc ++ names
+      [_match, next] -> {blobs, next}
+      nil -> {blobs, :done}
     end
   end
 

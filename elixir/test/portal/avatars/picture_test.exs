@@ -2,6 +2,8 @@ defmodule Portal.Avatars.PictureTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import Ecto.Query
+
   import Portal.AccountFixtures
   import Portal.AvatarStorageHelpers
   import Portal.IdentityFixtures
@@ -23,7 +25,7 @@ defmodule Portal.Avatars.PictureTest do
 
     assert %{avatar_source: :picture, avatar_etag: etag} = reload(identity)
     assert etag == sha256(jpeg())
-    assert blobs(store) == %{blob_name(identity) => {jpeg(), "image/jpeg"}}
+    assert blobs(store) == %{blob_name(identity, etag) => {jpeg(), "image/jpeg"}}
   end
 
   test "does not store the same photo again", %{account: account, store: store} do
@@ -69,6 +71,62 @@ defmodule Portal.Avatars.PictureTest do
 
     assert %{avatar_etag: nil} = reload(identity)
     assert blobs(store) == %{}
+  end
+
+  test "ignores a Microsoft Graph URL, which needs a token", %{account: account, store: store} do
+    identity = identity_fixture(account: account, picture: "https://graph.microsoft.com/v1.0/me/photo/$value")
+    stub_picture(200, jpeg())
+
+    assert :ok = Picture.enqueue(identity)
+    refute_enqueued(worker: Picture)
+
+    assert :ok = perform_job(Picture, args(identity))
+
+    refute_received :picture_requested
+    assert blobs(store) == %{}
+  end
+
+  test "deletes the photo when the URL needs a sign-in", %{account: account, store: store} do
+    identity = identity_fixture(account: account, picture: @url, avatar_source: :picture, avatar_etag: "sha")
+    put_blob(store, blob_name(identity), jpeg())
+    stub_picture(401, "")
+
+    assert :ok = perform_job(Picture, args(identity))
+
+    assert %{avatar_etag: nil} = reload(identity)
+    assert blobs(store) == %{}
+  end
+
+  test "keeps the photo and retries when DNS fails", %{account: account, store: store} do
+    Portal.Config.put_env_override(Picture, ssrf_protection_opts: [resolver: fn _host, _family -> {:error, :timeout} end])
+
+    identity = identity_fixture(account: account, picture: @url, avatar_source: :picture, avatar_etag: "sha")
+    put_blob(store, blob_name(identity), jpeg())
+
+    assert {:error, :nxdomain} = perform_job(Picture, args(identity))
+
+    assert %{avatar_etag: "sha"} = reload(identity)
+    assert Map.has_key?(blobs(store), blob_name(identity))
+  end
+
+  test "does not save over a directory photo stored during the download", %{account: account, store: store} do
+    identity = identity_fixture(account: account, picture: @url)
+    test_pid = self()
+
+    Req.Test.stub(Picture, fn conn ->
+      Repo.update_all(
+        from(i in ExternalIdentity, where: i.id == ^identity.id),
+        set: [avatar_source: :directory, avatar_etag: "graph"]
+      )
+
+      send(test_pid, :picture_requested)
+      Plug.Conn.send_resp(conn, 200, jpeg())
+    end)
+
+    assert :ok = perform_job(Picture, args(identity))
+
+    assert %{avatar_source: :directory, avatar_etag: "graph"} = reload(identity)
+    refute Map.has_key?(blobs(store), blob_name(identity, "graph"))
   end
 
   test "ignores a URL that is not HTTPS", %{account: account, store: store} do
@@ -124,6 +182,14 @@ defmodule Portal.Avatars.PictureTest do
       assert :ok = Picture.enqueue(identity)
 
       assert_enqueued(worker: Picture, args: %{identity_id: identity.id, picture: @url})
+    end
+
+    test "queues nothing for an identity with a directory photo", %{account: account} do
+      identity = identity_fixture(account: account, picture: @url, avatar_source: :directory, avatar_etag: "graph")
+
+      assert :ok = Picture.enqueue(identity)
+
+      refute_enqueued(worker: Picture)
     end
 
     test "queues a job to delete a sign-in photo whose claim is gone", %{account: account} do

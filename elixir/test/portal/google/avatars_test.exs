@@ -26,7 +26,7 @@ defmodule Portal.Google.AvatarsTest do
     assert :ok = perform_job(Avatars, args(directory))
 
     assert reload(identity).avatar_etag == "etag-1"
-    assert blobs(store) == %{blob_name(identity) => {jpeg(), "image/jpeg"}}
+    assert blobs(store) == %{blob_name(identity, "etag-1") => {jpeg(), "image/jpeg"}}
   end
 
   test "only downloads photos whose version changed", %{directory: directory, store: store} do
@@ -44,7 +44,8 @@ defmodule Portal.Google.AvatarsTest do
 
     assert blobs(store) == %{
              blob_name(same) => {jpeg(), "image/jpeg"},
-             blob_name(changed) => {png(), "image/png"}
+             blob_name(changed) => {jpeg(), "image/jpeg"},
+             blob_name(changed, "etag-2") => {png(), "image/png"}
            }
   end
 
@@ -77,7 +78,7 @@ defmodule Portal.Google.AvatarsTest do
 
     assert :ok = perform_job(Avatars, args(directory))
 
-    assert blobs(store) == %{blob_name(identity) => {bytes, "image/jpeg"}}
+    assert blobs(store) == %{blob_name(identity, "etag-1") => {bytes, "image/jpeg"}}
   end
 
   defp args(directory), do: %{account_id: directory.account_id, directory_id: directory.id}

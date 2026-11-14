@@ -20,6 +20,8 @@ defmodule Portal.Google.Avatars do
   alias Portal.DirectorySync
   alias Portal.Google
 
+  @chunk_size 100
+
   @impl Oban.Worker
   def timeout(_job), do: DirectorySync.full_sync_timeout()
 
@@ -29,11 +31,13 @@ defmodule Portal.Google.Avatars do
          %Google.Directory{} = directory <- Google.Sync.get_directory(account_id, directory_id) do
       access_token = Google.Sync.get_access_token!(directory)
 
+      etags = photo_etags(access_token)
+
+      # Chunks save progress, so a run that stops keeps the photos it stored.
       account_id
       |> Avatars.list_identities(directory_id)
-      |> Avatars.reconcile(photo_etags(access_token), &fetch_photos(access_token, &1))
-
-      Avatars.prune(account_id)
+      |> Enum.chunk_every(@chunk_size)
+      |> Enum.each(&Avatars.reconcile(&1, etags, fn identities -> fetch_photos(access_token, identities) end))
     end
 
     :ok

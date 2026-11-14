@@ -8,6 +8,9 @@ defmodule Portal.Avatars.Picture do
   bytes change. A directory photo always wins, so identities that have one are
   left alone.
 
+  Entra's `picture` is a Microsoft Graph URL that needs a token we do not
+  have, so Entra photos come from directory sync only.
+
   The URL comes from the identity provider, which for generic OIDC is
   configured by the customer, so the download goes through the SSRF guard and
   a size limit.
@@ -18,7 +21,7 @@ defmodule Portal.Avatars.Picture do
     unique: [
       period: 24 * 60 * 60,
       states: [:available, :scheduled, :executing, :retryable, :completed],
-      keys: [:identity_id, :picture]
+      keys: [:identity_id, :picture, :avatar_etag]
     ]
 
   alias Portal.Avatars
@@ -31,17 +34,9 @@ defmodule Portal.Avatars.Picture do
   to do. Never fails the sign-in.
   """
   def enqueue(%ExternalIdentity{} = identity) do
-    if Avatars.enabled?() and (is_binary(identity.picture) or identity.avatar_source == :picture) do
-      %{account_id: identity.account_id, identity_id: identity.id, picture: identity.picture}
-      |> new()
-      |> Oban.insert()
-      |> case do
-        {:ok, _job} ->
-          :ok
-
-        {:error, reason} ->
-          Logger.warning("Failed to queue profile photo job", reason: inspect(reason))
-      end
+    if Avatars.enabled?() and identity.avatar_source != :directory and
+         (downloadable?(identity.picture) or identity.avatar_source == :picture) do
+      insert(identity)
     end
 
     :ok
@@ -57,9 +52,34 @@ defmodule Portal.Avatars.Picture do
     end
   end
 
+  defp insert(identity) do
+    %{
+      account_id: identity.account_id,
+      identity_id: identity.id,
+      picture: identity.picture,
+      avatar_etag: identity.avatar_etag
+    }
+    |> new()
+    |> Oban.insert()
+    |> case do
+      {:ok, _job} -> :ok
+      {:error, reason} -> Logger.warning("Failed to queue profile photo job", reason: inspect(reason))
+    end
+  rescue
+    exception -> Logger.warning("Failed to queue profile photo job", reason: Exception.message(exception))
+  end
+
   defp sync(%ExternalIdentity{avatar_source: :directory}), do: :ok
 
-  defp sync(%ExternalIdentity{picture: "https://" <> _rest = url} = identity) do
+  defp sync(%ExternalIdentity{picture: url} = identity) do
+    if downloadable?(url) do
+      sync(identity, url)
+    else
+      clear(identity)
+    end
+  end
+
+  defp sync(identity, url) do
     case download(url) do
       {:ok, body} ->
         version = :crypto.hash(:sha256, body) |> Base.encode16(case: :lower)
@@ -77,9 +97,6 @@ defmodule Portal.Avatars.Picture do
         {:error, reason}
     end
   end
-
-  # No URL, or one that is not HTTPS.
-  defp sync(identity), do: clear(identity)
 
   defp clear(%ExternalIdentity{avatar_source: :picture} = identity), do: Avatars.clear(identity)
   defp clear(_identity), do: :ok
@@ -101,13 +118,17 @@ defmodule Portal.Avatars.Picture do
     )
     |> case do
       {:ok, %Req.Response{status: 200, body: body}} -> {:ok, body}
-      {:ok, %Req.Response{status: status}} when status in [404, 410] -> {:error, :not_found}
+      {:ok, %Req.Response{status: status}} when status in [401, 403, 404, 410] -> {:error, :not_found}
       {:ok, %Req.Response{status: status}} -> {:error, {:unexpected_status, status}}
       {:error, %Portal.Req.Bounded.BodyTooLargeError{}} -> {:error, :not_found}
+      {:error, %Portal.Req.SSRFProtection.UnsafeURLError{reason: :nxdomain}} -> {:error, :nxdomain}
       {:error, %Portal.Req.SSRFProtection.UnsafeURLError{}} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp downloadable?("https://" <> _rest = url), do: URI.parse(url).host != "graph.microsoft.com"
+  defp downloadable?(_url), do: false
 
   defmodule Database do
     import Ecto.Query

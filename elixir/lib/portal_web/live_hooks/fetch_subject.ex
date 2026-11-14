@@ -18,7 +18,7 @@ defmodule PortalWeb.LiveHooks.FetchSubject do
         with {:ok, session_id} <- Map.fetch(session, session_key),
              {:ok, portal_session} <- Authentication.fetch_portal_session(account.id, session_id),
              {:ok, subject} <- Authentication.build_subject(portal_session, context) do
-          subject
+          %{subject | actor: Portal.Avatars.put_actor_avatar(subject.actor)}
         else
           _ -> nil
         end

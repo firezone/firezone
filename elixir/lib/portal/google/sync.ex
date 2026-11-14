@@ -113,10 +113,15 @@ defmodule Portal.Google.Sync do
       google_directory_id: directory.id
     )
 
-    {:ok, _job} =
+    if Portal.Avatars.enabled?() do
       %{account_id: directory.account_id, directory_id: directory.id}
       |> Google.Avatars.new()
       |> Oban.insert()
+      |> case do
+        {:ok, _job} -> :ok
+        {:error, reason} -> Logger.warning("Failed to queue profile photo sync", google_directory_id: directory.id, reason: inspect(reason))
+      end
+    end
 
     {:ok, _job} =
       %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}

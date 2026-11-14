@@ -14,7 +14,7 @@ defmodule Portal.Entra.AvatarsTest do
   setup do
     account = account_fixture(features: %{idp_sync: true})
     directory = entra_directory_fixture(account: account)
-    %{account: account, directory: directory, store: stub_avatar_storage()}
+    %{directory: directory, store: stub_avatar_storage()}
   end
 
   test "stores new photos and records their version", %{directory: directory, store: store} do
@@ -24,7 +24,7 @@ defmodule Portal.Entra.AvatarsTest do
     assert :ok = perform_job(Avatars, args(directory))
 
     assert %{avatar_source: :directory, avatar_etag: "etag-1"} = reload(identity)
-    assert blobs(store) == %{blob_name(identity) => {jpeg(), "image/jpeg"}}
+    assert blobs(store) == %{blob_name(identity, "etag-1") => {jpeg(), "image/jpeg"}}
   end
 
   test "does not download a photo whose version did not change", %{directory: directory, store: store} do
@@ -47,7 +47,11 @@ defmodule Portal.Entra.AvatarsTest do
     assert :ok = perform_job(Avatars, args(directory))
 
     assert reload(identity).avatar_etag == "etag-2"
-    assert blobs(store) == %{blob_name(identity) => {png(), "image/png"}}
+
+    assert blobs(store) == %{
+             blob_name(identity) => {jpeg(), "image/jpeg"},
+             blob_name(identity, "etag-2") => {png(), "image/png"}
+           }
   end
 
   test "deletes the photo of a user who removed it", %{directory: directory, store: store} do
@@ -71,7 +75,7 @@ defmodule Portal.Entra.AvatarsTest do
     assert :ok = perform_job(Avatars, args(directory))
 
     assert reload(identity).avatar_etag == "etag-1"
-    assert blobs(store) == %{blob_name(identity) => {jpeg(), "image/jpeg"}}
+    assert blobs(store) == %{blob_name(identity, "etag-1") => {jpeg(), "image/jpeg"}}
   end
 
   test "keeps the old version when a photo is not an image", %{directory: directory, store: store} do
@@ -95,21 +99,6 @@ defmodule Portal.Entra.AvatarsTest do
     assert Map.has_key?(blobs(store), blob_name(identity))
   end
 
-  test "deletes photos of identities that are gone", %{account: account, directory: directory, store: store} do
-    other_account = account_fixture()
-    orphan = "#{account.id}/#{Ecto.UUID.generate()}"
-    fresh = "#{account.id}/#{Ecto.UUID.generate()}"
-    elsewhere = "#{other_account.id}/#{Ecto.UUID.generate()}"
-    put_blob(store, orphan, jpeg())
-    put_blob(store, fresh, jpeg(), modified_at: DateTime.utc_now())
-    put_blob(store, elsewhere, jpeg())
-    stub_graph(%{})
-
-    assert :ok = perform_job(Avatars, args(directory))
-
-    assert blobs(store) |> Map.keys() |> Enum.sort() == Enum.sort([fresh, elsewhere])
-  end
-
   test "replaces a sign-in photo with a directory photo", %{directory: directory, store: store} do
     identity =
       directory_identity_fixture(
@@ -120,12 +109,12 @@ defmodule Portal.Entra.AvatarsTest do
       )
 
     put_blob(store, blob_name(identity), png())
-    stub_graph(%{"user-1" => {"etag-1", jpeg()}})
+    stub_graph(%{"user-1" => {"etag-2", jpeg()}})
 
     assert :ok = perform_job(Avatars, args(directory))
 
-    assert %{avatar_source: :directory, avatar_etag: "etag-1"} = reload(identity)
-    assert blobs(store) == %{blob_name(identity) => {jpeg(), "image/jpeg"}}
+    assert %{avatar_source: :directory, avatar_etag: "etag-2"} = reload(identity)
+    assert blobs(store)[blob_name(identity, "etag-2")] == {jpeg(), "image/jpeg"}
   end
 
   test "keeps a sign-in photo when the directory has none", %{directory: directory, store: store} do
@@ -144,6 +133,24 @@ defmodule Portal.Entra.AvatarsTest do
 
     assert %{avatar_source: :picture, avatar_etag: "sha"} = reload(identity)
     assert blobs(store) == %{blob_name(identity) => {png(), "image/jpeg"}}
+  end
+
+  test "fetches the sign-in photo again when the directory photo goes away", %{directory: directory, store: store} do
+    identity =
+      directory_identity_fixture(
+        directory: directory,
+        idp_id: "user-1",
+        picture: "https://idp.example.com/photo.jpg",
+        avatar_source: :directory,
+        avatar_etag: "etag-1"
+      )
+
+    put_blob(store, blob_name(identity), jpeg())
+    stub_graph(%{"user-1" => :none})
+
+    assert :ok = perform_job(Avatars, args(directory))
+
+    assert_enqueued(worker: Portal.Avatars.Picture, args: %{identity_id: identity.id})
   end
 
   test "does nothing without a container", %{directory: directory} do

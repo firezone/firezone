@@ -283,6 +283,9 @@ if config_env() == :prod do
     # local write rolled back, or the slugs of a deleted account
     {"*/30 * * * *", Portal.Workers.SweepSlugRegistry},
 
+    # Delete profile photos that no identity links to any more
+    {"30 4 * * *", Portal.Avatars.Prune},
+
     # Schedule Entra directory sync daily; Graph change notifications cover
     # the hours in between
     {"0 3 * * *", Portal.Entra.Scheduler},

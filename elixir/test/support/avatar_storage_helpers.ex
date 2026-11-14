@@ -64,7 +64,12 @@ defmodule Portal.AvatarStorageHelpers do
   """
   def blobs(store), do: Agent.get(store, &Map.new(&1, fn {name, {body, type, _modified}} -> {name, {body, type}} end))
 
-  def blob_name(identity), do: "#{identity.account_id}/#{identity.id}"
+  @doc """
+  The blob of a photo version, the identity's current one unless given.
+  """
+  def blob_name(identity, etag \\ nil) do
+    "#{identity.account_id}/#{identity.id}/#{Portal.Avatars.version(etag || identity.avatar_etag)}"
+  end
 
   @doc """
   Seeds a blob. It is a day old unless `:modified_at` says otherwise, so prune

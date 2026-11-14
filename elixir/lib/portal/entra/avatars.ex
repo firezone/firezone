@@ -40,8 +40,6 @@ defmodule Portal.Entra.Avatars do
         etags = photo_etags(access_token, identities)
         Avatars.reconcile(identities, etags, &fetch_photos(access_token, &1))
       end)
-
-      Avatars.prune(account_id)
     end
 
     :ok
