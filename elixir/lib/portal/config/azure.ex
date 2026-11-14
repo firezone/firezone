@@ -74,6 +74,8 @@ defmodule Portal.Config.Azure do
   Writes settings to `path` with mode 0600, replacing the file atomically.
   """
   @spec write_cache!(Path.t(), %{String.t() => setting()}) :: :ok
+  # The path comes from AZURE_APP_CONFIGURATION_CACHE_PATH, never from a request.
+  # sobelow_skip ["Traversal.FileModule"]
   def write_cache!(path, settings) do
     json =
       JSON.encode!(Map.new(settings, fn {key, %{value: value, mode: mode}} ->
@@ -91,6 +93,7 @@ defmodule Portal.Config.Azure do
   Reads settings written by `write_cache!/2`.
   """
   @spec read_cache(Path.t()) :: {:ok, %{String.t() => setting()}} | :error
+  # sobelow_skip ["Traversal.FileModule"]
   def read_cache(path) do
     with {:ok, json} <- File.read(path),
          {:ok, %{} = cached} <- JSON.decode(json) do
