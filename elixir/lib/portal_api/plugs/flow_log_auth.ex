@@ -44,7 +44,7 @@ defmodule PortalAPI.Plugs.FlowLogAuth do
         _ -> nil
       end
 
-    Logger.info("Flow log upload unauthorized", reason: reason, account_id: account_id)
+    Logger.debug("Flow log upload unauthorized", reason: reason, account_id: account_id)
     Portal.Telemetry.flow_log_upload_unauthorized(reason)
 
     respond_unauthorized(conn, reason)

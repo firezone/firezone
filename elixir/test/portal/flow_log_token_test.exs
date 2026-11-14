@@ -2,6 +2,7 @@ defmodule Portal.FlowLogTokenTest do
   use Portal.DataCase, async: true
 
   import Portal.AccountFixtures
+  import Ecto.Query
   import Portal.FlowLogFixtures
   alias Portal.FlowLogToken
 
@@ -69,6 +70,27 @@ defmodule Portal.FlowLogTokenTest do
         FlowLogToken.mint(account, flow_log_token_claims(), DateTime.add(DateTime.utc_now(), 3600, :second))
 
       assert {:error, :invalid} = FlowLogToken.verify(token <> "x")
+    end
+  end
+
+  describe "verify/1 with a cached account" do
+    test "verifies with a changed signing key once the cached key fails" do
+      account = account_fixture()
+      expires_at = DateTime.add(DateTime.utc_now(), 3600, :second)
+
+      assert {:ok, _claims, _account} =
+               account |> FlowLogToken.mint(flow_log_token_claims(), expires_at) |> FlowLogToken.verify()
+
+      new_key = :crypto.strong_rand_bytes(32)
+
+      {1, _} =
+        from(a in Portal.Account, where: a.id == ^account.id)
+        |> Portal.Safe.unscoped()
+        |> Portal.Safe.update_all(set: [ingest_signing_key: new_key])
+
+      token = FlowLogToken.mint(%{account | ingest_signing_key: new_key}, flow_log_token_claims(), expires_at)
+
+      assert {:ok, _claims, %Portal.Account{ingest_signing_key: ^new_key}} = FlowLogToken.verify(token)
     end
   end
 
