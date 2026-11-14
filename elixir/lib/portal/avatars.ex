@@ -131,7 +131,7 @@ defmodule Portal.Avatars do
   """
   def put_actor_avatar(%Portal.Actor{} = actor) do
     case Database.get_actor_avatar(actor.account_id, actor.id) do
-      {identity_id, etag} -> %{actor | avatar_identity_id: identity_id, avatar_etag: etag}
+      %{id: identity_id, etag: etag} -> %{actor | avatar_identity_id: identity_id, avatar_etag: etag}
       nil -> actor
     end
   end
@@ -204,7 +204,7 @@ defmodule Portal.Avatars do
         where: i.account_id == ^account_id and i.actor_id == ^actor_id and not is_nil(i.avatar_etag),
         order_by: [desc: i.avatar_source == :directory, desc: i.updated_at, desc: i.id],
         limit: 1,
-        select: {i.id, i.avatar_etag}
+        select: %{id: i.id, etag: i.avatar_etag}
       )
       |> Safe.unscoped()
       |> Safe.one()
