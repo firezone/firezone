@@ -88,6 +88,7 @@ defmodule Portal.Application do
     # 2) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
     # 3) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
     base_children ++
+      config_watcher() ++
       client_session_queue() ++
       gateway_session_queue() ++
       policy_authorization_queue() ++
@@ -132,6 +133,14 @@ defmodule Portal.Application do
         capture_excluded_domains: []
       }
     })
+  end
+
+  # Applies live App Configuration changes when the portal reads its settings
+  # from Azure.
+  defp config_watcher do
+    if Portal.Config.env_var_to_config!(:config_adapter) == :azure,
+      do: [Portal.Config.Watcher],
+      else: []
   end
 
   defp log_level do

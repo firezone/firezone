@@ -32,13 +32,14 @@ defmodule Portal.Config.AzureTest do
     http_get =
       http_get([
         {imds("https://azconfig.io"), token("store-token")},
-        {"#{@endpoint}/kv?label=%00", page([%{"key" => "LOG_LEVEL", "value" => "info"}], "/kv?after=1")},
+        {"#{@endpoint}/kv?label=%00",
+         page([%{"key" => "LOG_LEVEL", "value" => "info", "tags" => %{"mode" => "live"}}], "/kv?after=1")},
         {"#{@endpoint}/kv?after=1", page([%{"key" => "WEB_EXTERNAL_URL", "value" => "https://app.example.com"}])}
       ])
 
     assert Azure.fetch_settings!(@endpoint <> "/", "client-id", http_get) == %{
-             "LOG_LEVEL" => "info",
-             "WEB_EXTERNAL_URL" => "https://app.example.com"
+             "LOG_LEVEL" => %{value: "info", mode: :live},
+             "WEB_EXTERNAL_URL" => %{value: "https://app.example.com", mode: :boot}
            }
 
     assert_received {:get, token_url, [{"Metadata", "true"}]}
@@ -63,7 +64,9 @@ defmodule Portal.Config.AzureTest do
         {"https://fzconfigtest.vault.azure.net/secrets/secret-key-base/v1", {:ok, 200, JSON.encode!(%{"value" => "s3cret"})}}
       ])
 
-    assert Azure.fetch_settings!(@endpoint, "client-id", http_get) == %{"SECRET_KEY_BASE" => "s3cret"}
+    assert Azure.fetch_settings!(@endpoint, "client-id", http_get) == %{
+             "SECRET_KEY_BASE" => %{value: "s3cret", mode: :boot}
+           }
 
     assert_received {:get, "https://fzconfigtest.vault.azure.net/secrets/secret-key-base/v1?api-version=7.4",
                      [{"Authorization", "Bearer vault-token"}]}
