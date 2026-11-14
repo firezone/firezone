@@ -485,6 +485,10 @@ config :portal, Portal.Cluster,
 
 config :portal, sign_up_whitelisted_domains: []
 
+config :portal,
+  yc_deal_webhook_secrets: %{},
+  yc_deal_coupon_ids: %{}
+
 config :portal, docker_registry: "ghcr.io/firezone"
 
 config :portal, outbound_email_adapter_configured?: false

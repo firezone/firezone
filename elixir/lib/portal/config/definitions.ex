@@ -1336,6 +1336,21 @@ defmodule Portal.Config.Definitions do
   defconfig(:stripe_plan_product_ids, {:json_array, :string}, default: [])
 
   ##############################################
+  ## YC Deals
+  ##############################################
+
+  @doc """
+  JSON object of YC deal ID to the secret YC Deals uses to sign that deal's
+  redemption webhook with HMAC-SHA256.
+  """
+  defconfig(:yc_deal_webhook_secrets, :map, sensitive: true, default: %{})
+
+  @doc """
+  JSON object of YC deal ID to the Stripe coupon its single-use promotion codes apply.
+  """
+  defconfig(:yc_deal_coupon_ids, :map, default: %{})
+
+  ##############################################
   ## Local development and Staging Helpers
   ##############################################
 
