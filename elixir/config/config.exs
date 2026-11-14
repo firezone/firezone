@@ -554,7 +554,7 @@ config :portal,
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
 config :portal,
-  flow_logs_api_url: "https://flow-api.firezone.dev/",
+  flow_logs_api_url: nil,
   flow_logs_upload_interval_secs: 60
 
 config :portal, country_code_blocklist: []

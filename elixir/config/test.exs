@@ -19,6 +19,8 @@ config :portal, sql_sandbox: true
 
 config :portal, run_manual_migrations: true
 
+config :portal, flow_logs_api_url: "https://flow-api.firezone.dev/"
+
 config :portal, Portal.Repo,
   database: database,
   pool: Ecto.Adapters.SQL.Sandbox,
