@@ -46,6 +46,34 @@ defmodule Portal.Config.Definitions do
   end
 
   ##############################################
+  ## Configuration Source
+  ##############################################
+
+  @doc """
+  Where the portal reads its settings from.
+
+  `environment` reads every setting from environment variables. `azure` reads
+  them from the Azure App Configuration store at
+  `AZURE_APP_CONFIGURATION_ENDPOINT`, resolving Key Vault references with the
+  VM's managed identity (`AZURE_CLIENT_ID`). Settings the store does not have
+  fall back to environment variables.
+
+  This setting and the store endpoint are always read from environment
+  variables.
+  """
+  defconfig(
+    :config_adapter,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:environment, :azure]),
+    default: :environment
+  )
+
+  @doc """
+  Endpoint of the Azure App Configuration store, e.g.
+  `https://fzconfigprod.azconfig.io`. Required when `CONFIG_ADAPTER` is `azure`.
+  """
+  defconfig(:azure_app_configuration_endpoint, :string, default: nil)
+
+  ##############################################
   ## Background Jobs
   ##############################################
 
@@ -1290,6 +1318,12 @@ defmodule Portal.Config.Definitions do
   Configure the webhook URL with `?secret=...` using this value.
   """
   defconfig(:acs_event_grid_webhook_signing_secret, :string, sensitive: true, default: nil)
+
+  @doc """
+  Resend API key used to move outbound email to Resend from the remote console
+  when Azure Communication Services is down.
+  """
+  defconfig(:resend_api_key, :string, sensitive: true, default: nil)
 
   ##############################################
   ## Billing flags

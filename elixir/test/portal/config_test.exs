@@ -448,6 +448,21 @@ defmodule Portal.ConfigTest do
     end
   end
 
+  describe "source/0" do
+    test "returns the environment variables with the environment adapter" do
+      assert Portal.Config.source() == System.get_env()
+    end
+
+    test "requires the store endpoint with the azure adapter" do
+      put_system_env_override(:config_adapter, "azure")
+      put_system_env_override(:azure_app_configuration_endpoint, nil)
+
+      assert_raise RuntimeError,
+                   "AZURE_APP_CONFIGURATION_ENDPOINT must be set when CONFIG_ADAPTER is azure",
+                   fn -> Portal.Config.source() end
+    end
+  end
+
   describe "merge_env_override/3 and delete_env_override/3" do
     @client Portal.Google.APIClient
 
