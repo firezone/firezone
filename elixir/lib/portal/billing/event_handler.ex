@@ -112,6 +112,12 @@ defmodule Portal.Billing.EventHandler do
     {:skip, :no_customer_id}
   end
 
+  # Each finalized invoice is its own event rather than a newer state of the
+  # same object, and invoices can finalize in the same second.
+  defp check_chronological_order(_customer_id, _event_created, "invoice.finalized", _event_id) do
+    :ok
+  end
+
   defp check_chronological_order(customer_id, event_created, event_type, event_id) do
     case ProcessedEvents.get_latest_for_stripe_customer(customer_id, event_type) do
       nil ->
@@ -167,6 +173,9 @@ defmodule Portal.Billing.EventHandler do
 
       "customer.subscription." <> sub_event when sub_event in @subscription_events ->
         handle_subscription_active(event_data)
+
+      "invoice.finalized" ->
+        Billing.YCDeal.enforce_cap(event_data)
 
       _ ->
         handle_unknown_event(event_type, event_data)

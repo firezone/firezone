@@ -85,12 +85,71 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :post, "subscriptions", body)
   end
 
+  def create_promotion_code(api_token, coupon_id, metadata, idempotency_key) do
+    body =
+      metadata
+      |> Map.new(fn {key, value} -> {"metadata[#{key}]", value} end)
+      |> Map.merge(%{"coupon" => coupon_id, "max_redemptions" => 1})
+      |> URI.encode_query(:www_form)
+
+    request(api_token, :post, "promotion_codes", body, idempotency_key: idempotency_key)
+  end
+
+  def list_all_customer_invoices(api_token, customer_id, page_after \\ nil, acc \\ []) do
+    query =
+      [
+        {"customer", customer_id},
+        {"limit", 100},
+        {"expand[]", "data.total_discount_amounts.discount"}
+      ]
+      |> put_if_not_nil_kv("starting_after", page_after)
+      |> URI.encode_query(:www_form)
+
+    case request(api_token, :get, "invoices?#{query}") do
+      {:ok, %{"has_more" => true, "data" => data}} ->
+        list_all_customer_invoices(api_token, customer_id, List.last(data)["id"], acc ++ data)
+
+      {:ok, %{"has_more" => false, "data" => data}} ->
+        {:ok, acc ++ data}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def list_all_customer_invoice_items(api_token, customer_id, page_after \\ nil, acc \\ []) do
+    query =
+      [{"customer", customer_id}, {"limit", 100}]
+      |> put_if_not_nil_kv("starting_after", page_after)
+      |> URI.encode_query(:www_form)
+
+    case request(api_token, :get, "invoiceitems?#{query}") do
+      {:ok, %{"has_more" => true, "data" => data}} ->
+        list_all_customer_invoice_items(api_token, customer_id, List.last(data)["id"], acc ++ data)
+
+      {:ok, %{"has_more" => false, "data" => data}} ->
+        {:ok, acc ++ data}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def create_invoice_item(api_token, attrs, idempotency_key) do
+    body = URI.encode_query(attrs, :www_form)
+    request(api_token, :post, "invoiceitems", body, idempotency_key: idempotency_key)
+  end
+
+  def delete_subscription_discount(api_token, subscription_id) do
+    request(api_token, :delete, "subscriptions/#{subscription_id}/discount")
+  end
+
   def cancel_subscription(api_token, subscription_id) do
     request(api_token, :delete, "subscriptions/#{subscription_id}")
   end
 
   # Req turns a GET with a body, even an empty one, into a POST.
-  def request(api_token, method, path, body \\ nil) do
+  def request(api_token, method, path, body \\ nil, opts \\ []) do
     endpoint = fetch_config!(:endpoint)
     url = "#{endpoint}/v1/#{path}"
 
@@ -107,7 +166,7 @@ defmodule Portal.Billing.Stripe.APIClient do
       [
         method: method,
         url: url,
-        headers: headers ++ idempotency_key_header(method),
+        headers: headers ++ idempotency_key_header(method, opts[:idempotency_key]),
         body: body,
         retry: &retry?/2,
         max_retries: 2
@@ -149,8 +208,12 @@ defmodule Portal.Billing.Stripe.APIClient do
   defp retryable?(%Req.TransportError{reason: reason}), do: reason in [:timeout, :econnrefused, :closed]
   defp retryable?(_exception), do: false
 
-  defp idempotency_key_header(:post), do: [{"idempotency-key", Ecto.UUID.generate()}]
-  defp idempotency_key_header(_method), do: []
+  defp idempotency_key_header(:post, nil), do: [{"idempotency-key", Ecto.UUID.generate()}]
+  defp idempotency_key_header(:post, key), do: [{"idempotency-key", key}]
+  defp idempotency_key_header(_method, _key), do: []
+
+  defp put_if_not_nil_kv(params, _key, nil), do: params
+  defp put_if_not_nil_kv(params, key, value), do: params ++ [{key, value}]
 
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)

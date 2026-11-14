@@ -232,6 +232,10 @@ defmodule PortalAPI.Router do
     scope "/stripe", Stripe do
       post "/webhooks", WebhookController, :handle_webhook
     end
+
+    scope "/yc", YC do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
   end
 
   # Webhook auth failures log a warning from code that has no conn, so the

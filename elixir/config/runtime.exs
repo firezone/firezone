@@ -839,6 +839,10 @@ if config_env() == :prod do
          ] ++ env_var_to_config!(:outbound_email_adapter_opts)
 
   config :portal,
+    yc_deal_webhook_secrets: env_var_to_config!(:yc_deal_webhook_secrets),
+    yc_deal_coupon_ids: env_var_to_config!(:yc_deal_coupon_ids)
+
+  config :portal,
          Portal.Mailer.Secondary,
          [
            adapter: env_var_to_config!(:secondary_outbound_email_adapter),
