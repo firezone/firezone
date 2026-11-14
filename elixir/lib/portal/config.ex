@@ -1,5 +1,42 @@
 defmodule Portal.Config do
-  alias Portal.Config.{Definitions, Errors, Fetcher}
+  alias Portal.Config.{Azure, Definitions, Errors, Fetcher}
+
+  @azure_settings_key {__MODULE__, :azure_settings}
+
+  @doc """
+  Returns the settings that configuration keys resolve from, keyed by their
+  environment variable names.
+
+  With the `environment` adapter these are the environment variables. With the
+  `azure` adapter, the App Configuration store's settings take precedence and
+  environment variables fill in any setting the store does not have. The store
+  is read once per VM boot.
+  """
+  def source do
+    env = System.get_env()
+
+    case Fetcher.fetch_source_and_config(Definitions, :config_adapter, env) do
+      {:ok, _source, :environment} -> env
+      {:ok, _source, :azure} -> Map.merge(env, azure_settings!(env))
+      {:error, reason} -> Errors.raise_error!(reason)
+    end
+  end
+
+  defp azure_settings!(env) do
+    case :persistent_term.get(@azure_settings_key, nil) do
+      nil ->
+        endpoint =
+          env_var_to_config!(Definitions, :azure_app_configuration_endpoint, env) ||
+            raise "AZURE_APP_CONFIGURATION_ENDPOINT must be set when CONFIG_ADAPTER is azure"
+
+        settings = Azure.fetch_settings!(endpoint, env_var_to_config(Definitions, :azure_client_id, env))
+        :persistent_term.put(@azure_settings_key, settings)
+        settings
+
+      settings ->
+        settings
+    end
+  end
 
   def fetch_resolved_configs!(account_id, keys, opts \\ []) do
     for {key, {_source, value}} <-
@@ -10,7 +47,7 @@ defmodule Portal.Config do
   end
 
   def fetch_resolved_configs_with_sources!(_account_id, keys, _opts \\ []) do
-    env_var_to_config = System.get_env()
+    env_var_to_config = source()
 
     for key <- keys, into: %{} do
       case Fetcher.fetch_source_and_config(Definitions, key, env_var_to_config) do
@@ -31,7 +68,7 @@ defmodule Portal.Config do
 
   If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
   """
-  def env_var_to_config!(module \\ Definitions, key, env_var_to_config \\ System.get_env()) do
+  def env_var_to_config!(module \\ Definitions, key, env_var_to_config \\ source()) do
     case Fetcher.fetch_source_and_config(module, key, env_var_to_config) do
       {:ok, _source, value} ->
         value
@@ -49,7 +86,7 @@ defmodule Portal.Config do
 
   If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
   """
-  def env_var_to_config(module \\ Definitions, key, env_var_to_config \\ System.get_env()) do
+  def env_var_to_config(module \\ Definitions, key, env_var_to_config \\ source()) do
     case Fetcher.fetch_source_and_config(module, key, env_var_to_config) do
       {:ok, _source, value} ->
         value
