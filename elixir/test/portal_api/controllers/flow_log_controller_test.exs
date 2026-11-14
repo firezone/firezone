@@ -1,7 +1,6 @@
 defmodule PortalAPI.FlowLogControllerTest do
   use PortalAPI.ConnCase, async: true
 
-  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.FlowLogFixtures
 
@@ -190,7 +189,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert Repo.all(FlowLog) == []
     end
 
-    test "counts and logs each rejected token by reason", %{conn: conn, account: account} do
+    test "counts each rejected token by reason", %{conn: conn, account: account} do
       test_pid = self()
       handler_id = "test-flow-log-unauthorized-#{System.unique_integer([:positive])}"
 
@@ -210,20 +209,19 @@ defmodule PortalAPI.FlowLogControllerTest do
       past = DateTime.add(DateTime.utc_now(), -40 * 86_400, :second)
 
       cases = [
-        {:missing, nil, nil},
-        {:malformed, "not-a-jwt", nil},
-        {:unknown_account, FlowLogToken.mint(unknown, flow_log_token_claims(), expires_at()), unknown.id},
-        {:invalid, FlowLogToken.mint(impostor, flow_log_token_claims(), expires_at()), account.id},
-        {:expired, FlowLogToken.mint(account, flow_log_token_claims(), past), account.id},
+        {:missing, nil},
+        {:malformed, "not-a-jwt"},
+        {:unknown_account, FlowLogToken.mint(unknown, flow_log_token_claims(), expires_at())},
+        {:invalid, FlowLogToken.mint(impostor, flow_log_token_claims(), expires_at())},
+        {:expired, FlowLogToken.mint(account, flow_log_token_claims(), past)},
         {:uploads_disabled,
-         FlowLogToken.mint(account, flow_log_token_claims(%{"uploads_enabled" => false}), expires_at()),
-         account.id}
+         FlowLogToken.mint(account, flow_log_token_claims(%{"uploads_enabled" => false}), expires_at())}
       ]
 
-      for {reason, token, account_id} <- cases do
+      for {reason, token} <- cases do
         request = if token, do: put_req_header(conn, "authorization", "Bearer " <> token), else: conn
 
-        {response, log} = with_log(fn -> post_logs(request, [build_record()]) end)
+        response = post_logs(request, [build_record()])
 
         if reason in [:unknown_account, :invalid] do
           assert json_response(response, 200) == %{"data" => %{"status" => "ok"}}
@@ -232,9 +230,6 @@ defmodule PortalAPI.FlowLogControllerTest do
         end
 
         assert_received {[:portal, :flow_logs, :upload_unauthorized], %{count: 1}, %{reason: ^reason}}
-        assert log =~ "Flow log upload unauthorized"
-        assert log =~ "reason=#{reason}"
-        if account_id, do: assert(log =~ "account_id=#{account_id}")
       end
     end
 

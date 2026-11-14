@@ -60,6 +60,7 @@ defmodule Portal.Application do
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.SlugRegistry.Cache,
+      Portal.FlowLogToken.AccountCache,
       Portal.ComponentVersions,
       Portal.OSReleases,
       Portal.ClockDriftAlarm,
