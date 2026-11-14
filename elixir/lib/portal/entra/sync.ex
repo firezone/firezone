@@ -109,14 +109,12 @@ defmodule Portal.Entra.Sync do
       entra_directory_id: directory.id
     )
 
-    if Portal.Avatars.enabled?() do
-      %{account_id: directory.account_id, directory_id: directory.id}
-      |> Entra.Avatars.new()
-      |> Oban.insert()
-      |> case do
-        {:ok, _job} -> :ok
-        {:error, reason} -> Logger.warning("Failed to queue profile photo sync", entra_directory_id: directory.id, reason: inspect(reason))
-      end
+    %{account_id: directory.account_id, directory_id: directory.id}
+    |> Entra.Avatars.new()
+    |> Oban.insert()
+    |> case do
+      {:ok, _job} -> :ok
+      {:error, reason} -> Logger.warning("Failed to queue profile photo sync", entra_directory_id: directory.id, reason: inspect(reason))
     end
 
     {:ok, _job} =

@@ -1740,7 +1740,18 @@ defmodule PortalWeb.ActorsTest do
 
   describe "avatars" do
     setup %{account: account} do
+      Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
       %{directory: Portal.EntraDirectoryFixtures.entra_directory_fixture(account: account)}
+    end
+
+    test "shows the icon when photos are off", %{conn: conn, account: account, actor: actor, directory: directory} do
+      Portal.Config.put_env_override(:avatars_container_url, nil)
+      user = actor_fixture(account: account, type: :account_user)
+      directory_identity_fixture(directory: directory, actor: user, avatar_etag: "etag-1")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      refute has_element?(lv, "#actor-#{user.id} img[src*='/avatars/']")
     end
 
     test "shows the directory photo of a user", %{conn: conn, account: account, actor: actor, directory: directory} do

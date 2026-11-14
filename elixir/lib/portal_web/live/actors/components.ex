@@ -1644,10 +1644,12 @@ defmodule PortalWeb.Actors.Components do
   shield badge on top.
   """
   def actor_avatar(assigns) do
+    assigns = assign(assigns, :photo?, not is_nil(assigns.actor.avatar_identity_id) and Portal.Avatars.enabled?())
+
     ~H"""
     <div class="relative inline-flex shrink-0">
       <img
-        :if={@actor.avatar_identity_id}
+        :if={@photo?}
         src={
           ~p"/#{@account}/avatars/#{@actor.avatar_identity_id}?#{[v: Portal.Avatars.version(@actor.avatar_etag)]}"
         }
@@ -1655,7 +1657,7 @@ defmodule PortalWeb.Actors.Components do
         class="w-8 h-8 rounded-full object-cover bg-neutral-100"
       />
       <div
-        :if={is_nil(@actor.avatar_identity_id)}
+        :if={not @photo?}
         class={[
           "inline-flex items-center justify-center w-8 h-8 rounded-full",
           actor_type_icon_bg_color(@actor.type)

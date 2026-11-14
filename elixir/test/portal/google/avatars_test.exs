@@ -81,6 +81,13 @@ defmodule Portal.Google.AvatarsTest do
     assert blobs(store) == %{blob_name(identity, "etag-1") => {bytes, "image/jpeg"}}
   end
 
+  test "does nothing without a container", %{directory: directory} do
+    Portal.Config.put_env_override(:avatars_container_url, nil)
+    directory_identity_fixture(directory: directory, idp_id: "user-1")
+
+    assert :ok = perform_job(Avatars, args(directory))
+  end
+
   defp args(directory), do: %{account_id: directory.account_id, directory_id: directory.id}
 
   defp reload(identity), do: Repo.get_by!(ExternalIdentity, account_id: identity.account_id, id: identity.id)

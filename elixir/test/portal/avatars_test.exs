@@ -67,13 +67,41 @@ defmodule Portal.AvatarsTest do
       assert_enqueued(worker: Avatars.DeleteAccount, args: %{account_id: account.id})
     end
 
-    test "is not queued when photos are off", %{account: account} do
+    test "is queued and does nothing when photos are off", %{account: account} do
       Portal.Config.put_env_override(:avatars_container_url, nil)
       {:ok, account} = account |> Ecto.Changeset.change(is_disabled: true) |> Repo.update()
 
       assert :ok = Portal.Ops.delete_disabled_account(account.id)
 
-      refute_enqueued(worker: Avatars.DeleteAccount)
+      assert_enqueued(worker: Avatars.DeleteAccount, args: %{account_id: account.id})
+      assert :ok = perform_job(Avatars.DeleteAccount, %{account_id: account.id})
+    end
+  end
+
+  describe "without a container" do
+    setup do
+      Portal.Config.put_env_override(:avatars_container_url, nil)
+    end
+
+    test "the prune job does nothing" do
+      assert :ok = perform_job(Avatars.Prune, %{})
+    end
+
+    test "the sign-in photo job is queued and does nothing", %{account: account} do
+      identity = identity_fixture(account: account, picture: "https://idp.example.com/photo.jpg")
+
+      assert :ok = Avatars.Picture.enqueue(identity)
+
+      assert_enqueued(worker: Avatars.Picture, args: %{identity_id: identity.id})
+      assert :ok = perform_job(Avatars.Picture, %{account_id: account.id, identity_id: identity.id})
+    end
+
+    test "actors and photos read as having none", %{account: account} do
+      actor = actor_fixture(account: account)
+      identity = identity_fixture(account: account, actor: actor, avatar_source: :picture, avatar_etag: "sha")
+
+      assert %{avatar_identity_id: nil} = Avatars.put_actor_avatar(actor)
+      assert {:error, :not_found} = Avatars.fetch(identity)
     end
   end
 

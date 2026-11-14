@@ -130,9 +130,9 @@ defmodule Portal.Avatars do
   then the newest sign-in photo.
   """
   def put_actor_avatar(%Portal.Actor{} = actor) do
-    case Database.get_actor_avatar(actor.account_id, actor.id) do
+    case enabled?() && Database.get_actor_avatar(actor.account_id, actor.id) do
       %{id: identity_id, etag: etag} -> %{actor | avatar_identity_id: identity_id, avatar_etag: etag}
-      nil -> actor
+      _none -> actor
     end
   end
 
@@ -140,7 +140,8 @@ defmodule Portal.Avatars do
   Returns the stored photo of an identity and its content type.
   """
   def fetch(%ExternalIdentity{avatar_etag: etag} = identity) when is_binary(etag) do
-    with {:ok, body} <- Storage.get(blob_name(identity, etag)),
+    with true <- enabled?() || {:error, :not_found},
+         {:ok, body} <- Storage.get(blob_name(identity, etag)),
          type when is_binary(type) <- image_type(body) do
       {:ok, body, type}
     else

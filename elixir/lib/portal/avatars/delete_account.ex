@@ -11,15 +11,9 @@ defmodule Portal.Avatars.DeleteAccount do
   alias Portal.Avatars
 
   @doc """
-  Queues the job, unless photos are off.
+  Queues the job. It does nothing when photos are off.
   """
-  def insert(account_id) do
-    if Avatars.enabled?() do
-      %{account_id: account_id} |> new() |> Oban.insert()
-    else
-      {:ok, nil}
-    end
-  end
+  def insert(account_id), do: %{account_id: account_id} |> new() |> Oban.insert()
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"account_id" => account_id}}) do

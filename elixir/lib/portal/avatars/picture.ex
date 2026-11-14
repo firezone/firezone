@@ -34,7 +34,7 @@ defmodule Portal.Avatars.Picture do
   to do. Never fails the sign-in.
   """
   def enqueue(%ExternalIdentity{} = identity) do
-    if Avatars.enabled?() and identity.avatar_source != :directory and
+    if identity.avatar_source != :directory and
          (downloadable?(identity.picture) or identity.avatar_source == :picture) do
       insert(identity)
     end
