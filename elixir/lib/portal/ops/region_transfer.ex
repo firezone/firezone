@@ -306,9 +306,6 @@ defmodule Portal.Ops.RegionTransfer do
   @doc "Cancels the source subscriptions without proration. Run it in the source region."
   defdelegate finish_source_billing(account_id, opts \\ []), to: Billing, as: :finish_source
 
-  @doc "Deletes the source Stripe customer. See `Portal.Ops.RegionTransfer.Billing.delete_source_customer/2`."
-  defdelegate delete_source_customer(account_id, opts \\ []), to: Billing
-
   defp copy_file(table), do: "#{table}.copy"
 
   defp sha256(body), do: :crypto.hash(:sha256, body) |> Base.encode16(case: :lower)
