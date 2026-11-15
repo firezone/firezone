@@ -231,6 +231,40 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       assert {:error, {:subscription_requires_review, "sub_us"}} = RegionTransfer.plan_billing(account.id)
     end
 
+    test "uses a copied customer with a new ID in place of a deleted one", %{account: account, stripe: stripe} = ctx do
+      account
+      |> Ecto.Changeset.cast(%{metadata: %{stripe: %{customer_id: "cus_by_hand"}}}, [])
+      |> Ecto.Changeset.cast_embed(:metadata)
+      |> Repo.update!()
+
+      stub_destination_stripe(ctx,
+        customer: :missing,
+        responses: %{
+          "/v1/customers/cus_by_hand" => %{"id" => "cus_by_hand", "object" => "customer", "deleted" => true},
+          "/v1/customers/cus_copied" => customer("cus_copied", %{"account_id" => account.id})
+        }
+      )
+
+      assert {:error, :stripe_customer_copy_required} =
+               RegionTransfer.plan_billing(account.id, replace_customer: "cus_by_hand")
+
+      capture_io(fn ->
+        assert {:ok, "sub_eu_1"} =
+                 RegionTransfer.migrate_billing(account.id,
+                   confirm: false,
+                   replace_customer: "cus_by_hand",
+                   copied_customer: "cus_copied"
+                 )
+      end)
+
+      assert [{_key, %{"customer" => "cus_copied"}}] = posts(stripe, "/v1/subscriptions")
+      assert posts(stripe, "/v1/customers/cus_by_hand") == []
+
+      account = reload(account)
+      assert account.metadata.stripe.customer_id == "cus_copied"
+      assert account.metadata.stripe.subscription_id == "sub_eu_1"
+    end
+
     test "replaces a customer created in the destination by hand", %{account: account, stripe: stripe} do
       account
       |> Ecto.Changeset.cast(%{metadata: %{stripe: %{customer_id: "cus_by_hand"}}}, [])

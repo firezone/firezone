@@ -71,7 +71,9 @@ defmodule Portal.Ops.RegionTransfer.Billing do
   no single match, `payment_method_map:` with the IDs from Stripe's copy
   mapping file when the source subscription has its own payment method, and
   `replace_customer: "cus_..."` when the account points at a customer that was
-  created in this Stripe account instead of copied.
+  created in this Stripe account instead of copied. Pass
+  `copied_customer: "cus_..."` when the copy gave the customer a new ID, as
+  Stripe's mapping file shows.
   """
   def migrate(account_id, opts \\ []) do
     with {:ok, plan} <- plan(account_id, opts),
@@ -162,8 +164,9 @@ defmodule Portal.Ops.RegionTransfer.Billing do
          {:ok, snapshot} <- destination_snapshot(account),
          {:ok, destination} <- get("account"),
          true <- destination["id"] != snapshot["source_stripe_account_id"] || {:error, :same_stripe_account},
-         {:ok, replaced} <- current_customer(account, snapshot, opts),
-         {:ok, customer} <- copied_customer(account, snapshot),
+         copied_id = Keyword.get(opts, :copied_customer, snapshot["customer"]["id"]),
+         {:ok, replaced} <- current_customer(account, snapshot, copied_id, opts),
+         {:ok, customer} <- copied_customer(account, snapshot, copied_id),
          :ok <- supported_customer(snapshot["customer"]),
          :ok <- supported_customer(customer),
          {:ok, subscription} <- source_subscription(snapshot),
@@ -240,34 +243,43 @@ defmodule Portal.Ops.RegionTransfer.Billing do
     params |> Enum.sort() |> :erlang.term_to_binary() |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower)
   end
 
-  defp current_customer(account, snapshot, opts) do
+  defp current_customer(account, snapshot, copied_id, opts) do
     source_id = snapshot["customer"]["id"]
     replace = Keyword.get(opts, :replace_customer)
 
     case account.metadata.stripe.customer_id do
       ^source_id -> {:ok, nil}
+      ^copied_id -> {:ok, nil}
       ^replace when is_binary(replace) -> replaceable_customer(account, replace)
       other -> {:error, {:unexpected_customer, other}}
     end
   end
 
-  # The customer made by hand must be this account's, and must not bill it.
+  # The customer made by hand must be deleted, or be this account's and not
+  # bill it. A deleted customer has nothing left to unlink.
   defp replaceable_customer(account, customer_id) do
-    with {:ok, customer} <- get("customers/#{customer_id}"),
-         true <- get_in(customer, ["metadata", "account_id"]) == account.id || {:error, {:unexpected_customer, customer_id}},
-         {:ok, subscriptions} <- list("subscriptions", customer: customer_id, status: "all"),
+    case get("customers/#{customer_id}") do
+      {:ok, %{"deleted" => true}} -> {:ok, nil}
+      {:ok, customer} -> unused_customer(account, customer)
+      error -> error
+    end
+  end
+
+  defp unused_customer(account, customer) do
+    with true <- get_in(customer, ["metadata", "account_id"]) == account.id || {:error, {:unexpected_customer, customer["id"]}},
+         {:ok, subscriptions} <- list("subscriptions", customer: customer["id"], status: "all"),
          [] <- for(s <- subscriptions, s["status"] not in @closed_statuses, do: s["id"]) do
-      {:ok, customer_id}
+      {:ok, customer["id"]}
     else
       ids when is_list(ids) -> {:error, {:replaced_customer_has_subscriptions, ids}}
       error -> error
     end
   end
 
-  defp copied_customer(account, snapshot) do
+  defp copied_customer(account, snapshot, copied_id) do
     source = snapshot["customer"]
 
-    case get("customers/#{source["id"]}") do
+    case get("customers/#{copied_id}") do
       {:ok, %{"deleted" => true}} ->
         {:error, :copied_customer_deleted}
 
