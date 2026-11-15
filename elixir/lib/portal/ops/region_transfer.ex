@@ -13,12 +13,16 @@ defmodule Portal.Ops.RegionTransfer do
   Every function asks for confirmation on the console. Pass `confirm: false`
   to skip the prompt when a script calls it through `bin/portal rpc`.
 
+  Stripe billing moves in separate steps: `prepare_billing_copy/1`,
+  `migrate_billing/2` and `finish_source_billing/2`.
+
   The log tables are not moved. They stay in the source region until the
   account is deleted there, which cascades to them. The email suppression list
   is shared by every account in a region, so only the suppressed addresses of
   the account's actors and past recipients are copied, and the source keeps
   them.
   """
+  alias __MODULE__.Billing
   alias __MODULE__.Database
   alias __MODULE__.Storage
   alias Portal.Mailer
@@ -27,6 +31,7 @@ defmodule Portal.Ops.RegionTransfer do
 
   @disabled_reason "Region transfer in progress"
   @manifest "manifest.json"
+  @billing "billing.json"
   @region_names %{us: "United States", eu: "European Union"}
 
   # Session state that users recreate by signing in, tokens signed with this
@@ -50,17 +55,59 @@ defmodule Portal.Ops.RegionTransfer do
       IO.puts("Skipped: #{Enum.join(@skipped_tables, ", ")}")
 
       if confirm?(opts, "Disable the account and export it to the #{other_region_name()} region? [y/N]") do
-        {:ok, account} = Database.disable_account(account, @disabled_reason)
-        notify_admins(account, &Notifications.region_transfer_started_email(&1, &2, other_region_name()))
-
-        manifest = with_scratch_dir(&upload_export(&1, account, plan))
-
-        IO.puts("Exported #{total_rows(manifest)} rows. The account is disabled.")
-        {:ok, manifest}
+        disable_and_export(account, plan)
       else
         IO.puts("Aborted.")
         :aborted
       end
+    end
+  end
+
+  # Stripe is read before the account is disabled, so a Stripe outage does
+  # not start a maintenance window.
+  defp disable_and_export(account, plan) do
+    with {:ok, billing} <- Billing.snapshot(account), do: disable_and_export(account, plan, billing)
+  end
+
+  defp disable_and_export(account, plan, billing) do
+    {:ok, account} = Database.disable_account(account, @disabled_reason)
+    {:ok, account} = Database.put_billing_state(account, Billing.transfer_state(billing, "exported"))
+    notify_admins(account, &Notifications.region_transfer_started_email(&1, &2, other_region_name()))
+
+    manifest = with_scratch_dir(&upload_export(&1, account, plan, billing))
+
+    IO.puts("Exported #{total_rows(manifest)} rows. The account is disabled.")
+    {:ok, manifest}
+  end
+
+  @doc """
+  Uploads the Stripe billing of an account that an export without it already
+  disabled. Prints the checksum that `import_billing/2` takes in the other
+  region.
+  """
+  def export_billing(account_id) do
+    account = Database.fetch_account!(account_id)
+
+    with :ok <- in_transfer(account),
+         {:ok, %{} = billing} <- Billing.snapshot(account) do
+      {:ok, _account} = Database.put_billing_state(account, Billing.transfer_state(billing, "exported"))
+      checksum = upload_billing(account.id, billing)
+      IO.puts("Billing checksum: #{checksum}")
+      {:ok, checksum}
+    else
+      {:ok, nil} -> {:error, :no_stripe_customer}
+      error -> error
+    end
+  end
+
+  @doc "Loads the billing that `export_billing/1` uploaded into an imported account."
+  def import_billing(account_id, checksum) do
+    account = Database.fetch_account!(account_id)
+
+    with :ok <- in_transfer(account),
+         {:ok, billing} <- download_billing(%{"account_id" => account_id, "billing_checksum" => checksum}),
+         {:ok, _account} <- Database.put_billing_state(account, Billing.transfer_state(billing, "pending")) do
+      :ok
     end
   end
 
@@ -97,13 +144,21 @@ defmodule Portal.Ops.RegionTransfer do
   Turns an account disabled by `export/2` back on. In the destination this
   also emails the admins that the move is done; pass `notify: false` when
   rolling back in the source.
+
+  Refuses while the Stripe billing is not moved, and in the source once
+  `finish_source_billing/2` canceled it. Pass `billing: :skip` only for an
+  export made before billing moved with the account.
   """
   def enable(account_id, opts \\ []) do
     account = Database.fetch_account!(account_id)
+    billing = Billing.ready?(account, opts)
 
     cond do
       not account.is_disabled or account.disabled_reason != @disabled_reason ->
         {:error, {:not_in_transfer, account.disabled_reason}}
+
+      billing != :ok ->
+        billing
 
       not confirm?(opts, "Enable account #{account.name} (#{account.slug})? [y/N]") ->
         IO.puts("Aborted.")
@@ -170,7 +225,7 @@ defmodule Portal.Ops.RegionTransfer do
   # sees a manifest without its files. The checksums catch files left over
   # from an earlier export of the same account.
   # sobelow_skip ["Traversal.FileModule"]
-  defp upload_export(dir, account, plan) do
+  defp upload_export(dir, account, plan, billing) do
     {:ok, {account_columns, tables, suppressions}} = Database.export_tables(dir, account.id, plan)
 
     checksums =
@@ -179,6 +234,8 @@ defmodule Portal.Ops.RegionTransfer do
         :ok = Storage.put!(:outbox, account.id, copy_file(table), body)
         {table, sha256(body)}
       end)
+
+    billing_checksum = if billing, do: upload_billing(account.id, billing)
 
     manifest = %{
       "account_id" => account.id,
@@ -190,6 +247,7 @@ defmodule Portal.Ops.RegionTransfer do
       "account_columns" => account_columns,
       "tables" => tables,
       "checksums" => checksums,
+      "billing_checksum" => billing_checksum,
       "email_suppressions" => suppressions
     }
 
@@ -212,10 +270,41 @@ defmodule Portal.Ops.RegionTransfer do
   end
 
   defp download_and_import(dir, manifest) do
-    with :ok <- download_export(dir, manifest) do
-      Database.import_tables(dir, manifest)
+    with :ok <- download_export(dir, manifest),
+         {:ok, billing} <- download_billing(manifest) do
+      Database.import_tables(dir, manifest, billing)
     end
   end
+
+  defp upload_billing(account_id, billing) do
+    body = Jason.encode!(billing)
+    :ok = Storage.put!(:outbox, account_id, @billing, body)
+    sha256(body)
+  end
+
+  defp download_billing(%{"billing_checksum" => checksum} = manifest) when is_binary(checksum) do
+    case Storage.get(:inbox, manifest["account_id"], @billing) do
+      {:ok, body} -> if sha256(body) == checksum, do: {:ok, Jason.decode!(body)}, else: {:error, {:checksum_mismatch, "billing"}}
+      {:error, :not_found} -> {:error, {:file_missing, "billing"}}
+    end
+  end
+
+  defp download_billing(_manifest), do: {:ok, nil}
+
+  defp in_transfer(%{is_disabled: true, disabled_reason: @disabled_reason}), do: :ok
+  defp in_transfer(account), do: {:error, {:not_in_transfer, account.disabled_reason}}
+
+  @doc "Shows the Stripe customer to copy before the maintenance window. Run it in the source region."
+  defdelegate prepare_billing_copy(account_id), to: Billing, as: :prepare_copy
+
+  @doc "Shows the subscription that `migrate_billing/2` creates. Run it in the destination region."
+  defdelegate plan_billing(account_id, opts \\ []), to: Billing, as: :plan
+
+  @doc "Recreates the subscription in the destination region. See `Portal.Ops.RegionTransfer.Billing.migrate/2`."
+  defdelegate migrate_billing(account_id, opts \\ []), to: Billing, as: :migrate
+
+  @doc "Cancels the source subscriptions without proration. Run it in the source region."
+  defdelegate finish_source_billing(account_id, opts \\ []), to: Billing, as: :finish_source
 
   defp copy_file(table), do: "#{table}.copy"
 
@@ -301,6 +390,7 @@ defmodule Portal.Ops.RegionTransfer do
     import Ecto.Query
     alias Portal.Account
     alias Portal.AccountSlug
+    alias Portal.Ops.RegionTransfer.Billing
     alias Portal.EmailSuppression
     alias Portal.OutboundEmailDelivery
     alias Portal.Safe
@@ -364,6 +454,14 @@ defmodule Portal.Ops.RegionTransfer do
     def enable_account(%Account{} = account) do
       account
       |> Ecto.Changeset.change(is_disabled: false, disabled_reason: nil)
+      |> Safe.unscoped()
+      |> Safe.update()
+    end
+
+    def put_billing_state(account, state) do
+      account
+      |> Ecto.Changeset.cast(%{metadata: %{region_transfer: state}}, [])
+      |> Ecto.Changeset.cast_embed(:metadata)
       |> Safe.unscoped()
       |> Safe.update()
     end
@@ -513,7 +611,7 @@ defmodule Portal.Ops.RegionTransfer do
       end)
     end
 
-    def import_tables(dir, manifest) do
+    def import_tables(dir, manifest, billing) do
       Safe.transact(fn ->
         copy_in("accounts", manifest["account_columns"], Path.join(dir, "accounts.copy"))
 
@@ -522,6 +620,11 @@ defmodule Portal.Ops.RegionTransfer do
         end)
 
         insert_suppressions(manifest["email_suppressions"])
+
+        # The account row carries the source state, which the destination replaces.
+        {:ok, _account} =
+          manifest["account_id"] |> fetch_account!() |> put_billing_state(Billing.transfer_state(billing, "pending"))
+
         verify_counts(manifest)
       end)
     end

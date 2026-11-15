@@ -90,7 +90,7 @@ defmodule Portal.Billing.Stripe.APIClient do
   end
 
   # Req turns a GET with a body, even an empty one, into a POST.
-  def request(api_token, method, path, body \\ nil) do
+  def request(api_token, method, path, body \\ nil, opts \\ []) do
     endpoint = fetch_config!(:endpoint)
     url = "#{endpoint}/v1/#{path}"
 
@@ -107,7 +107,7 @@ defmodule Portal.Billing.Stripe.APIClient do
       [
         method: method,
         url: url,
-        headers: headers ++ idempotency_key_header(method),
+        headers: headers ++ idempotency_key_header(method, opts),
         body: body,
         retry: &retry?/2,
         max_retries: 2
@@ -149,8 +149,9 @@ defmodule Portal.Billing.Stripe.APIClient do
   defp retryable?(%Req.TransportError{reason: reason}), do: reason in [:timeout, :econnrefused, :closed]
   defp retryable?(_exception), do: false
 
-  defp idempotency_key_header(:post), do: [{"idempotency-key", Ecto.UUID.generate()}]
-  defp idempotency_key_header(_method), do: []
+  defp idempotency_key_header(:post, opts),
+    do: [{"idempotency-key", Keyword.get_lazy(opts, :idempotency_key, &Ecto.UUID.generate/0)}]
+  defp idempotency_key_header(_method, _opts), do: []
 
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)

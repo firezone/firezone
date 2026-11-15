@@ -69,6 +69,17 @@ defmodule Portal.Analytics.TeamEnrollmentTest do
     assert [_] = all_enqueued(worker: OpenAI)
   end
 
+  test "the renewal of a subscription moved by a region transfer is not an enrollment", %{subscription: subscription} do
+    trial_end = System.os_time(:second) + 1000
+    metadata = %{"region_transfer_prepaid_until" => to_string(trial_end)}
+    moved = Map.merge(subscription, %{"status" => "trialing", "trial_end" => trial_end, "metadata" => metadata})
+    event = Stripe.build_event("customer.subscription.created", moved)
+    assert {:ok, _} = EventHandler.handle_event(event)
+    renewed = Stripe.build_event("customer.subscription.updated", %{moved | "status" => "active"}, event["created"] + 1)
+    assert {:ok, _} = EventHandler.handle_event(renewed)
+    assert [] = all_enqueued(worker: OpenAI)
+  end
+
   test "incomplete Team enrollment waits for activation", %{subscription: subscription} do
     event = Stripe.build_event("customer.subscription.created", Map.put(subscription, "status", "incomplete"))
     assert {:ok, _} = EventHandler.handle_event(event)
