@@ -247,6 +247,25 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       assert reload(account).metadata.stripe.customer_id == @customer_id
       assert [{_headers, %{"metadata[account_id]" => ""}}] = posts(stripe, "/v1/customers/cus_by_hand")
     end
+
+    test "refuses to replace a customer that bills the account or names another one", %{account: account} = ctx do
+      account
+      |> Ecto.Changeset.cast(%{metadata: %{stripe: %{customer_id: "cus_by_hand"}}}, [])
+      |> Ecto.Changeset.cast_embed(:metadata)
+      |> Repo.update!()
+
+      Agent.update(ctx.stripe, &%{&1 | subscriptions: [%{"id" => "sub_by_hand", "status" => "active"}]})
+
+      assert {:error, {:replaced_customer_has_subscriptions, ["sub_by_hand"]}} =
+               RegionTransfer.plan_billing(account.id, replace_customer: "cus_by_hand")
+
+      Agent.update(ctx.stripe, &%{&1 | subscriptions: []})
+      other = customer("cus_by_hand", %{"account_id" => Ecto.UUID.generate()})
+      stub_destination_stripe(ctx, responses: %{"/v1/customers/cus_by_hand" => other})
+
+      assert {:error, {:unexpected_customer, "cus_by_hand"}} =
+               RegionTransfer.plan_billing(account.id, replace_customer: "cus_by_hand")
+    end
   end
 
   describe "finish_source_billing/2" do
@@ -398,10 +417,11 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       "/v1/account" => %{"id" => @destination_account},
       "/v1/customers/#{@customer_id}" => Keyword.get(opts, :customer, customer(@customer_id, %{"account_id" => account.id})),
       "/v1/prices" => list(Keyword.get(opts, :prices, [price("price_eu_team", "eur", "prod_test_team")])),
-      "/v1/products/prod_test_team" => Stripe.build_product(id: "prod_test_team", name: "Team")
+      "/v1/products/prod_test_team" => Stripe.build_product(id: "prod_test_team", name: "Team"),
+      "/v1/customers/cus_by_hand" => customer("cus_by_hand", %{"account_id" => account.id})
     }
 
-    stub_stripe(stripe, responses)
+    stub_stripe(stripe, Map.merge(responses, Keyword.get(opts, :responses, %{})))
   end
 
   # Subscriptions that POST /v1/subscriptions creates show up in later lists.

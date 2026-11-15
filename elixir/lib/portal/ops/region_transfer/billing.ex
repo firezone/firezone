@@ -246,8 +246,21 @@ defmodule Portal.Ops.RegionTransfer.Billing do
 
     case account.metadata.stripe.customer_id do
       ^source_id -> {:ok, nil}
-      ^replace when is_binary(replace) -> {:ok, replace}
+      ^replace when is_binary(replace) -> replaceable_customer(account, replace)
       other -> {:error, {:unexpected_customer, other}}
+    end
+  end
+
+  # The customer made by hand must be this account's, and must not bill it.
+  defp replaceable_customer(account, customer_id) do
+    with {:ok, customer} <- get("customers/#{customer_id}"),
+         true <- get_in(customer, ["metadata", "account_id"]) == account.id || {:error, {:unexpected_customer, customer_id}},
+         {:ok, subscriptions} <- list("subscriptions", customer: customer_id, status: "all"),
+         [] <- for(s <- subscriptions, s["status"] not in @closed_statuses, do: s["id"]) do
+      {:ok, customer_id}
+    else
+      ids when is_list(ids) -> {:error, {:replaced_customer_has_subscriptions, ids}}
+      error -> error
     end
   end
 
