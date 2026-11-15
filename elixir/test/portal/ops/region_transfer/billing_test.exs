@@ -372,6 +372,43 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
     end
   end
 
+  describe "delete_source_customer/2" do
+    setup ctx do
+      stub_source_stripe(ctx)
+      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(ctx.account.id, confirm: false) end)
+      :ok
+    end
+
+    test "refuses before the source subscription is canceled", %{account: account} do
+      assert {:error, :source_billing_not_canceled} = RegionTransfer.delete_source_customer(account.id, confirm: false)
+    end
+
+    test "deletes the customer once nothing is owed", %{account: account, stripe: stripe} = ctx do
+      capture_io(fn -> {:ok, _account} = RegionTransfer.finish_source_billing(account.id, confirm: false) end)
+      canceled = Map.put(ctx.source_subscription, "status", "canceled")
+      paid = [%{"id" => "in_paid", "status" => "paid"}]
+      stub_source_stripe(%{ctx | source_subscription: canceled}, invoices: paid)
+
+      assert {:ok, _account} = RegionTransfer.delete_source_customer(account.id, confirm: false)
+
+      assert [_delete] = stripe |> requests() |> Enum.filter(&(&1.method == "DELETE" and &1.path == "/v1/customers/#{@customer_id}"))
+      account = reload(account)
+      assert is_nil(account.metadata.stripe.customer_id)
+      assert account.metadata.region_transfer["status"] == "source_customer_deleted"
+      assert {:error, :source_billing_canceled} = RegionTransfer.enable(account.id, confirm: false)
+    end
+
+    test "refuses while invoices are unpaid", %{account: account, stripe: stripe} = ctx do
+      capture_io(fn -> {:ok, _account} = RegionTransfer.finish_source_billing(account.id, confirm: false) end)
+      stub_source_stripe(%{ctx | source_subscription: Map.put(ctx.source_subscription, "status", "canceled")})
+
+      assert {:error, {:unpaid_invoices, ["in_open", "in_sent"]}} =
+               RegionTransfer.delete_source_customer(account.id, confirm: false)
+
+      refute Enum.any?(requests(stripe), &(&1.method == "DELETE" and &1.path == "/v1/customers/#{@customer_id}"))
+    end
+  end
+
   describe "finish_source_billing/2" do
     setup ctx do
       stub_source_stripe(ctx)
@@ -481,18 +518,20 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
     |> Repo.update!()
   end
 
-  defp stub_source_stripe(%{account: account, stripe: stripe, source_subscription: subscription}) do
+  defp stub_source_stripe(%{account: account, stripe: stripe, source_subscription: subscription}, opts \\ []) do
     stub_stripe(stripe, %{
       "/v1/account" => %{"id" => @source_account},
       "/v1/customers/#{@customer_id}" => customer(@customer_id, %{"account_id" => account.id}),
       "/v1/subscriptions" => list([subscription]),
       "/v1/products/prod_us_team" => product("prod_us_team"),
       "/v1/invoices" =>
-        list([
-          %{"id" => "in_paid", "status" => "paid", "collection_method" => "charge_automatically"},
-          %{"id" => "in_open", "status" => "open", "collection_method" => "charge_automatically"},
-          %{"id" => "in_sent", "status" => "open", "collection_method" => "send_invoice"}
-        ]),
+        list(
+          Keyword.get(opts, :invoices, [
+            %{"id" => "in_paid", "status" => "paid", "collection_method" => "charge_automatically"},
+            %{"id" => "in_open", "status" => "open", "collection_method" => "charge_automatically"},
+            %{"id" => "in_sent", "status" => "open", "collection_method" => "send_invoice"}
+          ])
+        ),
       "/v1/invoiceitems" => list([])
     })
   end

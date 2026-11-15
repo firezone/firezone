@@ -108,6 +108,58 @@ defmodule Portal.Ops.RegionTransfer.Billing do
     end
   end
 
+  @doc """
+  Deletes the customer in the source Stripe account, so no customer details
+  stay in the source region. Run it after `finish_source/2`, once the customer
+  confirmed the move, and only when they owe nothing there. Stripe keeps the
+  invoices. It cannot be undone.
+  """
+  def delete_source_customer(account_id, opts \\ []) do
+    account = Database.fetch_account!(account_id)
+
+    with :ok <- in_transfer(account),
+         {:ok, snapshot} <- canceled_source_snapshot(account),
+         customer_id = snapshot["customer"]["id"],
+         true <- account.metadata.stripe.customer_id == customer_id || {:error, {:unexpected_customer, account.metadata.stripe.customer_id}},
+         {:ok, stripe_account} <- get("account"),
+         true <- stripe_account["id"] == snapshot["source_stripe_account_id"] || {:error, :wrong_stripe_account},
+         :ok <- nothing_owed(customer_id),
+         :ok <- confirm(opts, "Delete customer #{customer_id} in Stripe account #{stripe_account["id"]}? [y/N]"),
+         {:ok, _customer} <- request(:delete, "customers/#{customer_id}") do
+      # The account delete would otherwise queue a job for the deleted customer.
+      Database.put_state(
+        Database.put_customer_id!(account, nil),
+        %{account.metadata.region_transfer | "status" => "source_customer_deleted"}
+      )
+    end
+  end
+
+  defp canceled_source_snapshot(account) do
+    case account.metadata.region_transfer do
+      %{"status" => "source_canceled", "snapshot" => %{"source_region" => region} = snapshot} ->
+        if region == region(), do: {:ok, snapshot}, else: {:error, :run_in_source}
+
+      _state ->
+        {:error, :source_billing_not_canceled}
+    end
+  end
+
+  defp nothing_owed(customer_id) do
+    with {:ok, customer} <- get("customers/#{customer_id}"),
+         {:ok, subscriptions} <- list("subscriptions", customer: customer_id, status: "all"),
+         {:ok, invoices} <- list("invoices", customer: customer_id) do
+      open_subscriptions = for s <- subscriptions, s["status"] not in @closed_statuses, do: s["id"]
+      unpaid = for i <- invoices, i["status"] in ~w(draft open uncollectible), do: i["id"]
+
+      cond do
+        open_subscriptions != [] -> {:error, {:open_subscriptions, open_subscriptions}}
+        unpaid != [] -> {:error, {:unpaid_invoices, unpaid}}
+        (customer["balance"] || 0) != 0 -> {:error, {:customer_balance, customer["balance"]}}
+        true -> :ok
+      end
+    end
+  end
+
   @doc false
   def ready?(account, opts \\ []) do
     state = account.metadata.region_transfer
@@ -133,7 +185,8 @@ defmodule Portal.Ops.RegionTransfer.Billing do
       else: {:error, :billing_not_applied}
   end
 
-  defp state_ready(_account, %{"status" => "source_canceled"}), do: {:error, :source_billing_canceled}
+  defp state_ready(_account, %{"status" => status}) when status in ["source_canceled", "source_customer_deleted"],
+    do: {:error, :source_billing_canceled}
   defp state_ready(_account, _state), do: {:error, :billing_not_migrated}
 
   defp fetch_snapshot(customer_id) do
@@ -723,6 +776,11 @@ defmodule Portal.Ops.RegionTransfer.Billing do
       |> Ecto.Changeset.cast_embed(:metadata)
       |> Safe.unscoped()
       |> Safe.update()
+    end
+
+    def put_customer_id!(account, customer_id) do
+      {:ok, account} = put_customer_id(account, customer_id)
+      account
     end
 
     def put_customer_id(%{metadata: %{stripe: %{customer_id: id}}} = account, id), do: {:ok, account}
