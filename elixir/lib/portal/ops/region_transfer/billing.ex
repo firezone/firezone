@@ -202,19 +202,20 @@ defmodule Portal.Ops.RegionTransfer.Billing do
       "customer" => customer["id"],
       "collection_method" => subscription["collection_method"],
       "proration_behavior" => "none",
-      "trial_end" => subscription["current_period_end"],
       "automatic_tax[enabled]" => get_in(subscription, ["automatic_tax", "enabled"]) == true,
       "metadata[account_id]" => account.id,
       "metadata[region_transfer_source_account]" => snapshot["source_stripe_account_id"],
       "metadata[region_transfer_source_subscription]" => subscription["id"]
     }
 
-    # Marks the trial as time the customer already paid for, so the portal
-    # shows no trial and does not count the renewal as a new enrollment.
+    # The customer already paid until the renewal date. An anchor there
+    # starts the subscription active with no invoice until then, while a
+    # real trial, such as a pilot, stays a trial until the same date.
     base =
-      if subscription["status"] == "active",
-        do: Map.put(base, "metadata[region_transfer_prepaid_until]", to_string(subscription["current_period_end"])),
-        else: base
+      case subscription["status"] do
+        "active" -> Map.put(base, "billing_cycle_anchor", subscription["current_period_end"])
+        "trialing" -> Map.put(base, "trial_end", subscription["current_period_end"])
+      end
 
     base =
       case subscription["collection_method"] do
@@ -529,7 +530,7 @@ defmodule Portal.Ops.RegionTransfer.Billing do
     expected = Enum.map(plan["items"], &{&1["price"], &1["quantity"]})
 
     if subscription["metadata"]["region_transfer_plan"] == plan["params"]["metadata[region_transfer_plan]"] and
-         subscription["trial_end"] == plan["renews_at"] and Enum.sort(actual) == Enum.sort(expected),
+         subscription["current_period_end"] == plan["renews_at"] and Enum.sort(actual) == Enum.sort(expected),
        do: {:ok, subscription},
        else: {:error, {:destination_subscription_conflict, subscription["id"]}}
   end
