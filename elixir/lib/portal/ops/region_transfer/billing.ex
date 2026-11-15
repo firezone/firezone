@@ -20,7 +20,6 @@ defmodule Portal.Ops.RegionTransfer.Billing do
 
   @reason "Region transfer in progress"
   @closed_statuses ~w(canceled incomplete_expired)
-  @unsettled_invoice_statuses ~w(draft open uncollectible)
   @unsupported_terms ~w(discount schedule pause_collection pending_update pending_invoice_item_interval billing_thresholds transfer_data on_behalf_of cancel_at)
 
   @doc "Shows the customer to copy with the Stripe Dashboard. Changes nothing."
@@ -98,7 +97,8 @@ defmodule Portal.Ops.RegionTransfer.Billing do
          :ok <- unchanged_since_export(open, snapshot),
          IO.puts("Subscriptions to cancel without proration: #{Enum.map_join(open, ", ", & &1["id"])}"),
          :ok <- confirm(opts, "Is the billing in the destination verified? Cancel these subscriptions? [y/N]"),
-         :ok <- cancel_all(open) do
+         :ok <- cancel_all(open),
+         :ok <- keep_collecting_invoices(snapshot["customer"]["id"]) do
       Database.put_state(account, %{account.metadata.region_transfer | "status" => "source_canceled"})
     end
   end
@@ -144,11 +144,18 @@ defmodule Portal.Ops.RegionTransfer.Billing do
          "source_stripe_account_id" => stripe_account["id"],
          "customer" => customer,
          "subscriptions" => subscriptions,
-         "unsettled_invoice_ids" => for(i <- invoices, i["status"] in @unsettled_invoice_statuses, do: i["id"]),
+         "unsettled_invoice_ids" => for(i <- invoices, unsettled?(i), do: i["id"]),
+         "open_invoice_ids" => for(i <- invoices, i["status"] == "open" and not unsettled?(i), do: i["id"]),
          "pending_invoice_item_ids" => Enum.map(invoice_items, & &1["id"])
        }}
     end
   end
+
+  # A sent invoice that is not paid yet stays in the source Stripe account,
+  # and the customer pays it there. A draft, a failed automatic payment or an
+  # uncollectible invoice needs a decision first.
+  defp unsettled?(%{"status" => "open", "collection_method" => "send_invoice"}), do: false
+  defp unsettled?(%{"status" => status}), do: status in ~w(draft open uncollectible)
 
   defp build_plan(account, opts) do
     with :ok <- in_transfer(account),
@@ -171,6 +178,7 @@ defmodule Portal.Ops.RegionTransfer.Billing do
          "source_subscription_id" => subscription["id"],
          "customer_id" => customer["id"],
          "replace_customer_id" => replaced,
+         "open_invoice_ids" => snapshot["open_invoice_ids"],
          "renews_at" => subscription["current_period_end"],
          "items" => items,
          "params" => params
@@ -183,7 +191,6 @@ defmodule Portal.Ops.RegionTransfer.Billing do
       "customer" => customer["id"],
       "collection_method" => subscription["collection_method"],
       "proration_behavior" => "none",
-      "payment_behavior" => "error_if_incomplete",
       "trial_end" => subscription["current_period_end"],
       "automatic_tax[enabled]" => get_in(subscription, ["automatic_tax", "enabled"]) == true,
       "metadata[account_id]" => account.id,
@@ -199,9 +206,17 @@ defmodule Portal.Ops.RegionTransfer.Billing do
         else: base
 
     base =
-      if subscription["collection_method"] == "send_invoice",
-        do: Map.put(base, "days_until_due", subscription["days_until_due"]),
-        else: base
+      case subscription["collection_method"] do
+        "send_invoice" -> Map.put(base, "days_until_due", subscription["days_until_due"])
+        "charge_automatically" -> Map.put(base, "payment_behavior", "error_if_incomplete")
+      end
+
+    base = if subscription["description"], do: Map.put(base, "description", subscription["description"]), else: base
+
+    base =
+      (get_in(subscription, ["payment_settings", "payment_method_types"]) || [])
+      |> Enum.with_index()
+      |> Enum.reduce(base, fn {type, i}, acc -> Map.put(acc, "payment_settings[payment_method_types][#{i}]", type) end)
 
     params =
       items
@@ -282,12 +297,22 @@ defmodule Portal.Ops.RegionTransfer.Billing do
         (subscription["default_tax_rates"] || []) != [] or (subscription["discounts"] || []) != [] ->
         {:error, {:subscription_requires_review, subscription["id"]}}
 
-      get_in(subscription, ["items", "has_more"]) == true ->
+      get_in(subscription, ["items", "has_more"]) == true or not default_invoice_settings?(subscription) ->
         {:error, {:subscription_requires_review, subscription["id"]}}
 
       true ->
         {:ok, subscription}
     end
+  end
+
+  # Tax IDs and payment method options belong to the source Stripe account and
+  # cannot be carried over.
+  defp default_invoice_settings?(subscription) do
+    (get_in(subscription, ["invoice_settings", "account_tax_ids"]) || []) == [] and
+      get_in(subscription, ["invoice_settings", "issuer", "type"]) in [nil, "self"] and
+      (get_in(subscription, ["payment_settings", "payment_method_options"]) || %{})
+      |> Map.values()
+      |> Enum.all?(&is_nil/1)
   end
 
   # Matches each source price to a destination price of the same product name,
@@ -464,6 +489,19 @@ defmodule Portal.Ops.RegionTransfer.Billing do
     {subscription["current_period_end"], Enum.sort(items)}
   end
 
+  # Canceling turns off the reminders and collection of open invoices. The
+  # customer still owes them in the source Stripe account.
+  defp keep_collecting_invoices(customer_id) do
+    with {:ok, invoices} <- list("invoices", customer: customer_id, status: "open"),
+         {:ok, _invoices} <- map_while(invoices, &resume_collection/1) do
+      :ok
+    end
+  end
+
+  defp resume_collection(invoice) do
+    request(:post, "invoices/#{invoice["id"]}", URI.encode_query(%{"auto_advance" => true}))
+  end
+
   defp cancel_all(subscriptions) do
     Enum.reduce_while(subscriptions, :ok, fn subscription, :ok ->
       case request(:delete, "subscriptions/#{subscription["id"]}?invoice_now=false&prorate=false") do
@@ -534,6 +572,10 @@ defmodule Portal.Ops.RegionTransfer.Billing do
 
     for item <- plan["items"] do
       IO.puts("  #{item["quantity"]} x #{item["product"]} (#{item["price"]}, #{item["unit_amount"]} #{currency()})")
+    end
+
+    if plan["open_invoice_ids"] != [] do
+      IO.puts("  Leaves open invoices #{Enum.join(plan["open_invoice_ids"], ", ")} to be paid in the source Stripe account")
     end
 
     if plan["replace_customer_id"] do

@@ -66,6 +66,7 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       assert snapshot["source_stripe_account_id"] == @source_account
       assert [%{"id" => "sub_us"}] = snapshot["subscriptions"]
       assert snapshot["unsettled_invoice_ids"] == ["in_open"]
+      assert snapshot["open_invoice_ids"] == ["in_sent"]
 
       manifest = store |> blob(account.id, "manifest.json") |> Jason.decode!()
       assert is_binary(manifest["billing_checksum"])
@@ -193,6 +194,43 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
                RegionTransfer.plan_billing(account.id, payment_method_map: %{"pm_old" => "pm_new"})
     end
 
+    test "moves invoice billing without a payment method", %{account: account, stripe: stripe} = ctx do
+      stub_destination_stripe(ctx, customer: customer(@customer_id, %{"account_id" => account.id}, nil))
+
+      put_snapshot(account, fn snapshot ->
+        snapshot
+        |> Map.put("open_invoice_ids", ["in_sent"])
+        |> update_in(["subscriptions", Access.at(0)], fn subscription ->
+          Map.merge(subscription, %{
+            "collection_method" => "send_invoice",
+            "days_until_due" => 30,
+            "description" => "PO 1234",
+            "payment_settings" => %{"payment_method_types" => ["customer_balance"], "payment_method_options" => nil}
+          })
+        end)
+      end)
+
+      output = capture_io(fn -> assert {:ok, "sub_eu_1"} = RegionTransfer.migrate_billing(account.id, confirm: false) end)
+      assert output =~ "Leaves open invoices in_sent"
+
+      [{_key, params}] = posts(stripe, "/v1/subscriptions")
+      assert params["collection_method"] == "send_invoice"
+      assert params["days_until_due"] == "30"
+      assert params["description"] == "PO 1234"
+      assert params["payment_settings[payment_method_types][0]"] == "customer_balance"
+      refute Map.has_key?(params, "payment_behavior")
+    end
+
+    test "refuses invoice settings of the source Stripe account", %{account: account} do
+      put_snapshot(account, fn snapshot ->
+        update_in(snapshot, ["subscriptions", Access.at(0)], fn subscription ->
+          Map.put(subscription, "invoice_settings", %{"account_tax_ids" => ["txi_us"], "issuer" => %{"type" => "self"}})
+        end)
+      end)
+
+      assert {:error, {:subscription_requires_review, "sub_us"}} = RegionTransfer.plan_billing(account.id)
+    end
+
     test "replaces a customer created in the destination by hand", %{account: account, stripe: stripe} do
       account
       |> Ecto.Changeset.cast(%{metadata: %{stripe: %{customer_id: "cus_by_hand"}}}, [])
@@ -223,6 +261,8 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
 
       assert [%{method: "DELETE", query: "invoice_now=false&prorate=false"}] =
                stripe |> requests() |> Enum.filter(&(&1.path == "/v1/subscriptions/sub_us"))
+
+      assert [{_key, %{"auto_advance" => "true"}}] = posts(stripe, "/v1/invoices/in_sent")
 
       assert {:error, :source_billing_canceled} = RegionTransfer.enable(account.id, confirm: false)
     end
@@ -315,6 +355,7 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       "customer" => customer(@customer_id, %{"account_id" => account.id}),
       "subscriptions" => [put_in(subscription, ["items", "data", Access.at(0), "price", "product"], product("prod_us_team"))],
       "unsettled_invoice_ids" => [],
+      "open_invoice_ids" => [],
       "pending_invoice_item_ids" => []
     }
 
@@ -342,7 +383,12 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       "/v1/customers/#{@customer_id}" => customer(@customer_id, %{"account_id" => account.id}),
       "/v1/subscriptions" => list([subscription]),
       "/v1/products/prod_us_team" => product("prod_us_team"),
-      "/v1/invoices" => list([%{"id" => "in_paid", "status" => "paid"}, %{"id" => "in_open", "status" => "open"}]),
+      "/v1/invoices" =>
+        list([
+          %{"id" => "in_paid", "status" => "paid", "collection_method" => "charge_automatically"},
+          %{"id" => "in_open", "status" => "open", "collection_method" => "charge_automatically"},
+          %{"id" => "in_sent", "status" => "open", "collection_method" => "send_invoice"}
+        ]),
       "/v1/invoiceitems" => list([])
     })
   end
@@ -418,7 +464,13 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
   end
 
   defp respond(%{request_path: path} = conn, _stripe, responses, _params) do
+    conn = fetch_query_params(conn)
+    status = conn.query_params["status"]
+
     case Map.fetch(responses, path) do
+      {:ok, %{"object" => "list", "data" => data} = response} when status not in [nil, "all"] ->
+        Req.Test.json(conn, %{response | "data" => Enum.filter(data, &(&1["status"] == status))})
+
       {:ok, :missing} -> conn |> put_status(404) |> Req.Test.json(%{"error" => %{"code" => "resource_missing"}})
       {:ok, response} -> Req.Test.json(conn, response)
       :error -> conn |> put_status(404) |> Req.Test.json(%{"error" => %{"message" => "no stub for #{path}"}})
