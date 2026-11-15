@@ -221,6 +221,64 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       refute Map.has_key?(params, "payment_behavior")
     end
 
+    test "carries a coupon over to the one with the same name and terms", %{account: account, stripe: stripe} = ctx do
+      free = %{"name" => "Customer staging environment", "percent_off" => 100.0, "amount_off" => nil, "duration" => "forever", "duration_in_months" => nil, "valid" => true}
+
+      stub_destination_stripe(ctx,
+        customer: customer(@customer_id, %{"account_id" => account.id}, nil),
+        responses: %{
+          "/v1/coupons" =>
+            list([
+              Map.merge(free, %{"id" => "coupon_eu_free"}),
+              Map.merge(free, %{"id" => "coupon_eu_half", "percent_off" => 50.0})
+            ])
+        }
+      )
+
+      put_snapshot(account, fn snapshot ->
+        update_in(snapshot, ["subscriptions", Access.at(0)], fn subscription ->
+          Map.merge(subscription, %{
+            "discount" => %{"id" => "di_us", "coupon" => Map.put(free, "id", "coupon_us_free")},
+            "discounts" => ["di_us"]
+          })
+        end)
+      end)
+
+      output = capture_io(fn -> assert {:ok, "sub_eu_1"} = RegionTransfer.migrate_billing(account.id, confirm: false) end)
+      assert output =~ "Coupon Customer staging environment (coupon_eu_free)"
+
+      [{_key, params}] = posts(stripe, "/v1/subscriptions")
+      assert params["coupon"] == "coupon_eu_free"
+    end
+
+    test "needs a coupon map when no coupon matches", %{account: account} = ctx do
+      stub_destination_stripe(ctx, responses: %{"/v1/coupons" => list([])})
+      coupon = %{"id" => "coupon_us", "name" => "Legacy", "percent_off" => 10.0, "duration" => "forever", "valid" => true}
+
+      put_snapshot(account, fn snapshot ->
+        update_in(snapshot, ["subscriptions", Access.at(0)], &Map.merge(&1, %{"discount" => %{"coupon" => coupon}, "discounts" => ["di_us"]}))
+      end)
+
+      assert {:error, {:coupon_mapping_required, "coupon_us", []}} = RegionTransfer.plan_billing(account.id)
+
+      stub_destination_stripe(ctx, responses: %{"/v1/coupons" => list([Map.put(coupon, "id", "coupon_eu")])})
+
+      capture_io(fn ->
+        assert {:ok, %{"params" => %{"coupon" => "coupon_eu"}}} =
+                 RegionTransfer.plan_billing(account.id, coupon_map: %{"coupon_us" => "coupon_eu"})
+      end)
+    end
+
+    test "refuses a repeating coupon", %{account: account} do
+      coupon = %{"id" => "coupon_us", "duration" => "repeating", "duration_in_months" => 3}
+
+      put_snapshot(account, fn snapshot ->
+        update_in(snapshot, ["subscriptions", Access.at(0)], &Map.merge(&1, %{"discount" => %{"coupon" => coupon}, "discounts" => ["di_us"]}))
+      end)
+
+      assert {:error, {:coupon_requires_review, "coupon_us"}} = RegionTransfer.plan_billing(account.id)
+    end
+
     test "refuses invoice settings of the source Stripe account", %{account: account} do
       put_snapshot(account, fn snapshot ->
         update_in(snapshot, ["subscriptions", Access.at(0)], fn subscription ->
