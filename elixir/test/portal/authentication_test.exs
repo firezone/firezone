@@ -809,7 +809,7 @@ defmodule Portal.AuthenticationTest do
                 credential: %Credential.GatewayToken{id: token_id},
                 expires_at: nil,
                 context: ^context
-              } = subject} = build_subject(verified, context)
+              }} = build_subject(verified, context)
 
       assert actor.id == token.actor_id
       assert account.id == gateway.account_id
