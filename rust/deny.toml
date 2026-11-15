@@ -286,6 +286,7 @@ skip = [
     "rand",
     "rand_core",
     "serde_spanned",
+    "sha1", # `is` 0.12 uses 0.11; axum, tungstenite and stun_codec still pull 0.10.
     "sha2", # workspace is on 0.11; tauri (tauri-codegen, wry) and dbus-secret-service still pull 0.10.
     "syn",
     "thiserror",
