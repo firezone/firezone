@@ -69,7 +69,9 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
 
       assert %{"message" => message} = json_response(conn, 200)
       assert message =~ "YC8K2F9Q"
+      assert message =~ "The code expires on November 13, 2027."
       assert message =~ "We also emailed it to you."
+      assert String.length(message) <= 500
 
       assert_receive {:stripe, "POST", "/v1/promotion_codes", stripe_conn, params}
       assert Plug.Conn.get_req_header(stripe_conn, "idempotency-key") == ["yc-deal-2417-123456"]
@@ -77,6 +79,7 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
       assert params == %{
                "coupon" => "coupon_yc",
                "max_redemptions" => "1",
+               "expires_at" => to_string(DateTime.to_unix(~U[2027-11-13 16:54:57Z])),
                "metadata[yc_redemption_id]" => "123456",
                "metadata[yc_deal_id]" => "2417",
                "metadata[yc_user_id]" => "24680",
@@ -93,6 +96,24 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
       assert job.args["request"]["subject"] == "Your Firezone YC deal code"
       assert job.args["request"]["text_body"] =~ "Hi Alice,"
       assert job.args["request"]["text_body"] =~ "YC8K2F9Q"
+      assert job.args["request"]["text_body"] =~ "expires on November 13, 2027"
+    end
+
+    test "sends Stripe the same expiry when YC retries", %{conn: conn} do
+      test_pid = self()
+
+      Req.Test.stub(APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:expires_at, URI.decode_query(body)["expires_at"]})
+        Req.Test.json(conn, %{"code" => "YC8K2F9Q"})
+      end)
+
+      body = payload()
+      post_signed(conn, body)
+      post_signed(build_conn(), body)
+
+      assert_receive {:expires_at, first}
+      assert_receive {:expires_at, ^first}
     end
 
     test "returns the code without emailing when the payload has no email", %{conn: conn} do

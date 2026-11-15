@@ -76,17 +76,21 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
       }
       |> Map.reject(fn {_key, value} -> is_nil(value) end)
 
+    expires_at = expires_at(payload)
+
     case Billing.create_promotion_code(
            coupon_id,
            metadata,
+           expires_at,
            "yc-deal-#{payload["deal_id"]}-#{redemption_id}"
          ) do
       {:ok, code} ->
         Logger.info("Created YC deal promotion code", yc_redemption_id: redemption_id)
         sign_up_url = PortalWeb.Endpoint.url() <> "/sign_up"
-        emailed? = send_code(payload, code, sign_up_url)
+        expires_on = Calendar.strftime(expires_at, "%B %-d, %Y")
+        emailed? = send_code(payload, code, sign_up_url, expires_on)
 
-        json(conn, %{message: success_message(code, sign_up_url, emailed?)})
+        json(conn, %{message: success_message(code, sign_up_url, expires_on, emailed?)})
 
       {:error, reason} ->
         Logger.error("Failed to create YC deal promotion code",
@@ -103,10 +107,30 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
     end
   end
 
-  defp send_code(%{"email" => email} = payload, code, sign_up_url) when is_binary(email) do
+  # Codes work for a year from redemption. The expiry comes from the payload
+  # rather than the clock so that a YC retry sends Stripe the same request.
+  defp expires_at(payload) do
+    redeemed_at =
+      case DateTime.from_iso8601(payload["redeemed_at"] || "") do
+        {:ok, redeemed_at, _offset} -> redeemed_at
+        {:error, _reason} -> DateTime.utc_now() |> DateTime.to_date() |> DateTime.new!(~T[00:00:00])
+      end
+
+    redeemed_at
+    |> DateTime.truncate(:second)
+    |> DateTime.shift(year: 1)
+  end
+
+  defp send_code(%{"email" => email} = payload, code, sign_up_url, expires_on)
+       when is_binary(email) do
     # YC retries reuse the same Stripe code, so the matching job dedupes them.
     email
-    |> Mailer.YCDealEmail.promotion_code_email(payload["first_name"], code, sign_up_url)
+    |> Mailer.YCDealEmail.promotion_code_email(
+      payload["first_name"],
+      code,
+      sign_up_url,
+      expires_on
+    )
     |> Mailer.enqueue(unique: [period: 86_400])
     |> case do
       {:ok, %Oban.Job{}} -> true
@@ -115,11 +139,12 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
     end
   end
 
-  defp send_code(_payload, _code, _sign_up_url), do: false
+  defp send_code(_payload, _code, _sign_up_url, _expires_on), do: false
 
-  defp success_message(code, sign_up_url, emailed?) do
+  defp success_message(code, sign_up_url, expires_on, emailed?) do
     "Your Firezone promo code is #{code}. Sign up at #{sign_up_url}, then enter the code " <>
-      "under Settings → Account → Manage billing when you choose a paid plan." <>
+      "under Settings → Account → Manage billing when you choose a paid plan. " <>
+      "The code expires on #{expires_on}." <>
       if(emailed?, do: " We also emailed it to you.", else: "")
   end
 

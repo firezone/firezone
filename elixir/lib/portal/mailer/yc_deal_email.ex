@@ -4,7 +4,7 @@ defmodule Portal.Mailer.YCDealEmail do
   import Portal.Mailer
   import Swoosh.Email
 
-  def promotion_code_email(email, first_name, code, sign_up_url) do
+  def promotion_code_email(email, first_name, code, sign_up_url, expires_on) do
     paragraphs = [
       "Hi #{first_name || "there"},",
       "Thanks for redeeming the Firezone YC deal. Your promo code is: #{code}",
@@ -12,7 +12,7 @@ defmodule Portal.Mailer.YCDealEmail do
       "1. Sign up at #{sign_up_url} (skip this step if you already have an account).",
       "2. As an admin, go to Settings → Account and click Manage billing.",
       "3. Choose a paid plan and enter the code before you confirm.",
-      "The code works once. Reply to this email if you need help."
+      "The code works once and expires on #{expires_on}. Reply to this email if you need help."
     ]
 
     default_email()
