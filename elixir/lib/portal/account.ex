@@ -289,12 +289,13 @@ defmodule Portal.Account.Metadata do
   @primary_key false
   embedded_schema do
     field :marketing_attribution, :map
+    field :region_transfer, :map
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    |> cast(attrs, [:marketing_attribution])
+    |> cast(attrs, [:marketing_attribution, :region_transfer])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
   end
 end
