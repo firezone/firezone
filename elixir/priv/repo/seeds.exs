@@ -2854,12 +2854,18 @@ defmodule Portal.Repo.Seeds do
     unprivileged_actor_email = "firezone-unprivileged-1@localhost.local"
     admin_actor_email = "firezone@localhost.local"
 
+    # The password is set on insert. A later password change makes the
+    # Changes consumer delete the actor's client tokens, including the ones
+    # created below.
+    password_hash = Crypto.hash(:argon2, "Firezone1234")
+
     {:ok, unprivileged_actor} =
       %Actor{
         account_id: account.id,
         type: :account_user,
         name: "Firezone Unprivileged",
         email: unprivileged_actor_email,
+        password_hash: password_hash,
         allow_email_otp_sign_in: true
       }
       |> Repo.insert()
@@ -2887,6 +2893,7 @@ defmodule Portal.Repo.Seeds do
         type: :account_admin_user,
         name: "Firezone Admin",
         email: admin_actor_email,
+        password_hash: password_hash,
         allow_email_otp_sign_in: true
       })
 
@@ -2904,19 +2911,6 @@ defmodule Portal.Repo.Seeds do
         type: :service_account,
         name: "CI Pool Member Actor"
       })
-
-    # Set password on actors (no identity needed for userpass/email)
-    password_hash = Crypto.hash(:argon2, "Firezone1234")
-
-    unprivileged_actor =
-      unprivileged_actor
-      |> Ecto.Changeset.change(password_hash: password_hash)
-      |> Repo.update!()
-
-    admin_actor =
-      admin_actor
-      |> Ecto.Changeset.change(password_hash: password_hash)
-      |> Repo.update!()
 
     # Create separate OIDC identity (different issuer)
     {:ok, _admin_actor_oidc_identity} =
@@ -3050,34 +3044,23 @@ defmodule Portal.Repo.Seeds do
     other_unprivileged_actor_email = "other-unprivileged-1@localhost.local"
     other_admin_actor_email = "other@localhost.local"
 
-    {:ok, other_unprivileged_actor} =
+    {:ok, _other_unprivileged_actor} =
       Repo.insert(%Actor{
         account_id: other_account.id,
         type: :account_user,
         name: "Other Unprivileged",
-        email: other_unprivileged_actor_email
+        email: other_unprivileged_actor_email,
+        password_hash: password_hash
       })
 
-    {:ok, other_admin_actor} =
+    {:ok, _other_admin_actor} =
       Repo.insert(%Actor{
         account_id: other_account.id,
         type: :account_admin_user,
         name: "Other Admin",
-        email: other_admin_actor_email
+        email: other_admin_actor_email,
+        password_hash: password_hash
       })
-
-    # Set password on other_account actors (no identity needed for userpass/email)
-    password_hash = Crypto.hash(:argon2, "Firezone1234")
-
-    _other_unprivileged_actor =
-      other_unprivileged_actor
-      |> Ecto.Changeset.change(password_hash: password_hash)
-      |> Repo.update!()
-
-    _other_admin_actor =
-      other_admin_actor
-      |> Ecto.Changeset.change(password_hash: password_hash)
-      |> Repo.update!()
 
     {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
 
