@@ -35,8 +35,6 @@ if config_env() == :prod do
         []
     end
 
-  database_parameters = [application_name: "firezone-#{Application.spec(:portal, :vsn)}"]
-
   config :portal,
          Portal.Repo,
          [
@@ -47,14 +45,17 @@ if config_env() == :prod do
            {:queue_target, env_var_to_config!(:database_queue_target)},
            {:queue_interval, env_var_to_config!(:database_queue_interval)},
            {:ssl, env_var_to_config!(:database_ssl)},
-           {:parameters, database_parameters}
+           {:parameters, env_var_to_config!(:database_parameters)}
          ] ++
            if(env_var_to_config!(:database_socket_options) != [],
              do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
              else: []
            ) ++
            database_password_opts ++
-           [{:hostname, env_var_to_config!(:database_host)}]
+           if(env_var_to_config(:database_socket_dir),
+             do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
+             else: [{:hostname, env_var_to_config!(:database_host)}]
+           )
 
   # Shared connection options for the isolated pools
   pool_base_opts =
@@ -70,7 +71,10 @@ if config_env() == :prod do
         else: []
       ) ++
       database_password_opts ++
-      [{:hostname, env_var_to_config!(:database_host)}]
+      if(env_var_to_config(:database_socket_dir),
+        do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
+        else: [{:hostname, env_var_to_config!(:database_host)}]
+      )
 
   direct_pool_base_opts =
     [{:port, env_var_to_config!(:database_port)}] ++ pool_base_opts
@@ -83,6 +87,8 @@ if config_env() == :prod do
       port ->
         [{:port, port}, {:prepare, :unnamed}] ++ pool_base_opts
     end
+
+  database_parameters = env_var_to_config!(:database_parameters)
 
   # Transaction-pooled connection pools. When DATABASE_PGBOUNCER_PORT is not
   # set they fall back to the direct PostgreSQL endpoint for compatibility.
@@ -109,7 +115,14 @@ if config_env() == :prod do
            {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
          ] ++ direct_pool_base_opts
 
-  config :portal, Portal.Changes.Consumer, region: env_var_to_config!(:region)
+  config :portal, Portal.ChangeLogs.Consumer,
+    replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
+    publication_name: env_var_to_config!(:database_change_logs_publication_name)
+
+  config :portal, Portal.Changes.Consumer,
+    region: env_var_to_config!(:region),
+    replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
+    publication_name: env_var_to_config!(:database_changes_publication_name)
 
   config :portal, Portal.Tokens,
     key_base: env_var_to_config!(:tokens_key_base),
@@ -231,7 +244,9 @@ if config_env() == :prod do
     ops_admin_username: env_var_to_config!(:ops_admin_username),
     ops_admin_password: env_var_to_config!(:ops_admin_password)
 
-  config :portal, private_clients: []
+  config :portal,
+    external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
+    private_clients: env_var_to_config!(:phoenix_private_clients)
 
   config :portal,
     flow_logs_api_url: env_var_to_config!(:flow_logs_api_url),
@@ -583,7 +598,7 @@ if config_env() == :prod do
                    "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
                    "#{web_external_url_scheme}://#{web_external_url_host}",
                    "#{web_external_url_scheme}://*.#{web_external_url_host}"
-                 ],
+                 ] ++ env_var_to_config!(:websocket_additional_origins),
                live_view: [
                  signing_salt: env_var_to_config!(:live_view_signing_salt)
                ]
@@ -756,6 +771,9 @@ if config_env() == :prod do
       ]
   end
 
+  config :portal, Portal.Telemetry,
+    metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
+
   config :portal, Portal.Analytics.GoogleAds,
     customer_id: env_var_to_config(:google_ads_customer_id),
     login_customer_id: env_var_to_config(:google_ads_login_customer_id),
@@ -797,6 +815,15 @@ if config_env() == :prod do
     host: posthog_host,
     project_api_key: posthog_project_api_key,
     web_external_url: web_external_url
+
+  if telemetry_metrics_reporter = env_var_to_config!(:telemetry_metrics_reporter) do
+    config :portal,
+           telemetry_metrics_reporter,
+           env_var_to_config!(:telemetry_metrics_reporter_opts)
+  end
+
+  config :portal,
+    http_client_ssl_opts: env_var_to_config!(:http_client_ssl_opts)
 
   if !env_var_to_config!(:http_client_ssrf_protection_enabled) do
     config :req, default_options: [plugins: []]
