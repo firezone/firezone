@@ -84,7 +84,7 @@ end
 config :portal, Portal.ChangeLogs.Consumer,
   repo: Portal.Repo.Poller,
   replication_slot_name: "change_logs_slot",
-  publication_name: "change_logs_publication",
+  publication_name: "change_logs",
   region: "",
   enabled: true,
   # When changing these, make sure to also:
@@ -147,7 +147,7 @@ config :portal, Portal.ChangeLogs.Consumer,
 config :portal, Portal.Changes.Consumer,
   repo: Portal.Repo.Poller,
   replication_slot_name: "changes_slot",
-  publication_name: "changes_publication",
+  publication_name: "changes",
   region: "",
   enabled: true,
   # When changing these, make sure to also:

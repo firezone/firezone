@@ -103,35 +103,9 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:oban_enabled, :boolean, default: true)
 
-  @doc """
-  Enable or disable the Changes (CDC) replication consumer for this app instance.
-  """
-  defconfig(:changes_replication_enabled, :boolean, default: false)
-
-  @doc """
-  Enable or disable the ChangeLogs replication consumer for this app instance.
-  """
-  defconfig(:change_logs_replication_enabled, :boolean, default: false)
-
   ##############################################
   ## Web Server
   ##############################################
-
-  @doc """
-  Additional origins allowed for WebSocket connections.
-
-  By default, origins are derived from `WEB_EXTERNAL_URL`. Use this setting to allow
-  WebSocket connections from additional origins, for example when the application is
-  accessed via multiple domains or a CDN.
-
-  Accepts a comma-separated list of origins (e.g. `https://app.example.com,https://cdn.example.com`).
-  """
-  defconfig(:websocket_additional_origins, {:array, ",", :string},
-    default: [],
-    changeset: fn changeset, key ->
-      Portal.Changeset.validate_uri(changeset, key)
-    end
-  )
 
   @doc """
   The external URL the UI will be accessible at.
@@ -431,37 +405,6 @@ defmodule Portal.Config.Definitions do
     dump: &Dumper.keyword/1
   )
 
-  @doc """
-  List of trusted reverse proxies.
-
-  This is used to determine the correct IP address of the client when the
-  application is behind a reverse proxy by skipping a trusted proxy IP
-  from a list of possible source IPs.
-
-  The public endpoint keeps the `X-Forwarded-*` headers only on requests that
-  arrive from one of these addresses. Every other request has them removed and
-  its client IP address read from the connection itself.
-
-  Your proxy must append the client address to `X-Forwarded-For` rather than
-  pass on what the client sent. Also list your own private ranges in
-  `PHOENIX_PRIVATE_CLIENTS` when your clients have private addresses, because
-  private addresses in the header are read as further proxy hops.
-  """
-  defconfig(:phoenix_external_trusted_proxies, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
-    default: []
-  )
-
-  @doc """
-  List of trusted clients.
-
-  This is used to determine the correct IP address of the client when the
-  application is behind a reverse proxy by picking a trusted client IP
-  from a list of possible source IPs.
-  """
-  defconfig(:phoenix_private_clients, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
-    default: []
-  )
-
   ##############################################
   ## Database
   ##############################################
@@ -476,11 +419,6 @@ defmodule Portal.Config.Definitions do
   PostgreSQL host.
   """
   defconfig(:database_host, :string, default: "postgres")
-
-  @doc """
-  PostgreSQL socket directory (takes precedence over hostname).
-  """
-  defconfig(:database_socket_dir, :string, default: nil)
 
   @doc """
   Direct PostgreSQL port used by migrations, cluster discovery, and replication polling.
@@ -597,26 +535,6 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Name of the replication slot used by Firezone.
-  """
-  defconfig(:database_changes_replication_slot_name, :string, default: "changes_slot")
-
-  @doc """
-  Name of the publication used by Firezone.
-  """
-  defconfig(:database_changes_publication_name, :string, default: "changes")
-
-  @doc """
-  Name of the replication slot used by Firezone.
-  """
-  defconfig(:database_change_logs_replication_slot_name, :string, default: "change_logs_slot")
-
-  @doc """
-  Name of the publication used by Firezone.
-  """
-  defconfig(:database_change_logs_publication_name, :string, default: "change_logs")
-
-  @doc """
   SSL configuration for database connections.
 
   Accepts:
@@ -635,11 +553,6 @@ defmodule Portal.Config.Definitions do
       %{} = opts when map_size(opts) == 0 -> false
       %{} = opts -> Dumper.dump_ssl_opts(opts)
     end
-  )
-
-  defconfig(:database_parameters, :map,
-    default: %{application_name: "firezone-#{Application.spec(:portal, :vsn)}"},
-    dump: &Dumper.keyword/1
   )
 
   ##############################################
@@ -898,13 +811,6 @@ defmodule Portal.Config.Definitions do
   ## Health
   ##############################################
 
-  @doc """
-  Path to the file that signals the service is draining.
-
-  When this file exists, the `/readyz` endpoint will return 503 with status "draining".
-  """
-  defconfig(:draining_file_path, :string, default: "/var/run/firezone/draining")
-
   ##############################################
   ## Telemetry
   ##############################################
@@ -1042,37 +948,6 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Enable or disable the Firezone telemetry collection.
-  """
-  defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)
-
-  @doc """
-  Name of the bucket to store client-, relay- and gateway-submitted instrumentation logs in.
-  """
-  defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
-
-  @doc """
-  Reporter to use for sending metrics to the telemetry backend.
-  """
-  defconfig(
-    :telemetry_metrics_reporter,
-    Ecto.ParameterizedType.init(Ecto.Enum,
-      values: [
-        Telemetry.Metrics.ConsoleReporter
-      ]
-    ),
-    default: nil
-  )
-
-  @doc """
-  Configuration for the telemetry metrics reporter.
-  """
-  defconfig(:telemetry_metrics_reporter_opts, :map,
-    default: %{},
-    dump: &Dumper.keyword/1
-  )
-
-  @doc """
   OTLP/HTTP endpoint receiving the portal's metrics, e.g. `https://otlp.example.com/v1/metrics`.
   """
   defconfig(:otlp_metrics_endpoint, :string,
@@ -1129,11 +1004,6 @@ defmodule Portal.Config.Definitions do
   ##############################################
   ## HTTP Client Settings
   ##############################################
-
-  defconfig(:http_client_ssl_opts, :map,
-    default: %{},
-    dump: &Dumper.dump_ssl_opts/1
-  )
 
   @doc """
   Enable or disable blocking outbound HTTP requests to private or reserved IP addresses.
