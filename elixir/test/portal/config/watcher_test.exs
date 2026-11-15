@@ -127,4 +127,12 @@ defmodule Portal.Config.WatcherTest do
     assert Watcher.reload(state(context, nil, fetch: fn -> raise "HTTP 503" end)) == :error
     assert Agent.get(context.storage, & &1) == current
   end
+
+  test "keeps the current settings when reading the store exits", context do
+    current = settings([{"FEEDBACK_EMAIL_RECIPIENT", "a@example.com", :live}])
+    boot_with(context, current)
+
+    assert Watcher.reload(state(context, nil, fetch: fn -> exit(:terminating) end)) == :error
+    assert Agent.get(context.storage, & &1) == current
+  end
 end
