@@ -105,7 +105,6 @@ defmodule Portal.Billing.EventHandler do
     event["type"] in ["customer.subscription.created", "customer.subscription.updated"] and
       get_in(event, ["data", "object", "status"]) == "active" and
       is_nil(get_in(event, ["data", "object", "pause_collection"])) and
-      not region_transfer_prepaid?(get_in(event, ["data", "object"])) and
       not is_nil(previous_account) and not is_nil(account) and
       Billing.plan_type(account) in @enrollment_plans and
       (Billing.plan_type(previous_account) not in @enrollment_plans or
@@ -376,8 +375,7 @@ defmodule Portal.Billing.EventHandler do
       %{"name" => product_name, "metadata" => product_metadata} = product_info
 
       subscription_trialing? =
-        not is_nil(trial_end) and status in ["trialing", "paused"] and
-          not region_transfer_prepaid?(subscription_data)
+        not is_nil(trial_end) and status in ["trialing", "paused"]
 
       stripe_metadata = %{
         "subscription_id" => subscription_id,
@@ -400,13 +398,6 @@ defmodule Portal.Billing.EventHandler do
 
       {:ok, attrs}
     end
-  end
-
-  # A region transfer keeps the renewal date with a trial over time the
-  # customer already paid for in the other region. It is not a trial.
-  defp region_transfer_prepaid?(subscription) do
-    prepaid_until = get_in(subscription, ["metadata", "region_transfer_prepaid_until"])
-    prepaid_until != nil and prepaid_until == to_string(subscription["trial_end"])
   end
 
   defp find_plan_product(plan_items) do

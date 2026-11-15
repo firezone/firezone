@@ -20,7 +20,7 @@ defmodule Portal.Ops.RegionTransfer.Billing do
 
   @reason "Region transfer in progress"
   @closed_statuses ~w(canceled incomplete_expired)
-  @unsupported_terms ~w(discount schedule pause_collection pending_update pending_invoice_item_interval billing_thresholds transfer_data on_behalf_of cancel_at)
+  @unsupported_terms ~w(schedule pause_collection pending_update pending_invoice_item_interval billing_thresholds transfer_data on_behalf_of cancel_at)
 
   @doc "Shows the customer to copy with the Stripe Dashboard. Changes nothing."
   def prepare_copy(account_id) do
@@ -73,7 +73,10 @@ defmodule Portal.Ops.RegionTransfer.Billing do
   `replace_customer: "cus_..."` when the account points at a customer that was
   created in this Stripe account instead of copied. Pass
   `copied_customer: "cus_..."` when the copy gave the customer a new ID, as
-  Stripe's mapping file shows.
+  Stripe's mapping file shows. The coupon of the subscription is matched to
+  the coupon here with the same name and terms; pass
+  `coupon_map: %{"source coupon" => "destination coupon"}` when none or more
+  than one matches.
   """
   def migrate(account_id, opts \\ []) do
     with {:ok, plan} <- plan(account_id, opts),
@@ -171,8 +174,12 @@ defmodule Portal.Ops.RegionTransfer.Billing do
          :ok <- supported_customer(customer),
          {:ok, subscription} <- source_subscription(snapshot),
          {:ok, items} <- map_items(subscription, opts),
-         {:ok, payment} <- payment_params(snapshot["customer"], customer, subscription, opts) do
-      params = subscription_params(account, snapshot, subscription, customer, items, payment)
+         {:ok, coupon} <- map_coupon(subscription["discount"], opts),
+         {:ok, payment} <- payment_params(snapshot["customer"], customer, subscription, coupon, opts) do
+      params =
+        account
+        |> subscription_params(snapshot, subscription, customer, items, payment)
+        |> put_coupon(coupon)
 
       {:ok,
        %{
@@ -184,6 +191,7 @@ defmodule Portal.Ops.RegionTransfer.Billing do
          "open_invoice_ids" => snapshot["open_invoice_ids"],
          "renews_at" => subscription["current_period_end"],
          "items" => items,
+         "coupon" => coupon && %{"id" => coupon["id"], "name" => coupon["name"]},
          "params" => params
        }}
     end
@@ -194,19 +202,20 @@ defmodule Portal.Ops.RegionTransfer.Billing do
       "customer" => customer["id"],
       "collection_method" => subscription["collection_method"],
       "proration_behavior" => "none",
-      "trial_end" => subscription["current_period_end"],
       "automatic_tax[enabled]" => get_in(subscription, ["automatic_tax", "enabled"]) == true,
       "metadata[account_id]" => account.id,
       "metadata[region_transfer_source_account]" => snapshot["source_stripe_account_id"],
       "metadata[region_transfer_source_subscription]" => subscription["id"]
     }
 
-    # Marks the trial as time the customer already paid for, so the portal
-    # shows no trial and does not count the renewal as a new enrollment.
+    # The customer already paid until the renewal date. An anchor there
+    # starts the subscription active with no invoice until then, while a
+    # real trial, such as a pilot, stays a trial until the same date.
     base =
-      if subscription["status"] == "active",
-        do: Map.put(base, "metadata[region_transfer_prepaid_until]", to_string(subscription["current_period_end"])),
-        else: base
+      case subscription["status"] do
+        "active" -> Map.put(base, "billing_cycle_anchor", subscription["current_period_end"])
+        "trialing" -> Map.put(base, "trial_end", subscription["current_period_end"])
+      end
 
     base =
       case subscription["collection_method"] do
@@ -236,7 +245,40 @@ defmodule Portal.Ops.RegionTransfer.Billing do
         Map.put_new(acc, "metadata[#{key}]", value)
       end)
 
+    params
+  end
+
+  defp put_coupon(params, coupon) do
+    params = if coupon, do: Map.put(params, "coupon", coupon["id"]), else: params
     Map.put(params, "metadata[region_transfer_plan]", fingerprint(params))
+  end
+
+  # Coupons are not copied with the customer. The destination has the same
+  # coupons, so the one with the same name and terms is used. A repeating
+  # coupon would start its months over, so it needs a decision.
+  defp map_coupon(nil, _opts), do: {:ok, nil}
+
+  defp map_coupon(%{"coupon" => %{"duration" => "repeating"} = coupon}, _opts),
+    do: {:error, {:coupon_requires_review, coupon["id"]}}
+
+  defp map_coupon(%{"coupon" => source}, opts) do
+    override = Keyword.get(opts, :coupon_map, %{})[source["id"]]
+
+    with {:ok, coupons} <- list("coupons", []) do
+      case Enum.filter(coupons, &coupon_match?(&1, source, override)) do
+        [coupon] -> {:ok, coupon}
+        candidates -> {:error, {:coupon_mapping_required, source["id"], Enum.map(candidates, & &1["id"])}}
+      end
+    end
+  end
+
+  defp coupon_match?(%{"valid" => true, "id" => id}, _source, override) when is_binary(override), do: id == override
+  defp coupon_match?(%{"valid" => true} = coupon, source, nil), do: same_coupon?(source, coupon)
+  defp coupon_match?(_coupon, _source, _override), do: false
+
+  defp same_coupon?(source, coupon) do
+    Enum.all?(~w(name percent_off amount_off duration duration_in_months), &(source[&1] == coupon[&1])) and
+      (is_nil(coupon["amount_off"]) or coupon["currency"] == currency())
   end
 
   defp fingerprint(params) do
@@ -319,7 +361,8 @@ defmodule Portal.Ops.RegionTransfer.Billing do
         {:error, {:subscription_status, subscription["status"]}}
 
       Enum.any?(@unsupported_terms, &(subscription[&1] != nil)) or subscription["cancel_at_period_end"] == true or
-        (subscription["default_tax_rates"] || []) != [] or (subscription["discounts"] || []) != [] ->
+        (subscription["default_tax_rates"] || []) != [] or
+        length(subscription["discounts"] || []) != if(subscription["discount"], do: 1, else: 0) ->
         {:error, {:subscription_requires_review, subscription["id"]}}
 
       get_in(subscription, ["items", "has_more"]) == true or not default_invoice_settings?(subscription) ->
@@ -406,9 +449,12 @@ defmodule Portal.Ops.RegionTransfer.Billing do
   # The copy changes the IDs of payment methods. The customer default comes
   # along with the copy, but a payment method set on the subscription itself
   # needs its new ID from Stripe's mapping file.
-  defp payment_params(source_customer, customer, subscription, opts) do
+  defp payment_params(source_customer, customer, subscription, coupon, opts) do
     override = subscription["default_payment_method"] || subscription["default_source"]
-    paid? = Enum.any?(subscription["items"]["data"], &((&1["price"]["unit_amount"] || 0) > 0))
+
+    paid? =
+      Enum.any?(subscription["items"]["data"], &((&1["price"]["unit_amount"] || 0) > 0)) and
+        not (is_map(coupon) and coupon["duration"] == "forever" and coupon["percent_off"] == 100)
 
     cond do
       override != nil and override != default_payment(source_customer) ->
@@ -484,7 +530,7 @@ defmodule Portal.Ops.RegionTransfer.Billing do
     expected = Enum.map(plan["items"], &{&1["price"], &1["quantity"]})
 
     if subscription["metadata"]["region_transfer_plan"] == plan["params"]["metadata[region_transfer_plan]"] and
-         subscription["trial_end"] == plan["renews_at"] and Enum.sort(actual) == Enum.sort(expected),
+         subscription["current_period_end"] == plan["renews_at"] and Enum.sort(actual) == Enum.sort(expected),
        do: {:ok, subscription},
        else: {:error, {:destination_subscription_conflict, subscription["id"]}}
   end
@@ -597,6 +643,10 @@ defmodule Portal.Ops.RegionTransfer.Billing do
 
     for item <- plan["items"] do
       IO.puts("  #{item["quantity"]} x #{item["product"]} (#{item["price"]}, #{item["unit_amount"]} #{currency()})")
+    end
+
+    if plan["coupon"] do
+      IO.puts("  Coupon #{plan["coupon"]["name"]} (#{plan["coupon"]["id"]})")
     end
 
     if plan["open_invoice_ids"] != [] do

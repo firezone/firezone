@@ -103,9 +103,9 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       assert params["customer"] == @customer_id
       assert params["items[0][price]"] == "price_eu_team"
       assert params["items[0][quantity]"] == "7"
-      assert params["trial_end"] == to_string(ctx.renews_at)
+      assert params["billing_cycle_anchor"] == to_string(ctx.renews_at)
+      refute Map.has_key?(params, "trial_end")
       assert params["proration_behavior"] == "none"
-      assert params["metadata[region_transfer_prepaid_until]"] == to_string(ctx.renews_at)
       assert params["metadata[seats_note]"] == "kept"
       assert [key] = headers
       assert key =~ "region-transfer-sub_us-"
@@ -113,7 +113,7 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       account = reload(account)
       assert account.is_disabled
       assert account.metadata.stripe.subscription_id == "sub_eu_1"
-      assert account.metadata.stripe.subscription_status == "trialing"
+      assert account.metadata.stripe.subscription_status == "active"
       assert is_nil(account.metadata.stripe.trial_ends_at)
       assert %{"status" => "ready", "destination_subscription_id" => "sub_eu_1"} = account.metadata.region_transfer
 
@@ -194,6 +194,18 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
                RegionTransfer.plan_billing(account.id, payment_method_map: %{"pm_old" => "pm_new"})
     end
 
+    test "keeps a real trial a trial until the same date", %{account: account, stripe: stripe} do
+      put_snapshot(account, fn snapshot ->
+        update_in(snapshot, ["subscriptions", Access.at(0)], &Map.put(&1, "status", "trialing"))
+      end)
+
+      capture_io(fn -> assert {:ok, "sub_eu_1"} = RegionTransfer.migrate_billing(account.id, confirm: false) end)
+
+      [{_key, params}] = posts(stripe, "/v1/subscriptions")
+      refute Map.has_key?(params, "billing_cycle_anchor")
+      assert params["trial_end"] == to_string(get_in(reload(account).metadata.region_transfer, ["snapshot", "subscriptions", Access.at(0), "current_period_end"]))
+    end
+
     test "moves invoice billing without a payment method", %{account: account, stripe: stripe} = ctx do
       stub_destination_stripe(ctx, customer: customer(@customer_id, %{"account_id" => account.id}, nil))
 
@@ -219,6 +231,64 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       assert params["description"] == "PO 1234"
       assert params["payment_settings[payment_method_types][0]"] == "customer_balance"
       refute Map.has_key?(params, "payment_behavior")
+    end
+
+    test "carries a coupon over to the one with the same name and terms", %{account: account, stripe: stripe} = ctx do
+      free = %{"name" => "Customer staging environment", "percent_off" => 100.0, "amount_off" => nil, "duration" => "forever", "duration_in_months" => nil, "valid" => true}
+
+      stub_destination_stripe(ctx,
+        customer: customer(@customer_id, %{"account_id" => account.id}, nil),
+        responses: %{
+          "/v1/coupons" =>
+            list([
+              Map.merge(free, %{"id" => "coupon_eu_free"}),
+              Map.merge(free, %{"id" => "coupon_eu_half", "percent_off" => 50.0})
+            ])
+        }
+      )
+
+      put_snapshot(account, fn snapshot ->
+        update_in(snapshot, ["subscriptions", Access.at(0)], fn subscription ->
+          Map.merge(subscription, %{
+            "discount" => %{"id" => "di_us", "coupon" => Map.put(free, "id", "coupon_us_free")},
+            "discounts" => ["di_us"]
+          })
+        end)
+      end)
+
+      output = capture_io(fn -> assert {:ok, "sub_eu_1"} = RegionTransfer.migrate_billing(account.id, confirm: false) end)
+      assert output =~ "Coupon Customer staging environment (coupon_eu_free)"
+
+      [{_key, params}] = posts(stripe, "/v1/subscriptions")
+      assert params["coupon"] == "coupon_eu_free"
+    end
+
+    test "needs a coupon map when no coupon matches", %{account: account} = ctx do
+      stub_destination_stripe(ctx, responses: %{"/v1/coupons" => list([])})
+      coupon = %{"id" => "coupon_us", "name" => "Legacy", "percent_off" => 10.0, "duration" => "forever", "valid" => true}
+
+      put_snapshot(account, fn snapshot ->
+        update_in(snapshot, ["subscriptions", Access.at(0)], &Map.merge(&1, %{"discount" => %{"coupon" => coupon}, "discounts" => ["di_us"]}))
+      end)
+
+      assert {:error, {:coupon_mapping_required, "coupon_us", []}} = RegionTransfer.plan_billing(account.id)
+
+      stub_destination_stripe(ctx, responses: %{"/v1/coupons" => list([Map.put(coupon, "id", "coupon_eu")])})
+
+      capture_io(fn ->
+        assert {:ok, %{"params" => %{"coupon" => "coupon_eu"}}} =
+                 RegionTransfer.plan_billing(account.id, coupon_map: %{"coupon_us" => "coupon_eu"})
+      end)
+    end
+
+    test "refuses a repeating coupon", %{account: account} do
+      coupon = %{"id" => "coupon_us", "duration" => "repeating", "duration_in_months" => 3}
+
+      put_snapshot(account, fn snapshot ->
+        update_in(snapshot, ["subscriptions", Access.at(0)], &Map.merge(&1, %{"discount" => %{"coupon" => coupon}, "discounts" => ["di_us"]}))
+      end)
+
+      assert {:error, {:coupon_requires_review, "coupon_us"}} = RegionTransfer.plan_billing(account.id)
     end
 
     test "refuses invoice settings of the source Stripe account", %{account: account} do
@@ -381,25 +451,6 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
     end
   end
 
-  describe "billing webhooks of a transferred subscription" do
-    test "show no trial", %{account: account} do
-      {product, _price, subscription} = Stripe.build_all(:team, @customer_id, 5)
-      trial_end = System.os_time(:second) + 86_400
-
-      subscription =
-        Map.merge(subscription, %{
-          "status" => "trialing",
-          "trial_end" => trial_end,
-          "metadata" => %{"region_transfer_prepaid_until" => to_string(trial_end)}
-        })
-
-      customer = Stripe.build_customer(id: @customer_id, metadata: %{"account_id" => account.id})
-      Stripe.stub(Stripe.fetch_customer_endpoint(customer) ++ Stripe.fetch_product_endpoint(product))
-
-      assert {:ok, _event} = EventHandler.handle_event(Stripe.build_event("customer.subscription.updated", subscription))
-      assert is_nil(reload(account).metadata.stripe.trial_ends_at)
-    end
-  end
 
   defp pending_transfer(%{account: account, source_subscription: subscription}) do
     snapshot = %{
@@ -481,8 +532,9 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
         subscription = %{
           "id" => "sub_eu_#{length(state.subscriptions) + 1}",
           "customer" => params["customer"],
-          "status" => "trialing",
-          "trial_end" => String.to_integer(params["trial_end"]),
+          "status" => if(params["trial_end"], do: "trialing", else: "active"),
+          "trial_end" => params["trial_end"] && String.to_integer(params["trial_end"]),
+          "current_period_end" => String.to_integer(params["billing_cycle_anchor"] || params["trial_end"]),
           "metadata" =>
             for({"metadata[" <> key, value} <- params, into: %{}, do: {String.trim_trailing(key, "]"), value}),
           "items" => %{
