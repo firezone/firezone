@@ -107,7 +107,7 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
     end
   end
 
-  # Codes work for a year from redemption. The expiry comes from the payload
+  # Codes work for 30 days from redemption. The expiry comes from the payload
   # rather than the clock so that a YC retry sends Stripe the same request.
   defp expires_at(payload) do
     redeemed_at =
@@ -118,7 +118,7 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
 
     redeemed_at
     |> DateTime.truncate(:second)
-    |> DateTime.shift(year: 1)
+    |> DateTime.shift(day: 30)
   end
 
   defp send_code(%{"email" => email} = payload, code, sign_up_url, expires_on)

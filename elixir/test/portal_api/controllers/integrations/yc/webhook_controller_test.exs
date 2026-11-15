@@ -69,7 +69,7 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
 
       assert %{"message" => message} = json_response(conn, 200)
       assert message =~ "YC8K2F9Q"
-      assert message =~ "The code expires on November 13, 2027."
+      assert message =~ "The code expires on December 13, 2026."
       assert message =~ "We also emailed it to you."
       assert String.length(message) <= 500
 
@@ -79,7 +79,7 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
       assert params == %{
                "coupon" => "coupon_yc",
                "max_redemptions" => "1",
-               "expires_at" => to_string(DateTime.to_unix(~U[2027-11-13 16:54:57Z])),
+               "expires_at" => to_string(DateTime.to_unix(~U[2026-12-13 16:54:57Z])),
                "metadata[yc_redemption_id]" => "123456",
                "metadata[yc_deal_id]" => "2417",
                "metadata[yc_user_id]" => "24680",
@@ -96,7 +96,7 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
       assert job.args["request"]["subject"] == "Your Firezone YC deal code"
       assert job.args["request"]["text_body"] =~ "Hi Alice,"
       assert job.args["request"]["text_body"] =~ "YC8K2F9Q"
-      assert job.args["request"]["text_body"] =~ "expires on November 13, 2027"
+      assert job.args["request"]["text_body"] =~ "expires on December 13, 2026"
     end
 
     test "sends Stripe the same expiry when YC retries", %{conn: conn} do
