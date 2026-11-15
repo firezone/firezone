@@ -103,16 +103,6 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:oban_enabled, :boolean, default: true)
 
-  @doc """
-  Enable or disable the Changes (CDC) replication consumer for this app instance.
-  """
-  defconfig(:changes_replication_enabled, :boolean, default: false)
-
-  @doc """
-  Enable or disable the ChangeLogs replication consumer for this app instance.
-  """
-  defconfig(:change_logs_replication_enabled, :boolean, default: false)
-
   ##############################################
   ## Web Server
   ##############################################
@@ -898,13 +888,6 @@ defmodule Portal.Config.Definitions do
   ## Health
   ##############################################
 
-  @doc """
-  Path to the file that signals the service is draining.
-
-  When this file exists, the `/readyz` endpoint will return 503 with status "draining".
-  """
-  defconfig(:draining_file_path, :string, default: "/var/run/firezone/draining")
-
   ##############################################
   ## Telemetry
   ##############################################
@@ -1040,16 +1023,6 @@ defmodule Portal.Config.Definitions do
       value -> value
     end
   )
-
-  @doc """
-  Enable or disable the Firezone telemetry collection.
-  """
-  defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)
-
-  @doc """
-  Name of the bucket to store client-, relay- and gateway-submitted instrumentation logs in.
-  """
-  defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
 
   @doc """
   Reporter to use for sending metrics to the telemetry backend.
