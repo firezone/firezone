@@ -1,6 +1,7 @@
 // @ts-check
 
 import eslint from "@eslint/js";
+import { fixupConfigRules } from "@eslint/compat";
 import tseslint from "typescript-eslint";
 import reactplugin from "eslint-plugin-react";
 
@@ -14,6 +15,6 @@ export default tseslint.config({
   extends: [
     eslint.configs.recommended,
     tseslint.configs.strict,
-    reactplugin.configs.flat.recommended,
+    fixupConfigRules(reactplugin.configs.flat.recommended),
   ],
 });
