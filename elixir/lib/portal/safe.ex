@@ -982,6 +982,8 @@ defmodule Portal.Safe do
   # Device permissions (union of Client + Gateway); non-admin actors can
   # insert because clients create their own device row at first connect
   def permit(_action, Portal.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.DeviceActor, :account_admin_user), do: :ok
+  def permit(:read, Portal.DeviceActor, :api_client), do: :ok
   def permit(_action, Portal.Device, :api_client), do: :ok
   def permit(:read, Portal.Device, :account_user), do: :ok
   def permit(:insert, Portal.Device, :account_user), do: :ok

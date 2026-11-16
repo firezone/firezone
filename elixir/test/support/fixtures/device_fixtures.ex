@@ -3,6 +3,7 @@ defmodule Portal.DeviceFixtures do
   Test helpers for creating client and gateway devices and related data.
   """
 
+  import Ecto.Query, only: [from: 2]
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.SiteFixtures
@@ -186,6 +187,19 @@ defmodule Portal.DeviceFixtures do
       |> maybe_sync_device_ipv4(ipv4)
       |> maybe_sync_device_ipv6(ipv6)
 
+    # Every client has the actor it was created by in device_actors, as the
+    # backfill left production.
+    Portal.Repo.insert!(
+      %Portal.DeviceActor{
+        account_id: account.id,
+        device_id: device.id,
+        actor_id: actor.id,
+        first_seen_at: device.inserted_at,
+        last_seen_at: device.inserted_at
+      },
+      on_conflict: :nothing
+    )
+
     Portal.Repo.preload(device, :actor)
   end
 
@@ -240,6 +254,11 @@ defmodule Portal.DeviceFixtures do
   Records when the device was last seen, as a connect does.
   """
   def record_last_seen(device, last_seen_at) do
+    Portal.Repo.update_all(
+      from(da in Portal.DeviceActor, where: da.account_id == ^device.account_id and da.device_id == ^device.id),
+      set: [last_seen_at: last_seen_at]
+    )
+
     device
     |> Ecto.Changeset.change(last_seen_at: last_seen_at)
     |> Portal.Repo.update!()

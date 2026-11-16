@@ -90,9 +90,44 @@ defmodule Portal.Devices do
     end
   end
 
+  @doc """
+  Puts the actor who connected each device most recently, from
+  `device_actors`, in its `actor` and `actor_id`. A device nobody has
+  connected from gets `nil`.
+  """
+  @spec put_latest_actor([Device.t()], Authentication.Subject.t()) :: [Device.t()]
+  def put_latest_actor(devices, %Authentication.Subject{} = subject) when is_list(devices) do
+    actors = devices |> Enum.map(& &1.id) |> Database.latest_actors(subject)
+
+    Enum.map(devices, fn device ->
+      actor = Map.get(actors, device.id)
+      %{device | actor: actor, actor_id: actor && actor.id}
+    end)
+  end
+
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
+
+    def latest_actors([], _subject), do: %{}
+
+    def latest_actors(device_ids, subject) do
+      from(da in Portal.DeviceActor, as: :device_actors)
+      |> where([device_actors: da], da.device_id in ^device_ids)
+      |> join(:inner, [device_actors: da], a in Portal.Actor,
+        on: a.account_id == da.account_id and a.id == da.actor_id,
+        as: :actor
+      )
+      |> distinct([device_actors: da], da.device_id)
+      |> order_by([device_actors: da], asc: da.device_id, desc: da.last_seen_at)
+      |> select([device_actors: da, actor: a], {da.device_id, a})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> %{}
+        rows -> Map.new(rows)
+      end
+    end
 
     # Repo.transact/1 rolls the transaction back when fun returns
     # {:error, _}, which is what makes provision_gateway/3 all-or-nothing.
