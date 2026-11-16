@@ -303,9 +303,9 @@ defmodule Portal.Device do
   defp unique_firezone_id_constraint(changeset) do
     case get_field(changeset, :type) do
       :client ->
-        unique_constraint(changeset, :firezone_id,
-          name: :devices_account_id_actor_id_firezone_id_index
-        )
+        changeset
+        |> unique_constraint(:firezone_id, name: :devices_account_id_actor_id_firezone_id_index)
+        |> unique_constraint(:firezone_id, name: :devices_account_id_client_firezone_id_index)
 
       :gateway ->
         unique_constraint(changeset, :firezone_id, name: :devices_account_id_firezone_id_index)
