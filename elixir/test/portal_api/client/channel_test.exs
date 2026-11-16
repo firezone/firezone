@@ -616,6 +616,18 @@ defmodule PortalAPI.Client.ChannelTest do
       assert actor_name == actor.name
     end
 
+    test "disables flow log uploads in init when the flow logs API URL is unset", %{
+      client: client,
+      subject: subject
+    } do
+      Portal.Config.put_env_override(:portal, :flow_logs_api_url, nil)
+
+      join_channel(client, subject)
+
+      assert_push "init", %{flow_logs: flow_logs}
+      assert flow_logs == %{api_url: "", upload_interval_secs: 0, upload_batch_size: 0}
+    end
+
     test "sends list of available resources after join", %{
       client: client,
       subject: subject,
