@@ -13,8 +13,10 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
+use arbitrary::Unstructured;
 use bufferpool::Bytes;
 use chrono::DateTime;
+use connlib_model::IpStack;
 use ip_packet::Ecn;
 use is::CandidateKind;
 use relay_client_proto::{Allocation, Event, channel_data};
@@ -28,7 +30,7 @@ use crate::{
     buffered_transmits::BufferedTransmits,
     flux_capacitor::FluxCapacitor,
     relay_reference::{Environment, Observed, Reference},
-    relay_transition::{Garbage, Loss, Target, Transition},
+    relay_transition::{self, Garbage, Loss, Target, Transition},
     sim_net::{EdgeConfig, ExecMutScope, Host, PollTimeout},
     sim_relay::SimRelay,
     stun,
@@ -89,6 +91,7 @@ pub(crate) struct World {
     transmits: BufferedTransmits,
 
     relay: Host<SimRelay>,
+    relay_stack: IpStack,
     /// How often the relay rebooted. Every boot has a secret of its own, so it is a different
     /// relay to the portal.
     relay_boots: u64,
@@ -131,16 +134,13 @@ struct Credentials {
 }
 
 impl World {
-    pub(crate) fn new(
-        relay_stack: (bool, bool),
-        client_stack: (bool, bool),
-        start: Instant,
-    ) -> Self {
+    pub(crate) fn new(relay_stack: IpStack, client_stack: IpStack, start: Instant) -> Self {
         let clock = FluxCapacitor::new(start, DateTime::UNIX_EPOCH);
         let (ip4, ip6) = interfaces(client_stack, CLIENT_IP4, CLIENT_IP6);
 
         Self {
             relay: new_relay(relay_stack, 0, clock.now()),
+            relay_stack,
             clock,
             transmits: BufferedTransmits::default(),
             relay_boots: 0,
@@ -179,10 +179,10 @@ impl World {
                     });
                 }
             }
-            Transition::Roam { v4, v6 } => {
+            Transition::Roam { stack } => {
                 self.roams += 1;
                 self.seeds += 1;
-                let (ip4, ip6) = interfaces((*v4, *v6), CLIENT_IP4, CLIENT_IP6);
+                let (ip4, ip6) = interfaces(*stack, CLIENT_IP4, CLIENT_IP6);
                 let seed = seed(self.seeds);
 
                 self.client.port = CLIENT_PORT + self.roams;
@@ -191,11 +191,7 @@ impl World {
             }
             Transition::RebootRelay => {
                 self.relay_boots += 1;
-                self.relay = new_relay(
-                    (self.relay.ip4.is_some(), self.relay.ip6.is_some()),
-                    self.relay_boots,
-                    self.clock.now(),
-                );
+                self.relay = new_relay(self.relay_stack, self.relay_boots, self.clock.now());
             }
             Transition::Partition { duration } => {
                 self.client.set_offline();
@@ -659,7 +655,7 @@ impl ExecMutScope for Client {
     fn enter(&self) -> Self::Guard {}
 }
 
-fn new_relay(stack: (bool, bool), boot: u64, now_utc: SystemTime) -> Host<SimRelay> {
+fn new_relay(stack: IpStack, boot: u64, now_utc: SystemTime) -> Host<SimRelay> {
     let (ip4, ip6) = interfaces(stack, RELAY_IP4, RELAY_IP6);
 
     host(SimRelay::new(boot, ip4, ip6, now_utc), RELAY_PORT, ip4, ip6)
@@ -679,15 +675,25 @@ fn host<T>(inner: T, port: u16, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) ->
     host
 }
 
-/// Uses both address families if neither is asked for.
 fn interfaces(
-    (v4, v6): (bool, bool),
+    stack: IpStack,
     ip4: Ipv4Addr,
     ip6: Ipv6Addr,
 ) -> (Option<Ipv4Addr>, Option<Ipv6Addr>) {
-    let both = !v4 && !v6;
+    match stack {
+        IpStack::Dual => (Some(ip4), Some(ip6)),
+        IpStack::Ipv4Only => (Some(ip4), None),
+        IpStack::Ipv6Only => (None, Some(ip6)),
+    }
+}
 
-    ((v4 || both).then_some(ip4), (v6 || both).then_some(ip6))
+/// The address families of a host.
+pub(crate) fn arbitrary_ip_stack(u: &mut Unstructured<'_>) -> IpStack {
+    match relay_transition::int(u, 2) {
+        1 => IpStack::Ipv4Only,
+        2 => IpStack::Ipv6Only,
+        _ => IpStack::Dual,
+    }
 }
 
 fn any_socket<T>(host: &Host<T>) -> SocketAddr {
@@ -718,7 +724,7 @@ mod tests {
 
     #[test]
     fn client_relays_data_on_a_working_network() {
-        let mut world = World::new((true, true), (true, true), Instant::now());
+        let mut world = World::new(IpStack::Dual, IpStack::Dual, Instant::now());
 
         world.settle();
 

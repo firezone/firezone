@@ -112,8 +112,8 @@ pub fn run_relay(data: &[u8], now: Instant) {
     let _guard = init_subscriber();
 
     let mut u = Unstructured::new(data);
-    let relay = relay_transition::stack(&mut u);
-    let client = relay_transition::stack(&mut u);
+    let relay = relay::arbitrary_ip_stack(&mut u);
+    let client = relay::arbitrary_ip_stack(&mut u);
 
     let mut reference = relay_reference::Reference::default();
     let mut world = relay::World::new(relay, client, now);

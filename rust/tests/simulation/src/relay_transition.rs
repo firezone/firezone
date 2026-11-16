@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use arbitrary::Unstructured;
+use connlib_model::IpStack;
 
 /// What can happen to the client, the relay, the portal and the network between them.
 ///
@@ -20,8 +21,7 @@ pub(crate) enum Transition {
     Refresh,
     /// The client moves to new sockets and starts over.
     Roam {
-        v4: bool,
-        v6: bool,
+        stack: IpStack,
     },
     /// The relay restarts: it forgets everything and generates a new secret.
     ///
@@ -86,8 +86,11 @@ impl Transition {
             5 => Self::RotateCredentials,
             6..=7 => Self::Refresh,
             8 => Self::Roam {
-                v4: bool(u),
-                v6: bool(u),
+                stack: match (bool(u), bool(u)) {
+                    (true, false) => IpStack::Ipv4Only,
+                    (false, true) => IpStack::Ipv6Only,
+                    (true, true) | (false, false) => IpStack::Dual,
+                },
             },
             9 => Self::RebootRelay,
             10 => Self::Partition {
@@ -137,16 +140,7 @@ impl Garbage {
     }
 }
 
-/// Whether a host has IPv4 and IPv6.
-pub(crate) fn stack(u: &mut Unstructured<'_>) -> (bool, bool) {
-    match int(u, 2) {
-        1 => (true, false),
-        2 => (false, true),
-        _ => (true, true),
-    }
-}
-
-fn int(u: &mut Unstructured<'_>, max: u8) -> usize {
+pub(crate) fn int(u: &mut Unstructured<'_>, max: u8) -> usize {
     usize::from(u.int_in_range(0..=max).unwrap_or(0))
 }
 
