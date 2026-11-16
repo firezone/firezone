@@ -1079,16 +1079,11 @@ defmodule PortalWeb.Actors do
           <:col :let={actor} field={{:actors, :name}} label="name">
             <div class="flex items-center gap-2.5">
               <ActorComponents.actor_avatar account={@account} actor={actor} />
-              <div class="min-w-0">
-                <div class="flex items-center gap-1.5">
-                  <span class="font-medium text-heading group-hover:text-brand transition-colors truncate">
-                    {actor.name}
-                  </span>
-                  <ActorComponents.identity_provider_icons actor={actor} />
-                </div>
-                <div class="font-mono text-[11px] text-subtle mt-0.5">
-                  {actor.id}
-                </div>
+              <div class="min-w-0 flex items-center gap-1.5">
+                <span class="font-medium text-heading group-hover:text-brand transition-colors truncate">
+                  {actor.name}
+                </span>
+                <ActorComponents.identity_provider_icons actor={actor} />
               </div>
             </div>
           </:col>
