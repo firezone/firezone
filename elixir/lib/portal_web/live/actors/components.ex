@@ -86,7 +86,7 @@ defmodule PortalWeb.Actors.Components do
 
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
-      <.actor_detail_header actor={@actor} groups={@groups} tokens={@tokens} />
+      <.actor_detail_header account={@account} actor={@actor} groups={@groups} tokens={@tokens} />
 
       <div class="flex flex-1 min-h-0 divide-x divide-border">
         <div class="flex-1 flex flex-col overflow-hidden">
@@ -112,6 +112,7 @@ defmodule PortalWeb.Actors.Components do
     """
   end
 
+  attr :account, :any, required: true
   attr :actor, :any, required: true
   attr :groups, :list, required: true
   attr :tokens, :list, required: true
@@ -122,7 +123,7 @@ defmodule PortalWeb.Actors.Components do
       <div class="flex items-center gap-4">
         <%!-- Left: icon + name + status + email --%>
         <div class="flex items-center gap-3 min-w-0 flex-1">
-          <.actor_type_icon_circle actor={@actor} />
+          <.actor_avatar account={@account} actor={@actor} />
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold text-heading truncate">{@actor.name}</h2>
@@ -1635,37 +1636,65 @@ defmodule PortalWeb.Actors.Components do
     """
   end
 
+  attr :account, :any, required: true
   attr :actor, :any, required: true
 
-  defp actor_type_icon_circle(assigns) do
+  @doc """
+  The actor's directory photo, or its type icon when it has none. Admins get a
+  shield badge on top.
+  """
+  def actor_avatar(assigns) do
+    assigns = assign(assigns, :photo?, not is_nil(assigns.actor.avatar_identity_id) and Portal.Avatars.enabled?())
+
     ~H"""
-    <div class={[
-      "inline-flex items-center justify-center w-8 h-8 rounded-full",
-      actor_type_icon_bg_color(@actor.type)
-    ]}>
-      <.actor_type_icon actor={@actor} class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
+    <div class="relative inline-flex shrink-0">
+      <img
+        :if={@photo?}
+        src={
+          ~p"/#{@account}/avatars/#{@actor.avatar_identity_id}?#{[v: Portal.Avatars.version(@actor.avatar_etag)]}"
+        }
+        alt=""
+        class="w-8 h-8 rounded-full object-cover bg-neutral-100"
+      />
+      <div
+        :if={not @photo?}
+        class={[
+          "inline-flex items-center justify-center w-8 h-8 rounded-full",
+          actor_type_icon_bg_color(@actor.type)
+        ]}
+      >
+        <.actor_type_icon actor={@actor} class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
+      </div>
+      <span
+        :if={@actor.type == :account_admin_user}
+        title="Admin"
+        class="absolute -top-0.5 -left-0.5 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-purple-700 ring-2 ring-surface"
+      >
+        <Core.icon name="ri-shield-check-fill" class="w-2.5 h-2.5 text-white" />
+      </span>
     </div>
     """
   end
 
   attr :actor, :any, required: true
 
-  def actor_type_icon_with_badge(assigns) do
+  @doc """
+  One small logo per identity provider the actor has an identity from.
+  """
+  def identity_provider_icons(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :providers,
+        assigns.actor.identity_issuers
+        |> Enum.map(&Core.provider_type_from_issuer/1)
+        |> Enum.uniq()
+      )
+
     ~H"""
-    <div class="relative inline-flex shrink-0">
-      <div class={[
-        "inline-flex items-center justify-center w-8 h-8 rounded-full",
-        actor_type_icon_bg_color(@actor.type)
-      ]}>
-        <.actor_type_icon actor={@actor} class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
-      </div>
-      <span
-        :if={@actor.identity_count > 0}
-        class="absolute top-0 left-0 inline-flex items-center justify-center w-3.5 h-3.5 text-[8px] font-semibold text-white bg-neutral-800 rounded-full"
-      >
-        {@actor.identity_count}
-      </span>
-    </div>
+    <span :if={@providers != []} class="inline-flex items-center gap-1 shrink-0">
+      <Core.provider_icon :for={provider <- @providers} provider={provider} size="xs" />
+    </span>
     """
   end
 

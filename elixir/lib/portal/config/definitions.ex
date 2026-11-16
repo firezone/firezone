@@ -539,6 +539,14 @@ defmodule Portal.Config.Definitions do
   defconfig(:region_transfer_inbox_url, :string, default: nil)
 
   @doc """
+  Blob container in this region that holds the profile photos that directory
+  sync copies from Entra and Google, for example
+  https://firezoneavatarsus.blob.core.windows.net/avatars. Unset, the default
+  for on-prem, turns photo sync off and people show an icon instead.
+  """
+  defconfig(:avatars_container_url, :string, default: nil)
+
+  @doc """
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,

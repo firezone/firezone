@@ -109,6 +109,14 @@ defmodule Portal.Entra.Sync do
       entra_directory_id: directory.id
     )
 
+    %{account_id: directory.account_id, directory_id: directory.id}
+    |> Entra.Avatars.new()
+    |> Oban.insert()
+    |> case do
+      {:ok, _job} -> :ok
+      {:error, reason} -> Logger.warning("Failed to queue profile photo sync", entra_directory_id: directory.id, reason: inspect(reason))
+    end
+
     {:ok, _job} =
       %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
       |> Entra.Subscriptions.new()
@@ -734,14 +742,6 @@ defmodule Portal.Entra.Sync do
         step: :process_user
     end
 
-    # TODO: Implement separate photo hydration job
-    # Profile photos are NOT synced during directory sync because:
-    # - Microsoft Graph doesn't provide direct URLs, only binary data via /users/{id}/photo/$value
-    # - Would require additional API calls (20 per batch) and storage in Entra blob storage
-    # - Should be implemented as a separate background job that:
-    #   1. Batches photo requests via $batch endpoint (20 users at a time)
-    #   2. Uploads binary data to Entra blob storage
-    #   3. Updates identity.firezone_avatar_url with the blob URL
     %{
       idp_id: user["id"],
       email: primary_email,
