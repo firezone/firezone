@@ -3,7 +3,7 @@ use super::dns_records::record_ip;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
-use super::sim_net::{Host, HostId, RoutingTable, SharedNat};
+use super::sim_net::{Attachment, Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
@@ -11,7 +11,6 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
-use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, StaticSecret};
 use ip_packet::IpPacket;
 use rand::SeedableRng;
@@ -47,8 +46,6 @@ pub struct TunnelTest {
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
     network: RoutingTable,
-    /// The NATs that several hosts sit behind, by public address.
-    shared_nats: BTreeMap<IpAddr, SharedNat>,
     icmp_flows: BTreeMap<FlowId, ResolvedIcmpFlow>,
     udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
     tcp_flows: BTreeMap<FlowId, ResolvedTcpFlow>,
@@ -165,7 +162,6 @@ impl TunnelTest {
         let mut this = Self {
             flux_capacitor,
             network: ref_state.network.clone(),
-            shared_nats: Default::default(),
             client_portal_offline_until: None,
             clients,
             gateways,
@@ -621,7 +617,7 @@ impl TunnelTest {
                 client_id,
                 ip4,
                 ip6,
-                nat_ip4,
+                attachment,
                 dead_window,
                 portal_window,
             } => {
@@ -648,8 +644,7 @@ impl TunnelTest {
                 let now = self.flux_capacitor.now::<Instant>();
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
-                client.migrate_nat(nat_ip4);
-                let added = self.network.add_host(client_id, client);
+                let added = self.network.add_host(client_id, client, attachment);
                 debug_assert!(added);
                 client.exec_mut(|c| {
                     c.tunnel.inner_mut().reset("roam", now);
@@ -1160,56 +1155,25 @@ impl TunnelTest {
     /// Dispatches a [`Transmit`] to the correct host.
     ///
     /// This function is basically the "network layer" of our tests.
-    /// It routes by the wire destination and passes the packet through the
-    /// receiving host's network edge, which may translate or drop it.
+    /// The [`RoutingTable`] passes the packet through the NAT devices on its
+    /// way, which may translate or drop it.
     fn dispatch_transmit(&mut self, transmit: Transmit, at: Instant) {
-        let src = transmit
-            .src
-            .expect("`src` should always be set in these tests");
-        let dst = transmit.dst;
-        let src = self.shared_nat_egress(src, dst, at);
-        let transmit = Transmit {
-            src: Some(src),
-            ..transmit
-        };
-
-        let Some(host) = self.network.host_by_ip(dst.ip()) else {
-            tracing::error!("Unhandled packet: {src} -> {dst}");
+        let Some((host, transmit)) = self.network.route(transmit, at) else {
             return;
         };
 
         match host {
             HostId::Client(id) => {
-                let client = self.clients.get_mut(&id).unwrap();
-
-                match client.ingress(src, dst, at) {
-                    Ok(local_dst) => client.receive(
-                        Transmit {
-                            dst: local_dst,
-                            ..transmit
-                        },
-                        at,
-                    ),
-                    Err(e) => {
-                        tracing::debug!(%src, %dst, "Client's edge dropped packet: {e:#}")
-                    }
-                }
+                self.clients
+                    .get_mut(&id)
+                    .expect("unknown client")
+                    .receive(transmit, at);
             }
             HostId::Gateway(id) => {
-                let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
-
-                match gateway.ingress(src, dst, at) {
-                    Ok(local_dst) => gateway.receive(
-                        Transmit {
-                            dst: local_dst,
-                            ..transmit
-                        },
-                        at,
-                    ),
-                    Err(e) => {
-                        tracing::debug!(%src, %dst, "Gateway's edge dropped packet: {e:#}")
-                    }
-                }
+                self.gateways
+                    .get_mut(&id)
+                    .expect("unknown gateway")
+                    .receive(transmit, at);
             }
             HostId::Relay(id) => {
                 self.relays
@@ -1217,64 +1181,10 @@ impl TunnelTest {
                     .expect("unknown relay")
                     .receive(transmit, at);
             }
-            HostId::SharedNat => {
-                if let Err(e) = self.shared_nat_ingress(src, transmit, at) {
-                    tracing::debug!(%src, %dst, "Shared NAT dropped packet: {e:#}")
-                }
-            }
             HostId::Stale => {
-                tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
+                tracing::debug!(dst = %transmit.dst, "Dropping packet because host roamed away or is offline");
             }
         }
-    }
-
-    /// Passes an outbound packet through the [`SharedNat`] in front of its sender, if there is one.
-    fn shared_nat_egress(&mut self, src: SocketAddr, dst: SocketAddr, at: Instant) -> SocketAddr {
-        let nat = match self.network.host_by_ip(src.ip()) {
-            Some(HostId::Client(id)) => self.clients[&id].shared_nat(),
-            Some(HostId::Gateway(id)) => self.gateways[&id].shared_nat(),
-            Some(HostId::Relay(_) | HostId::SharedNat | HostId::Stale) | None => None,
-        };
-        let Some(nat) = nat else {
-            return src;
-        };
-
-        self.shared_nats
-            .entry(nat.ip4().into())
-            .or_insert(nat)
-            .egress(src, dst, at)
-    }
-
-    /// Hands `transmit` to the host, and its socket, that the [`SharedNat`] at its destination delivers it to.
-    fn shared_nat_ingress(
-        &mut self,
-        src: SocketAddr,
-        transmit: Transmit,
-        at: Instant,
-    ) -> Result<()> {
-        let local_dst = self
-            .shared_nats
-            .get_mut(&transmit.dst.ip())
-            .context("no host has sent through the NAT")?
-            .ingress(src, transmit.dst, at)?;
-        let transmit = Transmit {
-            dst: local_dst,
-            ..transmit
-        };
-
-        match self.network.host_by_ip(local_dst.ip()) {
-            Some(HostId::Client(id)) => {
-                self.clients.get_mut(&id).unwrap().receive(transmit, at);
-            }
-            Some(HostId::Gateway(id)) => {
-                self.gateways.get_mut(&id).unwrap().receive(transmit, at);
-            }
-            Some(HostId::Relay(_) | HostId::SharedNat | HostId::Stale) | None => {
-                bail!("host roamed away or is offline")
-            }
-        }
-
-        Ok(())
     }
 
     fn on_client_event(
@@ -1591,7 +1501,7 @@ impl TunnelTest {
         }
 
         for (relay_id, relay) in &connected {
-            let added = self.network.add_host(*relay_id, relay);
+            let added = self.network.add_host(*relay_id, relay, Attachment::Direct);
             debug_assert!(added);
         }
 
@@ -1633,7 +1543,7 @@ impl TunnelTest {
             .collect::<BTreeMap<_, _>>();
 
         for (rid, relay) in &online {
-            let added = self.network.add_host(*rid, relay);
+            let added = self.network.add_host(*rid, relay, Attachment::Direct);
             debug_assert!(added);
         }
 

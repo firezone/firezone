@@ -9,7 +9,7 @@ use super::{
     probe::{FlowId, ProbeId, Route, TcpFlow},
     reference::PrivateKey,
     resource::{EditEffect, Resource, ResourceEdit, classify},
-    sim_net::Host,
+    sim_net::{Attachment, Host},
     stub_portal::PeerAuthorization,
 };
 use std::{
@@ -99,7 +99,7 @@ pub enum Transition {
         client_id: ClientId,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
-        nat_ip4: Ipv4Addr,
+        attachment: Attachment,
         dead_window: Duration,
         portal_window: Duration,
     },

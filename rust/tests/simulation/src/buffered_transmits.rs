@@ -21,9 +21,6 @@ struct ByTime<T> {
 
 impl BufferedTransmits {
     /// Pushes a new [`Transmit`] from a given [`Host`].
-    ///
-    /// The packet crosses the host's network edge here: the source address on the
-    /// wire is whatever the edge (e.g. a NAT) translates it to.
     pub(crate) fn push_from<T>(
         &mut self,
         transmit: impl Into<Option<Transmit>>,
@@ -33,6 +30,12 @@ impl BufferedTransmits {
         let Some(transmit) = transmit.into() else {
             return;
         };
+
+        if sending_host.is_offline() {
+            tracing::debug!(dst = %transmit.dst, "Host is offline");
+
+            return;
+        }
 
         // The `src` of a [`Transmit`] is empty if we want to send if via the default interface.
         // In production, the kernel does this for us.
@@ -47,15 +50,6 @@ impl BufferedTransmits {
                     return;
                 }
             },
-        };
-
-        let src = match sending_host.egress(src, transmit.dst, now) {
-            Ok(src) => src,
-            Err(e) => {
-                tracing::debug!(%src, dst = %transmit.dst, "Edge dropped outbound packet: {e:#}");
-
-                return;
-            }
         };
 
         let transmit = Transmit {
