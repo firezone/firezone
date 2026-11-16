@@ -536,6 +536,11 @@ defmodule PortalAPI.Gateway.SocketTest do
       oldest = gateway_fixture(account: account, site: site)
       newest = gateway_fixture(account: account, site: site)
 
+      Repo.update_all(
+        from(d in "devices", where: d.id == type(^newest.id, Ecto.UUID)),
+        set: [firezone_id_exempt: true]
+      )
+
       newest
       |> Ecto.Changeset.change(
         firezone_id: oldest.firezone_id,
