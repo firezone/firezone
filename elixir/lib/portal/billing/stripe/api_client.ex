@@ -85,6 +85,80 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :post, "subscriptions", body)
   end
 
+  def fetch_promotion_code(api_token, code) do
+    query = URI.encode_query(%{"code" => code, "limit" => 1}, :www_form)
+
+    case request(api_token, :get, "promotion_codes?#{query}") do
+      {:ok, %{"data" => [promotion_code | _]}} -> {:ok, promotion_code}
+      {:ok, %{"data" => []}} -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def create_promotion_code(api_token, code, coupon_id, metadata, expires_at, idempotency_key) do
+    body =
+      metadata
+      |> Map.new(fn {key, value} -> {"metadata[#{key}]", value} end)
+      |> Map.merge(%{
+        "code" => code,
+        "coupon" => coupon_id,
+        "max_redemptions" => 1,
+        "expires_at" => DateTime.to_unix(expires_at)
+      })
+      |> URI.encode_query(:www_form)
+
+    request(api_token, :post, "promotion_codes", body, idempotency_key: idempotency_key)
+  end
+
+  def list_all_customer_invoices(api_token, customer_id, page_after \\ nil, acc \\ []) do
+    query =
+      [
+        {"customer", customer_id},
+        {"limit", 100},
+        {"expand[]", "data.total_discount_amounts.discount"}
+      ]
+      |> put_if_not_nil_kv("starting_after", page_after)
+      |> URI.encode_query(:www_form)
+
+    case request(api_token, :get, "invoices?#{query}") do
+      {:ok, %{"has_more" => true, "data" => data}} ->
+        list_all_customer_invoices(api_token, customer_id, List.last(data)["id"], acc ++ data)
+
+      {:ok, %{"has_more" => false, "data" => data}} ->
+        {:ok, acc ++ data}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def list_all_customer_invoice_items(api_token, customer_id, page_after \\ nil, acc \\ []) do
+    query =
+      [{"customer", customer_id}, {"limit", 100}]
+      |> put_if_not_nil_kv("starting_after", page_after)
+      |> URI.encode_query(:www_form)
+
+    case request(api_token, :get, "invoiceitems?#{query}") do
+      {:ok, %{"has_more" => true, "data" => data}} ->
+        list_all_customer_invoice_items(api_token, customer_id, List.last(data)["id"], acc ++ data)
+
+      {:ok, %{"has_more" => false, "data" => data}} ->
+        {:ok, acc ++ data}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def create_invoice_item(api_token, attrs, idempotency_key) do
+    body = URI.encode_query(attrs, :www_form)
+    request(api_token, :post, "invoiceitems", body, idempotency_key: idempotency_key)
+  end
+
+  def delete_subscription_discount(api_token, subscription_id) do
+    request(api_token, :delete, "subscriptions/#{subscription_id}/discount")
+  end
+
   def cancel_subscription(api_token, subscription_id) do
     request(api_token, :delete, "subscriptions/#{subscription_id}")
   end
@@ -151,7 +225,11 @@ defmodule Portal.Billing.Stripe.APIClient do
 
   defp idempotency_key_header(:post, opts),
     do: [{"idempotency-key", Keyword.get_lazy(opts, :idempotency_key, &Ecto.UUID.generate/0)}]
+
   defp idempotency_key_header(_method, _opts), do: []
+
+  defp put_if_not_nil_kv(params, _key, nil), do: params
+  defp put_if_not_nil_kv(params, key, value), do: params ++ [{key, value}]
 
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)

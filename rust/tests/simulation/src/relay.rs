@@ -28,11 +28,11 @@ use stun_codec::rfc5389::{
 
 use crate::{
     buffered_transmits::BufferedTransmits,
-    flux_capacitor::FluxCapacitor,
+    clock::Clock,
+    network::{EdgeConfig, ExecMutScope, Host, PollTimeout},
+    real_relay::RealRelay,
     relay_reference::{Environment, Observed, Reference},
     relay_transition::{self, Garbage, Loss, Target, Transition},
-    sim_net::{EdgeConfig, ExecMutScope, Host, PollTimeout},
-    sim_relay::SimRelay,
     stun,
 };
 
@@ -87,10 +87,10 @@ const PAYLOAD: [u8; 32] = {
 
 /// The client, the relay, the portal and the network between them.
 pub(crate) struct World {
-    clock: FluxCapacitor,
+    clock: Clock,
     transmits: BufferedTransmits,
 
-    relay: Host<SimRelay>,
+    relay: Host<RealRelay>,
     relay_stack: IpStack,
     /// How often the relay rebooted. Every boot has a secret of its own, so it is a different
     /// relay to the portal.
@@ -135,7 +135,7 @@ struct Credentials {
 
 impl World {
     pub(crate) fn new(relay_stack: IpStack, client_stack: IpStack, start: Instant) -> Self {
-        let clock = FluxCapacitor::new(start, DateTime::UNIX_EPOCH);
+        let clock = Clock::new(start, DateTime::UNIX_EPOCH);
         let (ip4, ip6) = interfaces(client_stack, CLIENT_IP4, CLIENT_IP6);
 
         Self {
@@ -334,8 +334,8 @@ impl World {
         let relay = self.relay.inner();
         let (server, username, password, realm) = relay.explode(
             CLIENT_DEVICE,
-            relay.sut.auth_secret(),
-            relay.sut.public_address(),
+            relay.server.auth_secret(),
+            relay.server.public_address(),
             expire_at,
         );
         self.seeds += 1;
@@ -401,7 +401,7 @@ impl World {
             let nonce =
                 authenticate.then(|| self.relay.exec_mut(|r| r.issue_nonce(src, now, now_utc)));
             let Some(repaired) =
-                stun::repair(&payload, nonce.as_ref(), device, &self.relay.inner().sut)
+                stun::repair(&payload, nonce.as_ref(), device, &self.relay.inner().server)
             else {
                 return;
             };
@@ -655,10 +655,15 @@ impl ExecMutScope for Client {
     fn enter(&self) -> Self::Guard {}
 }
 
-fn new_relay(stack: IpStack, boot: u64, now_utc: SystemTime) -> Host<SimRelay> {
+fn new_relay(stack: IpStack, boot: u64, now_utc: SystemTime) -> Host<RealRelay> {
     let (ip4, ip6) = interfaces(stack, RELAY_IP4, RELAY_IP6);
 
-    host(SimRelay::new(boot, ip4, ip6, now_utc), RELAY_PORT, ip4, ip6)
+    host(
+        RealRelay::new(boot, ip4, ip6, now_utc),
+        RELAY_PORT,
+        ip4,
+        ip6,
+    )
 }
 
 /// A host that is reachable from everywhere.

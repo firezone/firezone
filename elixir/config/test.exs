@@ -160,6 +160,12 @@ config :portal, Portal.HTTP.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Workers.MirrorYCDealRedemption,
+  req_opts: [
+    plug: {Req.Test, Portal.Workers.MirrorYCDealRedemption},
+    retry: false
+  ]
+
 config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
 
 config :portal, Portal.Azure.ManagedIdentity,
@@ -190,6 +196,24 @@ config :portal, Portal.SlugRegistry.AzureTable,
 config :portal, Portal.Ops.RegionTransfer.Storage,
   req_opts: [
     plug: {Req.Test, Portal.Ops.RegionTransfer.Storage},
+    retry: false
+  ]
+
+config :portal, Portal.Avatars.Picture,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Picture},
+    retry: false
+  ],
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
+  ]
+
+config :portal, Portal.Avatars.Storage,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Storage},
     retry: false
   ]
 
@@ -417,7 +441,7 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
+    "img-src 'self' data: https://firezone.statuspage.io",
     "style-src 'self'",
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",

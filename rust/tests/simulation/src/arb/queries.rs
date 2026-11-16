@@ -1,4 +1,4 @@
-//! What the generator asks the reference state to learn which transitions it can generate.
+//! What the generator asks the model to learn which transitions it can generate.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -14,13 +14,13 @@ use itertools::Itertools as _;
 use tunnel_proto::{dns, messages::Filter};
 
 use crate::dns_records::DnsRecords;
+use crate::fake_portal::FakePortal;
 use crate::probe::{FlowId, IcmpFlow, UdpFlow};
 use crate::resource as client;
-use crate::stub_portal::StubPortal;
-use crate::tunnel_reference::{ReferenceState, has_expired, is_held};
+use crate::tunnel_model::{TunnelModel, has_expired, is_held};
 use crate::tunnel_transition::{Destination, Seq};
 
-impl ReferenceState {
+impl TunnelModel {
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
         self.clients
             .values()
@@ -30,7 +30,7 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn deauthorizable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
+    pub(crate) fn deauthorizable_resource_ids(&self, portal: &FakePortal) -> Vec<ResourceId> {
         self.all_resource_ids()
             .into_iter()
             .filter(|resource| portal.site_for_resource(*resource).is_some())
@@ -67,7 +67,7 @@ impl ReferenceState {
     }
 
     /// Resources a Gateway currently holds an authorization for.
-    pub(crate) fn revocable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
+    pub(crate) fn revocable_resource_ids(&self, portal: &FakePortal) -> Vec<ResourceId> {
         let authorized = portal.authorized_resources();
 
         self.deauthorizable_resource_ids(portal)
@@ -234,7 +234,7 @@ impl ReferenceState {
 
     pub(crate) fn reachable_dns_servers(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
     ) -> Vec<(ClientId, dns::Upstream)> {
         let upstream_do53 = portal.upstream_do53();
 
@@ -309,7 +309,7 @@ impl ReferenceState {
 
     pub(crate) fn resources_unknown_to_all_clients(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
     ) -> Vec<client::Resource> {
         portal
             .all_resources()
@@ -324,7 +324,7 @@ impl ReferenceState {
 
     pub(crate) fn editable_resources_on_any_client(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
     ) -> Vec<client::Resource> {
         portal
             .all_resources()
@@ -348,7 +348,7 @@ impl ReferenceState {
 
     pub(crate) fn dns_resources_on_any_client(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
     ) -> Vec<(ClientId, client::DnsResource)> {
         let dns_resources = portal
             .all_resources()
@@ -415,7 +415,7 @@ impl ReferenceState {
     /// Returns every listed pool that some client holds.
     pub(crate) fn listed_device_pool_ids_on_any_client(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
     ) -> Vec<ResourceId> {
         portal
             .listed_pool_ids()
@@ -429,7 +429,7 @@ impl ReferenceState {
     /// pool filters that authorize the route.
     pub(crate) fn pool_routed_other_client_tun_ips(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
     ) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
         let online_ips_by_id = self
             .clients

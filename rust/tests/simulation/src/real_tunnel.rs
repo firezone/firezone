@@ -15,7 +15,7 @@ use tun::PacketBatch;
 use tunnel::{ClientState, FakeTunnelEnds, ResolverQuery, Role, Tunnel};
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
-pub(crate) struct SimTunnel<R> {
+pub(crate) struct RealTunnel<R> {
     inner: Tunnel<R>,
     pub(crate) ends: FakeTunnelEnds,
     /// The packets the TUN device reads on the next poll.
@@ -28,7 +28,7 @@ pub(crate) struct SimTunnel<R> {
     woken_since_idle: Arc<AtomicBool>,
 }
 
-impl<R: Role> SimTunnel<R> {
+impl<R: Role> RealTunnel<R> {
     pub(crate) fn new(state: R) -> Self {
         let (tunnel, ends) = Tunnel::fake(state);
 
@@ -180,7 +180,7 @@ impl<R: Role> SimTunnel<R> {
     }
 }
 
-impl SimTunnel<ClientState> {
+impl RealTunnel<ClientState> {
     /// Shuts the tunnel down, returning the datagrams it sent on the way out.
     pub(crate) fn shut_down(mut self, now: Instant) -> Vec<Transmit> {
         self.inner_mut().state_mut().shut_down(now);

@@ -21,11 +21,11 @@ use super::values::{
 };
 use super::{dns_queries, packets};
 use crate::dns_records::record_ip;
+use crate::fake_portal::FakePortal;
+use crate::network::{EdgeConfig, Host};
 use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
-use crate::sim_net::{EdgeConfig, Host};
-use crate::stub_portal::StubPortal;
-use crate::tunnel_reference::ReferenceState;
+use crate::tunnel_model::TunnelModel;
 use crate::tunnel_transition::{Destination, Seq, Transition};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -67,7 +67,7 @@ enum TransitionKind {
 /// The transitions that open no connection.
 ///
 /// A node whose allocations all failed cannot open any connection until it gets a relay back,
-/// which the reference model does not predict. While every relay is exhausted or recovering, or a
+/// which the model does not predict. While every relay is exhausted or recovering, or a
 /// node may have no relay left, only these are legal.
 const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 9] = [
     TransitionKind::RoamClient,
@@ -92,8 +92,8 @@ enum ExistingFlow<'a> {
 
 pub(super) fn generate(
     g: &mut Generator,
-    state: &ReferenceState,
-    portal: &StubPortal,
+    state: &TunnelModel,
+    portal: &FakePortal,
     now: Instant,
 ) -> Transition {
     let addable_resources = state.resources_unknown_to_all_clients(portal);
@@ -172,7 +172,7 @@ pub(super) fn generate(
         .count();
     // TODO: Remove the classic branch with classic ICE.
     // A Frostlink connection without a relay for longer than a WireGuard handshake attempt
-    // expires, which the reference does not predict. Frostlink flows therefore keep a healthy relay.
+    // expires, which the model does not predict. Frostlink flows therefore keep a healthy relay.
     let can_exhaust_relay = if portal.frostlink() {
         healthy_relays > 1
     } else {
@@ -472,8 +472,8 @@ pub(super) fn generate(
 
 fn arb_resource_edit(
     g: &mut Generator,
-    state: &ReferenceState,
-    portal: &StubPortal,
+    state: &TunnelModel,
+    portal: &FakePortal,
     old: Resource,
 ) -> ResourceEdit {
     if g.flip(25) {
@@ -559,14 +559,14 @@ fn arb_resource_edit(
     ResourceEdit { old, new }
 }
 
-fn has_alternative_site(current: &[Site], portal: &StubPortal) -> bool {
+fn has_alternative_site(current: &[Site], portal: &FakePortal) -> bool {
     portal
         .regular_sites()
         .iter()
         .any(|site| current.len() != 1 || current.first() != Some(site))
 }
 
-fn arb_different_site(g: &mut Generator, current: &[Site], portal: &StubPortal) -> Vec<Site> {
+fn arb_different_site(g: &mut Generator, current: &[Site], portal: &FakePortal) -> Vec<Site> {
     let sites = portal
         .regular_sites()
         .iter()
@@ -589,7 +589,7 @@ fn arb_different_name(g: &mut Generator, current: &str) -> String {
 
 fn arb_resource_with_different_type(
     g: &mut Generator,
-    portal: &StubPortal,
+    portal: &FakePortal,
     domain_tree: &[DomainName],
     resource: &Resource,
 ) -> Resource {
@@ -658,7 +658,7 @@ fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> Transit
 }
 
 /// The `(recipient, remote)` pairs of nodes that may connect to each other.
-fn key_change_recipients(state: &ReferenceState) -> Vec<(ClientOrGatewayId, ClientOrGatewayId)> {
+fn key_change_recipients(state: &TunnelModel) -> Vec<(ClientOrGatewayId, ClientOrGatewayId)> {
     let clients = state.clients.keys().copied().map(ClientOrGatewayId::Client);
     let gateways = state
         .gateways

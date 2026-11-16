@@ -1,18 +1,18 @@
 use super::{
+    fake_portal::FakePortal,
+    model_client::ModelClient,
+    model_gateway::ModelGateway,
     probe::{
         Answer, DnsNatObservation, DnsNatSessions, ExpectedOutcome, ExpectedProbe,
         InvalidDnsNatObservation, KnownLoss, ProbeId, ProbeProtocol, ProbeRequest, ProbeTrace,
         ReceivedRequest, ReceivedResponse, RejectionRemote, RejectionResponse, Remote,
         RemoteResponse, Route, SubmittedRequest, TraceRequirement, remote_response,
     },
-    ref_client::RefClient,
-    ref_gateway::RefGateway,
+    real_client::RealClient,
+    real_tunnel_system::RealTunnelSystem,
     resource::Resource,
-    sim_client::SimClient,
     site_network::{IcmpError, icmp_error_reply},
-    stub_portal::StubPortal,
-    sut::TunnelTest,
-    tunnel_reference::ReferenceState,
+    tunnel_model::TunnelModel,
     tunnel_transition::Destination,
 };
 use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView};
@@ -30,22 +30,22 @@ use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
 use tunnel_proto::dns;
 
-/// Checks the simulated tunnel against the reference state.
-pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
-    let all_ref_clients = ref_state
+/// Checks the real tunnel system against the model.
+pub fn check_invariants(model: &TunnelModel, state: &RealTunnelSystem, portal: &FakePortal) {
+    let all_model_clients = model
         .clients
         .iter()
         .map(|(id, host)| (*id, host.inner()))
         .collect();
-    let all_ref_gateways = ref_state
+    let all_model_gateways = model
         .gateways
         .iter()
         .map(|(id, host)| (*id, host.inner()))
         .collect();
     assert_probes(
-        &ref_state.expected_probes,
-        &all_ref_clients,
-        &all_ref_gateways,
+        &model.expected_probes,
+        &all_model_clients,
+        &all_model_gateways,
         state,
     );
     assert_dns_nat(state);
@@ -54,27 +54,27 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         assert_relays_are_not_handed_out_in_a_loop(node, handed_out_at);
     }
 
-    for (client_id, ref_client_host) in &ref_state.clients {
-        let ref_client = ref_client_host.inner();
-        let sut_client = state.clients[client_id].inner();
+    for (client_id, model_client_host) in &model.clients {
+        let model_client = model_client_host.inner();
+        let real_client = state.clients[client_id].inner();
 
-        assert_udp_dns_packets_properties(ref_client, sut_client);
-        assert_tcp_dns(ref_client, sut_client);
-        assert_device_listings(ref_client, sut_client);
-        assert_dns_servers_are_valid(ref_client, sut_client, portal);
-        assert_search_domain_is_valid(sut_client, portal);
-        assert_routes_are_valid(ref_client, sut_client);
-        assert_resource_list(ref_client, sut_client);
-        assert_dns_resource_record_cache(ref_client, sut_client);
+        assert_udp_dns_packets_properties(model_client, real_client);
+        assert_tcp_dns(model_client, real_client);
+        assert_device_listings(model_client, real_client);
+        assert_dns_servers_are_valid(model_client, real_client, portal);
+        assert_search_domain_is_valid(real_client, portal);
+        assert_routes_are_valid(model_client, real_client);
+        assert_resource_list(model_client, real_client);
+        assert_dns_resource_record_cache(model_client, real_client);
     }
 }
 
 /// Compares each expected application probe with all endpoint observations.
 fn assert_probes(
     expected_probes: &BTreeMap<ProbeId, ExpectedProbe>,
-    ref_clients: &BTreeMap<ClientId, &RefClient>,
-    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
-    state: &TunnelTest,
+    model_clients: &BTreeMap<ClientId, &ModelClient>,
+    model_gateways: &BTreeMap<GatewayId, &ModelGateway>,
+    state: &RealTunnelSystem,
 ) {
     let observations = state.probe_observations().collect_vec();
 
@@ -134,8 +134,8 @@ fn assert_probes(
                 submitted_request,
                 route.remote(),
                 RemoteResponse::Echo,
-                ref_clients,
-                ref_gateways,
+                model_clients,
+                model_gateways,
             ),
             ExpectedOutcome::RoundTripCompleted(route, Answer::Reset) => assert_round_trip(
                 expected,
@@ -143,8 +143,8 @@ fn assert_probes(
                 submitted_request,
                 route.remote(),
                 RemoteResponse::Reset,
-                ref_clients,
-                ref_gateways,
+                model_clients,
+                model_gateways,
             ),
             ExpectedOutcome::RoundTripCompleted(_, Answer::WriteEchoed) => {
                 assert_write_echoed(expected, &trace)
@@ -160,7 +160,7 @@ fn assert_probes(
 }
 
 /// Whether the Gateway of the probe may have evicted or refused the NAT of a domain for the probe's Client.
-fn gateway_may_limit_dns_nat(expected: &ExpectedProbe, state: &TunnelTest) -> bool {
+fn gateway_may_limit_dns_nat(expected: &ExpectedProbe, state: &RealTunnelSystem) -> bool {
     let Destination::DomainName { .. } = expected.request.destination() else {
         return false;
     };
@@ -266,8 +266,8 @@ fn assert_round_trip(
     submitted_request: &SubmittedRequest,
     expected_remote: Remote,
     answer: RemoteResponse,
-    ref_clients: &BTreeMap<ClientId, &RefClient>,
-    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
+    model_clients: &BTreeMap<ClientId, &ModelClient>,
+    model_gateways: &BTreeMap<GatewayId, &ModelGateway>,
 ) {
     let [received_request] = trace.received_requests.as_slice() else {
         tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received request");
@@ -277,14 +277,14 @@ fn assert_round_trip(
     if received_request.remote != expected_remote {
         tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
     }
-    assert_received_request(expected, submitted_request, received_request, ref_clients);
+    assert_received_request(expected, submitted_request, received_request, model_clients);
 
     let response = remote_response(
         expected,
         received_request,
         answer,
-        ref_clients,
-        ref_gateways,
+        model_clients,
+        model_gateways,
     );
     let [received_response] = trace.received_responses.as_slice() else {
         if trace.received_responses.is_empty() && response == RemoteResponse::Nothing {
@@ -317,7 +317,7 @@ fn assert_round_trip(
 }
 
 /// Checks the gateway's stable DNS NAT mapping for each transport session.
-fn assert_dns_nat(state: &TunnelTest) {
+fn assert_dns_nat(state: &RealTunnelSystem) {
     let observations = state.dns_nat_observations();
 
     assert_flows_keep_their_dns_nat(observations);
@@ -532,7 +532,7 @@ fn assert_received_request(
     expected: &ExpectedProbe,
     submitted_request: &SubmittedRequest,
     received_request: &ReceivedRequest,
-    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    model_clients: &BTreeMap<ClientId, &ModelClient>,
 ) {
     if submitted_request.packet.as_tcp().is_none() {
         assert_probe_payload(expected.id, &received_request.packet);
@@ -542,8 +542,8 @@ fn assert_received_request(
         }
     }
 
-    let ref_client = &ref_clients[&expected.origin];
-    let expected_source = ref_client.tunnel_ip_for(received_request.packet.source());
+    let model_client = &model_clients[&expected.origin];
+    let expected_source = model_client.tunnel_ip_for(received_request.packet.source());
     if received_request.packet.source() != expected_source {
         tracing::error!(target: "assertions", id = ?expected.id, "Received request has the wrong source");
     }
@@ -827,9 +827,9 @@ fn rejection_response(packet: &IpPacket) -> Option<RejectionResponse> {
     None
 }
 
-fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
-    let expected_resources = ref_client.expected_resources();
-    let actual_resources = &sim_client.observed_resource_list;
+fn assert_resource_list(model_client: &ModelClient, real_client: &RealClient) {
+    let expected_resources = model_client.expected_resources();
+    let actual_resources = &real_client.observed_resource_list;
     let expected_ids = expected_resources
         .iter()
         .map(ResourceView::id)
@@ -863,8 +863,8 @@ fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
     }
 }
 
-fn assert_dns_resource_record_cache(ref_client: &RefClient, sim_client: &SimClient) {
-    let addresses = ref_client
+fn assert_dns_resource_record_cache(model_client: &ModelClient, real_client: &RealClient) {
+    let addresses = model_client
         .all_resources()
         .into_iter()
         .filter_map(|resource| match resource {
@@ -875,7 +875,7 @@ fn assert_dns_resource_record_cache(ref_client: &RefClient, sim_client: &SimClie
         })
         .collect::<BTreeMap<_, _>>();
 
-    for record in &sim_client.dns_resource_record_cache {
+    for record in &real_client.dns_resource_record_cache {
         for (pattern, resource_id) in &record.resources {
             let Some(address) = addresses.get(resource_id) else {
                 continue;
@@ -1003,30 +1003,30 @@ fn assert_resource_status(resource: ResourceId, expected: ResourceStatus, actual
 }
 
 fn assert_dns_servers_are_valid(
-    ref_client: &RefClient,
-    sim_client: &SimClient,
-    portal: &StubPortal,
+    model_client: &ModelClient,
+    real_client: &RealClient,
+    portal: &FakePortal,
 ) {
-    let expected = ref_client.expected_dns_servers(portal.upstream_do53(), portal.upstream_doh());
-    let actual = sim_client.effective_dns_servers();
+    let expected = model_client.expected_dns_servers(portal.upstream_do53(), portal.upstream_doh());
+    let actual = real_client.effective_dns_servers();
 
     if actual != expected {
         tracing::error!(target: "assertions", ?actual, ?expected, "❌ Effective DNS servers are incorrect");
     }
 }
 
-fn assert_search_domain_is_valid(sim_client: &SimClient, portal: &StubPortal) {
+fn assert_search_domain_is_valid(real_client: &RealClient, portal: &FakePortal) {
     let expected = portal.search_domain();
-    let actual = sim_client.effective_search_domain();
+    let actual = real_client.effective_search_domain();
 
     if actual != expected {
         tracing::error!(target: "assertions", ?actual, ?expected, "❌ Search domain is incorrect");
     }
 }
 
-fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
-    let expected = ref_client.expected_routes();
-    let actual = sim_client.routes.clone();
+fn assert_routes_are_valid(model_client: &ModelClient, real_client: &RealClient) {
+    let expected = model_client.expected_routes();
+    let actual = real_client.routes.clone();
 
     if actual != expected {
         let expected = expected.iter().join(", ");
@@ -1036,24 +1036,24 @@ fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
     }
 }
 
-fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
-    let unexpected_dns_replies = sim_client
+fn assert_udp_dns_packets_properties(model_client: &ModelClient, real_client: &RealClient) {
+    let unexpected_dns_replies = real_client
         .received_udp_dns_responses
         .keys()
-        .filter(|response| !ref_client.expected_udp_dns_handshakes.contains(response))
+        .filter(|response| !model_client.expected_udp_dns_handshakes.contains(response))
         .collect_vec();
 
     if !unexpected_dns_replies.is_empty() {
         tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected UDP DNS replies on client");
     }
 
-    for (dns_server, query_id, local_port) in ref_client.expected_udp_dns_handshakes.iter() {
+    for (dns_server, query_id, local_port) in model_client.expected_udp_dns_handshakes.iter() {
         let _guard =
             tracing::info_span!(target: "assertions", "udp_dns", %query_id, %dns_server).entered();
         let key = &(dns_server.clone(), *query_id, *local_port);
 
-        let queries = &sim_client.sent_udp_dns_queries;
-        let responses = &sim_client.received_udp_dns_responses;
+        let queries = &real_client.sent_udp_dns_queries;
+        let responses = &real_client.received_udp_dns_responses;
 
         match (queries.get(key), responses.get(key)) {
             (Some(client_sent_query), Some(client_received_response)) => {
@@ -1074,24 +1074,24 @@ fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimCli
     }
 }
 
-fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
-    let unexpected_dns_responses = sim_client
+fn assert_tcp_dns(model_client: &ModelClient, real_client: &RealClient) {
+    let unexpected_dns_responses = real_client
         .received_tcp_dns_responses
         .iter()
-        .filter(|response| !ref_client.expected_tcp_dns_handshakes.contains(response))
+        .filter(|response| !model_client.expected_tcp_dns_handshakes.contains(response))
         .collect_vec();
 
     if !unexpected_dns_responses.is_empty() {
         tracing::error!(target: "assertions", ?unexpected_dns_responses, "❌ Unexpected TCP DNS responses on client");
     }
 
-    for (dns_server, query_id) in ref_client.expected_tcp_dns_handshakes.iter() {
+    for (dns_server, query_id) in model_client.expected_tcp_dns_handshakes.iter() {
         let _guard =
             tracing::info_span!(target: "assertions", "tcp_dns", %query_id, %dns_server).entered();
         let key = &(dns_server.clone(), *query_id);
 
-        let queries = &sim_client.sent_tcp_dns_queries;
-        let responses = &sim_client.received_tcp_dns_responses;
+        let queries = &real_client.sent_tcp_dns_queries;
+        let responses = &real_client.received_tcp_dns_responses;
 
         match (queries.contains(key), responses.contains(key)) {
             (true, true) => {}
@@ -1109,9 +1109,9 @@ fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
     }
 }
 
-fn assert_device_listings(ref_client: &RefClient, sim_client: &SimClient) {
-    for (query, expected) in &ref_client.expected_device_listings {
-        let actual = sim_client.device_listings.get(query);
+fn assert_device_listings(model_client: &ModelClient, real_client: &RealClient) {
+    for (query, expected) in &model_client.expected_device_listings {
+        let actual = real_client.device_listings.get(query);
 
         if actual != Some(expected) {
             tracing::error!(target: "assertions", ?query, ?expected, ?actual, "❌ Unexpected answer to PTR query in the device domain");

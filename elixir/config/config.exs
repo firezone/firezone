@@ -47,6 +47,7 @@ config :portal, run_manual_migrations: false
 config :portal, data_residency_region: :on_prem
 config :portal, slug_registry_table_url: nil
 config :portal, region_transfer_outbox_url: nil, region_transfer_inbox_url: nil
+config :portal, avatars_container_url: nil
 
 config :portal, Portal.Repo,
   hostname: "localhost",
@@ -255,6 +256,18 @@ config :portal, Portal.Ops.RegionTransfer.Storage,
     retry: :transient
   ]
 
+config :portal, Portal.Avatars.Picture,
+  req_opts: [
+    retry: :transient,
+    max_retries: 2
+  ]
+
+config :portal, Portal.Avatars.Storage,
+  req_opts: [
+    receive_timeout: 15_000,
+    retry: :transient
+  ]
+
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
     connect_options: [timeout: 2_000],
@@ -426,6 +439,7 @@ config :portal, Portal.S3.APIClient,
 
 config :portal, Portal.QRadar.APIClient, req_opts: [retry: :transient]
 config :portal, Portal.HTTP.APIClient, req_opts: [retry: :transient]
+config :portal, Portal.Workers.MirrorYCDealRedemption, req_opts: []
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
@@ -484,6 +498,11 @@ config :portal, Portal.Cluster,
   adapter_config: []
 
 config :portal, sign_up_whitelisted_domains: []
+
+config :portal,
+  yc_deal_webhook_secrets: %{},
+  yc_deal_coupon_ids: %{},
+  yc_deal_mirror_url: nil
 
 config :portal, docker_registry: "ghcr.io/firezone"
 
@@ -564,7 +583,7 @@ config :portal, country_code_blocklist: []
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
+    "img-src 'self' data: https://firezone.statuspage.io",
     "style-src 'self'",
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",

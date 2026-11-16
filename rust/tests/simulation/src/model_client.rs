@@ -1,15 +1,15 @@
 use super::{
     DeviceListing, DeviceListingQuery, QueryId,
     dns_records::DnsRecords,
+    network::ExecMutScope,
     probe::Remote,
+    real_client::RealClient,
     resource::{
         CidrResource, DevicePoolResource, DnsResource, EditEffect, InternetResource, Resource,
         classify,
     },
-    sim_client::SimClient,
-    sim_net::ExecMutScope,
     site_network::{RouteType, Routes},
-    tunnel_reference::PrivateKey,
+    tunnel_model::PrivateKey,
     tunnel_transition::{Destination, DnsQuery, DnsTransport},
 };
 use tunnel_proto::{
@@ -31,12 +31,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Reference state for a particular client.
+/// Model of a particular client.
 ///
-/// The reference state machine is designed to be as abstract as possible over connlib's functionality.
+/// The model is designed to be as abstract as possible over connlib's functionality.
 /// For example, we try to model connectivity to _resources_ and don't really care, which gateway is being used to route us there.
 #[derive(Clone, derive_more::Debug)]
-pub struct RefClient {
+pub struct ModelClient {
     id: ClientId,
 
     pub(crate) key: PrivateKey,
@@ -119,11 +119,11 @@ pub struct RefClient {
     rejected_inbound_peer_authorizations: BTreeMap<ClientId, BTreeMap<ResourceId, Vec<Filter>>>,
 }
 
-impl RefClient {
-    /// Construct a fresh [`RefClient`] with all derived collections empty.
+impl ModelClient {
+    /// Construct a fresh [`ModelClient`] with all derived collections empty.
     ///
     /// The structured generator supplies all independent values; this
-    /// constructor initializes the derived reference-model state.
+    /// constructor initializes the derived model state.
     pub(crate) fn new(
         id: ClientId,
         key: PrivateKey,
@@ -171,7 +171,7 @@ impl RefClient {
         search_domain: Option<DomainName>,
         now: Instant,
         utc_now: DateTime<Utc>,
-    ) -> SimClient {
+    ) -> RealClient {
         let mut client_state = ClientState::new(
             self.key.0,
             Default::default(),
@@ -192,7 +192,7 @@ impl RefClient {
         });
         client_state.update_system_resolvers(self.system_dns_resolvers);
 
-        SimClient::new(
+        RealClient::new(
             self.id,
             client_state,
             self.malicious_behaviour,
@@ -1474,8 +1474,8 @@ fn remove_pool(authorizations: &mut BTreeMap<ClientId, BTreeSet<ResourceId>>, po
     for _ in authorizations.extract_if(.., |_, pools| pools.is_empty()) {}
 }
 
-/// Applies the reference model's independent interpretation of resource filters.
-/// Whether the SUT answers `domain` from the portal instead of DNS.
+/// Applies the model's independent interpretation of resource filters.
+/// Whether the real client answers `domain` from the portal instead of DNS.
 ///
 /// Device names resolve ahead of DNS resources, so a name matching both is answered
 /// from the portal and never resolves to a resource's proxy IPs.
@@ -1483,7 +1483,7 @@ fn is_device_domain(domain: &DomainName) -> bool {
     dns::device_slug(domain).is_some()
 }
 
-/// Whether the SUT asks the portal which names `query` lists.
+/// Whether the real client asks the portal which names `query` lists.
 pub(crate) fn is_device_listing_query(query: &DnsQuery) -> bool {
     query.r_type == RecordType::PTR && dns::is_in_device_domain(&query.domain)
 }
@@ -1552,7 +1552,7 @@ fn udp_filter_allows(filters: &[Filter], dport: u16) -> bool {
         })
 }
 
-impl ExecMutScope for RefClient {
+impl ExecMutScope for ModelClient {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}

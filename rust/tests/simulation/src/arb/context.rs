@@ -15,7 +15,7 @@ use ip_network::{
 use smallvec::SmallVec;
 
 use crate::probe::{FlowId, ProbeId};
-use crate::tunnel_reference::PrivateKey;
+use crate::tunnel_model::PrivateKey;
 use crate::tunnel_transition::{DPort, Identifier, SPort, Seq};
 
 struct Ipv4Cursor {

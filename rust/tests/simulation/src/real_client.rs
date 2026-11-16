@@ -3,15 +3,15 @@ use super::{
     buffered_transmits::BufferedTransmits,
     dns_records::DnsRecords,
     echo::echo_reply,
+    network::{ExecMutScope, Host},
     probe::{
         CompletedStream, ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest,
         ReceivedResponse, Remote, SubmittedRequest,
     },
-    sim_net::{ExecMutScope, Host},
-    sim_relay::{SimRelay, map_explode},
-    sim_tunnel::SimTunnel,
+    real_relay::{RealRelay, map_explode},
+    real_tunnel::RealTunnel,
     site_network::{IcmpError, icmp_error_reply},
-    tunnel_reference::PrivateKey,
+    tunnel_model::PrivateKey,
     tunnel_transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
@@ -31,10 +31,10 @@ use tunnel_proto::{
 };
 
 /// Simulation state for a particular client.
-pub(crate) struct SimClient {
+pub(crate) struct RealClient {
     id: ClientId,
 
-    pub(crate) tunnel: SimTunnel<ClientState>,
+    pub(crate) tunnel: RealTunnel<ClientState>,
 
     /// The malicious behaviours sampled for this client.
     malicious_behaviour: MaliciousBehaviour,
@@ -79,19 +79,19 @@ pub(crate) struct SimClient {
     pub(crate) tcp_client: crate::tcp::Client,
 }
 
-impl SimClient {
+impl RealClient {
     pub(crate) fn new(
         id: ClientId,
-        mut sut: ClientState,
+        mut state: ClientState,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
         now: Instant,
     ) -> Self {
-        sut.set_flow_logs_enabled(true);
+        state.set_flow_logs_enabled(true);
 
         Self {
             id,
-            tunnel: SimTunnel::new(sut),
+            tunnel: RealTunnel::new(state),
             malicious_behaviour,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
@@ -111,11 +111,11 @@ impl SimClient {
         }
     }
 
-    pub(crate) fn sut(&self) -> &ClientState {
+    pub(crate) fn state(&self) -> &ClientState {
         self.tunnel.inner().state()
     }
 
-    pub(crate) fn sut_mut(&mut self) -> &mut ClientState {
+    pub(crate) fn state_mut(&mut self) -> &mut ClientState {
         self.tunnel.inner_mut().state_mut()
     }
 
@@ -133,9 +133,9 @@ impl SimClient {
         // A new tunnel with a new key is effectively the same as restarting a client / signing
         // out and in again.
         //
-        // We keep all the state in `SimClient` which is equivalent to host system.
+        // We keep all the state in `RealClient` which is equivalent to host system.
         // That is where we cache resolved DNS names for example.
-        let mut sut = ClientState::new(
+        let mut state = ClientState::new(
             key.0,
             dns_resource_records,
             is_internet_resource_active,
@@ -145,8 +145,8 @@ impl SimClient {
                 .to_std()
                 .unwrap(),
         );
-        sut.set_flow_logs_enabled(true);
-        let old = std::mem::replace(&mut self.tunnel, SimTunnel::new(sut));
+        state.set_flow_logs_enabled(true);
+        let old = std::mem::replace(&mut self.tunnel, RealTunnel::new(state));
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
@@ -236,7 +236,7 @@ impl SimClient {
         tracing::debug!(%sentinel, %domain, "Sending DNS query");
 
         let src = self
-            .sut()
+            .state()
             .tunnel_ip_for(sentinel)
             .expect("tunnel should be initialised");
 
@@ -350,7 +350,7 @@ impl SimClient {
         // Long enough that a query repeated within one `advance` window is served
         // from connlib's DNS cache, short enough that an `Idle` (minutes) expires
         // the entry, so the corpus exercises the cache hit and expiry paths. The
-        // reference model is cache-agnostic (it expects a response per query
+        // model is cache-agnostic (it expects a response per query
         // regardless of how it is produced), so activating the cache is
         // observationally transparent.
         const TTL: u32 = 30;
@@ -566,7 +566,7 @@ impl SimClient {
         // repeated sentinel mapping changes (`UpdateSystemDnsServers` /
         // `UpdateUpstream*`), and would otherwise fall through to the
         // `Unhandled packet` error below. This is connlib's DNS infrastructure
-        // closing a connection, not application traffic the reference models, so
+        // closing a connection, not application traffic the model covers, so
         // it must not fail the test. We match the fixed sentinel *range* rather
         // than the current mapping precisely because the mapping may no longer
         // contain the (old) sentinel by the time the RST arrives.
@@ -587,11 +587,11 @@ impl SimClient {
     pub(crate) fn update_relays<'a>(
         &mut self,
         to_remove: impl Iterator<Item = RelayId>,
-        to_add: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
+        to_add: impl Iterator<Item = (&'a RelayId, &'a Host<RealRelay>)> + 'a,
         now: Instant,
     ) {
         let to_add = map_explode(to_add, format!("client_{}", self.id)).collect();
-        self.sut_mut()
+        self.state_mut()
             .update_relays(to_remove.collect(), to_add, now)
     }
 
@@ -760,7 +760,7 @@ fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
     })
 }
 
-impl Host<SimClient> {
+impl Host<RealClient> {
     /// Takes one turn with what has arrived by `now` and puts what it sent onto the network.
     ///
     /// Returns the event for the portal or another host and whether it has more to do at `now`.
@@ -796,7 +796,7 @@ impl Host<SimClient> {
     }
 }
 
-impl SimClient {
+impl RealClient {
     /// Handles `event` if it only concerns the Client, and returns it otherwise.
     fn handle_local_event(&mut self, event: ClientEvent) -> Option<ClientEvent> {
         match event {
@@ -835,7 +835,7 @@ impl SimClient {
     }
 }
 
-impl ExecMutScope for SimClient {
+impl ExecMutScope for RealClient {
     type Guard = Guard;
 
     fn enter(&self) -> Self::Guard {

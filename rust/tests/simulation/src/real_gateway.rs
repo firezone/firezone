@@ -2,12 +2,12 @@ use super::{
     buffered_transmits::BufferedTransmits,
     dns_records::DnsRecords,
     dns_server_resource::DnsServers,
+    network::{ExecMutScope, Host},
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
-    sim_net::{ExecMutScope, Host},
-    sim_relay::{SimRelay, map_explode},
-    sim_tunnel::SimTunnel,
+    real_relay::{RealRelay, map_explode},
+    real_tunnel::RealTunnel,
     site_network::SiteNetwork,
-    tunnel_reference::PrivateKey,
+    tunnel_model::PrivateKey,
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId, ResourceId};
@@ -22,9 +22,9 @@ use std::{
 use tunnel_proto::{GatewayEvent, GatewayState};
 
 /// Simulation state for a particular client.
-pub(crate) struct SimGateway {
+pub(crate) struct RealGateway {
     id: GatewayId,
-    pub(crate) tunnel: SimTunnel<GatewayState>,
+    pub(crate) tunnel: RealTunnel<GatewayState>,
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
 
@@ -53,19 +53,19 @@ pub(crate) struct DnsResolution {
     pub(crate) addresses: Vec<IpAddr>,
 }
 
-impl SimGateway {
+impl RealGateway {
     pub(crate) fn new(
         id: GatewayId,
-        mut sut: GatewayState,
+        mut state: GatewayState,
         network: SiteNetwork,
         site_specific_dns_records: DnsRecords,
         max_dns_domains_per_client: Option<usize>,
     ) -> Self {
-        sut.set_flow_logs_enabled(true);
+        state.set_flow_logs_enabled(true);
 
         Self {
             id,
-            tunnel: SimTunnel::new(sut),
+            tunnel: RealTunnel::new(state),
             site_specific_dns_records,
             probe_observations: Default::default(),
             dns_servers: Default::default(),
@@ -84,11 +84,11 @@ impl SimGateway {
     /// Starts a new tunnel as if the Gateway's process died: nothing leaves the old tunnel.
     pub(crate) fn crash(&mut self, key: PrivateKey, now: Instant, utc_now: DateTime<Utc>) {
         let ip_config = self
-            .sut()
+            .state()
             .tunnel_ip_config()
             .expect("Gateway to have a tunnel IP configuration");
 
-        let mut sut = GatewayState::new(
+        let mut state = GatewayState::new(
             key.0,
             now,
             utc_now
@@ -96,12 +96,12 @@ impl SimGateway {
                 .to_std()
                 .unwrap(),
         );
-        sut.update_tun_device(ip_config);
-        sut.set_flow_logs_enabled(true);
+        state.update_tun_device(ip_config);
+        state.set_flow_logs_enabled(true);
         if let Some(max) = self.max_dns_domains_per_client {
-            sut.set_max_dns_domains_per_client(max);
+            state.set_max_dns_domains_per_client(max);
         }
-        self.tunnel = SimTunnel::new(sut);
+        self.tunnel = RealTunnel::new(state);
 
         for client in self
             .authorized_resources
@@ -113,11 +113,11 @@ impl SimGateway {
         }
     }
 
-    pub(crate) fn sut(&self) -> &GatewayState {
+    pub(crate) fn state(&self) -> &GatewayState {
         self.tunnel.inner().state()
     }
 
-    pub(crate) fn sut_mut(&mut self) -> &mut GatewayState {
+    pub(crate) fn state_mut(&mut self) -> &mut GatewayState {
         self.tunnel.inner_mut().state_mut()
     }
 
@@ -148,7 +148,7 @@ impl SimGateway {
         self.dns_servers.clear();
 
         let tun_dns_server_port = 53535; // Hardcoded here so we think about backwards-compatibility when changing it.
-        let Some(ip_config) = self.sut().tunnel_ip_config() else {
+        let Some(ip_config) = self.state().tunnel_ip_config() else {
             tracing::error!("Tunnel IP configuration not set");
             return;
         };
@@ -189,11 +189,11 @@ impl SimGateway {
     pub(crate) fn update_relays<'a>(
         &mut self,
         to_remove: impl Iterator<Item = RelayId>,
-        to_add: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
+        to_add: impl Iterator<Item = (&'a RelayId, &'a Host<RealRelay>)> + 'a,
         now: Instant,
     ) {
         let to_add = map_explode(to_add, format!("gateway_{}", self.id)).collect();
-        self.sut_mut()
+        self.state_mut()
             .update_relays(to_remove.collect(), to_add, now)
     }
 
@@ -308,7 +308,7 @@ impl SimGateway {
     }
 
     pub(crate) fn remove_access(&mut self, client: &ClientId, resource: &ResourceId, now: Instant) {
-        self.sut_mut().remove_access(client, resource, now);
+        self.state_mut().remove_access(client, resource, now);
         self.record_resource_disabled(*client, *resource);
     }
 
@@ -363,7 +363,7 @@ impl SimGateway {
             self.record_peer_removed(client);
         }
 
-        self.sut_mut().retain_authorizations(authorizations);
+        self.state_mut().retain_authorizations(authorizations);
     }
 
     fn record_received_request(&mut self, packet: IpPacket, at: Instant) {
@@ -458,7 +458,7 @@ impl SimGateway {
     }
 }
 
-impl Host<SimGateway> {
+impl Host<RealGateway> {
     /// Takes one turn with what has arrived by `now` and puts what it sent onto the network.
     ///
     /// Returns the event for the portal or another host and whether it has more to do at `now`.
@@ -493,7 +493,7 @@ impl Host<SimGateway> {
     }
 }
 
-impl ExecMutScope for SimGateway {
+impl ExecMutScope for RealGateway {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}

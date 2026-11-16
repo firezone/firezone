@@ -8,7 +8,7 @@ use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
 
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
-use crate::tunnel_reference::ReferenceState;
+use crate::tunnel_model::TunnelModel;
 
 pub(super) fn arb_system_dns_servers(g: &mut Generator) -> Vec<IpAddr> {
     arb_do53_subset(g)
@@ -23,7 +23,7 @@ pub(super) fn arb_upstream_do53_servers(g: &mut Generator) -> Vec<UpstreamDo53> 
 
 pub(super) fn arb_compatible_upstream_do53_servers(
     g: &mut Generator,
-    state: &ReferenceState,
+    state: &TunnelModel,
 ) -> Vec<UpstreamDo53> {
     let clients_share_ipv4 = state.clients.values().all(|client| client.ip4.is_some());
     let clients_share_ipv6 = state.clients.values().all(|client| client.ip6.is_some());
@@ -288,7 +288,7 @@ pub(super) fn arb_domain_matching_dns_resource(
 pub(super) fn arb_different_dns_resource_address(
     g: &mut Generator,
     current: &str,
-    state: &ReferenceState,
+    state: &TunnelModel,
 ) -> String {
     let domains = state.dns_resource_domains();
     if !domains.is_empty() && g.flip(50) {

@@ -4,17 +4,27 @@ defmodule PortalWeb.Components.CoreTest do
   alias PortalWeb.Components.Core
 
   describe "Core.avatar/1" do
-    test "uses Gravatar's SHA-256 identifier for the normalized email" do
+    test "links the stored photo by its version" do
+      account = %Portal.Account{id: Ecto.UUID.generate(), slug: "acme"}
+      id = Ecto.UUID.generate()
+
       html =
         render_component(&Core.avatar/1,
-          actor: %{email: "MyEmailAddress@example.com "},
-          size: 64
+          account: account,
+          actor: %Portal.Actor{avatar_identity_id: id, avatar_etag: "etag-1"}
         )
         |> Floki.parse_fragment!()
 
-      assert Floki.attribute(html, "img", "src") == [
-               "https://www.gravatar.com/avatar/84059b07d4be67b806386c0aad8070a23f18836bbaae342275dc0a83414c32ee?s=64&d=retro"
-             ]
+      assert Floki.attribute(html, "img", "src") == ["/acme/avatars/#{id}?v=#{Portal.Avatars.version("etag-1")}"]
+    end
+
+    test "shows a user icon without a photo" do
+      html =
+        render_component(&Core.avatar/1, account: %Portal.Account{slug: "acme"}, actor: %Portal.Actor{})
+        |> Floki.parse_fragment!()
+
+      assert Floki.find(html, "img") == []
+      assert [_icon] = Floki.find(html, ".ri-user-line")
     end
   end
 

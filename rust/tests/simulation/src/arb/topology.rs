@@ -19,20 +19,20 @@ use super::values::{
     arb_system_dns_servers, arb_tree_name, arb_upstream_do53_servers, arb_upstream_doh_servers,
 };
 use crate::dns_records::DnsRecords;
+use crate::fake_portal::{FakePortal, PoolMembers};
+use crate::model_client::ModelClient;
+use crate::model_gateway::ModelGateway;
+use crate::network::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
 use crate::os::SimulatedOs;
-use crate::ref_client::RefClient;
-use crate::ref_gateway::RefGateway;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
-use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
 use crate::site_network::{IcmpError, RouteType, Routes};
-use crate::stub_portal::{PoolMembers, StubPortal};
-use crate::tunnel_reference::ReferenceState;
+use crate::tunnel_model::TunnelModel;
 
 pub(super) fn generate(
     g: &mut Generator,
-    portal: &StubPortal,
+    portal: &FakePortal,
     domain_tree: Vec<DomainName>,
-) -> ReferenceState {
+) -> TunnelModel {
     let clients = arb_clients(g, portal);
     let dns_resource_records = arb_dns_resource_records(g, portal, &domain_tree);
     let host_routes = arb_host_routes(g, &dns_resource_records, portal.upstream_do53());
@@ -64,7 +64,7 @@ pub(super) fn generate(
         network
     });
 
-    ReferenceState::from_parts(
+    TunnelModel::from_parts(
         clients,
         gateways,
         relays,
@@ -136,7 +136,7 @@ pub(super) fn arb_dns_record_set(
 
 const SITE_NAMES: [&str; 3] = ["sydney", "us-west", "us-east"];
 
-pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> StubPortal {
+pub(super) fn arb_fake_portal(g: &mut Generator, domain_tree: &[DomainName]) -> FakePortal {
     let internet_site = Site {
         id: g.fresh_site_id(),
         name: "Internet".to_owned(),
@@ -176,7 +176,7 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
 
     let search_domain = arb_search_domain(g, &dns_resources);
 
-    StubPortal::new(
+    FakePortal::new(
         clients,
         gateways_by_site,
         regular_sites,
@@ -362,7 +362,7 @@ fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option
     candidates().nth(index)
 }
 
-fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
+fn arb_clients(g: &mut Generator, portal: &FakePortal) -> BTreeMap<ClientId, Host<ModelClient>> {
     portal
         .client_tunnel_ips()
         .map(|(id, tun4, tun6)| (id, arb_client_host(g, id, tun4, tun6)))
@@ -374,7 +374,7 @@ fn arb_client_host(
     id: ClientId,
     tun4: Ipv4Addr,
     tun6: Ipv6Addr,
-) -> Host<RefClient> {
+) -> Host<ModelClient> {
     let key = g.fresh_private_key();
     let system_dns = arb_system_dns_servers(g);
     let internet_resource_active = g.bool();
@@ -383,7 +383,7 @@ fn arb_client_host(
     let os = arb_simulated_os(g);
     let ignore_no_authorization_events = g.bool();
 
-    let inner = RefClient::new(
+    let inner = ModelClient::new(
         id,
         key,
         tun4,
@@ -407,16 +407,16 @@ fn arb_client_host(
 
 fn arb_gateways(
     g: &mut Generator,
-    portal: &StubPortal,
+    portal: &FakePortal,
     domain_tree: &[DomainName],
     sites: &BTreeMap<SiteId, SiteView>,
-) -> BTreeMap<GatewayId, Host<RefGateway>> {
+) -> BTreeMap<GatewayId, Host<ModelGateway>> {
     portal
         .gateway_tunnel_ips()
         .map(|(id, tun4, tun6, site_id)| {
             let site = sites[&site_id].clone();
             let site_specific = arb_site_specific_dns_records(g, portal, site_id, domain_tree);
-            let inner = RefGateway::from_parts(
+            let inner = ModelGateway::from_parts(
                 g.fresh_private_key(),
                 tun4,
                 tun6,
@@ -507,7 +507,7 @@ fn arb_listening_port(g: &mut Generator) -> u16 {
 /// A name keeps the network it was first generated in, so all its addresses are in one.
 fn arb_dns_resource_records(
     g: &mut Generator,
-    portal: &StubPortal,
+    portal: &FakePortal,
     domain_tree: &[DomainName],
 ) -> DnsRecords {
     let mut records = DnsRecords::default();
@@ -541,7 +541,7 @@ fn arb_dns_resource_records(
 
 fn arb_site_specific_dns_records(
     g: &mut Generator,
-    portal: &StubPortal,
+    portal: &FakePortal,
     site: SiteId,
     domain_tree: &[DomainName],
 ) -> DnsRecords {
@@ -676,7 +676,7 @@ struct SiteView {
 /// way, and its resolver may not resolve names local to other sites.
 fn arb_sites(
     g: &mut Generator,
-    portal: &StubPortal,
+    portal: &FakePortal,
     host_routes: &[(IpNetwork, RouteType)],
 ) -> BTreeMap<SiteId, SiteView> {
     let sites = portal

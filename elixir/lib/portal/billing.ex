@@ -860,6 +860,38 @@ defmodule Portal.Billing do
     end
   end
 
+  @doc """
+  Creates a single-use promotion code for `coupon_id` that stops working at
+  `expires_at`. Calls with the same `idempotency_key` and arguments within 24
+  hours return the code Stripe made the first time.
+  """
+  # Stripe keeps idempotency keys for a day, so the code is looked up first
+  # to make later retries return the code instead of failing on it.
+  def create_promotion_code(code, coupon_id, metadata, %DateTime{} = expires_at, idempotency_key) do
+    secret_key = fetch_config!(:secret_key)
+
+    case APIClient.fetch_promotion_code(secret_key, code) do
+      {:ok, %{"code" => code}} ->
+        {:ok, code}
+
+      {:error, :not_found} ->
+        with {:ok, %{"code" => code}} <-
+               APIClient.create_promotion_code(
+                 secret_key,
+                 code,
+                 coupon_id,
+                 metadata,
+                 expires_at,
+                 idempotency_key
+               ) do
+          {:ok, code}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   def billing_portal_url(
         %Portal.Account{} = account,
         return_url,

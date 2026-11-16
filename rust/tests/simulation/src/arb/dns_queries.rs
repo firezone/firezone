@@ -9,8 +9,8 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use super::values::arb_domain_matching_dns_resource;
-use crate::stub_portal::StubPortal;
-use crate::tunnel_reference::ReferenceState;
+use crate::fake_portal::FakePortal;
+use crate::tunnel_model::TunnelModel;
 use crate::tunnel_transition::{DnsQuery, DnsTransport, IpFamily, Transition};
 
 #[derive(Clone)]
@@ -44,7 +44,7 @@ enum DnsNameSpec {
     },
 }
 
-pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<DnsQueryTarget> {
+pub(super) fn targets(state: &TunnelModel, portal: &FakePortal) -> Vec<DnsQueryTarget> {
     let servers = state.reachable_dns_servers(portal);
     let labels = iter::empty()
         .chain(portal.device_labels())
@@ -117,7 +117,7 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<DnsQue
 pub(super) fn generate(
     g: &mut Generator,
     targets: &[DnsQueryTarget],
-    state: &ReferenceState,
+    state: &TunnelModel,
 ) -> Transition {
     let target = targets[g.choose_index(targets.len())].clone();
     let (client_id, query) = generate_query(g, target, &state.domain_tree);
@@ -219,7 +219,7 @@ fn generate_query(
 
 fn arb_known_ptr_target(
     g: &mut Generator,
-    state: &ReferenceState,
+    state: &TunnelModel,
     client_id: ClientId,
 ) -> Option<KnownPtrTarget> {
     let client = state.clients[&client_id].inner();

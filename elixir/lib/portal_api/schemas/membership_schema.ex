@@ -10,9 +10,11 @@ defmodule PortalAPI.Schemas.Membership do
              internal: [
                :account_id,
                :allow_email_otp_sign_in,
+               :avatar_etag,
+               :avatar_identity_id,
                :created_by_directory_id,
                :disabled_by_directory_id,
-               :identity_count,
+               :identity_issuers,
                :inserted_at,
                :is_disabled,
                :last_seen_at,
