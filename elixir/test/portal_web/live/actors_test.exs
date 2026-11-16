@@ -1786,7 +1786,7 @@ defmodule PortalWeb.ActorsTest do
     test "shows the user icon and a shield on an admin without a photo", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
 
-      assert has_element?(lv, "#actor-#{actor.id} [title='Admin'].bg-purple-100")
+      assert has_element?(lv, "#actor-#{actor.id} [title='Admin'].bg-purple-800")
       refute has_element?(lv, "#actor-#{actor.id} .font-mono", actor.id)
       assert has_element?(lv, "#actor-#{actor.id} .ri-user-line")
       refute has_element?(lv, "#actor-#{actor.id} .ri-shield-check-line")
@@ -1811,7 +1811,7 @@ defmodule PortalWeb.ActorsTest do
 
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{user}")
 
-      assert has_element?(lv, "#actor-panel img.size-24[src^='/#{account.slug}/avatars/#{identity.id}?v=']")
+      assert has_element?(lv, "#actor-panel .size-24 img[src^='/#{account.slug}/avatars/#{identity.id}?v=']")
     end
 
     test "shows each identity with its own photo and name", %{conn: conn, account: account, actor: actor, directory: directory} do

@@ -1676,20 +1676,23 @@ defmodule PortalWeb.Actors.Components do
 
     ~H"""
     <div
-      class={["inline-flex shrink-0 rounded-full", avatar_ring_size(@size), @admin && "bg-purple-100"]}
+      class={[
+        "inline-flex shrink-0 rounded-full",
+        avatar_size(@size),
+        @admin && ["bg-purple-800", avatar_ring_size(@size)]
+      ]}
       title={@admin && "Admin"}
     >
       <img
         :if={@photo?}
         src={~p"/#{@account}/avatars/#{@identity_id}?#{[v: Portal.Avatars.version(@etag)]}"}
         alt=""
-        class={["rounded-full object-cover bg-neutral-100", avatar_size(@size)]}
+        class="size-full rounded-full object-cover bg-neutral-100"
       />
       <div
         :if={not @photo?}
         class={[
-          "inline-flex items-center justify-center rounded-full",
-          avatar_size(@size),
+          "inline-flex items-center justify-center size-full rounded-full",
           actor_type_icon_bg_color(@type)
         ]}
       >
