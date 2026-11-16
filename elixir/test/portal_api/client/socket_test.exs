@@ -191,6 +191,10 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
+      assert client.actor_id == token.actor_id
+
+      assert %{rows: [[nil]]} =
+               Repo.query!("SELECT actor_id FROM devices WHERE id = $1", [Ecto.UUID.dump!(client.id)])
 
       assert is_reference(socket.assigns.session_ref)
       assert client.public_key == attrs["public_key"]

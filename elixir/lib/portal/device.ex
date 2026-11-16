@@ -95,7 +95,10 @@ defmodule Portal.Device do
     field :firebase_installation_id, :string
 
     # Client-only
-    belongs_to :actor, Portal.Actor
+    # Who uses a device is in device_actors. A connection sets these to the
+    # actor of its token, and pages set them to the most recent user.
+    field :actor_id, :binary_id, virtual: true
+    field :actor, :any, virtual: true
     field :hostname, :string
 
     # Device trust. Enforced client-only today, but gateways may adopt
@@ -181,7 +184,6 @@ defmodule Portal.Device do
     |> validate_length(:firezone_id, max: 255)
     |> validate_length(:hostname, min: 3, max: 255)
     |> assoc_constraint(:account)
-    |> assoc_constraint(:actor)
     |> validate_type_fields()
     |> check_constraint(:type, name: :devices_type_check)
     |> unique_firezone_id_constraint()
@@ -222,7 +224,7 @@ defmodule Portal.Device do
     whatever actor the row last recorded.
   """
   def merge_broadcast(%__MODULE__{id: id} = current, %__MODULE__{id: id} = broadcast) do
-    Portal.SchemaHelpers.merge_broadcast(current, broadcast, [:actor_id | @latest_session_fields])
+    Portal.SchemaHelpers.merge_broadcast(current, broadcast, @latest_session_fields)
   end
 
   def reserved_ipv4_cidr, do: @reserved_ipv4_cidr
