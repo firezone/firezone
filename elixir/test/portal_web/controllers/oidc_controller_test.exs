@@ -1,5 +1,6 @@
 defmodule PortalWeb.OIDCControllerTest do
   use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -1754,6 +1755,33 @@ defmodule PortalWeb.OIDCControllerTest do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
       setup_successful_auth(ctx, actor)
       assert_portal_sign_in_success(ctx)
+    end
+
+    test "keeps the picture claim on a synced identity and queues its photo", ctx do
+      Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "admin-user-123",
+          email: actor.email
+        )
+
+      picture = "https://idp.example.com/photo.jpg"
+      setup_successful_auth(ctx, actor, picture: picture)
+
+      assert_portal_sign_in_success(ctx)
+
+      assert Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id, id: identity.id).picture ==
+               picture
+
+      assert_enqueued(
+        worker: Portal.Avatars.Picture,
+        args: %{account_id: ctx.account.id, identity_id: identity.id, picture: picture}
+      )
     end
 
     test "rejects an ID token whose nonce is not bound to the sign-in session", ctx do
@@ -4694,6 +4722,7 @@ defmodule PortalWeb.OIDCControllerTest do
       |> maybe_add_claim("preferred_username", opts)
       |> maybe_add_claim("nickname", opts)
       |> maybe_add_claim("tid", opts)
+      |> maybe_add_claim("picture", opts)
 
     Mocks.OIDC.sign_openid_connect_token(claims)
   end

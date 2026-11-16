@@ -89,13 +89,12 @@ pub(crate) struct Expiry {
     pub(crate) inbound_refreshes: bool,
 }
 
-/// The behaviour of the network edge in front of a host.
+/// The mapping, filtering and expiry behaviour of the NAT in front of a host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EdgeConfig {
-    /// Publicly reachable; everything is delivered.
-    Open,
-    /// A NAT with the given mapping, filtering and expiry behaviour.
-    Nat(Mapping, FilterMode, Expiry),
+pub(crate) struct EdgeConfig {
+    pub(crate) mapping: Mapping,
+    pub(crate) filter: FilterMode,
+    pub(crate) expiry: Expiry,
 }
 
 /// Whether two hosts behind the given edges can establish a direct path by hole-punching.
@@ -123,25 +122,14 @@ pub(crate) fn direct_path_possible(
     }
 
     fn symmetric(e: EdgeConfig) -> bool {
-        matches!(e, EdgeConfig::Nat(Mapping::EndpointDependent, _, _))
+        e.mapping == Mapping::EndpointDependent
     }
 
     fn port_filtered(e: EdgeConfig) -> bool {
-        matches!(e, EdgeConfig::Nat(_, FilterMode::PortRestricted, _))
+        e.filter == FilterMode::PortRestricted
     }
 
     !(symmetric(a) && port_filtered(b) || symmetric(b) && port_filtered(a))
-}
-
-/// Where a host attaches to the network.
-#[derive(Debug, Clone)]
-pub(crate) enum Attachment {
-    /// Publicly reachable.
-    Direct,
-    /// Behind the NAT device with the given public IPv4 address.
-    Nat(Ipv4Addr),
-    /// Behind a NAT device that joins the network together with the host.
-    NewNat(Nat),
 }
 
 /// A NAT device that any number of hosts sit behind.
@@ -221,7 +209,11 @@ impl Nat {
     }
 
     fn edge_config(&self) -> EdgeConfig {
-        EdgeConfig::Nat(self.mapping, self.filter, self.expiry)
+        EdgeConfig {
+            mapping: self.mapping,
+            filter: self.filter,
+            expiry: self.expiry,
+        }
     }
 
     fn egress(&mut self, src: SocketAddr, dst: SocketAddr, now: Instant) -> SocketAddr {
@@ -481,7 +473,7 @@ where
 pub(crate) struct RoutingTable {
     routes: IpNetworkTable<HostId>,
     nats: BTreeMap<Ipv4Addr, Nat>,
-    /// The public address of the NAT device each host sits behind; hosts without one are attached directly.
+    /// The public address of the NAT device each host sits behind; relays have none.
     attachments: BTreeMap<HostId, Ipv4Addr>,
 }
 
@@ -496,14 +488,45 @@ impl Default for RoutingTable {
 }
 
 impl RoutingTable {
+    pub(crate) fn add_nat(&mut self, nat: Nat) -> bool {
+        let ip = nat.ip4();
+        if self.nats.contains_key(&ip) {
+            return false;
+        }
+
+        self.nats.insert(ip, nat);
+
+        true
+    }
+
+    /// Adds a host behind the NAT device with the public IPv4 address `nat`.
     pub(crate) fn add_host<T>(
         &mut self,
         id: impl Into<HostId>,
         host: &Host<T>,
-        attachment: Attachment,
+        nat: Ipv4Addr,
     ) -> bool {
         let id = id.into();
 
+        if !self.nats.contains_key(&nat) {
+            return false;
+        }
+
+        if !self.add_routes(id, host) {
+            return false;
+        }
+
+        self.attachments.insert(id, nat);
+
+        true
+    }
+
+    /// Adds a relay, which is publicly reachable.
+    pub(crate) fn add_relay<T>(&mut self, id: RelayId, host: &Host<T>) -> bool {
+        self.add_routes(HostId::Relay(id), host)
+    }
+
+    fn add_routes<T>(&mut self, id: HostId, host: &Host<T>) -> bool {
         let interface_ips = interface_ips(host);
         assert!(
             !interface_ips.is_empty(),
@@ -512,28 +535,6 @@ impl RoutingTable {
 
         if interface_ips.iter().any(|ip| self.contains(*ip)) {
             return false;
-        }
-
-        match attachment {
-            Attachment::Direct => {
-                self.attachments.remove(&id);
-            }
-            Attachment::Nat(ip) => {
-                if !self.nats.contains_key(&ip) {
-                    return false;
-                }
-
-                self.attachments.insert(id, ip);
-            }
-            Attachment::NewNat(nat) => {
-                let ip = nat.ip4();
-                if self.nats.contains_key(&ip) {
-                    return false;
-                }
-
-                self.nats.insert(ip, nat);
-                self.attachments.insert(id, ip);
-            }
         }
 
         for ip in interface_ips {
@@ -559,11 +560,9 @@ impl RoutingTable {
         self.nats.keys().copied()
     }
 
+    /// The edge of a host behind a NAT device, i.e. a Client or a Gateway.
     pub(crate) fn edge_config(&self, id: impl Into<HostId>) -> EdgeConfig {
-        match self.attachments.get(&id.into()) {
-            Some(ip) => self.nats[ip].edge_config(),
-            None => EdgeConfig::Open,
-        }
+        self.nats[&self.attachments[&id.into()]].edge_config()
     }
 
     /// Passes a packet through the NAT devices of its sender and its receiver.

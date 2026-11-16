@@ -1738,6 +1738,104 @@ defmodule PortalWeb.ActorsTest do
     end
   end
 
+  describe "avatars" do
+    setup %{account: account} do
+      Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
+      %{directory: Portal.EntraDirectoryFixtures.entra_directory_fixture(account: account)}
+    end
+
+    test "shows the icon when photos are off", %{conn: conn, account: account, actor: actor, directory: directory} do
+      Portal.Config.put_env_override(:avatars_container_url, nil)
+      user = actor_fixture(account: account, type: :account_user)
+      directory_identity_fixture(directory: directory, actor: user, avatar_etag: "etag-1")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      refute has_element?(lv, "#actor-#{user.id} img[src*='/avatars/']")
+    end
+
+    test "shows the directory photo of a user", %{conn: conn, account: account, actor: actor, directory: directory} do
+      user = actor_fixture(account: account, type: :account_user)
+      identity = directory_identity_fixture(directory: directory, actor: user, avatar_etag: "etag-1")
+      src = ~p"/#{account}/avatars/#{identity.id}?#{[v: Portal.Avatars.version("etag-1")]}"
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      assert has_element?(lv, "#actor-#{user.id} img[src='#{src}']")
+      refute has_element?(lv, "#actor-#{user.id} [title='Admin']")
+    end
+
+    test "prefers a directory photo over a newer sign-in photo", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      directory: directory
+    } do
+      user = actor_fixture(account: account, type: :account_user)
+
+      synced =
+        directory_identity_fixture(directory: directory, actor: user, avatar_source: :directory, avatar_etag: "graph")
+
+      identity_fixture(account: account, actor: user, avatar_source: :picture, avatar_etag: "sha")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      assert has_element?(lv, "#actor-#{user.id} img[src^='/#{account.slug}/avatars/#{synced.id}?v=']")
+    end
+
+    test "shows the user icon and a shield on an admin without a photo", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      assert has_element?(lv, "#actor-#{actor.id} [title='Admin'].bg-purple-800")
+      refute has_element?(lv, "#actor-#{actor.id} .font-mono", actor.id)
+      assert has_element?(lv, "#actor-#{actor.id} .ri-user-line")
+      refute has_element?(lv, "#actor-#{actor.id} .ri-shield-check-line")
+      refute has_element?(lv, "#actor-#{actor.id} img[src*='/avatars/']")
+    end
+
+    test "shows one logo per identity provider next to the name", %{conn: conn, account: account, actor: actor, directory: directory} do
+      user = actor_fixture(account: account, type: :account_user)
+      directory_identity_fixture(directory: directory, actor: user)
+      google = Portal.GoogleDirectoryFixtures.google_directory_fixture(account: account)
+      directory_identity_fixture(directory: google, actor: user)
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      assert has_element?(lv, "#actor-#{user.id} img[alt='Microsoft Entra']")
+      assert has_element?(lv, "#actor-#{user.id} img[alt='Google']")
+    end
+
+    test "shows the photo in the detail panel", %{conn: conn, account: account, actor: actor, directory: directory} do
+      user = actor_fixture(account: account, type: :account_user)
+      identity = directory_identity_fixture(directory: directory, actor: user, avatar_etag: "etag-1")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{user}")
+
+      assert has_element?(lv, "#actor-panel .size-24 img[src^='/#{account.slug}/avatars/#{identity.id}?v=']")
+    end
+
+    test "shows each identity with its own photo and name", %{conn: conn, account: account, actor: actor, directory: directory} do
+      user = actor_fixture(account: account, type: :account_user)
+
+      named =
+        directory_identity_fixture(directory: directory, actor: user, name: "Ada Lovelace", avatar_etag: "etag-1")
+
+      unnamed =
+        identity_fixture(account: account, actor: user, name: nil, given_name: "Grace", family_name: "Hopper")
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{user}?tab=identities")
+
+      html = lv |> element("#actor-panel") |> render()
+
+      assert has_element?(lv, "#actor-panel li img[src^='/#{account.slug}/avatars/#{named.id}?v=']")
+      refute has_element?(lv, "#actor-panel li img[src*='/avatars/#{unnamed.id}']")
+      assert html =~ "Ada Lovelace"
+      assert html =~ "Grace Hopper"
+      assert has_element?(lv, "#actor-panel details dd", named.issuer)
+    end
+  end
+
   describe "count badge" do
     test "shows total actor count after async load", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, html} =

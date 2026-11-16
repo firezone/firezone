@@ -53,72 +53,153 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
     }
   end
 
-  describe "export" do
-    test "records the billing before it disables the account", %{account: account, store: store} = ctx do
-      stub_source_stripe(ctx)
+  defp paid_up(ctx), do: stub_source_stripe(ctx, invoices: [%{"id" => "in_paid", "status" => "paid"}])
 
-      capture_io(fn -> assert {:ok, _manifest} = RegionTransfer.export(account.id, confirm: false) end)
+  defp initiate!(account) do
+    capture_io(fn -> {:ok, _manifest} = RegionTransfer.initiate(account.id, confirm: false) end)
+  end
 
-      account = reload(account)
-      assert account.is_disabled
-      assert %{"status" => "exported", "snapshot" => snapshot} = account.metadata.region_transfer
-      assert snapshot["source_region"] == "us"
-      assert snapshot["source_stripe_account_id"] == @source_account
-      assert [%{"id" => "sub_us"}] = snapshot["subscriptions"]
-      assert snapshot["unsettled_invoice_ids"] == ["in_open"]
-      assert snapshot["open_invoice_ids"] == ["in_sent"]
+  # Runs initiate/2 in the US and leaves the EU database without the account,
+  # as two cells would be.
+  defp move_to_eu(%{account: account} = ctx, opts \\ []) do
+    paid_up(ctx)
+    initiate!(account)
+    Repo.delete!(reload(account))
+    Portal.Config.put_env_override(:data_residency_region, :eu)
+    stub_destination_stripe(ctx, opts)
+  end
 
-      manifest = store |> blob(account.id, "manifest.json") |> Jason.decode!()
-      assert is_binary(manifest["billing_checksum"])
-      assert blob(store, account.id, "billing.json")
+  describe "initiate/2" do
+    test "refuses while the customer owes anything", %{account: account, store: store} = ctx do
+      stub_source_stripe(ctx, invoices: [%{"id" => "in_sent", "status" => "open", "collection_method" => "send_invoice"}])
+
+      assert {:error, {:billing_outstanding, ["in_sent"]}} = RegionTransfer.initiate(account.id, confirm: false)
+      refute reload(account).is_disabled
+      assert Agent.get(store, & &1) == %{}
     end
 
     test "leaves the account enabled when Stripe fails", %{account: account} do
       Req.Test.stub(Portal.Billing.Stripe.APIClient, &send_resp(&1, 500, ""))
 
-      capture_io(fn -> assert {:error, :retry_later} = RegionTransfer.export(account.id, confirm: false) end)
+      assert {:error, :retry_later} = RegionTransfer.initiate(account.id, confirm: false)
+      refute reload(account).is_disabled
+    end
+
+    test "exports the account and cancels its subscription at period end", %{account: account, stripe: stripe} = ctx do
+      paid_up(ctx)
+
+      output = capture_io(fn -> assert {:ok, _manifest} = RegionTransfer.initiate(account.id, confirm: false) end)
+      assert output =~ "copy Stripe customer #{@customer_id}"
+
+      account = reload(account)
+      assert account.is_disabled
+      assert %{"status" => "exported", "cancel_scheduled" => ["sub_us"]} = account.metadata.region_transfer
+      assert [{_key, %{"cancel_at_period_end" => "true"}}] = posts(stripe, "/v1/subscriptions/sub_us")
+    end
+
+    test "runs again after the cancel was scheduled", %{account: account} = ctx do
+      paid_up(ctx)
+      initiate!(account)
+
+      scheduled = Map.merge(ctx.source_subscription, %{"cancel_at_period_end" => true, "cancel_at" => ctx.renews_at})
+      stub_source_stripe(%{ctx | source_subscription: scheduled}, invoices: [])
+      initiate!(account)
+
+      [subscription] = reload(account).metadata.region_transfer["snapshot"]["subscriptions"]
+      assert subscription["cancel_at_period_end"] == false
+      assert subscription["cancel_at"] == nil
+    end
+  end
+
+  describe "complete/2" do
+    test "imports, moves billing and enables the account", %{account: account, stripe: stripe} = ctx do
+      move_to_eu(ctx)
+
+      output = capture_io(fn -> assert {:ok, _enabled} = RegionTransfer.complete(account.id, confirm: false) end)
+      assert output =~ "7 x Team (price_eu_team"
+
+      [{key, params}] = posts(stripe, "/v1/subscriptions")
+      assert params["customer"] == @customer_id
+      assert params["items[0][price]"] == "price_eu_team"
+      assert params["items[0][quantity]"] == "7"
+      assert params["billing_cycle_anchor"] == to_string(ctx.renews_at)
+      assert params["proration_behavior"] == "none"
+      refute Map.has_key?(params, "trial_end")
+      assert params["metadata[seats_note]"] == "kept"
+      assert [key] = key
+      assert key =~ "region-transfer-sub_us-"
+
+      account = reload(account)
+      refute account.is_disabled
+      assert account.metadata.stripe.subscription_id == "sub_eu_1"
+      assert account.metadata.stripe.subscription_status == "active"
+    end
+
+    test "finds a copied customer that got a new ID", %{account: account, stripe: stripe} = ctx do
+      copied = customer("cus_copied", %{"account_id" => account.id})
+      move_to_eu(ctx, customer: :missing, search: [copied], responses: %{"/v1/customers/cus_copied" => copied})
+
+      capture_io(fn -> assert {:ok, _account} = RegionTransfer.complete(account.id, confirm: false) end)
+
+      assert [{_key, %{"customer" => "cus_copied"}}] = posts(stripe, "/v1/subscriptions")
+      assert reload(account).metadata.stripe.customer_id == "cus_copied"
+    end
+
+    test "creates a customer when none was copied", %{account: account, stripe: stripe} = ctx do
+      move_to_eu(ctx, customer: :missing)
+
+      output = capture_io(fn -> assert {:ok, _account} = RegionTransfer.complete(account.id, confirm: false) end)
+      assert output =~ "a new customer"
+      assert output =~ "no payment method"
+
+      assert [{[key], customer}] = posts(stripe, "/v1/customers")
+      assert key == "region-transfer-customer-sub_us"
+      assert customer["metadata[account_id]"] == account.id
+      assert [{_key, %{"customer" => "cus_created"}}] = posts(stripe, "/v1/subscriptions")
+      assert reload(account).metadata.stripe.customer_id == "cus_created"
+    end
+
+    test "asks which customer when more than one names the account", %{account: account} = ctx do
+      a = customer("cus_a", %{"account_id" => account.id})
+      b = customer("cus_b", %{"account_id" => account.id})
+      move_to_eu(ctx, customer: :missing, search: [a, b], responses: %{"/v1/customers/cus_b" => b})
+
+      capture_io(fn ->
+        assert {:error, {:multiple_customers, ["cus_a", "cus_b"]}} = RegionTransfer.complete(account.id, confirm: false)
+      end)
+
+      capture_io(fn -> assert {:ok, _account} = RegionTransfer.complete(account.id, confirm: false, customer: "cus_b") end)
+      assert reload(account).metadata.stripe.customer_id == "cus_b"
+    end
+
+    test "runs again after an error with the option it asks for", %{account: account} = ctx do
+      eur = Map.put(price("price_eu_team", "eur", "prod_test_team"), "unit_amount", 460)
+      move_to_eu(ctx, prices: [eur])
+
+      capture_io(fn ->
+        assert {:error, {:price_mapping_required, "price_us_team", []}} = RegionTransfer.complete(account.id, confirm: false)
+      end)
+
+      assert reload(account).is_disabled
+
+      capture_io(fn ->
+        assert {:ok, _account} =
+                 RegionTransfer.complete(account.id, confirm: false, price_map: %{"price_us_team" => "price_eu_team"})
+      end)
 
       refute reload(account).is_disabled
     end
   end
 
-  describe "import, migrate and enable" do
-    test "recreate the subscription with the original renewal date", %{account: account} = ctx do
-      stub_source_stripe(ctx)
-      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(account.id, confirm: false) end)
-      Repo.delete!(account)
+  describe "rollback/2" do
+    test "renews the subscription again and enables the account", %{account: account, stripe: stripe} = ctx do
+      paid_up(ctx)
+      initiate!(account)
 
-      Portal.Config.put_env_override(:data_residency_region, :eu)
-      capture_io(fn -> assert {:ok, _manifest} = RegionTransfer.import(account.id, confirm: false) end)
-      assert %{"status" => "pending"} = reload(account).metadata.region_transfer
-      assert {:error, :billing_not_migrated} = RegionTransfer.enable(account.id, confirm: false)
-
-      stub_destination_stripe(ctx)
-      account |> reload() |> put_snapshot(&Map.put(&1, "unsettled_invoice_ids", []))
-
-      output = capture_io(fn -> assert {:ok, "sub_eu_1"} = RegionTransfer.migrate_billing(account.id, confirm: false) end)
-      assert output =~ "7 x Team (price_eu_team"
-
-      [{headers, params}] = posts(ctx.stripe, "/v1/subscriptions")
-      assert params["customer"] == @customer_id
-      assert params["items[0][price]"] == "price_eu_team"
-      assert params["items[0][quantity]"] == "7"
-      assert params["billing_cycle_anchor"] == to_string(ctx.renews_at)
-      refute Map.has_key?(params, "trial_end")
-      assert params["proration_behavior"] == "none"
-      assert params["metadata[seats_note]"] == "kept"
-      assert [key] = headers
-      assert key =~ "region-transfer-sub_us-"
-
-      account = reload(account)
-      assert account.is_disabled
-      assert account.metadata.stripe.subscription_id == "sub_eu_1"
-      assert account.metadata.stripe.subscription_status == "active"
-      assert is_nil(account.metadata.stripe.trial_ends_at)
-      assert %{"status" => "ready", "destination_subscription_id" => "sub_eu_1"} = account.metadata.region_transfer
-
-      assert {:ok, enabled} = RegionTransfer.enable(account.id, confirm: false)
+      assert {:ok, enabled} = RegionTransfer.rollback(account.id, confirm: false)
       refute enabled.is_disabled
+      refute Map.has_key?(reload(account).metadata.region_transfer, "cancel_scheduled")
+      assert [_scheduled, {_key, %{"cancel_at_period_end" => "false"}}] = posts(stripe, "/v1/subscriptions/sub_us")
     end
   end
 
@@ -126,13 +207,11 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
     setup ctx do
       Portal.Config.put_env_override(:data_residency_region, :eu)
       stub_destination_stripe(ctx)
-      account = pending_transfer(ctx)
-      %{account: account}
+      %{account: pending_transfer(ctx)}
     end
 
     test "finds the subscription of an earlier run instead of creating another", %{account: account, stripe: stripe} do
       capture_io(fn -> assert {:ok, "sub_eu_1"} = RegionTransfer.migrate_billing(account.id, confirm: false) end)
-
       capture_io(fn -> assert {:ok, "sub_eu_1"} = RegionTransfer.migrate_billing(account.id, confirm: false) end)
       assert length(posts(stripe, "/v1/subscriptions")) == 1
     end
@@ -146,55 +225,34 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       end)
     end
 
-    test "waits for the Stripe customer copy", %{account: account} = ctx do
-      stub_destination_stripe(ctx, customer: :missing)
-
-      assert {:error, :stripe_customer_copy_required} = RegionTransfer.plan_billing(account.id)
-    end
-
     test "refuses a copied customer of another account", %{account: account} = ctx do
-      stub_destination_stripe(ctx, customer: customer("cus_original", %{"account_id" => Ecto.UUID.generate()}))
+      stub_destination_stripe(ctx, customer: customer(@customer_id, %{"account_id" => Ecto.UUID.generate()}))
 
-      assert {:error, :copied_customer_account_mismatch} = RegionTransfer.plan_billing(account.id)
-    end
-
-    test "needs a payment method to charge", %{account: account} = ctx do
-      stub_destination_stripe(ctx, customer: customer(@customer_id, %{"account_id" => account.id}, nil))
-
-      assert {:error, :destination_payment_method_required} = RegionTransfer.plan_billing(account.id)
-    end
-
-    test "needs a price map when no price matches", %{account: account} = ctx do
-      stub_destination_stripe(ctx, prices: [Map.put(price("price_eu_team", "eur", "prod_test_team"), "unit_amount", 460)])
-
-      assert {:error, {:price_mapping_required, "price_us_team", []}} = RegionTransfer.plan_billing(account.id)
-
-      capture_io(fn ->
-        assert {:ok, plan} = RegionTransfer.plan_billing(account.id, price_map: %{"price_us_team" => "price_eu_team"})
-        assert [%{"price" => "price_eu_team", "quantity" => 7}] = plan["items"]
-      end)
+      assert {:error, {:customer_account_mismatch, @customer_id}} = RegionTransfer.plan_billing(account.id)
     end
 
     test "stops on unsettled invoices", %{account: account} do
-      account |> put_snapshot(&Map.put(&1, "unsettled_invoice_ids", ["in_open"]))
+      put_snapshot(account, &Map.put(&1, "unsettled_invoice_ids", ["in_open"]))
 
       assert {:error, {:unsettled_invoices, ["in_open"]}} = RegionTransfer.plan_billing(account.id)
     end
 
-    test "needs the new ID of a payment method set on the subscription", %{account: account} = ctx do
+    test "uses the new ID of a payment method set on the subscription", %{account: account, stripe: stripe} do
       put_snapshot(account, fn snapshot ->
         update_in(snapshot, ["subscriptions", Access.at(0)], &Map.put(&1, "default_payment_method", "pm_old"))
       end)
 
-      assert {:error, {:payment_method_mapping_required, "pm_old"}} = RegionTransfer.plan_billing(account.id)
+      assert capture_io(fn -> RegionTransfer.plan_billing(account.id) end) =~ "no payment method"
 
-      Agent.update(ctx.stripe, &Map.put(&1, :payment_methods, %{"pm_new" => %{"id" => "pm_new", "customer" => "cus_other"}}))
+      capture_io(fn ->
+        assert {:ok, _id} =
+                 RegionTransfer.migrate_billing(account.id, confirm: false, payment_method_map: %{"pm_old" => "pm_new"})
+      end)
 
-      assert {:error, {:payment_method_not_on_customer, "pm_new"}} =
-               RegionTransfer.plan_billing(account.id, payment_method_map: %{"pm_old" => "pm_new"})
+      assert [{_key, %{"default_payment_method" => "pm_new"}}] = posts(stripe, "/v1/subscriptions")
     end
 
-    test "keeps a real trial a trial until the same date", %{account: account, stripe: stripe} do
+    test "keeps a real trial a trial until the same date", %{account: account, stripe: stripe} = ctx do
       put_snapshot(account, fn snapshot ->
         update_in(snapshot, ["subscriptions", Access.at(0)], &Map.put(&1, "status", "trialing"))
       end)
@@ -203,16 +261,14 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
 
       [{_key, params}] = posts(stripe, "/v1/subscriptions")
       refute Map.has_key?(params, "billing_cycle_anchor")
-      assert params["trial_end"] == to_string(get_in(reload(account).metadata.region_transfer, ["snapshot", "subscriptions", Access.at(0), "current_period_end"]))
+      assert params["trial_end"] == to_string(ctx.renews_at)
     end
 
-    test "moves invoice billing without a payment method", %{account: account, stripe: stripe} = ctx do
+    test "moves invoice billing", %{account: account, stripe: stripe} = ctx do
       stub_destination_stripe(ctx, customer: customer(@customer_id, %{"account_id" => account.id}, nil))
 
       put_snapshot(account, fn snapshot ->
-        snapshot
-        |> Map.put("open_invoice_ids", ["in_sent"])
-        |> update_in(["subscriptions", Access.at(0)], fn subscription ->
+        update_in(snapshot, ["subscriptions", Access.at(0)], fn subscription ->
           Map.merge(subscription, %{
             "collection_method" => "send_invoice",
             "days_until_due" => 30,
@@ -223,7 +279,7 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       end)
 
       output = capture_io(fn -> assert {:ok, "sub_eu_1"} = RegionTransfer.migrate_billing(account.id, confirm: false) end)
-      assert output =~ "Leaves open invoices in_sent"
+      refute output =~ "no payment method"
 
       [{_key, params}] = posts(stripe, "/v1/subscriptions")
       assert params["collection_method"] == "send_invoice"
@@ -240,27 +296,20 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
         customer: customer(@customer_id, %{"account_id" => account.id}, nil),
         responses: %{
           "/v1/coupons" =>
-            list([
-              Map.merge(free, %{"id" => "coupon_eu_free"}),
-              Map.merge(free, %{"id" => "coupon_eu_half", "percent_off" => 50.0})
-            ])
+            list([Map.merge(free, %{"id" => "coupon_eu_free"}), Map.merge(free, %{"id" => "coupon_eu_half", "percent_off" => 50.0})])
         }
       )
 
       put_snapshot(account, fn snapshot ->
         update_in(snapshot, ["subscriptions", Access.at(0)], fn subscription ->
-          Map.merge(subscription, %{
-            "discount" => %{"id" => "di_us", "coupon" => Map.put(free, "id", "coupon_us_free")},
-            "discounts" => ["di_us"]
-          })
+          Map.merge(subscription, %{"discount" => %{"id" => "di_us", "coupon" => Map.put(free, "id", "coupon_us_free")}, "discounts" => ["di_us"]})
         end)
       end)
 
       output = capture_io(fn -> assert {:ok, "sub_eu_1"} = RegionTransfer.migrate_billing(account.id, confirm: false) end)
       assert output =~ "Coupon Customer staging environment (coupon_eu_free)"
-
-      [{_key, params}] = posts(stripe, "/v1/subscriptions")
-      assert params["coupon"] == "coupon_eu_free"
+      refute output =~ "no payment method"
+      assert [{_key, %{"coupon" => "coupon_eu_free"}}] = posts(stripe, "/v1/subscriptions")
     end
 
     test "needs a coupon map when no coupon matches", %{account: account} = ctx do
@@ -300,110 +349,6 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
 
       assert {:error, {:subscription_requires_review, "sub_us"}} = RegionTransfer.plan_billing(account.id)
     end
-
-    test "uses a copied customer with a new ID in place of a deleted one", %{account: account, stripe: stripe} = ctx do
-      account
-      |> Ecto.Changeset.cast(%{metadata: %{stripe: %{customer_id: "cus_by_hand"}}}, [])
-      |> Ecto.Changeset.cast_embed(:metadata)
-      |> Repo.update!()
-
-      stub_destination_stripe(ctx,
-        customer: :missing,
-        responses: %{
-          "/v1/customers/cus_by_hand" => %{"id" => "cus_by_hand", "object" => "customer", "deleted" => true},
-          "/v1/customers/cus_copied" => customer("cus_copied", %{"account_id" => account.id})
-        }
-      )
-
-      assert {:error, :stripe_customer_copy_required} =
-               RegionTransfer.plan_billing(account.id, replace_customer: "cus_by_hand")
-
-      capture_io(fn ->
-        assert {:ok, "sub_eu_1"} =
-                 RegionTransfer.migrate_billing(account.id,
-                   confirm: false,
-                   replace_customer: "cus_by_hand",
-                   copied_customer: "cus_copied"
-                 )
-      end)
-
-      assert [{_key, %{"customer" => "cus_copied"}}] = posts(stripe, "/v1/subscriptions")
-      assert posts(stripe, "/v1/customers/cus_by_hand") == []
-
-      account = reload(account)
-      assert account.metadata.stripe.customer_id == "cus_copied"
-      assert account.metadata.stripe.subscription_id == "sub_eu_1"
-    end
-
-    test "replaces a customer created in the destination by hand", %{account: account, stripe: stripe} do
-      account
-      |> Ecto.Changeset.cast(%{metadata: %{stripe: %{customer_id: "cus_by_hand"}}}, [])
-      |> Ecto.Changeset.cast_embed(:metadata)
-      |> Repo.update!()
-
-      assert {:error, {:unexpected_customer, "cus_by_hand"}} = RegionTransfer.plan_billing(account.id)
-
-      capture_io(fn ->
-        assert {:ok, "sub_eu_1"} =
-                 RegionTransfer.migrate_billing(account.id, confirm: false, replace_customer: "cus_by_hand")
-      end)
-
-      assert reload(account).metadata.stripe.customer_id == @customer_id
-      assert [{_headers, %{"metadata[account_id]" => ""}}] = posts(stripe, "/v1/customers/cus_by_hand")
-    end
-
-    test "refuses to replace a customer that bills the account or names another one", %{account: account} = ctx do
-      account
-      |> Ecto.Changeset.cast(%{metadata: %{stripe: %{customer_id: "cus_by_hand"}}}, [])
-      |> Ecto.Changeset.cast_embed(:metadata)
-      |> Repo.update!()
-
-      Agent.update(ctx.stripe, &%{&1 | subscriptions: [%{"id" => "sub_by_hand", "status" => "active"}]})
-
-      assert {:error, {:replaced_customer_has_subscriptions, ["sub_by_hand"]}} =
-               RegionTransfer.plan_billing(account.id, replace_customer: "cus_by_hand")
-
-      Agent.update(ctx.stripe, &%{&1 | subscriptions: []})
-      other = customer("cus_by_hand", %{"account_id" => Ecto.UUID.generate()})
-      stub_destination_stripe(ctx, responses: %{"/v1/customers/cus_by_hand" => other})
-
-      assert {:error, {:unexpected_customer, "cus_by_hand"}} =
-               RegionTransfer.plan_billing(account.id, replace_customer: "cus_by_hand")
-    end
-  end
-
-  describe "finish_source_billing/2" do
-    setup ctx do
-      stub_source_stripe(ctx)
-      capture_io(fn -> {:ok, _manifest} = RegionTransfer.export(ctx.account.id, confirm: false) end)
-      :ok
-    end
-
-    test "cancels without proration and blocks a rollback", %{account: account, stripe: stripe} do
-      capture_io(fn -> assert {:ok, _account} = RegionTransfer.finish_source_billing(account.id, confirm: false) end)
-
-      assert [%{method: "DELETE", query: "invoice_now=false&prorate=false"}] =
-               stripe |> requests() |> Enum.filter(&(&1.path == "/v1/subscriptions/sub_us"))
-
-      assert [{_key, %{"auto_advance" => "true"}}] = posts(stripe, "/v1/invoices/in_sent")
-
-      assert {:error, :source_billing_canceled} = RegionTransfer.enable(account.id, confirm: false)
-    end
-
-    test "refuses when the source subscription changed after the export", %{account: account} = ctx do
-      changed = put_in(ctx.source_subscription, ["items", "data", Access.at(0), "quantity"], 8)
-      stub_source_stripe(%{ctx | source_subscription: changed})
-
-      capture_io(fn ->
-        assert {:error, :source_billing_changed} = RegionTransfer.finish_source_billing(account.id, confirm: false)
-      end)
-    end
-
-    test "refuses in the destination", %{account: account} do
-      Portal.Config.put_env_override(:data_residency_region, :eu)
-
-      assert {:error, :run_in_source} = RegionTransfer.finish_source_billing(account.id, confirm: false)
-    end
   end
 
   describe "enable/2" do
@@ -412,22 +357,6 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
 
       assert {:error, :billing_snapshot_missing} = RegionTransfer.enable(account.id, confirm: false)
       assert {:ok, _account} = RegionTransfer.enable(account.id, confirm: false, billing: :skip, notify: false)
-    end
-  end
-
-  describe "export_billing/1 and import_billing/2" do
-    test "move the billing of an account exported without it", %{account: account} = ctx do
-      stub_source_stripe(ctx)
-      account |> Ecto.Changeset.change(is_disabled: true, disabled_reason: "Region transfer in progress") |> Repo.update!()
-
-      output = capture_io(fn -> send(self(), RegionTransfer.export_billing(account.id)) end)
-      assert_received {:ok, checksum}
-      assert output =~ checksum
-
-      Portal.Config.put_env_override(:data_residency_region, :eu)
-      assert {:error, {:checksum_mismatch, "billing"}} = RegionTransfer.import_billing(account.id, String.duplicate("0", 64))
-      assert :ok = RegionTransfer.import_billing(account.id, checksum)
-      assert %{"status" => "pending"} = reload(account).metadata.region_transfer
     end
   end
 
@@ -450,7 +379,6 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       assert %{is_disabled: true, disabled_reason: "Region transfer in progress"} = reload(account)
     end
   end
-
 
   defp pending_transfer(%{account: account, source_subscription: subscription}) do
     snapshot = %{
@@ -481,18 +409,14 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
     |> Repo.update!()
   end
 
-  defp stub_source_stripe(%{account: account, stripe: stripe, source_subscription: subscription}) do
+  defp stub_source_stripe(%{account: account, stripe: stripe, source_subscription: subscription}, opts) do
     stub_stripe(stripe, %{
       "/v1/account" => %{"id" => @source_account},
       "/v1/customers/#{@customer_id}" => customer(@customer_id, %{"account_id" => account.id}),
       "/v1/subscriptions" => list([subscription]),
       "/v1/products/prod_us_team" => product("prod_us_team"),
       "/v1/invoices" =>
-        list([
-          %{"id" => "in_paid", "status" => "paid", "collection_method" => "charge_automatically"},
-          %{"id" => "in_open", "status" => "open", "collection_method" => "charge_automatically"},
-          %{"id" => "in_sent", "status" => "open", "collection_method" => "send_invoice"}
-        ]),
+        list(Keyword.get(opts, :invoices, [%{"id" => "in_paid", "status" => "paid", "collection_method" => "charge_automatically"}])),
       "/v1/invoiceitems" => list([])
     })
   end
@@ -503,7 +427,7 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
       "/v1/customers/#{@customer_id}" => Keyword.get(opts, :customer, customer(@customer_id, %{"account_id" => account.id})),
       "/v1/prices" => list(Keyword.get(opts, :prices, [price("price_eu_team", "eur", "prod_test_team")])),
       "/v1/products/prod_test_team" => Stripe.build_product(id: "prod_test_team", name: "Team"),
-      "/v1/customers/cus_by_hand" => customer("cus_by_hand", %{"account_id" => account.id})
+      "/v1/customers/search" => list(Keyword.get(opts, :search, []))
     }
 
     stub_stripe(stripe, Map.merge(responses, Keyword.get(opts, :responses, %{})))
@@ -550,17 +474,14 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
     Req.Test.json(conn, subscription)
   end
 
+  defp respond(%{method: "POST", request_path: "/v1/customers"} = conn, _stripe, _responses, params) do
+    Req.Test.json(conn, Map.merge(customer("cus_created", %{}, nil), %{"name" => params["name"], "email" => params["email"]}))
+  end
+
   defp respond(%{method: "GET", request_path: "/v1/subscriptions"} = conn, stripe, responses, _params) do
     case Agent.get(stripe, & &1.subscriptions) do
       [] -> Req.Test.json(conn, responses["/v1/subscriptions"] || list([]))
       created -> Req.Test.json(conn, list(created))
-    end
-  end
-
-  defp respond(%{method: "GET", request_path: "/v1/payment_methods/" <> id} = conn, stripe, _responses, _params) do
-    case Agent.get(stripe, &get_in(&1, [:payment_methods, id])) do
-      nil -> conn |> put_status(404) |> Req.Test.json(%{})
-      payment_method -> Req.Test.json(conn, payment_method)
     end
   end
 
@@ -648,5 +569,4 @@ defmodule Portal.Ops.RegionTransfer.BillingTest do
     store
   end
 
-  defp blob(store, account_id, name), do: Agent.get(store, &Map.get(&1, "/transfers/#{account_id}/#{name}"))
 end

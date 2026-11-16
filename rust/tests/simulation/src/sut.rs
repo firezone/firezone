@@ -3,10 +3,10 @@ use super::dns_records::record_ip;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
-use super::sim_net::{Attachment, Host, HostId, RoutingTable};
+use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
+use super::transition::{DPort, Destination, DnsQuery, Identifier, Network, SPort, Seq};
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
@@ -620,7 +620,7 @@ impl TunnelTest {
                 client_id,
                 ip4,
                 ip6,
-                attachment,
+                network,
                 dead_window,
                 portal_window,
             } => {
@@ -645,9 +645,19 @@ impl TunnelTest {
                 //    reconnected to the portal yet, so any portal-bound message is
                 //    dropped until the portal window elapses.
                 let now = self.flux_capacitor.now::<Instant>();
+                let nat_ip4 = match network {
+                    Network::Existing(ip) => ip,
+                    Network::New(nat) => {
+                        let ip = nat.ip4();
+                        let added = self.network.add_nat(nat);
+                        debug_assert!(added);
+
+                        ip
+                    }
+                };
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
-                let added = self.network.add_host(client_id, client, attachment);
+                let added = self.network.add_host(client_id, client, nat_ip4);
                 debug_assert!(added);
                 client.exec_mut(|c| {
                     c.tunnel.inner_mut().reset("roam", now);
@@ -1539,7 +1549,7 @@ impl TunnelTest {
         }
 
         for (relay_id, relay) in &connected {
-            let added = self.network.add_host(*relay_id, relay, Attachment::Direct);
+            let added = self.network.add_relay(*relay_id, relay);
             debug_assert!(added);
         }
 
@@ -1581,7 +1591,7 @@ impl TunnelTest {
             .collect::<BTreeMap<_, _>>();
 
         for (rid, relay) in &online {
-            let added = self.network.add_host(*rid, relay, Attachment::Direct);
+            let added = self.network.add_relay(*rid, relay);
             debug_assert!(added);
         }
 

@@ -539,6 +539,14 @@ defmodule Portal.Config.Definitions do
   defconfig(:region_transfer_inbox_url, :string, default: nil)
 
   @doc """
+  Blob container in this region that holds the profile photos that directory
+  sync copies from Entra and Google, for example
+  https://firezoneavatarsus.blob.core.windows.net/avatars. Unset, the default
+  for on-prem, turns photo sync off and people show an icon instead.
+  """
+  defconfig(:avatars_container_url, :string, default: nil)
+
+  @doc """
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,
@@ -1316,6 +1324,21 @@ defmodule Portal.Config.Definitions do
   defconfig(:stripe_webhook_signing_secret, :string, sensitive: true, default: nil)
   defconfig(:stripe_default_price_id, :string, default: nil)
   defconfig(:stripe_plan_product_ids, {:json_array, :string}, default: [])
+
+  ##############################################
+  ## YC Deals
+  ##############################################
+
+  @doc """
+  JSON object of YC deal ID to the secret YC Deals uses to sign that deal's
+  redemption webhook with HMAC-SHA256.
+  """
+  defconfig(:yc_deal_webhook_secrets, :map, sensitive: true, default: %{})
+
+  @doc """
+  JSON object of YC deal ID to the Stripe coupon its single-use promotion codes apply.
+  """
+  defconfig(:yc_deal_coupon_ids, :map, default: %{})
 
   ##############################################
   ## Local development and Staging Helpers

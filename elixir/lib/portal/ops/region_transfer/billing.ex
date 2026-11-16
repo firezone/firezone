@@ -1,18 +1,17 @@
 defmodule Portal.Ops.RegionTransfer.Billing do
   @moduledoc """
   Moves the Stripe billing of an account to the Stripe account of the other
-  region.
+  region, for `Portal.Ops.RegionTransfer.initiate/2` and `complete/2`.
 
-  Stripe has no public API to copy a customer between Stripe accounts, so the
-  customer is copied with the Stripe Dashboard before the maintenance window.
-  The copy keeps the customer ID and the payment methods. It does not copy
-  subscriptions, prices or invoices, so the invoice history stays in the
-  source Stripe account.
+  In the source, the subscription is set to cancel at the end of the period
+  the customer already paid for, which a rollback undoes. In the destination,
+  a new subscription with the destination prices, currency and coupon starts
+  active and renews on that same date, with no invoice before it.
 
-  The new subscription uses the prices and the currency of the destination. It
-  keeps the renewal date of the source subscription with a trial that ends on
-  that date, as Stripe recommends for a migration. The customer is not charged
-  again for time they already paid for, and gets no refund or credit for it.
+  The destination uses the customer copied with Stripe's Dashboard copy tool
+  when there is one, because only that carries a saved card over. Otherwise it
+  creates a customer, and a customer who pays by card adds one before the
+  renewal date. Stripe has no public API for the copy.
   """
   alias Portal.Billing.EventHandler
   alias Portal.Billing.Stripe.APIClient
@@ -22,34 +21,74 @@ defmodule Portal.Ops.RegionTransfer.Billing do
   @closed_statuses ~w(canceled incomplete_expired)
   @unsupported_terms ~w(schedule pause_collection pending_update pending_invoice_item_interval billing_thresholds transfer_data on_behalf_of cancel_at)
 
-  @doc "Shows the customer to copy with the Stripe Dashboard. Changes nothing."
-  def prepare_copy(account_id) do
-    account = Database.fetch_account!(account_id)
-
-    with {:ok, customer_id} <- customer_id(account),
-         {:ok, stripe_account} <- get("account"),
-         {:ok, _customer} <- get("customers/#{customer_id}") do
-      IO.puts("""
-      In Stripe account #{stripe_account["id"]}, copy only customer #{customer_id} to the
-      Stripe account of the other region, accept the copy there, and wait for it to finish
-      before the maintenance window. A CSV upload takes one column of customer IDs without
-      a header.
-      """)
-
-      {:ok, %{source_stripe_account_id: stripe_account["id"], customer_id: customer_id}}
-    end
-  end
-
   @doc false
   def snapshot(account) do
     with true <- Portal.Billing.enabled?(),
-         {:ok, customer_id} <- customer_id(account) do
-      fetch_snapshot(customer_id)
+         {:ok, customer_id} <- customer_id(account),
+         {:ok, snapshot} <- fetch_snapshot(customer_id) do
+      {:ok, without_scheduled_cancel(snapshot, account.metadata.region_transfer)}
     else
       false -> {:ok, nil}
       {:error, :no_stripe_customer} -> {:ok, nil}
+      error -> error
     end
   end
+
+  # A rerun of initiate/2 sees the cancel that the first run scheduled.
+  defp without_scheduled_cancel(snapshot, %{"cancel_scheduled" => ids}) do
+    Map.update!(snapshot, "subscriptions", fn subscriptions -> Enum.map(subscriptions, &unschedule(&1, ids)) end)
+  end
+
+  defp without_scheduled_cancel(snapshot, _state), do: snapshot
+
+  defp unschedule(subscription, ids) do
+    if subscription["id"] in ids,
+      do: Map.merge(subscription, %{"cancel_at_period_end" => false, "cancel_at" => nil}),
+      else: subscription
+  end
+
+  @doc "Refuses a transfer while the customer owes anything in Stripe."
+  def nothing_owed(nil), do: :ok
+
+  def nothing_owed(snapshot) do
+    case snapshot["unsettled_invoice_ids"] ++ snapshot["open_invoice_ids"] ++ snapshot["pending_invoice_item_ids"] do
+      [] -> :ok
+      ids -> {:error, {:billing_outstanding, ids}}
+    end
+  end
+
+  @doc """
+  Sets the source subscriptions to cancel at the end of the period the
+  customer paid for, and records them so `resume_source/1` can undo it.
+  """
+  def schedule_source_cancel(account) do
+    with %{"snapshot" => snapshot} = state <- account.metadata.region_transfer || {:ok, account},
+         ids = Enum.map(snapshot["subscriptions"], & &1["id"]),
+         {:ok, _subscriptions} <- map_while(ids, &set_cancel_at_period_end(&1, true)) do
+      Database.put_state(account, Map.put(state, "cancel_scheduled", ids))
+    end
+  end
+
+  @doc "Undoes `schedule_source_cancel/1` for a rollback."
+  def resume_source(account) do
+    case account.metadata.region_transfer do
+      %{"cancel_scheduled" => ids} = state ->
+        with {:ok, _subscriptions} <- map_while(ids, &set_cancel_at_period_end(&1, false)) do
+          Database.put_state(account, Map.delete(state, "cancel_scheduled"))
+        end
+
+      _state ->
+        {:ok, account}
+    end
+  end
+
+  defp set_cancel_at_period_end(subscription_id, cancel?) do
+    request(:post, "subscriptions/#{subscription_id}", URI.encode_query(%{"cancel_at_period_end" => cancel?}))
+  end
+
+  @doc "Whether `complete/2` still has to create the subscription."
+  def pending?(%{metadata: %{region_transfer: %{"status" => "pending"}}}), do: true
+  def pending?(_account), do: false
 
   @doc false
   def transfer_state(nil, _status), do: nil
@@ -67,44 +106,15 @@ defmodule Portal.Ops.RegionTransfer.Billing do
   Creates the subscription in the Stripe account of this region, or finds the
   one an earlier run created, and applies it to the account.
 
-  Pass `price_map: %{"price_source" => "price_destination"}` when a price has
-  no single match, `payment_method_map:` with the IDs from Stripe's copy
-  mapping file when the source subscription has its own payment method, and
-  `replace_customer: "cus_..."` when the account points at a customer that was
-  created in this Stripe account instead of copied. Pass
-  `copied_customer: "cus_..."` when the copy gave the customer a new ID, as
-  Stripe's mapping file shows. The coupon of the subscription is matched to
-  the coupon here with the same name and terms; pass
+  Pass `price_map: %{"source price" => "destination price"}` or
   `coupon_map: %{"source coupon" => "destination coupon"}` when none or more
-  than one matches.
+  than one matches, and `customer: "cus_..."` when more than one customer
+  here names the account.
   """
   def migrate(account_id, opts \\ []) do
     with {:ok, plan} <- plan(account_id, opts),
          :ok <- confirm(opts, "Create this subscription? [y/N]") do
       Database.with_lock(account_id, fn -> create_and_apply(account_id, plan, opts) end)
-    end
-  end
-
-  @doc """
-  Cancels the subscriptions in the source Stripe account without a final
-  invoice or proration. Run it only after the billing in the destination is
-  verified. It cannot be undone.
-  """
-  def finish_source(account_id, opts \\ []) do
-    account = Database.fetch_account!(account_id)
-
-    with :ok <- in_transfer(account),
-         {:ok, snapshot} <- source_snapshot(account),
-         {:ok, stripe_account} <- get("account"),
-         true <- stripe_account["id"] == snapshot["source_stripe_account_id"] || {:error, :wrong_stripe_account},
-         {:ok, subscriptions} <- list("subscriptions", customer: snapshot["customer"]["id"], status: "all"),
-         open = Enum.reject(subscriptions, &(&1["status"] in @closed_statuses)),
-         :ok <- unchanged_since_export(open, snapshot),
-         IO.puts("Subscriptions to cancel without proration: #{Enum.map_join(open, ", ", & &1["id"])}"),
-         :ok <- confirm(opts, "Is the billing in the destination verified? Cancel these subscriptions? [y/N]"),
-         :ok <- cancel_all(open),
-         :ok <- keep_collecting_invoices(snapshot["customer"]["id"]) do
-      Database.put_state(account, %{account.metadata.region_transfer | "status" => "source_canceled"})
     end
   end
 
@@ -133,7 +143,6 @@ defmodule Portal.Ops.RegionTransfer.Billing do
       else: {:error, :billing_not_applied}
   end
 
-  defp state_ready(_account, %{"status" => "source_canceled"}), do: {:error, :source_billing_canceled}
   defp state_ready(_account, _state), do: {:error, :billing_not_migrated}
 
   defp fetch_snapshot(customer_id) do
@@ -167,15 +176,14 @@ defmodule Portal.Ops.RegionTransfer.Billing do
          {:ok, snapshot} <- destination_snapshot(account),
          {:ok, destination} <- get("account"),
          true <- destination["id"] != snapshot["source_stripe_account_id"] || {:error, :same_stripe_account},
-         copied_id = Keyword.get(opts, :copied_customer, snapshot["customer"]["id"]),
-         {:ok, replaced} <- current_customer(account, snapshot, copied_id, opts),
-         {:ok, customer} <- copied_customer(account, snapshot, copied_id),
+         {:ok, customer} <- destination_customer(account, snapshot, opts),
          :ok <- supported_customer(snapshot["customer"]),
          :ok <- supported_customer(customer),
          {:ok, subscription} <- source_subscription(snapshot),
          {:ok, items} <- map_items(subscription, opts),
-         {:ok, coupon} <- map_coupon(subscription["discount"], opts),
-         {:ok, payment} <- payment_params(snapshot["customer"], customer, subscription, coupon, opts) do
+         {:ok, coupon} <- map_coupon(subscription["discount"], opts) do
+      {payment, warnings} = payment_params(snapshot["customer"], customer, subscription, coupon, opts)
+
       params =
         account
         |> subscription_params(snapshot, subscription, customer, items, payment)
@@ -187,8 +195,8 @@ defmodule Portal.Ops.RegionTransfer.Billing do
          "source_stripe_account_id" => snapshot["source_stripe_account_id"],
          "source_subscription_id" => subscription["id"],
          "customer_id" => customer["id"],
-         "replace_customer_id" => replaced,
-         "open_invoice_ids" => snapshot["open_invoice_ids"],
+         "new_customer" => if(customer["id"], do: nil, else: new_customer_params(snapshot["customer"])),
+         "warnings" => warnings,
          "renews_at" => subscription["current_period_end"],
          "items" => items,
          "coupon" => coupon && %{"id" => coupon["id"], "name" => coupon["name"]},
@@ -250,7 +258,7 @@ defmodule Portal.Ops.RegionTransfer.Billing do
 
   defp put_coupon(params, coupon) do
     params = if coupon, do: Map.put(params, "coupon", coupon["id"]), else: params
-    Map.put(params, "metadata[region_transfer_plan]", fingerprint(params))
+    Map.put(params, "metadata[region_transfer_plan]", fingerprint(Map.delete(params, "customer")))
   end
 
   # Coupons are not copied with the customer. The destination has the same
@@ -285,59 +293,55 @@ defmodule Portal.Ops.RegionTransfer.Billing do
     params |> Enum.sort() |> :erlang.term_to_binary() |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower)
   end
 
-  defp current_customer(account, snapshot, copied_id, opts) do
-    source_id = snapshot["customer"]["id"]
-    replace = Keyword.get(opts, :replace_customer)
-
-    case account.metadata.stripe.customer_id do
-      ^source_id -> {:ok, nil}
-      ^copied_id -> {:ok, nil}
-      ^replace when is_binary(replace) -> replaceable_customer(account, replace)
-      other -> {:error, {:unexpected_customer, other}}
-    end
-  end
-
-  # The customer made by hand must be deleted, or be this account's and not
-  # bill it. A deleted customer has nothing left to unlink.
-  defp replaceable_customer(account, customer_id) do
-    case get("customers/#{customer_id}") do
-      {:ok, %{"deleted" => true}} -> {:ok, nil}
-      {:ok, customer} -> unused_customer(account, customer)
-      error -> error
-    end
-  end
-
-  defp unused_customer(account, customer) do
-    with true <- get_in(customer, ["metadata", "account_id"]) == account.id || {:error, {:unexpected_customer, customer["id"]}},
-         {:ok, subscriptions} <- list("subscriptions", customer: customer["id"], status: "all"),
-         [] <- for(s <- subscriptions, s["status"] not in @closed_statuses, do: s["id"]) do
-      {:ok, customer["id"]}
-    else
-      ids when is_list(ids) -> {:error, {:replaced_customer_has_subscriptions, ids}}
-      error -> error
-    end
-  end
-
-  defp copied_customer(account, snapshot, copied_id) do
+  # The copied customer, under its original ID or found by the account ID in
+  # its metadata. Without one, complete/2 creates a customer.
+  defp destination_customer(account, snapshot, opts) do
     source = snapshot["customer"]
 
-    case get("customers/#{copied_id}") do
-      {:ok, %{"deleted" => true}} ->
-        {:error, :copied_customer_deleted}
-
-      {:ok, customer} ->
-        cond do
-          customer["livemode"] != source["livemode"] -> {:error, :stripe_mode_mismatch}
-          get_in(customer, ["metadata", "account_id"]) != account.id -> {:error, :copied_customer_account_mismatch}
-          true -> {:ok, customer}
-        end
-
-      {:error, {404, _}} ->
-        {:error, :stripe_customer_copy_required}
-
-      error ->
-        error
+    with {:ok, candidates} <- customer_candidates(account, source["id"], Keyword.get(opts, :customer)) do
+      case Enum.reject(candidates, &(&1["deleted"] == true)) do
+        [] -> {:ok, %{"id" => nil}}
+        [customer] -> verify_customer(account, source, customer)
+        customers -> {:error, {:multiple_customers, Enum.map(customers, & &1["id"])}}
+      end
     end
+  end
+
+  defp customer_candidates(_account, _source_id, chosen) when is_binary(chosen) do
+    with {:ok, customer} <- get("customers/#{chosen}"), do: {:ok, [customer]}
+  end
+
+  defp customer_candidates(account, source_id, nil) do
+    case get("customers/#{source_id}") do
+      {:ok, %{"deleted" => true}} -> search_customers(account)
+      {:ok, customer} -> {:ok, [customer]}
+      {:error, {404, _}} -> search_customers(account)
+      error -> error
+    end
+  end
+
+  defp search_customers(account) do
+    query = URI.encode_query(%{"query" => "metadata['account_id']:'#{account.id}'", "limit" => 100})
+
+    with {:ok, %{"data" => customers}} <- get("customers/search?" <> query), do: {:ok, customers}
+  end
+
+  defp verify_customer(account, source, customer) do
+    cond do
+      customer["livemode"] != source["livemode"] -> {:error, :stripe_mode_mismatch}
+      get_in(customer, ["metadata", "account_id"]) != account.id -> {:error, {:customer_account_mismatch, customer["id"]}}
+      true -> {:ok, customer}
+    end
+  end
+
+  defp new_customer_params(source) do
+    address = for {k, v} <- source["address"] || %{}, v != nil, into: %{}, do: {"address[#{k}]", v}
+    metadata = for {k, v} <- source["metadata"] || %{}, into: %{}, do: {"metadata[#{k}]", v}
+
+    %{"name" => source["name"], "email" => source["email"], "phone" => source["phone"]}
+    |> Map.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.merge(address)
+    |> Map.merge(metadata)
   end
 
   defp supported_customer(customer) do
@@ -446,41 +450,32 @@ defmodule Portal.Ops.RegionTransfer.Billing do
       source["transform_quantity"] == price["transform_quantity"]
   end
 
-  # The copy changes the IDs of payment methods. The customer default comes
-  # along with the copy, but a payment method set on the subscription itself
-  # needs its new ID from Stripe's mapping file.
+  # A copied customer keeps its default payment method. A payment method set
+  # on the subscription itself has a new ID after the copy, from Stripe's
+  # mapping file. Without a payment method, the customer adds one with
+  # Manage plan before the renewal date.
   defp payment_params(source_customer, customer, subscription, coupon, opts) do
     override = subscription["default_payment_method"] || subscription["default_source"]
+    mapped = Keyword.get(opts, :payment_method_map, %{})[override]
 
-    paid? =
-      Enum.any?(subscription["items"]["data"], &((&1["price"]["unit_amount"] || 0) > 0)) and
-        not (is_map(coupon) and coupon["duration"] == "forever" and coupon["percent_off"] == 100)
+    payment = mapped_payment(mapped)
 
-    cond do
-      override != nil and override != default_payment(source_customer) ->
-        mapped_payment(override, customer, Keyword.get(opts, :payment_method_map, %{}))
+    no_payment? =
+      charged_by_card?(subscription, coupon) and payment == %{} and
+        (customer["id"] == nil or default_payment(customer) == nil or
+           (override != nil and override != default_payment(source_customer)))
 
-      paid? and subscription["collection_method"] == "charge_automatically" and default_payment(customer) == nil ->
-        {:error, :destination_payment_method_required}
-
-      true ->
-        {:ok, %{}}
-    end
+    {payment, if(no_payment?, do: ["no payment method: the customer adds one with Manage plan before the renewal date"], else: [])}
   end
 
-  defp mapped_payment(source_id, customer, payment_method_map) do
-    {param, path} =
-      case payment_method_map[source_id] do
-        "pm_" <> _ = id -> {"default_payment_method", "payment_methods/#{id}"}
-        id when is_binary(id) -> {"default_source", "customers/#{customer["id"]}/sources/#{id}"}
-        nil -> {nil, nil}
-      end
+  defp mapped_payment(nil), do: %{}
+  defp mapped_payment("pm_" <> _ = id), do: %{"default_payment_method" => id}
+  defp mapped_payment(id), do: %{"default_source" => id}
 
-    with true <- param != nil || {:error, {:payment_method_mapping_required, source_id}},
-         {:ok, payment} <- get(path),
-         true <- payment["customer"] == customer["id"] || {:error, {:payment_method_not_on_customer, payment["id"]}} do
-      {:ok, %{param => payment["id"]}}
-    end
+  defp charged_by_card?(subscription, coupon) do
+    subscription["collection_method"] == "charge_automatically" and
+      Enum.any?(subscription["items"]["data"], &((&1["price"]["unit_amount"] || 0) > 0)) and
+      not (is_map(coupon) and coupon["duration"] == "forever" and coupon["percent_off"] == 100)
   end
 
   defp default_payment(customer) do
@@ -492,15 +487,25 @@ defmodule Portal.Ops.RegionTransfer.Billing do
 
     with {:ok, current} <- build_plan(account, opts),
          true <- current == plan || {:error, :billing_plan_changed},
+         {:ok, plan} <- ensure_customer(plan),
          {:ok, subscription} <- find_or_create(plan),
          true <- subscription["status"] in ["active", "trialing"] || {:error, {:subscription_status, subscription["status"]}},
          {:ok, _account} <- Database.put_customer_id(account, plan["customer_id"]),
          {:ok, account} <- EventHandler.sync_region_transfer_subscription(account_id, subscription),
          state = Map.merge(account.metadata.region_transfer, %{"status" => "ready", "destination_subscription_id" => subscription["id"]}),
-         {:ok, _account} <- Database.put_state(account, state),
-         :ok <- unlink_customer(plan["replace_customer_id"]) do
+         {:ok, _account} <- Database.put_state(account, state) do
       IO.puts("Created #{subscription["id"]}. It renews on #{format_time(plan["renews_at"])}.")
       {:ok, subscription["id"]}
+    end
+  end
+
+  defp ensure_customer(%{"new_customer" => nil} = plan), do: {:ok, plan}
+
+  defp ensure_customer(%{"new_customer" => params} = plan) do
+    key = "region-transfer-customer-#{plan["source_subscription_id"]}"
+
+    with {:ok, customer} <- request(:post, "customers", URI.encode_query(params), idempotency_key: key) do
+      {:ok, %{plan | "customer_id" => customer["id"], "params" => Map.put(plan["params"], "customer", customer["id"])}}
     end
   end
 
@@ -535,70 +540,10 @@ defmodule Portal.Ops.RegionTransfer.Billing do
        else: {:error, {:destination_subscription_conflict, subscription["id"]}}
   end
 
-  # A customer created here by hand would otherwise still name the account,
-  # and its webhooks would change it.
-  defp unlink_customer(nil), do: :ok
-
-  defp unlink_customer(customer_id) do
-    with {:ok, _customer} <- request(:post, "customers/#{customer_id}", URI.encode_query(%{"metadata[account_id]" => ""})) do
-      :ok
-    end
-  end
-
-  # Allows a subscription that a partial earlier run canceled, but not one that
-  # changed or appeared after the export.
-  defp unchanged_since_export(open, snapshot) do
-    exported = Map.new(snapshot["subscriptions"], &{&1["id"], billing_terms(&1)})
-
-    if Enum.all?(open, &(exported[&1["id"]] == billing_terms(&1))),
-      do: :ok,
-      else: {:error, :source_billing_changed}
-  end
-
-  defp billing_terms(subscription) do
-    items = Enum.map(subscription["items"]["data"], &{get_in(&1, ["price", "id"]), &1["quantity"]})
-    {subscription["current_period_end"], Enum.sort(items)}
-  end
-
-  # Canceling turns off the reminders and collection of open invoices. The
-  # customer still owes them in the source Stripe account.
-  defp keep_collecting_invoices(customer_id) do
-    with {:ok, invoices} <- list("invoices", customer: customer_id, status: "open"),
-         {:ok, _invoices} <- map_while(invoices, &resume_collection/1) do
-      :ok
-    end
-  end
-
-  defp resume_collection(invoice) do
-    request(:post, "invoices/#{invoice["id"]}", URI.encode_query(%{"auto_advance" => true}))
-  end
-
-  defp cancel_all(subscriptions) do
-    Enum.reduce_while(subscriptions, :ok, fn subscription, :ok ->
-      case request(:delete, "subscriptions/#{subscription["id"]}?invoice_now=false&prorate=false") do
-        {:ok, _subscription} -> {:cont, :ok}
-        error -> {:halt, error}
-      end
-    end)
-  end
-
   defp destination_snapshot(account) do
     case account.metadata.region_transfer do
       %{"status" => status, "snapshot" => snapshot} when status in ["pending", "ready"] ->
         if snapshot["source_region"] != region(), do: {:ok, snapshot}, else: {:error, :run_in_destination}
-
-      _state ->
-        {:error, :billing_snapshot_missing}
-    end
-  end
-
-  defp source_snapshot(account) do
-    case account.metadata.region_transfer do
-      %{"status" => "exported", "snapshot" => %{"source_region" => region} = snapshot} ->
-        if region == region(), do: {:ok, snapshot}, else: {:error, :run_in_source}
-
-      %{"status" => "source_canceled"} ->
-        {:error, :source_billing_canceled}
 
       _state ->
         {:error, :billing_snapshot_missing}
@@ -636,7 +581,7 @@ defmodule Portal.Ops.RegionTransfer.Billing do
 
   defp print_plan(plan) do
     IO.puts("""
-    Billing of customer #{plan["customer_id"]} in Stripe account #{plan["destination_stripe_account_id"]}
+    Billing of #{if plan["customer_id"], do: "customer #{plan["customer_id"]}", else: "a new customer"} in Stripe account #{plan["destination_stripe_account_id"]}
       Replaces subscription #{plan["source_subscription_id"]} of Stripe account #{plan["source_stripe_account_id"]}
       Renews on #{format_time(plan["renews_at"])}, with no charge until then
     """)
@@ -649,12 +594,8 @@ defmodule Portal.Ops.RegionTransfer.Billing do
       IO.puts("  Coupon #{plan["coupon"]["name"]} (#{plan["coupon"]["id"]})")
     end
 
-    if plan["open_invoice_ids"] != [] do
-      IO.puts("  Leaves open invoices #{Enum.join(plan["open_invoice_ids"], ", ")} to be paid in the source Stripe account")
-    end
-
-    if plan["replace_customer_id"] do
-      IO.puts("  Unlinks customer #{plan["replace_customer_id"]} from the account")
+    for warning <- plan["warnings"] do
+      IO.puts("  Warning: #{warning}")
     end
   end
 
