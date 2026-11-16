@@ -614,12 +614,11 @@ impl ReferenceState {
                 // and probes revive the path. Classic ICE flows disconnect for
                 // every pairing that cannot fall back to a direct path.
                 if !portal.frostlink() {
-                    let network = &self.network;
                     let gateway_edges = self
                         .gateways
                         .iter()
                         .map(|(id, g)| {
-                            let edge = network.edge_config(*id);
+                            let edge = self.network.edge_config(*id);
                             (*id, (edge, g.ip4.is_some(), g.ip6.is_some()))
                         })
                         .collect::<BTreeMap<_, _>>();
@@ -627,13 +626,13 @@ impl ReferenceState {
                         .clients
                         .iter()
                         .map(|(id, c)| {
-                            let edge = network.edge_config(*id);
+                            let edge = self.network.edge_config(*id);
                             (*id, (edge, c.ip4.is_some(), c.ip6.is_some()))
                         })
                         .collect::<BTreeMap<_, _>>();
 
                     for (client_id, client) in self.clients.iter_mut() {
-                        let client_edge = network.edge_config(*client_id);
+                        let client_edge = self.network.edge_config(*client_id);
                         let client_has_ip4 = client.ip4.is_some();
                         let client_has_ip6 = client.ip6.is_some();
                         let unreachable_gateways = gateway_edges

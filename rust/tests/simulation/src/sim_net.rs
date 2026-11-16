@@ -608,11 +608,11 @@ impl RoutingTable {
         self.nats.get_mut(nat_ip)
     }
 
-    fn contains(&self, ip: impl Into<IpNetwork>) -> bool {
+    pub(crate) fn contains(&self, ip: impl Into<IpNetwork>) -> bool {
         self.routes.exact_match(ip).is_some()
     }
 
-    fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
+    pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
         self.routes.exact_match(ip).copied()
     }
 }
