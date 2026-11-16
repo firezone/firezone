@@ -710,15 +710,11 @@ defmodule PortalAPI.Client.Socket do
 
     defp find_by_firezone_id(nil, _subject), do: nil
 
-    # A device is the same machine whoever signs in on it. Rows from before
-    # the lookup was by account can still share a firezone_id; the most
-    # recently seen one is the device.
+    # A device is the same machine whoever signs in on it.
     defp find_by_firezone_id(firezone_id, subject) do
       from(d in Device,
         where: d.firezone_id == ^firezone_id,
-        where: d.type == :client,
-        order_by: [desc_nulls_last: d.last_seen_at, asc: d.id],
-        limit: 1
+        where: d.type == :client
       )
       |> Safe.scoped(subject)
       |> Safe.one()
