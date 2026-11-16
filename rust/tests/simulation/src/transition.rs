@@ -9,7 +9,7 @@ use super::{
     probe::{FlowId, ProbeId, Route, TcpFlow},
     reference::PrivateKey,
     resource::{EditEffect, Resource, ResourceEdit, classify},
-    sim_net::{Attachment, Host},
+    sim_net::{Host, Nat},
     stub_portal::PeerAuthorization,
 };
 use std::{
@@ -99,7 +99,7 @@ pub enum Transition {
         client_id: ClientId,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
-        attachment: Attachment,
+        network: Network,
         dead_window: Duration,
         portal_window: Duration,
     },
@@ -384,6 +384,15 @@ impl EditEffect<'_> {
             } => *forgets_dns_records_matching,
         }
     }
+}
+
+/// The network a Client roams into.
+#[derive(Debug, Clone)]
+pub(crate) enum Network {
+    /// The network behind the NAT device with the given public IPv4 address.
+    Existing(Ipv4Addr),
+    /// The network behind a NAT device that joins the topology with the roam.
+    New(Nat),
 }
 
 #[derive(Debug, Clone)]

@@ -538,7 +538,7 @@ impl ReferenceState {
                 client_id,
                 ip4,
                 ip6,
-                attachment,
+                network,
                 dead_window,
                 portal_window,
             } => {
@@ -550,13 +550,20 @@ impl ReferenceState {
                 // out classic ICE flows.
                 let all_frostlink = portal.frostlink();
 
+                let nat_ip4 = match network {
+                    Network::Existing(ip) => *ip,
+                    Network::New(nat) => {
+                        let added = self.network.add_nat(nat.clone());
+                        debug_assert!(added);
+
+                        nat.ip4()
+                    }
+                };
                 let client = self.clients.get_mut(client_id).unwrap();
                 self.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
-                let added = self
-                    .network
-                    .add_host(*client_id, client, attachment.clone());
+                let added = self.network.add_host(*client_id, client, nat_ip4);
                 debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
@@ -1363,7 +1370,7 @@ impl ReferenceState {
             }
 
             self.relays.insert(*rid, new_relay.clone());
-            let added = self.network.add_host(*rid, new_relay, Attachment::Direct);
+            let added = self.network.add_relay(*rid, new_relay);
             debug_assert!(added);
             self.node_may_lack_relays = false;
         }
@@ -1385,7 +1392,7 @@ impl ReferenceState {
 
         for (rid, new_relay) in new_relays {
             self.relays.insert(*rid, new_relay.clone());
-            let added = self.network.add_host(*rid, new_relay, Attachment::Direct);
+            let added = self.network.add_relay(*rid, new_relay);
             debug_assert!(added);
         }
     }

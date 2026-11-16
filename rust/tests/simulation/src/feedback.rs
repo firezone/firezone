@@ -431,17 +431,11 @@ impl Recorder {
             ),
         );
 
-        let origin = nat_feedback(path.origin, attempt.duration);
-        let remote = nat_feedback(path.remote, attempt.duration);
-        if !origin.behind_nat && !remote.behind_nat {
-            return;
-        }
-
         record_with_path!(path;
-            origin.expiry_elapsed,
-            remote.expiry_elapsed,
-            origin.inbound_refreshes,
-            remote.inbound_refreshes,
+            attempt.duration >= path.origin.expiry.timeout,
+            attempt.duration >= path.remote.expiry.timeout,
+            path.origin.expiry.inbound_refreshes,
+            path.remote.expiry.inbound_refreshes,
         );
     }
 
@@ -721,28 +715,6 @@ fn remote_path_feedback(
         .connection_path(ClientOrGatewayId::Client(peer))?;
 
     Some(PathFeedback::new(origin_edge, remote_edge, selected))
-}
-
-struct NatFeedback {
-    behind_nat: bool,
-    inbound_refreshes: bool,
-    expiry_elapsed: bool,
-}
-
-fn nat_feedback(edge: EdgeConfig, idle: Duration) -> NatFeedback {
-    let EdgeConfig::Nat(_, _, expiry) = edge else {
-        return NatFeedback {
-            behind_nat: false,
-            inbound_refreshes: false,
-            expiry_elapsed: false,
-        };
-    };
-
-    NatFeedback {
-        behind_nat: true,
-        inbound_refreshes: expiry.inbound_refreshes,
-        expiry_elapsed: idle >= expiry.timeout,
-    }
 }
 
 fn gateway_path_feedback(
