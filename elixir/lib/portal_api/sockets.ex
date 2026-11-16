@@ -40,6 +40,17 @@ defmodule PortalAPI.Sockets do
       "The user identified by the client certificate cannot authenticate using X.509."
   }
 
+  # Versions that retry a 429 (#11594). Older ones stop for good on a 429, so
+  # they get a 503 instead. Relays always run a current build.
+  @retries_on_429_since %{
+    "apple-client" => "1.5.20",
+    "android-client" => "1.5.9",
+    "gui-client" => "1.5.10",
+    "headless-client" => "1.5.6",
+    "gateway" => "1.5.0",
+    "relay" => "0.0.0"
+  }
+
   @doc """
   Extracts the token from connection parameters or headers.
 
@@ -150,19 +161,19 @@ defmodule PortalAPI.Sockets do
     )
   end
 
-  # We use 503 instead of 429 because connlib treats 429 as fatal until
-  # https://github.com/firezone/firezone/pull/11594 is widely distributed.
   def handle_error(conn, :rate_limit) do
     handle_error(conn, {:rate_limit, PortalAPI.Sockets.RateLimit.retry_after_seconds() * 1000})
   end
 
   def handle_error(conn, {:rate_limit, retry_after_ms}) do
+    {status, title} = rate_limit_status(conn)
+
     conn
     |> Plug.Conn.put_resp_header(
       "retry-after",
       Integer.to_string(max(ceil(retry_after_ms / 1000), 1))
     )
-    |> ProblemDetails.send_with_code(503, :rate_limit, "Service Unavailable")
+    |> ProblemDetails.send_with_code(status, :rate_limit, title)
   end
 
   # Must stay last so it cannot shadow the clauses above.
@@ -277,6 +288,30 @@ defmodule PortalAPI.Sockets do
     |> Enum.map_join("; ", fn {field, messages} ->
       "#{field} #{Enum.join(messages, ", ")}"
     end)
+  end
+
+  defp rate_limit_status(conn) do
+    retries_on_429? =
+      conn
+      |> Plug.Conn.get_req_header("user-agent")
+      |> Enum.flat_map(&String.split(&1, " "))
+      |> Enum.any?(&retries_on_429?/1)
+
+    if retries_on_429? do
+      {429, "Too Many Requests"}
+    else
+      {503, "Service Unavailable"}
+    end
+  end
+
+  defp retries_on_429?(product) do
+    with [component, version] <- String.split(product, "/", parts: 2),
+         {:ok, min_version} <- Map.fetch(@retries_on_429_since, component),
+         {:ok, version} <- Version.parse(version) do
+      Version.compare(version, min_version) != :lt
+    else
+      _ -> false
+    end
   end
 
   defp extract_token_from_header(%{x_headers: x_headers}) when is_list(x_headers) do
