@@ -184,7 +184,6 @@ defmodule Portal.Device do
     |> assoc_constraint(:actor)
     |> validate_type_fields()
     |> check_constraint(:type, name: :devices_type_check)
-    |> check_constraint(:actor_id, name: :device_type_client_fields)
     |> unique_firezone_id_constraint()
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
@@ -235,7 +234,6 @@ defmodule Portal.Device do
     case get_field(changeset, :type) do
       :client ->
         changeset
-        |> validate_required([:actor_id])
         |> validate_client_firezone_id()
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
@@ -250,10 +248,10 @@ defmodule Portal.Device do
         # shares with the certificate serial past what a btree entry holds.
         |> validate_length(:last_attested_cert_issuer, max: 1024, count: :bytes)
         |> unique_constraint(:last_attested_mdm_device_id,
-          name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
+          name: :devices_account_id_last_attested_mdm_device_id_index
         )
         |> unique_constraint(:last_attested_cert_serial,
-          name: :devices_account_id_cert_issuer_serial_actor_id_index
+          name: :devices_account_id_cert_issuer_serial_index
         )
 
       :gateway ->
@@ -303,9 +301,7 @@ defmodule Portal.Device do
   defp unique_firezone_id_constraint(changeset) do
     case get_field(changeset, :type) do
       :client ->
-        changeset
-        |> unique_constraint(:firezone_id, name: :devices_account_id_actor_id_firezone_id_index)
-        |> unique_constraint(:firezone_id, name: :devices_account_id_client_firezone_id_index)
+        unique_constraint(changeset, :firezone_id, name: :devices_account_id_client_firezone_id_index)
 
       :gateway ->
         unique_constraint(changeset, :firezone_id, name: :devices_account_id_firezone_id_index)

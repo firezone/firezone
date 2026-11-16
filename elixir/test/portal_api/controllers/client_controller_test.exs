@@ -215,6 +215,26 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["actor_id"] == later.id
     end
 
+    test "filters by the nil UUID to clients with no actors left", %{
+      conn: conn,
+      actor: actor,
+      account: account,
+      client: client
+    } do
+      former = actor_fixture(account: account)
+      orphan = client_fixture(account: account, actor: former)
+      Repo.delete!(former)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/clients", actor_id: "00000000-0000-0000-0000-000000000000")
+
+      assert %{"data" => [%{"id" => id}]} = json_response(conn, 200)
+      assert id == orphan.id
+      refute id == client.id
+    end
+
     test "rejects an actor_id that is not a UUID", %{conn: conn, actor: actor} do
       conn =
         conn
@@ -442,6 +462,26 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["firezone_id"] == client.firezone_id
       assert data["online"] == false
       assert Map.has_key?(data, "hostname")
+    end
+
+    test "renders the nil UUID as actor_id for a client whose users were all deleted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      former = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: former)
+      Repo.delete!(former)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients/#{client.id}")
+
+      assert %{"data" => %{"id" => id, "actor_id" => "00000000-0000-0000-0000-000000000000"}} =
+               json_response(conn, 200)
+      assert id == client.id
     end
 
     test "renders a null firezone_id for an attested client", %{

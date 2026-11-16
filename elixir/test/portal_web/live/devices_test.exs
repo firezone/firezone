@@ -94,6 +94,23 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ client.slug
     end
 
+    test "lists a client whose users were all deleted", %{conn: conn, account: account, actor: actor} do
+      former = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: former)
+      Repo.delete!(former)
+      conn = authorize_conn(conn, actor)
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/devices")
+
+      assert html =~ client.slug
+      assert html =~ "No user"
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/devices/#{client.id}")
+
+      assert html =~ client.name
+      refute html =~ "Owner</"
+    end
+
     test "filters devices by client name, slug, or actor name/email", %{
       conn: conn,
       account: account,

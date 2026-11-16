@@ -9919,7 +9919,7 @@
         "description": "Client",
         "properties": {
           "actor_id": {
-            "description": "Actor ID",
+            "description": "ID of the Actor who connected from this Client most recently. `00000000-0000-0000-0000-000000000000` when none of its Actors remain.",
             "example": "6ecc106b-75c1-48a5-846c-14782180c1ff",
             "format": "uuid",
             "type": "string"
@@ -24593,7 +24593,7 @@
             }
           },
           {
-            "description": "Filter to Clients owned by this Actor",
+            "description": "Filter to Clients this Actor has connected from. Use `00000000-0000-0000-0000-000000000000` for Clients with no Actors left.",
             "in": "query",
             "name": "actor_id",
             "required": false,

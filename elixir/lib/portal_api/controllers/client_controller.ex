@@ -11,6 +11,8 @@ defmodule PortalAPI.ClientController do
   import Ecto.Changeset
   import Portal.Changeset
 
+  @no_actor_id "00000000-0000-0000-0000-000000000000"
+
   tags(["Clients"])
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -32,7 +34,9 @@ defmodule PortalAPI.ClientController do
       ],
       actor_id: [
         in: :query,
-        description: "Filter to Clients owned by this Actor",
+        description:
+          "Filter to Clients this Actor has connected from. " <>
+            "Use `00000000-0000-0000-0000-000000000000` for Clients with no Actors left.",
         schema: %OpenApiSpex.Schema{type: :string, format: :uuid}
       ],
       online: [
@@ -88,7 +92,7 @@ defmodule PortalAPI.ClientController do
          list_opts = Keyword.put(list_opts, :preload, [:online?]),
          list_opts = Keyword.put(list_opts, :filter, filters),
          {:ok, clients, metadata} <- Database.list_clients(subject, list_opts) do
-      clients = Portal.Devices.put_latest_actor(clients, subject)
+      clients = put_actor_id(clients, subject)
       json(conn, JSON.encode(clients, metadata, schema: PortalAPI.Schemas.Client.GetSchema))
     else
       error -> Error.handle(conn, error)
@@ -304,7 +308,7 @@ defmodule PortalAPI.ClientController do
     subject = conn.assigns.subject
 
     with {:ok, client} <- Database.fetch_client(id, subject),
-         [client] = Portal.Devices.put_latest_actor([client], subject),
+         [client] = put_actor_id([client], subject),
          {:ok, deleted} <- Database.delete_client(client, subject) do
       json(conn, JSON.encode(%{deleted | actor_id: client.actor_id}, schema: PortalAPI.Schemas.Client.GetSchema))
     else
@@ -313,14 +317,22 @@ defmodule PortalAPI.ClientController do
   end
 
   defp json_client(conn, client) do
-    [client] = Portal.Devices.put_latest_actor([client], conn.assigns.subject)
+    [client] = put_actor_id([client], conn.assigns.subject)
     json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
+  end
+
+  defp put_actor_id(clients, subject) do
+    clients
+    |> Portal.Devices.put_latest_actor(subject)
+    |> Enum.map(&%{&1 | actor_id: &1.actor_id || @no_actor_id})
   end
 
   defmodule Database do
     import Ecto.Query
     alias Portal.{Presence.Devices, Safe}
     alias Portal.Device
+
+    @no_actor_id "00000000-0000-0000-0000-000000000000"
 
     def list_clients(subject, opts \\ []) do
       from(d in Device, as: :devices)
@@ -392,19 +404,21 @@ defmodule PortalAPI.ClientController do
       {queryable, dynamic}
     end
 
+    defp filter_by_actor_id(queryable, @no_actor_id) do
+      {queryable, dynamic(not exists(device_actors()))}
+    end
+
     defp filter_by_actor_id(queryable, actor_id) do
       {queryable,
-       dynamic(
-         [devices: d],
-         exists(
-           from(da in Portal.DeviceActor,
-             where:
-               da.account_id == parent_as(:devices).account_id and
-                 da.device_id == parent_as(:devices).id and
-                 da.actor_id == ^actor_id
-           )
-         )
-       )}
+       dynamic(exists(from(da in device_actors(), where: da.actor_id == ^actor_id)))}
+    end
+
+    defp device_actors do
+      from(da in Portal.DeviceActor,
+        where:
+          da.account_id == parent_as(:devices).account_id and
+            da.device_id == parent_as(:devices).id
+      )
     end
 
     defp filter_by_id(queryable, {:not_in, ids}) do
