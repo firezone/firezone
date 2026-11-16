@@ -77,9 +77,6 @@ pub(crate) struct SimClient {
 
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tcp::Client,
-
-    /// How many times the client moved to a new port because its socket was taken.
-    pub(crate) num_rebinds: u32,
 }
 
 impl SimClient {
@@ -111,7 +108,6 @@ impl SimClient {
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
             tcp_client: crate::tcp::Client::new(now, os),
             dns_resource_record_cache: Default::default(),
-            num_rebinds: 0,
         }
     }
 
@@ -151,7 +147,6 @@ impl SimClient {
         );
         sut.set_flow_logs_enabled(true);
         let old = std::mem::replace(&mut self.tunnel, SimTunnel::new(sut));
-        self.num_rebinds = 0;
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
@@ -836,7 +831,7 @@ impl SimClient {
             | ClientEvent::DeviceDomainQueried { .. }
             | ClientEvent::DeviceDomainBrowsed { .. }
             | ClientEvent::NoRelays { .. }
-            | ClientEvent::SocketTaken) => Some(event),
+            | ClientEvent::SocketTaken { .. }) => Some(event),
         }
     }
 }

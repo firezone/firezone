@@ -30,28 +30,6 @@ const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
 const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
 
-/// Finds a UDP port that is free on both IP stacks.
-pub fn free_udp_port() -> io::Result<u16> {
-    const ATTEMPTS: usize = 5;
-
-    for _ in 0..ATTEMPTS {
-        let port = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?
-            .local_addr()?
-            .port();
-
-        match std::net::UdpSocket::bind((Ipv6Addr::UNSPECIFIED, port)) {
-            Err(e) if e.kind() == io::ErrorKind::AddrInUse => continue,
-            // Anything else means there is no IPv6 stack to collide on.
-            Ok(_) | Err(_) => return Ok(port),
-        }
-    }
-
-    Err(io::Error::new(
-        io::ErrorKind::AddrInUse,
-        "Failed to find a UDP port that is free for IPv4 and IPv6",
-    ))
-}
-
 /// How many outgoing UDP batches the send task drains from a socket's channel per wakeup.
 ///
 /// The outbound queue is sized as a small multiple of this (see [`QUEUE_SIZE`]), and every queued
@@ -192,6 +170,40 @@ impl Sockets {
         self.socket_v6 = self.bind(&socket_factory, unspecified_v6(self.listen_port));
     }
 
+    /// Drops the items waiting for room and binds new sockets to a port that the OS picks.
+    ///
+    /// IPv6 binds to the port IPv4 got. If it is taken there, we try another one.
+    pub fn rebind_to_new_port(&mut self) {
+        const ATTEMPTS: usize = 5;
+
+        self.overflow_v4.clear();
+        self.overflow_v6.clear();
+
+        let Some(socket_factory) = self.socket_factory.clone() else {
+            return;
+        };
+
+        for _ in 0..ATTEMPTS {
+            self.socket_v4 = None;
+            self.socket_v6 = None;
+
+            self.socket_v4 = self.bind(&socket_factory, unspecified_v4(0));
+            let port = self.socket_v4.as_ref().map_or(0, |s| s.port);
+            self.socket_v6 = self.bind(&socket_factory, unspecified_v6(port));
+
+            match (&self.socket_v4, &self.socket_v6) {
+                (Some(v4), Some(v6)) if v4.port != v6.port => {
+                    tracing::debug!(port, "UDP port is taken for IPv6");
+                }
+                _ => break,
+            }
+        }
+
+        if let Some(socket) = self.socket_v4.as_ref().or(self.socket_v6.as_ref()) {
+            self.listen_port = socket.port;
+        }
+    }
+
     pub fn listen_port(&self) -> u16 {
         self.listen_port
     }
@@ -200,10 +212,6 @@ impl Sockets {
     pub fn set_force_relayed_connections(&self, enabled: bool) {
         self.force_relayed_connections
             .store(enabled, Ordering::Relaxed);
-    }
-
-    pub fn set_listen_port(&mut self, port: u16) {
-        self.listen_port = port;
     }
 
     fn bind(
@@ -465,6 +473,8 @@ const _: () = {
 
 struct ThreadedUdpSocket {
     thread_name: String,
+    /// The local port the socket is bound to.
+    port: u16,
     join_handle: Option<std::thread::JoinHandle<()>>,
     main_thread_ends: Option<MainThreadEnds>,
 }
@@ -588,6 +598,7 @@ impl ThreadedUdpSocket {
 
                 socket.set_buffer_sizes(send_buffer_size, recv_buffer_size);
 
+                let port = socket.port();
                 let socket = Arc::new(socket);
 
                 let send = runtime.spawn({
@@ -717,7 +728,7 @@ impl ThreadedUdpSocket {
                     }
                 });
 
-                let _ = startup_tx.send(Ok(()));
+                let _ = startup_tx.send(Ok(port));
 
                 runtime.block_on(async move {
                     futures::future::select(send, receive).await;
@@ -727,10 +738,11 @@ impl ThreadedUdpSocket {
                 });
             })?;
 
-        startup_rx.recv().map_err(io::Error::other)??;
+        let port = startup_rx.recv().map_err(io::Error::other)??;
 
         Ok(Self {
             thread_name,
+            port,
             join_handle: Some(join_handle),
             main_thread_ends: Some(main_thread_ends),
         })
@@ -843,6 +855,7 @@ impl Sockets {
             let (main_thread_ends, socket_thread_ends) = channels(addr);
             let socket = ThreadedUdpSocket {
                 thread_name: "fake".to_owned(),
+                port: addr.port(),
                 join_handle: None,
                 main_thread_ends: Some(main_thread_ends),
             };

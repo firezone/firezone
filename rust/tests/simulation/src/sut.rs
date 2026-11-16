@@ -32,7 +32,7 @@ use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, messages::Interface};
 
-/// How many times the Client and Gateway event loops move to another port before they fail.
+/// How many times in a row the Client and Gateway event loops move to another port before they fail.
 const MAX_REBINDS: u32 = 50;
 
 /// The actual system-under-test.
@@ -1304,7 +1304,7 @@ impl TunnelTest {
         let portal_unreachable = self
             .client_portal_offline_until
             .is_some_and(|(cid, until)| cid == src && now < until);
-        if portal_unreachable && !matches!(event, ClientEvent::SocketTaken) {
+        if portal_unreachable && !matches!(event, ClientEvent::SocketTaken { .. }) {
             tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
             return;
@@ -1547,12 +1547,12 @@ impl TunnelTest {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
             }
-            ClientEvent::SocketTaken => {
+            ClientEvent::SocketTaken { consecutive } => {
                 let resources = ref_state.clients[&src].inner().resource_descriptions();
                 let client = self.clients.get_mut(&src).unwrap();
 
-                if client.inner().num_rebinds >= MAX_REBINDS {
-                    tracing::error!(%src, "Socket is still taken after rebinding to {MAX_REBINDS} different ports");
+                if consecutive > MAX_REBINDS {
+                    tracing::error!(%src, "Socket is still taken by another device after rebinding to {MAX_REBINDS} different ports");
                     return;
                 }
 
@@ -1560,12 +1560,10 @@ impl TunnelTest {
                 let port = client.port.wrapping_add(1).max(1);
                 client.port = port;
                 client.exec_mut(|c| {
-                    c.num_rebinds += 1;
-                    c.tunnel.inner_mut().set_listen_port(port);
                     c.sut_mut().set_portal_connected(false);
                     c.tunnel
                         .inner_mut()
-                        .reset("socket is taken by another client", now);
+                        .rebind_to_new_port("socket is taken by another device", now);
                 });
 
                 if portal_unreachable {
@@ -1830,41 +1828,20 @@ fn on_gateway_event(
             );
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
         }
-        GatewayEvent::SocketTaken => {
-            if gateway.inner().num_rebinds >= MAX_REBINDS {
-                tracing::error!(%src, "Socket is still taken after rebinding to {MAX_REBINDS} different ports");
+        GatewayEvent::SocketTaken { consecutive } => {
+            if consecutive > MAX_REBINDS {
+                tracing::error!(%src, "Socket is still taken by another device after rebinding to {MAX_REBINDS} different ports");
                 return;
             }
 
-            // Mimic the event loop: listen on a new port, reset and rejoin the portal, which
-            // sends `init` and tells the Clients if our key changed.
+            // Mimic the event loop: listen on a new port and reset.
             let port = gateway.port.wrapping_add(1).max(1);
             gateway.port = port;
-            let previous_key = gateway.inner().sut().public_key();
             gateway.exec_mut(|g| {
-                g.num_rebinds += 1;
-                g.tunnel.inner_mut().set_listen_port(port);
-                g.sut_mut().set_portal_connected(false);
                 g.tunnel
                     .inner_mut()
-                    .reset("socket is taken by another client", now);
-                g.sut_mut().set_portal_connected(true);
-                g.update_relays(iter::empty(), relays.iter(), now);
+                    .rebind_to_new_port("socket is taken by another device", now)
             });
-
-            let public_key = gateway.inner().sut().public_key();
-            if public_key == previous_key {
-                return;
-            }
-            for client in clients.values_mut() {
-                client.exec_mut(|c| {
-                    c.sut_mut().handle_public_key_changed(
-                        ClientOrGatewayId::Gateway(src),
-                        public_key,
-                        now,
-                    )
-                });
-            }
         }
     }
 }

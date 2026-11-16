@@ -422,6 +422,10 @@ impl DatagramOut {
 }
 
 impl PerfUdpSocket {
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
     /// Receives a batch of datagrams from whichever of our sockets becomes ready first.
     pub async fn recv_from(&self) -> Result<DatagramBatch> {
         std::future::poll_fn(|cx| {

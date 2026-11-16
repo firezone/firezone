@@ -97,6 +97,7 @@ pub struct Node<TId, RId> {
 
     allocations: Allocations<RId>,
     additional_host_candidates: Vec<Candidate>,
+    consecutive_sockets_taken: u32,
 
     connections: Connections<TId, RId>,
     buffered_candidates: BufferedCandidates<TId>,
@@ -201,6 +202,7 @@ where
             last_now: now,
             allocations,
             additional_host_candidates: Default::default(),
+            consecutive_sockets_taken: 0,
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
             buffered_candidates: Default::default(),
@@ -223,7 +225,7 @@ where
     /// re-handshaking from the same 3-tuple would collide with the relay's still-live
     /// allocation. `snownet` cannot control which IP / port we are binding to, thus upper
     /// layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
-    pub fn reset(&mut self, now: Instant) {
+    pub fn reset(&mut self, key: StaticKey, now: Instant) {
         self.last_now = now;
 
         self.allocations.restart(now);
@@ -266,11 +268,16 @@ where
 
         self.connections.clear();
 
-        self.interface = new_interface(
-            &mut self.rng,
-            now,
-            self.unix_ts + now.duration_since(self.unix_now),
-        );
+        match key {
+            StaticKey::Keep => {}
+            StaticKey::Rotate => {
+                self.interface = new_interface(
+                    &mut self.rng,
+                    now,
+                    self.unix_ts + now.duration_since(self.unix_now),
+                );
+            }
+        }
 
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }
@@ -797,10 +804,6 @@ where
             self.pending_events.push_back(Event::NoRelays {
                 blocked: self.allocations.blocked(now).collect(),
             });
-        }
-
-        if gc.socket_taken {
-            self.pending_events.push_back(Event::SocketTaken);
         }
 
         self.connections.clear_relays(gc.removed.into_iter());
@@ -1411,6 +1414,15 @@ where
                         c.remove_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
                 }
+                relay_client_proto::Event::SocketTaken => {
+                    self.consecutive_sockets_taken += 1;
+                    self.pending_events.push_back(Event::SocketTaken {
+                        consecutive: self.consecutive_sockets_taken,
+                    });
+                }
+                relay_client_proto::Event::Refreshed => {
+                    self.consecutive_sockets_taken = 0;
+                }
             }
         }
     }
@@ -1605,12 +1617,22 @@ pub enum Event<TId, RId> {
         blocked: Vec<RId>,
     },
 
-    /// A relay sees our socket as the one of another client's allocation.
+    /// A relay has an allocation of another device on our socket.
     ///
     /// The NAT in front of us maps both of us to the same public socket.
     /// Upper layers should bind to a different local port and call [`Node::reset`].
-    /// Until then, the relay is blocked like after any other failure.
-    SocketTaken,
+    SocketTaken {
+        /// How often in a row, including this time, a relay found our socket taken without an
+        /// allocation refresh succeeding in between.
+        consecutive: u32,
+    },
+}
+
+/// What [`Node::reset`] does with our static key when it closes all connections.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StaticKey {
+    Keep,
+    Rotate,
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]

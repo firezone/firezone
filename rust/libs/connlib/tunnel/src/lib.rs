@@ -40,7 +40,7 @@ pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
 pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
-pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped, free_udp_port};
+pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
 pub use utils::turn;
 
 /// How many times we will at most loop before force-yielding from [`Tunnel::poll_next_event`].
@@ -112,6 +112,9 @@ pub struct Tunnel<TRoleState> {
     packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_tun_packets: DroppedTunPackets,
 
+    /// The local IPs advertised as host candidates on our UDP port.
+    additional_host_candidates: Vec<IpAddr>,
+
     /// Set when the last poll handled IO whose effects only `handle_timeout` completes.
     ///
     /// Not every component advertises a deadline for that work, so the tunnel says so itself:
@@ -144,6 +147,7 @@ impl<TRoleState> Tunnel<TRoleState> {
             ),
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
+            additional_host_candidates: Vec::new(),
             needs_timeout: false,
         };
 
@@ -195,6 +199,7 @@ pub trait Role: Sized {
     fn poll_timeout(&mut self) -> Option<Instant>;
     fn handle_timeout(&mut self, now: Instant);
     fn reset(&mut self, now: Instant, reason: &str);
+    fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant);
 }
 
 impl Role for ClientState {
@@ -219,6 +224,10 @@ impl Role for ClientState {
     fn reset(&mut self, now: Instant, reason: &str) {
         ClientState::reset(self, now, reason);
     }
+
+    fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
+        ClientState::set_additional_host_candidates(self, sockets, now);
+    }
 }
 
 impl Role for GatewayState {
@@ -242,6 +251,10 @@ impl Role for GatewayState {
 
     fn reset(&mut self, now: Instant, reason: &str) {
         GatewayState::reset(self, now, reason);
+    }
+
+    fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
+        GatewayState::set_additional_host_candidates(self, sockets, now);
     }
 }
 
@@ -270,6 +283,28 @@ impl<R: Role> Tunnel<R> {
     }
 
     pub fn reset(&mut self, reason: &str, now: Instant) {
+        self.reset_state(reason, now);
+        self.io.reset();
+    }
+
+    /// Binds our UDP sockets to a new port that the OS picks and resets.
+    pub fn rebind_to_new_port(&mut self, reason: &str, now: Instant) {
+        self.io.reset_on_new_port();
+        let ips = mem::take(&mut self.additional_host_candidates);
+        self.set_additional_host_candidates(ips, now);
+        self.reset_state(reason, now);
+    }
+
+    /// Advertises the given local IPs as additional host candidates on our UDP port.
+    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
+        self.role_state.set_additional_host_candidates(
+            listen_sockets(ips.clone(), self.io.listen_port()),
+            now,
+        );
+        self.additional_host_candidates = ips;
+    }
+
+    fn reset_state(&mut self, reason: &str, now: Instant) {
         if self
             .role_state
             .poll_timeout()
@@ -279,12 +314,6 @@ impl<R: Role> Tunnel<R> {
         }
 
         self.role_state.reset(now, reason);
-        self.io.reset();
-    }
-
-    /// Sets the port our UDP sockets bind to from the next [`Tunnel::reset`] onwards.
-    pub fn set_listen_port(&mut self, port: u16) {
-        self.io.set_listen_port(port);
     }
 }
 
@@ -319,18 +348,13 @@ impl ClientTunnel {
             ),
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
+            additional_host_candidates: Vec::new(),
             needs_timeout: false,
         })
     }
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
-    }
-
-    /// Advertises the given local IPs as additional host candidates on our UDP port.
-    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
-        self.role_state
-            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
     }
 
     /// Drops every datagram sent directly to a peer while `enabled`, forcing connections through a relay.
@@ -584,18 +608,13 @@ impl GatewayTunnel {
             ),
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
+            additional_host_candidates: Vec::new(),
             needs_timeout: false,
         })
     }
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
-    }
-
-    /// Advertises the given local IPs as additional host candidates on our UDP port.
-    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
-        self.role_state
-            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
     }
 
     /// Shut down the Gateway tunnel.
