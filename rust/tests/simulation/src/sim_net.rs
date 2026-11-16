@@ -152,7 +152,7 @@ pub(crate) enum Attachment {
 /// per host, like the "simple security" of [RFC 6092](https://datatracker.ietf.org/doc/html/rfc6092).
 ///
 /// A new mapping keeps the port of its internal socket unless the
-/// [`PortAssignment`] rules it out, and takes the next free port otherwise.
+/// [`PortAssignment`] gives it a fresh port.
 #[derive(Debug, Clone)]
 pub(crate) struct Nat {
     ip4: Ipv4Addr,
@@ -167,17 +167,16 @@ pub(crate) struct Nat {
 }
 
 /// How a NAT assigns public ports to new mappings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) enum PortAssignment {
     /// A public port belongs to exactly one mapping, per [RFC 4787, REQ-3](https://datatracker.ietf.org/doc/html/rfc4787#section-4.2.1).
     Compliant,
     /// Mappings of several internal sockets share a public port ("port overloading").
     ///
-    /// A port is only ruled out while another mapping on it has sent to the same destination
-    /// within [`Nat::RECENTLY_USED`], so a host that only sends keep-alives does not stop a second
-    /// one from being mapped to the same public socket. An inbound packet goes to the mapping that
+    /// A new mapping keeps its internal port even if other mappings hold it, unless it draws a
+    /// fresh port with [`Nat::FRESH_PORT_PROBABILITY`]. An inbound packet goes to the mapping that
     /// last sent to its sender, or else to the one that sent last.
-    Overloading,
+    Overloading(fastrand::Rng),
 }
 
 #[derive(Debug, Clone)]
@@ -193,7 +192,10 @@ struct Binding {
 }
 
 impl Nat {
-    const RECENTLY_USED: Duration = Duration::from_secs(5);
+    /// Makes two hosts with the same internal port about equally likely to share their public port
+    /// towards a destination or not, so that they often share it towards one destination but not
+    /// towards another.
+    const FRESH_PORT_PROBABILITY: f64 = 0.3;
 
     pub(crate) fn new(
         ip4: Ipv4Addr,
@@ -251,7 +253,7 @@ impl Nat {
             return SocketAddr::new(self.ip4.into(), binding.port);
         }
 
-        let port = self.free_port(src.port(), dst, now);
+        let port = self.assign_port(src.port());
         self.bindings.push(Binding {
             port,
             internal: src,
@@ -263,8 +265,13 @@ impl Nat {
         SocketAddr::new(self.ip4.into(), port)
     }
 
-    fn free_port(&mut self, preferred: u16, dst: SocketAddr, now: Instant) -> u16 {
-        if !self.is_taken(preferred, dst, now) {
+    fn assign_port(&mut self, preferred: u16) -> u16 {
+        let keep = match &mut self.assignment {
+            PortAssignment::Compliant => !self.is_held(preferred),
+            PortAssignment::Overloading(rng) => rng.f64() >= Self::FRESH_PORT_PROBABILITY,
+        };
+
+        if keep {
             return preferred;
         }
 
@@ -272,25 +279,14 @@ impl Nat {
             let port = self.next_port;
             self.next_port += 1;
 
-            if !self.is_taken(port, dst, now) {
+            if !self.is_held(port) {
                 return port;
             }
         }
     }
 
-    /// Whether a new mapping towards `dst` cannot have the public `port`.
-    fn is_taken(&self, port: u16, dst: SocketAddr, now: Instant) -> bool {
-        let mut on_port = self.bindings.iter().filter(|binding| binding.port == port);
-
-        match self.assignment {
-            PortAssignment::Compliant => on_port.next().is_some(),
-            PortAssignment::Overloading => on_port.any(|binding| {
-                binding
-                    .sent_to
-                    .get(&dst)
-                    .is_some_and(|sent_at| now.duration_since(*sent_at) < Self::RECENTLY_USED)
-            }),
-        }
+    fn is_held(&self, port: u16) -> bool {
+        self.bindings.iter().any(|binding| binding.port == port)
     }
 
     fn ingress(&mut self, src: SocketAddr, dst: SocketAddr, now: Instant) -> Result<SocketAddr> {

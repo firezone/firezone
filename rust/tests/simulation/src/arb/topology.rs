@@ -486,7 +486,7 @@ fn arb_nat(g: &mut Generator, portal: &StubPortal) -> Nat {
     // TODO: Sample overloading for classic ICE too: `direct_path_possible` cannot tell which
     // connections keep a direct path through such a NAT when the relays are gone.
     let assignment = if portal.frostlink() && g.bool() {
-        PortAssignment::Overloading
+        PortAssignment::Overloading(fastrand::Rng::with_seed(g.u64()))
     } else {
         PortAssignment::Compliant
     };
