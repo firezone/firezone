@@ -235,6 +235,8 @@ if config_env() == :prod do
     region_transfer_outbox_url: env_var_to_config!(:region_transfer_outbox_url),
     region_transfer_inbox_url: env_var_to_config!(:region_transfer_inbox_url)
 
+  config :portal, avatars_container_url: env_var_to_config!(:avatars_container_url)
+
   # Shared cookie and proxy config (used by both Web and API endpoints)
   config :portal,
     cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
@@ -278,6 +280,9 @@ if config_env() == :prod do
     # Release registry slugs this region no longer holds locally: a claim whose
     # local write rolled back, or the slugs of a deleted account
     {"*/30 * * * *", Portal.Workers.SweepSlugRegistry},
+
+    # Delete profile photos that no identity links to any more
+    {"30 4 * * *", Portal.Avatars.Prune},
 
     # Schedule Entra directory sync daily; Graph change notifications cover
     # the hours in between
@@ -835,6 +840,10 @@ if config_env() == :prod do
            adapter: env_var_to_config!(:outbound_email_adapter),
            from_email: env_var_to_config!(:outbound_email_from)
          ] ++ env_var_to_config!(:outbound_email_adapter_opts)
+
+  config :portal,
+    yc_deal_webhook_secrets: env_var_to_config!(:yc_deal_webhook_secrets),
+    yc_deal_coupon_ids: env_var_to_config!(:yc_deal_coupon_ids)
 
   config :portal,
          Portal.Mailer.Secondary,

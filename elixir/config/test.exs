@@ -193,6 +193,24 @@ config :portal, Portal.Ops.RegionTransfer.Storage,
     retry: false
   ]
 
+config :portal, Portal.Avatars.Picture,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Picture},
+    retry: false
+  ],
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
+  ]
+
+config :portal, Portal.Avatars.Storage,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Storage},
+    retry: false
+  ]
+
 config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
@@ -417,7 +435,7 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
+    "img-src 'self' data: https://firezone.statuspage.io",
     "style-src 'self'",
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",
