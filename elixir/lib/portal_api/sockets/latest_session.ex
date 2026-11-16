@@ -30,6 +30,7 @@ defmodule PortalAPI.Sockets.LatestSession do
 
     rows = rows(live)
     updated_ids = Database.update_devices(rows)
+    :ok = Database.upsert_device_actors(rows, updated_ids)
     missing = missing_device_ids(rows, updated_ids)
 
     device_failed =
@@ -542,6 +543,45 @@ defmodule PortalAPI.Sockets.LatestSession do
           row
         end
       end)
+    end
+
+    # Nothing reads device_actors yet, so a failure here is logged rather
+    # than failing the sessions.
+    def upsert_device_actors(rows, updated_ids) do
+      entries =
+        for %{actor_id: actor_id} = row <- rows,
+            not is_nil(actor_id),
+            MapSet.member?(updated_ids, row.device_id) do
+          %{
+            account_id: row.account_id,
+            device_id: row.device_id,
+            actor_id: actor_id,
+            first_seen_at: row.last_seen_at,
+            last_seen_at: row.last_seen_at
+          }
+        end
+
+      if entries != [] do
+        Safe.unscoped()
+        |> Safe.insert_all(Portal.DeviceActor, entries,
+          on_conflict:
+            from(da in Portal.DeviceActor,
+              update: [
+                set: [
+                  last_seen_at:
+                    fragment("GREATEST(?, EXCLUDED.last_seen_at)", da.last_seen_at)
+                ]
+              ]
+            ),
+          conflict_target: [:account_id, :device_id, :actor_id]
+        )
+      end
+
+      :ok
+    rescue
+      error in Postgrex.Error ->
+        Logger.error("Failed to record device actors: " <> Exception.message(error))
+        :ok
     end
 
     def existing_device_ids(rows) do
