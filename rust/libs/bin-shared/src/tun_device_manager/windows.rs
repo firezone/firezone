@@ -59,6 +59,12 @@ impl TunDeviceManager {
         Ok(Box::new(tun))
     }
 
+    /// The LUID of the adapter, once [`make_tun`](Self::make_tun) created it.
+    pub fn luid(&self) -> Option<u64> {
+        // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out the u64 value.
+        self.luid.map(|luid| unsafe { luid.Value })
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<TunIpStack> {
         let luid = self

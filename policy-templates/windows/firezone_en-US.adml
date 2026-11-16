@@ -14,6 +14,7 @@
       <string id="startOnLogin">Start on login</string>
       <string id="checkForUpdates">Automatically check for updates</string>
       <string id="supportURL">Support URL</string>
+      <string id="allowedApplications">Applications allowed to use the tunnel</string>
 
       <string id="SUPPORTED_FZ_GUI_1_5_0">
         Firezone GUI Client 1.5.0 or later
@@ -49,6 +50,9 @@
       <string id="supportURL_explain">
         The URL to which users will be taken to when clicking the Help -&gt; Support link in the tray menu. By default, the Client will use "https://www.firezone.dev/support".
       </string>
+      <string id="allowedApplications_explain">
+        A comma-separated list of absolute executable paths, for example "C:\Program Files\Mozilla Firefox\firefox.exe". Only these programs may send traffic into the Firezone tunnel; every other program is blocked from Firezone Resources but keeps its ordinary internet access. With the Internet Resource enabled, the tunnel carries all internet traffic, so other programs lose internet access too. DNS queries are always allowed because Windows sends them on behalf of the program. By default, every program may use the tunnel.
+      </string>
     </stringTable>
     <presentationTable>
       <presentation id="authURL">
@@ -74,6 +78,11 @@
       <presentation id="supportURL">
         <textBox refId="supportURL">
           <label>URL:</label>
+        </textBox>
+      </presentation>
+      <presentation id="allowedApplications">
+        <textBox refId="allowedApplications">
+          <label>Executable paths (comma-separated):</label>
         </textBox>
       </presentation>
     </presentationTable>

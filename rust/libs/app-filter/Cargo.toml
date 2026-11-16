@@ -1,0 +1,38 @@
+[package]
+name = "app-filter"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[features]
+# Builds and embeds the Linux eBPF program. Needs the nightly toolchain and `bpf-linker` (`mise run install-ebpf-toolchain`).
+ebpf = ["dep:aya", "dep:app-filter-ebpf-shared"]
+
+[dependencies]
+anyhow = { workspace = true }
+ip_network = { workspace = true }
+ip_network_table = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+app-filter-ebpf-shared = { workspace = true, optional = true, features = ["std"] }
+aya = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
+    "Win32_Security",
+    "Win32_System_Rpc",
+] }
+windows-core = { workspace = true }
+
+[build-dependencies]
+anyhow = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.build-dependencies]
+aya-build = { workspace = true }
+
+[lints]
+workspace = true

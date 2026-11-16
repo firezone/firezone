@@ -225,6 +225,16 @@ A profile can consist of payloads with different version numbers. For example, c
 			<key>pfm_type</key>
 			<string>string</string>
 		</dict>
+		<dict>
+			<key>pfm_description</key>
+			<string>Comma-separated code-signing identifiers (bundle IDs for normally signed apps) of the only apps that may send traffic into the Firezone tunnel. Other apps are blocked from Firezone Resources but keep their ordinary internet access, unless the Internet Resource is enabled. DNS queries are always allowed. Leave unset to let every app use the tunnel. Requires the Firezone content filter, which the app installs on macOS; on supervised iOS devices install it with a Web Content Filter payload.</string>
+			<key>pfm_name</key>
+			<string>allowedApplications</string>
+			<key>pfm_title</key>
+			<string>Applications allowed to use the tunnel</string>
+			<key>pfm_type</key>
+			<string>string</string>
+		</dict>
 	</array>
 	<key>pfm_targets</key>
 	<array>

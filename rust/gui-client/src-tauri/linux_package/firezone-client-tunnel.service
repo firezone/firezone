@@ -4,13 +4,16 @@ After=systemd-resolved.service
 Wants=systemd-resolved.service
 
 [Service]
-AmbientCapabilities=CAP_NET_ADMIN
+# CAP_BPF and CAP_PERFMON load and attach the application filter's cgroup and
+# tracepoint programs (`app-filter`), which needs the `bpf` and
+# `perf_event_open` syscalls below.
+AmbientCapabilities=CAP_NET_ADMIN CAP_BPF CAP_PERFMON
 # CAP_SYS_PTRACE is required for the daemon (running as root, target UID
 # differs from peer UID) to pass the kernel's ptrace_may_access check when
 # reading /proc/<peer_pid>/exe for the per-connection allowlist enforcement
 # in `ipc/unix/peer_check.rs`. ProtectProc=invisible below does not block
 # callers that hold CAP_SYS_PTRACE.
-CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN CAP_SYS_PTRACE CAP_BPF CAP_PERFMON
 DeviceAllow=/dev/net/tun
 LockPersonality=true
 LogsDirectory=dev.firezone.client
@@ -41,7 +44,7 @@ RuntimeDirectory=dev.firezone.client
 StateDirectory=dev.firezone.client
 SystemCallArchitectures=native
 # TODO: Minimize
-SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io @signal @system-service
+SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io @signal @system-service bpf perf_event_open
 UMask=077
 
 Environment="LOG_DIR=/var/log/dev.firezone.client"
