@@ -552,19 +552,30 @@ same day.
 
 - **2.1 Migration: `device_actors`.** `(account_id, device_id, actor_id,
 first_seen_at, last_seen_at)`, PK on the three ids, cascading FKs. Ecto
-  schema; both replication consumer lists; broadcast-only hook.
+  schema; both replication consumer lists; broadcast-only hook. Shipped
+  with 2.3 in #16469.
 - **2.2 Migration: backfill `device_actors`** from `devices.actor_id` for
-  client rows. Depends 2.1.
+  client rows. Depends 2.1. Shipped in #16470.
 - **2.3 Code: client connect upserts `device_actors`** through the session
-  flush queue. Depends 2.1.
+  flush queue. Depends 2.1. Shipped in #16469.
 - **2.4 Code: pool criteria read `device_actors`.** Own-devices and
   actor-group SQL use EXISTS on the new table; presence-based `member?`
   unchanged. Criteria tests. Depends 2.2.
 - **2.5 Code: seats from `device_actors.last_seen_at`.** Billing tests.
-  Depends 2.2.
+  Depends 2.2. Shipped in #16473. The unit stays one seat per actor.
 - **2.6 UI: Devices "Owner" becomes "Users"**; actor detail lists devices via
   `device_actors`; actor delete hook disconnects that actor's sessions.
   Depends 2.2.
+- **2.6b Code: the connected actor comes from the token.** The client
+  socket, channel, presence and cache use the actor of the token that
+  connected, held on the socket, and never read `devices.actor_id`.
+  Depends 2.3.
+- **2.6c Migration: deleting an actor keeps its devices.** The devices
+  `actor_id` FK becomes `ON DELETE SET NULL`; `device_type_client_fields`
+  is dropped and `actor_id` becomes nullable. Only the actor's
+  `device_actors` rows go. A device with no users stays, because flow logs
+  and other records refer to it; a later sweep can delete such devices.
+  Depends 2.6, 2.6b.
 - **2.7 Migration: `site_devices`.** `(account_id, site_id, device_id,
 inserted_at)`, unique on the three ids, cascading FKs. Ecto schema, `Site`
   associations, consumer lists, hook that broadcasts to the site topic.
@@ -601,8 +612,11 @@ inserted_at)`, unique on the three ids, cascading FKs. Ecto schema, `Site`
   Depends 0.1, 2.2, 2.8.
 - **2.16 Migration: identity uniqueness without actor.** Unique `(account_id,
 firezone_id) WHERE firezone_id IS NOT NULL` and `(account_id, issuer,
-serial)`; drop the actor-scoped indexes, `device_type_client_fields` and
-  `device_type_gateway_fields`; `actor_id` nullable. Depends 2.15.
+serial)`; drop the actor-scoped indexes. Depends 2.15. The Gateway part
+  shipped in #16560: Gateways that already shared a `firezone_id` across
+  Sites are flagged `firezone_id_exempt` and left out of the index until
+  their admins clean them up, and the actor-scoped `firezone_id` index now
+  covers Clients only.
 - **2.17 Code: lookups without actor.** Client socket `find_by_firezone_id`
   by account; attested lookup in `device_trust.ex` by account; `Device`
   changeset validations by presence of fields rather than `type`. Depends
@@ -834,7 +848,10 @@ firezone` and `firezone authenticate`. Depends 3.7.
   legacy gateways.** Depends 4.6.
 - **6.4 Migration: drop `devices.type`.** Depends 6.1, 6.2, 6.3.
 - **6.5 Migration: drop `devices.site_id` and its trigger, drop
-  `devices.actor_id`.** Depends 2.9 and 2.17 deployed.
+  `devices.actor_id`.** Depends 2.9 and 2.17 deployed, and no code reads
+  `devices.actor_id`: lists, pools, hooks and billing read `device_actors`
+  (2.4 to 2.6), the connected actor comes from the token (2.6b) and lookups
+  go by account (2.17).
 - **6.6 Code and migration: Internet Site becomes a normal site.** Flip
   `managed_by`, drop the pairing validation and the pinned row; Internet
   resource gets a site selector. Depends 0.4 in the fleet, 5.11.
