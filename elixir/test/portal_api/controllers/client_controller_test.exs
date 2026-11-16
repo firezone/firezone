@@ -444,6 +444,23 @@ defmodule PortalAPI.ClientControllerTest do
       assert Map.has_key?(data, "hostname")
     end
 
+    test "returns the stored actor of a client that has not been flushed yet", %{
+      conn: conn,
+      actor: actor,
+      client: client
+    } do
+      Portal.Repo.delete_all(Portal.DeviceActor)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients/#{client.id}")
+
+      assert %{"data" => %{"actor_id" => actor_id}} = json_response(conn, 200)
+      assert actor_id == client.actor_id
+    end
+
     test "renders a null firezone_id for an attested client", %{
       conn: conn,
       actor: actor,

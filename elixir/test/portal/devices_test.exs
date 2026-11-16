@@ -215,6 +215,19 @@ defmodule Portal.DevicesTest do
 
       assert actor_id == latest.id
     end
+
+    test "puts the stored actor of a device that has no device_actors row yet" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      device = client_fixture(account: account, actor: actor)
+      Repo.delete_all(Portal.DeviceActor)
+      subject = admin_subject_fixture(account: account)
+
+      assert [%Device{actor_id: actor_id, actor: %Portal.Actor{id: actor_id}}] =
+               Devices.put_latest_actor([device], subject)
+
+      assert actor_id == actor.id
+    end
   end
 
   describe "owner_name/1" do
