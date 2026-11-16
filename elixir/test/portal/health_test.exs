@@ -49,7 +49,9 @@ defmodule Portal.HealthTest do
         |> Portal.Health.call([])
 
       assert conn.status == 200
-      assert %{"status" => "ready", "version" => version} = JSON.decode!(conn.resp_body)
+      assert %{"status" => "ready", "version" => version, "ApplicationHealthState" => "Healthy"} =
+               JSON.decode!(conn.resp_body)
+
       assert is_binary(version)
     end
 
@@ -64,7 +66,9 @@ defmodule Portal.HealthTest do
         |> Portal.Health.call([])
 
       assert conn.status == 503
-      assert %{"status" => "draining", "version" => version} = JSON.decode!(conn.resp_body)
+      assert %{"status" => "draining", "version" => version, "ApplicationHealthState" => "Unhealthy"} =
+               JSON.decode!(conn.resp_body)
+
       assert is_binary(version)
     end
 
@@ -83,7 +87,11 @@ defmodule Portal.HealthTest do
 
       assert conn.status == 503
 
-      assert %{"status" => "database_unavailable", "version" => _} =
+      assert %{
+               "status" => "database_unavailable",
+               "version" => _,
+               "ApplicationHealthState" => "Unhealthy"
+             } =
                JSON.decode!(conn.resp_body)
     end
 
@@ -146,7 +154,9 @@ defmodule Portal.HealthTest do
         |> Portal.Health.call([])
 
       assert conn.status == 503
-      assert %{"status" => "starting", "version" => version} = JSON.decode!(conn.resp_body)
+      assert %{"status" => "starting", "version" => version, "ApplicationHealthState" => "Unhealthy"} =
+               JSON.decode!(conn.resp_body)
+
       assert is_binary(version)
     end
   end
