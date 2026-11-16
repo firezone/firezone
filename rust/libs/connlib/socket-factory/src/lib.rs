@@ -132,6 +132,13 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
 
     socket.bind(&addr)?;
 
+    // On Linux, flow sockets (see `pool::flows`) only need the catch-all to opt into
+    // `SO_REUSEPORT` by the time they bind to its port. Opting in before our own bind would
+    // let the kernel hand out an ephemeral port that is already used by another of our
+    // `SO_REUSEPORT` sockets and load-balance datagrams between the two.
+    #[cfg(target_os = "linux")]
+    socket.set_reuse_port(true)?;
+
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
     let socket = UdpSocket::new(socket, state)?;
@@ -287,7 +294,7 @@ pub struct PerfUdpSocket {
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
     send_retry_histogram: opentelemetry::metrics::Histogram<u64>,
-    #[cfg(apple)]
+    #[cfg(any(apple, target_os = "linux"))]
     dropped_packets: opentelemetry::metrics::Counter<u64>,
     send_blocked_histogram: opentelemetry::metrics::Histogram<f64>,
     source_ip_resolver:
@@ -332,7 +339,7 @@ impl UdpSocket {
             recv_buf_size,
             batch_histogram: otel_instruments::network_packets_batch_count(),
             send_retry_histogram: otel_instruments::network_retries(),
-            #[cfg(apple)]
+            #[cfg(any(apple, target_os = "linux"))]
             dropped_packets: otel_instruments::network_packet_dropped(),
             send_blocked_histogram: otel_instruments::network_send_blocked_duration(),
             source_ip_resolver: self.source_ip_resolver,
@@ -439,15 +446,15 @@ impl PerfUdpSocket {
         let mut batch = RecvBatch::pull(self.recv_buf_size);
 
         let len = socket.inner.try_io(Interest::READABLE, || {
-            // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
-            // ICMP errors on receive that we skip past; hence the `never_loop` allow elsewhere.
-            #[cfg_attr(not(apple), allow(clippy::never_loop))]
+            // The loop only re-iterates where connected sockets surface (one-shot) ICMP errors on
+            // receive that we skip past; hence the `never_loop` allow elsewhere.
+            #[cfg_attr(not(any(apple, target_os = "linux")), allow(clippy::never_loop))]
             loop {
                 let (mut io_bufs, metas) = batch.recv_slices();
 
                 match socket.recv(&mut io_bufs, metas) {
                     // Connected sockets surface (one-shot) ICMP errors on receive; they are not fatal.
-                    #[cfg(apple)]
+                    #[cfg(any(apple, target_os = "linux"))]
                     Err(e) if socket.connected && is_icmp_unreachable(&e) => {
                         tracing::trace!("Ignoring ICMP error on connected UDP socket: {e}");
                         continue;
@@ -503,8 +510,8 @@ impl PerfUdpSocket {
 
     /// The number of connected per-destination "flow" sockets currently cached.
     ///
-    /// Exposed for integration tests. Always `0` on non-Apple platforms, where all
-    /// traffic uses the single catch-all socket.
+    /// Exposed for integration tests. Always `0` on platforms other than Apple and Linux,
+    /// where all traffic uses the single catch-all socket.
     #[doc(hidden)]
     pub fn flow_socket_count(&self) -> usize {
         self.pool.flow_socket_count()
@@ -568,7 +575,7 @@ impl PerfUdpSocket {
             #[cfg(debug_assertions)]
             tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %contents.len().div_ceil(segment_size), %segment_size, connected = %socket.connected);
 
-            let result = if socket.connected {
+            let result = if cfg!(apple) && socket.connected {
                 // Connected sockets never return `EWOULDBLOCK` on Darwin; issue the syscall
                 // directly instead of going through tokio's (always-set) write-readiness.
                 socket
@@ -627,7 +634,7 @@ impl PerfUdpSocket {
                     spin_and_yield(attempt).await;
                     attempt += 1;
                 }
-                #[cfg(apple)]
+                #[cfg(any(apple, target_os = "linux"))]
                 Err(e) if socket.connected && is_icmp_unreachable(&e) => {
                     self.record_send_retries(attempt);
                     self.dropped_packets.add(
@@ -888,7 +895,7 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
 }
 
 /// Whether the error originates from an ICMP message for a connected socket's path.
-#[cfg(apple)]
+#[cfg(any(apple, target_os = "linux"))]
 fn is_icmp_unreachable(e: &io::Error) -> bool {
     matches!(
         e.raw_os_error(),

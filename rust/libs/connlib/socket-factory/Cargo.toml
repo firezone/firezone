@@ -23,6 +23,7 @@ libc = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = { workspace = true }
+parking_lot = { workspace = true }
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
 libc = { workspace = true }

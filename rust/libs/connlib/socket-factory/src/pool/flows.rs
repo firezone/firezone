@@ -1,4 +1,9 @@
-//! The Apple [`SocketPool`]: unconnected wildcard and source sockets, plus connected flow sockets.
+//! The Apple and Linux [`SocketPool`]: unconnected wildcard and source sockets, plus connected
+//! flow sockets.
+//!
+//! On Linux, only a connected socket caches its transmit queue: with XPS, an unconnected socket
+//! sends each datagram on the queue of whichever CPU sent it, so a single flow arrives reordered
+//! and defeats the receiver's UDP GRO.
 //!
 //! Darwin gates its UDP fast path on connected sockets:
 //!
@@ -49,8 +54,8 @@ use super::{OwnedSocket, Socket, poll_recv_ready};
 /// How many flow sockets a pool keeps at most. connlib runs one pool per address family,
 /// so this is effectively the per-family cap.
 ///
-/// Apple devices only ever run Clients, so the steady-state working set is tiny:
-/// the data-bearing gateway path(s) and the relays.
+/// Sized for Clients, whose steady-state working set is tiny: the data-bearing gateway
+/// path(s) and the relays.
 const MAX_FLOW_SOCKETS: usize = 16;
 const MAX_SOURCE_SOCKETS: usize = 16;
 
@@ -233,7 +238,7 @@ impl SocketPool {
             return None;
         }
 
-        match create_socket(self.local, src, Some(dst), inner.buffer_sizes) {
+        match create_socket(&self.wildcard, src, Some(dst), inner.buffer_sizes) {
             Ok(socket) => {
                 tracing::debug!(?src, %dst, "Connected new flow socket");
 
@@ -278,7 +283,7 @@ impl SocketPool {
             return Some(source.socket.clone());
         }
 
-        match create_socket(self.local, Some(src), None, inner.buffer_sizes) {
+        match create_socket(&self.wildcard, Some(src), None, inner.buffer_sizes) {
             Ok(socket) => {
                 if inner.sources.len() >= MAX_SOURCE_SOCKETS {
                     let _ = evict_one(
@@ -469,11 +474,12 @@ fn drain(socket: &OwnedSocket, port: u16, recv_buf_size: usize, out: &mut VecDeq
 }
 
 fn create_socket(
-    local: SocketAddr,
+    wildcard: &OwnedSocket,
     src: Option<IpAddr>,
     dst: Option<SocketAddr>,
     buffer_sizes: Option<(usize, usize)>,
 ) -> io::Result<OwnedSocket> {
+    let local = wildcard.local_addr()?;
     let bind_addr = socket2::SockAddr::from(SocketAddr::new(
         src.unwrap_or_else(|| local.ip()),
         local.port(),
@@ -491,9 +497,19 @@ fn create_socket(
 
     socket.set_nonblocking(true)?;
 
+    // Without the platform socket factory's fwmark, the flow would be routed into our own tunnel.
+    #[cfg(target_os = "linux")]
+    {
+        let mark = socket2::SockRef::from(&wildcard.socket).mark()?;
+        if mark != 0 {
+            socket.set_mark(mark)?;
+        }
+    }
+
     // Darwin attaches the destination-address control message when it enqueues a datagram, and
     // a connected socket captures its 4-tuple immediately, so the option must be on beforehand.
     let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))?;
+    #[cfg(apple)]
     // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
     unsafe {
         state.set_apple_fast_path();
@@ -502,6 +518,7 @@ fn create_socket(
     socket.bind(&bind_addr)?;
     // NECP scopes the socket to the primary interface during bind, which keeps it out of our own tunnel.
     // Only a pinned source address can take over that job, so only then may routing pick the interface.
+    #[cfg(apple)]
     if src.is_some() {
         match local.ip() {
             IpAddr::V4(_) => socket.bind_device_by_index_v4(None)?,
@@ -528,6 +545,7 @@ mod tests {
 
     use super::*;
 
+    #[cfg(apple)]
     #[tokio::test]
     async fn source_sockets_keep_the_address_and_port_without_interface_scope() {
         for (local, source) in [

@@ -1,7 +1,5 @@
-//! The [`SocketPool`] for every non-Apple platform: just the catch-all socket.
-//!
-//! Connected per-destination sockets only buy us anything on Darwin (see the `apple` module),
-//! so everywhere else all traffic uses a single unconnected socket.
+//! The [`SocketPool`] for every platform without flow sockets (see the `flows` module): just
+//! the catch-all socket.
 
 use std::{
     io,
@@ -52,7 +50,7 @@ impl SocketPool {
         self.wildcard.apply_buffer_sizes(send, recv, port);
     }
 
-    /// There are no flow sockets on non-Apple platforms; all traffic uses the catch-all.
+    /// There are no flow sockets here; all traffic uses the catch-all.
     pub(crate) fn flow_socket_count(&self) -> usize {
         0
     }

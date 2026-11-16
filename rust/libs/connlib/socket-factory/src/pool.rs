@@ -3,19 +3,19 @@
 //!
 //! There are two implementations behind a single platform-selected `SocketPool` alias:
 //!
-//! - `apple`: wildcard and source-bound unconnected sockets, plus connected flow sockets
-//!   that unlock Darwin's UDP fast path and flow advisories.
+//! - `flows` (Apple and Linux): wildcard and source-bound unconnected sockets, plus connected
+//!   flow sockets.
 //! - `fallback`: just the catch-all socket, for every other platform.
 
-#[cfg(apple)]
-mod apple;
-#[cfg(not(apple))]
+#[cfg(not(any(apple, target_os = "linux")))]
 mod fallback;
+#[cfg(any(apple, target_os = "linux"))]
+mod flows;
 
-#[cfg(apple)]
-pub(crate) use apple::SocketPool;
-#[cfg(not(apple))]
+#[cfg(not(any(apple, target_os = "linux")))]
 pub(crate) use fallback::SocketPool;
+#[cfg(any(apple, target_os = "linux"))]
+pub(crate) use flows::SocketPool;
 
 use std::{
     io::{self, IoSliceMut},
@@ -87,7 +87,7 @@ impl OwnedSocket {
         }
     }
 
-    #[cfg(apple)]
+    #[cfg(any(apple, target_os = "linux"))]
     pub(crate) fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
         self.socket.local_addr()
     }

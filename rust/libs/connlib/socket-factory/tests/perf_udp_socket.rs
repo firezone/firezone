@@ -8,8 +8,8 @@ use socket_factory::{DatagramOut, udp};
 /// Datagrams sent to a fresh peer round-trip: the peer receives them and the reply is
 /// delivered back through the same [`PerfUdpSocket`](socket_factory::PerfUdpSocket).
 ///
-/// The batch is big enough to promote the pair to a connected flow socket on Apple (see
-/// the assertion below); on every other platform everything uses the single catch-all
+/// The batch is big enough to promote the pair to a connected flow socket on Apple and Linux
+/// (see the assertion below); on every other platform everything uses the single catch-all
 /// socket.
 #[tokio::test]
 async fn sends_and_receives_a_datagram() {
@@ -31,10 +31,10 @@ async fn sends_and_receives_a_datagram() {
         .await
         .unwrap();
 
-    // On Apple, a batch of `DATAGRAMS` datagrams must connect a flow socket - not
-    // silently fall back to the catch-all. A count of 0 would mean `connect()` failed
-    // (e.g. the catch-all lacked `SO_REUSEPORT`) and the fast path latched off.
-    #[cfg(apple)]
+    // A batch of `DATAGRAMS` datagrams must connect a flow socket - not silently fall back
+    // to the catch-all. A count of 0 would mean `connect()` failed (e.g. the catch-all
+    // lacked `SO_REUSEPORT`) and flow sockets latched off.
+    #[cfg(any(apple, target_os = "linux"))]
     assert_eq!(socket.flow_socket_count(), 1);
 
     let mut buf = [0u8; 16];
@@ -56,7 +56,7 @@ async fn sends_and_receives_a_datagram() {
     assert_eq!(datagram.from(), peer_addr);
 }
 
-#[cfg(apple)]
+#[cfg(any(apple, target_os = "linux"))]
 #[tokio::test]
 async fn explicit_source_round_trips_before_and_after_promotion() {
     let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
