@@ -260,7 +260,7 @@ pub(super) fn generate(
         K::RoamClient => {
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let (ip4, ip6) = arb_socket_ip_stack(g);
-            let attachment = arb_attachment(g, &mut state.network.nat_ips().collect());
+            let attachment = arb_attachment(g, portal, &mut state.network.nat_ips().collect());
             // Mirror `transition::roam_client`: both windows in 0..3000ms.
             let dead_window = Duration::from_millis(g.count(0, 2999) as u64);
             let portal_window = Duration::from_millis(g.count(0, 2999) as u64);

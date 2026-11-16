@@ -24,7 +24,9 @@ use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
-use crate::sim_net::{Attachment, Expiry, FilterMode, Host, Mapping, Nat, RoutingTable};
+use crate::sim_net::{
+    Attachment, Expiry, FilterMode, Host, Mapping, Nat, PortAssignment, RoutingTable,
+};
 use crate::site_network::{IcmpError, RouteType, Routes};
 use crate::stub_portal::{PoolMembers, StubPortal};
 
@@ -361,7 +363,7 @@ fn arb_clients(
         .client_tunnel_ips()
         .map(|(id, tun4, tun6)| {
             let host = arb_client_host(g, id, tun4, tun6);
-            let attachment = arb_attachment(g, &mut local_nats);
+            let attachment = arb_attachment(g, portal, &mut local_nats);
             let ok = network.add_host(id, &host, attachment);
             debug_assert!(ok, "client socket IPs must be unique by construction");
 
@@ -431,7 +433,7 @@ fn arb_gateways(
             let latency = g.latency(200);
             let host = Host::new(inner, latency, 52625);
             let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
-            let attachment = arb_attachment(g, local_nats.entry(site_id).or_default());
+            let attachment = arb_attachment(g, portal, local_nats.entry(site_id).or_default());
             let ok = network.add_host(id, &host, attachment);
             debug_assert!(ok, "gateway socket IPs must be unique by construction");
 
@@ -460,14 +462,18 @@ fn arb_simulated_os(g: &mut Generator) -> SimulatedOs {
 
 /// Samples where a host attaches to the network, most of the time behind a NAT device it
 /// shares with the other hosts of its location.
-pub(super) fn arb_attachment(g: &mut Generator, local_nats: &mut Vec<Ipv4Addr>) -> Attachment {
+pub(super) fn arb_attachment(
+    g: &mut Generator,
+    portal: &StubPortal,
+    local_nats: &mut Vec<Ipv4Addr>,
+) -> Attachment {
     match g.choose_index(6) {
         0..=3 if !local_nats.is_empty() => {
             Attachment::Nat(local_nats[g.choose_index(local_nats.len())])
         }
         5 => Attachment::Direct,
         _ => {
-            let nat = arb_nat(g);
+            let nat = arb_nat(g, portal);
             local_nats.push(nat.ip4());
 
             Attachment::NewNat(nat)
@@ -475,8 +481,15 @@ pub(super) fn arb_attachment(g: &mut Generator, local_nats: &mut Vec<Ipv4Addr>) 
     }
 }
 
-fn arb_nat(g: &mut Generator) -> Nat {
+fn arb_nat(g: &mut Generator, portal: &StubPortal) -> Nat {
     let ip4 = g.nat_ip4();
+    // TODO: Sample overloading for classic ICE too: `direct_path_possible` cannot tell which
+    // connections keep a direct path through such a NAT when the relays are gone.
+    let assignment = if portal.frostlink() && g.bool() {
+        PortAssignment::Overloading
+    } else {
+        PortAssignment::Compliant
+    };
 
     match g.choose_index(2) {
         0 => {
@@ -486,13 +499,20 @@ fn arb_nat(g: &mut Generator) -> Nat {
                 _ => FilterMode::PortRestricted,
             };
 
-            Nat::new(ip4, Mapping::EndpointIndependent, filter, arb_expiry(g))
+            Nat::new(
+                ip4,
+                Mapping::EndpointIndependent,
+                filter,
+                arb_expiry(g),
+                assignment,
+            )
         }
         _ => Nat::new(
             ip4,
             Mapping::EndpointDependent,
             FilterMode::PortRestricted,
             arb_expiry(g),
+            assignment,
         ),
     }
 }

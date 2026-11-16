@@ -151,23 +151,38 @@ pub(crate) enum Attachment {
 /// (there is no NAT66 in the wild) but subject to the same stateful filtering
 /// per host, like the "simple security" of [RFC 6092](https://datatracker.ietf.org/doc/html/rfc6092).
 ///
-/// A public port belongs to exactly one mapping. A new mapping keeps the port
-/// of its internal socket unless a live mapping holds it, and takes the next
-/// free port otherwise.
+/// A new mapping keeps the port of its internal socket unless the
+/// [`PortAssignment`] rules it out, and takes the next free port otherwise.
 #[derive(Debug, Clone)]
 pub(crate) struct Nat {
     ip4: Ipv4Addr,
     mapping: Mapping,
     filter: FilterMode,
     expiry: Expiry,
+    assignment: PortAssignment,
     next_port: u16,
-    bindings: BTreeMap<u16, Binding>,
+    bindings: Vec<Binding>,
     /// IPv6 destinations each host has sent to; the state backing [`FilterMode`] for IPv6.
     sent_to6: BTreeMap<(IpAddr, SocketAddr), Instant>,
 }
 
+/// How a NAT assigns public ports to new mappings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PortAssignment {
+    /// A public port belongs to exactly one mapping, per [RFC 4787, REQ-3](https://datatracker.ietf.org/doc/html/rfc4787#section-4.2.1).
+    Compliant,
+    /// Mappings of several internal sockets share a public port ("port overloading").
+    ///
+    /// A port is only ruled out while another mapping on it has sent to the same destination
+    /// within [`Nat::RECENTLY_USED`], so a host that only sends keep-alives does not stop a second
+    /// one from being mapped to the same public socket. An inbound packet goes to the mapping that
+    /// last sent to its sender, or else to the one that sent last.
+    Overloading,
+}
+
 #[derive(Debug, Clone)]
 struct Binding {
+    port: u16,
     internal: SocketAddr,
     /// The destination of an endpoint-dependent mapping.
     destination: Option<SocketAddr>,
@@ -178,14 +193,23 @@ struct Binding {
 }
 
 impl Nat {
-    pub(crate) fn new(ip4: Ipv4Addr, mapping: Mapping, filter: FilterMode, expiry: Expiry) -> Self {
+    const RECENTLY_USED: Duration = Duration::from_secs(5);
+
+    pub(crate) fn new(
+        ip4: Ipv4Addr,
+        mapping: Mapping,
+        filter: FilterMode,
+        expiry: Expiry,
+        assignment: PortAssignment,
+    ) -> Self {
         Self {
             ip4,
             mapping,
             filter,
             expiry,
+            assignment,
             next_port: 42000,
-            bindings: BTreeMap::default(),
+            bindings: Vec::default(),
             sent_to6: BTreeMap::default(),
         }
     }
@@ -206,7 +230,7 @@ impl Nat {
         }
 
         let timeout = self.expiry.timeout;
-        for _ in self.bindings.extract_if(.., |_, binding| {
+        for _ in self.bindings.extract_if(.., |binding| {
             now.duration_since(binding.refreshed_at) >= timeout
         }) {}
 
@@ -218,31 +242,29 @@ impl Nat {
         let existing = self
             .bindings
             .iter_mut()
-            .find(|(_, binding)| binding.internal == src && binding.destination == destination);
+            .find(|binding| binding.internal == src && binding.destination == destination);
 
-        if let Some((port, binding)) = existing {
+        if let Some(binding) = existing {
             binding.refreshed_at = now;
             binding.sent_to.insert(dst, now);
 
-            return SocketAddr::new(self.ip4.into(), *port);
+            return SocketAddr::new(self.ip4.into(), binding.port);
         }
 
-        let port = self.free_port(src.port());
-        self.bindings.insert(
+        let port = self.free_port(src.port(), dst, now);
+        self.bindings.push(Binding {
             port,
-            Binding {
-                internal: src,
-                destination,
-                sent_to: BTreeMap::from([(dst, now)]),
-                refreshed_at: now,
-            },
-        );
+            internal: src,
+            destination,
+            sent_to: BTreeMap::from([(dst, now)]),
+            refreshed_at: now,
+        });
 
         SocketAddr::new(self.ip4.into(), port)
     }
 
-    fn free_port(&mut self, preferred: u16) -> u16 {
-        if !self.bindings.contains_key(&preferred) {
+    fn free_port(&mut self, preferred: u16, dst: SocketAddr, now: Instant) -> u16 {
+        if !self.is_taken(preferred, dst, now) {
             return preferred;
         }
 
@@ -250,9 +272,24 @@ impl Nat {
             let port = self.next_port;
             self.next_port += 1;
 
-            if !self.bindings.contains_key(&port) {
+            if !self.is_taken(port, dst, now) {
                 return port;
             }
+        }
+    }
+
+    /// Whether a new mapping towards `dst` cannot have the public `port`.
+    fn is_taken(&self, port: u16, dst: SocketAddr, now: Instant) -> bool {
+        let mut on_port = self.bindings.iter().filter(|binding| binding.port == port);
+
+        match self.assignment {
+            PortAssignment::Compliant => on_port.next().is_some(),
+            PortAssignment::Overloading => on_port.any(|binding| {
+                binding
+                    .sent_to
+                    .get(&dst)
+                    .is_some_and(|sent_at| now.duration_since(*sent_at) < Self::RECENTLY_USED)
+            }),
         }
     }
 
@@ -266,24 +303,27 @@ impl Nat {
                     bail!("IPv4 address behind NAT is not routable");
                 }
 
+                let filter = self.filter;
                 let binding = self
                     .bindings
-                    .get_mut(&dst.port())
-                    .context("no NAT binding for destination")?;
+                    .iter_mut()
+                    .filter(|binding| binding.port == dst.port() && fresh(&binding.refreshed_at))
+                    .filter(|binding| {
+                        let sent_to = binding
+                            .sent_to
+                            .iter()
+                            .filter(|(_, sent_at)| fresh(sent_at))
+                            .map(|(dst, _)| dst);
 
-                if !fresh(&binding.refreshed_at) {
-                    bail!("NAT binding expired");
-                }
-
-                let sent_to = binding
-                    .sent_to
-                    .iter()
-                    .filter(|(_, sent_at)| fresh(sent_at))
-                    .map(|(dst, _)| dst);
-
-                if !self.filter.accepts(sent_to, src) {
-                    bail!("sender not in NAT filter state");
-                }
+                        filter.accepts(sent_to, src)
+                    })
+                    .max_by_key(|binding| {
+                        (
+                            binding.sent_to.get(&src).copied(),
+                            binding.sent_to.values().max().copied(),
+                        )
+                    })
+                    .context("no NAT binding admits the sender")?;
 
                 if self.expiry.inbound_refreshes {
                     binding.refreshed_at = now;
