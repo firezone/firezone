@@ -1,7 +1,7 @@
-//! Resource model used by the reference implementation.
+//! Resource model used by the model of the tunnel.
 //!
 //! These types intentionally do not reuse `tunnel-proto`'s internal resource
-//! model. The SUT only receives portal-facing [`ResourceDescription`] values,
+//! model. The real system only receives portal-facing [`ResourceDescription`] values,
 //! matching the production event loop and keeping the internal model private.
 
 use connlib_model::{
@@ -62,7 +62,7 @@ pub(crate) struct DevicePoolResource {
     pub(crate) filters: Vec<Filter>,
 }
 
-// Exhaustive conversions keep the reference fields aligned with the Portal messages.
+// Exhaustive conversions keep the model fields aligned with the Portal messages.
 const _: fn(ResourceDescriptionDns) -> DnsResource = |description| {
     let ResourceDescriptionDns {
         id,
@@ -332,7 +332,7 @@ impl Resource {
         Ok(site)
     }
 
-    /// Converts the reference resource into the portal message consumed by the SUT.
+    /// Converts the model resource into the portal message consumed by the real system.
     pub(crate) fn into_description(self) -> ResourceDescription {
         match self {
             Resource::Dns(DnsResource {

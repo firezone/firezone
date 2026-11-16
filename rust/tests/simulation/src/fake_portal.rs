@@ -13,12 +13,12 @@ use tunnel_proto::dns;
 use tunnel_proto::messages::client::FailReason;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
-use crate::ref_client::protocol_filter_allows;
-use crate::reference::ReferenceState;
+use crate::model_client::protocol_filter_allows;
+use crate::network::Host;
+use crate::real_relay::RealRelay;
 use crate::resource::{self as client, DevicePoolResource};
-use crate::sim_net::Host;
-use crate::sim_relay::SimRelay;
-use crate::transition::Transition;
+use crate::tunnel_model::TunnelModel;
+use crate::tunnel_transition::Transition;
 
 /// The TTL the portal gives the names a PTR query in the device domain lists.
 ///
@@ -26,10 +26,10 @@ use crate::transition::Transition;
 /// transition that asked for them.
 const DEVICE_LISTING_TTL: u32 = 4;
 
-/// Stub implementation of the portal.
+/// Fake implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
-pub struct StubPortal {
-    clients: BTreeMap<ClientId, StubClient>,
+pub struct FakePortal {
+    clients: BTreeMap<ClientId, PortalClient>,
     gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
     regular_sites: SmallVec<[Site; 3]>,
 
@@ -101,7 +101,7 @@ struct GatewayAuthorization {
 }
 
 #[derive(Clone, Debug)]
-struct StubClient {
+struct PortalClient {
     ipv4: Ipv4Addr,
     ipv6: Ipv6Addr,
     /// The slug this client is reached at under the device domain.
@@ -111,7 +111,7 @@ struct StubClient {
     device_label: String,
 }
 
-impl StubPortal {
+impl FakePortal {
     pub(crate) fn new(
         clients: impl IntoIterator<Item = (ClientId, Ipv4Addr, Ipv6Addr)>,
         gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
@@ -172,7 +172,7 @@ impl StubPortal {
             .into_iter()
             .enumerate()
             .map(|(idx, (id, ipv4, ipv6))| {
-                let client = StubClient {
+                let client = PortalClient {
                     ipv4,
                     ipv6,
                     device_label: format!("device{idx}"),
@@ -207,7 +207,7 @@ impl StubPortal {
     }
 
     /// Applies the portal-side effect of `transition`.
-    pub fn apply(&mut self, transition: &Transition, reference: &ReferenceState) {
+    pub fn apply(&mut self, transition: &Transition, model: &TunnelModel) {
         match transition {
             Transition::RemoveResource(id) => {
                 self.revoke_policy_authorizations(*id);
@@ -219,7 +219,7 @@ impl StubPortal {
                         | client::EditEffect::Access { .. }
                         | client::EditEffect::Type { .. }
                 ) {
-                    self.revoke_disconnected_gateway_authorizations(edit.old.id(), reference);
+                    self.revoke_disconnected_gateway_authorizations(edit.old.id(), model);
                 }
 
                 // An edit that changes who may reach what invalidates the authorizations
@@ -576,9 +576,9 @@ impl StubPortal {
     fn revoke_disconnected_gateway_authorizations(
         &mut self,
         resource: ResourceId,
-        reference: &ReferenceState,
+        model: &TunnelModel,
     ) {
-        for (client_id, client) in &reference.clients {
+        for (client_id, client) in &model.clients {
             let Some(gateway) = self.authorized_gateway(*client_id, resource) else {
                 continue;
             };
@@ -805,9 +805,9 @@ impl StubPortal {
         &mut self,
         node: ClientOrGatewayId,
         excluded_relay_ids: &[RelayId],
-        relays: &'a BTreeMap<RelayId, Host<SimRelay>>,
+        relays: &'a BTreeMap<RelayId, Host<RealRelay>>,
         now: Instant,
-    ) -> Vec<(&'a RelayId, &'a Host<SimRelay>)> {
+    ) -> Vec<(&'a RelayId, &'a Host<RealRelay>)> {
         let relays = relays
             .iter()
             .filter(|(id, _)| !excluded_relay_ids.contains(id))

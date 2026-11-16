@@ -10,9 +10,9 @@ use ip_packet::Protocol;
 use tunnel_proto::messages::{Filter, PortRange};
 
 use super::context::Generator;
-use crate::reference::ReferenceState;
-use crate::stub_portal::StubPortal;
-use crate::transition::{Destination, Transition};
+use crate::fake_portal::FakePortal;
+use crate::tunnel_model::TunnelModel;
+use crate::tunnel_transition::{Destination, Transition};
 
 /// Represents a semantic destination selected by the state-aware grammar.
 #[derive(Clone)]
@@ -64,7 +64,7 @@ enum DstSpec {
     Ip(IpAddr),
 }
 
-pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<PacketTarget> {
+pub(super) fn targets(state: &TunnelModel, portal: &FakePortal) -> Vec<PacketTarget> {
     state
         .ipv4_cidr_resource_dsts()
         .into_iter()
@@ -190,7 +190,7 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<Packet
         .collect::<Vec<_>>()
 }
 
-pub(super) fn revoked_peer_targets(state: &ReferenceState) -> Vec<PacketTarget> {
+pub(super) fn revoked_peer_targets(state: &TunnelModel) -> Vec<PacketTarget> {
     state
         .clients
         .iter()
@@ -388,7 +388,7 @@ pub(super) fn host_in_v6(g: &mut Generator, network: Ipv6Network) -> Ipv6Addr {
 }
 
 /// Selects a subset of the online clients as a pool's members.
-pub(super) fn arb_pool_members(g: &mut Generator, state: &ReferenceState) -> BTreeSet<ClientId> {
+pub(super) fn arb_pool_members(g: &mut Generator, state: &TunnelModel) -> BTreeSet<ClientId> {
     state.clients.keys().filter(|_| g.bool()).copied().collect()
 }
 
@@ -399,7 +399,7 @@ fn host_in_network(g: &mut Generator, network: IpNetwork) -> IpAddr {
     }
 }
 
-fn tcp_service_ports(state: &ReferenceState, domain: &DomainName) -> Vec<u16> {
+fn tcp_service_ports(state: &TunnelModel, domain: &DomainName) -> Vec<u16> {
     state
         .tcp_services
         .get(domain)

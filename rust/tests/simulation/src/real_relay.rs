@@ -1,6 +1,6 @@
 use super::{
     buffered_transmits::BufferedTransmits,
-    sim_net::{ExecMutScope, Host},
+    network::{ExecMutScope, Host},
 };
 use bufferpool::Bytes;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
@@ -22,8 +22,8 @@ use stun_codec::rfc5766::{errors::InsufficientCapacity, methods::ALLOCATE};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 use uuid::Uuid;
 
-pub(crate) struct SimRelay {
-    pub(crate) sut: relay_server_proto::Server<StdRng>,
+pub(crate) struct RealRelay {
+    pub(crate) server: relay_server_proto::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
 
     /// Whether authenticated `ALLOCATE` requests are answered with `508 Insufficient Capacity`,
@@ -34,7 +34,7 @@ pub(crate) struct SimRelay {
 }
 
 pub(crate) fn map_explode<'a>(
-    relays: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
+    relays: impl Iterator<Item = (&'a RelayId, &'a Host<RealRelay>)> + 'a,
     username: impl Into<String>,
 ) -> impl Iterator<Item = (RelayId, RelaySocket, String, String, String)> + 'a {
     let username = username.into();
@@ -42,31 +42,31 @@ pub(crate) fn map_explode<'a>(
     relays.map(move |(id, r)| {
         let (socket, username, password, realm) = r.inner().explode(
             &username,
-            r.inner().sut.auth_secret(),
-            r.inner().sut.public_address(),
+            r.inner().server.auth_secret(),
+            r.inner().server.public_address(),
         );
 
         (*id, socket, username, password, realm)
     })
 }
 
-impl SimRelay {
+impl RealRelay {
     pub(crate) fn new(
         seed: u64,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
         created_at: SystemTime,
     ) -> Self {
-        let mut sut = relay_server_proto::Server::new(
+        let mut server = relay_server_proto::Server::new(
             IpStack::from((ip4, ip6)),
             rand::rngs::StdRng::seed_from_u64(seed),
             3478,
             49152..=65535,
         );
-        sut.set_accounts([(relay_server_proto::auth::AccountId::from(Uuid::nil()), None)]);
+        server.set_accounts([(relay_server_proto::auth::AccountId::from(Uuid::nil()), None)]);
 
         Self {
-            sut,
+            server,
             allocations: Default::default(),
             out_of_capacity: false,
             created_at,
@@ -117,7 +117,7 @@ impl SimRelay {
         let sender = transmit.src.unwrap();
 
         if self
-            .matching_listen_socket(dst, self.sut.public_address())
+            .matching_listen_socket(dst, self.server.public_address())
             .is_some_and(|s| s == dst)
         {
             return self.handle_client_input(payload, ClientSocket::new(sender), now, now_utc);
@@ -144,7 +144,8 @@ impl SimRelay {
             payload = Bytes::copied_from(&response);
 
             return Some(Transmit {
-                src: self.matching_listen_socket(client.into_socket(), self.sut.public_address()),
+                src: self
+                    .matching_listen_socket(client.into_socket(), self.server.public_address()),
                 dst: client.into_socket(),
                 payload,
                 ecn: Ecn::NonEct,
@@ -152,7 +153,7 @@ impl SimRelay {
         }
 
         let (port, peer) = self
-            .sut
+            .server
             .handle_client_input(&payload, client, now, now_utc)?;
 
         let payload = Bytes::copied_from(&payload[4..]);
@@ -168,7 +169,7 @@ impl SimRelay {
                     "IPv4 allocation to be present if we want to send to an IPv4 socket"
                 );
 
-                self.sut
+                self.server
                     .public_ip4()
                     .expect("listen on IPv4 if we have an allocation")
             }
@@ -178,7 +179,7 @@ impl SimRelay {
                     "IPv6 allocation to be present if we want to send to an IPv6 socket"
                 );
 
-                self.sut
+                self.server
                     .public_ip6()
                     .expect("listen on IPv6 if we have an allocation")
             }
@@ -217,7 +218,7 @@ impl SimRelay {
         );
         response.add_attribute(ErrorCode::from(InsufficientCapacity));
         let password =
-            relay_server_proto::auth::generate_password(self.sut.auth_secret(), username.name());
+            relay_server_proto::auth::generate_password(self.server.auth_secret(), username.name());
         let realm = Realm::new("firezone".to_owned()).ok()?;
         let integrity =
             MessageIntegrity::new_long_term_credential(&response, username, &realm, &password)
@@ -234,7 +235,7 @@ impl SimRelay {
         port: AllocationPort,
         now: Instant,
     ) -> Option<Transmit> {
-        let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port, now)?;
+        let (client, channel) = self.server.handle_peer_traffic(&payload, peer, port, now)?;
 
         let mut header = [0; 4];
         relay_server_proto::ChannelData::encode_header_to_slice(
@@ -248,7 +249,7 @@ impl SimRelay {
 
         let receiving_socket = client.into_socket();
         let sending_socket = self
-            .matching_listen_socket(receiving_socket, self.sut.public_address())
+            .matching_listen_socket(receiving_socket, self.server.public_address())
             .unwrap();
 
         Some(Transmit {
@@ -262,7 +263,7 @@ impl SimRelay {
     fn make_credentials(&self, username: &str, auth_secret: &SecretString) -> (String, String) {
         // Deliberately out of reach: a run simulates ~2h at most, so nothing expires.
         // Shortening it would cover the relay's expiry and re-auth paths, which nothing
-        // does today, but the reference model needs to predict that first.
+        // does today, but the model needs to predict that first.
         const VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
 
         let secs = (self.created_at + VALIDITY)
@@ -282,7 +283,7 @@ impl SimRelay {
     }
 }
 
-impl Host<SimRelay> {
+impl Host<RealRelay> {
     /// Steps the relay with what is due at `now` and puts what it sent onto the network.
     pub(crate) fn step(
         &mut self,
@@ -291,8 +292,8 @@ impl Host<SimRelay> {
         now_utc: SystemTime,
     ) {
         self.exec_mut(|r| {
-            if r.sut.poll_timeout().is_some_and(|t| t <= now) {
-                r.sut.handle_timeout(now)
+            if r.server.poll_timeout().is_some_and(|t| t <= now) {
+                r.server.handle_timeout(now)
             }
         });
 
@@ -301,7 +302,7 @@ impl Host<SimRelay> {
             transmits.push_from(reply, self, now);
         }
 
-        while let Some(command) = self.exec_mut(|r| r.sut.next_command()) {
+        while let Some(command) = self.exec_mut(|r| r.server.next_command()) {
             match command {
                 relay_server_proto::Command::SendMessage { payload, recipient } => {
                     let dst = recipient.into_socket();
@@ -330,7 +331,7 @@ impl Host<SimRelay> {
     }
 }
 
-impl ExecMutScope for SimRelay {
+impl ExecMutScope for RealRelay {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
