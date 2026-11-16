@@ -5,27 +5,27 @@
 mod arb;
 mod assertions;
 mod buffered_transmits;
+mod clock;
 mod dns_records;
 mod dns_server_resource;
 mod echo;
+mod fake_portal;
 mod feedback;
-mod flux_capacitor;
+mod model_client;
+mod model_gateway;
+mod network;
 mod os;
 mod probe;
-mod ref_client;
-mod ref_gateway;
-mod reference;
+mod real_client;
+mod real_gateway;
+mod real_relay;
+mod real_tunnel;
+mod real_tunnel_system;
 mod resource;
-mod sim_client;
-mod sim_gateway;
-mod sim_net;
-mod sim_relay;
-mod sim_tunnel;
 mod site_network;
-mod stub_portal;
-mod sut;
 mod tcp;
-mod transition;
+mod tunnel_model;
+mod tunnel_transition;
 
 type QueryId = u16;
 
@@ -35,7 +35,7 @@ type DeviceListingQuery = (
     dns_types::DomainName,
     ::tunnel_proto::dns::Upstream,
     QueryId,
-    transition::DnsTransport,
+    tunnel_transition::DnsTransport,
 );
 
 /// The response code of an answer to a PTR query in the device domain, its records with
@@ -46,7 +46,7 @@ type DeviceListing = (
     Option<String>,
 );
 
-/// Simulates clients, gateways, relays and the portal and checks the tunnel state machines against a reference model.
+/// Simulates clients, gateways, relays and the portal and checks the tunnel state machines against a model.
 pub mod tunnel {
     use std::time::Instant;
 
@@ -58,9 +58,9 @@ pub mod tunnel {
     use super::{
         arb::Generator,
         assertions::{PanicOnErrorEvents, check_invariants},
+        clock::Clock,
         feedback,
-        flux_capacitor::FluxCapacitor,
-        sut::TunnelTest,
+        real_tunnel_system::RealTunnelSystem,
     };
 
     const MAX_TRANSITIONS: usize = 20;
@@ -72,34 +72,34 @@ pub mod tunnel {
         let _guard = init_subscriber();
 
         let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
-        let flux_capacitor = FluxCapacitor::new(now, utc_start);
+        let clock = Clock::new(now, utc_start);
         let mut generator = Generator::new(data);
         let domain_tree = generator.domain_tree();
         let mut portal = generator.portal(&domain_tree);
-        let mut reference = generator.reference_state(&portal, domain_tree);
+        let mut model = generator.model(&portal, domain_tree);
         let mut feedback_recorder = feedback::Recorder::default();
 
-        let mut tunnel = TunnelTest::init_test(&reference, &mut portal, flux_capacitor.clone());
-        check_invariants(&reference, &tunnel, &portal);
+        let mut tunnel = RealTunnelSystem::init_test(&model, &mut portal, clock.clone());
+        check_invariants(&model, &tunnel, &portal);
 
         for applied in 0..MAX_TRANSITIONS {
             if generator.is_empty() {
                 break;
             }
 
-            let transition = generator.transition(&reference, &portal, flux_capacitor.now());
+            let transition = generator.transition(&model, &portal, clock.now());
 
             tracing::debug!("Applying transition {applied}: {transition:?}");
-            feedback_recorder.observe(&transition, &reference, flux_capacitor.now());
+            feedback_recorder.observe(&transition, &model, clock.now());
 
-            reference.invalidate(&transition, &portal);
-            tunnel.invalidate(&reference);
+            model.invalidate(&transition, &portal);
+            tunnel.invalidate(&model);
 
-            portal.apply(&transition, &reference);
-            reference = reference.apply(&transition, &portal, flux_capacitor.now());
-            tunnel = tunnel.apply(transition, &reference, &mut portal);
-            check_invariants(&reference, &tunnel, &portal);
-            feedback_recorder.record(&reference, &tunnel, &portal);
+            portal.apply(&transition, &model);
+            model = model.apply(&transition, &portal, clock.now());
+            tunnel = tunnel.apply(transition, &model, &mut portal);
+            check_invariants(&model, &tunnel, &portal);
+            feedback_recorder.record(&model, &tunnel, &portal);
         }
     }
 

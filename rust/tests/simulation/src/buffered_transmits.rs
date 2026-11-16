@@ -1,4 +1,4 @@
-use super::sim_net::Host;
+use super::network::Host;
 use snownet::Transmit;
 use std::{
     cmp::Reverse,

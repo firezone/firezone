@@ -6,11 +6,11 @@ use tunnel_proto::{
 };
 
 use super::{
+    fake_portal::PeerAuthorization,
+    network::Host,
     probe::{FlowId, ProbeId, Route, TcpFlow},
-    reference::PrivateKey,
     resource::{EditEffect, Resource, ResourceEdit, classify},
-    sim_net::Host,
-    stub_portal::PeerAuthorization,
+    tunnel_model::PrivateKey,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},

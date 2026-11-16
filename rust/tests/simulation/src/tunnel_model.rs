@@ -4,7 +4,9 @@ use super::probe::{
     ProbeId, ProbeRequest, RejectionRemote, RejectionResponse, Remote, Route, TcpFlow,
     TraceRequirement, UdpFlow,
 };
-use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
+use super::{
+    fake_portal::FakePortal, model_client::*, model_gateway::*, network::*, tunnel_transition::*,
+};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
 use dns_types::{DomainName, RecordType, prelude::*};
 use ip_packet::Protocol;
@@ -27,16 +29,16 @@ const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
 
 /// How far from its expiry we keep the state of an idle UDP or ICMP flow out of doubt: the Gateway
-/// and the peers count from packets that may reach them later than the reference sends them.
+/// and the peers count from packets that may reach them later than the model sends them.
 const FLOW_EXPIRY_MARGIN: Duration = Duration::from_secs(10);
 
-/// The reference state machine of the tunnel.
+/// The model of the tunnel.
 ///
 /// This is the "expected" part of our test.
 #[derive(Debug, Clone)]
-pub struct ReferenceState {
-    pub(crate) clients: BTreeMap<ClientId, Host<RefClient>>,
-    pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
+pub struct TunnelModel {
+    pub(crate) clients: BTreeMap<ClientId, Host<ModelClient>>,
+    pub(crate) gateways: BTreeMap<GatewayId, Host<ModelGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
     /// Relays that answer new allocations with `508 Insufficient Capacity`.
     pub(crate) exhausted_relays: BTreeSet<RelayId>,
@@ -64,18 +66,18 @@ pub struct ReferenceState {
     pub(crate) tcp_flows: BTreeMap<FlowId, TcpFlow>,
 }
 
-/// Implementation of our reference state machine.
+/// Implementation of our model.
 ///
 /// The logic in here represents what we expect the [`ClientState`](tunnel_proto::ClientState) & [`GatewayState`](tunnel_proto::GatewayState) to do.
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
-impl ReferenceState {
-    /// Assemble a [`ReferenceState`] from already-generated parts.
+impl TunnelModel {
+    /// Assemble a [`TunnelModel`] from already-generated parts.
     ///
     /// Used by the structured generator after it has built each component.
     pub(crate) fn from_parts(
-        clients: BTreeMap<ClientId, Host<RefClient>>,
-        gateways: BTreeMap<GatewayId, Host<RefGateway>>,
+        clients: BTreeMap<ClientId, Host<ModelClient>>,
+        gateways: BTreeMap<GatewayId, Host<ModelGateway>>,
         relays: BTreeMap<RelayId, Host<u64>>,
         global_dns_records: DnsRecords,
         domain_tree: Vec<DomainName>,
@@ -101,7 +103,7 @@ impl ReferenceState {
     }
 
     /// Drops the bookkeeping that `transition` makes stale before it is applied.
-    pub fn invalidate(&mut self, transition: &Transition, portal: &StubPortal) {
+    pub fn invalidate(&mut self, transition: &Transition, portal: &FakePortal) {
         self.expected_probes.clear();
 
         for client in self.clients.values_mut() {
@@ -122,10 +124,10 @@ impl ReferenceState {
         {}
     }
 
-    /// Applies the transition to the reference state.
+    /// Applies the transition to the model.
     ///
     /// Here is where we implement the "expected" logic.
-    pub fn apply(mut self, transition: &Transition, portal: &StubPortal, now: Instant) -> Self {
+    pub fn apply(mut self, transition: &Transition, portal: &FakePortal, now: Instant) -> Self {
         match transition {
             Transition::AddResource(resource) => {
                 for client in self.clients.values_mut() {
@@ -738,7 +740,7 @@ impl ReferenceState {
 
     /// A Gateway that revoking `resource` left with nothing closes the connection with a
     /// `goodbye`, so we expect the Client to reset its state for that Gateway.
-    fn expect_gateway_connections_closed(&mut self, portal: &StubPortal, resource: ResourceId) {
+    fn expect_gateway_connections_closed(&mut self, portal: &FakePortal, resource: ResourceId) {
         for closed in portal.gateway_connections_closed_by(resource) {
             let Some(client) = self.clients.get_mut(&closed.client) else {
                 continue;
@@ -805,7 +807,7 @@ impl ReferenceState {
     /// when it was created.
     fn record_flow_probe(
         &mut self,
-        portal: &StubPortal,
+        portal: &FakePortal,
         id: ProbeId,
         origin: ClientId,
         route: Route,
@@ -850,7 +852,7 @@ impl ReferenceState {
     /// outcome to expect.
     fn record_probe(
         &mut self,
-        portal: &StubPortal,
+        portal: &FakePortal,
         id: ProbeId,
         origin: ClientId,
         request: ProbeRequest,
@@ -896,7 +898,7 @@ impl ReferenceState {
     /// `established` is the route of the TCP flow the packet belongs to, if any.
     fn verdict(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
         origin: ClientId,
         request: &ProbeRequest,
         established: Option<Route>,
@@ -962,7 +964,7 @@ impl ReferenceState {
     /// sides.
     fn peer_verdict(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
         origin: ClientId,
         ip: IpAddr,
         protocol: Protocol,
@@ -1023,7 +1025,7 @@ impl ReferenceState {
     /// holds access to afterwards either way.
     fn resource_verdict(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
         origin: ClientId,
         resource: ResourceId,
         gateway: GatewayId,
@@ -1109,7 +1111,7 @@ impl ReferenceState {
     /// The Gateway the portal hands `origin` for `resource`.
     fn select_gateway(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
         origin: ClientId,
         resource: ResourceId,
     ) -> Option<GatewayId> {
@@ -1131,7 +1133,7 @@ impl ReferenceState {
     /// it, whatever the domain resolves to since.
     fn gateway_verdict(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
         origin: ClientId,
         gateway: GatewayId,
         resource: ResourceId,
@@ -1189,7 +1191,7 @@ impl ReferenceState {
     /// when the client holds none that fits.
     fn pool_towards_peer(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
         origin: ClientId,
         peer: ClientId,
         protocol: Protocol,
@@ -1218,7 +1220,7 @@ impl ReferenceState {
     // TODO: Remove with classic ICE: every trace is then exact.
     fn trace_requirement(
         &self,
-        portal: &StubPortal,
+        portal: &FakePortal,
         origin: ClientId,
         outcome: ExpectedOutcome,
         sent_at: Instant,
@@ -1269,8 +1271,8 @@ impl ReferenceState {
     }
 }
 
-/// Several helper functions to make the reference state more readable.
-impl ReferenceState {
+/// Several helper functions to make the model more readable.
+impl TunnelModel {
     /// The expired ICMP flow that a new ICMP flow with this identity resumes.
     pub(crate) fn resumed_icmp_flow(
         &self,
