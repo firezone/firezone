@@ -30,11 +30,14 @@ defmodule Portal.OTLP do
           do: :failed_retryable,
           else: :failed_not_retryable
 
-      {:error, _reason} ->
-        Logger.warning("OTLP export request failed")
+      {:error, reason} ->
+        Logger.warning("OTLP export request failed", reason: error_message(reason))
         :failed_retryable
     end
   end
+
+  defp error_message(reason) when is_exception(reason), do: Exception.message(reason)
+  defp error_message(reason), do: inspect(reason)
 
   defp headers({:headers, headers}), do: headers
 
