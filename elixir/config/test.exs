@@ -160,6 +160,12 @@ config :portal, Portal.HTTP.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Workers.MirrorYCDealRedemption,
+  req_opts: [
+    plug: {Req.Test, Portal.Workers.MirrorYCDealRedemption},
+    retry: false
+  ]
+
 config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
 
 config :portal, Portal.Azure.ManagedIdentity,

@@ -33,7 +33,7 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
     with {:ok, %{"deal_id" => deal_id} = payload} when is_integer(deal_id) <- JSON.decode(body),
          {:ok, secret} <- Map.fetch(secrets, to_string(deal_id)),
          true <- Plug.Crypto.secure_compare(String.downcase(signature), sign(secret, body)) do
-      redeem(conn, payload)
+      redeem(conn, payload, %{secret: secret, body: body, signature: signature})
     else
       :error -> reject(conn, :unknown_deal)
       false -> reject(conn, :invalid_signature)
@@ -46,11 +46,11 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
     send_resp(conn, 401, "Unauthorized")
   end
 
-  defp redeem(conn, %{"id" => redemption_id, "deal_id" => deal_id} = payload)
+  defp redeem(conn, %{"id" => redemption_id, "deal_id" => deal_id} = payload, request)
        when is_integer(redemption_id) do
     case Map.fetch(Portal.Config.fetch_env!(:portal, :yc_deal_coupon_ids), to_string(deal_id)) do
       {:ok, coupon_id} ->
-        create_code(conn, coupon_id, redemption_id, payload)
+        create_code(conn, coupon_id, redemption_id, payload, request)
 
       :error ->
         Logger.error("YC deal webhook for an unknown deal", yc_deal_id: deal_id)
@@ -61,11 +61,11 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
     end
   end
 
-  defp redeem(conn, _payload) do
+  defp redeem(conn, _payload, _request) do
     send_resp(conn, 400, "Bad Request")
   end
 
-  defp create_code(conn, coupon_id, redemption_id, payload) do
+  defp create_code(conn, coupon_id, redemption_id, payload, request) do
     metadata =
       %{
         "yc_redemption_id" => redemption_id,
@@ -79,6 +79,7 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
     expires_at = expires_at(payload)
 
     case Billing.create_promotion_code(
+           promotion_code(request.secret, redemption_id),
            coupon_id,
            metadata,
            expires_at,
@@ -88,7 +89,17 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
         Logger.info("Created YC deal promotion code", yc_redemption_id: redemption_id)
         sign_up_url = PortalWeb.Endpoint.url() <> "/sign_up"
         expires_on = Calendar.strftime(expires_at, "%B %-d, %Y")
-        emailed? = send_code(payload, code, sign_up_url, expires_on)
+        conn = fetch_query_params(conn)
+
+        # A mirrored redemption was already emailed and mirrored by the
+        # portal that YC sent it to.
+        emailed? =
+          if conn.query_params["skip_email"] == "true" do
+            false
+          else
+            mirror(request)
+            send_code(payload, code, sign_up_url, expires_on)
+          end
 
         json(conn, %{message: success_message(code, sign_up_url, expires_on, emailed?)})
 
@@ -104,6 +115,28 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
           message:
             "We couldn't create your Firezone code. Please try again, or email support@firezone.dev."
         })
+    end
+  end
+
+  # Derived from the signed body, so every region creates the same code and a
+  # YC retry gets the code it was given before.
+  defp promotion_code(secret, redemption_id) do
+    mac = :crypto.mac(:hmac, :sha256, secret, "promotion-code:#{redemption_id}")
+    "YC" <> binary_part(Base.encode32(mac, padding: false), 0, 10)
+  end
+
+  defp mirror(%{body: body, signature: signature}) do
+    if Portal.Config.fetch_env!(:portal, :yc_deal_mirror_url) not in [nil, ""] do
+      %{"body" => body, "signature" => signature}
+      |> Portal.Workers.MirrorYCDealRedemption.new()
+      |> Oban.insert()
+      |> case do
+        {:ok, _job} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.error("Failed to enqueue YC deal redemption mirror", reason: inspect(reason))
+      end
     end
   end
 
