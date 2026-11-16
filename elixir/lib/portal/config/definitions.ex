@@ -46,6 +46,43 @@ defmodule Portal.Config.Definitions do
   end
 
   ##############################################
+  ## Configuration Source
+  ##############################################
+
+  @doc """
+  Where the portal reads its settings from.
+
+  `environment` reads every setting from environment variables. `azure` reads
+  them from the Azure App Configuration store at
+  `AZURE_APP_CONFIGURATION_ENDPOINT`, resolving Key Vault references with the
+  VM's managed identity (`AZURE_CLIENT_ID`). Settings the store does not have
+  fall back to environment variables.
+
+  This setting and the store endpoint are always read from environment
+  variables.
+  """
+  defconfig(
+    :config_adapter,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:environment, :azure]),
+    default: :environment
+  )
+
+  @doc """
+  Comma-separated endpoints of the Azure App Configuration store, primary first
+  and then its replicas, e.g.
+  `https://fzconfigprod.azconfig.io,https://fzconfigprod-westus3.azconfig.io`.
+  They are tried in order. Required when `CONFIG_ADAPTER` is `azure`.
+  """
+  defconfig(:azure_app_configuration_endpoint, {:array, ",", :string}, default: [])
+
+  @doc """
+  File that keeps the last settings read from App Configuration. When no
+  endpoint can be read at boot, the portal boots from this file instead.
+  It holds secrets, so it is written with mode 0600.
+  """
+  defconfig(:azure_app_configuration_cache_path, :string, default: nil)
+
+  ##############################################
   ## Background Jobs
   ##############################################
 
@@ -65,16 +102,6 @@ defmodule Portal.Config.Definitions do
   at supervisor start, which requires a live database.
   """
   defconfig(:oban_enabled, :boolean, default: true)
-
-  @doc """
-  Enable or disable the Changes (CDC) replication consumer for this app instance.
-  """
-  defconfig(:changes_replication_enabled, :boolean, default: false)
-
-  @doc """
-  Enable or disable the ChangeLogs replication consumer for this app instance.
-  """
-  defconfig(:change_logs_replication_enabled, :boolean, default: false)
 
   ##############################################
   ## Web Server
@@ -209,12 +236,12 @@ defmodule Portal.Config.Definitions do
   @doc """
   The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
-  defconfig(:api_ingestion_refill_rate, :integer, default: 1)
+  defconfig(:api_ingestion_refill_rate, :integer, default: 100)
 
   @doc """
   The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
   """
-  defconfig(:api_ingestion_capacity, :integer, default: 1)
+  defconfig(:api_ingestion_capacity, :integer, default: 1_000)
 
   @doc """
   How often, in seconds, clients and gateways upload batched flow logs to the ingest API.
@@ -232,10 +259,10 @@ defmodule Portal.Config.Definitions do
   defconfig(:flow_logs_upload_batch_size, :integer, default: 1_000)
 
   @doc """
-  The base URL clients and gateways POST flow logs to.
+  The base URL clients and gateways POST flow logs to. Unset disables uploads.
   """
   defconfig(:flow_logs_api_url, :string,
-    default: "https://flow-api.firezone.dev/",
+    default: nil,
     changeset: fn changeset, key ->
       changeset
       |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
@@ -861,13 +888,6 @@ defmodule Portal.Config.Definitions do
   ## Health
   ##############################################
 
-  @doc """
-  Path to the file that signals the service is draining.
-
-  When this file exists, the `/readyz` endpoint will return 503 with status "draining".
-  """
-  defconfig(:draining_file_path, :string, default: "/var/run/firezone/draining")
-
   ##############################################
   ## Telemetry
   ##############################################
@@ -1003,16 +1023,6 @@ defmodule Portal.Config.Definitions do
       value -> value
     end
   )
-
-  @doc """
-  Enable or disable the Firezone telemetry collection.
-  """
-  defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)
-
-  @doc """
-  Name of the bucket to store client-, relay- and gateway-submitted instrumentation logs in.
-  """
-  defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
 
   @doc """
   Reporter to use for sending metrics to the telemetry backend.
@@ -1154,7 +1164,7 @@ defmodule Portal.Config.Definitions do
   defconfig(:sign_up_review_approvers, {:array, ",", :string},
     default: [],
     changeset: fn changeset, key ->
-      Portal.Changeset.validate_list(changeset, key, :string, &Portal.Changeset.validate_email/2)
+      Portal.Changeset.validate_email(changeset, key)
     end
   )
 
@@ -1290,6 +1300,12 @@ defmodule Portal.Config.Definitions do
   Configure the webhook URL with `?secret=...` using this value.
   """
   defconfig(:acs_event_grid_webhook_signing_secret, :string, sensitive: true, default: nil)
+
+  @doc """
+  Resend API key used to move outbound email to Resend from the remote console
+  when Azure Communication Services is down.
+  """
+  defconfig(:resend_api_key, :string, sensitive: true, default: nil)
 
   ##############################################
   ## Billing flags

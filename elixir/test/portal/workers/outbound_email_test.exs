@@ -227,13 +227,7 @@ defmodule Portal.Workers.OutboundEmailTest do
 
     test "delivers through Resend with an idempotency key derived from job id" do
       account = account_fixture()
-
-      Portal.Config.put_env_override(:portal, Portal.Mailer.Secondary,
-        adapter: Swoosh.Adapters.Resend,
-        api_key: "re_test",
-        req_opts: [plug: {Req.Test, Swoosh.Adapters.Resend}, retry: false]
-      )
-
+      configure_resend_secondary()
       test_pid = self()
 
       Req.Test.stub(Swoosh.Adapters.Resend, fn conn ->
@@ -251,6 +245,92 @@ defmodule Portal.Workers.OutboundEmailTest do
                message_id: "resend-message-42"
              )
     end
+
+    test "sends a bcc-only email through Resend as one email per recipient" do
+      account = account_fixture()
+      configure_resend_secondary()
+      test_pid = self()
+
+      Req.Test.stub(Swoosh.Adapters.Resend, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        emails = JSON.decode!(body)
+
+        send(
+          test_pid,
+          {:resend_batch, conn.request_path, request_header(conn, "idempotency-key"), emails}
+        )
+
+        Req.Test.json(conn, %{
+          "data" => Enum.map(emails, fn %{"to" => [to]} -> %{"id" => "resend-#{to}"} end)
+        })
+      end)
+
+      args = bcc_only_args(account.id, ["a@test.com", "b@test.com"])
+      assert :ok = Worker.perform(%Oban.Job{id: 42, args: args})
+
+      assert_received {:resend_batch, "/emails/batch", "00000000-0000-0000-0000-00000000002a",
+                       emails}
+
+      assert [
+               %{"to" => ["a@test.com"], "subject" => "Test Subject"} = first,
+               %{"to" => ["b@test.com"]} = second
+             ] = emails
+
+      refute Map.has_key?(first, "bcc")
+      refute Map.has_key?(second, "bcc")
+
+      for address <- ["a@test.com", "b@test.com"] do
+        entry =
+          Repo.get_by!(Portal.OutboundEmail, account_id: account.id, message_id: "resend-#{address}")
+
+        assert entry.recipients == [address]
+      end
+    end
+
+    test "splits more than 100 bcc recipients into batches with distinct idempotency keys" do
+      account = account_fixture()
+      configure_resend_secondary()
+      test_pid = self()
+
+      Req.Test.stub(Swoosh.Adapters.Resend, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        emails = JSON.decode!(body)
+        send(test_pid, {:resend_batch, request_header(conn, "idempotency-key"), length(emails)})
+
+        Req.Test.json(conn, %{
+          "data" => Enum.map(emails, fn %{"to" => [to]} -> %{"id" => "resend-#{to}"} end)
+        })
+      end)
+
+      addresses = Enum.map(1..101, &"user#{&1}@test.com")
+      args = bcc_only_args(account.id, addresses)
+      assert :ok = Worker.perform(%Oban.Job{id: 42, args: args})
+
+      assert_received {:resend_batch, "00000000-0000-0000-0000-00000000002a", 100}
+      assert_received {:resend_batch, "00000000-0000-0000-0000-00000000002a-1", 1}
+
+      assert Repo.get_by!(Portal.OutboundEmail,
+               account_id: account.id,
+               message_id: "resend-user101@test.com"
+             )
+    end
+  end
+
+  defp bcc_only_args(account_id, addresses) do
+    bcc = Enum.map(addresses, &%{"name" => "", "address" => &1})
+
+    account_id
+    |> queued_args()
+    |> put_in(["request", "to"], [])
+    |> put_in(["request", "bcc"], bcc)
+  end
+
+  defp configure_resend_secondary do
+    Portal.Config.put_env_override(:portal, Portal.Mailer.Secondary,
+      adapter: Swoosh.Adapters.Resend,
+      api_key: "re_test",
+      req_opts: [plug: {Req.Test, Swoosh.Adapters.Resend}, retry: false]
+    )
   end
 
   defp queued_args(account_id) do

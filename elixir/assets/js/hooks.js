@@ -12,12 +12,17 @@ const handleDisableSubmit = (ev) => {
   submit.classList.add("cursor-wait");
   submit.classList.add("opacity-75");
 
+  const label = submit.querySelector("[data-disable-with]");
+  const text = label?.textContent;
+  if (label) label.textContent = label.dataset.disableWith;
+
   ev.target.submit();
 
   setTimeout(() => {
     submit.classList.remove("cursor-wait");
     submit.classList.remove("opacity-75");
     submit.removeAttribute("disabled");
+    if (label) label.textContent = text;
   }, 5000);
 };
 

@@ -57,6 +57,7 @@ fn main() -> Result<()> {
         "Replayed {iterations} inputs in {elapsed:.6}s ({:.2} iterations/sec)",
         iterations as f64 / elapsed
     );
+    println!("Randomness fingerprint: {:016x}", seeded_rng::fingerprint());
 
     Ok(())
 }

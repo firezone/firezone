@@ -247,6 +247,8 @@ config :portal, Portal.OTLP.TracesExporter,
 
 config :portal, Portal.SlugRegistry.Cache, max_entries: 10_000
 
+config :portal, Portal.FlowLogToken.AccountCache, max_entries: 100_000
+
 config :portal, Portal.Ops.RegionTransfer.Storage,
   req_opts: [
     receive_timeout: 60_000,
@@ -554,7 +556,7 @@ config :portal,
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
 config :portal,
-  flow_logs_api_url: "https://flow-api.firezone.dev/",
+  flow_logs_api_url: nil,
   flow_logs_upload_interval_secs: 60
 
 config :portal, country_code_blocklist: []
@@ -638,15 +640,16 @@ config :portal, PortalAPI.Sockets.RateLimit,
   refill_rate: 1,
   capacity: 1
 
-# Flow-log ingestion: 1 request per second per source IP, no burst. Each request
-# batches up to 10k records, so one per second is ample for reporters.
+# Flow-log requests per source IP, checked before the ingest token. Uploaders
+# send one request per policy authorization, so a Gateway serving many clients,
+# or many devices behind one NAT, sends many requests in each pass. The row
+# limits below cap the volume; this only stops a flood of requests.
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
-  refill_rate: 1,
-  capacity: 1
+  refill_rate: 100,
+  capacity: 1_000
 
 # Flow-log rows per reporting device and per account, charged after the ingest
-# token is verified. The IP limit above already caps one uploader at one batch
-# (1,000 rows by default) per second. An initiator reports its own flows; a
+# token is verified. An initiator reports its own flows; a
 # responder (usually a Gateway) reports a row for every client it serves, so it
 # has a larger bucket. The capacities let a device that was offline drain its
 # spool, and are larger than the 10k-row request limit. The account values are

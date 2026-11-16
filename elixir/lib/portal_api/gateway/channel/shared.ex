@@ -857,8 +857,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   defp flow_logs_config do
+    flow_logs_config(Portal.Config.fetch_env!(:portal, :flow_logs_api_url))
+  end
+
+  # Connlib requires a string `api_url` and reads an interval of 0 as uploads disabled.
+  defp flow_logs_config(nil), do: %{api_url: "", upload_interval_secs: 0, upload_batch_size: 0}
+
+  defp flow_logs_config(api_url) do
     %{
-      api_url: Portal.Config.fetch_env!(:portal, :flow_logs_api_url),
+      api_url: api_url,
       upload_interval_secs: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs),
       upload_batch_size: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
     }

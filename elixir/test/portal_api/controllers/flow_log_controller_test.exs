@@ -133,7 +133,7 @@ defmodule PortalAPI.FlowLogControllerTest do
                json_response(conn, 401)
     end
 
-    test "returns 401 when the token signature is tampered", %{conn: conn, account: account} do
+    test "drops a batch whose token signature is tampered", %{conn: conn, account: account} do
       token = FlowLogToken.mint(account, flow_log_token_claims(), expires_at())
 
       conn =
@@ -141,10 +141,11 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> put_req_header("authorization", "Bearer " <> token <> "x")
         |> post_logs([build_record()])
 
-      assert %{"status" => 401} = json_response(conn, 401)
+      assert json_response(conn, 200) == %{"data" => %{"status" => "ok"}}
+      assert Repo.all(FlowLog) == []
     end
 
-    test "returns 401 when the token is signed with the wrong account key", %{conn: conn} do
+    test "drops a batch signed with the wrong account key", %{conn: conn} do
       account = account_fixture()
       impostor = %{account | ingest_signing_key: :crypto.strong_rand_bytes(32)}
       token = FlowLogToken.mint(impostor, flow_log_token_claims(), expires_at())
@@ -154,7 +155,8 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> put_req_header("authorization", "Bearer " <> token)
         |> post_logs([build_record()])
 
-      assert %{"status" => 401} = json_response(conn, 401)
+      assert json_response(conn, 200) == %{"data" => %{"status" => "ok"}}
+      assert Repo.all(FlowLog) == []
     end
 
     test "returns 401 when the token is expired", %{conn: conn, account: account} do
@@ -185,6 +187,73 @@ defmodule PortalAPI.FlowLogControllerTest do
              } = json_response(conn, 401)
 
       assert Repo.all(FlowLog) == []
+    end
+
+    test "counts each rejected token by reason", %{conn: conn, account: account} do
+      test_pid = self()
+      handler_id = "test-flow-log-unauthorized-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :flow_logs, :upload_unauthorized],
+        fn event, measurements, metadata, _config ->
+          if self() == test_pid, do: send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      unknown = %Portal.Account{id: Ecto.UUID.generate(), ingest_signing_key: :crypto.strong_rand_bytes(32)}
+      impostor = %{account | ingest_signing_key: :crypto.strong_rand_bytes(32)}
+      past = DateTime.add(DateTime.utc_now(), -40 * 86_400, :second)
+
+      cases = [
+        {:missing, nil},
+        {:malformed, "not-a-jwt"},
+        {:unknown_account, FlowLogToken.mint(unknown, flow_log_token_claims(), expires_at())},
+        {:invalid, FlowLogToken.mint(impostor, flow_log_token_claims(), expires_at())},
+        {:expired, FlowLogToken.mint(account, flow_log_token_claims(), past)},
+        {:uploads_disabled,
+         FlowLogToken.mint(account, flow_log_token_claims(%{"uploads_enabled" => false}), expires_at())}
+      ]
+
+      for {reason, token} <- cases do
+        request = if token, do: put_req_header(conn, "authorization", "Bearer " <> token), else: conn
+
+        response = post_logs(request, [build_record()])
+
+        if reason in [:unknown_account, :invalid] do
+          assert json_response(response, 200) == %{"data" => %{"status" => "ok"}}
+        else
+          assert %{"status" => 401} = json_response(response, 401)
+        end
+
+        assert_received {[:portal, :flow_logs, :upload_unauthorized], %{count: 1}, %{reason: ^reason}}
+      end
+    end
+
+    test "answers an unknown account and a bad signature like a stored batch, storing nothing", %{
+      conn: conn,
+      account: account
+    } do
+      unknown = %Portal.Account{id: Ecto.UUID.generate(), ingest_signing_key: :crypto.strong_rand_bytes(32)}
+      impostor = %{account | ingest_signing_key: :crypto.strong_rand_bytes(32)}
+
+      [unknown_response, invalid_response, stored_response] =
+        for signer <- [unknown, impostor, account] do
+          token = FlowLogToken.mint(signer, flow_log_token_claims(), expires_at())
+
+          conn
+          |> put_req_header("authorization", "Bearer " <> token)
+          |> post_logs([build_record()])
+          |> json_response(200)
+        end
+
+      assert unknown_response == invalid_response
+      assert unknown_response == stored_response
+      assert [%FlowLog{account_id: account_id}] = Repo.all(FlowLog)
+      assert account_id == account.id
     end
 
     test "rejects a rate-limited malformed JSON request before decoding it", %{
@@ -267,8 +336,9 @@ defmodule PortalAPI.FlowLogControllerTest do
       :telemetry.attach(
         handler_id,
         [:portal, :flow_logs, :upload_denied],
-        fn event, measurements, metadata, _config ->
-          send(test_pid, {event, measurements, metadata})
+        fn
+          _event, _measurements, %{bucket: :ip}, _config -> :ok
+          event, measurements, metadata, _config -> send(test_pid, {event, measurements, metadata})
         end,
         nil
       )

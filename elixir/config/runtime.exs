@@ -116,12 +116,10 @@ if config_env() == :prod do
          ] ++ direct_pool_base_opts
 
   config :portal, Portal.ChangeLogs.Consumer,
-    enabled: env_var_to_config!(:change_logs_replication_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name)
 
   config :portal, Portal.Changes.Consumer,
-    enabled: env_var_to_config!(:changes_replication_enabled),
     region: env_var_to_config!(:region),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
     publication_name: env_var_to_config!(:database_changes_publication_name)

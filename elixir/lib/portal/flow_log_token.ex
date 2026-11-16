@@ -24,7 +24,7 @@ defmodule Portal.FlowLogToken do
   batched late uploads) are still ingestable.
   """
   alias Portal.Account
-  alias __MODULE__.Database
+  alias __MODULE__.{AccountCache, Database}
 
   # Grace added to the authorization's expiry to allow late/sleep uploads (30d).
   @reporting_grace_seconds 2_592_000
@@ -83,29 +83,48 @@ defmodule Portal.FlowLogToken do
   Verify a token and return its claims and the account that signed it.
 
   The endpoint is not pre-authenticated, so verification first decodes the
-  (unverified) payload to read the `account_id` claim, loads the signing key,
-  then verifies the signature with that key, pinning the algorithm to HS256, and
-  finally checks `exp`.
+  (unverified) payload to read the `account_id` claim, loads the signing key
+  (through `Portal.FlowLogToken.AccountCache`), then verifies the signature
+  with that key, pinning the algorithm to HS256, and finally checks `exp`. A
+  cached key that does not verify is loaded again once, in case a change to it
+  was missed.
 
-  An unknown account and a bad signature both collapse to `:invalid` so the
-  endpoint is not an oracle for which account ids exist.
+  An unknown account (`:unknown_account`) and a bad signature (`:invalid`) are
+  told apart here for logs and telemetry only. The endpoint must send the same
+  response for both, so it is not an oracle for which account ids exist.
   """
   @spec verify(term()) ::
-          {:ok, claims(), Account.t()} | {:error, :malformed | :invalid | :expired}
+          {:ok, claims(), Account.t()}
+          | {:error, :malformed | :unknown_account | :invalid | :expired}
   def verify(token) when is_binary(token) do
     with {:ok, account_id} <- peek_account_id(token),
-         %Account{ingest_signing_key: key} = account <- fetch_account(account_id),
-         {true, %JOSE.JWT{fields: claims}, _jws} <- JOSE.JWT.verify_strict(jwk(key), ["HS256"], token),
+         {:ok, account} <- fetch_account(account_id),
+         {:ok, claims, account} <- verify_signature(token, account),
          {:ok, claims} <- verify_exp(claims) do
       {:ok, claims, account}
     else
-      {:error, :malformed} -> {:error, :malformed}
-      {:error, :expired} -> {:error, :expired}
+      {:error, reason} when reason in [:malformed, :unknown_account, :expired] -> {:error, reason}
       _ -> {:error, :invalid}
     end
   end
 
   def verify(_token), do: {:error, :malformed}
+
+  @doc """
+  Returns the token's `account_id` claim without verifying the token, or `nil`
+  when it is missing or not a UUID. Only for logging why a token was rejected.
+  """
+  @spec unverified_account_id(term()) :: Ecto.UUID.t() | nil
+  def unverified_account_id(token) when is_binary(token) do
+    with {:ok, account_id} <- peek_account_id(token),
+         {:ok, account_id} <- Ecto.UUID.cast(account_id) do
+      account_id
+    else
+      _ -> nil
+    end
+  end
+
+  def unverified_account_id(_token), do: nil
 
   defp jwk(key), do: JOSE.JWK.from_oct(key)
 
@@ -119,9 +138,31 @@ defmodule Portal.FlowLogToken do
     _ -> {:error, :malformed}
   end
 
+  defp verify_signature(token, %Account{id: account_id} = account) do
+    with :error <- check_signature(token, account) do
+      AccountCache.evict(account_id)
+
+      case fetch_account(account_id) do
+        {:ok, account} -> check_signature(token, account)
+        error -> error
+      end
+    end
+  end
+
+  defp check_signature(token, %Account{ingest_signing_key: key} = account) do
+    case JOSE.JWT.verify_strict(jwk(key), ["HS256"], token) do
+      {true, %JOSE.JWT{fields: claims}, _jws} -> {:ok, claims, account}
+      _ -> :error
+    end
+  end
+
   defp fetch_account(account_id) do
-    with {:ok, account_id} <- Ecto.UUID.cast(account_id) do
-      Database.fetch_account(account_id)
+    with {:ok, account_id} <- Ecto.UUID.cast(account_id),
+         %Account{} = account <- AccountCache.fetch(account_id, fn -> Database.fetch_account(account_id) end) do
+      {:ok, account}
+    else
+      nil -> {:error, :unknown_account}
+      :error -> {:error, :malformed}
     end
   end
 
