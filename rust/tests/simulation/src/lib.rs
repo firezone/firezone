@@ -19,10 +19,10 @@ mod probe;
 mod real_client;
 mod real_gateway;
 mod real_relay;
+mod real_relay_system;
 mod real_tunnel;
 mod real_tunnel_system;
-mod relay;
-mod relay_reference;
+mod relay_model;
 mod relay_transition;
 mod resource;
 mod site_network;
@@ -107,19 +107,19 @@ pub fn run_tunnel(data: &[u8], now: Instant) {
 
 /// Runs the relay simulation that `data` describes, with its clock starting at `now`.
 ///
-/// Simulates a relay client, a relay and the portal and checks the client against a reference
-/// model. Panics if the client or the relay violates it.
+/// Simulates a relay client, a relay and the portal and checks the client against a model.
+/// Panics if the client or the relay violates it.
 pub fn run_relay(data: &[u8], now: Instant) {
     let _guard = init_subscriber();
 
     let mut u = Unstructured::new(data);
-    let relay = relay::arbitrary_ip_stack(&mut u);
-    let client = relay::arbitrary_ip_stack(&mut u);
+    let relay = real_relay_system::arbitrary_ip_stack(&mut u);
+    let client = real_relay_system::arbitrary_ip_stack(&mut u);
 
-    let mut reference = relay_reference::Reference::default();
-    let mut world = relay::World::new(relay, client, now);
-    world.settle();
-    world.check(&reference, true);
+    let mut model = relay_model::RelayModel::default();
+    let mut system = real_relay_system::RealRelaySystem::new(relay, client, now);
+    system.settle();
+    system.check(&model, true);
 
     for applied in 0..MAX_RELAY_TRANSITIONS {
         if u.is_empty() {
@@ -130,9 +130,9 @@ pub fn run_relay(data: &[u8], now: Instant) {
 
         tracing::debug!("Applying transition {applied}: {transition:?} with {loss:?}");
 
-        world.apply(&transition, loss);
-        let may_interrupt = reference.apply(&transition, world.environment(), world.observed);
-        world.check(&reference, may_interrupt);
+        system.apply(&transition, loss);
+        let may_interrupt = model.apply(&transition, system.environment(), system.observed);
+        system.check(&model, may_interrupt);
     }
 }
 

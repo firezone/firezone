@@ -24,6 +24,7 @@ use stun_codec::rfc5766::{
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId};
 use uuid::Uuid;
 
+/// The relay server, shared by both simulations.
 pub(crate) struct RealRelay {
     pub(crate) server: relay_server_proto::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,

@@ -1,7 +1,8 @@
-//! What connlib expects of a relay client: an allocation that relays data and heals itself.
+//! The relay simulation's model: what connlib expects of a relay client, an allocation that
+//! relays data and heals itself.
 //!
-//! The model answers two questions per transition, see [`Reference::must_relay`] and
-//! [`Reference::apply`]. It describes how the client behaves today, flaws included, so that
+//! The model answers two questions per transition, see [`RelayModel::must_relay`] and
+//! [`RelayModel::apply`]. It describes how the client behaves today, flaws included, so that
 //! fixing one shows up as a change here.
 
 use crate::relay_transition::{Target, Transition};
@@ -28,12 +29,12 @@ pub(crate) struct Observed {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Reference {
+pub(crate) struct RelayModel {
     /// Whether the client may have given up on the relay while the portal could not hand it back.
     stranded: bool,
 }
 
-impl Reference {
+impl RelayModel {
     /// Whether relaying must work once a transition has settled.
     ///
     /// With the portal around, the client always recovers: it is handed the relay again, with

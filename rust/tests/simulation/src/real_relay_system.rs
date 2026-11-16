@@ -1,10 +1,11 @@
-//! A relay client and a relay, with a portal that hands the client the relay and its credentials.
+//! The relay simulation's real system: a relay client and a relay, with a portal that hands the
+//! client the relay and its credentials.
 //!
 //! [`Allocation`] and the relay's `Server` are both sans-IO. They sit on the network of the
 //! tunnel simulation: each is a [`Host`], and their datagrams travel through
-//! [`BufferedTransmits`]. Each [`Transition`] runs until the two have settled. The [`Reference`]
-//! then says whether relaying must work, which [`World::probe`] checks end to end, and whether
-//! the transition was allowed to interrupt it.
+//! [`BufferedTransmits`]. Each [`Transition`] runs until the two have settled. The [`RelayModel`]
+//! then says whether relaying must work, which [`RealRelaySystem::probe`] checks end to end, and
+//! whether the transition was allowed to interrupt it.
 
 use std::{
     collections::BTreeSet,
@@ -31,7 +32,7 @@ use crate::{
     clock::Clock,
     network::{EdgeConfig, ExecMutScope, Host, PollTimeout},
     real_relay::RealRelay,
-    relay_reference::{Environment, Observed, Reference},
+    relay_model::{Environment, Observed, RelayModel},
     relay_transition::{self, Garbage, Loss, Target, Transition},
     stun,
 };
@@ -86,7 +87,7 @@ const PAYLOAD: [u8; 32] = {
 };
 
 /// The client, the relay, the portal and the network between them.
-pub(crate) struct World {
+pub(crate) struct RealRelaySystem {
     clock: Clock,
     transmits: BufferedTransmits,
 
@@ -100,7 +101,7 @@ pub(crate) struct World {
     /// The credentials that the portal last issued.
     credentials: Option<Credentials>,
 
-    client: Host<Client>,
+    client: Host<RealAllocation>,
     roams: u16,
     seeds: u64,
 
@@ -116,8 +117,9 @@ pub(crate) struct World {
     pub(crate) observed: Observed,
 }
 
+/// The relay client: an [`Allocation`] driven the way `snownet` drives it.
 #[derive(Default)]
-struct Client {
+struct RealAllocation {
     /// Absent while the client has given up on the relay and the portal did not hand it back.
     allocation: Option<Allocation>,
     /// The relay addresses the allocation announced and did not invalidate since.
@@ -133,7 +135,7 @@ struct Credentials {
     expire_at: SystemTime,
 }
 
-impl World {
+impl RealRelaySystem {
     pub(crate) fn new(relay_stack: IpStack, client_stack: IpStack, start: Instant) -> Self {
         let clock = Clock::new(start, DateTime::UNIX_EPOCH);
         let (ip4, ip6) = interfaces(client_stack, CLIENT_IP4, CLIENT_IP6);
@@ -146,7 +148,7 @@ impl World {
             relay_boots: 0,
             portal_reachable: true,
             credentials: None,
-            client: host(Client::default(), CLIENT_PORT, ip4, ip6),
+            client: host(RealAllocation::default(), CLIENT_PORT, ip4, ip6),
             roams: 0,
             seeds: 0,
             at_peers: Vec::new(),
@@ -228,14 +230,14 @@ impl World {
         );
     }
 
-    /// Checks the settled world against what the reference expects of the last transition.
-    pub(crate) fn check(&mut self, reference: &Reference, may_interrupt: bool) {
+    /// Checks the settled system against what the model expects of the last transition.
+    pub(crate) fn check(&mut self, model: &RelayModel, may_interrupt: bool) {
         assert!(
             may_interrupt || !self.client.inner().relay_addresses_changed,
             "The client's relay addresses changed in a transition that must not interrupt relaying"
         );
 
-        if reference.must_relay(self.environment()) {
+        if model.must_relay(self.environment()) {
             self.probe();
         }
     }
@@ -555,7 +557,7 @@ impl World {
     }
 }
 
-impl Host<Client> {
+impl Host<RealAllocation> {
     /// Steps the client with what is due at `now` and puts what it sent onto the network.
     fn step(&mut self, transmits: &mut BufferedTransmits, now: Instant) {
         while let Some(transmit) = self.poll_inbox(now) {
@@ -568,7 +570,7 @@ impl Host<Client> {
     }
 }
 
-impl Client {
+impl RealAllocation {
     fn handle_input(&mut self, transmit: Transmit, now: Instant) {
         let (Some(allocation), Some(from)) = (&mut self.allocation, transmit.src) else {
             return;
@@ -643,13 +645,13 @@ impl Client {
     }
 }
 
-impl PollTimeout for Client {
+impl PollTimeout for RealAllocation {
     fn poll_timeout(&mut self) -> Option<Instant> {
         self.allocation.as_ref()?.poll_timeout()
     }
 }
 
-impl ExecMutScope for Client {
+impl ExecMutScope for RealAllocation {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
@@ -729,11 +731,11 @@ mod tests {
 
     #[test]
     fn client_relays_data_on_a_working_network() {
-        let mut world = World::new(IpStack::Dual, IpStack::Dual, Instant::now());
+        let mut system = RealRelaySystem::new(IpStack::Dual, IpStack::Dual, Instant::now());
 
-        world.settle();
+        system.settle();
 
-        assert_eq!(world.client.inner().relay_addresses.len(), 2);
-        world.probe();
+        assert_eq!(system.client.inner().relay_addresses.len(), 2);
+        system.probe();
     }
 }
