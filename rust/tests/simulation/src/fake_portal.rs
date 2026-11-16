@@ -29,7 +29,7 @@ const DEVICE_LISTING_TTL: u32 = 4;
 /// Fake implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub struct FakePortal {
-    clients: BTreeMap<ClientId, PortalClient>,
+    clients: BTreeMap<ClientId, ClientRecord>,
     gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
     regular_sites: SmallVec<[Site; 3]>,
 
@@ -101,7 +101,7 @@ struct GatewayAuthorization {
 }
 
 #[derive(Clone, Debug)]
-struct PortalClient {
+struct ClientRecord {
     ipv4: Ipv4Addr,
     ipv6: Ipv6Addr,
     /// The slug this client is reached at under the device domain.
@@ -172,7 +172,7 @@ impl FakePortal {
             .into_iter()
             .enumerate()
             .map(|(idx, (id, ipv4, ipv6))| {
-                let client = PortalClient {
+                let client = ClientRecord {
                     ipv4,
                     ipv6,
                     device_label: format!("device{idx}"),
