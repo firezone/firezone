@@ -1,9 +1,19 @@
 defmodule Portal.Repo.Migrations.AddDevicesFirezoneIdExempt do
   use Ecto.Migration
 
-  def change do
+  def up do
+    execute("SET LOCAL lock_timeout TO '2s'")
+
     alter table(:devices) do
-      add(:firezone_id_exempt, :boolean, null: false, default: false)
+      add_if_not_exists(:firezone_id_exempt, :boolean, null: false, default: false)
+    end
+  end
+
+  def down do
+    execute("SET LOCAL lock_timeout TO '2s'")
+
+    alter table(:devices) do
+      remove_if_exists(:firezone_id_exempt, :boolean)
     end
   end
 end
