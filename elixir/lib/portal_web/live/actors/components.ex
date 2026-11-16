@@ -123,7 +123,7 @@ defmodule PortalWeb.Actors.Components do
       <div class="flex items-center gap-4">
         <%!-- Left: icon + name + status + email --%>
         <div class="flex items-center gap-3 min-w-0 flex-1">
-          <.actor_avatar account={@account} actor={@actor} />
+          <.actor_avatar account={@account} actor={@actor} size="lg" />
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold text-heading truncate">{@actor.name}</h2>
@@ -307,22 +307,17 @@ defmodule PortalWeb.Actors.Components do
             </div>
             <details :if={@confirm_delete_identity_id != identity.id} class="group/details">
               <summary class="flex items-center gap-4 px-5 py-3 pr-4 hover:bg-raised transition-colors cursor-pointer list-none">
-                <Core.provider_icon provider={Core.provider_type_from_issuer(identity.issuer)} size="sm" variant="circle" />
+                <.avatar account={@account} identity_id={identity.id} etag={identity.avatar_etag} />
                 <div class="flex-1 min-w-0">
-                  <p
-                    class="text-sm font-medium text-heading truncate"
-                    title={identity.issuer}
-                  >
-                    {identity.issuer}
-                  </p>
-                  <div class="flex items-center gap-3 mt-0.5">
-                    <span :if={identity.email} class="text-xs text-subtle truncate">
-                      {identity.email}
-                    </span>
-                    <span class="font-mono text-xs text-subtle truncate">
-                      {extract_idp_id(identity.idp_id)}
-                    </span>
+                  <div class="flex items-center gap-1.5">
+                    <p class="text-sm font-medium text-heading truncate">
+                      {identity_display_name(identity)}
+                    </p>
+                    <Core.provider_icon provider={Core.provider_type_from_issuer(identity.issuer)} size="xs" />
                   </div>
+                  <p :if={identity.email} class="text-xs text-subtle truncate mt-0.5">
+                    {identity.email}
+                  </p>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
                   <button
@@ -344,8 +339,19 @@ defmodule PortalWeb.Actors.Components do
                   />
                 </div>
               </summary>
-              <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-raised/50">
+              <div class="pl-[4.5rem] pr-5 pb-4 pt-1 bg-raised/50">
                 <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div class="col-span-2">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+                      Issuer
+                    </dt>
+                    <dd
+                      class="font-mono text-xs text-body font-medium truncate mt-0.5"
+                      title={identity.issuer}
+                    >
+                      {identity.issuer}
+                    </dd>
+                  </div>
                   <div :if={identity.directory_name}>
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Directory
@@ -1621,7 +1627,7 @@ defmodule PortalWeb.Actors.Components do
   end
 
   attr :actor, :any, required: true
-  attr :class, :string, default: "w-6 h-6"
+  attr :class, :any, default: "w-6 h-6"
 
   defp actor_type_icon(assigns) do
     ~H"""
@@ -1639,39 +1645,56 @@ defmodule PortalWeb.Actors.Components do
   attr :account, :any, required: true
   attr :actor, :any, required: true
 
+  attr :size, :string, default: "md", values: ~w[md lg]
+
   @doc """
-  The actor's directory photo, or its type icon when it has none. Admins get a
-  shield badge on top.
+  The actor's photo, or its type icon when it has none. Admins look like users
+  on a purple ring.
   """
   def actor_avatar(assigns) do
-    assigns = assign(assigns, :photo?, not is_nil(assigns.actor.avatar_identity_id) and Portal.Avatars.enabled?())
+    ~H"""
+    <.avatar
+      account={@account}
+      identity_id={@actor.avatar_identity_id}
+      etag={@actor.avatar_etag}
+      type={avatar_type(@actor)}
+      admin={@actor.type == :account_admin_user}
+      size={@size}
+    />
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :identity_id, :string, default: nil
+  attr :etag, :string, default: nil
+  attr :type, :atom, default: :account_user
+  attr :admin, :boolean, default: false
+  attr :size, :string, default: "md"
+
+  defp avatar(assigns) do
+    assigns = assign(assigns, :photo?, not is_nil(assigns.identity_id) and not is_nil(assigns.etag) and Portal.Avatars.enabled?())
 
     ~H"""
-    <div class="relative inline-flex shrink-0">
+    <div
+      class={["inline-flex shrink-0 rounded-full", avatar_ring_size(@size), @admin && "bg-purple-100"]}
+      title={@admin && "Admin"}
+    >
       <img
         :if={@photo?}
-        src={
-          ~p"/#{@account}/avatars/#{@actor.avatar_identity_id}?#{[v: Portal.Avatars.version(@actor.avatar_etag)]}"
-        }
+        src={~p"/#{@account}/avatars/#{@identity_id}?#{[v: Portal.Avatars.version(@etag)]}"}
         alt=""
-        class="w-8 h-8 rounded-full object-cover bg-neutral-100"
+        class={["rounded-full object-cover bg-neutral-100", avatar_size(@size)]}
       />
       <div
         :if={not @photo?}
         class={[
-          "inline-flex items-center justify-center w-8 h-8 rounded-full",
-          actor_type_icon_bg_color(@actor.type)
+          "inline-flex items-center justify-center rounded-full",
+          avatar_size(@size),
+          actor_type_icon_bg_color(@type)
         ]}
       >
-        <.actor_type_icon actor={@actor} class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
+        <.actor_type_icon actor={%{type: @type}} class={[avatar_icon_size(@size), actor_type_icon_text_color(@type)]} />
       </div>
-      <span
-        :if={@actor.type == :account_admin_user}
-        title="Admin"
-        class="absolute -top-0.5 -left-0.5 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-purple-700 ring-2 ring-surface"
-      >
-        <Core.icon name="ri-shield-check-fill" class="w-2.5 h-2.5 text-white" />
-      </span>
     </div>
     """
   end
@@ -1712,12 +1735,22 @@ defmodule PortalWeb.Actors.Components do
     """
   end
 
+  defp avatar_size("md"), do: "size-8"
+  defp avatar_size("lg"), do: "size-24"
+
+  defp avatar_ring_size("md"), do: "p-0.5"
+  defp avatar_ring_size("lg"), do: "p-1"
+
+  defp avatar_icon_size("md"), do: "size-5"
+  defp avatar_icon_size("lg"), do: "size-12"
+
+  defp avatar_type(%{type: :account_admin_user}), do: :account_user
+  defp avatar_type(%{type: type}), do: type
+
   defp actor_type_icon_bg_color(:service_account), do: "bg-blue-100"
-  defp actor_type_icon_bg_color(:account_admin_user), do: "bg-purple-100"
   defp actor_type_icon_bg_color(_), do: "bg-neutral-100"
 
   defp actor_type_icon_text_color(:service_account), do: "text-blue-800"
-  defp actor_type_icon_text_color(:account_admin_user), do: "text-purple-800"
   defp actor_type_icon_text_color(_), do: "text-neutral-800"
 
   defp actor_type_badge_color(:service_account), do: "bg-blue-100 text-blue-800"
@@ -1782,6 +1815,14 @@ defmodule PortalWeb.Actors.Components do
     </div>
     """
   end
+
+  defp identity_display_name(identity) do
+    full_name = [identity.given_name, identity.family_name] |> Enum.reject(&blank?/1) |> Enum.join(" ")
+
+    Enum.find([identity.name, full_name, identity.email, extract_idp_id(identity.idp_id)], &(not blank?(&1)))
+  end
+
+  defp blank?(value), do: is_nil(value) or String.trim(value) == ""
 
   defp extract_idp_id(idp_id) do
     String.split(idp_id, ":", parts: 2) |> List.last()

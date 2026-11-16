@@ -1783,10 +1783,13 @@ defmodule PortalWeb.ActorsTest do
       assert has_element?(lv, "#actor-#{user.id} img[src^='/#{account.slug}/avatars/#{synced.id}?v=']")
     end
 
-    test "shows the type icon and a shield on an admin without a photo", %{conn: conn, account: account, actor: actor} do
+    test "shows the user icon and a shield on an admin without a photo", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
 
-      assert has_element?(lv, "#actor-#{actor.id} [title='Admin']")
+      assert has_element?(lv, "#actor-#{actor.id} [title='Admin'].bg-purple-100")
+      refute has_element?(lv, "#actor-#{actor.id} .font-mono", actor.id)
+      assert has_element?(lv, "#actor-#{actor.id} .ri-user-line")
+      refute has_element?(lv, "#actor-#{actor.id} .ri-shield-check-line")
       refute has_element?(lv, "#actor-#{actor.id} img[src*='/avatars/']")
     end
 
@@ -1808,7 +1811,28 @@ defmodule PortalWeb.ActorsTest do
 
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{user}")
 
-      assert has_element?(lv, "#actor-panel img[src^='/#{account.slug}/avatars/#{identity.id}?v=']")
+      assert has_element?(lv, "#actor-panel img.size-24[src^='/#{account.slug}/avatars/#{identity.id}?v=']")
+    end
+
+    test "shows each identity with its own photo and name", %{conn: conn, account: account, actor: actor, directory: directory} do
+      user = actor_fixture(account: account, type: :account_user)
+
+      named =
+        directory_identity_fixture(directory: directory, actor: user, name: "Ada Lovelace", avatar_etag: "etag-1")
+
+      unnamed =
+        identity_fixture(account: account, actor: user, name: nil, given_name: "Grace", family_name: "Hopper")
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{user}?tab=identities")
+
+      html = lv |> element("#actor-panel") |> render()
+
+      assert has_element?(lv, "#actor-panel li img[src^='/#{account.slug}/avatars/#{named.id}?v=']")
+      refute has_element?(lv, "#actor-panel li img[src*='/avatars/#{unnamed.id}']")
+      assert html =~ "Ada Lovelace"
+      assert html =~ "Grace Hopper"
+      assert has_element?(lv, "#actor-panel details dd", named.issuer)
     end
   end
 
