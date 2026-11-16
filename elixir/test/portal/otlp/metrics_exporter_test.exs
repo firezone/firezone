@@ -1,6 +1,7 @@
 defmodule Portal.OTLP.MetricsExporterTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
   import Plug.Conn
   require Record
 
@@ -59,6 +60,19 @@ defmodule Portal.OTLP.MetricsExporterTest do
 
       assert MetricsExporter.export(metrics(), :otel_resource.create(%{}), state) == result
     end
+  end
+
+  test "retries a failed request and logs why it failed" do
+    {:ok, state} = MetricsExporter.init(%{endpoint: @endpoint, auth: :azure_managed_identity})
+
+    Req.Test.expect(MetricsExporter, &Req.Test.transport_error(&1, :closed))
+
+    {result, log} =
+      with_log(fn -> MetricsExporter.export(metrics(), :otel_resource.create(%{}), state) end)
+
+    assert result == :failed_retryable
+    assert log =~ "OTLP export request failed"
+    assert log =~ "reason=socket closed"
   end
 
   test "sends static headers and fetches no token without auth" do
