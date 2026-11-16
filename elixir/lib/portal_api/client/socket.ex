@@ -372,6 +372,8 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp assign_connect(socket, subject, client, version, attested?, proof) do
+    client = %{client | actor_id: subject.actor.id}
+
     socket
     |> assign(:subject, Authentication.Subject.with_device(subject, client))
     |> assign(:client, %{
