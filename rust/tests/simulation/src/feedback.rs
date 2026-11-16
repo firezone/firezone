@@ -711,8 +711,8 @@ fn remote_path_feedback(
         }
         Remote::Client(peer) => peer,
     };
-    let origin_edge = reference.clients.get(&origin)?.edge_config();
-    let remote_edge = reference.clients.get(&peer)?.edge_config();
+    let origin_edge = reference.network.edge_config(origin);
+    let remote_edge = reference.network.edge_config(peer);
     let selected = state
         .clients
         .get(&origin)?
@@ -751,8 +751,8 @@ fn gateway_path_feedback(
     origin: ClientId,
     gateway: GatewayId,
 ) -> Option<PathFeedback> {
-    let origin_edge = reference.clients.get(&origin)?.edge_config();
-    let gateway_edge = reference.gateways.get(&gateway)?.edge_config();
+    let origin_edge = reference.network.edge_config(origin);
+    let gateway_edge = reference.network.edge_config(gateway);
     let selected = state
         .clients
         .get(&origin)?

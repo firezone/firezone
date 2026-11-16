@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 
 use super::context::Generator;
 use super::topology::{
-    arb_dns_record_set, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
+    arb_attachment, arb_dns_record_set, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
 };
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_compatible_upstream_do53_servers,
@@ -24,7 +24,7 @@ use crate::dns_records::record_ip;
 use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
-use crate::sim_net::{EdgeConfig, Host};
+use crate::sim_net::Host;
 use crate::stub_portal::StubPortal;
 use crate::transition::{Destination, Seq, Transition};
 
@@ -260,6 +260,7 @@ pub(super) fn generate(
         K::RoamClient => {
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let (ip4, ip6) = arb_socket_ip_stack(g);
+            let attachment = arb_attachment(g, &mut state.network.nat_ips().collect());
             // Mirror `transition::roam_client`: both windows in 0..3000ms.
             let dead_window = Duration::from_millis(g.count(0, 2999) as u64);
             let portal_window = Duration::from_millis(g.count(0, 2999) as u64);
@@ -267,7 +268,7 @@ pub(super) fn generate(
                 client_id,
                 ip4,
                 ip6,
-                nat_ip4: g.nat_ip4(),
+                attachment,
                 dead_window,
                 portal_window,
             }
@@ -298,7 +299,7 @@ pub(super) fn generate(
                 .map(|id| {
                     let seed = g.u64();
                     let latency = g.latency(50);
-                    let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4());
+                    let host = Host::new(seed, latency, 3478);
                     let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
                     (id, host)
                 })

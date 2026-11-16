@@ -26,19 +26,42 @@ defmodule Portal.Workers.OutboundEmail do
     :ok
   end
 
+  # A bcc-only email sent through Resend comes back as one result per recipient.
+  defp persist_delivery_result({:ok, responses}, account_id, email) when is_list(responses) do
+    Enum.reduce_while(responses, :ok, fn response, :ok ->
+      case persist_tracked(response, account_id, email.subject, response.recipients) do
+        :ok -> {:cont, :ok}
+        discard -> {:halt, discard}
+      end
+    end)
+  end
+
   defp persist_delivery_result({:ok, response}, account_id, email) do
+    persist_tracked(response, account_id, email.subject, email_addresses(email))
+  end
+
+  defp persist_delivery_result({:error, reason}, account_id, _email) do
+    Logger.error("Queued email delivery failed",
+      account_id: account_id,
+      reason: inspect(reason)
+    )
+
+    {:error, reason}
+  end
+
+  defp persist_tracked(response, account_id, subject, recipients) do
     with message_id when is_binary(message_id) <- response_message_id(response),
          {:ok, _} <-
            Mailer.insert_tracked_delivery(
              account_id,
              message_id,
-             email.subject,
-             email_addresses(email)
+             subject,
+             recipients
            ) do
       :ok
     else
       nil ->
-        Logger.error("ACS queued email response did not include a message id",
+        Logger.error("Queued email response did not include a message id",
           account_id: account_id,
           response: inspect(response)
         )
@@ -54,15 +77,6 @@ defmodule Portal.Workers.OutboundEmail do
 
         {:discard, {:track_delivery, reason}}
     end
-  end
-
-  defp persist_delivery_result({:error, reason}, account_id, _email) do
-    Logger.error("Queued email delivery failed",
-      account_id: account_id,
-      reason: inspect(reason)
-    )
-
-    {:error, reason}
   end
 
   defp email_addresses(%Swoosh.Email{} = email) do
