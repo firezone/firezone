@@ -137,7 +137,7 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
         .collect::<SmallVec<[_; 3]>>();
     g.allocate_site_subnets(&regular_sites);
 
-    let clients = (0..g.count(2, 4))
+    let clients = (0..g.count(3, 4))
         .map(|_| (g.fresh_client_id(), g.tunnel_ip4(), g.tunnel_ip6()))
         .collect::<SmallVec<[_; 4]>>();
 
