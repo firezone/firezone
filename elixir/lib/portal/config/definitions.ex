@@ -1340,6 +1340,12 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:yc_deal_coupon_ids, :map, default: %{})
 
+  @doc """
+  YC deal webhook URL of another region's portal. Each redemption is sent
+  there too, so the same code works in that region's Stripe account.
+  """
+  defconfig(:yc_deal_mirror_url, :string, default: nil)
+
   ##############################################
   ## Local development and Staging Helpers
   ##############################################

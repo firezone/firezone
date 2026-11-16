@@ -85,11 +85,22 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :post, "subscriptions", body)
   end
 
-  def create_promotion_code(api_token, coupon_id, metadata, expires_at, idempotency_key) do
+  def fetch_promotion_code(api_token, code) do
+    query = URI.encode_query(%{"code" => code, "limit" => 1}, :www_form)
+
+    case request(api_token, :get, "promotion_codes?#{query}") do
+      {:ok, %{"data" => [promotion_code | _]}} -> {:ok, promotion_code}
+      {:ok, %{"data" => []}} -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def create_promotion_code(api_token, code, coupon_id, metadata, expires_at, idempotency_key) do
     body =
       metadata
       |> Map.new(fn {key, value} -> {"metadata[#{key}]", value} end)
       |> Map.merge(%{
+        "code" => code,
         "coupon" => coupon_id,
         "max_redemptions" => 1,
         "expires_at" => DateTime.to_unix(expires_at)
