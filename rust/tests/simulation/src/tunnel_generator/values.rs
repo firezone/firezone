@@ -6,15 +6,15 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use tunnel_proto::dns;
 use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
 
-use super::context::Generator;
+use super::context::TunnelGenerator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::tunnel_model::TunnelModel;
 
-pub(super) fn arb_system_dns_servers(g: &mut Generator) -> Vec<IpAddr> {
+pub(super) fn arb_system_dns_servers(g: &mut TunnelGenerator) -> Vec<IpAddr> {
     arb_do53_subset(g)
 }
 
-pub(super) fn arb_upstream_do53_servers(g: &mut Generator) -> Vec<UpstreamDo53> {
+pub(super) fn arb_upstream_do53_servers(g: &mut TunnelGenerator) -> Vec<UpstreamDo53> {
     arb_do53_subset(g)
         .into_iter()
         .map(|ip| UpstreamDo53 { ip })
@@ -22,7 +22,7 @@ pub(super) fn arb_upstream_do53_servers(g: &mut Generator) -> Vec<UpstreamDo53> 
 }
 
 pub(super) fn arb_compatible_upstream_do53_servers(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     state: &TunnelModel,
 ) -> Vec<UpstreamDo53> {
     let clients_share_ipv4 = state.clients.values().all(|client| client.ip4.is_some());
@@ -37,7 +37,7 @@ pub(super) fn arb_compatible_upstream_do53_servers(
         .collect::<Vec<_>>()
 }
 
-pub(super) fn arb_upstream_doh_servers(g: &mut Generator) -> Vec<UpstreamDoH> {
+pub(super) fn arb_upstream_doh_servers(g: &mut TunnelGenerator) -> Vec<UpstreamDoH> {
     let n = g.count(0, 1);
 
     (0..n)
@@ -53,13 +53,13 @@ pub(super) fn arb_upstream_doh_servers(g: &mut Generator) -> Vec<UpstreamDoH> {
         .collect::<Vec<_>>()
 }
 
-pub(super) fn arb_filters(g: &mut Generator) -> Vec<Filter> {
+pub(super) fn arb_filters(g: &mut TunnelGenerator) -> Vec<Filter> {
     let n = g.count(0, 2);
 
     (0..n).map(|_| arb_filter(g)).collect::<Vec<_>>()
 }
 
-pub(super) fn arb_different_filters(g: &mut Generator, current: &[Filter]) -> Vec<Filter> {
+pub(super) fn arb_different_filters(g: &mut TunnelGenerator, current: &[Filter]) -> Vec<Filter> {
     let filters = arb_filters(g);
 
     if filters != current {
@@ -73,7 +73,7 @@ pub(super) fn arb_different_filters(g: &mut Generator, current: &[Filter]) -> Ve
     }
 }
 
-pub(super) fn arb_address_description(g: &mut Generator) -> Option<String> {
+pub(super) fn arb_address_description(g: &mut TunnelGenerator) -> Option<String> {
     if g.bool() {
         Some(g.lower_ascii(4, 10))
     } else {
@@ -82,7 +82,7 @@ pub(super) fn arb_address_description(g: &mut Generator) -> Option<String> {
 }
 
 pub(super) fn arb_different_address_description(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     current: &Option<String>,
 ) -> Option<String> {
     let description = arb_address_description(g);
@@ -97,7 +97,7 @@ pub(super) fn arb_different_address_description(
     }
 }
 
-pub(super) fn arb_ip_stack_kind(g: &mut Generator) -> IpStack {
+pub(super) fn arb_ip_stack_kind(g: &mut TunnelGenerator) -> IpStack {
     match g.choose_index(3) {
         0 => IpStack::Dual,
         1 => IpStack::Ipv4Only,
@@ -105,7 +105,7 @@ pub(super) fn arb_ip_stack_kind(g: &mut Generator) -> IpStack {
     }
 }
 
-pub(super) fn arb_different_ip_stack_kind(g: &mut Generator, current: IpStack) -> IpStack {
+pub(super) fn arb_different_ip_stack_kind(g: &mut TunnelGenerator, current: IpStack) -> IpStack {
     match current {
         IpStack::Dual => {
             if g.bool() {
@@ -136,7 +136,7 @@ pub(super) fn arb_different_ip_stack_kind(g: &mut Generator, current: IpStack) -
 /// The tree grows below public suffixes from labels of small per-level pools. All levels below
 /// the second share one pool, so names in different branches share labels and wildcard patterns
 /// derived from one node also match nodes elsewhere in the tree.
-pub(super) fn arb_domain_tree(g: &mut Generator) -> Vec<DomainName> {
+pub(super) fn arb_domain_tree(g: &mut TunnelGenerator) -> Vec<DomainName> {
     let depth = g.count(2, 4);
     let roots = arb_distinct_labels(g, &PUBLIC_SUFFIXES, 1, 3)
         .into_iter()
@@ -166,11 +166,11 @@ pub(super) fn arb_domain_tree(g: &mut Generator) -> Vec<DomainName> {
         .collect()
 }
 
-pub(super) fn arb_tree_name(g: &mut Generator, domain_tree: &[DomainName]) -> DomainName {
+pub(super) fn arb_tree_name(g: &mut TunnelGenerator, domain_tree: &[DomainName]) -> DomainName {
     domain_tree[g.choose_index(domain_tree.len())].clone()
 }
 
-pub(super) fn arb_cidr_resource_address(g: &mut Generator) -> IpNetwork {
+pub(super) fn arb_cidr_resource_address(g: &mut TunnelGenerator) -> IpNetwork {
     let ip = arb_non_reserved_ip(g);
     let mask_offset = g.count(0, 8);
 
@@ -209,7 +209,7 @@ pub(super) fn arb_cidr_resource_address(g: &mut Generator) -> IpNetwork {
 }
 
 pub(super) fn arb_different_cidr_resource_address(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     current: IpNetwork,
 ) -> IpNetwork {
     let address = arb_cidr_resource_address(g);
@@ -228,7 +228,10 @@ pub(super) fn arb_different_cidr_resource_address(
     }
 }
 
-pub(super) fn arb_dns_resource_address(g: &mut Generator, domain_tree: &[DomainName]) -> String {
+pub(super) fn arb_dns_resource_address(
+    g: &mut TunnelGenerator,
+    domain_tree: &[DomainName],
+) -> String {
     let name = arb_tree_name(g, domain_tree).to_string();
     if g.bool() {
         return name;
@@ -254,7 +257,7 @@ pub(super) fn arb_dns_resource_address(g: &mut Generator, domain_tree: &[DomainN
 }
 
 pub(super) fn arb_domain_matching_dns_resource(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     address: &str,
     domain_tree: &[DomainName],
 ) -> DomainName {
@@ -286,7 +289,7 @@ pub(super) fn arb_domain_matching_dns_resource(
 }
 
 pub(super) fn arb_different_dns_resource_address(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     current: &str,
     state: &TunnelModel,
 ) -> String {
@@ -308,7 +311,7 @@ pub(super) fn arb_different_dns_resource_address(
 }
 
 pub(super) fn arb_more_specific_subnet(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     address: IpNetwork,
     extra_bits: usize,
 ) -> IpNetwork {
@@ -334,11 +337,11 @@ const PUBLIC_SUFFIXES: [&str; 3] = ["com", "internal", "us-east-1.rds.amazonaws.
 const SECOND_LEVEL_LABELS: [&str; 3] = ["example", "corp", "cluster-a1"];
 const SUBDOMAIN_LABELS: [&str; 7] = ["db", "db-1", "db-2", "api", "app", "eu-west-1", "us-east-1"];
 
-fn arb_subdomain_label(g: &mut Generator) -> &'static str {
+fn arb_subdomain_label(g: &mut TunnelGenerator) -> &'static str {
     SUBDOMAIN_LABELS[g.choose_index(SUBDOMAIN_LABELS.len())]
 }
 
-fn arb_label_matching(g: &mut Generator, pattern: &str) -> String {
+fn arb_label_matching(g: &mut TunnelGenerator, pattern: &str) -> String {
     if !pattern.contains(['*', '?']) {
         return pattern.to_owned();
     }
@@ -352,7 +355,7 @@ fn arb_label_matching(g: &mut Generator, pattern: &str) -> String {
 }
 
 fn arb_distinct_labels(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     pool: &[&'static str],
     lo: usize,
     hi: usize,
@@ -369,7 +372,7 @@ fn arb_distinct_labels(
         .collect()
 }
 
-fn arb_do53_pool(g: &mut Generator) -> Vec<IpAddr> {
+fn arb_do53_pool(g: &mut TunnelGenerator) -> Vec<IpAddr> {
     let n4 = g.count(1, 3);
     let n6 = g.count(1, 3);
 
@@ -384,7 +387,7 @@ fn arb_do53_pool(g: &mut Generator) -> Vec<IpAddr> {
         .collect::<Vec<_>>()
 }
 
-fn arb_do53_subset(g: &mut Generator) -> Vec<IpAddr> {
+fn arb_do53_subset(g: &mut TunnelGenerator) -> Vec<IpAddr> {
     let pool = arb_do53_pool(g);
 
     if g.flip(10) {
@@ -416,7 +419,7 @@ fn arb_do53_subset(g: &mut Generator) -> Vec<IpAddr> {
         .collect::<Vec<_>>()
 }
 
-fn arb_filter(g: &mut Generator) -> Filter {
+fn arb_filter(g: &mut TunnelGenerator) -> Filter {
     match g.choose_index(3) {
         0 => Filter::Icmp,
         1 => Filter::Udp(arb_port_range(g)),
@@ -424,7 +427,7 @@ fn arb_filter(g: &mut Generator) -> Filter {
     }
 }
 
-fn arb_port_range(g: &mut Generator) -> PortRange {
+fn arb_port_range(g: &mut TunnelGenerator) -> PortRange {
     let start = g.u16();
     let end = g.u16_in(start..=u16::MAX);
 
@@ -464,7 +467,7 @@ fn overlapping_reserved_v6(net: Ipv6Network) -> Option<Ipv6Network> {
     })
 }
 
-fn arb_non_reserved_ip(g: &mut Generator) -> IpAddr {
+fn arb_non_reserved_ip(g: &mut TunnelGenerator) -> IpAddr {
     use tunnel_proto::{
         DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV4_TUNNEL, IPV6_RESOURCES,
         IPV6_TUNNEL,

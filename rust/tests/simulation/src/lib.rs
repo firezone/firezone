@@ -2,7 +2,6 @@
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-mod arb;
 mod assertions;
 mod buffered_transmits;
 mod clock;
@@ -24,6 +23,7 @@ mod real_tunnel_system;
 mod resource;
 mod site_network;
 mod tcp;
+mod tunnel_generator;
 mod tunnel_model;
 mod tunnel_transition;
 
@@ -56,11 +56,11 @@ pub mod tunnel {
     };
 
     use super::{
-        arb::Generator,
         assertions::{PanicOnErrorEvents, check_invariants},
         clock::Clock,
         feedback,
         real_tunnel_system::RealTunnelSystem,
+        tunnel_generator::TunnelGenerator,
     };
 
     const MAX_TRANSITIONS: usize = 20;
@@ -73,7 +73,7 @@ pub mod tunnel {
 
         let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
         let clock = Clock::new(now, utc_start);
-        let mut generator = Generator::new(data);
+        let mut generator = TunnelGenerator::new(data);
         let domain_tree = generator.domain_tree();
         let mut portal = generator.portal(&domain_tree);
         let mut model = generator.model(&portal, domain_tree);
