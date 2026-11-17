@@ -115,10 +115,6 @@ import SwiftUI
     var resource: Resource
     @Environment(\.openURL) var openURL
 
-    private var displayAddress: String {
-      resource.addressDescription ?? resource.address ?? "(no address)"
-    }
-
     var body: some View {
       Section(header: Text("Resource")) {
         HStack {
@@ -141,48 +137,61 @@ import SwiftUI
           )
         }
 
+        if let description = resource.addressDescription {
+          HStack {
+            Text("DESCRIPTION")
+              .bold()
+              .font(.system(size: 14))
+              .foregroundColor(.secondary)
+              .frame(width: 80, alignment: .leading)
+            if let url = URL(string: description), url.host != nil {
+              Button(
+                action: {
+                  openURL(url)
+                },
+                label: {
+                  Text(description)
+                    .foregroundColor(.blue)
+                    .underline()
+                    .font(.system(size: 16))
+                }
+              )
+            } else {
+              Text(description)
+            }
+          }
+          .contextMenu {
+            Button(
+              action: {
+                Clipboard.copy(description)
+              },
+              label: {
+                Text("Copy description")
+                Image(systemName: "doc.on.doc")
+              }
+            )
+          }
+        }
+
         HStack {
           Text("ADDRESS")
             .bold()
             .font(.system(size: 14))
             .foregroundColor(.secondary)
             .frame(width: 80, alignment: .leading)
-          if let url = URL(string: displayAddress), url.host != nil {
+          Text(resource.address ?? "(no address)")
+        }
+        .contextMenu {
+          if let address = resource.address {
             Button(
               action: {
-                openURL(url)
+                Clipboard.copy(address)
               },
               label: {
-                Text(displayAddress)
-                  .foregroundColor(.blue)
-                  .underline()
-                  .font(.system(size: 16))
-                  .contextMenu {
-                    Button(
-                      action: {
-                        Clipboard.copy(displayAddress)
-                      },
-                      label: {
-                        Text("Copy address")
-                        Image(systemName: "doc.on.doc")
-                      }
-                    )
-                  }
+                Text("Copy address")
+                Image(systemName: "doc.on.doc")
               }
             )
-          } else {
-            Text(displayAddress)
-              .contextMenu {
-                Button(
-                  action: {
-                    Clipboard.copy(displayAddress)
-                  },
-                  label: {
-                    Text("Copy address")
-                    Image(systemName: "doc.on.doc")
-                  }
-                )
-              }
           }
         }
 
