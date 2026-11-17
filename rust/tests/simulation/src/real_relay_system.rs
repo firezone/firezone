@@ -102,8 +102,6 @@ pub(crate) struct RealRelaySystem {
     credentials: Option<Credentials>,
 
     client: Host<RealAllocation>,
-    roams: u16,
-    seeds: u64,
 
     /// The data that arrived at the peers.
     at_peers: Vec<Transmit>,
@@ -120,6 +118,8 @@ pub(crate) struct RealRelaySystem {
 struct RealAllocation {
     /// Absent while the client has given up on the relay and the portal did not hand it back.
     allocation: Option<Allocation>,
+    /// How many allocations the client started; each gets a seed of its own.
+    seeds: u64,
     /// The relay addresses the allocation announced and did not invalidate since.
     relay_addresses: BTreeSet<SocketAddr>,
     relay_addresses_changed: bool,
@@ -148,8 +148,6 @@ impl RealRelaySystem {
             portal_reachable: true,
             credentials: None,
             client: host(RealAllocation::default(), CLIENT_PORT, ip4, ip6),
-            roams: 0,
-            seeds: 0,
             at_peers: Vec::new(),
             last_from_client: None,
             interference: Interference::default(),
@@ -183,14 +181,11 @@ impl RealRelaySystem {
                 }
             }
             Transition::Roam { stack } => {
-                self.roams += 1;
-                self.seeds += 1;
                 let (ip4, ip6) = interfaces(*stack, CLIENT_IP4, CLIENT_IP6);
-                let seed = seed(self.seeds);
 
-                self.client.port = CLIENT_PORT + self.roams;
+                self.client.port += 1;
                 self.client.update_interface(ip4, ip6);
-                self.client.exec_mut(|c| c.restart(now, seed));
+                self.client.exec_mut(|c| c.restart(now));
             }
             Transition::RebootRelay => {
                 self.relay_boots += 1;
@@ -340,14 +335,13 @@ impl RealRelaySystem {
             relay.server.public_address(),
             expire_at,
         );
-        self.seeds += 1;
         let allocation = Allocation::new(
             server,
             Username::new(username).expect("username is short enough"),
             password,
             Realm::new(realm).expect("realm is short enough"),
             now,
-            seed(self.seeds),
+            self.client.exec_mut(RealAllocation::next_seed),
         );
 
         self.client.exec_mut(|c| {
@@ -622,11 +616,22 @@ impl RealAllocation {
         transmits
     }
 
-    fn restart(&mut self, now: Instant, seed: [u8; 32]) {
+    fn restart(&mut self, now: Instant) {
+        let seed = self.next_seed();
+
         if let Some(allocation) = &mut self.allocation {
             allocation.restart(now, seed);
             self.forget_relay_addresses();
         }
+    }
+
+    fn next_seed(&mut self) -> [u8; 32] {
+        self.seeds += 1;
+
+        let mut seed = [0u8; 32];
+        seed[..8].copy_from_slice(&self.seeds.to_be_bytes());
+
+        seed
     }
 
     fn forget_relay_addresses(&mut self) {
@@ -697,13 +702,6 @@ fn datagram(src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8]) -> Transmi
         payload: Bytes::copied_from(payload),
         ecn: Ecn::NonEct,
     }
-}
-
-fn seed(n: u64) -> [u8; 32] {
-    let mut seed = [0u8; 32];
-    seed[..8].copy_from_slice(&n.to_be_bytes());
-
-    seed
 }
 
 #[cfg(test)]
