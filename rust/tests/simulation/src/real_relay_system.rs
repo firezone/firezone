@@ -78,11 +78,12 @@ const PEER_IP6: SocketAddr = SocketAddr::new(
     40000,
 );
 
-/// The smallest WireGuard data message: the relay only relays WireGuard and STUN.
-const PAYLOAD: [u8; 32] = {
-    let mut payload = [0u8; 32];
-    payload[0] = 4;
-    payload
+/// A WireGuard keepalive, which is a data message with an empty payload: the relay only relays
+/// WireGuard and STUN.
+const WIREGUARD_KEEPALIVE: [u8; 32] = {
+    let mut message = [0u8; 32];
+    message[0] = 4;
+    message
 };
 
 /// The client, the relay, the portal and the network between them.
@@ -270,14 +271,17 @@ impl RealRelaySystem {
                 .collect::<Vec<_>>();
             assert_eq!(
                 relayed,
-                vec![(Some(address), peer, PAYLOAD.to_vec())],
+                vec![(Some(address), peer, WIREGUARD_KEEPALIVE.to_vec())],
                 "The relay does not pass the client's data on to the peer from the relay address"
             );
 
             let now = self.clock.now();
             self.client.exec_mut(|c| c.received.clear());
-            self.transmits
-                .push(datagram(Some(peer), address, &PAYLOAD), LATENCY, now);
+            self.transmits.push(
+                datagram(Some(peer), address, &WIREGUARD_KEEPALIVE),
+                LATENCY,
+                now,
+            );
             self.deliver();
             assert_eq!(
                 self.client.inner().received,
@@ -290,7 +294,7 @@ impl RealRelaySystem {
     /// Has the client send data to a peer through the relay, which takes a channel to the peer.
     fn send_to_peer(&mut self, peer: SocketAddr) -> bool {
         let now = self.clock.now();
-        let mut payload = channel_data::channel_data_packet_buffer(&PAYLOAD);
+        let mut payload = channel_data::channel_data_packet_buffer(&WIREGUARD_KEEPALIVE);
         let encoded = self.client.exec_mut(|c| {
             c.allocation
                 .as_mut()?
