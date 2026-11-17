@@ -20,6 +20,7 @@ use connlib_model::IpStack;
 use ip_packet::Ecn;
 use is::CandidateKind;
 use relay_client_proto::{Allocation, Event, channel_data};
+use relay_server_proto::ChannelData;
 use snownet::Transmit;
 use stun_codec::rfc5389::{
     attributes::{Realm, Username},
@@ -187,9 +188,11 @@ impl RealRelaySystem {
 
         // ChannelData is not authenticated: the relay passes on what arrives from the client's
         // socket on a channel the client bound.
-        if let Some(payload) = from_client.filter(|p| matches!(p.first(), Some(64..=127))) {
-            self.at_peers
-                .retain(|t| payload.get(4..) != Some(&t.payload[..]));
+        if let Some(message) = from_client
+            .as_deref()
+            .and_then(|p| ChannelData::parse(p).ok())
+        {
+            self.at_peers.retain(|t| message.data() != &t.payload[..]);
         }
 
         assert!(
