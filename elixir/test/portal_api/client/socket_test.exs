@@ -1350,6 +1350,42 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.id == existing.id
     end
 
+    test "an unattested connect resolves another actor's device with the same firezone_id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing = client_fixture(account: account, actor: actor_fixture(account: account), firezone_id: "fz-shared")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Shared", "firezone_id" => "fz-shared"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.id == existing.id
+    end
+
+    test "an unattested connect resolves the most recently seen of rows sharing a firezone_id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      older =
+        [account: account, actor: actor_fixture(account: account), firezone_id: "fz-dup"]
+        |> client_fixture()
+        |> record_last_seen(DateTime.add(DateTime.utc_now(), -2, :day))
+
+      newer =
+        [account: account, actor: actor_fixture(account: account), firezone_id: "fz-dup"]
+        |> client_fixture()
+        |> record_last_seen(DateTime.add(DateTime.utc_now(), -1, :day))
+
+      changeset = device_trust_changeset(account, actor, %{"name" => "Dup", "firezone_id" => "fz-dup"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.id == newer.id
+      refute client.id == older.id
+    end
+
     test "an unattested connect with no match inserts a new device", %{
       account: account,
       actor: actor,
