@@ -22,6 +22,7 @@ mod real_relay;
 mod real_relay_system;
 mod real_tunnel;
 mod real_tunnel_system;
+mod relay_generator;
 mod relay_model;
 mod relay_transition;
 mod resource;
@@ -33,7 +34,6 @@ mod tunnel_transition;
 
 use std::time::Instant;
 
-use arbitrary::Unstructured;
 use chrono::{DateTime, Utc};
 use tracing_subscriber::{
     EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
@@ -112,9 +112,9 @@ pub fn run_tunnel(data: &[u8], now: Instant) {
 pub fn run_relay(data: &[u8], now: Instant) {
     let _guard = init_subscriber();
 
-    let mut u = Unstructured::new(data);
-    let relay = real_relay_system::arbitrary_ip_stack(&mut u);
-    let client = real_relay_system::arbitrary_ip_stack(&mut u);
+    let mut generator = relay_generator::RelayGenerator::new(data);
+    let relay = generator.ip_stack();
+    let client = generator.ip_stack();
 
     let mut model = relay_model::RelayModel::default();
     let mut system = real_relay_system::RealRelaySystem::new(relay, client, now);
@@ -122,11 +122,11 @@ pub fn run_relay(data: &[u8], now: Instant) {
     system.check(&model, true);
 
     for applied in 0..MAX_RELAY_TRANSITIONS {
-        if u.is_empty() {
+        if generator.is_empty() {
             break;
         }
 
-        let (transition, loss) = relay_transition::Transition::arbitrary(&mut u);
+        let (transition, loss) = generator.transition();
 
         tracing::debug!("Applying transition {applied}: {transition:?} with {loss:?}");
 

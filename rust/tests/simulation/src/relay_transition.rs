@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use arbitrary::Unstructured;
 use connlib_model::IpStack;
 
 /// What can happen to the client, the relay, the portal and the network between them.
@@ -74,50 +73,6 @@ pub(crate) struct Loss {
     pub(crate) to_client: bool,
 }
 
-impl Transition {
-    pub(crate) fn arbitrary(u: &mut Unstructured<'_>) -> (Self, Loss) {
-        const ADVANCE_SECS: [u64; 8] = [5, 30, 120, 360, 660, 960, 1860, 3660];
-        const PARTITION_SECS: [u64; 4] = [2, 9, 40, 720];
-
-        let transition = match int(u, 15) {
-            0..=4 => Self::Advance {
-                duration: Duration::from_secs(ADVANCE_SECS[int(u, 7)]),
-            },
-            5 => Self::RotateCredentials,
-            6..=7 => Self::Refresh,
-            8 => Self::Roam {
-                stack: match (bool(u), bool(u)) {
-                    (true, false) => IpStack::Ipv4Only,
-                    (false, true) => IpStack::Ipv6Only,
-                    (true, true) | (false, false) => IpStack::Dual,
-                },
-            },
-            9 => Self::RebootRelay,
-            10 => Self::Partition {
-                duration: Duration::from_secs(PARTITION_SECS[int(u, 3)]),
-            },
-            11 => Self::PortalOutage,
-            12 => Self::PortalRecovers,
-            _ => Self::Garbage {
-                target: match int(u, 2) {
-                    0 => Target::RelayFromForeign,
-                    1 => Target::RelayFromClient,
-                    _ => Target::Client,
-                },
-                parse: bool(u),
-                authenticate: bool(u),
-                datagram: Garbage::arbitrary(u),
-            },
-        };
-        let loss = Loss {
-            to_relay: bool(u),
-            to_client: bool(u),
-        };
-
-        (transition, loss)
-    }
-}
-
 impl Garbage {
     /// Flips the bits of `template` that are set in our bytes; what we have beyond it is appended.
     pub(crate) fn apply_to(&self, template: &[u8]) -> Vec<u8> {
@@ -130,20 +85,4 @@ impl Garbage {
 
         datagram
     }
-
-    fn arbitrary(u: &mut Unstructured<'_>) -> Self {
-        let mutate = bool(u);
-        let len = int(u, 255).min(u.len());
-        let bytes = u.bytes(len).unwrap_or_default().to_vec();
-
-        Self { mutate, bytes }
-    }
-}
-
-pub(crate) fn int(u: &mut Unstructured<'_>, max: u8) -> usize {
-    usize::from(u.int_in_range(0..=max).unwrap_or(0))
-}
-
-fn bool(u: &mut Unstructured<'_>) -> bool {
-    int(u, 1) == 1
 }

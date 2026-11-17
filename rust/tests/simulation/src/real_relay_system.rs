@@ -14,7 +14,6 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use arbitrary::Unstructured;
 use bufferpool::Bytes;
 use chrono::DateTime;
 use connlib_model::IpStack;
@@ -33,7 +32,7 @@ use crate::{
     network::{EdgeConfig, ExecMutScope, Host, PollTimeout},
     real_relay::RealRelay,
     relay_model::{Environment, Observed, RelayModel},
-    relay_transition::{self, Garbage, Loss, Target, Transition},
+    relay_transition::{Garbage, Loss, Target, Transition},
     stun,
 };
 
@@ -691,15 +690,6 @@ fn interfaces(
         IpStack::Dual => (Some(ip4), Some(ip6)),
         IpStack::Ipv4Only => (Some(ip4), None),
         IpStack::Ipv6Only => (None, Some(ip6)),
-    }
-}
-
-/// The address families of a host.
-pub(crate) fn arbitrary_ip_stack(u: &mut Unstructured<'_>) -> IpStack {
-    match relay_transition::int(u, 2) {
-        1 => IpStack::Ipv4Only,
-        2 => IpStack::Ipv6Only,
-        _ => IpStack::Dual,
     }
 }
 
