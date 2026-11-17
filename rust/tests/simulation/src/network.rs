@@ -524,6 +524,19 @@ impl RoutingTable {
         self.nats.keys().copied()
     }
 
+    /// The edge of each NAT device that two or more Clients sit behind.
+    pub(crate) fn edges_shared_by_clients(&self) -> impl Iterator<Item = EdgeConfig> + '_ {
+        self.nats.iter().filter_map(|(ip, nat)| {
+            let clients = self
+                .attachments
+                .iter()
+                .filter(|(id, attached)| matches!(id, HostId::Client(_)) && *attached == ip)
+                .count();
+
+            (clients >= 2).then(|| nat.edge_config())
+        })
+    }
+
     /// The edge of a host behind a NAT device, i.e. a Client or a Gateway.
     pub(crate) fn edge_config(&self, id: impl Into<HostId>) -> EdgeConfig {
         self.nats[&self.attachments[&id.into()]].edge_config()
