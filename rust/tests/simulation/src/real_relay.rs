@@ -18,10 +18,8 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username};
-use stun_codec::rfc5766::{
-    attributes::RequestedTransport, errors::InsufficientCapacity, methods::ALLOCATE,
-};
-use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId};
+use stun_codec::rfc5766::{errors::InsufficientCapacity, methods::ALLOCATE};
+use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 use uuid::Uuid;
 
 /// The relay server, shared by both simulations.
@@ -105,41 +103,6 @@ impl RealRelay {
         let (username, password) = self.make_credentials(username, auth_secret, expires_at);
 
         (relay_socket, username, password, "firezone".to_owned())
-    }
-
-    /// Obtains a nonce for `client` the way a client does, by provoking a `401` and reading it back.
-    pub(crate) fn issue_nonce(
-        &mut self,
-        client: SocketAddr,
-        now: Instant,
-        now_utc: SystemTime,
-    ) -> Nonce {
-        let mut allocate = Message::<Attribute>::new(
-            MessageClass::Request,
-            ALLOCATE,
-            TransactionId::new([0u8; 12]),
-        );
-        allocate.add_attribute(RequestedTransport::new(17));
-
-        let bytes = MessageEncoder::new()
-            .encode_into_bytes(allocate)
-            .expect("a well-formed ALLOCATE encodes");
-        self.server
-            .handle_client_input(&bytes, ClientSocket::new(client), now, now_utc);
-
-        let Some(relay_server_proto::Command::SendMessage { payload, .. }) =
-            self.server.next_command()
-        else {
-            panic!("the relay answers an unauthenticated ALLOCATE");
-        };
-
-        MessageDecoder::<Attribute>::new()
-            .decode_from_bytes(&payload)
-            .expect("the relay's response decodes")
-            .expect("the relay's response is a valid message")
-            .get_attribute::<Nonce>()
-            .cloned()
-            .expect("a `401` carries a nonce")
     }
 
     fn matching_listen_socket(

@@ -44,7 +44,8 @@ pub(crate) enum Transition {
 pub(crate) enum Target {
     /// To the relay, from a socket on the internet that has nothing to do with the client.
     RelayFromForeign(Crafting),
-    /// To the relay, from the client's own socket and device, as if the two had gone out of sync.
+    /// To the relay, from the client's own socket, where it meets the client's allocation and
+    /// channels.
     RelayFromClient(Crafting),
     /// To the client, claiming to be from the relay.
     Client,
@@ -55,8 +56,6 @@ pub(crate) enum Target {
 pub(crate) struct Crafting {
     /// Decode the datagram as a STUN message and re-encode it before handing it over.
     pub(crate) parse: bool,
-    /// Give the message a nonce the relay issued and a matching HMAC.
-    pub(crate) authenticate: bool,
     /// Start from the last control datagram the client sent instead of from nothing.
     pub(crate) mutate: bool,
 }

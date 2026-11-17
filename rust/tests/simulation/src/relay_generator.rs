@@ -29,7 +29,6 @@ impl<'a> RelayGenerator<'a> {
 
     pub(crate) fn model(&mut self) -> RelayModel {
         let relay = ModelHost {
-            device: "relay",
             ip4: Ipv4Addr::new(198, 51, 100, 1),
             ip6: Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 1),
             port: 3478,
@@ -37,7 +36,6 @@ impl<'a> RelayGenerator<'a> {
             latency: self.latency(50),
         };
         let client = ModelHost {
-            device: "client",
             ip4: Ipv4Addr::new(203, 0, 113, 10),
             ip6: Ipv6Addr::new(0x2001, 0xdb8, 2, 0, 0, 0, 0, 10),
             port: 50000,
@@ -45,7 +43,6 @@ impl<'a> RelayGenerator<'a> {
             latency: self.latency(250),
         };
         let foreign = ModelHost {
-            device: "foreign",
             ip4: Ipv4Addr::new(203, 0, 113, 200),
             ip6: Ipv6Addr::new(0x2001, 0xdb8, 2, 0, 0, 0, 0, 200),
             port: 7000,
@@ -53,7 +50,6 @@ impl<'a> RelayGenerator<'a> {
             latency: Duration::ZERO,
         };
         let peer = ModelHost {
-            device: "peer",
             ip4: Ipv4Addr::new(192, 0, 2, 10),
             ip6: Ipv6Addr::new(0x2001, 0xdb8, 3, 0, 0, 0, 0, 10),
             port: 40000,
@@ -121,7 +117,6 @@ impl<'a> RelayGenerator<'a> {
     fn crafting(&mut self) -> Crafting {
         Crafting {
             parse: self.bool(),
-            authenticate: self.bool(),
             mutate: self.bool(),
         }
     }

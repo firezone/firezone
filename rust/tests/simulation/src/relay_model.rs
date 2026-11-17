@@ -40,8 +40,6 @@ pub(crate) struct RelayModel {
 /// A host with an address of each family, of which it uses those in `stack`.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ModelHost {
-    /// The device that the host's credentials name.
-    pub(crate) device: &'static str,
     pub(crate) ip4: Ipv4Addr,
     pub(crate) ip6: Ipv6Addr,
     pub(crate) port: u16,
@@ -80,20 +78,16 @@ impl RelayModel {
         let may_interrupt = match transition {
             // An allocation cannot take new credentials, so they replace it.
             Transition::RotateCredentials => true,
-            Transition::Roam { .. }
-            | Transition::RebootRelay
-            | Transition::Partition { .. }
-            | Transition::Garbage {
-                target: Target::RelayFromClient(_),
-                ..
-            } => true,
+            Transition::Roam { .. } | Transition::RebootRelay | Transition::Partition { .. } => {
+                true
+            }
             // The client gives up on the relay if a single datagram of this check is lost.
             Transition::Refresh => observed.lost_datagram,
             Transition::Advance { .. }
             | Transition::PortalOutage
             | Transition::PortalRecovers
             | Transition::Garbage {
-                target: Target::RelayFromForeign(_) | Target::Client,
+                target: Target::RelayFromForeign(_) | Target::RelayFromClient(_) | Target::Client,
                 ..
             } => false,
         };

@@ -50,11 +50,8 @@ const MAX_HANDOVERS: usize = 3;
 /// More time than the client needs to give up on a relay that often.
 const MAX_SETTLE: Duration = Duration::from_secs(60);
 
-/// How long it takes at most until a client and a relay that went out of sync agree again.
-///
-/// The client notices a lost allocation at its next refresh; a channel that the relay bound
-/// without the client knowing is in the way until its binding is gone.
-const RESYNC: Duration = Duration::from_secs(16 * 60);
+/// The device that the client's credentials name.
+const CLIENT_DEVICE: &str = "client";
 
 /// A WireGuard keepalive, which is a data message with an empty payload: the relay only relays
 /// WireGuard and STUN.
@@ -137,12 +134,13 @@ impl RealRelaySystem {
         self.interference = interference;
         self.observed = Observed::default();
         self.client.exec_mut(|c| c.relay_addresses_changed = false);
+        let mut from_client = None;
 
         match transition {
             Transition::Advance { duration } => self.advance(model, *duration),
             Transition::RotateCredentials => {
                 if self.portal_reachable && self.client.inner().allocation.is_some() {
-                    self.connect(model);
+                    self.connect();
                 }
             }
             Transition::Refresh => {
@@ -175,13 +173,10 @@ impl RealRelaySystem {
             Transition::PortalRecovers => self.portal_reachable = true,
             Transition::Garbage { target, datagram } => match target {
                 Target::RelayFromForeign(crafting) => {
-                    self.garbage_to_relay(model, false, *crafting, datagram)
+                    self.garbage_to_relay(model, false, *crafting, datagram);
                 }
                 Target::RelayFromClient(crafting) => {
-                    self.garbage_to_relay(model, true, *crafting, datagram);
-                    self.advance(model, RESYNC);
-                    // The relay may pass on what comes from the client's socket.
-                    self.at_peers.clear();
+                    from_client = self.garbage_to_relay(model, true, *crafting, datagram);
                 }
                 Target::Client => self.garbage_to_client(datagram),
             },
@@ -189,6 +184,13 @@ impl RealRelaySystem {
 
         self.settle(model);
         self.interference = Interference::default();
+
+        // ChannelData is not authenticated: the relay passes on what arrives from the client's
+        // socket on a channel the client bound.
+        if let Some(payload) = from_client.filter(|p| matches!(p.first(), Some(64..=127))) {
+            self.at_peers
+                .retain(|t| payload.get(4..) != Some(&t.payload[..]));
+        }
 
         assert!(
             self.at_peers.is_empty(),
@@ -277,12 +279,12 @@ impl RealRelaySystem {
     }
 
     /// The portal hands the client the relay with fresh credentials; the client starts over.
-    fn connect(&mut self, model: &RelayModel) {
+    fn connect(&mut self) {
         let now = self.clock.now();
 
         let relay = self.relay.inner();
         let (server, username, password, realm) = relay.explode(
-            model.client.device,
+            CLIENT_DEVICE,
             relay.server.auth_secret(),
             relay.server.public_address(),
             SystemTime::UNIX_EPOCH + CREDENTIALS_EXPIRE_AT,
@@ -303,33 +305,25 @@ impl RealRelaySystem {
         self.credentials_boot = Some(self.relay_boots);
     }
 
+    /// Sends the relay a datagram made from the garbage, returning what it sent.
     fn garbage_to_relay(
         &mut self,
         model: &RelayModel,
         from_client: bool,
         crafting: Crafting,
         garbage: &Garbage,
-    ) {
+    ) -> Option<Vec<u8>> {
         let now = self.clock.now();
         let template = self.last_from_client.clone().filter(|_| crafting.mutate);
-        let (src, device) = match from_client {
-            true => {
-                let src = template
-                    .as_ref()
-                    .and_then(|t| t.src)
-                    .filter(|s| self.client.sending_socket_for(s.ip()) == Some(*s))
-                    .unwrap_or_else(|| any_socket(&self.client));
-
-                (src, model.client.device)
-            }
-            false => (
-                model.foreign.socket_for(any_socket(&self.relay).ip()),
-                model.foreign.device,
-            ),
+        let src = match from_client {
+            true => template
+                .as_ref()
+                .and_then(|t| t.src)
+                .filter(|s| self.client.sending_socket_for(s.ip()) == Some(*s))
+                .unwrap_or_else(|| any_socket(&self.client)),
+            false => model.foreign.socket_for(any_socket(&self.relay).ip()),
         };
-        let Some(dst) = self.relay.sending_socket_for(src.ip()) else {
-            return;
-        };
+        let dst = self.relay.sending_socket_for(src.ip())?;
         let mut payload = garbage.apply_to(
             template
                 .as_ref()
@@ -338,20 +332,12 @@ impl RealRelaySystem {
         );
 
         if crafting.parse {
-            let now_utc = self.clock.now();
-            let nonce = crafting
-                .authenticate
-                .then(|| self.relay.exec_mut(|r| r.issue_nonce(src, now, now_utc)));
-            let Some(repaired) =
-                stun::repair(&payload, nonce.as_ref(), device, &self.relay.inner().server)
-            else {
-                return;
-            };
-
-            payload = repaired;
+            payload = stun::reencode(&payload)?;
         }
 
         self.relay.receive(datagram(Some(src), dst, &payload), now);
+
+        Some(payload)
     }
 
     fn garbage_to_client(&mut self, garbage: &Garbage) {
@@ -386,7 +372,7 @@ impl RealRelaySystem {
             }
 
             handovers += 1;
-            self.connect(model);
+            self.connect();
         }
     }
 
