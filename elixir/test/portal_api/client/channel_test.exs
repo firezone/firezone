@@ -48,7 +48,8 @@ defmodule PortalAPI.Client.ChannelTest do
     # Socket.connect does
     device = %{
       fetch_device!(client)
-      | token_id: subject.credential.id,
+      | actor_id: subject.actor.id,
+        token_id: subject.credential.id,
         public_key: Portal.DeviceFixtures.generate_public_key(),
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
@@ -100,7 +101,8 @@ defmodule PortalAPI.Client.ChannelTest do
   defp with_session(client, subject, version) do
     %{
       client
-      | token_id: subject.credential.id,
+      | actor_id: subject.actor.id,
+        token_id: subject.credential.id,
         public_key: Portal.DeviceFixtures.generate_public_key(),
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
@@ -421,6 +423,20 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
       refute_push "init", _init_payload
+    end
+
+    test "joins as the actor of its token, not the actor the row recorded", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      other = actor_fixture(account: account)
+      other |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+      client |> Ecto.Changeset.change(actor_id: other.id) |> Repo.update!()
+
+      join_channel(client, subject)
+
+      assert_push "init", _init_payload
     end
 
     test "disconnects when the account is disabled before it joins", %{
@@ -2868,6 +2884,27 @@ defmodule PortalAPI.Client.ChannelTest do
       assert updated.firezone_id_merged? == connected.firezone_id_merged?
       assert updated.account == connected.account
       assert updated.actor == connected.actor
+    end
+
+    test "for client updates keeps the actor of this connection's token", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      other = actor_fixture(account: account)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :update,
+        old_struct: broadcast_struct(client),
+        struct: broadcast_struct(%{client | actor_id: other.id})
+      })
+
+      assert %{assigns: %{client: updated}} = :sys.get_state(socket.channel_pid)
+      assert updated.actor_id == subject.actor.id
     end
 
     test "for client deletions disconnects socket", %{

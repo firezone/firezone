@@ -28,7 +28,7 @@ use tunnel_proto::dns;
 
 use crate::{
     fake_portal::FakePortal,
-    network::EdgeConfig,
+    network::{EdgeConfig, FilterMode, Mapping},
     probe::{
         Answer, DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome,
         ExpectedProbe, FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionRemote, Remote,
@@ -299,6 +299,7 @@ impl Recorder {
         record_dns_refresh_feedback(model, state);
         record_dns_proxy_ip_subset_feedback(state);
         record_shared_dns_resource_gateway_feedback(model);
+        record_shared_nat_feedback(model);
         record_live_dns_flow_feedback(model, state);
         self.record_dns_query_feedback(model, state, portal);
         for _ in self
@@ -426,17 +427,11 @@ impl Recorder {
             ),
         );
 
-        let origin = nat_feedback(path.origin, attempt.duration);
-        let remote = nat_feedback(path.remote, attempt.duration);
-        if !origin.behind_nat && !remote.behind_nat {
-            return;
-        }
-
         record_with_path!(path;
-            origin.expiry_elapsed,
-            remote.expiry_elapsed,
-            origin.inbound_refreshes,
-            remote.inbound_refreshes,
+            attempt.duration >= path.origin.expiry.timeout,
+            attempt.duration >= path.remote.expiry.timeout,
+            path.origin.expiry.inbound_refreshes,
+            path.remote.expiry.inbound_refreshes,
         );
     }
 
@@ -705,8 +700,8 @@ fn remote_path_feedback(
         }
         Remote::Client(peer) => peer,
     };
-    let origin_edge = model.clients.get(&origin)?.edge_config();
-    let remote_edge = model.clients.get(&peer)?.edge_config();
+    let origin_edge = model.network.edge_config(origin);
+    let remote_edge = model.network.edge_config(peer);
     let selected = state
         .clients
         .get(&origin)?
@@ -717,36 +712,14 @@ fn remote_path_feedback(
     Some(PathFeedback::new(origin_edge, remote_edge, selected))
 }
 
-struct NatFeedback {
-    behind_nat: bool,
-    inbound_refreshes: bool,
-    expiry_elapsed: bool,
-}
-
-fn nat_feedback(edge: EdgeConfig, idle: Duration) -> NatFeedback {
-    let EdgeConfig::Nat(_, _, expiry) = edge else {
-        return NatFeedback {
-            behind_nat: false,
-            inbound_refreshes: false,
-            expiry_elapsed: false,
-        };
-    };
-
-    NatFeedback {
-        behind_nat: true,
-        inbound_refreshes: expiry.inbound_refreshes,
-        expiry_elapsed: idle >= expiry.timeout,
-    }
-}
-
 fn gateway_path_feedback(
     model: &TunnelModel,
     state: &RealTunnelSystem,
     origin: ClientId,
     gateway: GatewayId,
 ) -> Option<PathFeedback> {
-    let origin_edge = model.clients.get(&origin)?.edge_config();
-    let gateway_edge = model.gateways.get(&gateway)?.edge_config();
+    let origin_edge = model.network.edge_config(origin);
+    let gateway_edge = model.network.edge_config(gateway);
     let selected = state
         .clients
         .get(&origin)?
@@ -1043,6 +1016,19 @@ fn record_dns_proxy_ip_subset_feedback(state: &RealTunnelSystem) {
                 next.iter().any(|ip| ip.is_ipv6()),
             );
         }
+    }
+}
+
+/// Records the mode of each NAT device that two or more Clients share.
+fn record_shared_nat_feedback(model: &TunnelModel) {
+    for edge in model.network.edges_shared_by_clients() {
+        let flags = pack(&[
+            edge.mapping == Mapping::EndpointDependent,
+            edge.filter == FilterMode::AddressRestricted,
+            edge.filter == FilterMode::PortRestricted,
+            edge.expiry.inbound_refreshes,
+        ]);
+        record_value!(flags | (edge.expiry.timeout.as_secs() as u16) << 4);
     }
 }
 

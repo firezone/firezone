@@ -9,6 +9,7 @@ defmodule PortalAPI.Schemas.Client do
              for: Portal.Device,
              internal: [
                :account_id,
+               :actor,
                :attested?,
                :attested_until,
                :posture,
@@ -45,7 +46,9 @@ defmodule PortalAPI.Schemas.Client do
           example: "6ecc106b-75c1-48a5-846c-14782180c1ff",
           type: :string,
           format: :uuid,
-          description: "Actor ID"
+          description:
+            "ID of the Actor who connected from this Client most recently. " <>
+              "`00000000-0000-0000-0000-000000000000` when none of its Actors remain."
         },
         name: %Schema{
           example: "John's Macbook Air",

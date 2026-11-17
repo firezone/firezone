@@ -94,6 +94,23 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ client.slug
     end
 
+    test "lists a client whose users were all deleted", %{conn: conn, account: account, actor: actor} do
+      former = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: former)
+      Repo.delete!(former)
+      conn = authorize_conn(conn, actor)
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/devices")
+
+      assert html =~ client.slug
+      assert html =~ "No user"
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/devices/#{client.id}")
+
+      assert html =~ client.name
+      refute html =~ "Owner</"
+    end
+
     test "filters devices by client name, slug, or actor name/email", %{
       conn: conn,
       account: account,
@@ -108,6 +125,30 @@ defmodule PortalWeb.DevicesTest do
       for search <- [client.name, client.slug, owner.name, owner.email] do
         {:ok, lv, _html} =
           live(conn, ~p"/#{account}/devices?#{%{"devices_filter[search]" => search}}")
+
+        assert has_element?(lv, "#device-#{client.id}")
+        refute has_element?(lv, "#device-#{other_client.id}")
+      end
+    end
+
+    test "finds a device by any of its users", %{conn: conn, account: account, actor: actor} do
+      later = actor_fixture(account: account, name: "Later Person", email: "later@example.com")
+      client = client_fixture(account: account, name: "Shared Laptop")
+      other_client = client_fixture(account: account, actor: actor, name: "Other Laptop")
+      now = DateTime.utc_now()
+
+      Repo.insert!(%Portal.DeviceActor{
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: later.id,
+        first_seen_at: now,
+        last_seen_at: now
+      })
+
+      conn = authorize_conn(conn, actor)
+
+      for search <- [later.name, later.email] do
+        {:ok, lv, _html} = live(conn, ~p"/#{account}/devices?#{%{"devices_filter[search]" => search}}")
 
         assert has_element?(lv, "#device-#{client.id}")
         refute has_element?(lv, "#device-#{other_client.id}")

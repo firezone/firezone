@@ -556,8 +556,7 @@ impl TunnelModel {
                 self.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
-                client.migrate_nat(*nat_ip4);
-                let added = self.network.add_host(*client_id, client);
+                let added = self.network.add_host(*client_id, client, *nat_ip4);
                 debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
@@ -618,16 +617,22 @@ impl TunnelModel {
                     let gateway_edges = self
                         .gateways
                         .iter()
-                        .map(|(id, g)| (*id, (g.edge_config(), g.ip4.is_some(), g.ip6.is_some())))
+                        .map(|(id, g)| {
+                            let edge = self.network.edge_config(*id);
+                            (*id, (edge, g.ip4.is_some(), g.ip6.is_some()))
+                        })
                         .collect::<BTreeMap<_, _>>();
                     let client_edges = self
                         .clients
                         .iter()
-                        .map(|(id, c)| (*id, (c.edge_config(), c.ip4.is_some(), c.ip6.is_some())))
+                        .map(|(id, c)| {
+                            let edge = self.network.edge_config(*id);
+                            (*id, (edge, c.ip4.is_some(), c.ip6.is_some()))
+                        })
                         .collect::<BTreeMap<_, _>>();
 
                     for (client_id, client) in self.clients.iter_mut() {
-                        let client_edge = client.edge_config();
+                        let client_edge = self.network.edge_config(*client_id);
                         let client_has_ip4 = client.ip4.is_some();
                         let client_has_ip6 = client.ip6.is_some();
                         let unreachable_gateways = gateway_edges
@@ -1358,7 +1363,7 @@ impl TunnelModel {
             }
 
             self.relays.insert(*rid, new_relay.clone());
-            let added = self.network.add_host(*rid, new_relay);
+            let added = self.network.add_relay(*rid, new_relay);
             debug_assert!(added);
             self.node_may_lack_relays = false;
         }
@@ -1380,7 +1385,7 @@ impl TunnelModel {
 
         for (rid, new_relay) in new_relays {
             self.relays.insert(*rid, new_relay.clone());
-            let added = self.network.add_host(*rid, new_relay);
+            let added = self.network.add_relay(*rid, new_relay);
             debug_assert!(added);
         }
     }

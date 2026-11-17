@@ -954,7 +954,6 @@ defmodule Portal.Billing do
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
-    alias Portal.Device
     alias Portal.DeviceActor
 
     def get_account(account_id) do
@@ -1015,11 +1014,10 @@ defmodule Portal.Billing do
     end
 
     def actor_active_in_last_month?(%Account{} = account, actor_id) do
-      from(d in Device,
-        where: d.account_id == ^account.id,
-        where: d.actor_id == ^actor_id,
-        where: d.type == :client,
-        where: d.last_seen_at > ago(1, "month")
+      from(da in DeviceActor,
+        where: da.account_id == ^account.id,
+        where: da.actor_id == ^actor_id,
+        where: da.last_seen_at > ago(1, "month")
       )
       |> Safe.unscoped()
       |> Safe.exists?()

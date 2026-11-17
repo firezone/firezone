@@ -233,8 +233,7 @@ config :portal, Portal.OTLP.MetricsExporter,
   req_opts: [
     connect_options: [timeout: 1_000],
     receive_timeout: 5_000,
-    retry: :transient,
-    max_retries: 2
+    max_retries: 4
   ]
 
 config :portal, Portal.OTLP.TracesExporter,
@@ -242,8 +241,7 @@ config :portal, Portal.OTLP.TracesExporter,
   req_opts: [
     connect_options: [timeout: 1_000],
     receive_timeout: 5_000,
-    retry: :transient,
-    max_retries: 2
+    max_retries: 4
   ]
 
 config :portal, Portal.SlugRegistry.Cache, max_entries: 10_000

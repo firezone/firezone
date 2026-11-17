@@ -520,6 +520,38 @@ defmodule Portal.Queue.CallbacksTest do
       assert_receive {:confirm_session_durability, ^session_ref}
     end
 
+    test "skips a firezone_id merge that another actor's device holds" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor, firezone_id: "fz-one")
+      _other = client_fixture(account: account, firezone_id: "fz-two")
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: actor.id,
+        firezone_id: "fz-two",
+        token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      assert 1 = on_flush.([{attrs, metadata}])
+      assert Repo.get_by!(Device, id: client.id, account_id: account.id).firezone_id == "fz-one"
+      assert_receive {:confirm_session_durability, ^session_ref}
+    end
+
     test "does not confirm durability when the session log write fails" do
       account = account_fixture()
       actor = actor_fixture(account: account)

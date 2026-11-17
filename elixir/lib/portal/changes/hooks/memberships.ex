@@ -30,7 +30,9 @@ defmodule Portal.Changes.Hooks.Memberships do
     alias Portal.Resource.DeviceMembershipCriteria
     alias Portal.Safe
 
-    # The actor's devices leave every pool that holds the group's devices.
+    # Devices left with no user in the group leave its pools. When the actor
+    # itself was deleted, its device_actors rows are already gone, so the
+    # check is on what remains rather than on who left.
     def delete_policy_authorizations_through_group_pools(%Portal.Membership{} = membership) do
       criteria = DeviceMembershipCriteria.actor_group(membership.group_id)
 
@@ -42,10 +44,10 @@ defmodule Portal.Changes.Hooks.Memberships do
       )
       |> join(:inner, [policy_authorizations: f], d in Portal.Device,
         on: d.account_id == f.account_id and d.id == f.receiving_device_id,
-        as: :receiver
+        as: :devices
       )
       |> where([resource: r], r.type == :device_pool and r.device_membership_criteria == ^criteria)
-      |> where([receiver: d], d.actor_id == ^membership.actor_id)
+      |> where(^dynamic(not (^DeviceMembershipCriteria.members(criteria, :all))))
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

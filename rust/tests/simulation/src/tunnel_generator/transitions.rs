@@ -22,7 +22,7 @@ use super::values::{
 use super::{dns_queries, packets};
 use crate::dns_records::record_ip;
 use crate::fake_portal::FakePortal;
-use crate::network::{EdgeConfig, Host};
+use crate::network::Host;
 use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::tunnel_model::TunnelModel;
@@ -260,6 +260,8 @@ pub(super) fn generate(
         K::RoamClient => {
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let (ip4, ip6) = arb_socket_ip_stack(g);
+            let nat_ips = state.network.nat_ips().collect::<Vec<_>>();
+            let nat_ip4 = nat_ips[g.choose_index(nat_ips.len())];
             // Mirror `tunnel_transition::roam_client`: both windows in 0..3000ms.
             let dead_window = Duration::from_millis(g.count(0, 2999) as u64);
             let portal_window = Duration::from_millis(g.count(0, 2999) as u64);
@@ -267,7 +269,7 @@ pub(super) fn generate(
                 client_id,
                 ip4,
                 ip6,
-                nat_ip4: g.nat_ip4(),
+                nat_ip4,
                 dead_window,
                 portal_window,
             }
@@ -298,7 +300,7 @@ pub(super) fn generate(
                 .map(|id| {
                     let seed = g.u64();
                     let latency = g.latency(50);
-                    let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4());
+                    let host = Host::new(seed, latency, 3478);
                     let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
                     (id, host)
                 })

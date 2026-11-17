@@ -9,6 +9,7 @@ defmodule PortalAPI.Schemas.Gateway do
              for: Portal.Device,
              internal: [
                :account_id,
+               :actor,
                :actor_id,
                :attested?,
                :attested_until,

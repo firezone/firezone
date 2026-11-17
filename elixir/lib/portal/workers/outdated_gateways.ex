@@ -133,11 +133,19 @@ defmodule Portal.Workers.OutdatedGateways do
           (fragment("split_part(?, '.', 1)::int", d.last_seen_version) == ^g_major and
              fragment("split_part(?, '.', 2)::int", d.last_seen_version) <= ^(g_minor - 2))
       )
-      |> join(:inner, [devices: d], a in Portal.Actor,
-        on: d.actor_id == a.id and d.account_id == a.account_id,
-        as: :actor
+      |> where(
+        [devices: d],
+        exists(
+          from(da in Portal.DeviceActor,
+            join: a in Portal.Actor,
+            on: a.account_id == da.account_id and a.id == da.actor_id,
+            where:
+              da.account_id == parent_as(:devices).account_id and
+                da.device_id == parent_as(:devices).id and
+                a.is_disabled == false
+          )
+        )
       )
-      |> where([actor: a], a.is_disabled == false)
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end

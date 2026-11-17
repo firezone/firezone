@@ -28,11 +28,6 @@ defmodule Portal.Actor do
     has_many :identities, Portal.ExternalIdentity, references: :id
     has_many :pending_identities, Portal.PendingIdentity, references: :id
 
-    has_many :clients, Portal.Device,
-      where: [type: :client],
-      preload_order: [desc: :inserted_at],
-      references: :id
-
     has_many :one_time_passcodes, Portal.OneTimePasscode, references: :id
     has_many :memberships, Portal.Membership, on_replace: :delete, references: :id
     has_many :groups, through: [:memberships, :group]

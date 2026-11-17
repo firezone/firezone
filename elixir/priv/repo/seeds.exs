@@ -19,6 +19,7 @@ defmodule Portal.Repo.Seeds do
     Defender,
     ExternalIdentity,
     Device,
+    DeviceActor,
     FlowLog,
     PolicyAuthorization,
     Google,
@@ -169,22 +170,39 @@ defmodule Portal.Repo.Seeds do
       for d <- 1..@load_devices_per_actor do
         n = index * @load_devices_per_actor + d
 
-        %{
-          account_id: account.id,
-          actor_id: actor.id,
-          type: :client,
-          name: "Load device #{n}",
-          firezone_id: "load-device-#{n}",
-          slug: "load-device-#{n}",
-          ipv4: {100, 80 + div(n, 65_536), rem(div(n, 256), 256), rem(n, 256)},
-          ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x18 + div(n, 65_536), rem(n, 65_536)},
-          inserted_at: now,
-          updated_at: now
-        }
+        {actor.id,
+         %{
+           id: Ecto.UUID.generate(),
+           account_id: account.id,
+           type: :client,
+           name: "Load device #{n}",
+           firezone_id: "load-device-#{n}",
+           slug: "load-device-#{n}",
+           ipv4: {100, 80 + div(n, 65_536), rem(div(n, 256), 256), rem(n, 256)},
+           ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x18 + div(n, 65_536), rem(n, 65_536)},
+           inserted_at: now,
+           updated_at: now
+         }}
       end
     end)
     |> Enum.chunk_every(5_000)
-    |> Enum.each(&Repo.insert_all(Device, &1))
+    |> Enum.each(fn devices ->
+      Repo.insert_all(Device, Enum.map(devices, &elem(&1, 1)), timeout: :infinity)
+
+      Repo.insert_all(
+        DeviceActor,
+        Enum.map(devices, fn {actor_id, device} ->
+          %{
+            account_id: account.id,
+            device_id: device.id,
+            actor_id: actor_id,
+            first_seen_at: now,
+            last_seen_at: now
+          }
+        end),
+        timeout: :infinity
+      )
+    end)
 
     {:ok, all_devices} =
       create_resource(
@@ -333,7 +351,6 @@ defmodule Portal.Repo.Seeds do
       )
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, subject.account.id)
-      |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
       |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
       |> Device.changeset()
       |> Safe.unscoped()
@@ -364,7 +381,19 @@ defmodule Portal.Repo.Seeds do
       )
       |> Repo.update!()
 
+    insert_device_actor(client, subject.actor.id, client.last_seen_at)
+
     {:ok, client}
+  end
+
+  defp insert_device_actor(device, actor_id, seen_at) do
+    Repo.insert!(%DeviceActor{
+      account_id: device.account_id,
+      device_id: device.id,
+      actor_id: actor_id,
+      first_seen_at: seen_at,
+      last_seen_at: seen_at
+    })
   end
 
   defp create_seed_policy_authorization(
@@ -2516,7 +2545,6 @@ defmodule Portal.Repo.Seeds do
       )
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, account.id)
-      |> Ecto.Changeset.put_change(:actor_id, member.person.actor.id)
       |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(member.person.actor))
       |> Device.changeset()
       |> Safe.unscoped()
@@ -2557,6 +2585,7 @@ defmodule Portal.Repo.Seeds do
       ] ++ attested
     )
     |> Repo.update!()
+    |> tap(&insert_device_actor(&1, member.person.actor.id, member.last_active_at))
   end
 
   defp fleet_user_agent(member) do
@@ -3008,7 +3037,6 @@ defmodule Portal.Repo.Seeds do
           )
           |> Ecto.Changeset.put_change(:type, :client)
           |> Ecto.Changeset.put_change(:account_id, subject.account.id)
-          |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
           |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
           |> Device.changeset()
           |> Safe.unscoped()
@@ -3037,6 +3065,7 @@ defmodule Portal.Repo.Seeds do
           token_id: token.id
         )
         |> Repo.update!()
+        |> insert_device_actor(subject.actor.id, DateTime.utc_now())
       end
     end
 
