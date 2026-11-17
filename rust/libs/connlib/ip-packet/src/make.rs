@@ -1,6 +1,6 @@
 //! Factory module for making all kinds of packets.
 
-use crate::{IpPacket, IpPacketBuf, Ipv6HeaderSlice, MAX_IP_SIZE, UdpSlice};
+use crate::{IpPacket, Ipv6HeaderSlice, MAX_IP_SIZE, UdpSlice, packet_buffer};
 use anyhow::{Context as _, Result, bail};
 use ingot::icmp::{IcmpV4, IcmpV6};
 use ingot::ip::{IpProtocol, Ipv4, Ipv6};
@@ -24,12 +24,13 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacke
     let packet_size = Ipv6HeaderSlice::LEN + ip_payload_size;
     anyhow::ensure!(packet_size <= crate::MAX_IP_SIZE);
 
-    let mut packet_buf = IpPacketBuf::new();
-    let buf = packet_buf.buf();
+    let mut packet_buf = packet_buffer();
 
-    let rest = ipv6.emit_prefix(&mut buf[..packet_size]).with_context(|| {
-        format!("Buffer should be big enough; ip_payload_size={ip_payload_size}")
-    })?;
+    let rest = ipv6
+        .emit_prefix(&mut packet_buf[..packet_size])
+        .with_context(|| {
+            format!("Buffer should be big enough; ip_payload_size={ip_payload_size}")
+        })?;
     rest[..8].copy_from_slice(&header);
     rest[8..].copy_from_slice(control_payload);
 
@@ -348,9 +349,9 @@ fn ipv4_packet(
         ..Default::default()
     };
 
-    let mut packet_buf = IpPacketBuf::new();
+    let mut packet_buf = packet_buffer();
 
-    emit_packet(packet_buf.buf(), total_len, ipv4, transport_header, payload)?;
+    emit_packet(&mut packet_buf, total_len, ipv4, transport_header, payload)?;
 
     let mut packet = IpPacket::new(packet_buf, total_len).context("Failed to create IP packet")?;
     packet.compute_checksums();
@@ -385,9 +386,9 @@ fn ipv6_packet(
         ..Default::default()
     };
 
-    let mut packet_buf = IpPacketBuf::new();
+    let mut packet_buf = packet_buffer();
 
-    emit_packet(packet_buf.buf(), total_len, ipv6, transport_header, payload)?;
+    emit_packet(&mut packet_buf, total_len, ipv6, transport_header, payload)?;
 
     let mut packet = IpPacket::new(packet_buf, total_len).context("Failed to create IP packet")?;
     packet.compute_checksums();

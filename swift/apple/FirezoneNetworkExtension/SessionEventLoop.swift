@@ -5,8 +5,10 @@ import Foundation
 enum SessionCommand {
   case disconnect
   case setInternetResourceState(Bool)
+  case setAdditionalHostCandidates([String])
   case setDns([String])
   case reset(String)
+  case setForceRelayedConnections(Bool)
 }
 
 /// Hands a session to exactly one owner.
@@ -85,11 +87,17 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
     case .setInternetResourceState(let active):
       session.setInternetResourceState(active: active)
 
+    case .setAdditionalHostCandidates(let ips):
+      session.setAdditionalHostCandidates(ips: ips)
+
     case .setDns(let servers):
       session.setDns(dnsServers: servers)
 
     case .reset(let reason):
       session.reset(reason: reason)
+
+    case .setForceRelayedConnections(let enabled):
+      session.setForceRelayedConnections(enabled: enabled)
     }
   }
 

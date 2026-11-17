@@ -70,6 +70,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
   defp verification_ref_from_open_url(lv) do
     assert_push_event(lv, "open_url", %{url: url})
+    send(self(), {:opened_url, url})
 
     %{"state" => state} =
       url
@@ -339,7 +340,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert html =~ "https://accounts.google.com"
+      assert html =~ "Personal Google accounts"
     end
 
     test "renders provider ID", %{account: account, actor: actor, conn: conn} do
@@ -1056,7 +1057,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      provider = google_provider_fixture(account: account, name: "Test Google")
+      provider = google_provider_fixture(workspace_domains: ["example.com"], account: account, name: "Test Google")
 
       {:ok, _lv, html} =
         conn
@@ -1064,38 +1065,171 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
 
       assert html =~ "Edit Test Google"
-      assert html =~ "Verification"
+      assert html =~ "Verified domains"
       assert html =~ "Verified"
     end
 
-    test "shows reset verification button when verified", %{
+    test "offers to refresh the domains when verified", %{
       account: account,
       actor: actor,
       conn: conn
     } do
-      provider = google_provider_fixture(account: account)
+      provider = google_provider_fixture(workspace_domains: ["example.com"], account: account)
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
 
-      assert html =~ "Reset"
+      assert html =~ "Refresh domains"
+      refute html =~ ">Reset<"
     end
 
-    test "can reset verification", %{account: account, actor: actor, conn: conn} do
-      provider = google_provider_fixture(account: account)
+    test "first verification enables the administrator's domain and lists the rest", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      assert_received {:opened_url, url}
+      assert url =~ "admin.directory.domain.readonly"
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com",
+        ["primary.example", "second.example", "third.example"], "primary.example", verification_ref,
+        {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert has_element?(lv, "#verified-organization-0", "primary.example")
+      assert has_element?(lv, "#verified-organization-0", "(primary)")
+      assert has_element?(lv, "#verified-domain-toggle-0[checked][disabled]")
+      assert has_element?(lv, "#verified-organization-1", "second.example")
+      refute has_element?(lv, "#verified-domain-toggle-1[checked]")
+      assert has_element?(lv, "#verified-organization-2", "third.example")
+      assert render(lv) =~ "At least one domain must be enabled"
 
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
+      lv |> element("#verified-domain-toggle-2") |> render_click()
+      assert has_element?(lv, "#verified-domain-toggle-2[checked]")
+      refute has_element?(lv, "#verified-domain-toggle-0[disabled]")
+      lv |> element("#verified-domain-toggle-0") |> render_click()
+      refute has_element?(lv, "#verified-domain-toggle-0[checked]")
+      assert has_element?(lv, "#verified-domain-toggle-2[checked][disabled]")
+      render_click(lv, "toggle_verified_domain", %{"domain" => "forged.example"})
+      refute render(lv) =~ "forged.example"
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get_by!(Portal.Google.AuthProvider, account_id: ctx.account.id)
+      assert saved.workspace_domains == ["third.example"]
+    end
+
+    test "keeps one domain enabled and persists toggled domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      provider = google_provider_fixture(account: ctx.account,
+        workspace_domains: ["primary.example", "second.example"])
+      path = ~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit"
+      conn = authorize_conn(ctx.conn, ctx.actor)
+      {:ok, lv, _} = live(conn, path)
+      assert has_element?(lv, "#verified-organization-1", "second.example")
+      refute has_element?(lv, "#verified-organization-0", "(primary)")
+      refute has_element?(lv, "#verified-domain-toggle-0")
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com",
+        ["primary.example", "second.example", "third.example"], "primary.example", verification_ref,
+        {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert has_element?(lv, "#verified-organization-0", "(primary)")
+      assert has_element?(lv, "#verified-domain-toggle-0[checked]")
+      refute has_element?(lv, "#verified-domain-toggle-0[disabled]")
+      assert has_element?(lv, "#verified-domain-toggle-1[checked]")
+      refute has_element?(lv, "#verified-domain-toggle-2[checked]")
+
+      lv |> element("#verified-domain-toggle-1") |> render_click()
+      refute has_element?(lv, "#verified-domain-toggle-1[checked]")
+      # The last enabled domain is locked until another one is enabled.
+      assert has_element?(lv, "#verified-domain-toggle-0[checked][disabled]")
+      render_click(lv, "toggle_verified_domain", %{"domain" => "primary.example"})
+      assert has_element?(lv, "#verified-domain-toggle-0[checked]")
+      lv |> element("#verified-domain-toggle-2") |> render_click()
+      assert has_element?(lv, "#verified-domain-toggle-2[checked]")
+      refute has_element?(lv, "#verified-domain-toggle-0[disabled]")
+      assert has_element?(lv, "#verified-organization-1", "second.example")
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains ==
+               ["primary.example", "third.example"]
+
+      # Reopening shows only the saved domains; toggles need a fresh verification.
+      {:ok, lv, _} = live(conn, path)
+      assert has_element?(lv, "#verified-organization-1", "third.example")
+      refute has_element?(lv, "#verified-organization-2")
+      refute has_element?(lv, "#verified-domain-toggle-0")
+      refute has_element?(lv, "#verified-organization-0", "(primary)")
+    end
+
+    test "refreshing keeps the enabled domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      provider = google_provider_fixture(account: ctx.account,
+        workspace_domains: ["primary.example", "second.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com",
+        ["second.example", "primary.example", "fourth.example"], "primary.example", verification_ref,
+        {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert has_element?(lv, "#verified-organization-0", "second.example")
+      assert has_element?(lv, "#verified-organization-0", "(primary)")
+      assert has_element?(lv, "#verified-organization-1", "primary.example")
+      assert has_element?(lv, "#verified-organization-2", "fourth.example")
+      refute has_element?(lv, "#verified-organization-3")
+      assert has_element?(lv, "#verified-domain-toggle-0[checked]")
+      assert has_element?(lv, "#verified-domain-toggle-1[checked]")
+      refute has_element?(lv, "#verified-domain-toggle-2[checked]")
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains ==
+               ["second.example", "primary.example"]
+    end
+
+    test "an administrator of an unrelated Workspace cannot refresh the domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: ["primary.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com",
+        ["other.example", "another.example"], "other.example", verification_ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      refute render(lv) =~ "other.example"
+      assert render(lv) =~ "administrator of the Google Workspace that this provider already uses"
+    end
+
+    test "a personal account cannot refresh a Workspace provider", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: ["primary.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com", nil, nil, verification_ref,
+        {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert has_element?(lv, "#verified-organization-0", "primary.example")
+      assert render(lv) =~ "existing domains have been kept"
+    end
+
+    test "cannot clear the first verified domain with a forged reset event", %{account: account, actor: actor, conn: conn} do
+      provider = google_provider_fixture(account: account, workspace_domains: ["example.com"])
+      {:ok, lv, _html} = conn |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
-
-      lv |> element("button[phx-click='reset_verification']") |> render_click()
-
-      html = render(lv)
-      assert html =~ "Verify Now"
-      assert html =~ "Verify Now"
+      render_click(lv, "reset_verification")
+      assert has_element?(lv, "#verified-organization-0", "example.com")
     end
 
     test "updates non-verification fields without re-verification", %{
@@ -1103,7 +1237,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      provider = google_provider_fixture(account: account, name: "Old Google")
+      provider = google_provider_fixture(workspace_domains: ["example.com"], account: account, name: "Old Google")
 
       {:ok, lv, _html} =
         conn
@@ -1198,7 +1332,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
 
       assert html =~ "Edit Test Entra"
-      assert html =~ "Verification"
+      assert html =~ "Verified tenants"
     end
 
     test "allows changing email_claim", %{account: account, actor: actor, conn: conn} do
@@ -1225,6 +1359,55 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       updated = Portal.Repo.get!(Portal.Entra.AuthProvider, provider.id)
       assert updated.email_claim == "email"
+    end
+
+    test "allows selecting a verified sign-in tenant", %{account: account, actor: actor, conn: conn} do
+      [first, second] = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+      provider = entra_provider_fixture(account: account, tenant_ids: [first, second])
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
+
+      assert html =~ "Sign-in Tenant"
+
+      lv
+      |> form("#auth-provider-form", %{"auth_provider" => %{"sign_in_tenant_id" => second}})
+      |> render_change()
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Entra.AuthProvider, provider.id).sign_in_tenant_id == second
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
+
+      lv
+      |> form("#auth-provider-form", %{"auth_provider" => %{"sign_in_tenant_id" => ""}})
+      |> render_change()
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Entra.AuthProvider, provider.id).sign_in_tenant_id == nil
+    end
+
+    test "clears the sign-in tenant when its tenant is removed", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      [first, second] = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+
+      provider =
+        entra_provider_fixture(account: account, tenant_ids: [first, second], sign_in_tenant_id: second)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
+
+      lv |> element("#verified-organization-1 button") |> render_click()
+      lv |> form("#auth-provider-form") |> render_submit()
+
+      saved = Repo.get!(Portal.Entra.AuthProvider, provider.id)
+      assert saved.tenant_ids == [first]
+      assert saved.sign_in_tenant_id == nil
     end
   end
 
@@ -1311,6 +1494,188 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> render_change()
 
       assert html =~ "Verify Now"
+    end
+  end
+
+  describe "stored client secret" do
+    for {type, fixture} <- [{"okta", :okta_provider_fixture}, {"oidc", :oidc_provider_fixture}] do
+      test "never renders the stored #{type} client secret", %{
+        account: account,
+        actor: actor,
+        conn: conn
+      } do
+        stored = "stored-secret-#{System.unique_integer([:positive])}"
+
+        provider =
+          apply(Portal.AuthProviderFixtures, unquote(fixture), [
+            %{account: account, client_secret: stored}
+          ])
+
+        {:ok, lv, html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication/#{unquote(type)}/#{provider.id}/edit")
+
+        refute html =~ stored
+        assert html =~ "Leave blank to keep the current value"
+
+        html =
+          lv
+          |> form("#auth-provider-form", %{auth_provider: %{name: "Renamed"}})
+          |> render_change()
+
+        refute html =~ stored
+      end
+    end
+
+    test "keeps the stored secret when the box is left blank", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = okta_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/okta/#{provider.id}/edit")
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: %{name: "Renamed Okta", client_secret: ""}})
+      |> render_change()
+
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.Okta.AuthProvider, id: provider.id)
+      assert updated.name == "Renamed Okta"
+      assert updated.client_secret == provider.client_secret
+    end
+
+    test "resets the secret when the Okta domain changes", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+      provider = okta_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/okta/#{provider.id}/edit")
+
+      # As a browser sends it: the untouched secret box carries an _unused_
+      # marker.
+      html =
+        render_change(lv, "validate", %{
+          "_target" => ["auth_provider", "okta_domain"],
+          "auth_provider" => %{
+            "okta_domain" => "attacker.example.com",
+            "client_secret" => "",
+            "_unused_client_secret" => ""
+          }
+        })
+
+      refute html =~ "Leave blank to keep the current value"
+      assert html =~ "Required for the new Okta domain."
+      assert has_element?(lv, "#auth_provider_client_secret[required]")
+      refute has_element?(lv, "#verify-button")
+
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.Okta.AuthProvider, id: provider.id)
+      assert updated.okta_domain == provider.okta_domain
+      assert updated.client_secret == provider.client_secret
+    end
+
+    test "saves a new discovery document URI and secret once verified", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+
+      provider =
+        oidc_provider_fixture(
+          account: account,
+          discovery_document_uri: "https://old-idp.example.com/.well-known/openid-configuration",
+          email_verification_method: :none
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/#{provider.id}/edit")
+
+      lv
+      |> form("#auth-provider-form", %{
+        auth_provider: %{
+          discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+          client_secret: "new-secret"
+        }
+      })
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://example.com", verification_ref, {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.OIDC.AuthProvider, id: provider.id)
+      assert updated.discovery_document_uri == Mocks.OIDC.discovery_document_uri()
+      assert updated.client_secret == "new-secret"
+      assert updated.issuer == "https://example.com"
+    end
+
+    test "keeps a secret typed again unchanged through a verification reset", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+
+      provider =
+        oidc_provider_fixture(
+          account: account,
+          discovery_document_uri: "https://old-idp.example.com/.well-known/openid-configuration",
+          email_verification_method: :none
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/#{provider.id}/edit")
+
+      lv
+      |> form("#auth-provider-form", %{
+        auth_provider: %{
+          discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+          client_secret: provider.client_secret
+        }
+      })
+      |> render_change()
+
+      assert has_element?(lv, "#verify-button")
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref_from_open_url(lv)
+      render_hook(lv, "reset_verification", %{})
+      assert has_element?(lv, "#verify-button")
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://example.com", verification_ref, {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.OIDC.AuthProvider, id: provider.id)
+      assert updated.discovery_document_uri == Mocks.OIDC.discovery_document_uri()
+      assert updated.client_secret == provider.client_secret
     end
   end
 
@@ -2203,6 +2568,13 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         auth_provider: provider.auth_provider
       )
 
+      {oauth_token, _access, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(
+          account: account,
+          actor: actor,
+          auth_provider: provider.auth_provider
+        )
+
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
@@ -2223,6 +2595,34 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert row_text =~ "0"
       assert row_text =~ "client"
       assert row_text =~ "portal"
+
+      refute Repo.get_by(Portal.OAuthToken, id: oauth_token.id)
+    end
+
+    test "offers to revoke a provider that only has OAuth tokens", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+
+      {oauth_token, _access, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(
+          account: account,
+          actor: actor,
+          auth_provider: provider.auth_provider
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      lv |> request_confirm("revoke", provider.id)
+      lv |> confirm_action("revoke_sessions", provider.id)
+
+      assert render(lv) =~ "have been revoked"
+      refute Repo.get_by(Portal.OAuthToken, id: oauth_token.id)
     end
   end
 
@@ -2231,7 +2631,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # =============================================================================
 
   describe "unique constraints" do
-    test "google provider has unique issuer constraint per account", %{
+    test "shows the personal Google provider mode", %{
       account: account,
       actor: actor,
       conn: conn
@@ -2245,7 +2645,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert html =~ "https://accounts.google.com"
+      assert html =~ "Personal Google accounts"
     end
 
     test "oidc provider has unique client_id constraint per account", %{
@@ -3084,6 +3484,98 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
     end
 
+    for {name, expected_name} <- [{"Entra", "Entra"}, {"Custom name", "Custom name"}] do
+      @provider_name name
+      @expected_provider_name expected_name
+      test "preserves the provider name after verifying #{name}", %{account: account, actor: actor, conn: conn} do
+        {:ok, lv, html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication/entra/new")
+
+        assert html =~ "Only users from the verified tenant"
+
+        lv
+        |> form("#auth-provider-form", %{auth_provider: %{name: @provider_name}})
+        |> render_change()
+
+        lv |> element("#verify-button") |> render_click()
+        verification_ref = verification_ref_from_open_url(lv)
+        ack_ref = make_ref()
+        send(lv.pid, {:entra_verify_complete,
+          "https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/v2.0",
+          "12345678-1234-1234-1234-123456789012", "Example Tenant", verification_ref,
+          {self(), ack_ref}})
+        assert_receive {:verification_ack, ^ack_ref}
+        assert has_element?(lv, "input[name='auth_provider[name]'][value='#{@expected_provider_name}']")
+
+        lv |> form("#auth-provider-form") |> render_submit()
+        assert Repo.get_by!(Portal.Entra.AuthProvider, account_id: account.id).name == @expected_provider_name
+      end
+    end
+
+    for {name, expected_name} <- [{"Google", "Google"}, {"Custom Google", "Custom Google"}] do
+      @google_provider_name name
+      @expected_google_name expected_name
+      test "saves verified Workspace domains and preserves #{name}", %{account: account, actor: actor, conn: conn} do
+        Mocks.OIDC.stub_discovery_document()
+        {:ok, lv, _} = conn |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication/google/new")
+        lv |> form("#auth-provider-form", %{auth_provider: %{name: @google_provider_name}}) |> render_change()
+        lv |> element("#verify-button") |> render_click()
+        verification_ref = verification_ref_from_open_url(lv)
+        domains = ["example.com", "secondary.example"]
+        ack_ref = make_ref()
+        send(lv.pid, {:google_verify_complete, "https://accounts.google.com", domains,
+          "example.com", verification_ref, {self(), ack_ref}})
+        assert_receive {:verification_ack, ^ack_ref}
+        assert has_element?(lv, "input[name='auth_provider[name]'][value='#{@expected_google_name}']")
+
+        # Browser-submitted domain values cannot replace verified server-side values.
+        render_change(lv, "validate", %{"auth_provider" => %{"name" => @expected_google_name,
+          "workspace_domains" => ["attacker.example"]}})
+        lv |> form("#auth-provider-form") |> render_submit()
+        provider = Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
+        assert provider.name == @expected_google_name
+        assert provider.workspace_domains == ["example.com"]
+      end
+    end
+
+    test "rejects generic and stale Google verification results", %{account: account, actor: actor, conn: conn} do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = conn |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://accounts.google.com", verification_ref, {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+      refute render(lv) =~ "> Verified"
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com", ["example.com"],
+        "example.com", Ecto.UUID.generate(), {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+      assert has_element?(lv, "#verify-button")
+    end
+
+    for {name, expected_name} <- [{"Okta", "example.okta.com"}, {"Custom Okta", "Custom Okta"}] do
+      @okta_provider_name name
+      @expected_okta_name expected_name
+      test "pre-fills #{name} from the verified Okta hostname", %{account: account, actor: actor, conn: conn} do
+        Mocks.OIDC.stub_discovery_document()
+        {:ok, lv, _} = conn |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication/okta/new")
+        lv |> form("#auth-provider-form", %{auth_provider: %{name: @okta_provider_name,
+          okta_domain: "example.okta.com", client_id: "test-client", client_secret: "test-secret"}})
+          |> render_change()
+        lv |> element("#verify-button") |> render_click()
+        verification_ref = verification_ref_from_open_url(lv)
+        ack = make_ref()
+        send(lv.pid, {:oidc_verify_complete, "https://example.okta.com", verification_ref, {self(), ack}})
+        assert_receive {:verification_ack, ^ack}
+        assert has_element?(lv, "input[name='auth_provider[name]'][value='#{@expected_okta_name}']")
+      end
+    end
+
     test "accepts only the active entra verification completion", %{
       account: account,
       actor: actor,
@@ -3113,18 +3605,18 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       )
 
       assert_receive {:verification_ack, ^stale_ack_ref}
-      refute render(lv) =~ "Verified"
+      refute has_element?(lv, "#verified-organizations")
 
       current_ack_ref = make_ref()
 
       send(
         lv.pid,
-        {:entra_verify_complete, "https://login.microsoftonline.com/current/v2.0", "current",
+        {:entra_verify_complete, "https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/v2.0", "12345678-1234-1234-1234-123456789012",
          current_ref, {self(), current_ack_ref}}
       )
 
       assert_receive {:verification_ack, ^current_ack_ref}
-      assert render(lv) =~ "Verified"
+      assert has_element?(lv, "#verified-organizations")
     end
 
     test "ignores entra completion after navigating to another provider form", %{
@@ -3158,7 +3650,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       assert html =~ "Add Google Provider"
-      refute html =~ "Verified"
+      refute has_element?(lv, "#verified-organizations")
     end
 
     test "handles entra provider verification setup via bypass", %{
@@ -3214,48 +3706,296 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # Reset Verification Tests
   # =============================================================================
 
-  describe "reset verification" do
-    test "resets verified provider to awaiting verification", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      provider = google_provider_fixture(account: account, is_verified: true)
+  describe "verified organization allowlists" do
+    for {type, schema, field, values} <- [
+          {"entra", Portal.Entra.AuthProvider, :tenant_ids,
+           ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"]},
+          {"google", Portal.Google.AuthProvider, :workspace_domains,
+           ["primary.example", "secondary.example", "third.example"]}
+        ] do
+      @allowlist_type type
+      @allowlist_schema schema
+      @allowlist_field field
+      @allowlist_values values
 
-      {:ok, lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
+      test "requires a verified first #{@allowlist_type} entry and ignores forged form values", ctx do
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/new")
+        render_change(lv, "validate", %{"auth_provider" => %{
+          Atom.to_string(@allowlist_field) => @allowlist_values,
+          "is_verified" => "true", "issuer" => "https://attacker.example"}})
+        lv |> form("#auth-provider-form") |> render_submit()
+        refute Repo.get_by(@allowlist_schema, account_id: ctx.account.id)
+        refute has_element?(lv, "#verified-organizations")
+      end
 
-      # Should show as verified initially
-      assert html =~ "Verified"
+      test "appends and deduplicates #{@allowlist_type} verifications in one new provider", ctx do
+        Mocks.OIDC.stub_discovery_document()
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/new")
+        [first, second, _] = @allowlist_values
+        complete_allowlist_verification(lv, @allowlist_type, first)
+        assert has_element?(lv, "#verified-organization-0", first)
+        assert has_element?(lv, "#verify-button", if(@allowlist_type == "google", do: "Refresh domains", else: "Verify another"))
+        complete_allowlist_verification(lv, @allowlist_type, second, [first])
+        complete_allowlist_verification(lv, @allowlist_type, second, [first])
+        assert has_element?(lv, "#verified-organization-1", second)
+        refute has_element?(lv, "#verified-organization-2")
+        lv |> form("#auth-provider-form") |> render_submit()
+        provider = Repo.get_by!(@allowlist_schema, account_id: ctx.account.id)
+        assert Map.fetch!(provider, @allowlist_field) == [first, second]
+      end
 
-      # Click reset verification
-      lv |> element("button[phx-click='reset_verification']") |> render_click()
+      test "appends #{@allowlist_type} verification while preserving edits to a saved provider", ctx do
+        Mocks.OIDC.stub_discovery_document()
+        [first, second, _] = @allowlist_values
+        provider = allowlist_provider_fixture(@allowlist_type, ctx.account, [first])
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/#{provider.id}/edit")
+        lv |> form("#auth-provider-form", %{auth_provider: %{name: "MSP SSO", portal_session_lifetime_secs: 3600}})
+          |> render_change()
+        complete_allowlist_verification(lv, @allowlist_type, second, [first])
+        # An ordinary form validation must preserve server-owned verified values.
+        render_change(lv, "validate", %{"auth_provider" => %{"name" => "MSP SSO",
+          "portal_session_lifetime_secs" => "3600", Atom.to_string(@allowlist_field) => ["attacker.example"]}})
+        lv |> form("#auth-provider-form") |> render_submit()
+        saved = Repo.get!(@allowlist_schema, provider.id)
+        assert Map.fetch!(saved, @allowlist_field) == [first, second]
+        assert saved.name == "MSP SSO"
+        assert saved.portal_session_lifetime_secs == 3600
+      end
 
-      html = render(lv)
-      assert html =~ "Verify Now"
-      assert html =~ "Verify Now"
     end
 
-    test "clears any verification error when resetting", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      provider = google_provider_fixture(account: account, is_verified: true)
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
-
-      lv |> element("button[phx-click='reset_verification']") |> render_click()
-
-      html = render(lv)
-      # Should not show any error messages
-      refute html =~ "verification error" or html =~ "Failed to verify"
+    test "protects the first entra row and persists removal of subsequent rows", ctx do
+      [first, second, _] = ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"]
+      provider = entra_provider_fixture(account: ctx.account, tenant_ids: [first, second])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/entra/#{provider.id}/edit")
+      refute has_element?(lv, "#verified-organization-0 button")
+      assert has_element?(lv, "#verified-organization-1 button[phx-click='remove_verified_organization']")
+      render_click(lv, "remove_verified_organization", %{"organization" => first, "value" => ""})
+      assert has_element?(lv, "#verified-organization-0", first)
+      # Browsers include the button's native value (an empty string) in click payloads.
+      lv |> element("#verified-organization-1 button") |> render_click(%{"value" => ""})
+      refute has_element?(lv, "#verified-organization-1")
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Entra.AuthProvider, provider.id).tenant_ids == [first]
     end
+
+    test "ignores stale entra verification after removing an entry", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      [first, second, third] = ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"]
+      provider = entra_provider_fixture(account: ctx.account, tenant_ids: [first, second])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/entra/#{provider.id}/edit")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      lv |> element("#verified-organization-1 button") |> render_click()
+      send_allowlist_verification(lv, "entra", third, verification_ref)
+      assert has_element?(lv, "#verified-organization-0", first)
+      refute has_element?(lv, "#verified-organization-1")
+    end
+
+    test "google domains have no remove button", ctx do
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: ["primary.example", "secondary.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      refute has_element?(lv, "#verified-organizations button")
+      assert has_element?(lv, "#verified-organization-1", "secondary.example")
+    end
+
+    test "saves a second Google Workspace provider with non-overlapping domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      existing = google_provider_fixture(account: ctx.account, name: "First Workspace", workspace_domains: ["first.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> form("#auth-provider-form", %{auth_provider: %{name: "Second Workspace"}}) |> render_change()
+      complete_allowlist_verification(lv, "google", "second.example")
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get_by!(Portal.Google.AuthProvider, account_id: ctx.account.id, name: "Second Workspace")
+      assert saved.workspace_domains == ["second.example"]
+      refute saved.is_legacy_unrestricted
+      assert Repo.reload!(existing).workspace_domains == ["first.example"]
+    end
+
+    test "shows an error for overlapping Google Workspace domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      google_provider_fixture(account: ctx.account, workspace_domains: ["work.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      complete_allowlist_verification(lv, "google", "work.example")
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert render(lv) =~ "A domain is already verified on another Google authentication provider in this account."
+    end
+
+    test "shows an error for a second personal Google provider", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      google_provider_fixture(account: ctx.account, workspace_domains: nil)
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      ref = verification_ref_from_open_url(lv)
+      ack = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com", nil, nil, ref, {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert render(lv) =~ "Only one Google authentication provider without Workspace domains is allowed per account."
+    end
+
+    test "saves a verified personal Google provider with restrictions unset", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com", nil, nil,
+        verification_ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert render(lv) =~ "Personal Google accounts only"
+      render_change(lv, "validate", %{"auth_provider" => %{"name" => "Personal Google",
+        "workspace_domains" => ["attacker.example"], "is_legacy_unrestricted" => "true"}})
+      lv |> form("#auth-provider-form") |> render_submit()
+      provider = Repo.get_by!(Portal.Google.AuthProvider, account_id: ctx.account.id)
+      assert provider.name == "Personal Google"
+      assert provider.workspace_domains == nil
+      refute provider.is_legacy_unrestricted
+    end
+
+    test "editing an existing unrestricted Google provider keeps validation off", ctx do
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: nil, is_legacy_unrestricted: true)
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> form("#auth-provider-form", %{auth_provider: %{name: "Existing Google", portal_session_lifetime_secs: 3600}})
+        |> render_change()
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get!(Portal.Google.AuthProvider, provider.id)
+      assert saved.name == "Existing Google"
+      assert saved.portal_session_lifetime_secs == 3600
+      assert saved.workspace_domains == nil
+      assert saved.is_legacy_unrestricted
+    end
+
+    test "personal verification cannot clear existing Google domain restrictions", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: ["primary.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com", nil, nil,
+        verification_ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert render(lv) =~ "existing domains have been kept"
+      assert has_element?(lv, "#verified-organization-0", "primary.example")
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get!(Portal.Google.AuthProvider, provider.id)
+      assert saved.workspace_domains == ["primary.example"]
+      refute saved.is_legacy_unrestricted
+    end
+
+    test "does not show a blank verification alert for an Entra name collision", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      first = "12345678-1234-1234-1234-123456789012"
+      second = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+      entra_provider_fixture(account: ctx.account, name: "Entra", tenant_ids: [first])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/entra/new")
+      complete_allowlist_verification(lv, "entra", second)
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert has_element?(lv, "#auth-provider-form", "An Entra authentication provider with this name already exists.")
+      refute has_element?(lv, "#auth-provider-form .flash-error")
+
+      lv |> form("#auth-provider-form", %{auth_provider: %{name: "Another organization"}}) |> render_change()
+      complete_allowlist_verification(lv, "entra", first)
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert has_element?(lv, "#auth-provider-form .flash-error", "A tenant is already verified on another")
+      assert Repo.aggregate(Portal.Entra.AuthProvider, :count) == 1
+    end
+
+    for destination <- [:new, :edit, :same_type, :close] do
+      @error_destination destination
+      test "clears Entra errors when navigating to #{@error_destination}", ctx do
+        Mocks.OIDC.stub_discovery_document()
+        tenant_id = "12345678-1234-1234-1234-123456789012"
+        entra = entra_provider_fixture(account: ctx.account, name: "Existing Entra", tenant_ids: [tenant_id])
+        google = google_provider_fixture(account: ctx.account)
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/entra/new")
+        complete_allowlist_verification(lv, "entra", tenant_id)
+        lv |> form("#auth-provider-form") |> render_submit()
+        assert has_element?(lv, "#auth-provider-form .flash-error", "A tenant is already verified on another")
+
+        case @error_destination do
+          :new -> render_patch(lv, ~p"/#{ctx.account}/settings/authentication/google/new")
+          :edit -> render_patch(lv, ~p"/#{ctx.account}/settings/authentication/google/#{google.id}/edit")
+          :same_type -> render_patch(lv, ~p"/#{ctx.account}/settings/authentication/entra/#{entra.id}/edit")
+          :close ->
+            lv |> element("#add-provider-panel button[phx-click='close_panel'][title='Close (Esc)']") |> render_click()
+            render_patch(lv, ~p"/#{ctx.account}/settings/authentication/entra/#{entra.id}/edit")
+        end
+
+        refute has_element?(lv, "#auth-provider-form .flash-error")
+      end
+    end
+
+    test "shows a verification error when another Entra provider already accepts the tenant", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      tenant_id = "12345678-1234-1234-1234-123456789012"
+      entra_provider_fixture(account: ctx.account, name: "Existing Entra", tenant_ids: [tenant_id])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/entra/new")
+      complete_allowlist_verification(lv, "entra", tenant_id)
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert render(lv) =~ "A tenant is already verified on another Entra authentication provider in this account."
+      assert Repo.aggregate(Portal.Entra.AuthProvider, :count) == 1
+    end
+
+    test "keeps legacy Google sign-in unrestricted until domains are saved", ctx do
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: nil, is_legacy_unrestricted: true)
+      {:ok, lv, html} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      assert html =~ "Personal and Workspace Google accounts can sign in"
+      assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains == nil
+      Mocks.OIDC.stub_discovery_document()
+      complete_allowlist_verification(lv, "google", "primary.example")
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains == ["primary.example"]
+    end
+  end
+
+  defp allowlist_provider_fixture("entra", account, values),
+    do: entra_provider_fixture(account: account, tenant_ids: values)
+
+  defp allowlist_provider_fixture("google", account, values),
+    do: google_provider_fixture(account: account, workspace_domains: values)
+
+  defp complete_allowlist_verification(lv, type, value, proven \\ []) do
+    lv |> element("#verify-button") |> render_click()
+    verification_ref = verification_ref_from_open_url(lv)
+    html = send_allowlist_verification(lv, type, value, verification_ref, proven)
+    toggle = "#verified-organizations input[phx-value-domain='#{value}']"
+
+    if type == "google" and has_element?(lv, toggle) and not has_element?(lv, "#{toggle}[checked]") do
+      lv |> element(toggle) |> render_click()
+    else
+      html
+    end
+  end
+
+  defp send_allowlist_verification(lv, type, value, verification_ref, proven \\ []) do
+    ack_ref = make_ref()
+    message = case type do
+      "entra" -> {:entra_verify_complete, "https://login.microsoftonline.com/#{value}/v2.0",
+        value, "Customer tenant", verification_ref, {self(), ack_ref}}
+      "google" -> {:google_verify_complete, "https://accounts.google.com", proven ++ [value], value,
+        verification_ref, {self(), ack_ref}}
+    end
+    send(lv.pid, message)
+    assert_receive {:verification_ack, ^ack_ref}
+    render(lv)
   end
 
   # =============================================================================
@@ -3813,30 +4553,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   end
 
   # =============================================================================
-  # DB Helper Edge Cases
-  # =============================================================================
-
-  describe "Database helper edge cases" do
-    test "revoke_sessions_for_provider handles nil provider", %{actor: actor} do
-      alias PortalWeb.Settings.Authentication.Database
-
-      # Build a proper subject from the actor
-      {:ok, subject} =
-        Portal.Authentication.build_subject(
-          %Portal.PortalSession{actor_id: actor.id, account_id: actor.account_id},
-          %Portal.Authentication.Context{
-            type: :portal,
-            user_agent: "test",
-            remote_ip: {127, 0, 0, 1}
-          }
-        )
-
-      # Should return {:ok, 0} for nil provider
-      assert {:ok, 0} = Database.revoke_sessions_for_provider(nil, subject)
-    end
-  end
-
-  # =============================================================================
   # Successful PubSub Verification Tests
   # =============================================================================
 
@@ -4364,6 +5080,38 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       assert html =~
                "Unable to fetch discovery document: DNS lookup failed. Please verify the provider domain."
+    end
+  end
+
+  describe "events queued after the panel closes" do
+    test "ignores submit_provider", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/google/new")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/settings/authentication")
+
+      render_click(lv, "submit_provider", %{})
+
+      assert render(lv) =~ "Authentication"
+    end
+
+    for event <- ["delete_provider", "toggle_provider", "revoke_sessions"] do
+      test "ignores #{event} for a deleted provider", %{conn: conn, account: account, actor: actor} do
+        provider = google_provider_fixture(account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication")
+
+        render_click(lv, "delete_provider", %{"id" => provider.id})
+        render_click(lv, unquote(event), %{"id" => provider.id})
+
+        refute render(lv) =~ provider.name
+      end
     end
   end
 end

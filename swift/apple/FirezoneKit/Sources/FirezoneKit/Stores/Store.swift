@@ -28,6 +28,9 @@ public final class Store: ObservableObject {
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
 
+  /// Not persisted, so it starts off with every launch and is re-sent to each session that connects.
+  @Published private(set) var forceRelayedConnections = false
+
   /// How a running session reads once the portal has named the actor.
   var sessionHeading: String {
     guard let actorName else { return "Signed in" }
@@ -93,6 +96,7 @@ public final class Store: ObservableObject {
   private struct ConfigurationSnapshot: Equatable {
     var providerConfiguration: [String: String]
     var internetResourceEnabled: Bool
+    var logFilter: String
     var startOnLogin: Bool
   }
 
@@ -318,6 +322,9 @@ public final class Store: ObservableObject {
     self.vpnStatus = newVPNStatus
 
     if newVPNStatus == .connected {
+      if forceRelayedConnections {
+        do { try await sendForceRelayedConnections() } catch { Log.error(error) }
+      }
       beginUpdatingState()
       fetchAndCacheFirezoneId()
       // Reset disconnect-alert dedup so failures during the next disconnect cycle aren't suppressed
@@ -481,6 +488,7 @@ public final class Store: ObservableObject {
             try IPCClient.start(
               session: session,
               token: nil,
+              signInSettings: nil,
               identityReference: identityReference()
             )
           } catch { Log.error(error) }
@@ -543,6 +551,7 @@ public final class Store: ObservableObject {
       try IPCClient.start(
         session: session,
         token: nil,
+        signInSettings: nil,
         identityReference: identityReference()
       )
     }
@@ -608,6 +617,7 @@ public final class Store: ObservableObject {
     ConfigurationSnapshot(
       providerConfiguration: configuration.toProviderConfiguration(),
       internetResourceEnabled: configuration.internetResourceEnabled,
+      logFilter: configuration.logFilter,
       startOnLogin: configuration.startOnLogin
     )
   }
@@ -659,6 +669,15 @@ public final class Store: ObservableObject {
         }
         synced.internetResourceEnabled = target.internetResourceEnabled
       }
+      if synced.logFilter != target.logFilter {
+        // A tunnel that is not running reads the saved filter when it starts.
+        if let session = try manager().session(),
+          [.connected, .connecting, .reasserting].contains(session.status)
+        {
+          try await IPCClient.setLogFilter(session: session, target.logFilter)
+        }
+        synced.logFilter = target.logFilter
+      }
     } catch {
       Log.error(error)
     }
@@ -675,7 +694,7 @@ public final class Store: ObservableObject {
     session.stopTunnel()
   }
 
-  func signIn(token: String) async throws {
+  func signIn(token: String, signInSettings: SignInSettings) async throws {
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
@@ -690,8 +709,11 @@ public final class Store: ObservableObject {
     try IPCClient.start(
       session: session,
       token: token,
+      signInSettings: signInSettings,
       identityReference: identityReference()
     )
+
+    configuration.signedInWith = signInSettings
   }
 
   /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.
@@ -699,11 +721,31 @@ public final class Store: ObservableObject {
     try? manager().identityReference()
   }
 
+  func resetConnlib() async throws {
+    guard let session = try manager().session(), session.status == .connected else { return }
+
+    try await IPCClient.manualReset(session: session)
+  }
+
+  func setForceRelayedConnections(_ enabled: Bool) async throws {
+    forceRelayedConnections = enabled
+
+    try await sendForceRelayedConnections()
+  }
+
+  private func sendForceRelayedConnections() async throws {
+    guard let session = try manager().session(), session.status == .connected else { return }
+
+    try await IPCClient.setForceRelayedConnections(session: session, forceRelayedConnections)
+  }
+
   func signOut() async throws {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
     try await IPCClient.signOut(session: session)
+
+    configuration.signedInWith = nil
   }
 
   // Calculates the total size of our logs by summing the size of the

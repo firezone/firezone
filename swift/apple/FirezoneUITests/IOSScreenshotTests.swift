@@ -18,14 +18,16 @@
     /// opened leaves the one before it on screen, holding perfectly still, and
     /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general", showing: "Account Slug"),
-      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
-      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
+      (label: "Settings", name: "general", showing: "Account Slug"),
+      (label: "Diagnostics", name: "logs", showing: "Clear Log Directory"),
     ]
 
     /// A field every parsed certificate carries, so the Device Trust tab can be
     /// told from the one that was showing before it.
     private static let certificateAnchor = "Signing Algorithm"
+
+    private static let signInChangeNote =
+      "Changes to account slug and control plane only take effect on the next sign-in."
 
     /// The scenarios describing the states of the certificate tab. Each image
     /// carries the name of the scenario it was taken from.
@@ -163,6 +165,46 @@
       }
     }
 
+    func testManagedSettings() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "managed-settings")
+      defer { app.terminate() }
+
+      try openSettings(in: app, on: "settings-managed")
+      for tab in Self.settingsTabs {
+        try selectTab(tab.label, showing: tab.showing, in: app)
+        try waitFor(
+          app.staticTexts["Some settings are managed by your organization."].firstMatch,
+          on: "settings-managed")
+        deliver(app, as: "settings-\(tab.name)-managed", in: appearance)
+      }
+    }
+
+    /// The Settings tab of an app configured for a self-hosted control plane.
+    func testSettingsWithCustomControlPlane() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "custom-control-plane")
+      defer { app.terminate() }
+
+      try openSettings(in: app, on: "settings-general-custom")
+      try selectTab("Settings", showing: "API URL", in: app)
+      let form = app.collectionViews.containing(.button, identifier: "Reset to Defaults").firstMatch
+      try waitFor(form, on: "settings-general-custom")
+      form.swipeUp()
+      deliver(app, as: "settings-general-custom", in: appearance)
+    }
+
+    /// The Settings tab while the running session signed in with other settings.
+    func testSettingsPendingSignIn() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "pending-sign-in")
+      defer { app.terminate() }
+
+      try openSettings(in: app, on: "settings-general-pending-sign-in")
+      try selectTab("Settings", showing: Self.signInChangeNote, in: app)
+      deliver(app, as: "settings-general-pending-sign-in", in: appearance)
+    }
+
     /// The certificate tab, in each of the states a scenario describes.
     func testCertificate() throws {
       let appearance = try currentAppearance()
@@ -176,13 +218,31 @@
         deliver(app, as: scenario, in: appearance)
       }
     }
+
+    /// The Developer tab, which only an unlocked app shows, photographed in light only.
+    func testDeveloperSettings() throws {
+      let appearance = try currentAppearance()
+      try XCTSkipIf(appearance != .light, "the Developer tab is photographed in light only")
+
+      let app = launchApp(scenario: "connected", unlockingDeveloperSettings: true)
+      defer { app.terminate() }
+
+      try openSettings(in: app, on: "settings-developer")
+      try selectTab("Developer", showing: "Reset connlib", in: app)
+      deliver(app, as: "settings-developer", in: appearance)
+    }
   }
 
   @MainActor
   extension XCTestCase {
-    func launchApp(scenario: String) -> XCUIApplication {
+    func launchApp(scenario: String, unlockingDeveloperSettings: Bool = false) -> XCUIApplication {
       let app = XCUIApplication()
       app.launchArguments = ["--mock-tunnel", "--mock-scenario", scenario]
+      if unlockingDeveloperSettings {
+        // The argument domain holds the unlock for this launch only, where a written
+        // default would put the tab on every screen photographed after it.
+        app.launchArguments += ["-isDeveloperSettingsUnlocked", "YES"]
+      }
       app.launch()
 
       return app

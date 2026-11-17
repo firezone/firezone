@@ -41,7 +41,7 @@ defmodule PortalAPI.Client.Socket do
   @doc false
   def client_session_queue_opts do
     [
-      name: :client_session_queue,
+      name: Portal.Queue.name(:client_session_queue),
       flush_interval: :timer.seconds(5),
       flush_threshold: 1_000,
       label: "client session",
@@ -131,10 +131,16 @@ defmodule PortalAPI.Client.Socket do
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
 
+      previous_public_key = client.public_key
       client = apply_session(client, token_id, public_key, subject, version)
       set_connect_attributes(token_id, client, subject, version)
 
-      {:ok, assign_connect(socket, subject, client, version, attested?, proof)}
+      socket =
+        socket
+        |> assign_connect(subject, client, version, attested?, proof)
+        |> assign(:previous_public_key, previous_public_key)
+
+      {:ok, socket}
     else
       true ->
         OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
@@ -143,6 +149,10 @@ defmodule PortalAPI.Client.Socket do
       {:error, :connected_devices_limit_reached} ->
         OpenTelemetry.Tracer.set_status(:error, "connected_devices_limit_reached")
         {:error, :connected_devices_limit_reached}
+
+      {:error, {:rate_limit, retry_after_ms}} ->
+        OpenTelemetry.Tracer.set_status(:error, "device_registration_rate_limit")
+        {:error, {:rate_limit, retry_after_ms}}
 
       {:error, :device_untrusted} ->
         OpenTelemetry.Tracer.set_status(:error, "device_untrusted")
@@ -231,7 +241,7 @@ defmodule PortalAPI.Client.Socket do
   defp apply_session(client, token_id, public_key, subject, version) do
     %{
       client
-      | client_token_id: token_id,
+      | token_id: token_id,
         public_key: public_key,
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
@@ -245,7 +255,7 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp flush_client_sessions(entries) do
-    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, :client_token_id)
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries)
 
     failed = revoked ++ missing
     failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
@@ -326,7 +336,7 @@ defmodule PortalAPI.Client.Socket do
       subject:
         Map.merge(subject || %{}, %{
           device_id: attrs[:device_id],
-          token_id: attrs[:client_token_id]
+          token_id: attrs[:token_id]
         })
     }
   end
@@ -362,10 +372,18 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp assign_connect(socket, subject, client, version, attested?, proof) do
+    client = %{client | actor_id: subject.actor.id}
+
     socket
     |> assign(:subject, Authentication.Subject.with_device(subject, client))
-    |> assign(:client, %{client | attested?: attested?, posture: posture_rows(client, subject)})
+    |> assign(:client, %{
+      client
+      | attested?: attested?,
+        attested_until: attested_until(attested?, proof),
+        posture: posture_rows(client, subject)
+    })
     |> assign(:attestation, attestation(attested?, proof))
+    |> assign(:trust_anchor_certificate_ids, trust_anchor_certificate_ids(proof))
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
@@ -389,6 +407,12 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp attestation(_attested?, _proof), do: nil
+
+  defp attested_until(true, %{not_after: %DateTime{} = not_after}), do: not_after
+  defp attested_until(_attested?, _proof), do: nil
+
+  defp trust_anchor_certificate_ids(%{trust_anchor_certificate_ids: ids}), do: ids
+  defp trust_anchor_certificate_ids(_proof), do: []
 
   defp insert_changeset(actor, subject, attrs) do
     required_fields = ~w[firezone_id name]a
@@ -504,11 +528,9 @@ defmodule PortalAPI.Client.Socket do
     #
     # The third element says whether this connect proved a device identity.
     def resolve_client(changeset, proof, subject) do
-      actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
-
       if is_nil(proof) do
         firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
-        resolve_unattested(changeset, actor_id, firezone_id, subject)
+        resolve_unattested(changeset, firezone_id, subject)
       else
         changeset
         |> put_proof_changes(proof)
@@ -588,23 +610,23 @@ defmodule PortalAPI.Client.Socket do
     defp contradicts?(_row_value, nil, :mdm_device_id), do: false
     defp contradicts?(row_value, cert_value, :mdm_device_id), do: row_value != cert_value
 
-    defp resolve_unattested(changeset, actor_id, firezone_id, subject) do
-      if client = find_by_firezone_id(actor_id, firezone_id, subject) do
+    defp resolve_unattested(changeset, firezone_id, subject) do
+      if client = find_by_firezone_id(firezone_id, subject) do
         {:ok, merge_hardware_ids(client, changeset), false}
       else
-        with {:ok, client} <- insert_with_slug(changeset, subject) do
+        with :ok <- Portal.Devices.RegistrationRateLimit.check(subject.account),
+             {:ok, client} <- insert_with_slug(changeset, subject) do
           {:ok, client, false}
         end
       end
     end
 
     defp insert_attested(changeset, subject) do
-      result =
-        changeset
-        |> Ecto.Changeset.put_change(:firezone_id, nil)
-        |> insert_with_slug(subject)
-
-      with {:ok, client} <- result do
+      with :ok <- Portal.Devices.RegistrationRateLimit.check(subject.account),
+           {:ok, client} <-
+             changeset
+             |> Ecto.Changeset.put_change(:firezone_id, nil)
+             |> insert_with_slug(subject) do
         {:ok, client, true}
       end
     end
@@ -626,9 +648,34 @@ defmodule PortalAPI.Client.Socket do
             {:error, failed}
           end
 
+        {:ok, client} ->
+          insert_device_actor(client, subject.actor.id)
+          {:ok, client}
+
         result ->
           result
       end
+    end
+
+    # The session flush also writes this row, but a new device would have no
+    # user until then.
+    defp insert_device_actor(client, actor_id) do
+      now = DateTime.utc_now()
+
+      Safe.unscoped()
+      |> Safe.insert_all(
+        Portal.DeviceActor,
+        [
+          %{
+            account_id: client.account_id,
+            device_id: client.id,
+            actor_id: actor_id,
+            first_seen_at: now,
+            last_seen_at: now
+          }
+        ],
+        on_conflict: :nothing
+      )
     end
 
     defp put_proof_changes(changeset, proof) do
@@ -661,11 +708,11 @@ defmodule PortalAPI.Client.Socket do
       |> Map.put(:last_attested_at, DateTime.utc_now())
     end
 
-    defp find_by_firezone_id(_actor_id, nil, _subject), do: nil
+    defp find_by_firezone_id(nil, _subject), do: nil
 
-    defp find_by_firezone_id(actor_id, firezone_id, subject) do
+    # A device is the same machine whoever signs in on it.
+    defp find_by_firezone_id(firezone_id, subject) do
       from(d in Device,
-        where: d.actor_id == ^actor_id,
         where: d.firezone_id == ^firezone_id,
         where: d.type == :client
       )

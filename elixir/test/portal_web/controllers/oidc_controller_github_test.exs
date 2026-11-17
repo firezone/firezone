@@ -1,5 +1,6 @@
 defmodule PortalWeb.OIDCControllerGitHubTest do
   use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -171,6 +172,30 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
       refute_received {:email, _email}
     end
 
+    test "queues the GitHub avatar as the profile photo", ctx do
+      Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
+      actor = admin_actor_fixture(account: ctx.account, email: "octocat@example.com")
+
+      {:ok, identity} =
+        PortalWeb.SignUp.Database.create_external_identity(ctx.account, actor, %{
+          provider: "github",
+          issuer: "https://github.com/login/oauth",
+          idp_id: "583231",
+          profile_attrs: %{"email" => actor.email, "name" => "The Octocat"}
+        })
+
+      Mocks.GitHub.stub()
+
+      conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert_enqueued(
+        worker: Portal.Avatars.Picture,
+        args: %{identity_id: identity.id, picture: "https://avatars.githubusercontent.com/u/583231"}
+      )
+    end
+
     test "keeps signing in as the linked actor when several addresses match", ctx do
       linked_actor = admin_actor_fixture(account: ctx.account, email: "second@example.com")
       admin_actor_fixture(account: ctx.account, email: "first@example.com")
@@ -331,6 +356,27 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
     end
   end
 
+  defp turnstile_enabled(result) do
+    Portal.Config.put_env_override(:portal, Portal.Turnstile,
+      site_key: "test-site-key",
+      secret_key: "test-secret-key",
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
+
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:cloudflare_request, URI.decode_query(body)})
+
+      case result do
+        :approve -> Req.Test.json(conn, %{"success" => true})
+        :refuse -> Req.Test.json(conn, %{"success" => false, "error-codes" => ["invalid-input-response"]})
+        :down -> Plug.Conn.send_resp(conn, 503, "unavailable")
+      end
+    end)
+  end
+
   describe "sign_up/2 with GitHub" do
     test "redirects to GitHub and binds the state to a cookie", %{conn: conn} do
       conn = post(conn, ~p"/sign_up/github")
@@ -349,6 +395,74 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
 
       challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
       assert params["code_challenge"] == challenge
+    end
+
+    test "starts the GitHub round trip once Cloudflare approves the token", %{conn: conn} do
+      turnstile_enabled(:approve)
+
+      conn = post(conn, ~p"/sign_up/github", %{"cf-turnstile-response" => "good-token"})
+
+      %URI{host: "github.test", path: "/login/oauth/authorize"} = conn |> redirected_to() |> URI.parse()
+      assert %Cookie.SignUpState{} = conn |> recycle() |> with_endpoint_key_base() |> Cookie.SignUpState.fetch()
+      assert_receive {:cloudflare_request, form}
+      assert form["response"] == "good-token"
+      assert form["secret"] == "test-secret-key"
+      assert form["remoteip"] == "127.0.0.1"
+    end
+
+    test "turns away a GitHub sign-up without a token and never calls Cloudflare", %{conn: conn} do
+      turnstile_enabled(:approve)
+
+      for params <- [%{}, %{"cf-turnstile-response" => ""}] do
+        conn = post(conn, ~p"/sign_up/github", params)
+
+        assert redirected_to(conn) == "/sign_up"
+        assert flash(conn, :error) =~ "Please complete the verification"
+        refute Map.has_key?(conn.resp_cookies, "sign_up_oidc")
+      end
+
+      refute_receive {:cloudflare_request, _}
+    end
+
+    test "turns away a GitHub sign-up when Cloudflare refuses the token", %{conn: conn} do
+      turnstile_enabled(:refuse)
+
+      conn = post(conn, ~p"/sign_up/github", %{"cf-turnstile-response" => "bad-token"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "Please complete the verification"
+      refute Map.has_key?(conn.resp_cookies, "sign_up_oidc")
+      assert_receive {:cloudflare_request, %{"response" => "bad-token"}}
+    end
+
+    test "turns away a GitHub sign-up while Cloudflare is unavailable", %{conn: conn} do
+      turnstile_enabled(:down)
+
+      conn = post(conn, ~p"/sign_up/github", %{"cf-turnstile-response" => "good-token"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "couldn't verify your request"
+      refute Map.has_key?(conn.resp_cookies, "sign_up_oidc")
+    end
+
+    test "still reports an unavailable GitHub after Cloudflare approves the token", %{conn: conn} do
+      turnstile_enabled(:approve)
+      Portal.Config.put_env_override(:portal, Portal.GitHub.AuthProvider, client_id: nil)
+
+      conn = post(conn, ~p"/sign_up/github", %{"cf-turnstile-response" => "good-token"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "GitHub sign-in is unavailable right now"
+    end
+
+    test "does not challenge GitHub sign-up when no keys are configured", %{conn: conn} do
+      turnstile_enabled(:refuse)
+      Portal.Config.put_env_override(:portal, Portal.Turnstile, site_key: nil, secret_key: nil)
+
+      conn = post(conn, ~p"/sign_up/github")
+
+      %URI{host: "github.test"} = conn |> redirected_to() |> URI.parse()
+      refute_receive {:cloudflare_request, _}
     end
 
     test "redirects back with an error when the OAuth App is not configured", %{conn: conn} do

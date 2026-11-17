@@ -2,6 +2,45 @@ defmodule PortalWeb.WebsiteAttributionTest do
   use PortalWeb.ConnCase, async: true
   alias PortalWeb.WebsiteAttribution
 
+  test "query_params hands the stored attribution to another portal", %{conn: conn} do
+    distinct_id = "7d2ed047-64d3-41f9-9a41-ac2c9b92e761"
+
+    conn =
+      get(
+        conn,
+        "/sign_up?fz_website_id=#{distinct_id}&fz_website_path=%2Fpricing&fz_mktg=true&fz_oppref=ref"
+      )
+
+    params = conn |> get_session() |> WebsiteAttribution.fetch() |> WebsiteAttribution.query_params()
+
+    assert params == %{
+             "fz_website_id" => distinct_id,
+             "fz_website_path" => "/pricing",
+             "fz_mktg" => "true",
+             "fz_oppref" => "ref"
+           }
+
+    other_portal = build_conn() |> get("/sign_up?" <> URI.encode_query(params))
+    assert redirected_to(other_portal) == "/sign_up"
+
+    assert %{"distinct_id" => ^distinct_id, "marketing" => %{"marketing_allowed" => true, "oppref" => "ref"}} =
+             WebsiteAttribution.fetch(get_session(other_portal))
+  end
+
+  test "query_params forwards an opt-out without click references" do
+    assert WebsiteAttribution.query_params(%{
+             "marketing" => %{"marketing_allowed" => false, "captured_at" => 1}
+           }) == %{"fz_mktg" => "false"}
+  end
+
+  test "query_params leaves out regional marketing defaults and missing attribution" do
+    assert WebsiteAttribution.query_params(%{
+             "marketing" => %{"marketing_allowed" => true, "source" => "region"}
+           }) == %{}
+
+    assert WebsiteAttribution.query_params(nil) == %{}
+  end
+
   test "marketing-only handoff stores consent independently of PostHog and cleans the URL", %{conn: conn} do
     conn = get(conn, "/sign_up?fz_mktg=true&fz_oppref=click%2Breference&utm_source=openai")
     assert redirected_to(conn) == "/sign_up?utm_source=openai"

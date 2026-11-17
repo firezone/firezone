@@ -292,7 +292,7 @@ config :phoenix_live_reload, :dirs, [File.cwd!()]
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
+    "img-src 'self' data: https://www.firezone.dev https://firezone.statuspage.io",
     "style-src 'self'",
     "script-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
     "object-src 'none'",
@@ -301,7 +301,7 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   ],
   live_reload_frame_csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
+    "img-src 'self' data: https://www.firezone.dev https://firezone.statuspage.io",
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/",
     "connect-src 'self' ws: wss:",
@@ -410,16 +410,3 @@ config :sentry,
   environment_name: :dev
 
 config :portal, Portal.Telemetry, metrics_debug: false
-
-if otlp_endpoint = System.get_env("OTLP_ENDPOINT") do
-  config :opentelemetry_experimental,
-    readers: [
-      %{
-        module: :otel_metric_reader,
-        config: %{
-          export_interval_ms: 30_000,
-          exporter: {:otel_exporter_metrics_otlp, %{endpoints: [otlp_endpoint]}}
-        }
-      }
-    ]
-end

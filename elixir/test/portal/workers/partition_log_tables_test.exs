@@ -5,15 +5,16 @@ defmodule Portal.Workers.PartitionLogTablesTest do
 
   alias Portal.Workers.PartitionLogTables.Database
 
-  test "flow maintenance recognizes existing unmarked partitions and preserves its creation window" do
+  test "flow maintenance recognizes existing unmarked partitions and recreates missing partitions throughout the retention window" do
     with_partition_schema("flow_logs", fn _schema ->
-      historical = "flow_logs_" <> Calendar.strftime(Date.add(Date.utc_today(), -10), "%Y%m%d")
+      historical = "flow_logs_" <> Calendar.strftime(Date.add(Date.utc_today(), -121), "%Y%m%d")
       upcoming = "flow_logs_" <> Calendar.strftime(Date.add(Date.utc_today(), 14), "%Y%m%d")
       Repo.query!("DROP TABLE #{historical}")
       Repo.query!("DROP TABLE #{upcoming}")
 
-      assert Database.maintain("flow_logs") == %{created: 1, dropped: 0}
-      assert Repo.query!("SELECT to_regclass($1)", [historical]).rows == [[nil]]
+      assert Database.maintain("flow_logs") == %{created: 2, dropped: 0}
+      assert [[oid]] = Repo.query!("SELECT to_regclass($1)", [historical]).rows
+      assert is_integer(oid)
       assert Database.maintain("flow_logs") == %{created: 0, dropped: 0}
     end)
   end

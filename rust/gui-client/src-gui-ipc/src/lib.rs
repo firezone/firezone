@@ -4,6 +4,7 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use client_ipc::{ConnectOptions, SocketId};
 use futures::{SinkExt as _, StreamExt as _};
 use secrecy::{ExposeSecret as _, SecretString};
+use std::net::IpAddr;
 
 /// IPC messages that a newly launched process (a second instance, a deep-link
 /// handler or a CLI subcommand) may send to the running instance of Firezone.
@@ -24,6 +25,9 @@ pub enum ClientMsg {
     },
     /// End the session, keeping the stored token.
     Disconnect,
+    ListAdditionalHostCandidates,
+    /// Replace the stored additional host candidates, applying them to a running session.
+    SetAdditionalHostCandidates(Vec<IpAddr>),
 }
 
 fn serialize_token<S>(token: &Option<SecretString>, serializer: S) -> Result<S::Ok, S::Error>
@@ -42,6 +46,7 @@ pub enum ServerMsg {
     Ack,
     Resources(Vec<connlib_model::ResourceView>),
     Status(TunnelStatus),
+    AdditionalHostCandidates(Vec<IpAddr>),
     Error(ServerError),
 }
 

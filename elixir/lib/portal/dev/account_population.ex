@@ -771,8 +771,8 @@ defmodule Portal.Dev.AccountPopulation do
       )
       |> put_change(:type, :gateway)
       |> put_change(:account_id, state.account.id)
-      |> put_change(:site_id, site.id)
       |> Portal.Devices.put_free_slug(state.account.id, nil)
+      |> put_assoc(:site_device, Portal.Devices.site_device_changeset(site))
       |> Device.changeset()
       |> Repo.insert!()
 
@@ -798,7 +798,7 @@ defmodule Portal.Dev.AccountPopulation do
         last_seen_remote_ip_location_lon: -122.4194,
         last_seen_version: "1.4.0",
         last_seen_at: DateTime.utc_now(),
-        gateway_token_id: token.id
+        token_id: token.id
       )
       |> Repo.update!()
 
@@ -855,7 +855,7 @@ defmodule Portal.Dev.AccountPopulation do
         last_seen_remote_ip_location_lon: -74.0060,
         last_seen_version: "1.4.0",
         last_seen_at: DateTime.utc_now(),
-        client_token_id: token.id
+        token_id: token.id
       )
       |> Repo.update!()
 
@@ -1102,6 +1102,11 @@ defmodule Portal.Dev.AccountPopulation do
       end)
 
     Repo.query!(query, values)
+
+    Repo.query!(
+      "INSERT INTO account_slugs (slug, account_id, inserted_at) VALUES ($1, $2, $3)",
+      [attrs.slug, Ecto.UUID.dump!(attrs.id), attrs.inserted_at]
+    )
   end
 
   defp existing_account_id_by_slug(slug) do

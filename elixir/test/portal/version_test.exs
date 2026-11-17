@@ -310,4 +310,41 @@ defmodule Portal.VersionTest do
       refute Portal.Version.supports_device_access?("apple-client/1.5.14", nil)
     end
   end
+
+  describe "supports_public_key_changed?/1" do
+    test "uses component-specific minimum versions for clients" do
+      cases = [
+        {"Mac OS/15.1.1 apple-client/1.5.25 (arm64; 24.1.0)", "1.5.24", "1.5.25"},
+        {"Fedora/42.0.0 headless-client/1.5.16 (arm64; 24.1.0)", "1.5.15", "1.5.16"},
+        {"Android/14 android-client/1.5.19 (arm64; 24.1.0)", "1.5.18", "1.5.19"},
+        {"Windows/10.0.22631 gui-client/1.5.21 (arm64; 24.1.0)", "1.5.20", "1.5.21"}
+      ]
+
+      for {user_agent, unsupported_version, supported_version} <- cases do
+        refute Portal.Version.supports_public_key_changed?(%Portal.Device{
+                 type: :client,
+                 last_seen_version: unsupported_version,
+                 last_seen_user_agent: user_agent
+               })
+
+        assert Portal.Version.supports_public_key_changed?(%Portal.Device{
+                 type: :client,
+                 last_seen_version: supported_version,
+                 last_seen_user_agent: user_agent
+               })
+      end
+    end
+
+    test "uses the minimum version for gateways" do
+      refute Portal.Version.supports_public_key_changed?(%Portal.Device{
+               type: :gateway,
+               last_seen_version: "1.6.4"
+             })
+
+      assert Portal.Version.supports_public_key_changed?(%Portal.Device{
+               type: :gateway,
+               last_seen_version: "1.6.5"
+             })
+    end
+  end
 end

@@ -8,6 +8,8 @@ defmodule PortalAPI.MCPControllerTest do
 
   alias PortalAPI.MCP
 
+  import Portal.AuthProviderFixtures
+
   setup do
     account = account_fixture()
     actor = actor_fixture(type: :account_admin_user, account: account)
@@ -208,6 +210,51 @@ defmodule PortalAPI.MCPControllerTest do
           actor: actor,
           expires_at: DateTime.add(DateTime.utc_now(), -60, :second)
         )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
+    test "rejects a token once its admin is demoted", %{conn: conn, actor: actor} do
+      {_token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(account: actor.account, actor: actor)
+
+      actor |> Ecto.Changeset.change(type: :account_user) |> Portal.Repo.update!()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
+    test "rejects a token while its auth provider is disabled", %{conn: conn, actor: actor} do
+      {token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(account: actor.account, actor: actor)
+
+      Portal.EmailOTP.AuthProvider
+      |> Portal.Repo.get_by!(account_id: actor.account_id, id: token.auth_provider_id)
+      |> Ecto.Changeset.change(is_disabled: true)
+      |> Portal.Repo.update!()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
+    test "rejects a token with no auth provider", %{conn: conn, actor: actor} do
+      {token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(account: actor.account, actor: actor)
+
+      token |> Ecto.Changeset.change(auth_provider_id: nil) |> Portal.Repo.update!()
 
       conn =
         conn
@@ -697,6 +744,33 @@ defmodule PortalAPI.MCPControllerTest do
       end
     end
 
+    test "create_site_gateway returns a token only with the gateway_tokens:write scope", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      site = site_fixture(account: account)
+
+      response =
+        conn
+        |> authorize_mcp_conn(actor, ["gateways:write"])
+        |> call_tool("create_site_gateway", %{"site_id" => site.id})
+        |> json_response(200)
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} = response
+      assert text =~ "gateway_tokens:write"
+
+      response =
+        conn
+        |> recycle()
+        |> authorize_mcp_conn(actor, ["gateways:write"])
+        |> call_tool("create_site_gateway", %{"site_id" => site.id, "issue_token" => false})
+        |> json_response(200)
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = response
+      refute Map.has_key?(data, "token")
+    end
+
     test "treats fields as unknown on a tool that does not offer it", %{conn: conn, actor: actor} do
       conn =
         conn
@@ -1146,6 +1220,38 @@ defmodule PortalAPI.MCPControllerTest do
           MCP.client_capabilities_key() => %{}
         })
     }
+  end
+
+  test "auth provider tools return verified tenant and domain arrays", %{conn: conn, account: account, actor: actor} do
+    tenant_ids = ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
+    domains = ["primary.example", "secondary.example"]
+    entra = entra_provider_fixture(account: account, tenant_ids: tenant_ids, sign_in_tenant_id: hd(tenant_ids))
+    google = google_provider_fixture(account: account, workspace_domains: domains)
+    for {tool, provider, field, expected} <- [
+      {"get_entra_auth_provider", entra, "tenant_ids", tenant_ids},
+      {"get_google_auth_provider", google, "workspace_domains", domains}
+    ] do
+      result = conn |> authorize_mcp_conn(actor) |> call_tool(tool, %{"id" => provider.id}) |> json_response(200)
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
+      assert data[field] == expected
+      if field == "tenant_ids" do
+        refute Map.has_key?(data, "issuer")
+        assert data["sign_in_tenant_id"] == hd(tenant_ids)
+      end
+    end
+  end
+
+  test "Google MCP tools distinguish multiple providers in one account", %{conn: conn, account: account, actor: actor} do
+    personal = google_provider_fixture(account: account, is_legacy_unrestricted: true)
+    first = google_provider_fixture(account: account, workspace_domains: ["first.example"])
+    second = google_provider_fixture(account: account, workspace_domains: ["second.example"])
+    for {provider, domains} <- [{personal, []}, {first, ["first.example"]}, {second, ["second.example"]}] do
+      result = conn |> authorize_mcp_conn(actor) |> call_tool("get_google_auth_provider", %{"id" => provider.id}) |> json_response(200)
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
+      assert data["id"] == provider.id
+      assert data["workspace_domains"] == domains
+      refute Map.has_key?(data, "is_legacy_unrestricted")
+    end
   end
 
   defp headers(conn, method) do

@@ -5,20 +5,54 @@ defmodule PortalWeb.Plugs.FetchAccount do
 
   import Plug.Conn
   import Phoenix.Controller, only: [redirect: 2]
-  alias __MODULE__.Database
 
   @impl true
   def init(opts), do: opts
 
   @impl true
-  def call(%Plug.Conn{path_info: [account_id_or_slug | _rest]} = conn, _opts) do
-    case Database.get_account_by_id_or_slug(account_id_or_slug) do
-      %Portal.Account{} = account -> assign(conn, :account, account)
-      nil -> handle_missing_account(conn)
+  def call(%Plug.Conn{path_info: [account_id_or_slug | rest]} = conn, _opts) do
+    case PortalWeb.Accounts.get_by_id_or_slug(account_id_or_slug) do
+      %Portal.Account{} = account ->
+        conn
+        |> assign(:account, account)
+        |> maybe_redirect_old_slug(account_id_or_slug, rest, account)
+
+      nil ->
+        conn
+        |> maybe_redirect_other_region(account_id_or_slug, rest)
+        |> handle_missing_account()
     end
   end
 
   def call(conn, _opts), do: conn
+
+  # A slug another region holds sends a GET there with the same path.
+  defp maybe_redirect_other_region(%Plug.Conn{method: method} = conn, account_id_or_slug, rest)
+       when method in ["GET", "HEAD"] do
+    case PortalWeb.Accounts.other_region_url(account_id_or_slug, rest, conn.query_string) do
+      nil -> conn
+      url -> conn |> redirect(external: url) |> halt()
+    end
+  end
+
+  defp maybe_redirect_other_region(conn, _account_id_or_slug, _rest), do: conn
+
+  # An old slug still resolves, but GET requests move to the current slug so
+  # bookmarks and links heal themselves. Other methods keep going as they are.
+  defp maybe_redirect_old_slug(%Plug.Conn{method: method} = conn, account_id_or_slug, rest, account)
+       when method in ["GET", "HEAD"] do
+    if PortalWeb.Accounts.old_slug?(account_id_or_slug, account) do
+      conn
+      |> redirect(to: PortalWeb.Accounts.current_path(account, rest, conn.query_string))
+      |> halt()
+    else
+      conn
+    end
+  end
+
+  defp maybe_redirect_old_slug(conn, _account_id_or_slug, _rest, _account), do: conn
+
+  defp handle_missing_account(%Plug.Conn{halted: true} = conn), do: conn
 
   defp handle_missing_account(conn) do
     case missing_client_sign_in_redirect(conn) do
@@ -44,18 +78,4 @@ defmodule PortalWeb.Plugs.FetchAccount do
 
   defp missing_client_sign_in_redirect(_conn), do: :noop
 
-  defmodule Database do
-    import Ecto.Query
-    alias Portal.Safe
-    alias Portal.Account
-
-    def get_account_by_id_or_slug(id_or_slug) do
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
-
-      query |> Safe.unscoped() |> Safe.one()
-    end
-  end
 end

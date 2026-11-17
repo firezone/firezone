@@ -209,6 +209,28 @@ html {
   transform-origin: 110px 55px;
 }
 
+@keyframes indeterminate-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+/* Signals ongoing work without implying how much is done. */
+.indeterminate-bar {
+  width: 40%;
+  animation: indeterminate-bar 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indeterminate-bar {
+    width: 100%;
+    animation: none;
+  }
+}
+
 :root {
   /* Brand — orange (heat-wave-500 / heat-wave-600) */
   --brand: oklch(71.74% 0.192 48.75);
@@ -411,7 +433,7 @@ html[data-theme="system"] .theme-check-system {
   --badge-admin-bg: oklch(77.69% 0.1549 56.87);
 
   /* Icons */
-  --icon-bg: oklch(92.88% 0.0126 255.51);
+  --icon-bg: var(--surface-overlay);
 
   /* Side Navbar */
   --brand-wash: oklch(77.69% 0.154 56.87 / 25%);

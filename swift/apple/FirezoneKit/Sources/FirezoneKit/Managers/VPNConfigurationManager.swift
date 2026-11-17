@@ -276,10 +276,7 @@ public final class VPNConfigurationManager {
     let configuration = Configuration()
     configuration.loadProviderConfiguration(try providerConfiguration())
 
-    return SignInSettings(
-      authURL: configuration.authURL,
-      accountSlug: configuration.accountSlug
-    )
+    return configuration.signInSettings
   }
 
   /// Whether the Internet Resource is switched on in the profile the app shares with
@@ -289,6 +286,14 @@ public final class VPNConfigurationManager {
     configuration.loadProviderConfiguration(try providerConfiguration())
 
     return configuration.internetResourceEnabled
+  }
+
+  /// The local IPs the tunnel advertises as additional host candidates.
+  public func additionalHostCandidates() throws -> [String] {
+    let configuration = Configuration()
+    configuration.loadProviderConfiguration(try providerConfiguration())
+
+    return configuration.additionalHostCandidates
   }
 
   func providerConfiguration() throws -> [String: String] {

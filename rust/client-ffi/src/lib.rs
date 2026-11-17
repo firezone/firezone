@@ -18,6 +18,7 @@ use crate::fd::RawFd;
 
 use std::{
     fmt,
+    net::IpAddr,
     path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
@@ -41,7 +42,6 @@ uniffi::setup_scaffolding!();
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
-    runtime: Option<tokio::runtime::Runtime>,
     uploader: Option<flow_log_upload::Uploader>,
 }
 
@@ -311,6 +311,7 @@ pub fn connect_android(
         Some(device_name),
         device_info,
         is_internet_resource_active,
+        Vec::default(),
         tls_identity,
         tcp_socket_factory,
         udp_socket_factory,
@@ -326,11 +327,21 @@ pub fn connect_apple(
     device_name: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
+    additional_host_candidates: Vec<String>,
     tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
 ) -> Result<Connection, ConnlibError> {
     // iOS doesn't need socket protection like Android
     let tcp_socket_factory = Arc::new(socket_factory::tcp);
     let udp_socket_factory = Arc::new(socket_factory::udp);
+
+    let additional_host_candidates = additional_host_candidates
+        .into_iter()
+        .filter_map(|ip| {
+            ip.parse()
+                .inspect_err(|e| tracing::debug!(%ip, "Failed to parse additional host candidate as IP address: {e}"))
+                .ok()
+        })
+        .collect();
 
     // Locate the TUN device before `connect` spawns anything: every failed
     // search used to leave a Tokio runtime and its threads behind, and the
@@ -344,15 +355,14 @@ pub fn connect_apple(
         device_name,
         device_info,
         is_internet_resource_active,
+        additional_host_candidates,
         tls_identity,
         tcp_socket_factory,
         udp_socket_factory,
     )?;
 
-    let runtime = connection.session.runtime.as_ref().context("No runtime")?;
     // SAFETY: NetworkExtension owns the descriptor and keeps it open for the session.
-    let tun = unsafe { platform::Tun::from_fd(tun_fd, runtime.handle()) }
-        .context("Failed to create new Tun")?;
+    let tun = unsafe { platform::Tun::from_fd(tun_fd) }.context("Failed to create new Tun")?;
     connection.session.inner.set_tun(Box::new(tun));
 
     Ok(connection)
@@ -381,6 +391,7 @@ pub fn connect_dummy(
         device_name,
         device_info,
         is_internet_resource_active,
+        Vec::default(),
         tls_identity,
         tcp_socket_factory,
         udp_socket_factory,
@@ -452,10 +463,31 @@ impl Session {
         self.inner.set_dns(dns_servers);
     }
 
+    pub fn set_additional_host_candidates(&self, ips: Vec<String>) {
+        tracing::debug!(?ips, "Received set_additional_host_candidates command");
+
+        let ips = ips
+            .into_iter()
+            .filter_map(|ip| {
+                ip.parse()
+                    .inspect_err(|e| tracing::debug!(%ip, "Failed to parse additional host candidate as IP address: {e}"))
+                    .ok()
+            })
+            .collect();
+
+        self.inner.set_additional_host_candidates(ips);
+    }
+
     pub fn reset(&self, reason: String) {
         tracing::debug!(%reason, "Received reset command");
 
         self.inner.reset(reason)
+    }
+
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        tracing::debug!(enabled, "Received set_force_relayed_connections command");
+
+        self.inner.set_force_relayed_connections(enabled);
     }
 }
 
@@ -467,10 +499,9 @@ impl Session {
 
         tracing::debug!("Received set_tun command");
 
-        let runtime = self.runtime.as_ref().context("No runtime")?;
         // SAFETY: Android transfers ownership of an open descriptor via `detachFd`.
         let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-        let tun = platform::Tun::new(fd, runtime.handle()).context("Failed to create new Tun")?;
+        let tun = platform::Tun::new(fd).context("Failed to create new Tun")?;
 
         self.inner.set_tun(Box::new(tun));
 
@@ -554,18 +585,18 @@ impl EventStream {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        let Some(runtime) = self.runtime.take() else {
-            return;
-        };
-
         self.inner.stop(); // Instruct the event-loop to shut down.
 
-        // Keep the runtime alive so the event-loop can gracefully close its connections.
-        runtime.block_on(async {
-            let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
-        });
-
-        runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
+        // Give the event-loop a moment to gracefully close its connections.
+        match tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+        {
+            Ok(runtime) => runtime.block_on(async {
+                let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
+            }),
+            Err(e) => tracing::debug!("Failed to create runtime to await shutdown: {e}"),
+        }
 
         // The event loop spooled its open flows on the way out; flush them.
         if let Some(uploader) = self.uploader.take() {
@@ -589,6 +620,7 @@ fn connect(
     device_name: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
+    additional_host_candidates: Vec<IpAddr>,
     tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -603,13 +635,6 @@ fn connect(
     let token = token
         .map(SecretString::from)
         .ok_or_else(|| anyhow!("Cannot authenticate without a token"))?;
-
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()
-        .context("Failed to create tokio runtime")?;
 
     install_rustls_crypto_provider();
 
@@ -644,8 +669,6 @@ fn connect(
     )
     .context("Failed to create login URL")?;
 
-    let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
-
     let portal = PhoenixChannel::disconnected(
         url,
         Some(token),
@@ -669,23 +692,20 @@ fn connect(
         uploader
     });
 
-    let (session, events) = client_shared::Session::connect(
-        tcp_socket_factory,
-        udp_socket_factory,
-        portal,
-        is_internet_resource_active,
-        Vec::default(),
-        flow_logs_dir,
-        false,
-        runtime.handle().clone(),
-    );
+    let listen_port = client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+    let config = client_shared::SessionConfig::new(listen_port)
+        .with_internet_resource_active(is_internet_resource_active)
+        .with_additional_host_candidates(additional_host_candidates)
+        .with_flow_logs_dir(flow_logs_dir);
+    let (session, events) =
+        client_shared::Session::connect(tcp_socket_factory, udp_socket_factory, portal, config)
+            .context("Failed to start connlib")?;
 
     analytics::new_session(device_id, api_url);
 
     Ok(Connection {
         session: Arc::new(Session {
             inner: session,
-            runtime: Some(runtime),
             uploader,
         }),
         events: Arc::new(EventStream(Mutex::new(events))),
@@ -802,6 +822,15 @@ pub fn configure_logger(
             _file_handle: handle,
         })
         .map_err(|_| anyhow!("Logging guard should never be initialized twice"))?;
+
+    Ok(())
+}
+
+/// Checks that [`configure_logger`] would accept `log_filter`.
+#[uniffi::export]
+pub fn validate_log_filter(log_filter: String) -> Result<(), ConnlibError> {
+    // `ParseError` already renders its source, so keep `{:#}` from repeating it.
+    logging::try_filter::<tracing_subscriber::Registry>(&log_filter).map_err(|e| anyhow!("{e}"))?;
 
     Ok(())
 }

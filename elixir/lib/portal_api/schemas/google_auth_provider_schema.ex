@@ -5,7 +5,7 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Google.AuthProvider, internal: [:is_verified]}
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Google.AuthProvider, internal: [:is_verified, :is_legacy_unrestricted]}
     OpenApiSpex.schema(%{
       title: "GoogleAuthProvider",
       description: "Google Auth Provider",
@@ -28,6 +28,13 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
           example: "https://accounts.google.com",
           type: :string,
           description: "Issuer"
+        },
+        workspace_domains: %Schema{
+          type: :array,
+          items: %Schema{type: :string},
+          uniqueItems: true,
+          readOnly: true,
+          description: "Verified Google Workspace domains allowed to sign in. Empty for personal-only providers and existing unrestricted providers."
         },
         context: %Schema{
           example: "clients_and_portal",
@@ -83,9 +90,13 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
         :issuer,
         :name,
         :portal_session_lifetime_secs,
-        :updated_at
+        :updated_at,
+        :workspace_domains
       ]
     })
+
+    def map(provider, _map), do: %{workspace_domains: provider.workspace_domains || []}
+
   end
 
   defmodule Response do

@@ -6,7 +6,8 @@
 
 #![allow(clippy::unwrap_used)]
 
-use ip_packet::{IpPacket, IpPacketBuf};
+use bufferpool::Bytes;
+use ip_packet::IpPacket;
 
 fn main() {
     divan::main()
@@ -93,11 +94,11 @@ fn ecn(bencher: divan::Bencher, kind: Kind) {
 }
 
 impl Kind {
-    fn buf(self) -> (IpPacketBuf, usize) {
+    fn buf(self) -> (Bytes, usize) {
         let bytes = self.bytes();
 
-        let mut buf = IpPacketBuf::new();
-        buf.buf()[..bytes.len()].copy_from_slice(&bytes);
+        let mut buf = ip_packet::packet_buffer();
+        buf[..bytes.len()].copy_from_slice(&bytes);
 
         (buf, bytes.len())
     }

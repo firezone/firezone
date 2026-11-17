@@ -242,6 +242,7 @@ fn mtls_host<E>(url: &Url) -> Result<Option<&'static str>, LoginUrlError<E>> {
     match host {
         "api.firez.one" => Ok(Some("mtls.firez.one")),
         "api.firezone.dev" => Ok(Some("mtls.firezone.dev")),
+        "eu.api.firezone.dev" => Ok(Some("eu.mtls.firezone.dev")),
         _ => Ok(None),
     }
 }
@@ -475,6 +476,20 @@ mod tests {
         .unwrap();
 
         assert_eq!(login_url.host_and_port(), ("mtls.firezone.dev", 443));
+    }
+
+    #[test]
+    fn client_with_certificate_uses_mtls_eu_api_host() {
+        let login_url = LoginUrl::client(
+            "wss://eu.api.firezone.dev",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            Some(certificate()),
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("eu.mtls.firezone.dev", 443));
     }
 
     #[test]

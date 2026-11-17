@@ -1,13 +1,17 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use anyhow::{Context as _, Result};
-use bufferpool::{Buffer, BufferPool, VecBuf};
+use bufferpool::Bytes;
 use ip_packet::{Ecn, Ipv4HeaderSlice, Ipv6HeaderSlice, UdpSlice};
 use opentelemetry::KeyValue;
 use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
 use smallvec::SmallVec;
 use std::io;
 use std::io::IoSliceMut;
-use std::ops::{Deref, Index};
+use std::ops::Index;
+use std::time::Instant;
 use std::{
+    future::Future as _,
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
 };
@@ -278,11 +282,14 @@ pub struct PerfUdpSocket {
     /// The socket(s) we send and receive on; see [`SocketPool`].
     pool: SocketPool,
 
-    /// The pools backing batched receives; see [`RecvBuffers`].
-    recv_buffers: RecvBuffers,
+    /// How many bytes each buffer of a batched receive holds.
+    recv_buf_size: usize,
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
     send_retry_histogram: opentelemetry::metrics::Histogram<u64>,
+    #[cfg(apple)]
+    dropped_packets: opentelemetry::metrics::Counter<u64>,
+    send_blocked_histogram: opentelemetry::metrics::Histogram<f64>,
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
@@ -302,7 +309,7 @@ impl UdpSocket {
     }
 
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
-    pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
+    pub fn into_perf(self) -> PerfUdpSocket {
         let quinn_state = self.state;
 
         #[cfg(apple)]
@@ -320,14 +327,17 @@ impl UdpSocket {
 
         let wildcard = OwnedSocket::new(self.inner, quinn_state, false);
 
-        Ok(PerfUdpSocket {
+        PerfUdpSocket {
             pool: SocketPool::new(wildcard),
-            recv_buffers: RecvBuffers::new(recv_buf_size),
+            recv_buf_size,
             batch_histogram: otel_instruments::network_packets_batch_count(),
             send_retry_histogram: otel_instruments::network_retries(),
+            #[cfg(apple)]
+            dropped_packets: otel_instruments::network_packet_dropped(),
+            send_blocked_histogram: otel_instruments::network_send_blocked_duration(),
             source_ip_resolver: self.source_ip_resolver,
             port: self.port,
-        })
+        }
     }
 
     /// Configures a new source IP resolver for this UDP socket.
@@ -361,8 +371,8 @@ impl std::os::fd::AsFd for UdpSocket {
 
 /// An inbound UDP datagram of a [`DatagramBatch`], possibly GRO / URO-coalesced from several segments
 /// that all come from the same remote address.
-pub struct DatagramIn<B = Buffer<Vec<u8>>> {
-    buffer: B,
+pub struct DatagramIn {
+    buffer: Bytes,
     local: SocketAddr,
     from: SocketAddr,
     ecn: Ecn,
@@ -381,7 +391,7 @@ pub struct Segment {
 pub struct DatagramOut {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
-    pub packet: Buffer<Vec<u8>>,
+    pub packet: Bytes,
     pub segment_size: usize,
     pub ecn: Ecn,
 }
@@ -426,7 +436,7 @@ impl PerfUdpSocket {
     /// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
     /// readiness in the process so that waiting for readiness actually suspends.
     fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramBatch> {
-        let mut batch = self.recv_buffers.pull_batch();
+        let mut batch = RecvBatch::pull(self.recv_buf_size);
 
         let len = socket.inner.try_io(Interest::READABLE, || {
             // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
@@ -452,7 +462,7 @@ impl PerfUdpSocket {
             batch
                 .buffers
                 .iter()
-                .map(|b| b.as_slice())
+                .map(|b| &b[..])
                 .zip(batch.metas.iter_mut())
                 .take(len),
         ) {
@@ -478,7 +488,7 @@ impl PerfUdpSocket {
         let transmit = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
-            datagram.packet.as_slice(),
+            &datagram.packet,
             datagram.segment_size,
             datagram.ecn,
         )?;
@@ -486,7 +496,7 @@ impl PerfUdpSocket {
         let datagrams = transmit.contents.len().div_ceil(datagram.segment_size);
         let pooled =
             self.pool
-                .get_send_socket(transmit.src_ip, datagram.dst, datagrams, &self.recv_buffers);
+                .get_send_socket(transmit.src_ip, datagram.dst, datagrams, self.recv_buf_size);
 
         self.send_transmit(pooled.as_socket(), &transmit).await
     }
@@ -537,6 +547,7 @@ impl PerfUdpSocket {
         // the kernel already accepted is never re-sent.
         let mut offset = 0;
         let mut attempt = 0;
+        let mut blocked_since = None;
 
         while offset < total {
             // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
@@ -564,14 +575,20 @@ impl PerfUdpSocket {
                     .state
                     .try_send(UdpSockRef::from(socket.inner), &chunk)
             } else {
-                socket
-                    .inner
-                    .async_io(Interest::WRITABLE, || {
-                        socket
-                            .state
-                            .try_send(UdpSockRef::from(socket.inner), &chunk)
-                    })
-                    .await
+                let mut send = std::pin::pin!(socket.inner.async_io(Interest::WRITABLE, || {
+                    socket
+                        .state
+                        .try_send(UdpSockRef::from(socket.inner), &chunk)
+                }));
+
+                std::future::poll_fn(|cx| {
+                    let result = send.as_mut().poll(cx);
+                    if result.is_pending() {
+                        blocked_since.get_or_insert_with(Instant::now);
+                    }
+                    result
+                })
+                .await
             };
 
             match result {
@@ -585,6 +602,11 @@ impl PerfUdpSocket {
 
                     self.record_send_batch_size(sent.get());
                     self.record_send_retries(attempt);
+                    self.record_send_blocked_duration(
+                        blocked_since.take(),
+                        socket.connected,
+                        "progress",
+                    );
 
                     offset += sent_bytes;
                     attempt = 0; // Each batch gets its own retry budget.
@@ -593,18 +615,37 @@ impl PerfUdpSocket {
                 // once the interface queue drains, so we park until then.
                 #[cfg(apple)]
                 Err(e) if socket.connected && should_retry(&e, attempt) => {
+                    blocked_since.get_or_insert_with(Instant::now);
                     wait_for_send_capacity(socket.inner).await;
                     attempt += 1;
                 }
                 // The unconnected catch-all gets no such signal; spin, since the `ENOBUFS`
                 // clears off-thread (driver / NIC) within microseconds.
                 Err(e) if should_retry(&e, attempt) => {
+                    #[cfg(any(apple, target_os = "windows"))]
+                    blocked_since.get_or_insert_with(Instant::now);
                     spin_and_yield(attempt).await;
                     attempt += 1;
                 }
                 #[cfg(apple)]
                 Err(e) if socket.connected && is_icmp_unreachable(&e) => {
                     self.record_send_retries(attempt);
+                    self.dropped_packets.add(
+                        chunk.datagram_count() as u64,
+                        &[
+                            KeyValue::new("network.transport", "udp"),
+                            KeyValue::new("network.io.direction", "transmit"),
+                            KeyValue::new(
+                                "error.code",
+                                e.raw_os_error().unwrap_or_default() as i64,
+                            ),
+                        ],
+                    );
+                    self.record_send_blocked_duration(
+                        blocked_since.take(),
+                        socket.connected,
+                        "failure",
+                    );
 
                     // The kernel received an ICMP error for this path; the error is one-shot.
                     // Drop the packet: either the path recovers or connlib migrates / times out.
@@ -614,6 +655,11 @@ impl PerfUdpSocket {
                 }
                 Err(e) => {
                     self.record_send_retries(attempt);
+                    self.record_send_blocked_duration(
+                        blocked_since.take(),
+                        socket.connected,
+                        "failure",
+                    );
 
                     return Err(e).with_context(|| {
                         format!(
@@ -652,6 +698,27 @@ impl PerfUdpSocket {
             &[
                 KeyValue::new("network.transport", "udp"),
                 KeyValue::new("network.io.direction", "transmit"),
+            ],
+        );
+    }
+
+    fn record_send_blocked_duration(
+        &self,
+        blocked_since: Option<Instant>,
+        connected: bool,
+        outcome: &'static str,
+    ) {
+        let Some(blocked_since) = blocked_since else {
+            return;
+        };
+
+        self.send_blocked_histogram.record(
+            blocked_since.elapsed().as_secs_f64(),
+            &[
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.io.direction", "transmit"),
+                KeyValue::new("network.socket.connected", connected),
+                KeyValue::new("outcome", outcome),
             ],
         );
     }
@@ -702,12 +769,7 @@ impl PerfUdpSocket {
 
         let transmit = quinn_udp::Transmit {
             destination: dst,
-            ecn: match ecn {
-                Ecn::NonEct => None,
-                Ecn::Ect1 => Some(quinn_udp::EcnCodepoint::Ect1),
-                Ecn::Ect0 => Some(quinn_udp::EcnCodepoint::Ect0),
-                Ecn::Ce => Some(quinn_udp::EcnCodepoint::Ce),
-            },
+            ecn: ecn_codepoint(ecn),
             contents: packet,
             segment_size: Some(segment_size),
             src_ip,
@@ -841,6 +903,13 @@ fn is_icmp_unreachable(e: &io::Error) -> bool {
 }
 
 /// Whether a failed send should be retried for the given attempt.
+#[cfg_attr(
+    target_os = "windows",
+    expect(
+        clippy::needless_bool,
+        reason = "Same shape as the checks for other platforms"
+    )
+)]
 fn should_retry(e: &io::Error, attempt: u32) -> bool {
     let Some(raw_os_error) = e.raw_os_error() else {
         return false;
@@ -903,36 +972,32 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
     let _ = tokio::time::timeout(timeout, socket.writable()).await;
 }
 
-/// The pools backing a batched receive: scratch space for the datagrams themselves
-/// plus containers for the buffers and metas that make up one batch.
+/// The storage for one receive batch: a datagram buffer plus its metadata per slot.
 ///
-/// The buffers and metas live in pooled, heap-allocated `Vec`s rather than inline in
+/// The buffers and metas live in heap-allocated `Vec`s rather than inline in
 /// [`DatagramBatch`]: the batch is sent over a channel and inline storage would make
 /// every channel slot (and thus tokio's block allocations) carry the full batch size.
-pub(crate) struct RecvBuffers {
-    bytes: &'static BufferPool<Vec<u8>>,
-}
-
-bufferpool::buffer_pool!(
-    static UDP_RECV_BYTES: Vec<u8>,
-    "udp-recv-bytes",
-    batch: cfg_select! {
-        apple => { quinn_udp::BATCH_SIZE }
-        target_os = "android" => { 2 }
-        // A magazine holds two batches: enough to take back the unused buffers of a receive.
-        _ => { quinn_udp::BATCH_SIZE.div_ceil(2) }
-    }
-);
-bufferpool::buffer_pool!(static UDP_RECV_BUFFERS: VecBuf<Buffer<Vec<u8>>> = (quinn_udp::BATCH_SIZE, "udp-recv-buffers"), batch: 4);
-bufferpool::buffer_pool!(static UDP_RECV_METAS: VecBuf<quinn_udp::RecvMeta> = (quinn_udp::BATCH_SIZE, "udp-recv-metas"), batch: 4);
-
-/// The pooled storage for one receive batch: a datagram buffer plus its metadata per slot.
 pub(crate) struct RecvBatch {
-    buffers: Buffer<VecBuf<Buffer<Vec<u8>>>>,
-    metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
+    buffers: Vec<Bytes>,
+    metas: Vec<quinn_udp::RecvMeta>,
 }
 
 impl RecvBatch {
+    /// Pulls the storage for one receive batch of `recv_buf_size`-byte buffers.
+    pub(crate) fn pull(recv_buf_size: usize) -> Self {
+        Self {
+            buffers: std::iter::repeat_with(|| {
+                let mut buffer = Bytes::fitting(recv_buf_size);
+                buffer.expose(recv_buf_size);
+
+                buffer
+            })
+            .take(quinn_udp::BATCH_SIZE)
+            .collect(),
+            metas: vec![quinn_udp::RecvMeta::default(); quinn_udp::BATCH_SIZE],
+        }
+    }
+
     /// The batch's datagram buffers as scatter slices, paired with the meta array the
     /// kernel fills in — the two arguments a `recvmmsg`-style read expects. Borrows the
     /// batch for the duration of the read; afterwards the buffers are handed to a
@@ -953,50 +1018,30 @@ impl RecvBatch {
     }
 }
 
-impl RecvBuffers {
-    fn new(recv_buf_size: usize) -> Self {
-        Self {
-            bytes: UDP_RECV_BYTES.with_capacity(recv_buf_size),
-        }
-    }
-
-    /// Pulls the storage for one receive batch, sized and ready for a `recv` call.
-    pub(crate) fn pull_batch(&self) -> RecvBatch {
-        let mut buffers = UDP_RECV_BUFFERS.pull();
-        let mut metas = UDP_RECV_METAS.pull();
-
-        buffers.extend(std::iter::repeat_with(|| self.bytes.pull()).take(quinn_udp::BATCH_SIZE));
-        metas.resize(quinn_udp::BATCH_SIZE, quinn_udp::RecvMeta::default());
-
-        RecvBatch { buffers, metas }
-    }
-}
-
 /// A batch of datagrams, received from the socket in a single syscall and exchanged
 /// over the socket channels as a single item.
 ///
 /// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
-/// live in pooled, heap-allocated `Vec`s (see `RecvBuffers`), so moving a batch only
-/// copies a couple of pointers. Callers consume a batch with [`DatagramBatch::drain`],
+/// live in heap-allocated `Vec`s (see `RecvBatch`), so moving a batch only copies a
+/// couple of pointers. Callers consume a batch with [`DatagramBatch::drain`],
 /// which yields each buffer as a [`DatagramIn`] that segments GRO / URO-coalesced
 /// datagrams apart again.
 ///
-/// The batch is generic over its buffer type to allow easier testing without a buffer pool.
 #[derive(Clone, derive_more::Debug)]
-pub struct DatagramBatch<B: 'static = Buffer<Vec<u8>>> {
+pub struct DatagramBatch {
     #[debug(skip)]
-    buffers: Buffer<VecBuf<B>>,
+    buffers: Vec<Bytes>,
     #[debug(skip)]
-    metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
+    metas: Vec<quinn_udp::RecvMeta>,
 
     port: u16,
     num_packets: usize,
 }
 
-impl<B> DatagramBatch<B> {
-    pub(crate) fn new(
-        mut buffers: Buffer<VecBuf<B>>,
-        mut metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
+impl DatagramBatch {
+    pub fn new(
+        mut buffers: Vec<Bytes>,
+        mut metas: Vec<quinn_udp::RecvMeta>,
         port: u16,
         len: usize,
     ) -> Self {
@@ -1012,6 +1057,37 @@ impl<B> DatagramBatch<B> {
             port,
             num_packets,
         }
+    }
+
+    /// Creates the batch a socket bound to the datagrams' `dst` receives in one syscall.
+    ///
+    /// A datagram longer than its `segment_size` arrives coalesced, as with GRO.
+    ///
+    /// # Panics
+    ///
+    /// If a datagram has no `src`.
+    pub fn from_datagrams(datagrams: impl IntoIterator<Item = DatagramOut>) -> Self {
+        let mut port = 0;
+        let (buffers, metas): (Vec<_>, Vec<_>) = datagrams
+            .into_iter()
+            .map(|datagram| {
+                port = datagram.dst.port();
+
+                let mut meta = quinn_udp::RecvMeta::default();
+                meta.addr = datagram
+                    .src
+                    .expect("received datagrams should have a `src`");
+                meta.len = datagram.packet.len();
+                meta.stride = datagram.segment_size;
+                meta.dst_ip = Some(datagram.dst.ip());
+                meta.ecn = ecn_codepoint(datagram.ecn);
+
+                (datagram.packet, meta)
+            })
+            .unzip();
+        let len = buffers.len();
+
+        Self::new(buffers, metas, port, len)
     }
 
     /// How many datagrams this batch carries, as counted from the kernel's receive metadata.
@@ -1030,10 +1106,7 @@ impl<B> DatagramBatch<B> {
     /// Removes all datagrams from the batch, in order; draining again yields nothing.
     ///
     /// Datagrams with nonsensical metadata are dropped.
-    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn<B>> + '_
-    where
-        B: Deref<Target = Vec<u8>>,
-    {
+    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn> + '_ {
         let port = self.port;
         self.num_packets = 0;
 
@@ -1053,12 +1126,9 @@ fn num_segments(meta: &quinn_udp::RecvMeta) -> usize {
     meta.len.div_ceil(meta.stride.max(1))
 }
 
-impl<B> DatagramIn<B>
-where
-    B: Deref<Target = Vec<u8>>,
-{
+impl DatagramIn {
     /// Validates what [`quinn_udp`] reported about the buffer.
-    fn new(buffer: B, meta: quinn_udp::RecvMeta, port: u16) -> Option<Self> {
+    fn new(buffer: Bytes, meta: quinn_udp::RecvMeta, port: u16) -> Option<Self> {
         if meta.len == 0 {
             return None;
         }
@@ -1128,7 +1198,7 @@ where
     }
 
     /// Iterates over the segments of the datagram, i.e. the datagrams GRO / URO coalesced into it.
-    pub fn segments(&self) -> impl Iterator<Item = Segment> + use<B> {
+    pub fn segments(&self) -> impl Iterator<Item = Segment> + use<> {
         let Self { len, stride, .. } = *self;
         #[cfg(debug_assertions)]
         let (from, local, ecn) = (self.from, self.local, self.ecn);
@@ -1144,14 +1214,20 @@ where
     }
 }
 
-impl<B> Index<Segment> for DatagramIn<B>
-where
-    B: Deref<Target = Vec<u8>>,
-{
+impl Index<Segment> for DatagramIn {
     type Output = [u8];
 
     fn index(&self, segment: Segment) -> &[u8] {
         &self.buffer[..self.len][segment.start..segment.end]
+    }
+}
+
+fn ecn_codepoint(ecn: Ecn) -> Option<EcnCodepoint> {
+    match ecn {
+        Ecn::NonEct => None,
+        Ecn::Ect1 => Some(EcnCodepoint::Ect1),
+        Ecn::Ect0 => Some(EcnCodepoint::Ect0),
+        Ecn::Ce => Some(EcnCodepoint::Ce),
     }
 }
 
@@ -1179,39 +1255,25 @@ mod tests {
 
     use super::*;
 
-    #[derive(derive_more::Deref)]
-    struct DummyBuffer(Vec<u8>);
-
-    impl Clone for DummyBuffer {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    bufferpool::buffer_pool!(static DUMMY_BUFFERS: VecBuf<DummyBuffer> = (3, "test"), batch: 4);
-    bufferpool::buffer_pool!(static DUMMY_METAS: VecBuf<quinn_udp::RecvMeta> = (3, "test"), batch: 4);
-
     /// The batch is the item of the channel to the main thread; keeping it small is
-    /// the whole point of storing its buffers in pooled `Vec`s rather than inline. tokio
-    /// allocates channel slots in blocks, so a large item would cross musl's mmap
-    /// threshold and thrash the allocator (see the pooling that produced this type).
+    /// the whole point of storing its buffers in heap-allocated `Vec`s rather than inline.
+    /// tokio allocates channel slots in blocks, so a large item would cross musl's mmap
+    /// threshold and thrash the allocator.
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn batch_is_a_small_channel_item() {
-        assert_eq!(size_of::<DatagramBatch>(), 80);
+        assert_eq!(size_of::<DatagramBatch>(), 64);
     }
 
     #[test]
     fn drain_segments_buffers_correctly() {
-        let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.extend([
-            DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
-            DummyBuffer(b"baz1baz2baz3baz4baz5foo       ".to_vec()),
-            DummyBuffer(b"".to_vec()),
-        ]);
+        let buffers = vec![
+            Bytes::copied_from(b"foobar1foobar2foobar3foobar4foobar5foo                 "),
+            Bytes::copied_from(b"baz1baz2baz3baz4baz5foo       "),
+            Bytes::copied_from(b""),
+        ];
 
-        let mut metas = DUMMY_METAS.pull();
-        metas.extend([
+        let metas = vec![
             recv_meta(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
                 IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -1225,7 +1287,7 @@ mod tests {
                 4,
             ),
             quinn_udp::RecvMeta::default(),
-        ]);
+        ];
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 3);
 
@@ -1250,16 +1312,14 @@ mod tests {
 
     #[test]
     fn drained_batch_yields_nothing() {
-        let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.extend([DummyBuffer(b"foo".to_vec())]);
+        let buffers = vec![Bytes::copied_from(b"foo")];
 
-        let mut metas = DUMMY_METAS.pull();
-        metas.extend([recv_meta(
+        let metas = vec![recv_meta(
             SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
             3,
             3,
-        )]);
+        )];
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 1);
 
@@ -1275,21 +1335,19 @@ mod tests {
         let remote_b = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 2000);
         let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
-        let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.extend([
-            DummyBuffer(b"foo1foo2".to_vec()),
-            DummyBuffer(b"foo3".to_vec()),
-            DummyBuffer(b"bar1".to_vec()),
-            DummyBuffer(b"foo4".to_vec()),
-        ]);
+        let buffers = vec![
+            Bytes::copied_from(b"foo1foo2"),
+            Bytes::copied_from(b"foo3"),
+            Bytes::copied_from(b"bar1"),
+            Bytes::copied_from(b"foo4"),
+        ];
 
-        let mut metas = DUMMY_METAS.pull();
-        metas.extend([
+        let metas = vec![
             recv_meta(remote_a, local, 8, 4),
             recv_meta(remote_a, local, 4, 4),
             recv_meta(remote_b, local, 4, 4),
             recv_meta(remote_a, local, 4, 4),
-        ]);
+        ];
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 4);
         let buffers = batch
@@ -1319,14 +1377,12 @@ mod tests {
     /// is dropped and iteration moves on to the next buffer.
     #[test]
     fn zero_stride_buffer_is_skipped() {
-        let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.extend([
-            DummyBuffer(b"garbage    ".to_vec()),
-            DummyBuffer(b"foo        ".to_vec()),
-        ]);
+        let buffers = vec![
+            Bytes::copied_from(b"garbage    "),
+            Bytes::copied_from(b"foo        "),
+        ];
 
-        let mut metas = DUMMY_METAS.pull();
-        metas.extend([
+        let metas = vec![
             recv_meta(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
                 IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -1339,7 +1395,7 @@ mod tests {
                 3,
                 3,
             ),
-        ]);
+        ];
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
 
@@ -1365,14 +1421,12 @@ mod tests {
     fn drain_drops_segments_larger_than_max_fz_payload() {
         let oversized = 2 * ip_packet::MAX_FZ_PAYLOAD;
 
-        let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.extend([
-            DummyBuffer(vec![0; oversized]),
-            DummyBuffer(b"foobar1".to_vec()),
-        ]);
+        let buffers = vec![
+            Bytes::copied_from(&vec![0; oversized]),
+            Bytes::copied_from(b"foobar1"),
+        ];
 
-        let mut metas = DUMMY_METAS.pull();
-        metas.extend([
+        let metas = vec![
             recv_meta(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
                 IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -1385,7 +1439,7 @@ mod tests {
                 7,
                 7,
             ),
-        ]);
+        ];
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
 
@@ -1473,7 +1527,7 @@ mod tests {
         );
     }
 
-    fn packets(batch: &mut DatagramBatch<DummyBuffer>) -> Vec<Vec<u8>> {
+    fn packets(batch: &mut DatagramBatch) -> Vec<Vec<u8>> {
         batch
             .drain()
             .flat_map(|datagram| {

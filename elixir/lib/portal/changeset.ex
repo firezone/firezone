@@ -22,7 +22,9 @@ defmodule Portal.Changeset do
     %Postgrex.INET{address: {198, 51, 100, 0}, netmask: 24},
     %Postgrex.INET{address: {203, 0, 113, 0}, netmask: 24},
     %Postgrex.INET{address: {224, 0, 0, 0}, netmask: 4},
-    %Postgrex.INET{address: {240, 0, 0, 0}, netmask: 4}
+    %Postgrex.INET{address: {240, 0, 0, 0}, netmask: 4},
+    # Azure WireServer is a public address, so no special-use range covers it.
+    %Postgrex.INET{address: {168, 63, 129, 16}, netmask: 32}
   ]
 
   @special_use_ipv6_cidrs [

@@ -2030,10 +2030,7 @@ defmodule Portal.Entra.SyncTest do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
       {directory_sync_client_id, auth_provider_client_id} = entra_client_ids()
-      original_log_level = Logger.level()
-
-      Logger.configure(level: :debug)
-      on_exit(fn -> Logger.configure(level: original_log_level) end)
+      Logger.put_process_level(self(), :debug)
 
       Req.Test.expect(APIClient, 20, fn %{request_path: path, query_string: query} = conn ->
         cond do

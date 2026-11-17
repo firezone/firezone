@@ -5,6 +5,7 @@ use telemetry::analytics;
 
 use clock::Clock;
 use hickory_resolver::TokioResolver;
+use hickory_resolver::config::ResolveHosts;
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::rr::RecordType;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
@@ -20,7 +21,7 @@ use std::{io, mem};
 use tokio::sync::mpsc;
 use tunnel::messages::gateway::{
     Authorization, ClientIceCandidates, ClientsIceCandidates, EgressMessages, IngressMessages,
-    InitGateway, RejectAccess,
+    InitGateway, PublicKeyChanged, RejectAccess,
 };
 use tunnel::messages::{self, RelaysPresence, SnownetCapabilities};
 use tunnel::{
@@ -84,7 +85,6 @@ impl Eventloop {
         tunnel: GatewayTunnel,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
-        resolver: TokioResolver,
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
         account_slug: account_slug::Cache,
@@ -92,19 +92,24 @@ impl Eventloop {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
-        tokio::spawn(phoenix_channel_event_loop(
-            portal,
-            PublicKeyParam(tunnel.public_key().to_bytes()),
-            portal_event_tx,
-            portal_cmd_rx,
-            resolver.clone(),
-        ));
+        let public_key = PublicKeyParam(tunnel.public_key().to_bytes());
+        let portal_resolver = dns_resolver()?;
+        async_runtime::spawn_thread("fz-portal", move || {
+            phoenix_channel_event_loop(
+                portal,
+                public_key,
+                portal_event_tx,
+                portal_cmd_rx,
+                portal_resolver,
+            )
+        })
+        .context("Failed to spawn portal thread")?;
 
         Ok(Self {
             clock,
             tunnel: Some(tunnel),
             tun_device_manager,
-            resolver,
+            resolver: dns_resolver()?,
             flow_logs_dir,
             local_flow_logs,
             account_slug,
@@ -195,7 +200,7 @@ impl Eventloop {
             }
             CombinedEvent::Clock(clock::Event::Alarm(now)) => {
                 if let Some(tunnel) = self.tunnel.as_mut() {
-                    tunnel.state_mut().handle_timeout(now);
+                    tunnel.handle_timeout(now);
                 }
 
                 Ok(ControlFlow::Continue(()))
@@ -340,7 +345,6 @@ impl Eventloop {
 
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
-                || e.any_is::<tunnel::CryptoWorkersStopped>()
                 || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
             {
                 return Err(e);
@@ -391,7 +395,7 @@ impl Eventloop {
                     msg.gateway_ice_credentials,
                     msg.expires_at,
                     msg.resource,
-                    msg.use_iceless,
+                    msg.use_frostlink,
                     now,
                     msg.flow_logs_ingest_token,
                 );
@@ -429,6 +433,14 @@ impl Eventloop {
                 tunnel
                     .state_mut()
                     .remove_access(&client_id, &resource_id, now);
+            }
+            IngressMessages::PublicKeyChanged(PublicKeyChanged {
+                client_id,
+                public_key,
+            }) => {
+                tunnel
+                    .state_mut()
+                    .handle_public_key_changed(client_id, public_key, now);
             }
             IngressMessages::RelaysPresence(RelaysPresence {
                 disconnected_ids,
@@ -607,6 +619,21 @@ async fn resolve_record(
             Vec::new()
         }
     }
+}
+
+/// Builds a DNS resolver backed by the system's configuration.
+///
+/// Its connections are driven by the runtime it is used on, so every thread needs its own.
+fn dns_resolver() -> Result<TokioResolver> {
+    let mut resolver_builder = TokioResolver::builder_tokio()?;
+    resolver_builder.options_mut().cache_size = 512;
+    resolver_builder.options_mut().use_hosts_file = ResolveHosts::Always;
+
+    let resolver = resolver_builder
+        .build()
+        .context("Failed to build DNS resolver")?;
+
+    Ok(resolver)
 }
 
 async fn phoenix_channel_event_loop(

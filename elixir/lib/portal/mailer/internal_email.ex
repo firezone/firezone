@@ -44,6 +44,7 @@ defmodule Portal.Mailer.InternalEmail do
     Sign-up questionnaire
 
     Account: #{account.name} (#{account.id})
+    Region: #{region()}
     Actor: #{actor.name} <#{actor.email}>
 
     #{survey_answers(survey)}
@@ -64,6 +65,82 @@ defmodule Portal.Mailer.InternalEmail do
     Actor: #{subject.actor.name} <#{subject.actor.email}>
 
     #{feedback}
+    """)
+  end
+
+  def region_transfer_request_email(
+        %Portal.Account{} = account,
+        %Portal.Authentication.Subject{} = subject,
+        from_region,
+        to_region
+      ) do
+    default_email()
+    |> to("support@firezone.dev")
+    |> reply_to({subject.actor.name, subject.actor.email})
+    |> subject("Region transfer request: #{account.name}")
+    |> with_account_id(account.id)
+    |> text_body("""
+    Region transfer request
+
+    Account: #{account.name} (#{account.id})
+    Slug: #{account.slug}
+    Plan: #{Portal.Billing.plan_type(account)}
+    Requested by: #{subject.actor.name} <#{subject.actor.email}>
+
+    From region: #{from_region}
+    To region: #{to_region}
+    """)
+  end
+
+  def sign_up_approval_request_email(%{registration: registration} = review, approver, url) do
+    default_email()
+    |> to(approver)
+    |> reply_to({registration.actor_name, registration.email})
+    |> subject("Approve sign-up: #{registration.company_name}")
+    |> text_body("""
+    Sign-up waiting for your approval
+
+    Some mail servers of this email domain are not on the list of known email
+    providers, so the account is not created yet.
+
+    #{sign_up_review_details(review)}
+
+    This link is only for you. It expires in 72 hours:
+    #{url}
+    """)
+  end
+
+  def sign_up_approved_email(%{registration: registration} = review, approvers, approved_by, account, domains) do
+    trusted = if domains == [], do: "none", else: Enum.join(domains, ", ")
+
+    default_email()
+    |> to(approvers)
+    |> subject("Sign-up approved: #{registration.company_name}")
+    |> with_account_id(account.id)
+    |> text_body("""
+    Sign-up approved
+
+    Approved by: #{approved_by}
+    Account: #{account.name} (#{account.id})
+    Added to the allowlist: #{trusted}
+
+    #{sign_up_review_details(review)}
+    """)
+  end
+
+  def sign_up_denied_email(%{registration: registration} = review, approvers, denied_by, domains) do
+    denied = if domains == [], do: "none", else: Enum.join(domains, ", ")
+
+    default_email()
+    |> to(approvers)
+    |> subject("Sign-up denied: #{registration.company_name}")
+    |> text_body("""
+    Sign-up denied
+
+    Denied by: #{denied_by}
+    Added to the denylist: #{denied}
+
+    #{sign_up_review_details(review)}
     """)
   end
 
@@ -120,5 +197,30 @@ defmodule Portal.Mailer.InternalEmail do
   end
   defp recipient do
     Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.fetch!(:recipient)
+  end
+
+  defp sign_up_review_details(%{registration: registration, mail_servers: mail_servers}) do
+    hosts =
+      if mail_servers == [] do
+        " none found"
+      else
+        Enum.map_join(mail_servers, fn {host, verdict} -> "\n  #{host} (#{verdict_label(verdict)})" end)
+      end
+
+    """
+    Name: #{registration.actor_name} <#{registration.email}>
+    Company: #{registration.company_name}
+    Region: #{region()}
+    Mail servers:#{hosts}\
+    """
+  end
+
+  defp verdict_label(:allow), do: "allowed"
+  defp verdict_label(:unknown), do: "unknown"
+
+  defp region do
+    Portal.Config.fetch_env!(:portal, :data_residency_region)
+    |> Atom.to_string()
+    |> String.upcase()
   end
 end

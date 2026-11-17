@@ -120,7 +120,7 @@ where
 
     let (tx, rx) = mpsc::sync_channel::<Command>(CHANNEL_CAPACITY);
     let handle = std::thread::Builder::new()
-        .name("flow-log-writer".to_owned())
+        .name("fz-flowlog-wr".to_owned())
         .spawn({
             let spool_root = spool_root.clone();
 

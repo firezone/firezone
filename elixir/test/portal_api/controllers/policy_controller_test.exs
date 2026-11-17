@@ -7,6 +7,7 @@ defmodule PortalAPI.PolicyControllerTest do
   import Portal.PolicyFixtures
   import Portal.ResourceFixtures
   import Portal.GroupFixtures
+  import Portal.TrustAnchorFixtures
 
   setup do
     account = account_fixture()
@@ -184,6 +185,7 @@ defmodule PortalAPI.PolicyControllerTest do
                  "flow_log_uploads_enabled" => true,
                  "is_disabled" => false,
                  "postures" => nil,
+                 "require_attestation" => false,
                  "conditions" => []
                }
              }
@@ -408,7 +410,46 @@ defmodule PortalAPI.PolicyControllerTest do
              ]
     end
 
-    test "creates a policy with a device_attested condition", %{
+    test "creates a policy that requires attestation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor_fixture(account: account)
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{"group_id" => group.id, "resource_id" => resource.id, "require_attestation" => true}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 201)["data"]["require_attestation"] == true
+    end
+
+    test "rejects require_attestation when the account has no trust anchors", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{"group_id" => group.id, "resource_id" => resource.id, "require_attestation" => true}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 422)
+    end
+
+    test "rejects the removed device_attested condition", %{
       conn: conn,
       account: account,
       actor: actor
@@ -421,39 +462,6 @@ defmodule PortalAPI.PolicyControllerTest do
         "resource_id" => resource.id,
         "conditions" => [
           %{"property" => "device_attested", "operator" => "is", "values" => ["true"]}
-        ]
-      }
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/policies", policy: attrs)
-
-      assert resp = json_response(conn, 201)
-
-      assert resp["data"]["conditions"] == [
-               %{
-                 "property" => "device_attested",
-                 "operator" => "is",
-                 "values" => ["true"]
-               }
-             ]
-    end
-
-    test "rejects a device_attested condition with an unsupported operator", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      resource = resource_fixture(account: account)
-      group = group_fixture(account: account)
-
-      attrs = %{
-        "group_id" => group.id,
-        "resource_id" => resource.id,
-        "conditions" => [
-          %{"property" => "device_attested", "operator" => "is_in", "values" => ["true"]}
         ]
       }
 
@@ -566,6 +574,31 @@ defmodule PortalAPI.PolicyControllerTest do
       assert json_response(conn, 422)["validation_errors"] == %{
                "base" => ["must not contain more than one condition per property"]
              }
+    end
+
+    test "accepts only true for a client_verified condition", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      for values <- [["1"], ["false"]] do
+        attrs = %{
+          "group_id" => group.id,
+          "resource_id" => resource.id,
+          "conditions" => [%{"property" => "client_verified", "operator" => "is", "values" => values}]
+        }
+
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> post("/policies", policy: attrs)
+
+        assert json_response(conn, 422)["title"] == "Unprocessable Content"
+      end
     end
 
     test "returns validation error for invalid condition", %{
@@ -949,36 +982,28 @@ defmodule PortalAPI.PolicyControllerTest do
              ]
     end
 
-    test "updates a policy to require an attested client", %{
+    test "updates a policy to require attestation", %{
       conn: conn,
       account: account,
       actor: actor
     } do
+      trust_anchor_fixture(account: account)
+
       policy =
         policy_with_conditions_fixture(%{
           account: account,
           conditions: [%{property: :client_verified, operator: :is, values: ["true"]}]
         })
 
-      attrs = %{
-        "conditions" => [
-          %{"property" => "device_attested", "operator" => "is", "values" => ["true"]}
-        ]
-      }
-
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/policies/#{policy.id}", policy: attrs)
+        |> put("/policies/#{policy.id}", policy: %{"require_attestation" => true})
 
-      assert json_response(conn, 200)["data"]["conditions"] == [
-               %{
-                 "property" => "device_attested",
-                 "operator" => "is",
-                 "values" => ["true"]
-               }
-             ]
+      data = json_response(conn, 200)["data"]
+      assert data["require_attestation"] == true
+      assert data["conditions"] == [%{"property" => "client_verified", "operator" => "is", "values" => ["true"]}]
     end
 
     test "rejects more than one condition per property on update", %{
@@ -1104,6 +1129,7 @@ defmodule PortalAPI.PolicyControllerTest do
                  "flow_log_uploads_enabled" => true,
                  "is_disabled" => false,
                  "postures" => nil,
+                 "require_attestation" => false,
                  "conditions" => []
                }
              }
@@ -1224,6 +1250,40 @@ defmodule PortalAPI.PolicyControllerTest do
       assert Enum.any?(messages, &(&1 =~ "PolicyPostureNode"))
     end
 
+    test "refuses conditions while policy conditions are off for the account", %{conn: conn} do
+      account = account_fixture(features: %{policy_conditions: false})
+      actor = api_client_fixture(account: account)
+      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+      condition = %{"property" => "remote_ip_location_region", "operator" => "is_in", "values" => ["US"]}
+
+      attrs = %{
+        "group_id" => group_fixture(account: account).id,
+        "resource_id" => resource_fixture(account: account).id,
+        "conditions" => [condition]
+      }
+
+      assert %{"status" => 403, "detail" => "Policy conditions are not enabled for this account"} =
+               conn |> post("/policies", policy: attrs) |> json_response(403)
+
+      assert %{"data" => %{"conditions" => []}} =
+               conn |> post("/policies", policy: %{attrs | "conditions" => []}) |> json_response(201)
+
+      policy =
+        policy_with_conditions_fixture(%{
+          account: account,
+          conditions: [%{property: :client_verified, operator: :is, values: ["true"]}]
+        })
+
+      assert %{"status" => 403} =
+               conn |> put("/policies/#{policy.id}", policy: %{"conditions" => [condition]}) |> json_response(403)
+
+      assert %{"data" => %{"description" => "Kept"}} =
+               conn |> put("/policies/#{policy.id}", policy: %{"description" => "Kept"}) |> json_response(200)
+
+      assert %{"data" => %{"conditions" => []}} =
+               conn |> put("/policies/#{policy.id}", policy: %{"conditions" => []}) |> json_response(200)
+    end
+
     test "refuses postures while device posture is off for the account", %{conn: conn} do
       account = account_fixture()
       actor = api_client_fixture(account: account)
@@ -1291,6 +1351,7 @@ defmodule PortalAPI.PolicyControllerTest do
       for invalid <- [
             %{"field" => "intune.enrolled", "op" => "gt", "value" => true},
             %{"and" => []},
+            %{"not" => %{"field" => "defender.vm_id", "op" => "is_in", "value" => ["a", <<0>>]}},
             Enum.reduce(1..11, @postures, fn _, inner -> %{"not" => inner} end)
           ] do
         assert %{"status" => 422} = json_response(put_policy(conn, actor, policy, %{"postures" => invalid}), 422)

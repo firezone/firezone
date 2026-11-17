@@ -20,6 +20,7 @@ defmodule Portal.ChangeLogs.Consumer do
   # Used to introspect field redactions
   @tables_to_schemas %{
     "accounts" => Portal.Account,
+    "account_slugs" => Portal.AccountSlug,
     "actors" => Portal.Actor,
     "api_tokens" => Portal.APIToken,
     "devices" => Portal.Device,
@@ -27,7 +28,6 @@ defmodule Portal.ChangeLogs.Consumer do
     "entra_auth_providers" => Portal.Entra.AuthProvider,
     "entra_directories" => Portal.Entra.Directory,
     "external_identities" => Portal.ExternalIdentity,
-    "gateway_tokens" => Portal.GatewayToken,
     "google_auth_providers" => Portal.Google.AuthProvider,
     "github_auth_providers" => Portal.GitHub.AuthProvider,
     "google_directories" => Portal.Google.Directory,
@@ -40,7 +40,8 @@ defmodule Portal.ChangeLogs.Consumer do
     "policies" => Portal.Policy,
     "resources" => Portal.Resource,
     "sites" => Portal.Site,
-    "client_tokens" => Portal.ClientToken,
+    "site_devices" => Portal.SiteDevice,
+    "device_tokens" => Portal.DeviceToken,
     "trust_anchor_certificates" => Portal.TrustAnchorCertificate,
     "trust_anchors" => Portal.TrustAnchor,
     "userpass_auth_providers" => Portal.Userpass.AuthProvider,

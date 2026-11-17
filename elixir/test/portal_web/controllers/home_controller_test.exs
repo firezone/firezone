@@ -110,6 +110,41 @@ defmodule PortalWeb.HomeControllerTest do
       refute html =~ "Sign in to Firezone"
     end
 
+    test "links the same page on the EU portal from the US portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+
+      html = conn |> get(~p"/getting_started") |> response(200)
+
+      assert html =~ ~s(href="https://eu.app.firezone.dev/getting_started")
+    end
+
+    test "links the same page on the US portal from the EU portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
+
+      html = conn |> get(~p"/getting_started?client_platform=apple") |> response(200)
+
+      assert html =~ ~s(href="https://app.firezone.dev/getting_started?client_platform=apple")
+    end
+
+    test "shows no portal link on other portals", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firez.one")
+
+      html = conn |> get(~p"/getting_started") |> response(200)
+
+      assert html =~ "European Union"
+      refute html =~ "other-region-portal"
+    end
+
+    test "shows no region links on on-prem portals", %{conn: conn} do
+      html = conn |> get(~p"/getting_started") |> response(200)
+
+      refute html =~ "eu-beta-banner"
+      refute html =~ "other-region-portal"
+    end
+
     test "sets security headers", %{conn: conn} do
       conn = get(conn, ~p"/getting_started")
 
@@ -239,6 +274,20 @@ defmodule PortalWeb.HomeControllerTest do
 
       assert conn.assigns.flash["error"] ==
                "Account ID or Slug can only contain letters, digits and underscore"
+    end
+  end
+
+  describe "malformed input" do
+    test "rejects an account chooser value that is not a string", %{conn: conn} do
+      assert_error_sent 400, fn ->
+        post(conn, ~p"/sign_in", %{"account_id_or_slug" => ["x"]})
+      end
+    end
+
+    test "redirects attribution links on a doubled slash to a local path", %{conn: conn} do
+      conn = get(conn, "http://www.example.com//sign_up?fz_mktg=true")
+
+      assert redirected_to(conn) == "/sign_up"
     end
   end
 end

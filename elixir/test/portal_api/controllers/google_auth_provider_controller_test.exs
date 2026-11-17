@@ -32,6 +32,20 @@ defmodule PortalAPI.GoogleAuthProviderControllerTest do
       assert Enum.any?(data, fn item -> item["id"] == provider.id end)
     end
 
+    test "lists multiple Workspace providers and one personal provider", %{conn: conn, account: account, actor: actor} do
+      personal = google_provider_fixture(account: account)
+      first = google_provider_fixture(account: account, workspace_domains: ["first.example"])
+      second = google_provider_fixture(account: account, workspace_domains: ["second.example"])
+      conn = conn |> authorize_conn(actor) |> get("/google_auth_providers")
+      data = json_response(conn, 200)["data"]
+      by_id = Map.new(data, &{&1["id"], &1})
+      assert map_size(by_id) == 3
+      assert by_id[personal.id]["workspace_domains"] == []
+      assert by_id[first.id]["workspace_domains"] == ["first.example"]
+      assert by_id[second.id]["workspace_domains"] == ["second.example"]
+      refute Enum.any?(data, &Map.has_key?(&1, "is_legacy_unrestricted"))
+    end
+
     test "only lists providers from the authorized account", %{
       conn: conn,
       account: account,
@@ -55,8 +69,6 @@ defmodule PortalAPI.GoogleAuthProviderControllerTest do
       account: account,
       actor: actor
     } do
-      # Google is a singleton auth provider per account, so this only
-      # exercises the metadata shape, not multi-page cursoring.
       google_provider_fixture(account: account)
 
       conn =
@@ -87,9 +99,6 @@ defmodule PortalAPI.GoogleAuthProviderControllerTest do
                json_response(conn, 400)
     end
 
-    # This provider type is limited to one per account by a unique index
-    # on account_id, so the filter can only be exercised against a single
-    # local provider. The empty-result test below covers exclusion.
     test "filters by name", %{conn: conn, account: account, actor: actor} do
       match = google_provider_fixture(account: account, name: "Corp SSO")
 
@@ -160,6 +169,20 @@ defmodule PortalAPI.GoogleAuthProviderControllerTest do
       assert data["id"] == provider.id
       assert data["account_id"] == account.id
       assert data["issuer"] == provider.issuer
+    end
+
+    test "returns a verified domain array", %{conn: conn, actor: actor, account: account} do
+      domains = ["primary.example", "secondary.example"]
+      provider = google_provider_fixture(account: account, workspace_domains: domains)
+      conn = conn |> authorize_conn(actor) |> get("/google_auth_providers/#{provider.id}")
+      assert json_response(conn, 200)["data"]["workspace_domains"] == domains
+    end
+
+    test "returns an empty array for an unrestricted legacy provider", %{conn: conn, actor: actor, account: account} do
+      provider = google_provider_fixture(account: account, workspace_domains: nil, is_legacy_unrestricted: true)
+      conn = conn |> authorize_conn(actor) |> get("/google_auth_providers/#{provider.id}")
+      assert json_response(conn, 200)["data"]["workspace_domains"] == []
+      refute Map.has_key?(json_response(conn, 200)["data"], "is_legacy_unrestricted")
     end
 
     test "returns not found for unknown id", %{conn: conn, actor: actor} do

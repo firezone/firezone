@@ -9,11 +9,7 @@ path = "lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-tokio = { workspace = true, features = ["fs"] }
 tracing = { workspace = true }
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true

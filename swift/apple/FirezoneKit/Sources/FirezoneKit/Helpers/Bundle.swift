@@ -24,11 +24,32 @@ public enum BundleHelper {
   }
 
   static var gitSha: String? {
+    if MockRun.isActive { return "00000000" }
+
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
       !gitSha.isEmpty
     else { return nil }
 
     return gitSha
+  }
+
+  static var shortGitSha: String? {
+    gitSha.map { String($0.prefix(8)) }
+  }
+
+  static var commitURL: URL? {
+    gitSha.flatMap { URL(string: "https://github.com/firezone/firezone/commit/\($0)") }
+  }
+
+  static var version: String {
+    if MockRun.isActive { return "1.0.0" }
+
+    return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+  }
+
+  /// The marketing version and the commit it was built from, as "1.5.24 (0123abcd)".
+  static var versionDescription: String {
+    return "\(version) (\(shortGitSha ?? "unknown"))"
   }
 
   /// The app group the app shares with its extensions, or `nil` when the bundle's

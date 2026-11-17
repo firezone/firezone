@@ -97,6 +97,12 @@ defmodule PortalWeb.Settings.Profile do
                 label="Product Announcements"
                 description="A monthly summary of new features and improvements in Firezone"
               />
+              <.notification_row
+                notification={:product_feedback_requests}
+                preferences={@actor.preferences}
+                label="Product Feedback Requests"
+                description="Getting started help and requests for feedback on Firezone"
+              />
             </tbody>
           </table>
         </.form>

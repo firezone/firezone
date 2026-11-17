@@ -179,7 +179,8 @@ pub fn merge(args: Args, base: Option<TestConfig>) -> Result<TestConfig> {
 /// Run TCP test from CLI args merged over an optional config base.
 pub async fn run_with_args(args: Args, base: Option<TestConfig>, seed: u64) -> Result<()> {
     if args.server {
-        return run_server(TcpServerConfig { port: args.port }).await;
+        let Err(e) = run_server(TcpServerConfig { port: args.port }).await;
+        return Err(e);
     }
 
     run_with_config(merge(args, base)?, seed).await
@@ -458,7 +459,7 @@ pub struct TcpServerConfig {
 ///
 /// Listens for connections and echoes back any received data.
 /// Runs indefinitely until interrupted.
-async fn run_server(config: TcpServerConfig) -> Result<()> {
+async fn run_server(config: TcpServerConfig) -> Result<!> {
     use std::net::Ipv4Addr;
     use tokio::net::TcpListener;
 

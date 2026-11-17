@@ -21,3 +21,6 @@ which = { workspace = true }
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 hex-literal = { workspace = true }
 ip-packet = { workspace = true }
+
+[lints]
+workspace = true

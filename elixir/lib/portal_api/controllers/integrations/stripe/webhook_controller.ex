@@ -22,7 +22,14 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
         end
 
       [] ->
-        send_resp(conn, 400, "Bad Request: missing signature header")
+        conn
+        |> log_rejection(:missing_signature_header)
+        |> send_resp(400, "Bad Request: missing signature header")
+
+      [_ | _] ->
+        conn
+        |> log_rejection(:multiple_signature_headers)
+        |> send_resp(400, "Bad Request: invalid signature header")
     end
   end
 
@@ -36,21 +43,34 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
       send_resp(conn, 200, "")
     else
       {:error, :missing_timestamp} ->
-        send_resp(conn, 400, "Bad Request: missing timestamp")
+        conn
+        |> log_rejection(:missing_timestamp)
+        |> send_resp(400, "Bad Request: missing timestamp")
 
       {:error, :missing_signatures} ->
-        send_resp(conn, 400, "Bad Request: missing signatures")
+        conn
+        |> log_rejection(:missing_signatures)
+        |> send_resp(400, "Bad Request: missing signatures")
 
       {:error, :stale_event} ->
-        send_resp(conn, 400, "Bad Request: expired signature")
+        conn
+        |> log_rejection(:stale_event)
+        |> send_resp(400, "Bad Request: expired signature")
 
       {:error, :invalid_signature} ->
-        send_resp(conn, 400, "Bad Request: invalid signature")
+        conn
+        |> log_rejection(:invalid_signature)
+        |> send_resp(400, "Bad Request: invalid signature")
 
       reason ->
         :ok = Logger.error("Stripe webhook failed", reason: inspect(reason))
         send_resp(conn, 500, "Internal Error")
     end
+  end
+
+  defp log_rejection(conn, reason) do
+    Logger.warning("Stripe webhook failed authentication", reason: reason)
+    conn
   end
 
   defp fetch_timestamp_and_signatures(signature_header) do
@@ -59,7 +79,10 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
     |> Enum.map(&String.split(&1, "="))
     |> Enum.reduce({nil, []}, fn
       ["t", timestamp], {nil, signatures} ->
-        {String.to_integer(timestamp), signatures}
+        case Integer.parse(timestamp) do
+          {timestamp, ""} -> {timestamp, signatures}
+          _ -> {nil, signatures}
+        end
 
       [@scheme, signature], {timestamp, signatures} ->
         {timestamp, [signature | signatures]}
@@ -80,7 +103,7 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
   end
 
   defp verify_timestamp(timestamp, tolerance) do
-    if timestamp < System.system_time(:second) - tolerance do
+    if abs(System.system_time(:second) - timestamp) > tolerance do
       {:error, :stale_event}
     else
       :ok

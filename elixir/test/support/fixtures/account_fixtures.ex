@@ -59,7 +59,9 @@ defmodule Portal.AccountFixtures do
     |> cast_embed(:features)
     |> cast_embed(:limits)
     |> cast_embed(:metadata)
-    |> Repo.insert!()
+    |> Portal.Account.changeset()
+    |> Repo.insert!(returning: true)
+    |> Ecto.reset_fields([:slugs])
   end
 
   @doc """
@@ -113,6 +115,15 @@ defmodule Portal.AccountFixtures do
   end
 
   @doc """
+  Gives the account a slug from before the portal checked the slug format,
+  such as one with hyphens or capitals.
+  """
+  def put_legacy_slug(%Portal.Account{} = account, slug) do
+    Repo.insert!(%Portal.AccountSlug{slug: slug, account_id: account.id})
+    account |> change(slug: slug) |> Repo.update!()
+  end
+
+  @doc """
   Update an account with the given attributes.
   """
   def update_account(account, attrs) do
@@ -141,6 +152,7 @@ defmodule Portal.AccountFixtures do
     |> cast_embed(:features)
     |> cast_embed(:limits)
     |> cast_embed(:metadata)
+    |> Portal.Account.changeset()
     |> Repo.update!()
   end
 

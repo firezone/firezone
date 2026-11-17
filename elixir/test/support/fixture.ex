@@ -29,6 +29,12 @@ defmodule Portal.Fixture do
     "#{prefix} #{unique_integer()}"
   end
 
+  # Without a marker, only lines logged by the calling process count. Pass a
+  # marker when the message comes from another process (a GenServer, a job).
+  def logged_lines(log) do
+    logged_lines(log, "pid=#{:erlang.pid_to_list(self())} ")
+  end
+
   # For a negative log check on a fixed message: only lines that also carry this
   # test's unique value count, so other tests' identical messages are ignored.
   def logged_lines(log, marker) do

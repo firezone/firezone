@@ -1,7 +1,8 @@
 use crate::{
     logging,
     settings::{
-        AdvancedSettings, MdmSettings, load_advanced_settings, load_mdm_settings, save_advanced,
+        AdvancedSettings, AdvancedSettingsPatch, MdmSettings, load_advanced_settings,
+        load_mdm_settings, save_advanced,
     },
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
@@ -26,7 +27,7 @@ use ip_network::IpNetwork;
 use logging::FilterReloadHandle;
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
-use std::{io, mem, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
+use std::{io, mem, net::IpAddr, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
 use telemetry::analytics;
 use tokio::time::Instant;
 use tracing::Instrument as _;
@@ -61,12 +62,22 @@ pub enum ClientMsg {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
+        /// The token's API URL captured at sign-in, including any MDM override.
+        api_url: url::Url,
     },
     Disconnect,
     /// Persist new advanced settings to the protected on-disk file owned by
     /// the Tunnel service and reload the log filter.
     ApplyAdvancedSettings(AdvancedSettings),
+    PatchAdvancedSettings(AdvancedSettingsPatch),
+    /// Apply new additional host candidates to the running session and persist them.
+    ///
+    /// Only a failure to persist them is reported, as [`ServerMsg::AdvancedSettingsApplied`].
+    SetAdditionalHostCandidates(Vec<IpAddr>),
     SetInternetResourceState(bool),
+    ManualReset,
+    /// Applies to the running session and every session started while it is on.
+    SetForceRelayedConnections(bool),
     StartTelemetry {
         release: String,
     },
@@ -243,6 +254,7 @@ struct Handler<'a> {
     advanced_settings: AdvancedSettings,
     mdm_settings: MdmSettings,
     session: Session,
+    force_relayed_connections: bool,
     telemetry_release: Option<String>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
@@ -257,14 +269,17 @@ enum Session {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
         started_at: Instant,
+        api_url: Url,
     },
     Connected {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
+        api_url: Url,
     },
     WaitingForNetwork {
         token: SecretString,
         is_internet_resource_active: bool,
+        api_url: Url,
     },
     #[default]
     None,
@@ -277,21 +292,25 @@ impl Session {
                 event_stream,
                 connlib,
                 started_at,
+                api_url,
             } => {
                 tracing::debug!(elapsed = ?started_at.elapsed(), "Tunnel ready");
 
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    api_url,
                 };
             }
             Session::Connected {
                 event_stream,
                 connlib,
+                api_url,
             } => {
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    api_url,
                 };
             }
             Session::WaitingForNetwork { .. } => {
@@ -301,6 +320,15 @@ impl Session {
         }
 
         Ok(())
+    }
+
+    fn api_url(&self) -> Option<&Url> {
+        match self {
+            Self::Creating { api_url, .. } => Some(api_url),
+            Self::Connected { api_url, .. } => Some(api_url),
+            Self::WaitingForNetwork { api_url, .. } => Some(api_url),
+            Self::None => None,
+        }
     }
 
     fn as_connlib(&self) -> Option<&client_shared::Session> {
@@ -335,8 +363,8 @@ impl Session {
     }
 }
 
-/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
-/// connlib eventloop shares this runtime's single worker.
+/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and stall the
+/// IPC server.
 async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystore::Error> {
     let identity = tokio::task::spawn_blocking(x509_keystore::identity)
         .await
@@ -503,6 +531,7 @@ impl<'a> Handler<'a> {
             advanced_settings,
             mdm_settings,
             session: Session::None,
+            force_relayed_connections: false,
             telemetry_release: None,
             tun_device,
             dns_notifier,
@@ -608,12 +637,14 @@ impl<'a> Handler<'a> {
             Session::WaitingForNetwork {
                 token,
                 is_internet_resource_active,
+                api_url,
             } => {
                 tracing::info!(%reason, "Attempting to re-connect");
 
                 let token = token.clone();
                 let is_internet_resource_active = *is_internet_resource_active;
-                let result = self.try_connect(token, is_internet_resource_active);
+                let api_url = api_url.clone();
+                let result = self.try_connect(token, is_internet_resource_active, api_url);
 
                 if let Some(e) = result
                     .as_ref()
@@ -741,6 +772,7 @@ impl<'a> Handler<'a> {
             ClientMsg::Connect {
                 token,
                 is_internet_resource_active,
+                api_url,
             } => {
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
@@ -752,7 +784,8 @@ impl<'a> Handler<'a> {
                 // there must not report the previous one's.
                 telemetry::set_account_slug(None);
 
-                let result = self.try_connect(token.clone(), is_internet_resource_active);
+                let result =
+                    self.try_connect(token.clone(), is_internet_resource_active, api_url.clone());
 
                 if let Some(e) = result
                     .as_ref()
@@ -765,6 +798,7 @@ impl<'a> Handler<'a> {
                     self.session = Session::WaitingForNetwork {
                         token,
                         is_internet_resource_active,
+                        api_url,
                     };
 
                     return Ok(());
@@ -787,22 +821,22 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
             ClientMsg::ApplyAdvancedSettings(new) => {
-                // Validate the log filter before persisting so we never write an
-                // unparsable value to disk or report a misleading "saved" to the GUI.
-                let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
-                    Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
-                } else {
-                    match save_advanced(&new).await {
-                        Ok(()) => {
-                            let _ = self.log_filter_reloader.reload(&new.log_filter);
-                            self.advanced_settings = new.clone();
-                            Ok(new)
-                        }
-                        Err(e) => Err(format!("{e:#}")),
-                    }
-                };
-                self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
-                    .await?;
+                self.apply_advanced_settings(new).await?;
+            }
+            ClientMsg::PatchAdvancedSettings(patch) => {
+                let new = patch.apply(self.advanced_settings.clone());
+                self.apply_advanced_settings(new).await?;
+            }
+            ClientMsg::SetAdditionalHostCandidates(ips) => {
+                if let Some(connlib) = self.session.as_connlib() {
+                    connlib.set_additional_host_candidates(ips.clone());
+                }
+                self.advanced_settings.additional_host_candidates = ips;
+
+                if let Err(e) = save_advanced(&self.advanced_settings).await {
+                    self.send_ipc(ServerMsg::AdvancedSettingsApplied(Err(format!("{e:#}"))))
+                        .await?;
+                }
             }
             ClientMsg::SetInternetResourceState(state) => {
                 let Some(connlib) = self.session.as_connlib() else {
@@ -812,6 +846,14 @@ impl<'a> Handler<'a> {
                 };
 
                 connlib.set_internet_resource_state(state);
+            }
+            ClientMsg::ManualReset => self.reset_session("requested by user").await,
+            ClientMsg::SetForceRelayedConnections(enabled) => {
+                self.force_relayed_connections = enabled;
+
+                if let Some(connlib) = self.session.as_connlib() {
+                    connlib.set_force_relayed_connections(enabled);
+                }
             }
             ClientMsg::StartTelemetry { release } => {
                 // This is a bit hacky.
@@ -825,7 +867,7 @@ impl<'a> Handler<'a> {
 
                 if !no_telemetry {
                     self.telemetry_release = Some(release.clone());
-                    self.point_telemetry_at_api_url();
+                    self.point_telemetry_at_api_url(self.api_url());
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),
@@ -840,12 +882,32 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    /// Effective `api_url`: machine-scope MDM policy wins over the stored
-    /// advanced setting.
+    async fn apply_advanced_settings(&mut self, new: AdvancedSettings) -> Result<()> {
+        // Validate the log filter before persisting so we never write an
+        // unparsable value to disk or report a misleading "saved" to the GUI.
+        let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
+            Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
+        } else {
+            match save_advanced(&new).await {
+                Ok(()) => {
+                    let _ = self.log_filter_reloader.reload(&new.log_filter);
+                    self.advanced_settings = new.clone();
+                    Ok(new)
+                }
+                Err(e) => Err(format!("{e:#}")),
+            }
+        };
+        self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
+            .await?;
+
+        Ok(())
+    }
+
+    /// Returns the active session's API URL, falling back to MDM or the saved settings.
     fn api_url(&self) -> &str {
-        self.mdm_settings
-            .api_url
-            .as_ref()
+        self.session
+            .api_url()
+            .or(self.mdm_settings.api_url.as_ref())
             .map(|u| u.as_str())
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
@@ -854,12 +916,12 @@ impl<'a> Handler<'a> {
     ///
     /// Deriving the environment here instead of accepting one from the GUI is what keeps
     /// telemetry off for unofficial deployments: it cannot name a portal we never talk to.
-    fn point_telemetry_at_api_url(&self) {
+    fn point_telemetry_at_api_url(&self, api_url: &str) {
         let Some(release) = &self.telemetry_release else {
             return;
         };
 
-        telemetry::start(self.api_url(), release, telemetry::GUI_DSN);
+        telemetry::start(api_url, release, telemetry::GUI_DSN);
         telemetry::set_firezone_id(self.device_id.id.clone()); // Re-pointing clears the identity.
     }
 
@@ -869,6 +931,7 @@ impl<'a> Handler<'a> {
         &mut self,
         token: SecretString,
         is_internet_resource_active: bool,
+        api_url: Url,
     ) -> Result<Session> {
         let started_at = Instant::now();
 
@@ -890,11 +953,9 @@ impl<'a> Handler<'a> {
         };
 
         // The settings may have moved since the GUI last asked us to start telemetry.
-        self.point_telemetry_at_api_url();
-
-        let api_url = self.api_url().to_string();
+        self.point_telemetry_at_api_url(api_url.as_str());
         let url = LoginUrl::client(
-            Url::parse(&api_url).context("Failed to parse URL")?,
+            api_url.clone(),
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -922,18 +983,28 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
+        let listen_port =
+            client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+        let config = client_shared::SessionConfig::new(listen_port)
+            .with_internet_resource_active(is_internet_resource_active)
+            .with_dns_servers(dns)
+            .with_additional_host_candidates(
+                self.advanced_settings.additional_host_candidates.clone(),
+            )
+            .with_flow_logs_dir(known_dirs::flow_logs());
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            is_internet_resource_active,
-            dns,
-            known_dirs::flow_logs(),
-            false,
-            tokio::runtime::Handle::current(),
-        );
+            config,
+        )
+        .context("Failed to start connlib")?;
 
-        analytics::new_session(device_id.id, api_url);
+        if self.force_relayed_connections {
+            connlib.set_force_relayed_connections(true);
+        }
+
+        analytics::new_session(device_id.id, api_url.to_string());
 
         let tun = self
             .tun_device
@@ -945,6 +1016,7 @@ impl<'a> Handler<'a> {
             event_stream,
             connlib,
             started_at,
+            api_url,
         })
     }
 
@@ -1008,11 +1080,7 @@ pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bo
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()?;
+    let rt = async_runtime::current_thread()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
@@ -1049,9 +1117,7 @@ pub fn run_smoke_test() -> Result<()> {
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
+    let rt = async_runtime::current_thread()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {
         dns_control_method: Default::default(),

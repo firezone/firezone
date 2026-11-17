@@ -3,6 +3,8 @@ defmodule PortalWeb.SignInController do
 
   @default_client_auth_error "Please close this window and start the sign in process again."
 
+  plug :require_account
+
   def client_redirect(conn, _params) do
     account = conn.assigns.account
 
@@ -21,12 +23,13 @@ defmodule PortalWeb.SignInController do
             account_slug: account.slug,
             account_name: account.name
           }
+          |> put_region()
           |> URI.encode_query()
 
         redirect(conn, external: "#{scheme}://#{url}?#{query}")
 
       nil ->
-        redirect(conn, to: client_auth_error_path(account, %{}, @default_client_auth_error))
+        redirect(conn, to: ~p"/#{account}/sign_in/client_auth_error")
     end
   end
 
@@ -34,10 +37,7 @@ defmodule PortalWeb.SignInController do
     account = conn.assigns.account
     retry_params = PortalWeb.Authentication.take_sign_in_params(params)
 
-    error =
-      params["error"] ||
-        Phoenix.Flash.get(conn.assigns[:flash] || %{}, :error) ||
-        @default_client_auth_error
+    error = Phoenix.Flash.get(conn.assigns.flash, :error) || @default_client_auth_error
 
     render(conn, :client_auth_error,
       layout: false,
@@ -50,6 +50,15 @@ defmodule PortalWeb.SignInController do
     render(conn, :client_account_disabled, layout: false)
   end
 
+  # Firezone Cloud tells the Client which region the account lives in, so the
+  # Client can pick the matching API host. On-prem portals send nothing.
+  defp put_region(query) do
+    case Portal.Config.fetch_env!(:portal, :data_residency_region) do
+      :on_prem -> query
+      region -> Map.put(query, :region, Atom.to_string(region))
+    end
+  end
+
   defp format_redirect_url(raw_client_handler) do
     uri = URI.parse(raw_client_handler)
 
@@ -58,15 +67,15 @@ defmodule PortalWeb.SignInController do
     {uri.scheme, "#{maybe_host}handle_client_sign_in_callback"}
   end
 
-  defp client_auth_error_path(account, params, error) do
-    query =
-      params
-      |> PortalWeb.Authentication.take_sign_in_params()
-      |> Map.put("error", error)
-
-    ~p"/#{account}/sign_in/client_auth_error?#{query}"
-  end
-
   defp retry_path(account, params) when map_size(params) == 0, do: ~p"/#{account}/sign_in"
   defp retry_path(account, params), do: ~p"/#{account}/sign_in?#{params}"
+
+  # FetchAccount does not halt when the account is missing.
+  defp require_account(%{assigns: %{account: %Portal.Account{}}} = conn, _opts), do: conn
+
+  defp require_account(conn, _opts) do
+    conn
+    |> PortalWeb.Error.handle({:error, :not_found})
+    |> halt()
+  end
 end

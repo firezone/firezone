@@ -2,7 +2,7 @@
 
 mod plain_ip;
 
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::IpPacket;
 use std::os::fd::{AsRawFd as _, OwnedFd};
 use std::sync::Arc;
 use std::{io, os::fd::RawFd};
@@ -29,13 +29,12 @@ impl tun::Tun for Io {
 
 impl Io {
     /// Starts IO on an owned TUN descriptor.
-    pub fn new(fd: OwnedFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
+    pub fn new(fd: OwnedFd) -> io::Result<Self> {
         let name = interface_name(&fd)?;
         let fd = Arc::new(fd);
 
         let send_fd = fd.clone();
         let workers = tun::Workers::spawn(
-            runtime,
             move |outbound_rx| crate::plain_ip::tun_send(send_fd, outbound_rx, write),
             move |inbound_tx| crate::plain_ip::tun_recv(fd, inbound_tx, read),
         )?;
@@ -61,9 +60,7 @@ fn interface_name(fd: &OwnedFd) -> io::Result<String> {
 }
 
 /// Read from the given file descriptor in the buffer.
-fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
-    let dst = dst.buf();
-
+fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
         -1 => Err(io::Error::last_os_error()),

@@ -1,5 +1,5 @@
 use crate::DatagramBatch;
-use bufferpool::Buffer;
+use bufferpool::Bytes;
 use std::mem::size_of;
 use std::time::Duration;
 
@@ -32,9 +32,7 @@ pub const RECV_BUFFER_SIZE: usize = recv_buffer_size_for_service_gap(
 /// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata.
 pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramBatch>()
     + quinn_udp::BATCH_SIZE
-        * (MAX_RECV_BUFFER_MEMORY
-            + size_of::<Buffer<Vec<u8>>>()
-            + size_of::<quinn_udp::RecvMeta>());
+        * (MAX_RECV_BUFFER_MEMORY + size_of::<Bytes>() + size_of::<quinn_udp::RecvMeta>());
 
 /// Worst-case heap that a single receive buffer ([`DatagramIn`](crate::DatagramIn)) pins.
 ///

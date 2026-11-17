@@ -9,6 +9,11 @@ defmodule PortalWeb.Policies do
   alias PortalWeb.Policies.Postures
 
   @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
+
+  @form_events ~w[change_policy_form submit_policy_form]
+
+  @selected_policy_events ~w[disable_policy enable_policy delete_policy]
+
   import Ecto.Changeset
 
   def mount(_params, _session, socket) do
@@ -45,6 +50,7 @@ defmodule PortalWeb.Policies do
         ],
         loader: &load_policies/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -208,7 +214,7 @@ defmodule PortalWeb.Policies do
           Rules that grant a group access to a resource.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/policies" />
+          <Navigation.docs_action show_label size="md" path="/deploy/policies" />
           <Form.button style="primary" icon="ri-add-line" phx-click="open_new_policy_form">
             New Policy
           </Form.button>
@@ -407,6 +413,11 @@ defmodule PortalWeb.Policies do
     }
   end
 
+  defp stale_event?(event, %{policy_panel: %{form: nil}}) when event in @form_events, do: true
+  defp stale_event?(event, %{selected_policy: nil}) when event in @selected_policy_events, do: true
+  defp stale_event?("save_policy_breaking_change", %{policy_confirm: %{breaking_params: nil}}), do: true
+  defp stale_event?(_event, _assigns), do: false
+
   defp base_policy_assigns(socket) do
     [
       policy_panel: %{
@@ -465,7 +476,7 @@ defmodule PortalWeb.Policies do
       tab: :overview
     }) ++
       init_condition_assigns(policy, socket) ++
-      [policy_postures: Postures.for_account(socket.assigns.account, policy.postures)]
+      [policy_postures: Postures.for_account(socket.assigns.account, policy.postures, policy.require_attestation)]
   end
 
   defp edit_changeset(socket, params) do
@@ -478,7 +489,10 @@ defmodule PortalWeb.Policies do
   # The same set the policies hook treats as breaking: saving it revokes every
   # authorization the policy granted.
   defp breaking_change?(changeset) do
-    Enum.any?(~w[group_id resource_id conditions postures flow_log_uploads_enabled]a, &Map.has_key?(changeset.changes, &1))
+    Enum.any?(
+      ~w[group_id resource_id conditions postures flow_log_uploads_enabled require_attestation]a,
+      &Map.has_key?(changeset.changes, &1)
+    )
   end
 
   defp update_policy(socket, changeset) do
@@ -526,11 +540,19 @@ defmodule PortalWeb.Policies do
     {:noreply, socket}
   end
 
-  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
+  def handle_event(
+        "change_policy_authorizations_page",
+        %{"page" => page},
+        %{assigns: %{selected_policy: %Policy{} = policy}} = socket
+      ) do
     {:noreply,
      push_patch(socket,
-       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}", tab: "authorizations", page: page)
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}", tab: "authorizations", page: page)
      )}
+  end
+
+  def handle_event("change_policy_authorizations_page", _params, %{assigns: %{selected_policy: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
@@ -613,9 +635,12 @@ defmodule PortalWeb.Policies do
      |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
-  def handle_event("open_edit_form", _params, socket) do
-    {:noreply,
-     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}/edit"))}
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_policy: %Policy{} = policy}} = socket) do
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}/edit"))}
+  end
+
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_policy: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("cancel_policy_form", _params, socket) do
@@ -887,6 +912,10 @@ defmodule PortalWeb.Policies do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
+  def handle_info({:panel_change_resource, _resource}, %{assigns: %{policy_panel: %{form: nil}}} = socket) do
+    {:noreply, socket}
+  end
+
   def handle_info({:panel_change_resource, resource}, socket) do
     available = PolicyComponents.available_conditions(resource)
     filtered = Enum.filter(socket.assigns.policy_conditions.active_conditions, &(&1 in available))
@@ -928,7 +957,7 @@ defmodule PortalWeb.Policies do
 
   defp new_policy(attrs, %Authentication.Subject{} = subject) do
     %Policy{}
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -945,7 +974,7 @@ defmodule PortalWeb.Policies do
 
   defp change_policy(%Policy{} = policy, attrs \\ %{}) do
     policy
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -1140,7 +1169,7 @@ defmodule PortalWeb.Policies do
     import Portal.Repo.Query
     alias Portal.{Safe, Policy, Site, Resource, Group}
     alias Portal.PolicyAuthorization
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Actor
     alias Portal.Device
     alias Portal.Authentication
@@ -1501,7 +1530,7 @@ defmodule PortalWeb.Policies do
 
       from(pa in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: pa], pa.policy_id == ^policy.id)
-      |> join(:inner, [policy_authorizations: pa], t in ClientToken,
+      |> join(:inner, [policy_authorizations: pa], t in DeviceToken,
         on: t.id == pa.token_id and t.account_id == pa.account_id,
         as: :tokens
       )

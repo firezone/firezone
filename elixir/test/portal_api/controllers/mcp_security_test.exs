@@ -27,14 +27,14 @@ defmodule PortalAPI.MCPSecurityTest do
     end
 
     for token <- tokens do
-      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
     end
 
     [first, second] = tokens
     result = call_tool(conn, "delete_actor_client_token", %{"actor_id" => target.id, "id" => first.id})
     assert %{"result" => %{"isError" => false}} = json_response(result, 200)
-    refute Repo.get_by(Portal.ClientToken, account_id: account.id, id: first.id)
-    assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: second.id)
+    refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: first.id)
+    assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: second.id)
   end
 
   test "empty gateway token ID cannot revoke a whole site", %{conn: conn, account: account, actor: actor} do
@@ -42,7 +42,7 @@ defmodule PortalAPI.MCPSecurityTest do
     tokens = for _ <- 1..2, do: gateway_token_fixture(account: account, site: site)
     result = conn |> authorize_mcp_conn(actor, ["gateway_tokens:write"]) |> call_tool("delete_site_gateway_token", %{"site_id" => site.id, "id" => ""})
     assert %{"result" => %{"isError" => true}} = json_response(result, 200)
-    for token <- tokens, do: assert(Repo.get_by(Portal.GatewayToken, account_id: account.id, id: token.id))
+    for token <- tokens, do: assert(Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id))
   end
 
   test "dispatch refuses a tool bound to a different REST action", %{conn: conn, actor: actor} do
@@ -63,7 +63,7 @@ defmodule PortalAPI.MCPSecurityTest do
   end
 
   test "identity management requires the OAuth write scope", %{conn: conn, actor: actor} do
-    attrs = %{"name" => "Delegated admin", "type" => "account_admin_user", "email" => "delegated@example.com", "allow_email_otp_sign_in" => true}
+    attrs = %{"name" => "Delegated user", "type" => "account_user", "email" => "delegated@example.com"}
     result = conn |> authorize_mcp_conn(actor, ["actors:read"]) |> call_tool("create_actor", %{"actor" => attrs})
     assert result.status == 403
 
@@ -72,6 +72,46 @@ defmodule PortalAPI.MCPSecurityTest do
     result = call_tool(conn, "create_actor", %{"actor" => attrs})
     assert %{"result" => %{"isError" => false}} = json_response(result, 200)
     assert result.assigns.api_request_log.mcp["rest_status"] == 201
+  end
+
+  test "actors:write cannot create, change, or delete admins", %{conn: conn, account: account, actor: actor} do
+    conn = authorize_mcp_conn(conn, actor, ["actors:write"])
+    admin = actor_fixture(account: account, type: :account_admin_user)
+    user = actor_fixture(account: account, type: :account_user)
+
+    attrs = %{"name" => "Delegated admin", "type" => "account_admin_user", "email" => "delegated@example.com", "allow_email_otp_sign_in" => true}
+
+    for {tool, args} <- [
+          {"create_actor", %{"actor" => attrs}},
+          {"update_actor", %{"id" => user.id, "actor" => %{"type" => "account_admin_user"}}},
+          {"update_actor", %{"id" => admin.id, "actor" => %{"allow_email_otp_sign_in" => true}}},
+          {"delete_actor", %{"id" => admin.id}}
+        ] do
+      result = call_tool(conn, tool, args)
+      refute match?(%{"result" => %{"isError" => false}}, json_response(result, result.status))
+      assert result.assigns.api_request_log.mcp["outcome"] in ["failed", "rejected"]
+    end
+
+    assert Map.take(Repo.get_by!(Portal.Actor, account_id: account.id, id: admin.id), ~w[type email allow_email_otp_sign_in name is_disabled updated_at]a) ==
+             Map.take(admin, ~w[type email allow_email_otp_sign_in name is_disabled updated_at]a)
+    assert Repo.get_by!(Portal.Actor, account_id: account.id, id: user.id).type == :account_user
+    refute Repo.get_by(Portal.Actor, account_id: account.id, email: "delegated@example.com")
+  end
+
+  test "actors:write cannot change or delete API clients", %{conn: conn, account: account, actor: actor} do
+    conn = authorize_mcp_conn(conn, actor, ["actors:write"])
+    api_client = actor_fixture(account: account, type: :api_client)
+
+    for {tool, args} <- [
+          {"update_actor", %{"id" => api_client.id, "actor" => %{"is_disabled" => true}}},
+          {"delete_actor", %{"id" => api_client.id}}
+        ] do
+      result = call_tool(conn, tool, args)
+      refute match?(%{"result" => %{"isError" => false}}, json_response(result, result.status))
+      assert result.assigns.api_request_log.mcp["rest_status"] == 403
+    end
+
+    refute Repo.get_by!(Portal.Actor, account_id: account.id, id: api_client.id).is_disabled
   end
 
   test "credential issuance does not log its secret", %{conn: conn, actor: actor, account: account} do

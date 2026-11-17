@@ -1,7 +1,7 @@
 defmodule PortalAPI.ClientTokenControllerTest do
   use PortalAPI.ConnCase, async: true
 
-  alias Portal.ClientToken
+  alias Portal.DeviceToken
 
   import Ecto.Query
   import Portal.AccountFixtures
@@ -265,7 +265,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert is_binary(encoded_token)
       assert data["actor_id"] == service_account.id
 
-      assert Repo.get_by(ClientToken, id: id, actor_id: service_account.id)
+      assert Repo.get_by(DeviceToken, id: id, actor_id: service_account.id)
 
       context = Portal.Authentication.Context.build({127, 0, 0, 1}, "testing", [], :client)
       assert {:ok, subject} = Portal.Authentication.authenticate(encoded_token, context)
@@ -359,7 +359,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> post("/actors/#{other_service_account.id}/client_tokens", client_token: %{expires_at: expires_at})
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
-      assert Repo.aggregate(from(t in ClientToken, where: t.actor_id == ^other_service_account.id), :count) == 0
+      assert Repo.aggregate(from(t in DeviceToken, where: t.actor_id == ^other_service_account.id), :count) == 0
     end
 
     test "returns unauthorized when subject cannot read the actor", %{conn: conn, account: account} do
@@ -397,7 +397,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
       assert %{"data" => %{"id" => id}} = json_response(conn, 200)
       assert id == token.id
-      refute Repo.get_by(ClientToken, id: token.id)
+      refute Repo.get_by(DeviceToken, id: token.id)
     end
 
     test "deletes client token for account_user actor", %{conn: conn, account: account, actor: actor} do
@@ -411,7 +411,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
       assert %{"data" => %{"id" => id}} = json_response(conn, 200)
       assert id == token.id
-      refute Repo.get_by(ClientToken, id: token.id)
+      refute Repo.get_by(DeviceToken, id: token.id)
     end
 
     test "returns not found when client token does not exist for actor", %{
@@ -429,7 +429,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> delete("/actors/#{another_user_actor.id}/client_tokens/#{token.id}")
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
-      assert Repo.get_by(ClientToken, id: token.id)
+      assert Repo.get_by(DeviceToken, id: token.id)
     end
 
     test "returns not found when deleting token for non-revocable actor type", %{
@@ -447,7 +447,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
 
-      assert Repo.get_by(ClientToken, id: token.id)
+      assert Repo.get_by(DeviceToken, id: token.id)
     end
 
     test "does not delete client token from another account", %{conn: conn, actor: actor} do
@@ -461,7 +461,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> delete("/actors/#{other_service_account.id}/client_tokens/#{other_token.id}")
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
-      assert Repo.get_by(ClientToken, id: other_token.id)
+      assert Repo.get_by(DeviceToken, id: other_token.id)
     end
 
     test "returns unauthorized when subject cannot delete client tokens", %{conn: conn, account: account} do
@@ -475,7 +475,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> delete("/actors/#{service_account.id}/client_tokens/#{token.id}")
 
       assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
-      assert Repo.get_by(ClientToken, id: token.id)
+      assert Repo.get_by(DeviceToken, id: token.id)
     end
   end
 
@@ -514,7 +514,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert %{"data" => %{"deleted_count" => 3}} = json_response(conn, 200)
 
       Enum.each(tokens, fn token ->
-        refute Repo.get_by(ClientToken, id: token.id)
+        refute Repo.get_by(DeviceToken, id: token.id)
       end)
     end
 
@@ -534,7 +534,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert %{"data" => %{"deleted_count" => 3}} = json_response(conn, 200)
 
       Enum.each(tokens, fn token ->
-        refute Repo.get_by(ClientToken, id: token.id)
+        refute Repo.get_by(DeviceToken, id: token.id)
       end)
     end
 
@@ -553,7 +553,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
       assert json_response(conn, 200) == %{"data" => %{"deleted_count" => 0}}
 
-      assert Repo.get_by(ClientToken, id: token.id)
+      assert Repo.get_by(DeviceToken, id: token.id)
     end
 
     test "does not delete client tokens from another account", %{conn: conn, actor: actor} do
@@ -569,7 +569,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert json_response(conn, 200) == %{"data" => %{"deleted_count" => 0}}
 
       Enum.each(other_tokens, fn token ->
-        assert Repo.get_by(ClientToken, id: token.id)
+        assert Repo.get_by(DeviceToken, id: token.id)
       end)
     end
   end

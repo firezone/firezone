@@ -14,6 +14,7 @@ defmodule Portal.Crl.Sync do
   """
   use Oban.Worker, queue: :crl_sync, max_attempts: 3
   alias Portal.Crypto.X509
+  alias Portal.Req.Bounded
   alias __MODULE__.Database
   require Logger
 
@@ -21,7 +22,8 @@ defmodule Portal.Crl.Sync do
   # unbounded: refusing an oversized one keeps a hostile or broken endpoint
   # from being read into memory.
   @max_crl_bytes 5_000_000
-  @request_timeout :timer.seconds(30)
+  @receive_timeout :timer.seconds(30)
+  @timeout :timer.minutes(1)
 
   @impl Oban.Worker
   def perform(%Oban.Job{
@@ -32,10 +34,11 @@ defmodule Portal.Crl.Sync do
         }
       }) do
     with {:ok, issuer} <- Base.decode64(encoded_issuer),
-         endpoint when not is_nil(endpoint) <-
+         %{crl_is_disabled: false} = endpoint <-
            Database.fetch_endpoint(account_id, issuer, distribution_point) do
       refresh(endpoint)
     else
+      %Portal.RevocationEndpoint{} -> {:ok, :disabled}
       _other -> {:ok, :deleted}
     end
   end
@@ -262,17 +265,23 @@ defmodule Portal.Crl.Sync do
 
   defp fetch(url) do
     options =
-      [receive_timeout: @request_timeout, max_redirects: 3, decode_body: false] ++ request_opts()
+      [
+        url: url,
+        max_body_bytes: @max_crl_bytes,
+        timeout: @timeout,
+        receive_timeout: @receive_timeout,
+        decode_body: false
+      ] ++ request_opts()
 
-    case Req.get(url, options) do
-      {:ok, %{status: 200, body: body}} when byte_size(body) <= @max_crl_bytes ->
+    case Bounded.request(options) do
+      {:ok, %{status: 200, body: body}} ->
         {:ok, body}
-
-      {:ok, %{status: 200}} ->
-        {:error, :crl_too_large}
 
       {:ok, %{status: status}} ->
         {:error, {:http_status, status}}
+
+      {:error, %Bounded.BodyTooLargeError{}} ->
+        {:error, :crl_too_large}
 
       {:error, %Portal.Req.SSRFProtection.UnsafeURLError{} = exception} ->
         {:error, {:blocked_address, Exception.message(exception)}}
@@ -280,8 +289,6 @@ defmodule Portal.Crl.Sync do
       {:error, exception} ->
         {:error, Exception.message(exception)}
     end
-  rescue
-    error -> {:error, Exception.message(error)}
   end
 
   # The address was learned from a certificate, so whatever answers it must
@@ -452,7 +459,7 @@ defmodule Portal.Crl.Sync do
         |> Safe.update_all(
           set:
             crl_fields(crl, now) ++
-              delta_fields(delta, now) ++ Failure.success_fields(endpoint, :crl)
+              delta_fields(delta, now) ++ Failure.success_fields(:crl)
         )
 
         {:ok, {length(rows), newly_revoked}}
@@ -489,7 +496,7 @@ defmodule Portal.Crl.Sync do
 
       fields =
         [crl_fetched_at: now, crl_error: to_message(reason), updated_at: now] ++
-          Failure.error_fields(endpoint, reason, now)
+          Failure.error_fields(endpoint, :crl, reason, now)
 
       endpoint
       |> endpoint_query()

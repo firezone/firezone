@@ -17,9 +17,12 @@
 //! Processing a packet begins with [`Tracker::begin_tun_packet`] /
 //! [`Tracker::begin_network_packet`], which marks the thread-local [`FlowData`]
 //! as gathering a packet that the call sites processing it fill in via the
-//! `record_*` functions. Dropping the returned [`CurrentFlowGuard`] inserts
+//! `record_*` functions. [`CurrentFlowGuard::count_packet`] counts further packets of the
+//! same flow. Dropping the returned [`CurrentFlowGuard`] inserts
 //! the gathered data on every exit path; incomplete data (e.g. because packet
 //! processing bailed early or the packet was internal traffic) is discarded.
+//! A guard that has to outlive its borrow of the tracker is
+//! [detached](CurrentFlowGuard::detach) and inserted with [`Tracker::insert_detached`].
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -28,6 +31,7 @@ use std::{
     collections::{HashMap, hash_map},
     fmt::Debug,
     hash::Hash,
+    mem,
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -93,10 +97,6 @@ pub struct Tracker<S> {
     active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, FastRandomState>,
     active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, FastRandomState>,
 
-    /// The most recently recorded ingest token, lent to each packet's
-    /// [`FlowData`] so that recording it again needs no refcount update.
-    mru_ingest_token: Option<IngestToken>,
-
     enabled: bool,
     clock: Clock,
 }
@@ -116,7 +116,10 @@ struct TxPacket<'a, S> {
     tcp_ack: bool,
     tcp_fin: bool,
     tcp_rst: bool,
+    /// The first packet's payload length.
     payload_len: usize,
+    packets: u64,
+    bytes: u64,
     ingest_token: &'a IngestToken,
     domain: Option<DomainName>,
 }
@@ -133,7 +136,8 @@ struct RxPacket<S> {
     dst_proto: Protocol,
     tcp_fin: bool,
     tcp_rst: bool,
-    payload_len: usize,
+    packets: u64,
+    bytes: u64,
 }
 
 impl<S> Tracker<S> {
@@ -147,7 +151,6 @@ impl<S> Tracker<S> {
         Self {
             active_tcp_flows: HashMap::default(),
             active_udp_flows: HashMap::default(),
-            mru_ingest_token: None,
             enabled: false,
             clock: Clock {
                 created_at: now,
@@ -177,15 +180,10 @@ where
     /// Dropping the returned guard inserts the gathered flow data.
     pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(
-                Entry::Tun,
-                Some(InnerFlow::from(packet)),
-                now,
-                self.mru_ingest_token.take(),
-            );
+            set_current_flow(Entry::Tun, Some(InnerFlow::from(packet)), now);
         }
 
-        CurrentFlowGuard { tracker: self, now }
+        CurrentFlowGuard { tracker: self }
     }
 
     /// Begins gathering flow data for one packet received on the network interface.
@@ -198,15 +196,25 @@ where
         now: Instant,
     ) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(
-                Entry::Network { local, remote },
-                None,
-                now,
-                self.mru_ingest_token.take(),
-            );
+            set_current_flow(Entry::Network { local, remote }, None, now);
         }
 
-        CurrentFlowGuard { tracker: self, now }
+        CurrentFlowGuard { tracker: self }
+    }
+
+    /// Inserts the flow data of a [detached](CurrentFlowGuard::detach) guard.
+    pub fn insert_detached(&mut self, mut flow: DetachedFlow) {
+        self.finish_flow(&mut flow.data);
+    }
+
+    /// Inserts the gathered flow data.
+    fn finish_flow(&mut self, data: &mut FlowData) {
+        let Some(packet) = data.packet else {
+            return;
+        };
+
+        self.insert_flow(data, packet.now);
+        data.clear();
     }
 
     fn insert_flow(&mut self, data: &mut FlowData, now: Instant) {
@@ -223,12 +231,13 @@ where
                     tcp_fin,
                     tcp_rst,
                     payload_len,
+                    packets,
+                    bytes,
                 }),
             outer_tx,
             peer: Some((peer, role)),
             resource,
             ref ingest_token,
-            mru_ingest_token: _,
             ref mut domain,
             icmp_error: _, // TODO: What to do with ICMP errors?
         } = *data
@@ -278,6 +287,8 @@ where
                         tcp_fin,
                         tcp_rst,
                         payload_len,
+                        packets,
+                        bytes,
                         ingest_token,
                         domain: domain.take(),
                     },
@@ -308,6 +319,8 @@ where
                         tcp_fin,
                         tcp_rst,
                         payload_len,
+                        packets,
+                        bytes,
                         ingest_token,
                         domain: domain.take(),
                     },
@@ -332,7 +345,8 @@ where
                         dst_proto,
                         tcp_fin,
                         tcp_rst,
-                        payload_len,
+                        packets,
+                        bytes,
                     },
                     now,
                 );
@@ -348,7 +362,8 @@ where
                         dst_proto,
                         tcp_fin,
                         tcp_rst,
-                        payload_len,
+                        packets,
+                        bytes,
                     },
                     now,
                 );
@@ -414,6 +429,8 @@ where
             tcp_fin,
             tcp_rst,
             payload_len,
+            packets,
+            bytes,
             ingest_token,
             domain,
         } = tx;
@@ -438,7 +455,9 @@ where
                         // A bare ACK cannot start a connection; it is the tail
                         // of a flow that was already closed, e.g. the final ACK
                         // of a FIN handshake arriving after the close sweep.
-                        if tcp_ack && !tcp_syn && payload_len == 0 {
+                        let bare_ack = tcp_ack && !tcp_syn && payload_len == 0;
+                        let packets = packets - u64::from(bare_ack);
+                        if packets == 0 {
                             return;
                         }
 
@@ -447,11 +466,11 @@ where
                         let value = TcpFlowValue {
                             start: now,
                             last_packet: now,
-                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            stats: FlowStats::default().with_tx(packets, bytes),
                             contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
-                            non_syn_tx: !tcp_syn,
+                            non_syn_tx: !tcp_syn || packets > 1,
                             domain,
                             ingest_token: ingest_token.clone(),
                         };
@@ -475,11 +494,11 @@ where
                         let value = TcpFlowValue {
                             start: now,
                             last_packet: now,
-                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            stats: FlowStats::default().with_tx(packets, bytes),
                             contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
-                            non_syn_tx: !tcp_syn,
+                            non_syn_tx: !tcp_syn || packets > 1,
                             domain,
                             ingest_token: ingest_token.clone(),
                         };
@@ -504,11 +523,11 @@ where
                         let value = TcpFlowValue {
                             start: now,
                             last_packet: now,
-                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            stats: FlowStats::default().with_tx(packets, bytes),
                             contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
-                            non_syn_tx: !tcp_syn,
+                            non_syn_tx: !tcp_syn || packets > 1,
                             domain,
                             ingest_token: ingest_token.clone(),
                         };
@@ -522,12 +541,12 @@ where
                         let value = occupied.get_mut();
 
                         push_context(&key, &mut value.contexts, context);
-                        value.stats.inc_tx(payload_len as u64);
+                        value.stats.inc_tx(packets, bytes);
                         value.last_packet = now;
                         if tcp_fin {
                             value.fin_tx = true;
                         }
-                        if !tcp_syn {
+                        if !tcp_syn || packets > 1 {
                             value.non_syn_tx = true;
                         }
 
@@ -557,7 +576,7 @@ where
                         let value = UdpFlowValue {
                             start: now,
                             last_packet: now,
-                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            stats: FlowStats::default().with_tx(packets, bytes),
                             contexts: smallvec![context],
                             domain,
                             ingest_token: ingest_token.clone(),
@@ -582,7 +601,7 @@ where
                         let value = UdpFlowValue {
                             start: now,
                             last_packet: now,
-                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            stats: FlowStats::default().with_tx(packets, bytes),
                             contexts: smallvec![context],
                             domain,
                             ingest_token: ingest_token.clone(),
@@ -597,7 +616,7 @@ where
                         let value = occupied.get_mut();
 
                         push_context(&key, &mut value.contexts, context);
-                        value.stats.inc_tx(payload_len as u64);
+                        value.stats.inc_tx(packets, bytes);
                         value.last_packet = now;
                     }
                 };
@@ -622,7 +641,8 @@ where
             dst_proto,
             tcp_fin,
             tcp_rst,
-            payload_len,
+            packets,
+            bytes,
         } = rx;
 
         match (src_proto, dst_proto) {
@@ -643,7 +663,7 @@ where
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
-                        value.stats.inc_rx(payload_len as u64);
+                        value.stats.inc_rx(packets, bytes);
                         value.last_packet = now;
 
                         if tcp_fin {
@@ -675,7 +695,7 @@ where
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
-                        value.stats.inc_rx(payload_len as u64);
+                        value.stats.inc_rx(packets, bytes);
                         value.last_packet = now;
                     }
                 };
@@ -721,24 +741,46 @@ impl Clock {
 #[must_use]
 pub struct CurrentFlowGuard<'a, S: Scope> {
     tracker: &'a mut Tracker<S>,
-    now: Instant,
+}
+
+impl<S: Scope> CurrentFlowGuard<'_, S> {
+    /// Counts `packet` towards the current packet's flow.
+    ///
+    /// A packet that opens, closes or resets a TCP connection changes the flow, so it must
+    /// begin a guard of its own.
+    pub fn count_packet(&mut self, packet: &IpPacket) {
+        CURRENT_FLOW.with_borrow_mut(|data| data.count_packet(packet));
+    }
+
+    /// Drops the gathered flow data, so nothing is inserted.
+    pub fn discard(&mut self) {
+        CURRENT_FLOW.with_borrow_mut(FlowData::clear);
+    }
+
+    /// Releases the tracker; the flow data is inserted with [`Tracker::insert_detached`].
+    pub fn detach(self) -> DetachedFlow {
+        DetachedFlow {
+            data: CURRENT_FLOW.with_borrow_mut(|data| mem::replace(data, FlowData::EMPTY)),
+        }
+    }
 }
 
 impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
     fn drop(&mut self) {
-        CURRENT_FLOW.with_borrow_mut(|data| {
-            if data.packet.is_none() {
-                return;
-            }
+        CURRENT_FLOW.with_borrow_mut(|data| self.tracker.finish_flow(data));
+    }
+}
 
-            self.tracker.insert_flow(data, self.now);
-            self.tracker.mru_ingest_token = data
-                .ingest_token
-                .take()
-                .or_else(|| data.mru_ingest_token.take());
+/// Flow data gathered by a [`CurrentFlowGuard`] that no longer borrows the tracker.
+#[must_use = "the flow data is only recorded once it is inserted into the tracker"]
+pub struct DetachedFlow {
+    data: FlowData,
+}
 
-            data.clear();
-        });
+impl DetachedFlow {
+    /// Counts `packet` towards the flow, see [`CurrentFlowGuard::count_packet`].
+    pub fn count_packet(&mut self, packet: &IpPacket) {
+        self.data.count_packet(packet);
     }
 }
 
@@ -787,9 +829,6 @@ struct FlowData {
     resource: Option<ResourceId>,
     /// The portal's per-authorization ingest token (carries the attribution).
     ingest_token: Option<IngestToken>,
-    /// The token the [`Tracker`] kept from the previous packet, reused instead
-    /// of cloning if this packet records the same one.
-    mru_ingest_token: Option<IngestToken>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
@@ -823,29 +862,42 @@ impl FlowData {
         peer: None,
         resource: None,
         ingest_token: None,
-        mru_ingest_token: None,
         domain: None,
         icmp_error: None,
     };
 
+    /// Counts `packet` towards the flow of the first packet.
+    fn count_packet(&mut self, packet: &IpPacket) {
+        let Some(inner) = self.inner.as_mut() else {
+            return;
+        };
+
+        debug_assert!(
+            !packet
+                .tcp_flags()
+                .unwrap_or_default()
+                .intersects(TcpFlags::SYN | TcpFlags::FIN | TcpFlags::RST),
+            "a packet that changes the TCP state is gathered on its own"
+        );
+        debug_assert!(
+            inner.src_ip == packet.source()
+                && inner.dst_ip == packet.destination()
+                && inner.src_proto.as_ref().ok() == packet.source_protocol().ok().as_ref()
+                && inner.dst_proto.as_ref().ok() == packet.destination_protocol().ok().as_ref(),
+            "only packets of the first packet's flow are counted towards it"
+        );
+
+        inner.packets += 1;
+        inner.bytes += packet.layer4_payload_len() as u64;
+    }
+
     /// Releases the current packet and drops everything gathered about it.
     fn clear(&mut self) {
-        self.packet = None;
-        self.inner = None;
-        self.outer_tx = None;
-        self.peer = None;
-        self.resource = None;
-        self.domain = None;
-        self.icmp_error = None;
+        *self = Self::EMPTY;
     }
 }
 
-fn set_current_flow(
-    entry: Entry,
-    inner: Option<InnerFlow>,
-    now: Instant,
-    mru_ingest_token: Option<IngestToken>,
-) {
+fn set_current_flow(entry: Entry, inner: Option<InnerFlow>, now: Instant) {
     CURRENT_FLOW.with_borrow_mut(|data| {
         debug_assert!(
             data.packet.is_none(),
@@ -854,7 +906,6 @@ fn set_current_flow(
 
         data.packet = Some(CurrentPacket { entry, now });
         data.inner = inner;
-        data.mru_ingest_token = mru_ingest_token;
     });
 }
 
@@ -886,15 +937,9 @@ pub fn record_resource(resource: ResourceId) {
 }
 
 /// Records the ingest token attributing the current packet's flow.
-///
-/// Only clones `token` if it differs from the previously recorded one.
 pub fn record_ingest_token(token: Option<&IngestToken>) {
     update_current_flow(|data| {
-        data.ingest_token = token.map(|token| {
-            data.mru_ingest_token
-                .take_if(|previous| previous.ptr_eq(token))
-                .unwrap_or_else(|| token.clone())
-        });
+        data.ingest_token = token.cloned();
     });
 }
 
@@ -963,13 +1008,18 @@ struct InnerFlow {
     tcp_fin: bool,
     tcp_rst: bool,
 
+    /// The first packet's payload length.
     payload_len: usize,
+    /// How many packets of the flow were observed, and their payload bytes in total.
+    packets: u64,
+    bytes: u64,
 }
 
 impl From<&IpPacket> for InnerFlow {
     #[inline(always)]
     fn from(packet: &IpPacket) -> Self {
         let tcp_flags = packet.tcp_flags().unwrap_or_default();
+        let payload_len = packet.layer4_payload_len();
 
         InnerFlow {
             src_ip: packet.source(),
@@ -980,7 +1030,9 @@ impl From<&IpPacket> for InnerFlow {
             tcp_ack: tcp_flags.contains(TcpFlags::ACK),
             tcp_fin: tcp_flags.contains(TcpFlags::FIN),
             tcp_rst: tcp_flags.contains(TcpFlags::RST),
-            payload_len: packet.layer4_payload_len(),
+            payload_len,
+            packets: 1,
+            bytes: payload_len as u64,
         }
     }
 }
@@ -1315,20 +1367,20 @@ struct FlowStats {
 }
 
 impl FlowStats {
-    fn with_tx(mut self, payload_len: u64) -> Self {
-        self.inc_tx(payload_len);
+    fn with_tx(mut self, packets: u64, bytes: u64) -> Self {
+        self.inc_tx(packets, bytes);
 
         self
     }
 
-    fn inc_tx(&mut self, payload_len: u64) {
-        self.tx_packets += 1;
-        self.tx_bytes += payload_len;
+    fn inc_tx(&mut self, packets: u64, bytes: u64) {
+        self.tx_packets += packets;
+        self.tx_bytes += bytes;
     }
 
-    fn inc_rx(&mut self, payload_len: u64) {
-        self.rx_packets += 1;
-        self.rx_bytes += payload_len;
+    fn inc_rx(&mut self, packets: u64, bytes: u64) {
+        self.rx_packets += packets;
+        self.rx_bytes += bytes;
     }
 }
 

@@ -18,12 +18,13 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       build_number: ${{ steps.release-metadata.outputs.build_number }}
+      release_drafted: ${{ steps.update-release-draft.outcome == 'success' }}
     permissions:
       actions: read # inspect store submission artifacts
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: apple-client-1.5.24
+      RELEASE_NAME: apple-client-1.5.25
     steps:
       - name: Set release metadata
         id: release-metadata
@@ -47,6 +48,38 @@ jobs:
           commitish: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  benchmark-macos:
+    needs: update-release-draft
+    if: needs.update-release-draft.outputs.release_drafted == 'true'
+    runs-on: ubuntu-24.04
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        protocol: [tcp, quic]
+    steps:
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          owner: firezone
+          repositories: infra
+          # repository_dispatch requires Contents: write.
+          permission-contents: write
+      - name: Dispatch Mac-to-Mac benchmarks
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          FIREZONE_SHA: ${{ github.sha }}
+          BENCHMARK_PROTOCOL: ${{ matrix.protocol }}
+        run: |
+          gh api --method POST /repos/firezone/infra/dispatches \
+            --raw-field event_type=benchmark-release \
+            --raw-field "client_payload[git_sha]=$FIREZONE_SHA" \
+            --raw-field 'client_payload[device_pair]=iMac <> Macbook' \
+            --raw-field "client_payload[protocol]=$BENCHMARK_PROTOCOL" \
+            --field 'client_payload[publish]=true'
 
   test:
     runs-on: macos-26
@@ -323,10 +356,10 @@ jobs:
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             # mark:next-apple-version
-            artifact-file: "firezone-ios-client-1.5.24.ipa"
+            artifact-file: "firezone-ios-client-1.5.25.ipa"
             platform: iOS
             # mark:next-apple-version
-            release-name: apple-client-1.5.24
+            release-name: apple-client-1.5.25
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
@@ -340,11 +373,11 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.24.dmg"
+            artifact-file: "firezone-macos-client-1.5.25.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.24.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.25.pkg"
             # mark:next-apple-version
-            release-name: apple-client-1.5.24
+            release-name: apple-client-1.5.25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

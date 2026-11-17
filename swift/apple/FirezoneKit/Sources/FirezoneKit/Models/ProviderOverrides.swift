@@ -16,14 +16,19 @@ public struct ProviderOverrides: Sendable {
   public var logFilter: String?
   // swiftlint:disable:next discouraged_optional_boolean - nil means "leave as stored"
   public var internetResourceEnabled: Bool?
+  // swiftlint:disable:next discouraged_optional_collection - nil means "leave as stored"
+  public var additionalHostCandidates: [String]?
 
   public init(
     logFilter: String? = nil,
     // swiftlint:disable:next discouraged_optional_boolean - nil means "leave as stored"
-    internetResourceEnabled: Bool? = nil
+    internetResourceEnabled: Bool? = nil,
+    // swiftlint:disable:next discouraged_optional_collection - nil means "leave as stored"
+    additionalHostCandidates: [String]? = nil
   ) {
     self.logFilter = logFilter
     self.internetResourceEnabled = internetResourceEnabled
+    self.additionalHostCandidates = additionalHostCandidates
   }
 
   @MainActor
@@ -32,11 +37,8 @@ public struct ProviderOverrides: Sendable {
     if let internetResourceEnabled {
       configuration.internetResourceEnabled = internetResourceEnabled
     }
+    if let additionalHostCandidates {
+      configuration.additionalHostCandidates = additionalHostCandidates
+    }
   }
-}
-
-/// The parts of the stored configuration a headless sign-in link is built from.
-public struct SignInSettings: Sendable {
-  public let authURL: String
-  public let accountSlug: String
 }

@@ -1,9 +1,9 @@
 //! Integration tests for [`socket_factory::PerfUdpSocket`], exercising it through its public API.
 
+#![allow(clippy::unwrap_used)]
+
 use ip_packet::Ecn;
 use socket_factory::{DatagramOut, udp};
-
-bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (2048, "test"), batch: 64);
 
 /// Datagrams sent to a fresh peer round-trip: the peer receives them and the reply is
 /// delivered back through the same [`PerfUdpSocket`](socket_factory::PerfUdpSocket).
@@ -18,16 +18,13 @@ async fn sends_and_receives_a_datagram() {
     let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let peer_addr = peer.local_addr().unwrap();
 
-    let socket = udp("127.0.0.1:0".parse().unwrap())
-        .unwrap()
-        .into_perf()
-        .unwrap();
+    let socket = udp("127.0.0.1:0".parse().unwrap()).unwrap().into_perf();
 
     socket
         .send(DatagramOut {
             src: None,
             dst: peer_addr,
-            packet: PACKETS.pull_initialised(&b"hello".repeat(DATAGRAMS)),
+            packet: bufferpool::Bytes::copied_from(&b"hello".repeat(DATAGRAMS)),
             segment_size: 5,
             ecn: Ecn::NonEct,
         })
@@ -59,6 +56,60 @@ async fn sends_and_receives_a_datagram() {
     assert_eq!(datagram.from(), peer_addr);
 }
 
+#[cfg(apple)]
+#[tokio::test]
+async fn explicit_source_round_trips_before_and_after_promotion() {
+    let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let peer_addr = peer.local_addr().unwrap();
+    let socket = udp("0.0.0.0:0".parse().unwrap()).unwrap();
+    let port = socket2::SockRef::from(&socket)
+        .local_addr()
+        .unwrap()
+        .as_socket()
+        .unwrap()
+        .port();
+    let socket = socket.into_perf();
+    let source = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+
+    for datagrams in [1, 16] {
+        socket
+            .send(DatagramOut {
+                src: Some(source),
+                dst: peer_addr,
+                packet: bufferpool::Bytes::copied_from(&b"hello".repeat(datagrams)),
+                segment_size: 5,
+                ecn: Ecn::NonEct,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            socket.flow_socket_count(),
+            if datagrams == 16 { 1 } else { 0 }
+        );
+        let mut buf = [0u8; 16];
+        for _ in 0..datagrams {
+            let (len, sender) =
+                tokio::time::timeout(std::time::Duration::from_secs(3), peer.recv_from(&mut buf))
+                    .await
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(&buf[..len], b"hello");
+            assert_eq!(sender, source);
+        }
+
+        peer.send_to(b"world", source).await.unwrap();
+        let mut batch = tokio::time::timeout(std::time::Duration::from_secs(3), socket.recv_from())
+            .await
+            .unwrap()
+            .unwrap();
+        let datagram = batch.drain().next().unwrap();
+        let segment = datagram.segments().next().unwrap();
+        assert_eq!(&datagram[segment], b"world");
+        assert_eq!(datagram.from(), peer_addr);
+    }
+}
+
 /// ICMP errors from sending to a closed port must not fill the receive buffer and starve every
 /// later receive.
 #[cfg(target_os = "linux")]
@@ -76,7 +127,7 @@ async fn receives_after_many_icmp_errors() {
         .unwrap()
         .as_socket()
         .unwrap();
-    let mut socket = socket.into_perf().unwrap();
+    let mut socket = socket.into_perf();
     socket.set_buffer_sizes(64 * 1024, 16 * 1024);
 
     for _ in 0..1000 {
@@ -84,7 +135,7 @@ async fn receives_after_many_icmp_errors() {
             .send(DatagramOut {
                 src: None,
                 dst: closed_addr,
-                packet: PACKETS.pull_initialised(&[0; 1200]),
+                packet: bufferpool::Bytes::copied_from(&[0; 1200]),
                 segment_size: 1200,
                 ecn: Ecn::NonEct,
             })

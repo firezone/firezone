@@ -4,6 +4,11 @@ defmodule Portal.FlowLogTest do
   import Ecto.Changeset
   alias Portal.FlowLog
 
+  defp datetime(time) do
+    {:ok, datetime, 0} = DateTime.from_iso8601(Date.to_iso8601(Date.utc_today()) <> "T" <> time <> "Z")
+    datetime
+  end
+
   defp valid_attrs(overrides) do
     Map.merge(
       %{
@@ -20,16 +25,16 @@ defmodule Portal.FlowLogTest do
         resource_address: "10.0.0.5",
         initiator_actor_id: Ecto.UUID.generate(),
         initiator_actor_name: "Some User",
-        authorized_at: ~U[2026-03-20 09:59:00.000000Z],
-        authorization_expires_at: ~U[2026-03-20 19:59:00.000000Z],
+        authorized_at: datetime("09:59:00.000000"),
+        authorization_expires_at: datetime("19:59:00.000000"),
         protocol: :tcp,
         inner_src_ip: %Postgrex.INET{address: {100, 64, 0, 1}},
         inner_src_port: 12_345,
         inner_dst_ip: %Postgrex.INET{address: {10, 0, 0, 5}},
         inner_dst_port: 443,
-        flow_start: ~U[2026-03-20 10:00:00.000000Z],
-        flow_end: ~U[2026-03-20 10:05:00.000000Z],
-        last_packet: ~U[2026-03-20 10:04:59.000000Z],
+        flow_start: datetime("10:00:00.000000"),
+        flow_end: datetime("10:05:00.000000"),
+        last_packet: datetime("10:04:59.000000"),
         outers: [
           %{
             src_ip: "198.51.100.1",
@@ -194,8 +199,8 @@ defmodule Portal.FlowLogTest do
     test "valid with a skewed flow_start before authorized_at" do
       cs =
         changeset(%{
-          authorized_at: ~U[2026-03-20 10:01:00.000000Z],
-          flow_start: ~U[2026-03-20 10:00:00.000000Z]
+          authorized_at: datetime("10:01:00.000000"),
+          flow_start: datetime("10:00:00.000000")
         })
 
       assert cs.valid?
@@ -204,11 +209,28 @@ defmodule Portal.FlowLogTest do
     test "valid with a flow_end before flow_start" do
       cs =
         changeset(%{
-          flow_start: ~U[2026-03-20 10:05:00.000000Z],
-          flow_end: ~U[2026-03-20 10:00:00.000000Z]
+          flow_start: datetime("10:05:00.000000"),
+          flow_end: datetime("10:00:00.000000")
         })
 
       assert cs.valid?
+    end
+
+    test "accepts the full retained window, including both boundary days" do
+      for days <- [-121, -120, -30, -2, -1, 0, 14] do
+        date = Date.add(Date.utc_today(), days)
+        assert changeset(%{flow_start: DateTime.new!(date, ~T[00:00:00.000000])}).valid?
+        assert changeset(%{flow_start: DateTime.new!(date, ~T[23:59:59.999999])}).valid?
+      end
+    end
+
+    test "rejects timestamps outside the retained window" do
+      for days <- [-122, 15, 61] do
+        date = Date.add(Date.utc_today(), days)
+        cs = changeset(%{flow_start: DateTime.new!(date, ~T[00:00:00.000000])})
+        refute cs.valid?
+        assert %{flow_start: [_]} = errors_on(cs)
+      end
     end
 
     test "valid with a flow_start in the future" do

@@ -19,6 +19,7 @@ defmodule PortalWeb.Policies.Postures do
           availability: :enabled | :locked,
           connected: [atom()],
           trust_anchors?: boolean(),
+          require_attestation?: boolean(),
           tab: :simple | :json,
           wire: map() | nil,
           saved: map() | nil,
@@ -31,11 +32,12 @@ defmodule PortalWeb.Policies.Postures do
     if Portal.Account.device_posture_enabled?(account), do: :enabled, else: :locked
   end
 
-  @spec for_account(Portal.Account.t(), Postures.t() | nil) :: t()
-  def for_account(account, postures \\ nil) do
+  @spec for_account(Portal.Account.t(), Postures.t() | nil, boolean()) :: t()
+  def for_account(account, postures \\ nil, require_attestation? \\ false) do
     new(availability(account), postures,
       connected: Database.list_connected_provider_types(account.id),
-      trust_anchors?: Database.trust_anchors?(account.id)
+      trust_anchors?: Database.trust_anchors?(account.id),
+      require_attestation?: require_attestation?
     )
   end
 
@@ -47,6 +49,7 @@ defmodule PortalWeb.Policies.Postures do
       availability: availability,
       connected: Keyword.get(opts, :connected, []),
       trust_anchors?: Keyword.get(opts, :trust_anchors?, true),
+      require_attestation?: Keyword.get(opts, :require_attestation?, false),
       tab: :simple,
       wire: wire,
       saved: wire,
@@ -113,6 +116,15 @@ defmodule PortalWeb.Policies.Postures do
       %{state | wire: wire, json_text: pretty(wire), json_error: nil}
     else
       _custom_or_unknown -> state
+    end
+  end
+
+  # Without a trust anchor it can only be turned off.
+  def handle_event("postures_require_attestation", _params, state) do
+    if state.require_attestation? or state.trust_anchors? do
+      %{state | require_attestation?: not state.require_attestation?}
+    else
+      state
     end
   end
 

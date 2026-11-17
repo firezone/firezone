@@ -855,7 +855,7 @@ defmodule PortalWeb.Sites.Components do
   end
 
   # Whether the gateway's active single-owner token is actually in use.
-  # gateway_token_id is a proxy for the server-side "referenced by a device"
+  # token_id is a proxy for the server-side "referenced by a device"
   # check that decides between grace-period rotation and outright
   # replacement - it matches exactly for never-connected gateways.
   defp active_token_state(device_tokens, gateway) do
@@ -866,14 +866,14 @@ defmodule PortalWeb.Sites.Components do
 
     cond do
       is_nil(active) -> :none
-      gateway.gateway_token_id == active.id -> :in_use
+      gateway.token_id == active.id -> :in_use
       true -> :never_used
     end
   end
 
   defp legacy_connected?(gateway, legacy_token_ids) do
-    gateway.gateway_token_id != nil and
-      MapSet.member?(legacy_token_ids, gateway.gateway_token_id)
+    gateway.token_id != nil and
+      MapSet.member?(legacy_token_ids, gateway.token_id)
   end
 
   # A gateway still connected with a legacy token is mid-upgrade even if a
@@ -938,13 +938,13 @@ defmodule PortalWeb.Sites.Components do
       is_nil(gateway.last_seen_at) ->
         "Never connected - No token provisioned"
 
-      active && gateway.gateway_token_id == active.id ->
+      active && gateway.token_id == active.id ->
         "#{verb} gateway token"
 
-      rotated && gateway.gateway_token_id == rotated.id ->
+      rotated && gateway.token_id == rotated.id ->
         expiring_status(verb, active)
 
-      MapSet.member?(legacy_token_ids, gateway.gateway_token_id) ->
+      MapSet.member?(legacy_token_ids, gateway.token_id) ->
         with_unused_token_note("#{verb} legacy site token", active)
 
       true ->
@@ -1232,7 +1232,7 @@ defmodule PortalWeb.Sites.Components do
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_debian_install() %></Core.code_block>
+      ><%= gateway_debian_install(@deploy_env) %></Core.code_block>
 
       <p class="text-xs text-body">
         Step 3: Authenticate the Firezone Gateway:
@@ -1336,6 +1336,16 @@ defmodule PortalWeb.Sites.Components do
         phx-no-format
         phx-update="ignore"
       ><%= gateway_token(@deploy_env) %></Core.code_block>
+      <p :if={gateway_api_url(@deploy_env)} class="text-xs text-body">
+        Set `FIREZONE_API_URL` to:
+      </p>
+      <Core.code_block
+        :if={gateway_api_url(@deploy_env)}
+        id="deploy-code-terraform-api-url"
+        class="w-full text-xs whitespace-pre-line"
+        phx-no-format
+        phx-update="ignore"
+      ><%= gateway_api_url(@deploy_env) %></Core.code_block>
       <p class="text-xs text-body">
         <Navigation.website_link path="/kb/automate">Terraform guides</Navigation.website_link>
       </p>
@@ -1847,18 +1857,25 @@ defmodule PortalWeb.Sites.Components do
 
   @doc """
   The environment a freshly deployed Gateway runs with: its token, and the API URL
-  when this deployment overrides it. The Gateway generates its own `FIREZONE_ID`
-  and keeps it in `/var/lib/firezone`, so none is handed out.
+  when this deployment doesn't use the Gateway's default. The Gateway generates its
+  own `FIREZONE_ID` and keeps it in `/var/lib/firezone`, so none is handed out.
   """
   @spec gateway_env(String.t()) :: [{String.t(), String.t()}]
   def gateway_env(encoded_token) do
     [
       {"FIREZONE_TOKEN", encoded_token}
-      | if(url = Portal.Config.get_env(:portal, :api_url_override),
+      | if(url = PortalWeb.DeploymentURLs.api_url(),
           do: [{"FIREZONE_API_URL", url}],
           else: []
         )
     ]
+  end
+
+  defp gateway_api_url(env) do
+    case List.keyfind(env, "FIREZONE_API_URL", 0) do
+      {"FIREZONE_API_URL", value} -> value
+      nil -> nil
+    end
   end
 
   @doc "A `docker run` command that starts a Gateway with the deploy environment."
@@ -1903,20 +1920,26 @@ defmodule PortalWeb.Sites.Components do
     """
   end
 
-  defp gateway_debian_install do
+  defp gateway_debian_install(env) do
     """
     sudo apt update
     sudo apt install firezone-gateway
-    """
+    """ <> gateway_debian_api_url(gateway_api_url(env))
   end
+
+  # The package's service reads its settings from /etc/firezone/gateway-env.
+  defp gateway_debian_api_url(nil), do: ""
+
+  defp gateway_debian_api_url(url),
+    do: ~s(echo "FIREZONE_API_URL=#{url}" | sudo tee -a /etc/firezone/gateway-env > /dev/null\n)
 
   @doc """
   The commands that add the Firezone APT repository and install the Gateway package,
   as one block.
   """
-  @spec gateway_debian_install_commands() :: String.t()
-  def gateway_debian_install_commands do
-    gateway_debian_apt_repository() <> gateway_debian_install()
+  @spec gateway_debian_install_commands([{String.t(), String.t()}]) :: String.t()
+  def gateway_debian_install_commands(env) do
+    gateway_debian_apt_repository() <> gateway_debian_install(env)
   end
 
   defp gateway_debian_authenticate do

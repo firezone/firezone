@@ -1,5 +1,6 @@
 defmodule PortalWeb.OIDCControllerTest do
   use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -26,6 +27,14 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "sign_in/2" do
+    test "returns 404 for an unknown provider type", %{conn: conn} do
+      account = account_fixture()
+
+      conn = get(conn, "/#{account.id}/sign_in/foo/#{Ecto.UUID.generate()}")
+
+      assert response(conn, 404)
+    end
+
     test "returns 404 when account not found", %{conn: conn} do
       assert_raise Ecto.NoResultsError, fn ->
         get(conn, "/non-existent-account/sign_in/oidc/#{Ecto.UUID.generate()}")
@@ -226,6 +235,53 @@ defmodule PortalWeb.OIDCControllerTest do
     end
   end
 
+  describe "Google Workspace provider setup" do
+    test "a Workspace account that cannot list its domains fails verification", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = pending_verification_process(Map.new(oidc_config()), verification_ref)
+      state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
+        "google-auth-provider", %{verification_ref: verification_ref})
+      token = Mocks.OIDC.default_claims() |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
+      Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "setup-secret"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn -> Plug.Conn.send_resp(conn, 403, "forbidden") end)
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "code"})
+      assert {:ok, %{ok: false, error: error}} = oidc_verification_result_from_redirect(redirected_to(conn))
+      assert error =~ "sign in as an administrator"
+    end
+
+    test "returns verified domains in a signed result without exposing access tokens", %{conn: conn} do
+      config = oidc_config() |> Map.new()
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
+        "google-auth-provider", %{verification_ref: verification_ref})
+      token = Mocks.OIDC.default_claims() |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
+      Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "setup-secret"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn ->
+        Req.Test.json(conn, %{"domains" => [%{"domainName" => "example.com", "verified" => true, "isPrimary" => true}]})
+      end)
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "code"})
+      assert {:ok, %{ok: true, type: "google-auth-provider", domains: ["example.com"],
+                    name: "example.com", verification_ref: ^verification_ref} = result} =
+        oidc_verification_result_from_redirect(redirected_to(conn))
+      refute Map.has_key?(result, :access_token)
+      refute Map.has_key?(result, :id_token)
+    end
+    test "returns a personal Google verification with restrictions unset", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = pending_verification_process(Map.new(oidc_config()), verification_ref)
+      state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
+        "google-auth-provider", %{verification_ref: verification_ref})
+      Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must not read domains for personal accounts") end)
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "code"})
+      assert {:ok, %{ok: true, domains: nil, name: nil, verification_ref: ^verification_ref} = result} =
+        oidc_verification_result_from_redirect(redirected_to(conn))
+      refute Map.has_key?(result, :access_token)
+      refute Map.has_key?(result, :id_token)
+    end
+
+  end
+
   describe "callback/2 with Entra verification state" do
     @tenant_id "12345678-1234-1234-1234-123456789012"
     @tenant_issuer "https://login.microsoftonline.com/#{@tenant_id}/v2.0"
@@ -251,6 +307,21 @@ defmodule PortalWeb.OIDCControllerTest do
                 issuer: @tenant_issuer,
                 verification_ref: ^verification_ref
               }} = entra_verification_result_from_redirect(redirected_to(conn))
+    end
+
+    test "verifies Entra without requesting a tenant display name", %{conn: conn} do
+      Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn _conn ->
+        flunk("auth-provider verification must not request Microsoft Graph profile data")
+      end)
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      conn = complete_entra_admin_consent(conn, state)
+      set_entra_token_response("entra-client-id")
+      conn = complete_entra_tenant_proof(conn)
+      assert {:ok, %{ok: true} = result} = entra_verification_result_from_redirect(redirected_to(conn))
+      refute Map.has_key?(result, :tenant_name)
     end
 
     test "binds directory sync to a user identity from a verified ID token", %{conn: conn} do
@@ -1658,7 +1729,9 @@ defmodule PortalWeb.OIDCControllerTest do
           assert query["state"] == "client-state"
           assert query["nonce"] == "client-nonce"
 
-          assert query["error"] ==
+          refute Map.has_key?(query, "error")
+
+          assert flash(conn, :error) ==
                    "The authorization code has expired or was already used. Please try signing in again."
         end)
 
@@ -1684,6 +1757,33 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_portal_sign_in_success(ctx)
     end
 
+    test "keeps the picture claim on a synced identity and queues its photo", ctx do
+      Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "admin-user-123",
+          email: actor.email
+        )
+
+      picture = "https://idp.example.com/photo.jpg"
+      setup_successful_auth(ctx, actor, picture: picture)
+
+      assert_portal_sign_in_success(ctx)
+
+      assert Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id, id: identity.id).picture ==
+               picture
+
+      assert_enqueued(
+        worker: Portal.Avatars.Picture,
+        args: %{account_id: ctx.account.id, identity_id: identity.id, picture: picture}
+      )
+    end
+
     test "rejects an ID token whose nonce is not bound to the sign-in session", ctx do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
       setup_successful_auth(ctx, actor, nonce: "attacker-nonce")
@@ -1692,6 +1792,36 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
       assert flash(conn, :error) == "Unable to verify your identity token. Please try signing in again."
+    end
+
+    test "accepts an ID token from the provider's issuer when discovery lists a tenant template",
+         ctx do
+      tenant_id = Ecto.UUID.generate()
+      provider = tenant_template_provider(ctx.account, tenant_id)
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, tid: tenant_id)
+
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "rejects an ID token from an issuer other than the provider's", ctx do
+      provider = tenant_template_provider(ctx.account, Ecto.UUID.generate())
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      other_tenant_id = Ecto.UUID.generate()
+
+      setup_successful_auth(ctx, actor,
+        iss: "https://login.microsoftonline.com/#{other_tenant_id}/v2.0",
+        tid: other_tenant_id
+      )
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+      assert flash(conn, :error) == "Unable to verify your identity token. Please try signing in again."
+      refute conn.resp_cookies["sess_#{ctx.account.id}"]
+      refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
     end
 
     test "recreated user with a new idp_id overwrites their identity in place", ctx do
@@ -3127,7 +3257,7 @@ defmodule PortalWeb.OIDCControllerTest do
       provider =
         entra_provider_fixture(
           account: account,
-          issuer: "#{mock_endpoint}/"
+          tenant_ids: ["12345678-1234-1234-1234-123456789012"]
         )
 
       conn = get(conn, "/#{account.id}/sign_in/entra/#{provider.id}")
@@ -3136,6 +3266,147 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirect_url =~ "#{mock_endpoint}/authorize"
       assert redirect_url =~ "prompt=select_account"
       assert_oidc_nonce_bound(conn)
+    end
+  end
+
+  describe "callback/2 with Entra provider" do
+    @other_tenant_id "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Entra.AuthProvider,
+        client_id: "test-entra-client-id",
+        client_secret: "test-entra-client-secret",
+        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+        req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
+      )
+
+      Mocks.OIDC.set_discovery_document_overrides(%{
+        "issuer" => "https://login.microsoftonline.com/{tenantid}/v2.0"
+      })
+
+      account = account_fixture()
+
+      provider =
+        entra_provider_fixture(
+          account: account,
+          tenant_ids: [@tenant_id]
+        )
+
+      actor = admin_actor_fixture(account: account, email: unique_email())
+
+      {:ok, account: account, provider: provider, actor: actor}
+    end
+
+    test "signs in a linked identity with an ID token from the provider's tenant", ctx do
+      oid = link_entra_identity(ctx, @tenant_id)
+      expect_entra_token_exchange(ctx.actor, @tenant_id, oid)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+    end
+
+    test "accepts a linked identity from a second allowed tenant", ctx do
+      ctx.provider |> Ecto.Changeset.change(tenant_ids: [@tenant_id, @other_tenant_id]) |> Repo.update!()
+      oid = link_entra_identity(ctx, @other_tenant_id)
+      expect_entra_token_exchange(ctx.actor, @other_tenant_id, oid)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+    end
+
+    test "links a token whose UPN matches an actor without email proof", ctx do
+      oid = Ecto.UUID.generate()
+      expect_entra_token_exchange(ctx.actor, @tenant_id, oid)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+      refute_received {:email, _email}
+      identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
+      assert identity.actor_id == ctx.actor.id
+      assert identity.idp_id == oid
+    end
+
+    for email_claim <- ~w[email preferred_username] do
+      test "requires email proof before linking a token whose #{email_claim} matches an actor",
+           ctx do
+        Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+        provider = ctx.provider |> Ecto.Changeset.change(email_claim: unquote(email_claim)) |> Repo.update!()
+        # A guest's home tenant controls these claims, so it can claim any address.
+        expect_entra_token_exchange(ctx.actor, @tenant_id, Ecto.UUID.generate())
+        Mocks.OIDC.set_userinfo_response(%{})
+
+        conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, provider))
+
+        assert redirected_to(conn) =~
+                 "/#{ctx.account.slug}/sign_in/oidc/#{provider.id}/verify_identity"
+
+        refute conn.resp_cookies["sess_#{ctx.account.id}"]
+        refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
+        assert_received {:email, email}
+        assert email.to == [{"", ctx.actor.email}]
+      end
+    end
+
+    test "links a guest user through the provider's sign-in tenant after email proof", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      # A unique tenant keeps the cached discovery document out of other tests.
+      tenant_id = Ecto.UUID.generate()
+      issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0"
+      oid = Ecto.UUID.generate()
+
+      provider =
+        ctx.provider
+        |> Ecto.Changeset.change(tenant_ids: [tenant_id], sign_in_tenant_id: tenant_id, email_claim: "email")
+        |> Repo.update!()
+
+      Mocks.OIDC.set_discovery_document_overrides(%{"issuer" => issuer})
+      expect_entra_token_exchange(ctx.actor, tenant_id, oid)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, provider))
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sign_in/oidc/#{provider.id}/verify_identity"
+      discovery_path = "/#{tenant_id}/v2.0/.well-known/openid-configuration"
+      assert_received {:oidc_request, ^discovery_path, _conn}
+      pending_cookie = pending_identity_cookie_from_response(conn)
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+      identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
+      assert identity.actor_id == ctx.actor.id
+      assert identity.issuer == issuer
+      assert identity.idp_id == oid
+    end
+
+    test "rejects an ID token from another tenant", ctx do
+      expect_entra_token_exchange(ctx.actor, @other_tenant_id)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+      assert flash(conn, :error) == "Unable to verify your identity token. Please try signing in again."
+      refute conn.resp_cookies["sess_#{ctx.account.id}"]
+      refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
     end
   end
 
@@ -3566,17 +3837,16 @@ defmodule PortalWeb.OIDCControllerTest do
         assert failed_query["state"] == params["state"]
         assert failed_query["nonce"] == params["nonce"]
         assert failed_query["redirect_to"] == params["redirect_to"]
-        assert failed_query["error"] =~ "Unable to fetch discovery document"
+        refute Map.has_key?(failed_query, "error")
+        assert flash(failed_conn, :error) =~ "Unable to fetch discovery document"
 
         Mocks.OIDC.stub_discovery_document()
-
-        retry_params = Map.drop(failed_query, ["error"])
 
         retry_conn =
           get(
             recycle(conn),
             "/#{account.slug}/sign_in",
-            retry_params
+            failed_query
           )
 
         provider_retry_path = redirected_to(retry_conn)
@@ -3626,7 +3896,9 @@ defmodule PortalWeb.OIDCControllerTest do
           assert query["state"] == "client-state"
           assert query["nonce"] == "client-nonce"
 
-          assert query["error"] ==
+          refute Map.has_key?(query, "error")
+
+          assert flash(conn, :error) ==
                    "Unable to fetch discovery document: Connection refused. The identity provider may be down."
         end)
 
@@ -3646,6 +3918,17 @@ defmodule PortalWeb.OIDCControllerTest do
   defp setup_oidc_provider(account, opts \\ []) do
     provider = oidc_provider_fixture(:mock, Keyword.put(opts, :account, account))
     %{provider: provider}
+  end
+
+  defp tenant_template_provider(account, tenant_id) do
+    Mocks.OIDC.set_discovery_document_overrides(%{
+      "issuer" => "https://login.microsoftonline.com/{tenantid}/v2.0"
+    })
+
+    oidc_provider_fixture(:mock,
+      account: account,
+      issuer: "https://login.microsoftonline.com/#{tenant_id}/v2.0"
+    )
   end
 
   defp unique_email do
@@ -3731,6 +4014,27 @@ defmodule PortalWeb.OIDCControllerTest do
 
   defp pending_identity_cookie_key(pending_identity_id), do: "pending_identity_#{pending_identity_id}"
 
+  defp turnstile_enabled(result) do
+    Portal.Config.put_env_override(:portal, Portal.Turnstile,
+      site_key: "test-site-key",
+      secret_key: "test-secret-key",
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
+
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:cloudflare_request, URI.decode_query(body)})
+
+      case result do
+        :approve -> Req.Test.json(conn, %{"success" => true})
+        :refuse -> Req.Test.json(conn, %{"success" => false, "error-codes" => ["invalid-input-response"]})
+        :down -> Plug.Conn.send_resp(conn, 503, "unavailable")
+      end
+    end)
+  end
+
   # Sets the secret_key_base from the endpoint so signed cookies can be read/written.
   describe "sign_up/2" do
     test "redirects to Google with an account picker and binds the state to a cookie", %{
@@ -3757,6 +4061,94 @@ defmodule PortalWeb.OIDCControllerTest do
                conn |> recycle() |> with_endpoint_key_base() |> Cookie.SignUpState.fetch()
 
       assert nonce == PortalWeb.OIDC.nonce(verifier)
+    end
+
+    test "starts the Google round trip once Cloudflare approves the token", %{conn: conn} do
+      mock_endpoint = Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:approve)
+
+      conn = post(conn, ~p"/sign_up/google", %{"cf-turnstile-response" => "good-token"})
+
+      assert redirected_to(conn) =~ "#{mock_endpoint}/authorize"
+      assert %Cookie.SignUpState{} = conn |> recycle() |> with_endpoint_key_base() |> Cookie.SignUpState.fetch()
+      assert_receive {:cloudflare_request, form}
+      assert form["response"] == "good-token"
+      assert form["secret"] == "test-secret-key"
+      assert form["remoteip"] == "127.0.0.1"
+    end
+
+    test "turns away a Google sign-up without a token and never calls Cloudflare", %{conn: conn} do
+      Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:approve)
+
+      for params <- [%{}, %{"cf-turnstile-response" => ""}] do
+        conn = post(conn, ~p"/sign_up/google", params)
+
+        assert redirected_to(conn) == "/sign_up"
+        assert flash(conn, :error) =~ "Please complete the verification"
+        refute Map.has_key?(conn.resp_cookies, "sign_up_oidc")
+      end
+
+      refute_receive {:cloudflare_request, _}
+    end
+
+    test "turns away a Google sign-up when Cloudflare refuses the token", %{conn: conn} do
+      Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:refuse)
+
+      conn = post(conn, ~p"/sign_up/google", %{"cf-turnstile-response" => "bad-token"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "Please complete the verification"
+      refute Map.has_key?(conn.resp_cookies, "sign_up_oidc")
+      assert_receive {:cloudflare_request, %{"response" => "bad-token"}}
+    end
+
+    test "turns away a Google sign-up while Cloudflare is unavailable", %{conn: conn} do
+      Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:down)
+
+      conn = post(conn, ~p"/sign_up/google", %{"cf-turnstile-response" => "good-token"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "couldn't verify your request"
+      refute Map.has_key?(conn.resp_cookies, "sign_up_oidc")
+    end
+
+    test "still reports an unavailable Google after Cloudflare approves the token", %{conn: conn} do
+      Mocks.OIDC.stub_connection_refused()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:approve)
+
+      conn = post(conn, ~p"/sign_up/google", %{"cf-turnstile-response" => "good-token"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "Google sign-in is unavailable right now"
+    end
+
+    test "an unsupported provider is a 404 and never reaches Cloudflare", %{conn: conn} do
+      turnstile_enabled(:approve)
+
+      conn = post(conn, ~p"/sign_up/linkedin", %{"cf-turnstile-response" => "good-token"})
+
+      assert conn.status == 404
+      refute_receive {:cloudflare_request, _}
+    end
+
+    test "does not challenge Google sign-up when no keys are configured", %{conn: conn} do
+      mock_endpoint = Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:refuse)
+      Portal.Config.put_env_override(:portal, Portal.Turnstile, site_key: nil, secret_key: nil)
+
+      conn = post(conn, ~p"/sign_up/google")
+
+      assert redirected_to(conn) =~ "#{mock_endpoint}/authorize"
+      refute_receive {:cloudflare_request, _}
     end
 
     test "redirects back to sign-up with an error when Google discovery fails", %{conn: conn} do
@@ -3806,6 +4198,46 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_in_delta identity["expires_at"], System.os_time(:second) + 900, 5
 
       assert conn.resp_cookies["sign_up_oidc"].max_age == 0
+    end
+
+    test "a personal account has no verified domains", %{conn: conn, state: state} do
+      token = Mocks.OIDC.sign_openid_connect_token(Mocks.OIDC.default_claims())
+      Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "signup-access-token"})
+      Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("personal accounts must not read domains") end)
+      conn = conn |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+        |> recycle() |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+      assert redirected_to(conn) == "/sign_up/google"
+      assert get_session(conn, "idp_sign_up")["workspace_domain"] == nil
+    end
+
+    test "a Workspace administrator signs up with the proven hd domain", %{conn: conn, state: state} do
+      conn = workspace_sign_up_callback(conn, state, %{"hd" => "WORKSPACE.EXAMPLE"}, fn conn ->
+        Req.Test.json(conn, %{"domains" => [
+          %{"domainName" => "workspace.example", "verified" => true, "isPrimary" => true},
+          %{"domainName" => "other.example", "verified" => true}]})
+      end)
+      assert redirected_to(conn) == "/sign_up/google"
+      identity = get_session(conn, "idp_sign_up")
+      assert identity["workspace_domain"] == "workspace.example"
+      assert identity["email"] == "ada@example.com"
+    end
+
+    test "a Workspace account that cannot list its domains cannot sign up", %{conn: conn, state: state} do
+      conn = workspace_sign_up_callback(conn, state, %{"hd" => "workspace.example"}, fn conn ->
+        Plug.Conn.send_resp(conn, 403, "forbidden")
+      end)
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "needs a Workspace administrator"
+      assert get_session(conn, "idp_sign_up") == nil
+      assert conn.resp_cookies["sign_up_oidc"].max_age == 0
+    end
+
+    test "the signed hd must be one of the listed domains", %{conn: conn, state: state} do
+      conn = workspace_sign_up_callback(conn, state, %{"hd" => "different.example"}, fn conn ->
+        Req.Test.json(conn, %{"domains" => [%{"domainName" => "workspace.example", "verified" => true}]})
+      end)
+      assert redirected_to(conn) == "/sign_up"
+      assert get_session(conn, "idp_sign_up") == nil
     end
 
     test "redirects to sign-up with an error when the cookie is missing", %{
@@ -4033,12 +4465,16 @@ defmodule PortalWeb.OIDCControllerTest do
     }
   end
 
-  defp pending_verification_process(config, verification_ref) do
-    pending = %{
-      config: config,
-      verifier: "test-verifier",
-      verification_ref: verification_ref
-    }
+  defp pending_verification_process(config, verification_ref, extra \\ []) do
+    pending =
+      Map.merge(
+        %{
+          config: config,
+          verifier: "test-verifier",
+          verification_ref: verification_ref
+        },
+        Map.new(extra)
+      )
 
     spawn(fn -> pending_verification_loop(pending) end)
   end
@@ -4146,6 +4582,18 @@ defmodule PortalWeb.OIDCControllerTest do
     PortalWeb.OIDC.sign_verification_state(lv_pid_string, "google-directory-sync", %{
       verification_ref: verification_ref
     })
+  end
+
+  defp workspace_sign_up_callback(conn, state, claim_overrides, domains_stub) do
+    claims = Map.merge(Mocks.OIDC.default_claims(), claim_overrides)
+    token = Mocks.OIDC.sign_openid_connect_token(claims)
+    Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "signup-access-token"})
+    Req.Test.stub(Portal.Google.APIClient, domains_stub)
+
+    conn
+    |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+    |> recycle()
+    |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
   end
 
   defp pending_verification_loop(pending) do
@@ -4260,7 +4708,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
     claims =
       %{
-        "iss" => provider.issuer,
+        "iss" => Keyword.get(opts, :iss, provider.issuer),
         "email" => email,
         "sub" => sub,
         "aud" => provider.client_id,
@@ -4273,6 +4721,8 @@ defmodule PortalWeb.OIDCControllerTest do
       |> maybe_add_claim("family_name", opts)
       |> maybe_add_claim("preferred_username", opts)
       |> maybe_add_claim("nickname", opts)
+      |> maybe_add_claim("tid", opts)
+      |> maybe_add_claim("picture", opts)
 
     Mocks.OIDC.sign_openid_connect_token(claims)
   end
@@ -4409,5 +4859,43 @@ defmodule PortalWeb.OIDCControllerTest do
       redirect_uri: PortalWeb.OIDC.callback_url()
     )
     |> Enum.into(%{})
+  end
+
+  defp expect_entra_token_exchange(actor, tenant_id, oid \\ Ecto.UUID.generate()) do
+    %{
+      "iss" => "https://login.microsoftonline.com/#{tenant_id}/v2.0",
+      "tid" => tenant_id,
+      "oid" => oid,
+      "sub" => "entra-sub-#{System.unique_integer([:positive])}",
+      "aud" => "test-entra-client-id",
+      "exp" => token_exp(),
+      "nonce" => PortalWeb.OIDC.nonce("test-verifier"),
+      "upn" => actor.email,
+      "email" => actor.email,
+      "preferred_username" => actor.email,
+      "name" => actor.name
+    }
+    |> Mocks.OIDC.sign_openid_connect_token()
+    |> expect_token_exchange()
+  end
+
+  defp link_entra_identity(ctx, tenant_id) do
+    oid = Ecto.UUID.generate()
+
+    identity_fixture(
+      account: ctx.account,
+      actor: ctx.actor,
+      issuer: "https://login.microsoftonline.com/#{tenant_id}/v2.0",
+      idp_id: oid,
+      email: ctx.actor.email
+    )
+
+    oid
+  end
+
+  defp build_entra_auth_state(account, provider) do
+    account
+    |> build_oidc_auth_state(provider)
+    |> Map.put(:auth_provider_type, "entra")
   end
 end

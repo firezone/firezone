@@ -6,7 +6,8 @@ defmodule PortalWeb.Unsubscribe do
   @notification_labels %{
     outdated_gateways: "Gateway upgrade available",
     seat_limit_warnings: "Seat limit warnings",
-    product_announcements: "Product announcements"
+    product_announcements: "Product announcements",
+    product_feedback_requests: "Product feedback requests"
   }
 
   # Mail scanners fetch links in emails without running scripts, so the email

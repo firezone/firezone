@@ -12,6 +12,7 @@ shopt -s globstar
 
 COMPONENT="main"
 WORK_DIR="$(mktemp -d)"
+DOWNLOADED_IMPORTS=()
 DISTS_DIR="${WORK_DIR}/dists"
 
 if [ -z "${AZURE_STORAGE_ACCOUNT:-}" ]; then
@@ -24,11 +25,52 @@ if [ -z "${GPG_KEY_ID:-}" ]; then
     exit 1
 fi
 
+if [ -z "${GPG_KEY_EXPIRY:-}" ]; then
+    echo "Error: GPG_KEY_EXPIRY not set"
+    exit 1
+fi
+
 cleanup() {
     rm -rf "${WORK_DIR}"
 }
 
 trap cleanup EXIT
+
+# The expiry is set here rather than in the stored key, so renewing it only takes a change to `GPG_KEY_EXPIRY`.
+GPG_KEY_FINGERPRINT=$(gpg --list-secret-keys --with-colons "${GPG_KEY_ID}" | awk -F: '$1 == "fpr" { print $10; exit }')
+gpg --batch --quick-set-expire "${GPG_KEY_FINGERPRINT}" "${GPG_KEY_EXPIRY}"
+
+# Ship the key as a package so clients pick up a renewed key through a normal upgrade, before the old one expires.
+# The version follows the expiry, so a renewal publishes a new version and a re-run publishes nothing.
+KEYRING_PACKAGE="firezone-archive-keyring_${GPG_KEY_EXPIRY//-/.}_all.deb"
+KEYRING_DIR="${WORK_DIR}/keyring"
+
+mkdir --parents "${KEYRING_DIR}/DEBIAN" "${KEYRING_DIR}/usr/share/keyrings"
+gpg --export "${GPG_KEY_ID}" >"${KEYRING_DIR}/usr/share/keyrings/firezone-archive-keyring.gpg"
+chmod 0644 "${KEYRING_DIR}/usr/share/keyrings/firezone-archive-keyring.gpg"
+
+cat >"${KEYRING_DIR}/DEBIAN/control" <<EOF
+Package: firezone-archive-keyring
+Version: ${GPG_KEY_EXPIRY//-/.}
+Architecture: all
+Maintainer: Firezone, Inc. <support@firezone.dev>
+Section: misc
+Priority: optional
+Description: GnuPG key of the Firezone APT repository
+EOF
+
+# Our install docs point `signed-by` at /etc/apt/keyrings/firezone.gpg, so keep that copy current too.
+cat >"${KEYRING_DIR}/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ] && [ -e /etc/apt/keyrings/firezone.gpg ]; then
+    install --mode 0644 /usr/share/keyrings/firezone-archive-keyring.gpg /etc/apt/keyrings/firezone.gpg
+fi
+EOF
+chmod 0755 "${KEYRING_DIR}/DEBIAN/postinst"
+
+dpkg-deb --root-owner-group --build "${KEYRING_DIR}" "${WORK_DIR}/${KEYRING_PACKAGE}"
 
 for DISTRIBUTION in "stable" "preview"; do
     POOL_DIR="${WORK_DIR}/pool-${DISTRIBUTION}"
@@ -65,6 +107,8 @@ for DISTRIBUTION in "stable" "preview"; do
                 continue
             fi
 
+            DOWNLOADED_IMPORTS+=("${deb#"${WORK_DIR}/"}")
+
             if [ -f "$deb" ]; then
                 # Extract metadata from the .deb file
                 PACKAGE=$(dpkg-deb -f "$deb" Package 2>/dev/null)
@@ -84,6 +128,11 @@ for DISTRIBUTION in "stable" "preview"; do
                 mv --force "$deb" "${POOL_DIR}/${NORMALIZED_NAME}"
             fi
         done
+    fi
+
+    if [ ! -f "${POOL_DIR}/${KEYRING_PACKAGE}" ]; then
+        echo "Adding ${KEYRING_PACKAGE}"
+        cp "${WORK_DIR}/${KEYRING_PACKAGE}" "${POOL_DIR}/"
     fi
 
     if [ -z "$(ls -A "${POOL_DIR}")" ]; then
@@ -154,10 +203,24 @@ az storage blob upload-batch \
     --overwrite \
     --output table
 
-# Delete import files
-az storage blob delete-batch \
-    --source apt \
-    --pattern "import-*/*.deb" \
+# Publish the public key alongside, so a renewed key reaches clients on the next sync.
+echo "Uploading public signing key..."
+gpg --armor --export "${GPG_KEY_ID}" >"${WORK_DIR}/key.gpg"
+az storage blob upload \
+    --container-name apt \
+    --name key.gpg \
+    --file "${WORK_DIR}/key.gpg" \
     --auth-mode login \
     --account-name "${AZURE_STORAGE_ACCOUNT}" \
+    --overwrite \
     --output table
+
+# Delete only the import files this run downloaded. A release that copied its packages in after the download keeps them for the next sync.
+for BLOB in "${DOWNLOADED_IMPORTS[@]}"; do
+    az storage blob delete \
+        --container-name apt \
+        --name "${BLOB}" \
+        --auth-mode login \
+        --account-name "${AZURE_STORAGE_ACCOUNT}" \
+        --output table
+done

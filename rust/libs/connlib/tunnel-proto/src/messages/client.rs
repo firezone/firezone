@@ -140,8 +140,8 @@ pub struct AuthorizationCreated {
     pub preshared_key: SecretKey,
     pub client_ice_credentials: IceCredentials,
     pub gateway_ice_credentials: IceCredentials,
-    #[serde(default)]
-    pub use_iceless: bool,
+    #[serde(default, rename = "use_iceless")]
+    pub use_frostlink: bool,
 
     /// The initiator-side ingest token for this flow's logs.
     pub flow_logs_ingest_token: IngestToken,
@@ -172,8 +172,8 @@ pub struct ClientDeviceAccessAuthorized {
     pub local_ice_credentials: IceCredentials,
     pub remote_ice_credentials: IceCredentials,
     pub ice_role: IceRole,
-    #[serde(default)]
-    pub use_iceless: bool,
+    #[serde(default, rename = "use_iceless")]
+    pub use_frostlink: bool,
 
     /// The pool the portal picked for the flow we asked about. `None` on the
     /// receiving side.
@@ -241,6 +241,22 @@ pub struct ResourceFiltersUpdated {
 pub struct ClientRejectAccess {
     pub client_id: ClientId,
     pub resource_id: ResourceId,
+}
+
+/// Sent by the portal when a peer we hold an authorization with reconnected with a new
+/// public key, e.g. after a crash that sent no `goodbye`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct PublicKeyChanged {
+    #[serde(flatten)]
+    pub peer: Peer,
+    pub public_key: Key,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum Peer {
+    Client { client_id: ClientId },
+    Gateway { gateway_id: GatewayId },
 }
 
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
@@ -376,6 +392,8 @@ pub enum IngressMessages {
 
     /// A previously-authorized peer-to-peer access has been revoked.
     RejectAccess(ClientRejectAccess),
+
+    PublicKeyChanged(PublicKeyChanged),
 
     /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
@@ -646,11 +664,11 @@ mod tests {
             panic!("expected AuthorizationCreated");
         };
         // Old portals don't send the flag; default is `false`.
-        assert!(!flow.use_iceless);
+        assert!(!flow.use_frostlink);
     }
 
     #[test]
-    fn authorization_created_picks_up_use_iceless() {
+    fn authorization_created_picks_up_use_frostlink() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = format!(
             r#"{{"event":"authorization_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":true,"flow_logs_ingest_token":"{token}"}}}}"#
@@ -661,7 +679,7 @@ mod tests {
         let IngressMessages::AuthorizationCreated(flow) = message else {
             panic!("expected AuthorizationCreated");
         };
-        assert!(flow.use_iceless);
+        assert!(flow.use_frostlink);
     }
 
     #[test]
@@ -1047,6 +1065,50 @@ mod tests {
             panic!("expected ClientIceCandidateError")
         };
         assert!(matches!(error.reason, FailReason::Offline));
+    }
+
+    #[test]
+    fn can_deserialize_public_key_changed_of_client() {
+        let json = serde_json::json!({
+            "event": "public_key_changed",
+            "payload": {
+                "client_id": "a3632404-4b03-4468-9fc0-4a4c82415ade",
+                "public_key": "uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY="
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::PublicKeyChanged(changed) = msg else {
+            panic!("expected PublicKeyChanged")
+        };
+        assert_eq!(
+            changed.peer,
+            Peer::Client {
+                client_id: "a3632404-4b03-4468-9fc0-4a4c82415ade".parse().unwrap()
+            }
+        );
+    }
+
+    #[test]
+    fn can_deserialize_public_key_changed_of_gateway() {
+        let json = serde_json::json!({
+            "event": "public_key_changed",
+            "payload": {
+                "gateway_id": "a3632404-4b03-4468-9fc0-4a4c82415ade",
+                "public_key": "uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY="
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::PublicKeyChanged(changed) = msg else {
+            panic!("expected PublicKeyChanged")
+        };
+        assert_eq!(
+            changed.peer,
+            Peer::Gateway {
+                gateway_id: "a3632404-4b03-4468-9fc0-4a4c82415ade".parse().unwrap()
+            }
+        );
     }
 
     #[test]

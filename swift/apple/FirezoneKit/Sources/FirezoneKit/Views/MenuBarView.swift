@@ -156,14 +156,53 @@
     }
   }
 
+  extension NSApplication {
+    /// Brings the app forward and opens the standard About panel.
+    @MainActor
+    public func showAboutPanel() {
+      activate(ignoringOtherApps: true)
+      orderFrontStandardAboutPanel(options: Self.aboutPanelOptions())
+    }
+
+    private static func aboutPanelOptions() -> [AboutPanelOptionKey: Any] {
+      var options: [AboutPanelOptionKey: Any] = [
+        .applicationVersion: BundleHelper.version,
+        .version: "",
+      ]
+
+      guard let shortGitSha = BundleHelper.shortGitSha,
+        let commitURL = BundleHelper.commitURL
+      else { return options }
+
+      options[.applicationVersion] = ""
+
+      let paragraph = NSMutableParagraphStyle()
+      paragraph.alignment = .center
+
+      let prefix = "\(BundleHelper.version) ("
+      let credits = NSMutableAttributedString(
+        string: prefix + shortGitSha + ")",
+        attributes: [
+          .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+          .paragraphStyle: paragraph,
+        ]
+      )
+      credits.addAttribute(
+        .link, value: commitURL,
+        range: NSRange(location: prefix.utf16.count, length: shortGitSha.utf16.count))
+
+      options[.credits] = credits
+      return options
+    }
+  }
+
   /// System menu section (About, Admin Portal, Help, Settings)
   struct SystemMenuSection: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
       Button("About Firezone") {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(nil)
+        NSApp.showAboutPanel()
       }
 
       if !store.configuration.publishedHideAdminPortalMenuItem {
@@ -182,8 +221,8 @@
         }
       }
 
-      Button("Settings") {
-        AppView.WindowDefinition.settings.openWindow()
+      SettingsOpener { openSettings in
+        Button("Settings") { openSettings() }
       }
     }
 

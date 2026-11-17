@@ -1,6 +1,7 @@
 defmodule Portal.AuthenticationTest do
   use Portal.DataCase, async: true
   import ExUnit.CaptureLog
+  import Ecto.Query
   import Portal.Authentication
   import Portal.TokenFixtures
   import Portal.SubjectFixtures
@@ -12,7 +13,6 @@ defmodule Portal.AuthenticationTest do
   import Portal.SiteFixtures
   alias Portal.Authentication
   alias Portal.Authentication.Credential
-  alias Portal.ClientToken
   alias Portal.Fixture
 
   describe "create_non_interactive_client_token/3" do
@@ -37,7 +37,7 @@ defmodule Portal.AuthenticationTest do
       assert subject.actor.id == service_account.id
       assert subject.context.type == :client
 
-      assert db_token = Repo.get_by(ClientToken, id: subject.credential.id)
+      assert db_token = Repo.get_by(Portal.DeviceToken, id: subject.credential.id)
       assert db_token.account_id == account.id
       assert db_token.actor_id == service_account.id
       assert DateTime.truncate(db_token.expires_at, :second) == one_day
@@ -79,40 +79,30 @@ defmodule Portal.AuthenticationTest do
       end
     end
 
-    test "creates a token for a regular account_user" do
+    test "raises for account_user actor type" do
       account = account_fixture()
       regular_user = actor_fixture(account: account, type: :account_user)
       admin_subject = admin_subject_fixture(account: account)
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
-      assert {:ok, token} =
-               create_non_interactive_client_token(
-                 regular_user,
-                 %{expires_at: expires_at},
-                 admin_subject
-               )
+      assert_raise FunctionClauseError, fn ->
+        create_non_interactive_client_token(regular_user, %{expires_at: expires_at}, admin_subject)
+      end
 
-      assert token.actor_id == regular_user.id
-      assert token.account_id == account.id
-      assert is_nil(token.auth_provider_id)
+      refute Repo.get_by(Portal.DeviceToken, actor_id: regular_user.id)
     end
 
-    test "creates a token for an account_admin_user" do
+    test "raises for account_admin_user actor type" do
       account = account_fixture()
       admin_user = actor_fixture(account: account, type: :account_admin_user)
       admin_subject = admin_subject_fixture(account: account)
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
-      assert {:ok, token} =
-               create_non_interactive_client_token(
-                 admin_user,
-                 %{expires_at: expires_at},
-                 admin_subject
-               )
+      assert_raise FunctionClauseError, fn ->
+        create_non_interactive_client_token(admin_user, %{expires_at: expires_at}, admin_subject)
+      end
 
-      assert token.actor_id == admin_user.id
-      assert token.account_id == account.id
-      assert is_nil(token.auth_provider_id)
+      refute Repo.get_by(Portal.DeviceToken, actor_id: admin_user.id)
     end
 
     test "raises for api_client actor type" do
@@ -360,7 +350,7 @@ defmodule Portal.AuthenticationTest do
       assert {:ok, subject} = authenticate(encoded, context)
 
       # Client tokens no longer track last_seen_* — session data is stored on the device
-      updated_token = Repo.get_by(ClientToken, id: subject.credential.id)
+      updated_token = Repo.get_by(Portal.DeviceToken, id: subject.credential.id)
       assert is_nil(updated_token.last_used_device)
     end
 
@@ -505,7 +495,7 @@ defmodule Portal.AuthenticationTest do
       }
 
       assert {:ok, token} = create_interactive_client_token(attrs)
-      assert token.__struct__ == ClientToken
+      assert token.__struct__ == Portal.DeviceToken
       assert token.account_id == account.id
       assert token.actor_id == actor.id
       assert token.secret_salt != nil
@@ -653,7 +643,6 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
       assert token.secret_fragment != nil
-      assert Portal.GatewayToken.single_owner?(token)
     end
 
     test "returns error when the gateway already has an active token" do
@@ -700,7 +689,7 @@ defmodule Portal.AuthenticationTest do
       assert new_token.id != old_token.id
       assert is_nil(new_token.rotated_at)
 
-      old_token = Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      old_token = Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: old_token.id)
       assert old_token.rotated_at != nil
     end
 
@@ -716,7 +705,7 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(new_token.rotated_at)
 
       # No session ever referenced the old token, so it is gone outright
-      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: old_token.id)
     end
 
     test "re-rotating replaces the pending token and keeps the rotated deadline" do
@@ -729,19 +718,19 @@ defmodule Portal.AuthenticationTest do
       {:ok, pending_token} = rotate_gateway_token(gateway, subject)
 
       in_use_token =
-        Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: in_use_token.id)
+        Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: in_use_token.id)
 
       original_rotated_at = in_use_token.rotated_at
 
       assert {:ok, replacement_token} = rotate_gateway_token(gateway, subject)
 
       # The unconfirmed pending token is gone, replaced by the new one
-      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: pending_token.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: pending_token.id)
       assert is_nil(replacement_token.rotated_at)
 
       # The in-use rotated token keeps its original deadline
       in_use_token =
-        Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: in_use_token.id)
+        Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: in_use_token.id)
 
       assert in_use_token.rotated_at == original_rotated_at
     end
@@ -756,14 +745,14 @@ defmodule Portal.AuthenticationTest do
       {:ok, pending_token} = rotate_gateway_token(gateway, subject)
 
       # Simulate confirmation racing ahead: only the rotated token remains
-      Portal.GatewayToken
+      Portal.DeviceToken
       |> Repo.get_by!(account_id: account.id, id: pending_token.id)
       |> Repo.delete!()
 
       assert {:ok, new_token} = rotate_gateway_token(gateway, subject)
       assert is_nil(new_token.rotated_at)
 
-      old_token = Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      old_token = Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: old_token.id)
       assert old_token.rotated_at != nil
     end
 
@@ -797,6 +786,36 @@ defmodule Portal.AuthenticationTest do
       assert verified.device_id == gateway.id
     end
 
+    test "rejects a token whose actor is disabled" do
+      token = gateway_token_fixture(gateway: gateway_fixture())
+
+      from(a in Portal.Actor, where: a.id == ^token.actor_id)
+      |> Repo.update_all(set: [is_disabled: true])
+
+      assert {:error, :invalid_token} = verify_gateway_token(encode_fragment!(token))
+    end
+
+    test "builds a subject for the token's actor" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway)
+      context = build_context(type: :gateway)
+
+      assert {:ok, verified} = verify_gateway_token(encode_fragment!(token))
+
+      assert {:ok,
+              %Authentication.Subject{
+                actor: %Portal.Actor{type: :legacy_gateway} = actor,
+                account: %Portal.Account{} = account,
+                credential: %Credential.GatewayToken{id: token_id},
+                expires_at: nil,
+                context: ^context
+              }} = build_subject(verified, context)
+
+      assert actor.id == token.actor_id
+      assert account.id == gateway.account_id
+      assert token_id == token.id
+    end
+
     test "verifies a rotated token within the grace period" do
       gateway = gateway_fixture()
       token = gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
@@ -819,7 +838,7 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, _verified} = verify_gateway_token(encode_fragment!(active))
 
-      refute Repo.get_by(Portal.GatewayToken, account_id: rotated.account_id, id: rotated.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: rotated.account_id, id: rotated.id)
     end
 
     test "using the rotated token does not delete the active sibling" do
@@ -829,8 +848,8 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, _verified} = verify_gateway_token(encode_fragment!(rotated))
 
-      assert Repo.get_by(Portal.GatewayToken, account_id: active.account_id, id: active.id)
-      assert Repo.get_by(Portal.GatewayToken, account_id: rotated.account_id, id: rotated.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: active.account_id, id: active.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: rotated.account_id, id: rotated.id)
     end
 
     test "verifying an active token with no sibling reports none" do
@@ -850,7 +869,7 @@ defmodule Portal.AuthenticationTest do
       assert {:ok, verified} = verify_gateway_token(encode_fragment!(token_1))
       assert is_nil(verified.rotated_sibling_id)
 
-      assert Repo.get_by(Portal.GatewayToken, account_id: account.id, id: token_2.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token_2.id)
     end
   end
 
@@ -975,20 +994,67 @@ defmodule Portal.AuthenticationTest do
       refute Repo.get_by(Portal.OneTimePasscode, id: passcode.id)
     end
 
-    test "creating a new passcode deletes existing passcodes for the actor" do
+    test "creating a new passcode keeps existing passcodes for the actor valid" do
       account = account_fixture()
       actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
 
       {:ok, passcode1} = create_one_time_passcode(account, actor)
       {:ok, passcode2} = create_one_time_passcode(account, actor)
 
-      # First passcode should no longer be valid
-      assert {:error, :invalid_code} =
+      assert {:ok, _} =
                verify_one_time_passcode(account.id, actor.id, passcode1.id, passcode1.code)
 
-      # Second passcode should still be valid
       assert {:ok, _} =
                verify_one_time_passcode(account.id, actor.id, passcode2.id, passcode2.code)
+    end
+
+    test "limits the number of active passcodes per actor" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+      other_actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      passcodes =
+        for _ <- 1..5 do
+          assert {:ok, passcode} = create_one_time_passcode(account, actor)
+          passcode
+        end
+
+      assert {:error, :too_many_active_passcodes} = create_one_time_passcode(account, actor)
+      assert {:ok, _} = create_one_time_passcode(account, other_actor)
+
+      [first | rest] = passcodes
+
+      assert {:ok, _} =
+               verify_one_time_passcode(account.id, actor.id, first.id, first.code)
+
+      assert {:ok, _} = create_one_time_passcode(account, actor)
+      assert {:error, :too_many_active_passcodes} = create_one_time_passcode(account, actor)
+
+      for passcode <- rest do
+        assert {:ok, _} =
+                 verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+      end
+    end
+
+    test "expired and used up passcodes do not count towards the active passcode limit" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      for _ <- 1..4 do
+        {:ok, passcode} = create_one_time_passcode(account, actor)
+
+        passcode
+        |> Ecto.Changeset.change(expires_at: DateTime.add(DateTime.utc_now(), -1, :second))
+        |> Repo.update!()
+      end
+
+      {:ok, passcode} = create_one_time_passcode(account, actor)
+
+      passcode
+      |> Ecto.Changeset.change(attempts: Portal.OneTimePasscode.max_attempts())
+      |> Repo.update!()
+
+      assert {:ok, _} = create_one_time_passcode(account, actor)
     end
 
     test "creates token with custom nonce" do
@@ -1205,7 +1271,7 @@ defmodule Portal.AuthenticationTest do
       assert {:ok, _used_token} = use_token(encoded, context)
 
       # Client tokens no longer track last_seen_* — session data is stored on the device
-      updated_token = Repo.get_by(ClientToken, id: token.id)
+      updated_token = Repo.get_by(Portal.DeviceToken, id: token.id)
       assert is_nil(updated_token.last_used_device)
     end
 
@@ -1260,7 +1326,7 @@ defmodule Portal.AuthenticationTest do
       assert verified_token.id == token.id
     end
 
-    test "gateway token verification succeeds for disabled account" do
+    test "gateway token verification fails for a disabled account" do
       account = account_fixture()
       site = site_fixture(account: account)
       token = gateway_token_fixture(account: account, site: site)
@@ -1270,8 +1336,7 @@ defmodule Portal.AuthenticationTest do
       |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
-      assert {:ok, verified_token} = verify_gateway_token(encoded)
-      assert verified_token.id == token.id
+      assert verify_gateway_token(encoded) == {:error, :invalid_token}
     end
 
     test "returns error when fragment is wrong" do
@@ -1542,5 +1607,329 @@ defmodule Portal.AuthenticationTest do
       assert {:ok, verified_token} = verify_relay_token(encoded)
       assert verified_token.id == token.id
     end
+  end
+
+  describe "gateway tokens in device_tokens" do
+    setup do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+
+      %{account: account, site: site, gateway: gateway, subject: admin_subject_fixture(account: account)}
+    end
+
+    test "a site token is written only to device_tokens, owned by the legacy Gateway actor", %{
+      site: site,
+      subject: subject
+    } do
+      {:ok, token} = create_gateway_token(site, subject)
+
+      assert token.site_id == site.id
+      assert is_nil(token.device_id)
+      assert is_nil(token.expires_at)
+      assert %Portal.Actor{type: :legacy_gateway} = Repo.get_by!(Portal.Actor, id: token.actor_id)
+    end
+
+    test "every token in an account shares one legacy Gateway actor", %{
+      account: account,
+      site: site,
+      gateway: gateway,
+      subject: subject
+    } do
+      {:ok, _} = create_gateway_token(site, subject)
+      {:ok, _} = create_gateway_token(site, subject)
+      {:ok, _} = create_gateway_token(gateway, subject)
+
+      assert [_] =
+               from(dt in Portal.DeviceToken, where: dt.account_id == ^account.id, select: dt.actor_id)
+               |> Repo.all()
+               |> Enum.uniq()
+
+      assert Repo.aggregate(
+               from(a in Portal.Actor, where: a.account_id == ^account.id and a.type == :legacy_gateway),
+               :count
+             ) == 1
+    end
+
+    test "deleting the account deletes its Gateway tokens", %{
+      account: account,
+      site: site,
+      subject: subject
+    } do
+      {:ok, token} = create_gateway_token(site, subject)
+
+      Repo.delete!(account)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+    end
+
+    test "tokens stay out of other accounts", %{site: site, subject: subject} do
+      other_account = account_fixture()
+      {:ok, _} = create_gateway_token(site_fixture(account: other_account), admin_subject_fixture(account: other_account))
+      {:ok, _} = create_gateway_token(site, subject)
+
+      for account_id <- [site.account_id, other_account.id] do
+        tokens = Repo.all(from(dt in Portal.DeviceToken, where: dt.account_id == ^account_id))
+        assert tokens != []
+
+        for token <- tokens do
+          assert Repo.get_by!(Portal.Actor, id: token.actor_id).account_id == account_id
+        end
+      end
+    end
+
+    test "verification uses the token's rotation stamp", %{account: account} do
+      token = gateway_token_fixture(gateway: gateway_fixture(account: account))
+      stamp_gateway_token(token, DateTime.add(DateTime.utc_now(), -5, :hour))
+
+      assert {:error, :invalid_token} = verify_gateway_token(encode_fragment!(token))
+    end
+
+    test "delete_gateway_tokens/2 deletes only the selected tokens", %{
+      account: account,
+      site: site,
+      subject: subject
+    } do
+      revoked = gateway_token_fixture(account: account, site: site)
+      kept = gateway_token_fixture(account: account, site: site)
+
+      assert {1, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^revoked.id)
+               |> delete_gateway_tokens(subject)
+
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: revoked.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: kept.id)
+    end
+
+    test "delete_gateway_tokens/2 refuses a subject without access" do
+      account = account_fixture()
+      token = gateway_token_fixture(account: account)
+      subject = subject_fixture(account: account, actor: %{type: :account_user})
+
+      assert {:error, :unauthorized} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
+               |> delete_gateway_tokens(subject)
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+    end
+
+    test "delete_gateway_tokens/2 stays in the subject's account", %{subject: subject} do
+      other = gateway_token_fixture()
+
+      assert {0, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^other.id)
+               |> delete_gateway_tokens(subject)
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: other.account_id, id: other.id)
+    end
+  end
+
+  describe "client tokens in device_tokens" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
+
+      {:ok, token} =
+        create_interactive_client_token(%{
+          account_id: account.id,
+          actor_id: actor.id,
+          auth_provider_id: auth_provider.id,
+          secret_nonce: "nonce",
+          expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+        })
+
+      %{account: account, actor: actor, auth_provider: auth_provider, token: token}
+    end
+
+    test "an interactive token is written only to device_tokens", %{token: token} do
+      assert %Portal.DeviceToken{} = token
+      assert Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
+    end
+
+    test "a new token is signed with the device salt", %{token: token} do
+      [_empty, signed] = String.split(encode_fragment!(token), ".", parts: 2)
+      config = Application.fetch_env!(:portal, Portal.Tokens)
+      key_base = Keyword.fetch!(config, :key_base)
+      salt = Keyword.fetch!(config, :salt) <> "device"
+
+      assert {:ok, {_account_id, id, _fragment}} =
+               Plug.Crypto.verify(key_base, salt, signed, max_age: :infinity)
+
+      assert id == token.id
+      assert {:ok, _} = use_token("nonce" <> encode_fragment!(token), build_context(type: :client))
+    end
+
+    test "a non-interactive token is written only to device_tokens", %{account: account} do
+      service_account = actor_fixture(account: account, type: :service_account)
+      subject = admin_subject_fixture(account: account)
+
+      {:ok, token} =
+        create_non_interactive_client_token(
+          service_account,
+          %{expires_at: DateTime.add(DateTime.utc_now(), 1, :day)},
+          subject
+        )
+
+      assert %Portal.DeviceToken{actor_id: actor_id, auth_provider_id: nil} = token
+      assert actor_id == service_account.id
+    end
+
+    test "deleting the actor deletes the token", %{actor: actor, token: token} do
+      Repo.delete!(actor)
+
+      refute Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
+    end
+
+    test "deleting the auth provider deletes the token", %{auth_provider: auth_provider, token: token} do
+      Repo.delete_all(from(ap in Portal.AuthProvider, where: ap.id == ^auth_provider.id))
+
+      refute Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
+    end
+
+    test "a device token is deleted with its actor", %{account: account, actor: actor} do
+      Repo.insert!(%Portal.DeviceToken{
+        account_id: account.id,
+        actor_id: actor.id,
+        secret_salt: "salt",
+        secret_hash: "hash",
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+      })
+
+      Repo.delete!(actor)
+
+      refute Repo.exists?(from(dt in Portal.DeviceToken, where: dt.actor_id == ^actor.id))
+    end
+
+    test "client tokens signed with the device salt are accepted" do
+      token = client_token_fixture(secret_nonce: "nonce")
+      encoded = sign_with_salt("device", "nonce", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:ok, used} = use_token(encoded, build_context(type: :client))
+      assert used.id == token.id
+    end
+
+    test "the device salt is not accepted for API tokens" do
+      token = api_token_fixture()
+      encoded = sign_with_salt("device", "", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = use_token(encoded, build_context(type: :api_client))
+    end
+
+    test "gateway tokens signed with the device salt are accepted" do
+      token = gateway_token_fixture()
+      encoded = sign_with_salt("device", "", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:ok, verified} = verify_gateway_token(encoded)
+      assert verified.id == token.id
+    end
+
+    test "deleting a token deletes its policy authorizations", %{account: account, actor: actor, token: token} do
+      authorization =
+        Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          token: token
+        )
+
+      from(dt in Portal.DeviceToken, where: dt.id == ^token.id) |> delete_client_tokens()
+
+      refute Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
+    end
+
+    test "the client socket refuses a Gateway token" do
+      token = gateway_token_fixture()
+      encoded = sign_with_salt("device", "", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = use_token(encoded, build_context(type: :client))
+    end
+
+    test "the Gateway socket refuses a client token", %{token: token} do
+      encoded = sign_with_salt("device", "nonce", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = verify_gateway_token(encoded)
+    end
+
+    test "delete_client_tokens/2 deletes the selected tokens", %{account: account, token: token} do
+      subject = admin_subject_fixture(account: account)
+
+      assert {1, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
+               |> delete_client_tokens(subject)
+
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+    end
+
+    test "delete_client_tokens/2 refuses a subject without access", %{token: token} do
+      subject = subject_fixture(actor: [type: :account_user])
+
+      assert {:error, :unauthorized} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
+               |> delete_client_tokens(subject)
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: token.account_id, id: token.id)
+    end
+
+    test "the client socket refuses a token owned by the legacy Gateway actor", %{account: account} do
+      legacy_actor_id = gateway_token_fixture(account: account).actor_id
+      token = client_token_fixture(account: account, secret_nonce: "nonce")
+
+      Repo.update_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id),
+        set: [actor_id: legacy_actor_id]
+      )
+
+      encoded = sign_with_salt("device", "nonce", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = use_token(encoded, build_context(type: :client))
+    end
+
+    test "the Gateway socket refuses a Site token not owned by the legacy Gateway actor", %{
+      account: account,
+      actor: actor
+    } do
+      token = gateway_token_fixture(account: account)
+
+      Repo.update_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id),
+        set: [actor_id: actor.id]
+      )
+
+      encoded = sign_with_salt("device", "", {token.account_id, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = verify_gateway_token(encoded)
+    end
+
+    test "delete_client_tokens/1 leaves Gateway tokens", %{account: account} do
+      gateway_token = gateway_token_fixture(account: account)
+
+      assert {0, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^gateway_token.id)
+               |> delete_client_tokens()
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
+    end
+
+    test "delete_gateway_tokens/2 leaves client tokens", %{account: account, token: token} do
+      subject = admin_subject_fixture(account: account)
+
+      assert {0, nil} =
+               from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
+               |> delete_gateway_tokens(subject)
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+    end
+
+    test "relay tokens signed with the device salt are refused" do
+      token = relay_token_fixture()
+      encoded = sign_with_salt("device", "", {nil, token.id, token.secret_fragment})
+
+      assert {:error, :invalid_token} = verify_relay_token(encoded)
+    end
+  end
+
+  defp sign_with_salt(type, nonce, body) do
+    config = Application.fetch_env!(:portal, Portal.Tokens)
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt) <> type
+
+    nonce <> "." <> Plug.Crypto.sign(key_base, salt, body)
   end
 end

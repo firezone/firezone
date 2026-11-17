@@ -1,0 +1,14 @@
+{
+  "hasVPNConfiguration": true,
+  "vpnStatus": "connected",
+  "systemExtension": "installed",
+  "notifications": "authorized",
+  "clientCertificate": "absent",
+  "actorName": "Jane Doe",
+  "resources": [],
+  "favorites": [],
+  "providerLogFolderSize": 30000000,
+  "authURL": "https://firezone.example.com",
+  "apiURL": "wss://api.firezone.example.com",
+  "managedVPNConfiguration": true
+}

@@ -42,7 +42,11 @@ private class MockSession : TunnelSession {
 
     override fun reset(reason: String) = Unit
 
+    override fun setAdditionalHostCandidates(ips: List<String>) = Unit
+
     override fun setDns(dnsServers: List<String>) = Unit
+
+    override fun setForceRelayedConnections(enabled: Boolean) = Unit
 
     override fun setInternetResourceState(active: Boolean) = Unit
 

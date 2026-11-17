@@ -44,6 +44,11 @@ config :portal, flow_logs_upload_batch_size: 1000
 # Don't run manual migrations by default
 config :portal, run_manual_migrations: false
 
+config :portal, data_residency_region: :on_prem
+config :portal, slug_registry_table_url: nil
+config :portal, region_transfer_outbox_url: nil, region_transfer_inbox_url: nil
+config :portal, avatars_container_url: nil
+
 config :portal, Portal.Repo,
   hostname: "localhost",
   username: "postgres",
@@ -88,6 +93,7 @@ config :portal, Portal.ChangeLogs.Consumer,
   #   2. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
+    account_slugs
     memberships
     groups
     actors
@@ -105,10 +111,10 @@ config :portal, Portal.ChangeLogs.Consumer,
     google_directories
     devices
     sites
-    gateway_tokens
+    site_devices
+    device_tokens
     policies
     resources
-    client_tokens
     one_time_passcodes
     api_tokens
     trust_anchors
@@ -151,17 +157,17 @@ config :portal, Portal.Changes.Consumer,
   #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
+    account_slugs
     actors
     groups
     memberships
     devices
     external_identities
     policy_authorizations
-    gateway_tokens
+    device_tokens
     sites
     policies
     resources
-    client_tokens
     google_auth_providers
     github_auth_providers
     entra_auth_providers
@@ -187,6 +193,7 @@ config :portal, Portal.Changes.Consumer,
     sophos_devices
     relay_tokens
     portal_sessions
+    trust_anchor_certificates
   ],
   # Allow up to 60 seconds of lag before alerting
   warning_threshold: :timer.seconds(60),
@@ -218,6 +225,50 @@ config :portal, Portal.Azure.ManagedIdentity,
   client_id: nil,
   req_opts: [
     connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.OTLP.MetricsExporter,
+  req_opts: [
+    connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    max_retries: 4
+  ]
+
+config :portal, Portal.OTLP.TracesExporter,
+  sample_ratio: 0.01,
+  req_opts: [
+    connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    max_retries: 4
+  ]
+
+config :portal, Portal.SlugRegistry.Cache, max_entries: 10_000
+
+config :portal, Portal.FlowLogToken.AccountCache, max_entries: 100_000
+
+config :portal, Portal.Ops.RegionTransfer.Storage,
+  req_opts: [
+    receive_timeout: 60_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.Avatars.Picture,
+  req_opts: [
+    retry: :transient,
+    max_retries: 2
+  ]
+
+config :portal, Portal.Avatars.Storage,
+  req_opts: [
+    receive_timeout: 15_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.SlugRegistry.AzureTable,
+  req_opts: [
+    connect_options: [timeout: 2_000],
     receive_timeout: 5_000,
     retry: :transient
   ]
@@ -357,13 +408,17 @@ config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil
 
 config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
-config :portal, Portal.Splunk.APIClient, req_opts: []
+config :portal, Portal.Workers.SignUpReviewRequest, approvers: []
 
-config :portal, Portal.Datadog.APIClient, req_opts: []
+# Log sink deliveries are POSTs (S3: PUTs), which the default `:safe_transient`
+# retry strategy never retries. Redelivery is safe: destinations dedupe on log_id.
+config :portal, Portal.Splunk.APIClient, req_opts: [retry: :transient]
 
-config :portal, Portal.NewRelic.APIClient, req_opts: []
+config :portal, Portal.Datadog.APIClient, req_opts: [retry: :transient]
 
-config :portal, Portal.Elastic.APIClient, req_opts: []
+config :portal, Portal.NewRelic.APIClient, req_opts: [retry: :transient]
+
+config :portal, Portal.Elastic.APIClient, req_opts: [retry: :transient]
 
 config :portal, Portal.Sentinel.APIClient,
   client_id: System.get_env("SENTINEL_SYNC_CLIENT_ID"),
@@ -371,17 +426,18 @@ config :portal, Portal.Sentinel.APIClient,
   token_base_url: "https://login.microsoftonline.com",
   discovery_document_uri:
     "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration",
-  req_opts: []
+  req_opts: [retry: :transient]
 
 config :portal, Portal.S3.APIClient,
-  req_opts: [],
+  req_opts: [retry: :transient],
   access_key_id: nil,
   secret_access_key: nil,
   session_token: nil,
   aws_account_id: System.get_env("LOG_SINKS_AWS_ACCOUNT_ID", "000000000000")
 
-config :portal, Portal.QRadar.APIClient, req_opts: []
-config :portal, Portal.HTTP.APIClient, req_opts: []
+config :portal, Portal.QRadar.APIClient, req_opts: [retry: :transient]
+config :portal, Portal.HTTP.APIClient, req_opts: [retry: :transient]
+config :portal, Portal.Workers.MirrorYCDealRedemption, req_opts: []
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
@@ -389,9 +445,8 @@ config :portal, Portal.Entra.AuthProvider,
   client_secret: System.get_env("ENTRA_OIDC_CLIENT_SECRET"),
   response_type: "code",
   scope: "openid email profile",
-  # Tenant-scoped endpoint for internal OAuth apps
   discovery_document_uri:
-    "https://login.microsoftonline.com/52e801b2-c10e-42e6-9c36-4cb95f3353d5/v2.0/.well-known/openid-configuration"
+    "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
 
 config :portal, Portal.OIDC.AuthProvider,
   response_type: "code",
@@ -441,6 +496,11 @@ config :portal, Portal.Cluster,
   adapter_config: []
 
 config :portal, sign_up_whitelisted_domains: []
+
+config :portal,
+  yc_deal_webhook_secrets: %{},
+  yc_deal_coupon_ids: %{},
+  yc_deal_mirror_url: nil
 
 config :portal, docker_registry: "ghcr.io/firezone"
 
@@ -513,7 +573,7 @@ config :portal,
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
 config :portal,
-  flow_logs_api_url: "https://flow-api.firezone.dev/",
+  flow_logs_api_url: nil,
   flow_logs_upload_interval_secs: 60
 
 config :portal, country_code_blocklist: []
@@ -521,7 +581,7 @@ config :portal, country_code_blocklist: []
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
+    "img-src 'self' data: https://firezone.statuspage.io",
     "style-src 'self'",
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",
@@ -597,15 +657,38 @@ config :portal, PortalAPI.Sockets.RateLimit,
   refill_rate: 1,
   capacity: 1
 
-# Flow-log ingestion: 1 request per second per source IP, no burst. Each request
-# batches up to 10k records, so one per second is ample for reporters.
+# Flow-log requests per source IP, checked before the ingest token. Uploaders
+# send one request per policy authorization, so a Gateway serving many clients,
+# or many devices behind one NAT, sends many requests in each pass. The row
+# limits below cap the volume; this only stops a flood of requests.
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
-  refill_rate: 1,
-  capacity: 1
+  refill_rate: 100,
+  capacity: 1_000
+
+# Flow-log rows per reporting device and per account, charged after the ingest
+# token is verified. An initiator reports its own flows; a
+# responder (usually a Gateway) reports a row for every client it serves, so it
+# has a larger bucket. The capacities let a device that was offline drain its
+# spool, and are larger than the 10k-row request limit. The account values are
+# multiplied by `Portal.Accounts.Limits.device_allowance/1`. At half the
+# initiator values, half of the allowed devices must upload at full speed to
+# block the others; the smallest allowance (10) needs 5. An account's
+# `flow_log_*` limits, set from Stripe metadata, override any of these.
+config :portal, PortalAPI.FlowLogController,
+  initiator_refill_rate: 100,
+  initiator_capacity: 100_000,
+  responder_refill_rate: 1_000,
+  responder_capacity: 1_000_000,
+  account_refill_rate_per_device: 50,
+  account_capacity_per_device: 50_000
 
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,
   capacity: 200
+
+config :portal, PortalWeb.PublicEmailRateLimit,
+  per_ip_per_hour: 10,
+  global_per_hour: 500
 
 ###############################
 ##### Third-party configs #####
@@ -620,9 +703,7 @@ config :mime, :types, %{
   "application/x-x509-ca-cert" => ["crt", "cer", "der"]
 }
 
-config :opentelemetry,
-  span_processor: :batch,
-  traces_exporter: :none
+config :opentelemetry, processors: []
 
 config :logger,
   level: System.get_env("LOG_LEVEL", "info") |> parse_log_level.()

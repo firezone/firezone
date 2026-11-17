@@ -2,18 +2,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APPLE_DIR="${SCRIPT_DIR}/.."
-RUST_DIR="${SCRIPT_DIR}/../../../rust"
+REPOSITORY_DIR="$(cd "${FIREZONE_SOURCE_DIR:-${SCRIPT_DIR}/../../..}" && pwd)"
+APPLE_DIR="${REPOSITORY_DIR}/swift/apple"
+RUST_DIR="${REPOSITORY_DIR}/rust"
 RUST_TARGET_DIR="${RUST_DIR}/target"
 ARCH="$(uname -m)"
-GIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+GIT_SHA="$(git -C "${REPOSITORY_DIR}" rev-parse HEAD 2>/dev/null || echo "unknown")"
 
 PLATFORM="${PLATFORM:-macOS}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
+DESTINATION="${DESTINATION:-platform=${PLATFORM},arch=${ARCH}}"
+ONLY_ACTIVE_ARCH="${ONLY_ACTIVE_ARCH:-YES}"
 
 cd "${APPLE_DIR}"
 
-if [ ! -f buildServer.json ]; then
+if [ "${CI:-}" != "true" ] && [ ! -f buildServer.json ]; then
     echo "buildServer.json not found, generating LSP configuration..."
     mise run lsp
 fi
@@ -23,7 +26,7 @@ fi
 # at project load time, not during build phases
 if [ ! -f Firezone/xcconfig/dynamic_build_number.xcconfig ]; then
     echo "Creating dynamic_build_number.xcconfig..."
-    echo "CURRENT_PROJECT_VERSION = $(date +%s)" > Firezone/xcconfig/dynamic_build_number.xcconfig
+    echo "CURRENT_PROJECT_VERSION = $(date +%s)" >Firezone/xcconfig/dynamic_build_number.xcconfig
 fi
 
 echo "Building Xcode project for ${PLATFORM}, ${ARCH}"
@@ -50,21 +53,22 @@ fi
 xcodebuild_args=(
     build
     -project Firezone.xcodeproj
-    # Dev builds sign automatically; xcodebuild won't fetch or create a profile without this.
-    # Release builds pass explicit profile ids instead, so they never reach for it.
-    -allowProvisioningUpdates
     -scheme Firezone
     -configuration "${CONFIGURATION}"
     -sdk macosx
-    -destination "platform=${PLATFORM},arch=${ARCH}"
+    -destination "${DESTINATION}"
     RUST_TARGET_DIR="${RUST_TARGET_DIR}"
     GIT_SHA="${GIT_SHA}"
-    ONLY_ACTIVE_ARCH=YES
+    ONLY_ACTIVE_ARCH="${ONLY_ACTIVE_ARCH}"
 )
+
+if [ "${CI:-}" != "true" ]; then
+    xcodebuild_args+=(-allowProvisioningUpdates)
+fi
 
 if [ "$USE_PRETTY" = true ]; then
     echo "(using xcbeautify)"
-    xcodebuild "${xcodebuild_args[@]}" 2>&1 | xcbeautify
+    xcodebuild "${xcodebuild_args[@]}" "$@" 2>&1 | xcbeautify
 else
-    xcodebuild "${xcodebuild_args[@]}"
+    xcodebuild "${xcodebuild_args[@]}" "$@"
 fi

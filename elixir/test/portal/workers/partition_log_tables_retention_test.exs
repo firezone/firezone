@@ -12,20 +12,25 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   @prefix "session_logs_partitioned"
   @owner "Portal.Workers.PartitionLogTables"
 
-  setup do
+  # Each test creates and drops its own schema; the isolated database and its
+  # catalog definitions can be reused for the whole module.
+  setup_all do
     repo =
       Portal.IsolatedLogDatabaseFixtures.start_isolated_repo(~w[flow_logs session_logs],
         pool_size: 1
       )
 
-    previous = Repo.put_dynamic_repo(repo)
     Process.unlink(repo)
 
     on_exit(fn ->
-      Repo.put_dynamic_repo(previous)
       if Process.alive?(repo), do: GenServer.stop(repo)
     end)
 
+    %{repo: repo}
+  end
+
+  setup %{repo: repo} do
+    Repo.put_dynamic_repo(repo)
     :ok
   end
 

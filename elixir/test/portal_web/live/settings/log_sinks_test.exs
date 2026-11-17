@@ -61,6 +61,17 @@ defmodule PortalWeb.Settings.LogSinksTest do
     |> length()
   end
 
+  # Changes one field the way a browser does: inputs the admin has not touched
+  # carry an _unused_ marker, which keeps their errors hidden.
+  defp change_field(lv, sink, target, params, untouched) do
+    params =
+      untouched
+      |> Enum.reduce(params, &Map.put(&2, "_unused_#{&1}", ""))
+      |> Map.put_new("enabled_streams", sink.enabled_streams)
+
+    render_change(lv, "validate", %{"_target" => ["log_sink", target], "log_sink" => params})
+  end
+
   defp submit_button_disabled?(html) do
     html
     |> Floki.parse_document!()
@@ -73,6 +84,25 @@ defmodule PortalWeb.Settings.LogSinksTest do
     lv
     |> element("button[phx-click='toggle_sink_actions'][phx-value-id='#{sink_id}']")
     |> render_click()
+  end
+
+  defp request_confirm(lv, action, sink_id) do
+    open_sink_actions(lv, sink_id)
+
+    lv
+    |> element(
+      "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{sink_id}']"
+    )
+    |> render_click()
+  end
+
+  defp has_sink_action_button?(html, action, sink_id) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find(
+      "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{sink_id}']"
+    )
+    |> Enum.any?()
   end
 
   describe "unauthorized" do
@@ -908,7 +938,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
   end
 
   describe "edit" do
-    test "updates the sink, resubmitting the rendered token", %{
+    test "updates the sink without resubmitting the token", %{
       conn: conn,
       account: account,
       actor: actor
@@ -929,7 +959,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert updated.hec_token == sink.hec_token
     end
 
-    test "requires the token", %{
+    test "keeps the stored token when the box is left blank", %{
       conn: conn,
       account: account,
       actor: actor
@@ -943,13 +973,245 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       form = form(lv, "#log-sink-form", log_sink: %{name: "Renamed Sink", hec_token: ""})
       render_change(form)
-      html = render_submit(form)
-
-      assert html =~ "can&#39;t be blank"
+      render_submit(form)
 
       updated = reload_sink(sink)
-      assert updated.name == sink.name
+      assert updated.name == "Renamed Sink"
       assert updated.hec_token == sink.hec_token
+    end
+
+    for {type, fixture, secret} <- [
+          {"splunk", :splunk_log_sink_fixture, :hec_token},
+          {"datadog", :datadog_log_sink_fixture, :api_key},
+          {"newrelic", :newrelic_log_sink_fixture, :license_key},
+          {"elastic", :elastic_log_sink_fixture, :api_key},
+          {"qradar", :qradar_log_sink_fixture, :auth_header},
+          {"http", :http_log_sink_fixture, :bearer_token}
+        ] do
+      test "never renders the stored #{type} #{secret}", %{
+        conn: conn,
+        account: account,
+        actor: actor
+      } do
+        secret = unquote(secret)
+        stored = "stored-secret-#{System.unique_integer([:positive])}"
+
+        sink =
+          apply(Portal.LogSinkFixtures, unquote(fixture), [
+            %{:account => account, secret => stored}
+          ])
+
+        {:ok, lv, html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/log_sinks/#{unquote(type)}/#{sink.id}/edit")
+
+        refute html =~ stored
+        assert html =~ "Leave blank to keep the current"
+
+        html =
+          lv
+          |> form("#log-sink-form", log_sink: %{name: "Renamed Sink"})
+          |> render_change()
+
+        refute html =~ stored
+      end
+    end
+
+    test "resets the token when the HEC URL changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/#{sink.id}/edit")
+
+      html =
+        change_field(
+          lv,
+          sink,
+          "collector_url",
+          %{"collector_url" => "https://attacker.example", "hec_token" => ""},
+          ["hec_token"]
+        )
+
+      refute html =~ "Leave blank to keep the current value"
+
+      lv
+      |> form("#log-sink-form",
+        log_sink: %{collector_url: "https://attacker.example", hec_token: ""}
+      )
+      |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s([data-validation-error-for="log_sink[hec_token]"]),
+               "Required for the new HEC URL."
+             )
+
+      updated = reload_sink(sink)
+      assert updated.collector_url == sink.collector_url
+      assert updated.hec_token == sink.hec_token
+    end
+
+    test "accepts a new HEC URL when the token is entered again", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/#{sink.id}/edit")
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{collector_url: "https://new-collector.example", hec_token: sink.hec_token}
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      updated = reload_sink(sink)
+      assert updated.collector_url == "https://new-collector.example"
+      assert updated.hec_token == sink.hec_token
+    end
+
+    test "resets the API key when the Datadog site changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = datadog_log_sink_fixture(account: account, site: "datadoghq.com")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/datadog/#{sink.id}/edit")
+
+      lv
+      |> form("#log-sink-form", log_sink: %{site: "datadoghq.eu", api_key: ""})
+      |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s([data-validation-error-for="log_sink[api_key]"]),
+               "Required for the new site."
+             )
+
+      updated = Repo.get_by!(Portal.Datadog.LogSink, account_id: account.id, id: sink.id)
+      assert updated.site == "datadoghq.com"
+      assert updated.api_key == sink.api_key
+    end
+
+    test "asks for the bearer token again when the endpoint changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = http_log_sink_fixture(account: account)
+      assert sink.bearer_token
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/http/#{sink.id}/edit")
+
+      lv
+      |> form("#log-sink-form",
+        log_sink: %{endpoint_url: "https://new-endpoint.example/ingest", bearer_token: ""}
+      )
+      |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s([data-validation-error-for="log_sink[bearer_token]"]),
+               "Enter it again, or remove it, for the new endpoint URL."
+             )
+
+      updated = Repo.get_by!(Portal.HTTP.LogSink, account_id: account.id, id: sink.id)
+      assert updated.endpoint_url == sink.endpoint_url
+      assert updated.bearer_token == sink.bearer_token
+    end
+
+    test "removes the bearer token with the endpoint change when asked", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = http_log_sink_fixture(account: account)
+      assert sink.bearer_token
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/http/#{sink.id}/edit")
+
+      lv
+      |> form("#log-sink-form",
+        log_sink: %{
+          endpoint_url: "https://new-endpoint.example/ingest",
+          bearer_token: "",
+          remove_secret: "true"
+        }
+      )
+      |> render_submit()
+
+      updated = Repo.get_by!(Portal.HTTP.LogSink, account_id: account.id, id: sink.id)
+      assert updated.endpoint_url == "https://new-endpoint.example/ingest"
+      assert updated.bearer_token == nil
+    end
+
+    test "removes the stored QRadar header when asked", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = qradar_log_sink_fixture(account: account, auth_header: "Bearer stored")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/qradar/#{sink.id}/edit")
+
+      lv
+      |> form("#log-sink-form", log_sink: %{auth_header: "", remove_secret: "true"})
+      |> render_submit()
+
+      updated = Repo.get_by!(Portal.QRadar.LogSink, account_id: account.id, id: sink.id)
+      assert updated.auth_header == nil
+      assert updated.endpoint_url == sink.endpoint_url
+    end
+
+    test "offers no removal when no header is stored", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = qradar_log_sink_fixture(account: account, auth_header: nil)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/qradar/#{sink.id}/edit")
+
+      refute html =~ "Remove the current header"
+
+      lv
+      |> form("#log-sink-form",
+        log_sink: %{endpoint_url: "https://new-qradar.example:12469", auth_header: ""}
+      )
+      |> render_submit()
+
+      updated = Repo.get_by!(Portal.QRadar.LogSink, account_id: account.id, id: sink.id)
+      assert updated.endpoint_url == "https://new-qradar.example:12469"
+      assert updated.auth_header == nil
     end
 
     test "editing an Amazon S3 sink keeps its external id", %{
@@ -1035,7 +1297,8 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks")
 
-      open_sink_actions(lv, sink.id)
+      html = request_confirm(lv, "delete", sink.id)
+      assert html =~ "Delete this log sink?"
 
       lv
       |> element("button[phx-click='delete_sink'][phx-value-id='#{sink.id}']")
@@ -1054,7 +1317,8 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks")
 
-      open_sink_actions(lv, sink.id)
+      html = request_confirm(lv, "toggle", sink.id)
+      assert html =~ "Disable this log sink?"
 
       lv
       |> element("button[phx-click='toggle_sink'][phx-value-id='#{sink.id}']")
@@ -1064,7 +1328,8 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert updated.is_disabled
       assert updated.disabled_reason == "Disabled by admin"
 
-      open_sink_actions(lv, sink.id)
+      html = request_confirm(lv, "toggle", sink.id)
+      assert html =~ "Enable this log sink?"
 
       lv
       |> element("button[phx-click='toggle_sink'][phx-value-id='#{sink.id}']")
@@ -1096,8 +1361,52 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       html = open_sink_actions(lv, sink.id)
 
-      refute html =~ "toggle-sink-#{sink.id}"
-      assert html =~ "delete-sink-#{sink.id}"
+      refute has_sink_action_button?(html, "toggle", sink.id)
+      assert has_sink_action_button?(html, "delete", sink.id)
+    end
+
+    test "cancelling a confirmation keeps the sink", %{conn: conn, account: account, actor: actor} do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      for action <- ["delete", "toggle"] do
+        request_confirm(lv, action, sink.id)
+
+        html =
+          lv
+          |> element("button[phx-click='cancel_confirm']")
+          |> render_click()
+
+        refute html =~ "this log sink?"
+        assert html =~ sink.name
+      end
+
+      updated = reload_sink(sink)
+      refute updated.is_disabled
+    end
+
+    test "confirming one sink does not affect other rows", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = splunk_log_sink_fixture(account: account)
+      other = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      html = request_confirm(lv, "delete", sink.id)
+
+      assert has_element?(lv, "button[phx-click='delete_sink'][phx-value-id='#{sink.id}']")
+      refute has_element?(lv, "button[phx-click='delete_sink'][phx-value-id='#{other.id}']")
+      assert html =~ other.name
     end
 
     test "deliver now enqueues a sync job", %{conn: conn, account: account, actor: actor} do
@@ -1484,6 +1793,38 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert render_change(form) =~ "should be at most 2000 character"
       assert render_change(form) =~ "should be at most 2000 character"
       assert submit_button_disabled?(render_change(form))
+    end
+  end
+
+  describe "events queued after the panel closes" do
+    test "ignores submit_sink", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/new")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/settings/log_sinks")
+
+      render_click(lv, "submit_sink", %{"log_sink" => %{"name" => "Late"}})
+
+      assert render(lv) =~ "Log Sinks"
+    end
+
+    for event <- ["delete_sink", "toggle_sink"] do
+      test "ignores #{event} for a deleted sink", %{conn: conn, account: account, actor: actor} do
+        sink = splunk_log_sink_fixture(account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/log_sinks")
+
+        render_click(lv, "delete_sink", %{"id" => sink.id})
+        render_click(lv, unquote(event), %{"id" => sink.id})
+
+        refute render(lv) =~ sink.name
+      end
     end
   end
 end

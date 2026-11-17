@@ -16,10 +16,11 @@ struct WebAuthSession {
 
   static func signIn(store: Store, configuration: Configuration? = nil) async throws {
     let configuration = configuration ?? Configuration.shared
+    let signInSettings = configuration.signInSettings
 
-    guard let authURL = URL(string: configuration.authURL),
+    guard let authURL = URL(string: signInSettings.authURL),
       let authClient = try? AuthClient(
-        authURL: authURL.appendingPathComponent(configuration.accountSlug)),
+        authURL: authURL.appendingPathComponent(signInSettings.accountSlug)),
       let url = try? authClient.build()
     else {
       // Should never get here because we perform URL validation on input, but handle this just in case
@@ -30,15 +31,16 @@ struct WebAuthSession {
     let anchor = PresentationAnchor()
 
     // Call @concurrent function to avoid MainActor inference on callback closure
-    let token = try await performAuthentication(
+    let callbackURL = try await performAuthentication(
       url: url,
       callbackScheme: scheme,
-      authClient: authClient,
       anchor: anchor
     )
 
-    if let token {
-      try await store.signIn(token: token)
+    if let callbackURL {
+      let signIn = try authClient.completeSignIn(
+        from: callbackURL, configuration: configuration, signInSettings: signInSettings)
+      try await store.signIn(token: signIn.token, signInSettings: signIn.signInSettings)
     }
   }
 
@@ -46,9 +48,8 @@ struct WebAuthSession {
   @concurrent private static func performAuthentication(
     url: URL,
     callbackScheme: String,
-    authClient: AuthClient,
     anchor: PresentationAnchor
-  ) async throws -> String? {
+  ) async throws -> URL? {
     // Anchor passed as parameter, keeping strong reference
 
     return try await withCheckedThrowingContinuation { continuation in
@@ -65,9 +66,8 @@ struct WebAuthSession {
             throw error
           }
 
-          let token = try authClient.token(from: returnedURL)
-
-          continuation.resume(returning: token)
+          guard let returnedURL else { throw AuthClientError.invalidCallbackURL }
+          continuation.resume(returning: returnedURL)
         } catch {
           continuation.resume(throwing: error)
         }

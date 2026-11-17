@@ -154,9 +154,16 @@ defmodule Portal.Policies.ConditionTest do
       assert cs.valid?
     end
 
-    test "valid with is and false" do
-      cs = changeset(%{property: :client_verified, operator: :is, values: ["false"]})
-      assert cs.valid?
+    test "invalid with values other than true" do
+      for values <- [["false"], ["1"], ["0"], ["TRUE"]] do
+        cs = changeset(%{property: :client_verified, operator: :is, values: values})
+        assert cs.errors[:values]
+      end
+    end
+
+    test "missing values returns error" do
+      cs = changeset(%{property: :client_verified, operator: :is})
+      assert cs.errors[:values]
     end
 
     test "invalid operator returns error" do
@@ -178,36 +185,9 @@ defmodule Portal.Policies.ConditionTest do
   end
 
   describe "changeset/3 with device_attested" do
-    test "valid with is and true" do
+    test "is no longer a condition property" do
       cs = changeset(%{property: :device_attested, operator: :is, values: ["true"]})
-      assert cs.valid?
-    end
-
-    test "valid with is and false" do
-      cs = changeset(%{property: :device_attested, operator: :is, values: ["false"]})
-      assert cs.valid?
-    end
-
-    test "invalid operator returns error" do
-      cs = changeset(%{property: :device_attested, operator: :is_in, values: ["true"]})
-      assert cs.errors[:operator]
-    end
-
-    test "non-boolean value returns error" do
-      cs = changeset(%{property: :device_attested, operator: :is, values: ["yes"]})
-      assert cs.errors[:values]
-    end
-
-    test "more than one value returns length error" do
-      cs =
-        changeset(%{property: :device_attested, operator: :is, values: ["true", "false"]})
-
-      assert cs.errors[:values]
-    end
-
-    test "empty values list returns length error" do
-      cs = changeset(%{property: :device_attested, operator: :is, values: []})
-      assert cs.errors[:values]
+      assert cs.errors[:property]
     end
   end
 end

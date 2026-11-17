@@ -1,0 +1,4 @@
+<%= @announcement_text %>
+
+Thanks,
+The Firezone Team

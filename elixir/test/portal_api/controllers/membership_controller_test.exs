@@ -883,4 +883,29 @@ defmodule PortalAPI.MembershipControllerTest do
                1
     end
   end
+
+  describe "legacy Gateway actor" do
+    test "cannot be added to a group", %{conn: conn, account: account, actor: api_actor} do
+      group = group_fixture(account: account)
+      legacy = legacy_gateway_actor_fixture(account: account)
+
+      for {request, memberships} <- [
+            {&patch/3, %{"add" => [legacy.id]}},
+            {&put/3, [%{"actor_id" => legacy.id}]}
+          ] do
+        conn =
+          conn
+          |> authorize_conn(api_actor)
+          |> put_req_header("content-type", "application/json")
+          |> request.("/groups/#{group.id}/memberships", memberships: memberships)
+
+        message = "#{legacy.id} is not an Actor in this account"
+
+        assert %{"validation_errors" => %{"memberships" => [^message]}} =
+                 json_response(conn, 422)
+      end
+
+      refute Repo.exists?(from(m in Portal.Membership, where: m.actor_id == ^legacy.id))
+    end
+  end
 end

@@ -33,6 +33,16 @@ defmodule PortalWeb.UnsubscribeTest do
     assert preferences.start_page == :sites
   end
 
+  test "turns off product feedback requests", %{conn: conn, account: account, actor: actor} do
+    token = UnsubscribeToken.sign(actor, :product_feedback_requests)
+
+    {:ok, _lv, html} = live(conn, ~p"/#{account.id}/unsubscribe/#{token}")
+
+    assert html =~ "Product feedback requests"
+    assert preferences(actor).notifications.product_feedback_requests == []
+    assert preferences(actor).notifications.product_announcements == nil
+  end
+
   test "keeps the actor's other settings", %{conn: conn, account: account, actor: actor} do
     actor_preferences_fixture(actor, notifications: %{seat_limit_warnings: []}, start_page: :devices)
     token = UnsubscribeToken.sign(actor, :product_announcements)

@@ -37,6 +37,13 @@
     let providerLogFolderSize: Int64
     /// Bytes of random data the app's log directory holds on top of its fixed lines.
     let appLogFolderSize: Int?
+    /// The control plane the app is configured for; Firezone Cloud (US) when absent.
+    let authURL: String?
+    let apiURL: String?
+    /// What the running session signed in with; Settings notes any difference from its own.
+    let signedInWith: SignInSettings?
+    // swiftlint:disable:next discouraged_optional_boolean - absent in unmanaged fixtures
+    let managedVPNConfiguration: Bool?
 
     enum VPNStatus: String, Decodable, Sendable {
       case invalid
@@ -172,14 +179,18 @@
       return mock(scenario: .named(name))
     }
 
-    static func mock(scenario: MockScenario = .connected, logDirectory: URL? = nil) -> Store {
+    static func mock(
+      scenario: MockScenario = .connected,
+      configuration: Configuration = .shared,
+      logDirectory: URL? = nil
+    ) -> Store {
       // swiftlint:disable:next no_userdefaults_standard - DI entry point
       let defaults = UserDefaults.standard
       defaults.set(scenario.favorites, forKey: Favorites.key)
       // Otherwise the welcome window opens over the screen being photographed.
       defaults.set(true, forKey: "launchedBefore")
 
-      seedConfiguration(with: scenario)
+      seedConfiguration(configuration, with: scenario)
 
       let logDirectory =
         logDirectory ?? MockFixtures.makeLogDirectory(randomBytes: scenario.appLogFolderSize ?? 0)
@@ -190,13 +201,19 @@
         actorName: scenario.actorName,
         providerLogFolderSize: scenario.providerLogFolderSize
       )
+      let manager = MockTunnelProviderManager(session: session, configuration: configuration)
+      if scenario.managedVPNConfiguration == true {
+        let proto = manager.protocolConfiguration as? NETunnelProviderProtocol
+        proto?.providerBundleIdentifier = nil
+      }
       let tunnelManagerFactory = MockTunnelProviderManagerFactory(
-        manager: MockTunnelProviderManager(session: session),
+        manager: manager,
         installed: scenario.hasVPNConfiguration
       )
 
       #if os(macOS)
         return Store(
+          configuration: configuration,
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
           systemExtensionManager: MockSystemExtensionManager(
             status: scenario.systemExtension.status
@@ -208,6 +225,7 @@
         )
       #else
         return Store(
+          configuration: configuration,
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
           tunnelManagerFactory: tunnelManagerFactory,
           x509CertificateSource: scenario.clientCertificate.source,
@@ -217,20 +235,19 @@
     }
 
     /// Settles the settings the app reports before anything reads them.
-    ///
-    /// `SettingsViewModel` snapshots each unforced setting when it is built and only
-    /// ever re-reads the forced ones, so a value that arrives later leaves the form
-    /// showing a stale one and its Apply button lit.
-    private static func seedConfiguration(with scenario: MockScenario) {
-      let configuration = Configuration.shared
-
+    private static func seedConfiguration(
+      _ configuration: Configuration, with scenario: MockScenario
+    ) {
       configuration.accountSlug = "example-corp"
 
       // A DEBUG build points these at the staging stack, which a screenshot of the
       // settings screens would then advertise.
-      configuration.authURL = "https://app.firezone.dev"
-      configuration.apiURL = "wss://api.firezone.dev"
+      configuration.authURL = scenario.authURL ?? "https://app.firezone.dev"
+      configuration.apiURL = scenario.apiURL ?? "wss://api.firezone.dev"
       configuration.logFilter = "info"
+      // The scenario's rather than a real sign-in recorded in the app's defaults, which would put
+      // the sign-in note on screenshots that are not about it.
+      configuration.signedInWith = scenario.signedInWith
     }
   }
 
@@ -297,8 +314,13 @@
     /// Holds the observers below for the life of the process.
     @MainActor private var mockObservers: [any NSObjectProtocol] = []
 
-    extension AppView.WindowDefinition {
-      public static func mockFromCommandLine() -> Self? {
+    /// The window a screenshot run shows.
+    public enum MockWindow: String {
+      case main
+      case settings
+      case about
+
+      public static func fromCommandLine() -> Self? {
         // `none` leaves the full app running with its menu bar item and no window.
         guard let name = flagValue("--mock-window"), name != "none" else { return nil }
 

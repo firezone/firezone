@@ -17,7 +17,7 @@
 use arbitrary::Arbitrary;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::{SeedableRng as _, rngs::StdRng};
-use relay_proto::{
+use relay_server_proto::{
     Attribute, ClientSocket, Command, Server,
     auth::{AccountId, generate_password, hash_account_id},
 };
@@ -40,7 +40,7 @@ pub struct Input<'a> {
 
 pub fn test(input: Input<'_>) {
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
-    server.set_accounts([AccountId::from(Uuid::nil())]);
+    server.set_accounts([(AccountId::from(Uuid::nil()), None)]);
     let client = ClientSocket::new(CLIENT);
     let now = *crate::START_TIME;
     // Fixed rather than `SystemTime::now`: the expiry checked against this is

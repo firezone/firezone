@@ -5,8 +5,9 @@ version = "0.18.2"
 backend = "cargo:cargo-afl"
 
 [[tools.rust]]
-version = "nightly-2026-06-10"
+version = "nightly-2026-10-17"
 backend = "core:rust"
 
 [tools.rust.options]
+components = "llvm-tools"
 profile = "minimal"

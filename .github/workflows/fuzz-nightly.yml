@@ -13,7 +13,7 @@ run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
   workflow_dispatch:
     inputs:
       target:
-        description: "A single fuzz target to work on, e.g. 'tunnel-proto'. Leave empty for every target in rust/tests/fuzz/targets.json."
+        description: "A single fuzz target to work on, e.g. 'tunnel'. Leave empty for every target in rust/tests/fuzz/targets.json."
         required: false
         type: string
         default: ""
@@ -118,12 +118,13 @@ jobs:
       - name: Configure crash reporting for AFL++
         run: sudo sysctl -w kernel.core_pattern=core
       - name: Fuzz for new coverage
-        # AFL's time budget excludes corpus calibration. tunnel-proto's slow
-        # executions stop its workers within their first queue cycle, so it
-        # gets a longer budget.
-        timeout-minutes: ${{ matrix.fuzz-target == 'tunnel-proto' && 150 || 60 }}
+        # AFL's time budget excludes corpus calibration, which grows with the
+        # corpus until the next minimization. tunnel's slow executions
+        # stop its workers within their first queue cycle, so it gets a longer
+        # budget and a timeout that leaves calibration plenty of room.
+        timeout-minutes: ${{ matrix.fuzz-target == 'tunnel' && 300 || 60 }}
         env:
-          FUZZ_SECONDS: ${{ matrix.fuzz-target == 'tunnel-proto' && 7200 || 1800 }}
+          FUZZ_SECONDS: ${{ matrix.fuzz-target == 'tunnel' && 7200 || 1800 }}
         run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} --workers "$(nproc)" --seconds "$FUZZ_SECONDS"
       - name: Keep what reaches new edges
         if: ${{ !cancelled() }}
@@ -158,11 +159,18 @@ jobs:
         with:
           name: fuzz-${{ matrix.fuzz-target }}
           path: rust/tests/fuzz/corpus/${{ matrix.fuzz-target }}
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          repositories: ${{ github.repository }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: ./.github/actions/propose-fuzz-corpus
         with:
           target: ${{ matrix.fuzz-target }}
           branch-prefix: chore/fuzz-corpora-
           title: "chore(fuzz): grow the ${{ matrix.fuzz-target }} corpus"
           body: "The nightly fuzz job found inputs for `${{ matrix.fuzz-target }}` that reach edges the committed corpus did not."
-          gpg-key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
-          token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}

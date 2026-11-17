@@ -138,7 +138,7 @@ impl Client {
 fn init_runtime() -> Runtime {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1) // We only need 1 worker thread.
-        .thread_name("ingest-worker")
+        .thread_name("fz-telemetry")
         .enable_io()
         .enable_time()
         .build()

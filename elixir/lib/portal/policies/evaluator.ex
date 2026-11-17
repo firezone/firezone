@@ -5,8 +5,8 @@ defmodule Portal.Policies.Evaluator do
   @days_of_week ~w[M T W R F S U]
 
   @doc """
-  Checks a policy's conditions and postures together. Both must hold, and
-  the result expires when the first of them stops holding.
+  Checks a policy's attestation requirement, conditions and postures together.
+  All must hold, and the result expires when the first of them stops holding.
   """
   def ensure_policy_conforms(policy, %Device{type: :client} = client, auth_provider_id) do
     conditions = ensure_conforms(policy.conditions, client, auth_provider_id)
@@ -18,7 +18,30 @@ defmodule Portal.Policies.Evaluator do
       {{:ok, _expires_at}, {:error, violated}} -> {:error, violated}
       {{:error, left}, {:error, right}} -> {:error, left ++ right}
     end
+    |> ensure_attested(policy.require_attestation, client)
   end
+
+  # Reported as the property the old condition used, which Clients already know.
+  defp ensure_attested(result, true, %Device{} = client) do
+    case {result, attested_until(client)} do
+      {{:ok, expires_at}, %DateTime{} = attested_until} -> {:ok, min_expires_at(expires_at, attested_until)}
+      {{:ok, _expires_at}, nil} -> {:error, [:device_attested]}
+      {{:error, violated}, %DateTime{}} -> {:error, violated}
+      {{:error, violated}, nil} -> {:error, [:device_attested | violated]}
+    end
+  end
+
+  defp ensure_attested(result, _require_attestation, %Device{}), do: result
+
+  defp attested_until(%Device{attested?: true, attested_until: %DateTime{} = attested_until}) do
+    if DateTime.compare(current_time(), attested_until) == :gt do
+      nil
+    else
+      attested_until
+    end
+  end
+
+  defp attested_until(%Device{}), do: nil
 
   def ensure_conforms([], %Device{type: :client}, _auth_provider_id) do
     {:ok, nil}
@@ -159,11 +182,7 @@ defmodule Portal.Policies.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %{
-          property: :client_verified,
-          operator: :is,
-          values: ["true"]
-        },
+        %{property: :client_verified},
         %Device{type: :client, verified_at: verified_at},
         _auth_provider_id
       ) do
@@ -172,46 +191,6 @@ defmodule Portal.Policies.Evaluator do
     else
       {:ok, nil}
     end
-  end
-
-  def fetch_conformation_expiration(
-        %{
-          property: :client_verified,
-          operator: :is,
-          values: _other
-        },
-        %Device{type: :client},
-        _auth_provider_id
-      ) do
-    {:ok, nil}
-  end
-
-  def fetch_conformation_expiration(
-        %{
-          property: :device_attested,
-          operator: :is,
-          values: ["true"]
-        },
-        %Device{type: :client, attested?: attested?},
-        _auth_provider_id
-      ) do
-    if attested? do
-      {:ok, nil}
-    else
-      :error
-    end
-  end
-
-  def fetch_conformation_expiration(
-        %{
-          property: :device_attested,
-          operator: :is,
-          values: _other
-        },
-        %Device{type: :client},
-        _auth_provider_id
-      ) do
-    {:ok, nil}
   end
 
   def fetch_conformation_expiration(

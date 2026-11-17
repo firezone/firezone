@@ -241,8 +241,9 @@ defmodule PortalWeb.Settings.ProfileTest do
       assert html =~ "Gateway Upgrade Available"
       assert html =~ "Seat Limit Warnings"
       assert html =~ "Product Announcements"
+      assert html =~ "Product Feedback Requests"
 
-      for notification <- ~w[outdated_gateways seat_limit_warnings product_announcements] do
+      for notification <- ~w[outdated_gateways seat_limit_warnings product_announcements product_feedback_requests] do
         assert has_element?(lv, "#notifications_#{notification}_email[checked]")
       end
     end
@@ -265,6 +266,16 @@ defmodule PortalWeb.Settings.ProfileTest do
 
       assert has_element?(lv, "#notifications_outdated_gateways_email[checked]")
       assert preferences(actor).notifications.outdated_gateways == [:email]
+    end
+
+    test "saves product feedback request preferences", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/profile")
+
+      toggle(lv, :product_feedback_requests, false)
+      assert preferences(actor).notifications.product_feedback_requests == []
+
+      toggle(lv, :product_feedback_requests, true)
+      assert preferences(actor).notifications.product_feedback_requests == [:email]
     end
 
     test "leaves the notifications that did not change unset", %{

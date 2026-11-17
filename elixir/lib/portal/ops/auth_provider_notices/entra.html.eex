@@ -1,0 +1,11 @@
+<h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">Action required: verify your Entra tenants</h1>
+<p style="margin: 0; line-height: 24px">Hi,</p>
+<p style="margin: 16px 0 0; line-height: 24px">Firezone now requires Entra users to sign in from a verified tenant, improving your account's security.</p>
+<p style="margin: 16px 0 0; line-height: 24px">For <strong><%= @notice.name %></strong>, these additional tenants need verification:</p>
+<ul style="margin: 16px 0 0; padding-left: 20px">
+<%= for tenant <- @notice.tenants do %>
+  <li style="margin: 0 0 12px; line-height: 24px"><code style="font-size: 12px; background-color: #f3f4f6; padding: 4px 6px; border-radius: 3px; overflow-wrap: anywhere; word-break: break-all"><%= tenant.id %></code></li>
+<% end %>
+</ul>
+<p style="margin: 16px 0 0; line-height: 24px">Go to <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none">Settings &rarr; Authentication</a>, edit your Entra provider, and click <strong>Verify another tenant</strong> for each tenant above. <strong>Save</strong> to allow users from those tenants to sign in.</p>
+<p style="margin: 16px 0 0; line-height: 24px">Questions? Reply to this email.</p>

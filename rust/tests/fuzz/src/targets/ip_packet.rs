@@ -2,16 +2,16 @@ use std::net::IpAddr;
 
 use anyhow::Result;
 use arbitrary::Arbitrary;
-use ip_packet::{Ecn, IcmpError, IpPacket, IpPacketBuf, Protocol};
+use ip_packet::{Ecn, IcmpError, IpPacket, Protocol};
 
 pub fn test(input: Input<'_>) {
     if input.data.len() > ip_packet::MAX_IP_SIZE {
         return;
     }
 
-    let mut buf = IpPacketBuf::new();
+    let mut buf = ip_packet::packet_buffer();
     let len = input.data.len();
-    buf.buf()[..len].copy_from_slice(&input.data[..len]);
+    buf[..len].copy_from_slice(&input.data[..len]);
 
     if let Ok(mut packet) = IpPacket::new(buf, len) {
         test_all_getters(&packet);

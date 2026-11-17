@@ -8,16 +8,21 @@ import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.data.DeveloperSettings
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.permission.ui.CertificatePermissionViewModel
+import dev.firezone.android.features.session.ui.rememberTunnelService
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
+import kotlinx.coroutines.flow.emptyFlow
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -25,6 +30,7 @@ internal class SettingsActivity : AppCompatActivity() {
     private val viewModel: SettingsViewModel by viewModels()
     private val deviceTrustViewModel: DeviceTrustSettingsViewModel by viewModels()
     private val certificatePermissionViewModel: CertificatePermissionViewModel by viewModels()
+    private val developerSettings by lazy { DeveloperSettings(this) }
 
     @Inject
     internal lateinit var repository: Repository
@@ -35,28 +41,20 @@ internal class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val isUserSignedIn = intent.getBooleanExtra(EXTRA_IS_USER_SIGNED_IN, false)
-
         setContent {
             FirezoneTheme {
                 val managedStatus by viewModel.managedStatusStateFlow.collectAsStateWithLifecycle()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val deviceTrustState by deviceTrustViewModel.uiStateFlow.collectAsStateWithLifecycle()
-                val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
-
-                LaunchedEffect(action) {
-                    action?.let {
-                        viewModel.clearAction()
-                        when (it) {
-                            SettingsViewModel.ViewAction.NavigateBack -> finish()
-                        }
-                    }
-                }
+                val tunnelService = rememberTunnelService(flags = 0)
+                var showDeveloperSettings by remember { mutableStateOf(developerSettings.isUnlocked) }
+                val forceRelayedConnections by (tunnelService?.forceRelayedConnections ?: emptyFlow())
+                    .collectAsStateWithLifecycle(false)
 
                 SettingsScreen(
                     config = viewModel.config,
+                    controlPlane = viewModel.controlPlane,
                     managedStatus = managedStatus ?: ManagedConfigStatus.NOTHING_MANAGED,
-                    isSaveEnabled = uiState.isSaveButtonEnabled,
                     logSizeBytes = uiState.logSizeBytes,
                     deviceTrustState = deviceTrustState,
                     // The page exists where a certificate is required or one was found, and
@@ -64,21 +62,30 @@ internal class SettingsActivity : AppCompatActivity() {
                     showDeviceTrust =
                         repository.isX509CertificateRequired(applicationRestrictions) ||
                             deviceTrustState.alias != null,
-                    warnBeforeSaving = isUserSignedIn,
-                    onAuthUrlChange = viewModel::onValidateAuthUrl,
-                    onApiUrlChange = viewModel::onValidateApiUrl,
-                    onLogFilterChange = viewModel::onValidateLogFilter,
-                    onAccountSlugChange = viewModel::onValidateAccountSlug,
+                    signedInWith = viewModel.signedInWith,
+                    onControlPlaneChange = viewModel::onControlPlaneChanged,
+                    onAuthUrlChange = viewModel::onAuthUrlChanged,
+                    onApiUrlChange = viewModel::onApiUrlChanged,
+                    onLogFilterChange = viewModel::onLogFilterChanged,
+                    onAccountSlugChange = viewModel::onAccountSlugChanged,
                     onStartOnLoginChange = viewModel::onStartOnLoginChanged,
                     onConnectOnStartChange = viewModel::onConnectOnStartChanged,
                     onResetToDefaults = viewModel::resetSettingsToDefaults,
                     onClearLogs = { viewModel.deleteLogDirectory(applicationContext) },
                     onExportLogs = { viewModel.createLogZip(this@SettingsActivity) },
+                    showDeveloperSettings = showDeveloperSettings,
+                    onShowDeveloperSettingsChange = {
+                        developerSettings.isUnlocked = it
+                        showDeveloperSettings = it
+                        if (!it && forceRelayedConnections) tunnelService?.setForceRelayedConnections(false)
+                    },
+                    onResetConnlib = { tunnelService?.reset("requested by user") },
+                    forceRelayedConnections = forceRelayedConnections,
+                    onForceRelayedConnectionsChange = { tunnelService?.setForceRelayedConnections(it) },
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,
-                    onSave = viewModel::onSaveSettingsCompleted,
-                    onCancel = viewModel::onCancel,
+                    onBack = ::finish,
                 )
             }
         }
@@ -126,13 +133,6 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val EXTRA_IS_USER_SIGNED_IN = "isUserSignedIn"
-
-        fun createIntent(
-            context: Context,
-            isUserSignedIn: Boolean,
-        ): Intent =
-            Intent(context, SettingsActivity::class.java)
-                .putExtra(EXTRA_IS_USER_SIGNED_IN, isUserSignedIn)
+        fun createIntent(context: Context): Intent = Intent(context, SettingsActivity::class.java)
     }
 }

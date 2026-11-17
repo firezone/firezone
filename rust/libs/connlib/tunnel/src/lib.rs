@@ -11,14 +11,15 @@
 #![cfg_attr(test, allow(clippy::print_stdout))]
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
-use anyhow::{Context as _, ErrorExt as _, Result};
+use anyhow::{Context as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
-use io::Io;
-use packet_counts::{TunPacketCounts, UdpPacketCounts};
+use io::{CryptoWorkers, Io};
+use packet_counts::{DroppedTunPackets, TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use sockets::Sockets;
 use std::{
     collections::BTreeSet,
     future, mem,
@@ -28,20 +29,21 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use tun::Tun;
-use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
 mod packet_counts;
+mod resolver;
 mod sockets;
 mod utils;
 
 pub use tunnel_proto::*;
 
-pub use io::{CryptoWorkersStopped, TunChannelClosed};
-pub use sockets::UdpSocketThreadStopped;
+pub use io::TunChannelClosed;
+pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
+pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
 pub use utils::turn;
 
-/// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
+/// How many times we will at most loop before force-yielding from [`Tunnel::poll_next_event`].
 ///
 /// It is obviously system-dependent, how long it takes for the event loop to exhaust these iterations.
 /// It has been measured that on GitHub's standard Linux runners, 3000 iterations is roughly 1s during an iperf run.
@@ -97,7 +99,7 @@ impl Drop for TunnelError {
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
-/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::io::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
+/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::io::Device), [`Sockets`] or time and pass it to the respective state.
 pub struct Tunnel<TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
@@ -108,7 +110,7 @@ pub struct Tunnel<TRoleState> {
     io: Io,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
-    dropped_packets: opentelemetry::metrics::Counter<u64>,
+    dropped_tun_packets: DroppedTunPackets,
 
     /// Set when the last poll handled IO whose effects only `handle_timeout` completes.
     ///
@@ -118,8 +120,56 @@ pub struct Tunnel<TRoleState> {
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
+    /// Creates a tunnel around `role_state` that does all its work on the calling thread: the
+    /// crypto jobs as they are submitted, the TUN device's, the IPv4 and IPv6 sockets' and the
+    /// recursive DNS resolver's through the returned [`FakeTunnelEnds`].
+    ///
+    /// Nothing else can bind a socket.
+    pub fn fake(role_state: TRoleState) -> (Self, FakeTunnelEnds) {
+        let (sockets, socket_v4, socket_v6) = Sockets::fake();
+        let (tun, tun_inbound, tun_outbound) = tun::fake(tun::CHANNEL_CAPACITY);
+        let (resolver, dns) = resolver::channels();
+        let tcp: Arc<dyn SocketFactory<TcpSocket>> =
+            Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
+        let udp: Arc<dyn SocketFactory<UdpSocket>> =
+            Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
+        let mut tunnel = Self {
+            role_state,
+            io: Io::new(
+                sockets,
+                CryptoWorkers::with_num_workers(0),
+                resolver,
+                tcp,
+                udp,
+            ),
+            packet_counter: otel_instruments::network_packets(),
+            dropped_tun_packets: DroppedTunPackets::new(),
+            needs_timeout: false,
+        };
+
+        tunnel.set_tun(tun);
+
+        let ends = FakeTunnelEnds {
+            socket_v4,
+            socket_v6,
+            dns,
+            tun_inbound,
+            tun_outbound,
+        };
+
+        (tunnel, ends)
+    }
+
+    pub fn state(&self) -> &TRoleState {
+        &self.role_state
+    }
+
     pub fn state_mut(&mut self) -> &mut TRoleState {
         &mut self.role_state
+    }
+
+    pub fn into_state(self) -> TRoleState {
+        self.role_state
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
@@ -133,37 +183,66 @@ impl<TRoleState> Tunnel<TRoleState> {
     }
 }
 
-impl ClientTunnel {
-    pub fn new(
-        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        records: BTreeSet<DnsResourceRecord>,
-        is_internet_resource_active: bool,
+/// The per-role behaviour of a [`Tunnel`], implemented by [`ClientState`] and [`GatewayState`].
+pub trait Role: Sized {
+    type Event;
+
+    fn poll_next_event(
+        tunnel: &mut Tunnel<Self>,
+        cx: &mut Context<'_>,
         now: Instant,
-    ) -> Self {
-        Self {
-            io: Io::new(
-                tcp_socket_factory,
-                udp_socket_factory.clone(),
-                BTreeSet::default(),
-            ),
-            role_state: ClientState::new(
-                rand::random(),
-                records,
-                is_internet_resource_active,
-                now,
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Should be able to compute UNIX timestamp"),
-            ),
-            packet_counter: otel_instruments::network_packets(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
-            needs_timeout: false,
-        }
+    ) -> Poll<Result<Self::Event, TunnelError>>;
+    fn poll_timeout(&mut self) -> Option<Instant>;
+    fn handle_timeout(&mut self, now: Instant);
+}
+
+impl Role for ClientState {
+    type Event = ClientEvent;
+
+    fn poll_next_event(
+        tunnel: &mut Tunnel<Self>,
+        cx: &mut Context<'_>,
+        now: Instant,
+    ) -> Poll<Result<Self::Event, TunnelError>> {
+        tunnel.poll_client_event(cx, now)
     }
 
-    pub fn public_key(&self) -> PublicKey {
-        self.role_state.public_key()
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        ClientState::poll_timeout(self)
+    }
+
+    fn handle_timeout(&mut self, now: Instant) {
+        ClientState::handle_timeout(self, now);
+    }
+}
+
+impl Role for GatewayState {
+    type Event = GatewayEvent;
+
+    fn poll_next_event(
+        tunnel: &mut Tunnel<Self>,
+        cx: &mut Context<'_>,
+        now: Instant,
+    ) -> Poll<Result<Self::Event, TunnelError>> {
+        tunnel.poll_gateway_event(cx, now)
+    }
+
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        GatewayState::poll_timeout(self)
+    }
+
+    fn handle_timeout(&mut self, now: Instant) {
+        GatewayState::handle_timeout(self, now);
+    }
+}
+
+impl<R: Role> Tunnel<R> {
+    pub fn poll_next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+        now: Instant,
+    ) -> Poll<Result<R::Event, TunnelError>> {
+        R::poll_next_event(self, cx, now)
     }
 
     /// The instant by which the event loop must poll again.
@@ -174,14 +253,59 @@ impl ClientTunnel {
             return Some(now);
         }
 
-        self.role_state.poll_timeout().map(|(deadline, _)| deadline)
+        self.role_state.poll_timeout()
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        self.role_state.handle_timeout(now);
+    }
+}
+
+impl ClientTunnel {
+    pub fn new(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        listen_port: u16,
+        records: BTreeSet<DnsResourceRecord>,
+        is_internet_resource_active: bool,
+        now: Instant,
+    ) -> std::io::Result<Self> {
+        Ok(Self {
+            io: Io::new(
+                Sockets::new(udp_socket_factory.clone(), listen_port),
+                CryptoWorkers::default(),
+                resolver::spawn(
+                    tcp_socket_factory.clone(),
+                    udp_socket_factory.clone(),
+                    BTreeSet::default(),
+                )?,
+                tcp_socket_factory,
+                udp_socket_factory,
+            ),
+            role_state: ClientState::new(
+                rand::random(),
+                records,
+                is_internet_resource_active,
+                now,
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .map_err(std::io::Error::other)?,
+            ),
+            packet_counter: otel_instruments::network_packets(),
+            dropped_tun_packets: DroppedTunPackets::new(),
+            needs_timeout: false,
+        })
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        self.role_state.public_key()
     }
 
     pub fn reset(&mut self, reason: &str, now: Instant) {
         if self
             .role_state
             .poll_timeout()
-            .is_some_and(|(timeout, _)| timeout <= now)
+            .is_some_and(|timeout| timeout <= now)
         {
             self.role_state.handle_timeout(now);
         }
@@ -190,9 +314,21 @@ impl ClientTunnel {
         self.io.reset();
     }
 
+    /// Advertises the given local IPs as additional host candidates on our UDP port.
+    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
+        self.role_state
+            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
+    }
+
+    /// Drops every datagram sent directly to a peer while `enabled`, forcing connections through a relay.
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        self.io.set_force_relayed_connections(enabled);
+    }
+
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
         let resolvers = self.role_state.update_system_resolvers(resolvers);
-        self.io.update_system_resolvers(resolvers.clone()); // IO needs the system resolvers to bootstrap DoH upstream.
+        self.io
+            .send_resolver_control(ResolverControl::SystemResolvers(resolvers.clone()));
 
         resolvers
     }
@@ -221,7 +357,7 @@ impl ClientTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(
+    fn poll_client_event(
         &mut self,
         cx: &mut Context<'_>,
         now: Instant,
@@ -236,13 +372,9 @@ impl ClientTunnel {
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
                 if let ClientEvent::TunInterfaceUpdated(config) = &event {
-                    for url in &config.dns_by_sentinel.upstream_servers() {
-                        let dns::Upstream::DoH { server } = url else {
-                            continue;
-                        };
-
-                        self.io.bootstrap_doh_client(server.clone());
-                    }
+                    self.io.send_resolver_control(ResolverControl::Upstreams(
+                        config.dns_by_sentinel.upstream_servers(),
+                    ));
                 }
 
                 return Poll::Ready(Ok(event));
@@ -265,15 +397,14 @@ impl ClientTunnel {
 
             // Drain all scheduled DNS queries.
             while let Some(query) = self.role_state.poll_dns_queries() {
-                self.io.send_dns_query(query, now);
+                self.io.send_dns_query(ResolverQuery::new(query, now));
                 tick.want_continue();
             }
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 dns_responses,
-                tcp_dns_queries: _,
-                udp_dns_queries: _,
+                dns_queries: _,
                 mut device,
                 network,
                 decrypted,
@@ -288,86 +419,113 @@ impl ClientTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut batch = self.io.start_encrypt_batch(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs();
 
-                    for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
-                        match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
-                            Ok(None) => {}
+                    let mut packets = packets
+                        .prefetching()
+                        .inspect(|p| tun_received.record(p))
+                        .peekable();
+
+                    while let Some(packet) = packets.next() {
+                        let mut tun_batch = match self.role_state.handle_tun_input(packet, now) {
+                            Ok(Some(tun_batch)) => tun_batch,
+                            Ok(None) => continue,
                             Err(e) => {
-                                error.push(e.context("Failed to handle packet from TUN device"))
+                                self.dropped_tun_packets.record(&e, 1);
+                                error.push(e.context("Failed to handle packet from TUN device"));
+                                continue;
+                            }
+                        };
+
+                        while let Some(packet) = packets.next_if(|p| tun_batch.accepts(p)) {
+                            tun_batch.push(packet);
+                        }
+
+                        let num_packets = tun_batch.num_packets();
+
+                        match tun_batch.finish() {
+                            Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
+                            Err(e) => {
+                                self.dropped_tun_packets.record(&e, num_packets);
+                                error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
                     }
-
-                    // Packets encrypted inline would go out after this batch, despite their lower counters.
-                    #[cfg(debug_assertions)]
-                    assert_eq!(
-                        self.role_state.num_buffered_transmits(),
-                        0,
-                        "No packets must be encrypted inline while a batch is encrypted off the main thread"
-                    );
 
                     self.needs_timeout = true;
 
                     tick.want_continue();
                 }
 
-                if let Some(mut datagrams) = network {
-                    let mut decrypts = self.io.start_decrypt_batch(datagrams.len());
+                if let Some(received) = network {
+                    let mut jobs = self.io.new_decrypt_jobs(received);
+                    let (mut batches, segments) = jobs.split();
+                    let mut segments = segments
+                        .inspect(|segment| udp_received.record(segment))
+                        .peekable();
 
-                    for datagram in datagrams.drain() {
-                        let mut datagram = decrypts.add(datagram);
+                    while let Some(segment) = segments.next() {
+                        let (local, from) = (segment.local(), segment.from());
 
-                        for segment in datagram.segments() {
-                            let packet = &datagram[segment];
+                        let mut batch = match self
+                            .role_state
+                            .handle_network_input(local, from, &segment, now)
+                            .with_context(|| FailedToHandleNetworkPacket { local, from })
+                        {
+                            Ok(Some(batch)) => batch,
+                            Ok(None) => {
+                                self.needs_timeout = true;
+                                continue;
+                            }
+                            Err(e) => {
+                                error.push(e);
+                                continue;
+                            }
+                        };
 
-                            udp_received.record(packet);
+                        while segments
+                            .next_if(|next| next.may_join(&segment) && batch.push(next, now))
+                            .is_some()
+                        {}
 
-                            match self
-                                .role_state
-                                .handle_network_input(
-                                    datagram.local(),
-                                    datagram.from(),
-                                    packet,
-                                    now,
-                                )
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local(),
-                                    from: datagram.from(),
-                                }) {
-                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
-                                Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e),
-                            };
-                        }
+                        batches.add(batch.finish(), &segment);
                     }
 
                     tick.want_continue();
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain().prefetching() {
-                        let result = self.role_state.handle_peer_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        );
-
-                        match result {
-                            Ok(Some(packet)) => {
-                                let packet = packet.with_ecn_from_transport(received.ecn);
-
-                                tun_transmitted.record(&packet);
-                                self.io.queue_tun(packet);
+                    for io::DecryptedBatch {
+                        local,
+                        from,
+                        ecn,
+                        packets,
+                    } in decrypted.drain()
+                    {
+                        let batch = match self
+                            .role_state
+                            .handle_peer_batch(packets, local, from, now)
+                        {
+                            Ok(batch) => batch,
+                            Err(e) => {
+                                error.push(e.context(FailedToHandleNetworkPacket { local, from }));
+                                continue;
                             }
-                            Ok(None) => self.needs_timeout = true,
-                            Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
-                                local: received.local,
-                                from: received.from,
-                            })),
                         };
+
+                        for result in batch {
+                            match result {
+                                Ok(Some(packet)) => {
+                                    let packet = packet.with_ecn_from_transport(ecn);
+
+                                    tun_transmitted.record(&packet);
+                                    self.io.queue_tun(packet);
+                                }
+                                Ok(None) => self.needs_timeout = true,
+                                Err(e) => error
+                                    .push(e.context(FailedToHandleNetworkPacket { local, from })),
+                            };
+                        }
                     }
 
                     self.io.flush_tun_batch();
@@ -389,37 +547,43 @@ impl GatewayTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        listen_port: u16,
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
-    ) -> Self {
-        Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
+    ) -> std::io::Result<Self> {
+        Ok(Self {
+            io: Io::new(
+                Sockets::new(udp_socket_factory.clone(), listen_port),
+                CryptoWorkers::default(),
+                resolver::spawn(
+                    tcp_socket_factory.clone(),
+                    udp_socket_factory.clone(),
+                    nameservers,
+                )?,
+                tcp_socket_factory,
+                udp_socket_factory,
+            ),
             role_state: GatewayState::new(
                 rand::random(),
                 now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Should be able to compute UNIX timestamp"),
+                    .map_err(std::io::Error::other)?,
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
-        }
+        })
     }
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
     }
 
-    /// The instant by which the event loop must poll again.
-    ///
-    /// Asks the state once, so call this right before suspending rather than on every wake-up.
-    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
-        if mem::take(&mut self.needs_timeout) {
-            return Some(now);
-        }
-
-        self.role_state.poll_timeout().map(|(deadline, _)| deadline)
+    /// Advertises the given local IPs as additional host candidates on our UDP port.
+    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
+        self.role_state
+            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
     }
 
     /// Shut down the Gateway tunnel.
@@ -446,7 +610,7 @@ impl GatewayTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(
+    fn poll_gateway_event(
         &mut self,
         cx: &mut Context<'_>,
         now: Instant,
@@ -473,8 +637,7 @@ impl GatewayTunnel {
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 dns_responses,
-                tcp_dns_queries,
-                udp_dns_queries,
+                dns_queries,
                 mut device,
                 network,
                 decrypted,
@@ -513,100 +676,113 @@ impl GatewayTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut batch = self.io.start_encrypt_batch(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs();
 
-                    for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
-                        match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
-                            Ok(None) => {}
+                    let mut packets = packets
+                        .prefetching()
+                        .inspect(|p| tun_received.record(p))
+                        .peekable();
+
+                    while let Some(packet) = packets.next() {
+                        let mut tun_batch = match self.role_state.handle_tun_input(packet, now) {
+                            Ok(Some(tun_batch)) => tun_batch,
+                            Ok(None) => continue,
                             Err(e) => {
-                                let routing_error = e
-                                    .any_downcast_ref::<UnroutablePacket>()
-                                    .map(|e| e.reason())
-                                    .unwrap_or(RoutingError::Other);
+                                self.dropped_tun_packets.record(&e, 1);
+                                error.push(e.context("Failed to handle packet from TUN device"));
+                                continue;
+                            }
+                        };
 
-                                // TODO: Include more attributes here like IPv4/IPv6?
-                                self.dropped_packets.add(
-                                    1,
-                                    &[
-                                        otel::attr::error_type(routing_error),
-                                        otel::attr::network_io_direction_receive(),
-                                    ],
-                                );
+                        while let Some(packet) = packets.next_if(|p| tun_batch.accepts(p)) {
+                            tun_batch.push(packet);
+                        }
 
+                        let num_packets = tun_batch.num_packets();
+
+                        match tun_batch.finish() {
+                            Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
+                            Err(e) => {
+                                self.dropped_tun_packets.record(&e, num_packets);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
                     }
-
-                    // Packets encrypted inline would go out after this batch, despite their lower counters.
-                    #[cfg(debug_assertions)]
-                    assert_eq!(
-                        self.role_state.num_buffered_transmits(),
-                        0,
-                        "No packets must be encrypted inline while a batch is encrypted off the main thread"
-                    );
 
                     self.needs_timeout = true;
 
                     tick.want_continue();
                 }
 
-                if let Some(mut datagrams) = network {
-                    let mut decrypts = self.io.start_decrypt_batch(datagrams.len());
+                if let Some(received) = network {
+                    let mut jobs = self.io.new_decrypt_jobs(received);
+                    let (mut batches, segments) = jobs.split();
+                    let mut segments = segments
+                        .inspect(|segment| udp_received.record(segment))
+                        .peekable();
 
-                    for datagram in datagrams.drain() {
-                        let mut datagram = decrypts.add(datagram);
+                    while let Some(segment) = segments.next() {
+                        let (local, from) = (segment.local(), segment.from());
 
-                        for segment in datagram.segments() {
-                            let packet = &datagram[segment];
+                        let mut batch = match self
+                            .role_state
+                            .handle_network_input(local, from, &segment, now)
+                            .with_context(|| FailedToHandleNetworkPacket { local, from })
+                        {
+                            Ok(Some(batch)) => batch,
+                            Ok(None) => {
+                                self.needs_timeout = true;
+                                continue;
+                            }
+                            Err(e) => {
+                                error.push(e);
+                                continue;
+                            }
+                        };
 
-                            udp_received.record(packet);
+                        while segments
+                            .next_if(|next| next.may_join(&segment) && batch.push(next, now))
+                            .is_some()
+                        {}
 
-                            match self
-                                .role_state
-                                .handle_network_input(
-                                    datagram.local(),
-                                    datagram.from(),
-                                    packet,
-                                    now,
-                                )
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local(),
-                                    from: datagram.from(),
-                                }) {
-                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
-                                Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e),
-                            };
-                        }
+                        batches.add(batch.finish(), &segment);
                     }
 
                     tick.want_continue();
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain().prefetching() {
-                        let result = self.role_state.handle_peer_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        );
-
-                        match result {
-                            Ok(Some(packet)) => {
-                                let packet = packet.with_ecn_from_transport(received.ecn);
-
-                                tun_transmitted.record(&packet);
-                                self.io.queue_tun(packet);
+                    for io::DecryptedBatch {
+                        local,
+                        from,
+                        ecn,
+                        packets,
+                    } in decrypted.drain()
+                    {
+                        let batch = match self
+                            .role_state
+                            .handle_peer_batch(packets, local, from, now)
+                        {
+                            Ok(batch) => batch,
+                            Err(e) => {
+                                error.push(e.context(FailedToHandleNetworkPacket { local, from }));
+                                continue;
                             }
-                            Ok(None) => self.needs_timeout = true,
-                            Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
-                                local: received.local,
-                                from: received.from,
-                            })),
                         };
+
+                        for result in batch {
+                            match result {
+                                Ok(Some(packet)) => {
+                                    let packet = packet.with_ecn_from_transport(ecn);
+
+                                    tun_transmitted.record(&packet);
+                                    self.io.queue_tun(packet);
+                                }
+                                Ok(None) => self.needs_timeout = true,
+                                Err(e) => error
+                                    .push(e.context(FailedToHandleNetworkPacket { local, from })),
+                            };
+                        }
                     }
 
                     self.io.flush_tun_batch();
@@ -614,59 +790,36 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                for query in udp_dns_queries {
-                    if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(
-                            dns::RecursiveQuery {
-                                server: dns::Upstream::Do53 {
-                                    server: SocketAddr::new(nameserver, dns::DNS_PORT),
-                                },
-                                local: query.local,
-                                remote: query.remote,
-                                message: query.message,
-                                transport: dns::Transport::Udp,
-                            },
-                            now,
-                        );
-                    } else {
-                        tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
-
-                        if let Err(e) = self.io.send_udp_dns_response(
-                            query.remote,
-                            query.local,
-                            dns_types::Response::servfail(&query.message),
-                        ) {
-                            error.push(e);
-                        }
-                    }
-
-                    tick.want_continue();
-                }
-
-                for query in tcp_dns_queries {
-                    if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(
-                            dns::RecursiveQuery {
-                                server: dns::Upstream::Do53 {
-                                    server: SocketAddr::new(nameserver, dns::DNS_PORT),
-                                },
-                                local: query.local,
-                                remote: query.remote,
-                                message: query.message,
-                                transport: dns::Transport::Tcp,
-                            },
-                            now,
-                        );
-                    } else {
-                        tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
-
-                        if let Err(e) = self.io.send_tcp_dns_response(
-                            query.remote,
-                            query.local,
-                            dns_types::Response::servfail(&query.message),
-                        ) {
-                            error.push(e);
-                        }
+                for io::DnsQuery {
+                    local,
+                    remote,
+                    message,
+                    transport,
+                } in dns_queries
+                {
+                    match self
+                        .role_state
+                        .handle_site_dns_query(local, remote, message, transport)
+                    {
+                        Ok(query) => self
+                            .io
+                            .send_dns_query(ResolverQuery::new_gateway(query, now)),
+                        Err(response) => match transport {
+                            dns::Transport::Udp => {
+                                if let Err(e) =
+                                    self.io.send_udp_dns_response(remote, local, response)
+                                {
+                                    error.push(e);
+                                }
+                            }
+                            dns::Transport::Tcp => {
+                                if let Err(e) =
+                                    self.io.send_tcp_dns_response(remote, local, response)
+                                {
+                                    error.push(e);
+                                }
+                            }
+                        },
                     }
 
                     tick.want_continue();
@@ -682,9 +835,26 @@ impl GatewayTunnel {
     }
 }
 
+/// The far ends of a [`Tunnel::fake`]'s channels.
+pub struct FakeTunnelEnds {
+    pub socket_v4: SocketThreadEnds,
+    pub socket_v6: SocketThreadEnds,
+    pub dns: ResolverTaskEnds,
+    /// Packets sent here are read from the TUN device.
+    pub tun_inbound: tun::InboundTx,
+    /// Receives the packets written to the TUN device.
+    pub tun_outbound: tun::OutboundRx,
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to handle packet from network (src {from} dst {local})")]
 pub struct FailedToHandleNetworkPacket {
     local: SocketAddr,
     from: SocketAddr,
+}
+
+fn listen_sockets(ips: Vec<IpAddr>, port: u16) -> Vec<SocketAddr> {
+    ips.into_iter()
+        .map(|ip| SocketAddr::new(ip, port))
+        .collect()
 }

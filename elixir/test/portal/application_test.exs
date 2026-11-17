@@ -1,6 +1,8 @@
 defmodule Portal.ApplicationTest do
   use ExUnit.Case, async: true
 
+  require Logger
+
   describe "start/2" do
     test "geolix databases are loaded before supervision tree starts" do
       for %{id: id} <- Portal.Config.get_env(:geolix, :databases, []) do
@@ -23,6 +25,39 @@ defmodule Portal.ApplicationTest do
     end
   end
 
+  describe "Sentry logger handler" do
+    setup do
+      Sentry.Test.start_collecting_sentry_reports()
+    end
+
+    test "reports request crashes that Bandit logs" do
+      reason = %RuntimeError{message: "boom"}
+      metadata = Bandit.Logger.logger_metadata_for(:error, reason, [], [])
+
+      Logger.error(Exception.format(:error, reason, []), metadata)
+
+      assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
+    end
+
+    test "reports warnings" do
+      Logger.warning("something looks wrong")
+
+      assert [%Sentry.Event{level: :warning}] = Sentry.Test.pop_sentry_reports()
+    end
+
+    test "reports errors" do
+      Logger.error("something went wrong")
+
+      assert [%Sentry.Event{level: :error}] = Sentry.Test.pop_sentry_reports()
+    end
+
+    test "does not report info messages" do
+      Logger.info("all good")
+
+      assert Sentry.Test.pop_sentry_reports() == []
+    end
+  end
+
   describe "stop/1" do
     test "removes logger handler without crashing" do
       # Use a unique handler ID to avoid conflicts with parallel tests
@@ -31,9 +66,10 @@ defmodule Portal.ApplicationTest do
       :ok =
         :logger.add_handler(handler_id, Sentry.LoggerHandler, %{
           config: %{
-            level: :warning,
-            metadata: :all,
-            capture_log_messages: true
+            capture_level: :warning,
+            capture_metadata: :all,
+            capture_log_messages: true,
+            capture_excluded_domains: []
           }
         })
 

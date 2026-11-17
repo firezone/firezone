@@ -42,6 +42,6 @@ defmodule PortalWeb.Authentication do
   defp take_non_empty(params, keys) do
     params
     |> Map.take(keys)
-    |> Map.reject(fn {_key, value} -> value in ["", nil] end)
+    |> Map.filter(fn {_key, value} -> is_binary(value) and value != "" end)
   end
 end

@@ -21,14 +21,16 @@
     /// opened leaves the one before it on screen, holding perfectly still, and
     /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general", showing: "Account Slug"),
-      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
-      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
+      (label: "Settings", name: "general", showing: "Account Slug"),
+      (label: "Diagnostics", name: "logs", showing: "Clear Log Directory"),
     ]
 
     /// A field every parsed certificate carries, so the Device Trust tab can be
     /// told from the one that was showing before it.
     private static let certificateAnchor = "Signing Algorithm"
+
+    private static let signInChangeNote =
+      "Changes to account slug and control plane only take effect on the next sign-in."
 
     /// The scenarios describing the states of the certificate tab.
     private static let certificateScenarios = [
@@ -69,12 +71,78 @@
 
         let window = try onlyWindow(of: app)
 
-        // General is already selected, and is clicked anyway so that every tab
+        // Settings is already selected, and is clicked anyway so that every tab
         // arrives the same way.
         for tab in Self.settingsTabs {
           try selectTab(tab.label, showing: tab.showing, in: window)
           capture(window, as: "settings-\(tab.name)", in: appearance)
         }
+      }
+    }
+
+    func testManagedSettings() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(
+          scenario: "managed-settings", appearance: appearance, window: "settings")
+        defer { app.terminate() }
+
+        let window = try onlyWindow(of: app)
+        for tab in Self.settingsTabs {
+          try selectTab(tab.label, showing: tab.showing, in: window)
+          XCTAssertTrue(
+            window.staticTexts["Some settings are managed by your organization."].firstMatch
+              .waitForExistence(timeout: 10))
+          capture(window, as: "settings-\(tab.name)-managed", in: appearance)
+        }
+      }
+    }
+
+    /// The Settings tab of an app configured for a self-hosted control plane.
+    func testSettingsWithCustomControlPlane() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(
+          scenario: "custom-control-plane", appearance: appearance, window: "settings")
+        defer { app.terminate() }
+
+        let window = try onlyWindow(of: app)
+        try selectTab("Settings", showing: "API URL", in: window)
+        capture(window, as: "settings-general-custom", in: appearance)
+      }
+    }
+
+    /// The Settings tab while the running session signed in with other settings.
+    func testSettingsPendingSignIn() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(
+          scenario: "pending-sign-in", appearance: appearance, window: "settings")
+        defer { app.terminate() }
+
+        let window = try onlyWindow(of: app)
+        try selectTab("Settings", showing: Self.signInChangeNote, in: window)
+        capture(window, as: "settings-general-pending-sign-in", in: appearance)
+      }
+    }
+
+    /// The Developer tab, which only an unlocked app shows, photographed in light only.
+    func testDeveloperSettings() throws {
+      let app = launchApp(
+        scenario: "connected", appearance: .light, window: "settings",
+        unlockingDeveloperSettings: true)
+      defer { app.terminate() }
+
+      let window = try onlyWindow(of: app)
+      try selectTab("Developer", showing: "Reset connlib", in: window)
+      capture(window, as: "settings-developer", in: .light)
+    }
+
+    /// The About panel the menu's "About Firezone" opens, which names the commit the
+    /// app was built from.
+    func testAboutPanel() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(scenario: "welcome", appearance: appearance, window: "about")
+        defer { app.terminate() }
+
+        capture(try aboutPanel(of: app), as: "about", in: appearance)
       }
     }
 
@@ -173,7 +241,8 @@
     }
 
     private func launchApp(
-      scenario: String, appearance: Appearance, window: String
+      scenario: String, appearance: Appearance, window: String,
+      unlockingDeveloperSettings: Bool = false
     ) -> XCUIApplication {
       let app = XCUIApplication()
       app.launchArguments = [
@@ -181,7 +250,17 @@
         "--mock-appearance", appearance.rawValue,
         "--mock-window", window,
       ]
+      if unlockingDeveloperSettings {
+        // The argument domain holds the unlock for this launch only, where a written
+        // default would put the tab on every screen photographed after it.
+        app.launchArguments += ["-isDeveloperSettingsUnlocked", "YES"]
+      }
       app.launch()
+
+      // The app opens Settings itself, which a menu bar app cannot always rely on.
+      if window == "settings", !app.windows.firstMatch.waitForExistence(timeout: 10) {
+        app.typeKey(",", modifierFlags: .command)
+      }
 
       return app
     }
@@ -329,6 +408,23 @@
       return window
     }
 
+    /// The About panel is a panel rather than a window, which XCUITest may report as
+    /// a dialog.
+    private func aboutPanel(of app: XCUIApplication) throws -> XCUIElement {
+      let candidates = [app.windows.firstMatch, app.dialogs.firstMatch]
+      let deadline = Date().addingTimeInterval(30)
+
+      while Date() < deadline {
+        if let panel = candidates.first(where: { $0.exists }) { return panel }
+
+        Thread.sleep(forTimeInterval: 0.5)
+      }
+
+      print("No About panel appeared; the app presents:\n\(app.debugDescription)")
+
+      throw AppScreenshotError.windowDidNotAppear
+    }
+
     /// Opens the tab named `label` and waits for `anchor`, which only its own
     /// content carries.
     ///
@@ -342,9 +438,10 @@
       _ label: String, showing anchor: String, in window: XCUIElement
     ) throws {
       let candidates = [
+        window.toolbars.buttons[label],
+        window.toolbarButtons[label],
         window.tabs[label],
         window.tabGroups.buttons[label],
-        window.toolbars.buttons[label],
         window.radioButtons[label],
         window.buttons[label],
       ]

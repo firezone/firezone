@@ -5,7 +5,7 @@ use ingot::ip::{IpProtocol, Ipv4};
 use ingot::tcp::{Tcp, TcpFlags};
 use ingot::types::{Emit, HeaderLen as _};
 use ingot::udp::Udp;
-use ip_packet::{IpPacket, IpPacketBuf, checksum};
+use ip_packet::{IpPacket, checksum};
 
 use super::*;
 
@@ -174,8 +174,8 @@ fn ipv4_packet(id: u16, protocol: IpProtocol, l4_header: impl Emit, payload: &[u
     let mut bytes = (ipv4, l4_header).to_vec();
     bytes.extend_from_slice(payload);
 
-    let mut buf = IpPacketBuf::new();
-    buf.buf()[..bytes.len()].copy_from_slice(&bytes);
+    let mut buf = ip_packet::packet_buffer();
+    buf[..bytes.len()].copy_from_slice(&bytes);
     let mut packet = IpPacket::new(buf, bytes.len()).unwrap();
     packet.compute_checksums();
 

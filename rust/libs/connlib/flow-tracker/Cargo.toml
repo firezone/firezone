@@ -6,7 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 base64 = { workspace = true, features = ["std"] }
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 fast-random-state = { workspace = true }

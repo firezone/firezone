@@ -12,6 +12,9 @@ defmodule Portal.OpsTest do
   import Portal.ResourceFixtures
   import Portal.TokenFixtures
   import Portal.ObanJobFixtures
+  import Portal.SlugRegistryHelpers
+  import ExUnit.CaptureLog
+  import Plug.Conn
 
   alias Portal.Mocks.Stripe
   alias Portal.Workers.DeleteAccount
@@ -178,6 +181,133 @@ defmodule Portal.OpsTest do
     end
   end
 
+  describe "sync_stripe_customers/0" do
+    import ExUnit.CaptureIO
+
+    test "does nothing when billing is disabled" do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+
+      output = capture_io(fn -> assert {:error, :billing_disabled} = sync_stripe_customers() end)
+
+      assert output =~ "Billing is disabled"
+    end
+
+    test "aborts without confirmation" do
+      account = account_fixture()
+
+      output = capture_io("n\n", fn -> assert :aborted = sync_stripe_customers() end)
+
+      assert output =~ "Aborted."
+      assert jobs_for_worker_and_arg("Portal.Workers.SyncStripeCustomer", "account_id", account.id) == []
+    end
+
+    test "queues a sync for every account with a Stripe customer" do
+      account = account_fixture(metadata: %{stripe: %{customer_id: "cus_ops_sync"}})
+      no_customer = account_fixture()
+
+      output = capture_io("y\n", fn -> assert {:ok, 1} = sync_stripe_customers() end)
+
+      assert output =~ "Queued 1 Stripe sync job(s)."
+      assert [_job] = jobs_for_worker_and_arg("Portal.Workers.SyncStripeCustomer", "account_id", account.id)
+      assert jobs_for_worker_and_arg("Portal.Workers.SyncStripeCustomer", "account_id", no_customer.id) == []
+    end
+  end
+
+  describe "set_account_slug/2" do
+    test "changes the slug and keeps the old one" do
+      account = account_fixture()
+      old_slug = account.slug
+
+      assert {:ok, %{slug: "new_slug"}} = set_account_slug(account.id, " New_Slug ")
+
+      slugs = Portal.Repo.all_by(Portal.AccountSlug, account_id: account.id) |> Enum.map(& &1.slug)
+      assert Enum.sort(slugs) == Enum.sort([old_slug, "new_slug"])
+    end
+
+    test "rejects a slug that does not match the format" do
+      account = account_fixture()
+
+      assert {:error, changeset} = set_account_slug(account.id, "new-slug")
+      assert %{slug: ["may only contain lowercase letters, numbers, and underscores"]} = errors_on(changeset)
+    end
+  end
+
+  describe "backfill_slug_registry/0" do
+    import ExUnit.CaptureIO
+
+    test "does nothing with the local registry" do
+      account_fixture()
+
+      output = capture_io(fn -> assert {:error, :no_registry} = backfill_slug_registry() end)
+
+      assert output =~ "SLUG_REGISTRY_TABLE_URL is not set"
+    end
+
+    test "aborts without confirmation" do
+      account_fixture(slug: "keep_local")
+      use_azure_registry(:us)
+      test_pid = self()
+
+      stub_registry(fn conn ->
+        send(test_pid, :registry_called)
+        send_resp(conn, 204, "")
+      end)
+
+      output = capture_io("n\n", fn -> assert :aborted = backfill_slug_registry() end)
+
+      assert output =~ "About to claim 1 slug(s) for region us"
+      assert output =~ "Aborted."
+      refute_received :registry_called
+    end
+
+    test "claims every local slug in the registry" do
+      account = account_fixture(slug: "backfill_me")
+      update_account(account, slug: "backfill_me_too")
+      use_azure_registry(:us)
+      test_pid = self()
+
+      stub_registry(fn
+        %{method: "POST", request_path: "/slugs"} = conn ->
+          send(test_pid, {:claimed, json_body(conn)["RowKey"]})
+          send_resp(conn, 204, "")
+      end)
+
+      output = capture_io("y\n", fn -> assert {:ok, 2} = backfill_slug_registry() end)
+
+      assert output =~ "Claimed 2 slug(s)."
+      assert_received {:claimed, "backfill_me"}
+      assert_received {:claimed, "backfill_me_too"}
+    end
+
+    test "prints a slug that another account holds and goes on" do
+      account = account_fixture(slug: "contested")
+      use_azure_registry(:us)
+
+      stub_registry(fn
+        %{method: "POST"} = conn -> send_resp(conn, 409, "")
+        %{method: "GET"} = conn -> Req.Test.json(conn, entity("contested", Ecto.UUID.generate(), "eu"))
+      end)
+
+      output = capture_io("y\n", fn -> assert {:ok, 0} = backfill_slug_registry() end)
+
+      assert output =~ "contested: another account holds this slug"
+      assert output =~ account.id
+    end
+
+    test "stops when the registry is unavailable" do
+      account_fixture()
+      use_azure_registry(:us)
+      stub_registry(fn conn -> send_resp(conn, 503, "") end)
+
+      output =
+        capture_io("y\n", fn ->
+          capture_log(fn -> assert {:error, :slug_registry_unavailable} = backfill_slug_registry() end)
+        end)
+
+      assert output =~ "The slug registry is unavailable."
+    end
+  end
+
   describe "schedule_missing_account_deletion_jobs/0" do
     test "enqueues a delete job for accounts already pending deletion without a job" do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -222,6 +352,32 @@ defmodule Portal.OpsTest do
 
       assert length(jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)) ==
                1
+    end
+  end
+
+  describe "backfill_relay_throughput_limits/0" do
+    test "sets the plan default on accounts without a limit" do
+      starter = starter_account_fixture()
+      team = team_account_fixture()
+      business = business_account_fixture()
+
+      enterprise =
+        update_account(account_fixture(), metadata: %{stripe: %{product_name: "Enterprise (Annual)"}})
+
+      unknown = account_fixture()
+      limited = update_account(team_account_fixture(), limits: %{relay_throughput_mbps: 100})
+
+      assert {:ok, 4} = backfill_relay_throughput_limits()
+
+      assert fetch_account!(starter.id).limits.relay_throughput_mbps == 5
+      assert fetch_account!(team.id).limits.relay_throughput_mbps == 15
+      assert fetch_account!(business.id).limits.relay_throughput_mbps == 25
+      assert fetch_account!(enterprise.id).limits.relay_throughput_mbps == 50
+      assert fetch_account!(unknown.id).limits.relay_throughput_mbps == nil
+      assert fetch_account!(limited.id).limits.relay_throughput_mbps == 100
+      assert fetch_account!(team.id).limits.monthly_active_users_count == 100
+
+      assert {:ok, 0} = backfill_relay_throughput_limits()
     end
   end
 

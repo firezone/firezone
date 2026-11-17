@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::IpPacket;
 
 /// A in-memory device for [`smoltcp`] that is entirely backed by buffers.
 #[derive(Debug, Default)]
@@ -75,8 +75,8 @@ impl smoltcp::phy::TxToken for SmolTxToken<'_> {
             return f(&mut buf);
         }
 
-        let mut ip_packet_buf = IpPacketBuf::new();
-        let result = f(ip_packet_buf.buf());
+        let mut ip_packet_buf = ip_packet::packet_buffer();
+        let result = f(&mut ip_packet_buf);
 
         // smoltcp is configured to compute checksums but the TCP checksums of the
         // packets it emits through this device are empirically wrong, so we have to

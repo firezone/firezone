@@ -583,7 +583,7 @@ defmodule PortalWeb.GettingStarted do
         <Core.code_block
           id="getting-started-gateway-debian-install"
           class="text-xs rounded"
-        >{SiteComponents.gateway_debian_install_commands() |> String.trim()}</Core.code_block>
+        >{SiteComponents.gateway_debian_install_commands(@gateway_env) |> String.trim()}</Core.code_block>
         <p class="pt-1 text-xs text-body">2. Connect it, and paste this token when asked:</p>
         <Core.code_block
           id="getting-started-gateway-debian-connect"
@@ -643,7 +643,13 @@ defmodule PortalWeb.GettingStarted do
   # Installing a Client is a download, an installer and a sign in, so the steps for
   # the chosen platform are shown right here rather than linked to.
   defp client_install(assigns) do
-    assigns = assign(assigns, tabs: @client_tabs, client: client(assigns.client_tab))
+    assigns =
+      assign(assigns,
+        tabs: @client_tabs,
+        client: client(assigns.client_tab),
+        auth_url: PortalWeb.DeploymentURLs.auth_url(),
+        api_url: PortalWeb.DeploymentURLs.api_url()
+      )
 
     ~H"""
     <div class="mb-4">
@@ -661,6 +667,16 @@ defmodule PortalWeb.GettingStarted do
           </span>
         </li>
         <li>{@client.install}</li>
+        <li :if={@auth_url || @api_url} id="getting-started-client-urls">
+          In the Advanced settings, set
+          <span :if={@auth_url}>
+            Auth Base URL to <code class="font-mono text-heading">{@auth_url}</code>
+          </span>
+          <span :if={@auth_url && @api_url}>and</span>
+          <span :if={@api_url}>
+            API URL to <code class="font-mono text-heading">{@api_url}</code>
+          </span>
+        </li>
         <li>
           {@client.open} and sign in to <span class="font-medium text-heading">{@account.slug}</span>.
         </li>
@@ -1300,6 +1316,7 @@ defmodule PortalWeb.GettingStarted do
     alias Portal.Resource
     alias Portal.Safe
     alias Portal.Site
+    alias Portal.SiteDevice
 
     @default_site_name "Default Site"
 
@@ -1319,7 +1336,17 @@ defmodule PortalWeb.GettingStarted do
       devices =
         from(d in Device, as: :devices)
         |> where([devices: d], d.type == :client)
-        |> where([devices: d], d.actor_id == ^subject.actor.id)
+        |> where(
+          [devices: d],
+          exists(
+            from(da in Portal.DeviceActor,
+              where:
+                da.account_id == parent_as(:devices).account_id and
+                  da.device_id == parent_as(:devices).id and
+                  da.actor_id == ^subject.actor.id
+            )
+          )
+        )
         |> where([devices: d], d.id in ^ids)
         |> Safe.scoped(subject)
         |> Safe.all()
@@ -1498,7 +1525,11 @@ defmodule PortalWeb.GettingStarted do
     defp pending_gateway(gateway_id, site_id, subject) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.id == ^gateway_id and d.type == :gateway)
-      |> where([devices: d], d.site_id == ^site_id and is_nil(d.firezone_id))
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([devices: d, site_device: sd], sd.site_id == ^site_id and is_nil(d.firezone_id))
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do

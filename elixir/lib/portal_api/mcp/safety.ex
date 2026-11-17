@@ -17,7 +17,7 @@ defmodule PortalAPI.MCP.Safety do
   def warning(method, path) do
     case category(method, path) do
       :identity_management ->
-        "Security-sensitive: can change administrator access, sign-in settings, or device trust."
+        "Security-sensitive: can change user access, sign-in settings, or device trust."
 
       :credential_issuance ->
         "Security-sensitive: returns a live credential to the MCP client. " <>
@@ -36,6 +36,7 @@ defmodule PortalAPI.MCP.Safety do
     do: :identity_management
 
   defp category(:post, "/actors/{actor_id}/client_tokens"), do: :credential_issuance
+  defp category(:post, "/sites/{site_id}/gateways"), do: :credential_issuance
   defp category(:post, "/sites/{site_id}/gateways/{gateway_id}/token"), do: :credential_issuance
   defp category(:post, "/sites/{site_id}/gateways/{gateway_id}/token/rotate"), do: :credential_issuance
   defp category(_method, _path), do: nil

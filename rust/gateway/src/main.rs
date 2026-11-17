@@ -12,7 +12,6 @@ use bin_shared::{
 };
 use clap::Parser;
 
-use hickory_resolver::config::ResolveHosts;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
@@ -23,7 +22,7 @@ use tunnel::GatewayTunnel;
 use clock::Clock;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{ExposeSecret, SecretString};
-use std::{collections::BTreeSet, fmt};
+use std::{collections::BTreeSet, fmt, net::IpAddr};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
 use tracing_subscriber::layer;
@@ -43,6 +42,11 @@ const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); 
 /// Holds Bearer tokens, so it lives outside the log directory and is written
 /// with 0700/0600 permissions.
 const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
+
+/// The UDP port Gateways listen on. It is fixed so that admins can forward it.
+const LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
+const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
+const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
 
 /// Exit code that tells systemd this failure needs an operator, so restarting cannot fix it.
 ///
@@ -78,10 +82,14 @@ fn main() -> ExitCode {
 
     telemetry::configure(Arc::new(tcp_socket_factory));
 
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create tokio runtime");
+    let runtime = match async_runtime::current_thread() {
+        Ok(runtime) => runtime,
+        #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     match runtime.block_on(try_main(cli)) {
         Ok(()) => {
@@ -130,6 +138,27 @@ fn has_necessary_permissions() -> bool {
     is_root || has_net_admin
 }
 
+/// Raises the soft limit of open file descriptors to the hard limit.
+///
+/// Container runtimes often start processes with a soft limit of 1024, which is too low for a Gateway with many Clients.
+#[cfg(target_os = "linux")]
+fn raise_file_descriptor_limit() {
+    use nix::sys::resource::{Resource, getrlimit, setrlimit};
+
+    let result = getrlimit(Resource::RLIMIT_NOFILE).and_then(|(soft, hard)| {
+        setrlimit(Resource::RLIMIT_NOFILE, hard, hard)?;
+
+        Ok((soft, hard))
+    });
+
+    match result {
+        Ok((soft, hard)) => {
+            tracing::info!(from = %soft, to = %hard, "Raised file descriptor limit")
+        }
+        Err(e) => tracing::info!("Failed to raise file descriptor limit: {e}"),
+    }
+}
+
 async fn try_main(cli: Cli) -> Result<()> {
     let flow_logs_dir = PathBuf::from(FLOW_LOGS_DIR);
 
@@ -151,6 +180,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
+        git_sha = git_sha::git_sha(),
         system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         "`gateway` started logging"
     );
@@ -163,19 +193,12 @@ async fn try_main(cli: Cli) -> Result<()> {
         );
     }
 
-    if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
-        let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
-        let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
-
-        match tokio::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()).await {
-            Ok(()) => tracing::info!("Set `core.rmem_max` to {recv_buf_size}",),
-            Err(e) => tracing::info!("Failed to increase `core.rmem_max`: {e}"),
-        };
-        match tokio::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()).await {
-            Ok(()) => tracing::info!("Set `core.wmem_max` to {send_buf_size}",),
-            Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
-        };
+    if cli.no_inc_buf {
+        tracing::info!("`FIREZONE_NO_INC_BUF` is unused");
     }
+
+    #[cfg(target_os = "linux")]
+    raise_file_descriptor_limit();
 
     let firezone_id = get_firezone_id(cli.firezone_id.clone())
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
@@ -183,7 +206,6 @@ async fn try_main(cli: Cli) -> Result<()> {
     let token = match cli.token.clone() {
         Some(token) => token,
         None => read_systemd_credential("FIREZONE_TOKEN")
-            .await
             .context("Failed to read `FIREZONE_TOKEN` systemd credential")?,
     };
 
@@ -249,14 +271,6 @@ async fn try_main(cli: Cli) -> Result<()> {
         .map(|ip| ip.into())
         .collect::<BTreeSet<_>>();
 
-    let mut clock = Clock::new();
-    let mut tunnel = GatewayTunnel::new(
-        Arc::new(tcp_socket_factory),
-        Arc::new(UdpSocketFactory::default()),
-        nameservers,
-        clock.now(),
-    );
-
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
 
     let max_partition_time = cli
@@ -279,40 +293,50 @@ async fn try_main(cli: Cli) -> Result<()> {
         Arc::new(tcp_socket_factory),
     );
 
-    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)
-        .context("Failed to create TUN device manager")?;
-    let tun = tun_device_manager
-        .make_tun()
-        .context("Failed to create TUN device")?;
+    let additional_host_candidates = cli.additional_host_candidates;
+    let local_flow_logs = cli.flow_logs;
 
-    tunnel.set_tun(tun);
+    let eventloop = async_runtime::spawn_thread("fz-eventloop", move || async move {
+        let mut clock = Clock::new();
+        let mut tunnel = GatewayTunnel::new(
+            Arc::new(tcp_socket_factory),
+            Arc::new(UdpSocketFactory::default()),
+            LISTEN_PORT,
+            nameservers,
+            clock.now(),
+        )
+        .context("Failed to create tunnel")?;
+        tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
+
+        let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)
+            .context("Failed to create TUN device manager")?;
+        let tun = tun_device_manager
+            .make_tun()
+            .context("Failed to create TUN device")?;
+
+        tunnel.set_tun(tun);
+
+        Eventloop::new(
+            clock,
+            tunnel,
+            portal,
+            tun_device_manager,
+            flow_logs_dir,
+            local_flow_logs,
+            account_slug,
+        )?
+        .run()
+        .await
+        .context(EventloopFailed)
+    })
+    .context("Failed to spawn event-loop thread")?;
 
     tokio::spawn(http_health_check::serve(
         cli.health_check.health_check_addr,
         || true,
     ));
 
-    let mut resolver_builder = hickory_resolver::TokioResolver::builder_tokio()?;
-    resolver_builder.options_mut().cache_size = 512;
-    resolver_builder.options_mut().use_hosts_file = ResolveHosts::Always;
-
-    let resolver = resolver_builder
-        .build()
-        .context("Failed to build DNS resolver")?;
-
-    Eventloop::new(
-        clock,
-        tunnel,
-        portal,
-        tun_device_manager,
-        resolver,
-        flow_logs_dir,
-        cli.flow_logs,
-        account_slug,
-    )?
-    .run()
-    .await
-    .context(EventloopFailed)?;
+    eventloop.await??;
 
     Ok(())
 }
@@ -351,12 +375,12 @@ fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     Ok(device_id.id)
 }
 
-async fn read_systemd_credential(name: &str) -> Result<SecretString> {
+fn read_systemd_credential(name: &str) -> Result<SecretString> {
     let Ok(creds_dir) = std::env::var("CREDENTIALS_DIRECTORY") else {
         bail!("`CREDENTIALS_DIRECTORY` not provided")
     };
     let path = PathBuf::from(creds_dir).join(name);
-    let content = tokio::fs::read_to_string(&path).await?;
+    let content = std::fs::read_to_string(&path)?;
 
     // Immediately wrap in `SecretString` to ensure it will be zeroized.
     let untrimmed_token = SecretString::from(content);
@@ -429,8 +453,22 @@ struct Cli {
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
 
-    /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
-    #[arg(long, env = "FIREZONE_NO_INC_BUF", default_value_t = false)]
+    /// Advertise a local IP as an additional host candidate, e.g. to use a direct link to a Client.
+    ///
+    /// The IP must be assigned to a local interface.
+    ///
+    /// This configuration option is private API and has no stability guarantees.
+    /// It may be removed / changed anytime.
+    #[arg(
+        long = "additional-host-candidate",
+        env = "FIREZONE_ADDITIONAL_HOST_CANDIDATES",
+        value_delimiter = ',',
+        hide = true
+    )]
+    additional_host_candidates: Vec<IpAddr>,
+
+    /// Deprecated: unused.
+    #[arg(long, env = "FIREZONE_NO_INC_BUF", hide = true)]
     no_inc_buf: bool,
 
     /// Maximum length of time to retry connecting to the portal if we're having internet issues or
@@ -464,10 +502,6 @@ enum MetricsExporter {
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
-    }
-
-    fn is_inc_buf_allowed(&self) -> bool {
-        !self.no_inc_buf
     }
 }
 
@@ -514,8 +548,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn get_firezone_token_from_systemd_credential_with_credentials_directory() {
+    #[test]
+    fn get_firezone_token_from_systemd_credential_with_credentials_directory() {
         // Create a temporary directory to simulate CREDENTIALS_DIRECTORY
         let temp_dir = TempDir::new().unwrap();
         let cred_path = temp_dir.path().join("FIREZONE_TOKEN");
@@ -528,7 +562,7 @@ mod tests {
             std::env::set_var("CREDENTIALS_DIRECTORY", temp_dir.path());
         }
 
-        let result = read_systemd_credential("FIREZONE_TOKEN").await.unwrap();
+        let result = read_systemd_credential("FIREZONE_TOKEN").unwrap();
         assert_eq!(result.expose_secret(), "systemd-token");
 
         // Clean up

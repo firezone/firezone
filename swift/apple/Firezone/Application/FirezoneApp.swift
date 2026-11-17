@@ -68,11 +68,7 @@ struct FirezoneApp: App {
         .handlesExternalEvents(
           matching: [AppView.WindowDefinition.main.externalEventMatchString]
         )
-      // macOS doesn't have Sheets, need to use another Window group to show settings
-      settingsWindowScene(store: store)
-        .handlesExternalEvents(
-          matching: [AppView.WindowDefinition.settings.externalEventMatchString]
-        )
+      settingsScene(store: store)
 
       MenuBarExtra {
         MenuBarView()
@@ -287,11 +283,8 @@ extension DeviceTrustValidationError {
   }
 
   @MainActor
-  func settingsWindowScene(store: Store) -> some Scene {
-    WindowGroup(
-      "Settings",
-      id: AppView.WindowDefinition.settings.identifier
-    ) {
+  func settingsScene(store: Store) -> some Scene {
+    Settings {
       SettingsView(store: store)
     }
   }
@@ -312,8 +305,30 @@ extension DeviceTrustValidationError {
     @StateObject var store = uiTestStore()
 
     var body: some Scene {
-      settingsWindowScene(store: store)
-      windowOpenerExtra(id: AppView.WindowDefinition.settings.identifier)
+      settingsScene(store: store)
+      MenuBarExtra {
+        EmptyView()
+      } label: {
+        SettingsOpener { openSettings in
+          Text("Firezone UI Test")
+            .onAppear { openSettings() }
+        }
+      }
+    }
+  }
+
+  struct UITestAboutApp: App {
+    init() {
+      NSApplication.applyMockPresentation()
+    }
+
+    var body: some Scene {
+      MenuBarExtra {
+        EmptyView()
+      } label: {
+        Text("Firezone UI Test")
+          .onAppear { NSApp.showAboutPanel() }
+      }
     }
   }
 

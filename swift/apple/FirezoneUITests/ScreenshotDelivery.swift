@@ -113,7 +113,7 @@ extension XCTestCase {
 
   /// The element as it looks once its captures agree.
   ///
-  /// Freshly presented content is often still moving: the diagnostic logs tab
+  /// Freshly presented content is often still moving: the Diagnostics tab
   /// spins while it adds up the log directory, and windows fade in. An image that
   /// catches a frame of that differs on every run, so a screen that will not hold
   /// still fails the test rather than being committed mid-motion.

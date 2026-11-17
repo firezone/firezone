@@ -54,7 +54,10 @@ struct AuthClient {
       .appendingQueryItem(URLQueryItem(name: "as", value: "gui-client"))
   }
 
-  func token(from url: URL?) throws -> String {
+  @MainActor
+  func completeSignIn(
+    from url: URL?, configuration: Configuration, signInSettings: SignInSettings
+  ) throws -> (token: String, signInSettings: SignInSettings) {
     guard let url = url,
       let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
       let returnedState = urlComponents.sanitizedQueryParam("state"),
@@ -64,7 +67,25 @@ struct AuthClient {
       throw AuthClientError.invalidCallbackURL
     }
 
-    return nonce + fragment
+    let controlPlane: ControlPlane?
+    switch urlComponents.sanitizedQueryParam("region") {
+    case "us": controlPlane = .cloudUs
+    case "eu": controlPlane = .cloudEu
+    default: controlPlane = nil
+    }
+    guard let urls = controlPlane?.urls else { return (nonce + fragment, signInSettings) }
+
+    if !configuration.isAuthURLForced { configuration.authURL = urls.authURL }
+    if !configuration.isApiURLForced { configuration.apiURL = urls.apiURL }
+
+    return (
+      nonce + fragment,
+      SignInSettings(
+        accountSlug: signInSettings.accountSlug,
+        authURL: configuration.authURL,
+        apiURL: configuration.apiURL
+      )
+    )
   }
 
   private static func createRandomHexString(byteCount: Int) throws -> String {

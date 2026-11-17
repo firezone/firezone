@@ -9,10 +9,12 @@ defmodule PortalAPI.Schemas.Gateway do
              for: Portal.Device,
              internal: [
                :account_id,
+               :actor,
                :actor_id,
                :attested?,
+               :attested_until,
                :posture,
-               :client_token_id,
+               :token_id,
                :device_serial,
                :device_uuid,
                :firebase_installation_id,
@@ -32,7 +34,6 @@ defmodule PortalAPI.Schemas.Gateway do
                :last_attested_mdm_device_id,
                :online?,
                :provisioned_token,
-               :site_id,
                :type,
                :updated_at,
                :verified_at
@@ -92,7 +93,7 @@ defmodule PortalAPI.Schemas.Gateway do
             "When the token identified by `gateway_token_id` was rotated out. Null in " <>
               "the normal case. When set, a replacement token has been minted and this " <>
               "one stays valid only until the Gateway connects with the replacement or " <>
-              "#{Portal.GatewayToken.rotation_grace_hours()} hours elapse from this " <>
+              "#{Portal.DeviceToken.rotation_grace_hours()} hours elapse from this " <>
               "timestamp, whichever comes first - so a non-null value means a rotation " <>
               "is pending and the Gateway has not picked it up yet."
         },
@@ -167,7 +168,11 @@ defmodule PortalAPI.Schemas.Gateway do
     })
 
     def map(%Portal.Device{provisioned_token: nil} = device, _map) do
-      %{online: device.online?, rotated_at: device.gateway_token_rotated_at}
+      %{
+        online: device.online?,
+        gateway_token_id: device.token_id,
+        rotated_at: device.gateway_token_rotated_at
+      }
     end
 
     def map(%Portal.Device{provisioned_token: token} = device, map) when is_binary(token) do
@@ -213,7 +218,15 @@ defmodule PortalAPI.Schemas.Gateway do
       description: "Request body for provisioning a Gateway",
       type: :object,
       properties: %{
-        gateway: Gateway.CreateSchema
+        gateway: Gateway.CreateSchema,
+        issue_token: %Schema{
+          type: :boolean,
+          default: true,
+          description: """
+          Whether to mint the Gateway's token and return it in the response. \
+          Requires the `gateway_tokens:write` scope when true.
+          """
+        }
       }
     })
   end
@@ -227,7 +240,8 @@ defmodule PortalAPI.Schemas.Gateway do
       title: "GatewayProvisionResponse",
       description: """
       Response schema for a newly provisioned Gateway. Includes the \
-      one-time token secret - it is not shown again.
+      one-time token secret - it is not shown again - unless the request \
+      set `issue_token` to false.
       """,
       type: :object,
       properties: %{
@@ -237,9 +251,11 @@ defmodule PortalAPI.Schemas.Gateway do
             %Schema{
               type: :object,
               properties: %{
-                token: %Schema{type: :string, description: "One-time Gateway token secret"}
-              },
-              required: [:token]
+                token: %Schema{
+                  type: :string,
+                  description: "One-time Gateway token secret. Omitted when `issue_token` is false."
+                }
+              }
             }
           ]
         }

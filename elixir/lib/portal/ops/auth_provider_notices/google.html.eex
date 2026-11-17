@@ -1,0 +1,7 @@
+<h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">Improve Google sign-in security</h1>
+<p style="margin: 0; line-height: 24px">Hi,</p>
+<p style="margin: 16px 0 0; line-height: 24px">You can now restrict Google sign-ins for <strong><%= @notice.name %></strong> to verified Workspace domains.</p>
+<p style="margin: 16px 0 0; line-height: 24px">To enable this security improvement, go to <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none">Settings &rarr; Authentication</a>, edit your Google provider, and click <strong>Verify Now</strong> using a Workspace administrator account. Review the domains and save.</p>
+<p style="margin: 16px 0 0; line-height: 24px">If your users belong to multiple Workspace organizations, use <strong>Verify another domain</strong> to include each organization before saving.</p>
+<p style="margin: 16px 0 0; line-height: 24px">This is optional. Your existing sign-in setup keeps working unchanged.</p>
+<p style="margin: 16px 0 0; line-height: 24px">Questions? Reply to this email.</p>

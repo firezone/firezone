@@ -11,26 +11,38 @@ defmodule PortalWeb.UserpassController do
 
   require Logger
 
+  # Password attempts are throttled per account and submitted email. Keying on
+  # the submitted email rather than the actor throttles unknown emails exactly
+  # like known ones, so the throttle itself does not reveal which emails exist.
+  # The bucket refills instead of locking, so an attacker can only delay a
+  # legitimate user, not lock them out. Every attempt is charged. Hammer
+  # refills whole tokens per second; charging 60 tokens per attempt and
+  # refilling 1/s expresses one attempt per minute after a burst of 10.
+  @rate_limit_cost 60
+  @rate_limit_refill_rate 1
+  @rate_limit_capacity 10 * @rate_limit_cost
+
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(
         conn,
         %{
           "account_id_or_slug" => account_id_or_slug,
           "auth_provider_id" => auth_provider_id,
-          "userpass" => userpass
+          "userpass" => %{"idp_id" => email, "secret" => password}
         } = params
-      ) do
-    email = userpass["idp_id"]
-    password = userpass["secret"]
+      )
+      when is_binary(email) and is_binary(password) do
     context_type = context_type(params)
 
-    with %Portal.Account{} = account <- Database.get_account_by_id_or_slug(account_id_or_slug),
+    with %Portal.Account{} = account <- PortalWeb.Accounts.get_by_id_or_slug(account_id_or_slug),
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
-         %Portal.Actor{} = actor <- fetch_actor(account, email),
+         :ok <- check_rate_limit(account, email),
+         # Nothing that depends on whether the email matches an actor may run
+         # before the password is verified, or the response becomes an oracle.
+         {:ok, actor} <- verify_password(fetch_actor(account, email), password),
          false <- client_seat_restricted?(account, actor, context_type),
          :ok <- check_admin(actor, context_type),
-         {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
          :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, actor, provider, params) do
       conn = PortalWeb.Cookie.LastUsedProvider.put(conn, provider.id)
@@ -41,23 +53,41 @@ defmodule PortalWeb.UserpassController do
   end
 
   def sign_in(conn, params) do
-    Logger.warning("Invalid request parameters", params: params)
+    Logger.warning("Invalid request parameters", params: Map.drop(params, ["userpass"]))
     handle_error(conn, :invalid_params, params)
   end
 
-  defp verify_password(actor, password, _conn) do
-    password_hash = actor.password_hash
-
-    cond do
-      is_nil(password_hash) ->
-        {:error, :invalid_secret}
-
-      not Portal.Crypto.equal?(:argon2, password, password_hash) ->
-        {:error, :invalid_secret}
-
-      true ->
-        {:ok, actor, nil}
+  defp verify_password(%Portal.Actor{password_hash: password_hash} = actor, password) do
+    if Portal.Crypto.equal?(:argon2, password, password_hash) do
+      {:ok, actor}
+    else
+      {:error, :invalid_secret}
     end
+  end
+
+  defp verify_password(nil, _password) do
+    Portal.Crypto.equal?(:argon2, nil, nil)
+    {:error, :invalid_secret}
+  end
+
+  defp check_rate_limit(%Portal.Account{id: account_id}, email) do
+    case PortalWeb.RateLimit.hit(
+           rate_limit_key(account_id, email),
+           @rate_limit_refill_rate,
+           @rate_limit_capacity,
+           @rate_limit_cost
+         ) do
+      {:allow, _remaining} -> :ok
+      {:deny, retry_after_ms} -> {:error, {:rate_limit, retry_after_ms}}
+    end
+  end
+
+  defp rate_limit_key(account_id, email) do
+    digest =
+      :crypto.hash(:sha256, email |> String.trim() |> String.downcase())
+      |> Base.encode16(case: :lower)
+
+    "userpass_sign_in:#{account_id}:#{digest}"
   end
 
   defp check_admin(%Portal.Actor{type: :account_admin_user}, _context_type), do: :ok
@@ -124,9 +154,7 @@ defmodule PortalWeb.UserpassController do
 
       :gui_client ->
         attrs = %{
-          type: :client,
           secret_nonce: params["nonce"],
-          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
@@ -137,9 +165,7 @@ defmodule PortalWeb.UserpassController do
 
       :headless_client ->
         attrs = %{
-          type: :client,
           secret_nonce: "",
-          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
@@ -209,6 +235,12 @@ defmodule PortalWeb.UserpassController do
     redirect_for_error(conn, error, path)
   end
 
+  defp handle_error(conn, {:error, {:rate_limit, _retry_after_ms}}, _params) do
+    error = "Too many sign-in attempts. Please try again in a minute."
+    path = conn.request_path
+    redirect_for_error(conn, error, path)
+  end
+
   defp handle_error(conn, {:error, :not_admin}, params) do
     error = "This action requires admin privileges."
     path = ~p"/#{params["account_id_or_slug"]}"
@@ -259,17 +291,7 @@ defmodule PortalWeb.UserpassController do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.Account
     alias Portal.Userpass
-
-    def get_account_by_id_or_slug(id_or_slug) do
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
-
-      query |> Safe.unscoped() |> Safe.one()
-    end
 
     def get_provider(account, id) do
       from(p in Userpass.AuthProvider,

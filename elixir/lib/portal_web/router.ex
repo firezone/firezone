@@ -5,6 +5,7 @@ defmodule PortalWeb.Router do
     plug :accepts, ["html", "xml"]
     plug :fetch_session
     plug PortalWeb.WebsiteAttribution
+    plug PortalWeb.Cookie.SignUpBrowser
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, html: {PortalWeb.Layouts, :root}
@@ -74,21 +75,26 @@ defmodule PortalWeb.Router do
     pipe_through :public
 
     live_session :public_sign_up,
+      session: {PortalWeb.Cookie.SignUpBrowser, :live_session, []},
       on_mount: [
         PortalWeb.LiveHooks.PutDynamicRepo,
-        PortalWeb.LiveHooks.AllowEctoSandbox
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.SetCurrentUri
       ] do
       live "/sign_up", SignUp, :choose
       live "/sign_up/email", SignUp, :fill_form
       live "/sign_up/google", SignUp, :google
       live "/sign_up/github", SignUp, :github
       live "/verify_sign_up", SignUp, :verify
+      live "/sign_up/pending", SignUp, :pending
       live "/find_account", FindAccount
       # Maintained from the LaunchHN - show SignUp form
       live "/try", SignUp, :choose
     end
 
     post "/sign_up/:auth_provider_type", OIDCController, :sign_up
+    post "/verify_sign_up", SignUpController, :verify
+    post "/sign_up/:provider/complete", SignUpController, :complete_identity
   end
 
   # Machine to machine, so no CSRF protection and no session: the client
@@ -167,7 +173,7 @@ defmodule PortalWeb.Router do
     post "/sign_in/userpass/:auth_provider_id", UserpassController, :sign_in
 
     live_session :redirect_if_user_is_authenticated,
-      session: {PortalWeb.Cookie.LastUsedProvider, :fetch_state, []},
+      session: {PortalWeb.SignIn, :live_session, []},
       on_mount: [
         PortalWeb.LiveHooks.PutDynamicRepo,
         PortalWeb.LiveHooks.AllowEctoSandbox,
@@ -276,6 +282,8 @@ defmodule PortalWeb.Router do
       PortalWeb.Plugs.EnsureAuthenticated,
       PortalWeb.Plugs.EnsureAdmin
     ]
+
+    get "/avatars/:id", AvatarController, :show
 
     live_session :ensure_authenticated,
       on_mount: [

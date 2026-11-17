@@ -24,10 +24,23 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
           description: "Account ID"
         },
         name: %Schema{example: "Entra", type: :string, description: "Provider name"},
-        issuer: %Schema{
-          example: "https://login.microsoftonline.com/tenant-id/v2.0",
+        tenant_ids: %Schema{
+          example: ["12345678-1234-1234-1234-123456789012"],
+          type: :array,
+          items: %Schema{type: :string, format: :uuid},
+          minItems: 1,
+          uniqueItems: true,
+          readOnly: true,
+          description: "Verified Entra tenant IDs allowed to authenticate through this provider"
+        },
+        sign_in_tenant_id: %Schema{
+          example: "12345678-1234-1234-1234-123456789012",
           type: :string,
-          description: "Issuer"
+          format: :uuid,
+          nullable: true,
+          readOnly: true,
+          description:
+            "Verified tenant ID whose sign-in endpoint users authenticate through, so that B2B guest users of that tenant can sign in. Null when users authenticate through their home tenant."
         },
         context: %Schema{
           example: "clients_and_portal",
@@ -87,9 +100,10 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
         :inserted_at,
         :is_default,
         :is_disabled,
-        :issuer,
+        :tenant_ids,
         :name,
         :portal_session_lifetime_secs,
+        :sign_in_tenant_id,
         :updated_at
       ]
     })

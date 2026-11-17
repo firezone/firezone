@@ -36,7 +36,11 @@ defmodule Portal.Changes.Hooks.Policies do
   end
 
   # Group was reconnected - process as insert
-  def on_update(lsn, %{"group_id" => nil} = _old_data, %{"group_id" => group_id} = data)
+  def on_update(
+        lsn,
+        %{"group_id" => nil} = _old_data,
+        %{"group_id" => group_id, "is_disabled" => false} = data
+      )
       when not is_nil(group_id) do
     on_insert(lsn, data)
   end
@@ -59,6 +63,7 @@ defmodule Portal.Changes.Hooks.Policies do
     # freshly minted tokens.
     if old_policy.conditions != policy.conditions or
          old_policy.postures != policy.postures or
+         old_policy.require_attestation != policy.require_attestation or
          old_policy.group_id != policy.group_id or
          old_policy.resource_id != policy.resource_id or
          old_policy.flow_log_uploads_enabled != policy.flow_log_uploads_enabled do

@@ -73,8 +73,8 @@ fn write_wix_package_identity(package_family_name: &str) -> Result<()> {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").context("OUT_DIR not set")?);
     let profile_dir = out_dir
         .ancestors()
-        .nth(3)
-        .context("OUT_DIR is not under target/<profile>/build/<package>/out")?;
+        .nth(4)
+        .context("OUT_DIR is not under target/<profile>/build/<package>/<hash>/out")?;
     let wix_include = profile_dir.join(WIX_PACKAGE_IDENTITY);
 
     fs::write(

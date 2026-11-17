@@ -284,6 +284,20 @@ defmodule OpenIDConnectTest do
       assert body =~ "redirect_uri=#{URI.encode_www_form(@redirect_uri)}"
     end
 
+    test "returns an error when the token response is larger than 1 MiB" do
+      token_handler = fn conn ->
+        Req.Test.json(conn, %{"access_token" => String.duplicate("A", 1024 * 1024)})
+      end
+
+      {test_name, uri} =
+        start_fixture_with_routes("google", %{}, %{{"POST", "/token"} => token_handler})
+
+      config = %{@config | discovery_document_uri: uri, req_opts: req_test_options(test_name)}
+
+      assert {:error, %Portal.Req.Bounded.BodyTooLargeError{}} =
+               fetch_tokens(config, %{grant_type: "authorization_code", code: "1234"})
+    end
+
     test "allows to override the default params" do
       test_pid = self()
 
@@ -1168,6 +1182,20 @@ defmodule OpenIDConnectTest do
 
       assert_receive {:req, "", headers}
       assert {"authorization", "Bearer #{token}"} in headers
+    end
+
+    test "returns an error when the userinfo response is larger than 1 MiB" do
+      userinfo_handler = fn conn ->
+        Req.Test.json(conn, %{"email" => String.duplicate("A", 1024 * 1024)})
+      end
+
+      {test_name, uri} =
+        start_fixture_with_routes("vault", %{}, %{{"GET", "/userinfo"} => userinfo_handler})
+
+      config = %{@config | discovery_document_uri: uri, req_opts: req_test_options(test_name)}
+
+      assert {:error, %Portal.Req.Bounded.BodyTooLargeError{}} =
+               fetch_userinfo(config, "ACCESS_TOKEN")
     end
 
     test "returns error when userinfo endpoint is not defined by discovery document" do

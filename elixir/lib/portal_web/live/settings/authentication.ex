@@ -44,7 +44,8 @@ defmodule PortalWeb.Settings.Authentication do
     Userpass.AuthProvider => @common_fields,
     Google.AuthProvider => @common_fields ++ ~w[is_verified]a,
     GitHub.AuthProvider => @common_fields ++ ~w[is_verified email_verification_method]a,
-    Entra.AuthProvider => @common_fields ++ ~w[is_verified email_claim]a,
+    Entra.AuthProvider =>
+      (@common_fields -- [:issuer]) ++ ~w[is_verified email_claim sign_in_tenant_id]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
       @common_fields ++
@@ -63,7 +64,10 @@ defmodule PortalWeb.Settings.Authentication do
       :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :portal_sessions)
     end
 
-    {:ok, init_if_connected(socket)}
+    {:ok,
+     socket
+     |> init_if_connected()
+     |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)}
   end
 
   # New Auth Provider
@@ -143,7 +147,7 @@ defmodule PortalWeb.Settings.Authentication do
 
     changeset =
       original_struct
-      |> changeset(attrs, socket)
+      |> changeset(attrs, socket, verification_fields(previous_changeset))
 
     clear_verification? = verification_trigger_fields_changed?(previous_changeset, changeset)
 
@@ -195,8 +199,7 @@ defmodule PortalWeb.Settings.Authentication do
           type == "oidc" and get_field(changeset, :email_verification_method) == :claim
       }
 
-      socket =
-        assign(socket, active_verification: nil, pending_verification: verification)
+      socket = assign(socket, active_verification: nil, pending_verification: verification)
 
       {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
@@ -206,19 +209,57 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
+  def handle_event("remove_verified_organization", %{"organization" => value}, socket)
+      when socket.assigns.type == "entra" do
+    previous = socket.assigns.form.source
+    values = verified_values(previous, "entra")
+
+    if value in Enum.drop(values, 1) do
+      fields = Map.put(verification_fields(previous), :tenant_ids, Enum.reject(values, &(&1 == value)))
+      attrs = provider_attrs(previous)
+
+      attrs =
+        if attrs[:sign_in_tenant_id] == value,
+          do: Map.put(attrs, :sign_in_tenant_id, nil),
+          else: attrs
+
+      changeset = changeset(previous.data, attrs, socket, fields)
+
+      {:noreply, socket |> clear_verification_state() |> assign(form: to_form(changeset), verification_error: nil)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("toggle_verified_domain", %{"domain" => domain}, socket)
+      when socket.assigns.type == "google" do
+    previous = socket.assigns.form.source
+    verified = socket.assigns.verified_domains
+    enabled = get_field(previous, :workspace_domains) || []
+
+    if domain in verified and enabled != [domain] do
+      enabled =
+        if domain in enabled,
+          do: enabled -- [domain],
+          else: Enum.filter(verified, &(&1 in [domain | enabled]))
+
+      fields = Map.put(verification_fields(previous), :workspace_domains, enabled)
+      changeset = changeset(previous.data, provider_attrs(previous), socket, fields)
+
+      {:noreply, assign(socket, form: to_form(changeset), verification_error: nil)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("reset_verification", _params, socket)
+      when socket.assigns.type in ["entra", "google"] do
+    {:noreply, socket}
+  end
+
   def handle_event("reset_verification", _params, socket) do
     changeset =
-      socket.assigns.form.source
-      |> delete_change(:is_verified)
-      |> delete_change(:issuer)
-      |> apply_changes()
-      |> changeset(
-        %{
-          "is_verified" => false,
-          "issuer" => nil
-        },
-        socket
-      )
+      resubmit(socket.assigns.form.source, %{"is_verified" => false, "issuer" => nil}, socket)
 
     {:noreply,
      socket
@@ -244,7 +285,10 @@ defmodule PortalWeb.Settings.Authentication do
          "You cannot delete the provider you are currently signed in with."
        )}
     else
-      case Database.delete_provider!(provider, socket.assigns.subject) do
+      case provider && Database.delete_provider!(provider, socket.assigns.subject) do
+        nil ->
+          {:noreply, socket}
+
         {:ok, _provider} ->
           {:noreply,
            socket
@@ -260,47 +304,9 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   def handle_event("toggle_provider", %{"id" => id}, socket) do
-    provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
-    new_disabled_state = not provider.is_disabled
-
-    can_disable =
-      id != Credential.auth_provider_id(socket.assigns.subject.credential) or
-        not new_disabled_state
-
-    changeset =
-      if can_disable do
-        provider
-        |> change(is_disabled: new_disabled_state)
-        |> validate_not_disabling_default_provider()
-      else
-        provider
-        |> change(is_disabled: new_disabled_state)
-        |> add_error(
-          :is_disabled,
-          "You cannot disable the provider you are currently signed in with."
-        )
-      end
-
-    case Database.update_provider(changeset, socket.assigns.subject) do
-      {:ok, _provider} ->
-        action = if new_disabled_state, do: "disabled", else: "enabled"
-
-        {:noreply,
-         socket
-         |> init()
-         |> put_flash(:success, "Authentication provider #{action} successfully.")}
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        Logger.info("Failed to toggle authentication provider",
-          errors: inspect(changeset.errors),
-          changes: inspect(changeset.changes)
-        )
-
-        {:noreply, put_flash(socket, :error, extract_disable_error(changeset))}
-
-      {:error, reason} ->
-        Logger.info("Failed to toggle authentication provider", reason: inspect(reason))
-        {:noreply, put_flash(socket, :error, "Failed to update authentication provider.")}
+    case Enum.find(socket.assigns.providers, &(&1.id == id)) do
+      nil -> {:noreply, socket}
+      provider -> toggle_provider(provider, socket)
     end
   end
 
@@ -349,7 +355,10 @@ defmodule PortalWeb.Settings.Authentication do
   def handle_event("revoke_sessions", %{"id" => id}, socket) do
     provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
 
-    case Database.revoke_sessions_for_provider(provider, socket.assigns.subject) do
+    case provider && Database.revoke_sessions_for_provider(provider, socket.assigns.subject) do
+      nil ->
+        {:noreply, socket}
+
       {:ok, _} ->
         {:noreply,
          socket
@@ -370,11 +379,11 @@ defmodule PortalWeb.Settings.Authentication do
     assign_default_provider(provider_id, socket)
   end
 
-  def handle_info(%Portal.Changes.Change{struct: %Portal.ClientToken{}}, socket) do
+  def handle_info(%Portal.Changes.Change{struct: %Portal.DeviceToken{}}, socket) do
     {:noreply, refresh_session_counts(socket)}
   end
 
-  def handle_info(%Portal.Changes.Change{old_struct: %Portal.ClientToken{}}, socket) do
+  def handle_info(%Portal.Changes.Change{old_struct: %Portal.DeviceToken{}}, socket) do
     {:noreply, refresh_session_counts(socket)}
   end
 
@@ -429,15 +438,25 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
+  def handle_info({:google_verify_complete, issuer, domains, _name, verification_ref, ack_to}, socket) do
+    if socket.assigns.type == "google" and active_verification?(socket, verification_ref) do
+      maybe_send_verification_ack(ack_to)
+      {:noreply, complete_google_verification(socket, issuer, domains)}
+    else
+      maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
+  end
+
   # Sent directly by the OIDC verification controller after code exchange succeeds
   def handle_info({:oidc_verify_complete, issuer, verification_ref, ack_to}, socket) do
-    if active_verification?(socket, verification_ref) do
+    if socket.assigns.type != "google" and active_verification?(socket, verification_ref) do
       attrs = %{"is_verified" => true, "is_legacy" => false, "issuer" => issuer}
 
       changeset =
         socket.assigns.form.source
-        |> apply_changes()
-        |> changeset(attrs, socket)
+        |> resubmit(attrs, socket)
+        |> maybe_set_okta_name(issuer, socket.assigns.live_action)
 
       maybe_send_verification_ack(ack_to)
       {:noreply, assign(socket, active_verification: nil, form: to_form(changeset))}
@@ -453,30 +472,37 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, assign(socket, verification_error: error)}
   end
 
-  # Sent directly by the Entra auth_provider verification controller
-  def handle_info({:entra_verify_complete, issuer, _tenant_id, verification_ref, ack_to}, socket) do
-    if active_verification?(socket, verification_ref) do
-      attrs = %{"is_verified" => true, "issuer" => issuer}
+  # Every appended tenant has completed its own admin verification flow.
+  def handle_info(
+        {:entra_verify_complete, _issuer, tenant_id, _tenant_name, verification_ref, ack_to},
+        socket
+      ) do
+    if socket.assigns.type == "entra" and active_verification?(socket, verification_ref) do
+      previous = socket.assigns.form.source
+      tenant_ids = Enum.uniq(verified_values(previous, "entra") ++ [tenant_id])
+      attrs = Map.put(provider_attrs(previous), :is_verified, true)
 
       changeset =
-        socket.assigns.form.source
-        |> apply_changes()
-        |> changeset(attrs, socket)
+        changeset(previous.data, attrs, socket, %{tenant_ids: tenant_ids})
 
       maybe_send_verification_ack(ack_to)
-      {:noreply, assign(socket, active_verification: nil, form: to_form(changeset))}
+      {:noreply, assign(socket, active_verification: nil, verification_error: nil, form: to_form(changeset))}
     else
       maybe_send_verification_ack(ack_to)
       {:noreply, socket}
     end
   end
 
+  def handle_info({:entra_verify_complete, issuer, tenant_id, verification_ref, ack_to}, socket) do
+    handle_info({:entra_verify_complete, issuer, tenant_id, nil, verification_ref, ack_to}, socket)
+  end
+
   def handle_info({:entra_verify_complete, issuer, tenant_id, ack_to}, socket) do
     handle_info({:entra_verify_complete, issuer, tenant_id, nil, ack_to}, socket)
   end
 
-  def handle_info({:entra_verify_complete, issuer, _tenant_id}, socket) do
-    handle_info({:entra_verify_complete, issuer, nil, nil, nil}, socket)
+  def handle_info({:entra_verify_complete, issuer, tenant_id}, socket) do
+    handle_info({:entra_verify_complete, issuer, tenant_id, nil, nil}, socket)
   end
 
   # Sent directly by the verification controller on any failure
@@ -497,6 +523,88 @@ defmodule PortalWeb.Settings.Authentication do
   def handle_info(_message, socket) do
     {:noreply, socket}
   end
+
+  # Google proves the full list of Workspace domains. The list only lives in
+  # this form: the administrator's own domain is enabled first, any of them can
+  # be toggled as long as one stays enabled, and only the enabled domains are saved.
+  defp complete_google_verification(socket, issuer, domains) do
+    previous = socket.assigns.form.source
+    existing = get_field(previous, :workspace_domains) || []
+
+    cond do
+      is_nil(domains) and existing != [] ->
+        assign(socket,
+          active_verification: nil,
+          verification_error:
+            "Use a Google Workspace administrator to refresh this provider's domains. The existing domains have been kept."
+        )
+
+      is_nil(domains) ->
+        assign_google_verification(socket, previous, issuer, [], %{
+          workspace_domains: nil,
+          is_legacy_unrestricted: get_field(previous, :is_legacy_unrestricted)
+        })
+
+      existing == [] ->
+        assign_google_verification(socket, previous, issuer, domains, %{
+          workspace_domains: [hd(domains)],
+          is_legacy_unrestricted: false
+        })
+
+      Enum.any?(domains, &(&1 in existing)) ->
+        assign_google_verification(socket, previous, issuer, domains, %{
+          workspace_domains: Enum.filter(domains, &(&1 in existing)),
+          is_legacy_unrestricted: false
+        })
+
+      true ->
+        assign(socket,
+          active_verification: nil,
+          verification_error:
+            "Sign in as an administrator of the Google Workspace that this provider already uses."
+        )
+    end
+  end
+
+  defp assign_google_verification(socket, previous, issuer, verified_domains, fields) do
+    attrs = Map.merge(provider_attrs(previous), %{is_verified: true, issuer: issuer})
+    changeset = changeset(previous.data, attrs, socket, fields)
+
+    assign(socket,
+      active_verification: nil,
+      verification_error: nil,
+      verified_domains: verified_domains,
+      form: to_form(changeset)
+    )
+  end
+
+  defp verification_fields(%{data: %Entra.AuthProvider{}} = changeset),
+    do: %{tenant_ids: get_field(changeset, :tenant_ids)}
+
+  defp verification_fields(%{data: %Google.AuthProvider{}} = changeset),
+    do: %{
+      workspace_domains: get_field(changeset, :workspace_domains),
+      is_legacy_unrestricted: get_field(changeset, :is_legacy_unrestricted)
+    }
+
+  defp verification_fields(_changeset), do: %{}
+
+  defp provider_attrs(changeset) do
+    Map.new(Map.fetch!(@fields, changeset.data.__struct__), &{&1, get_field(changeset, &1)})
+  end
+
+  defp verified_values(changeset, "entra"), do: get_field(changeset, :tenant_ids) || []
+  defp verified_values(changeset, "google"), do: get_field(changeset, :workspace_domains) || []
+
+  defp maybe_set_okta_name(%{data: %Okta.AuthProvider{}} = changeset, issuer, :new) do
+    if get_field(changeset, :name) == "Okta" do
+      put_change(changeset, :name, URI.parse(issuer).host)
+    else
+      changeset
+    end
+  end
+
+  defp maybe_set_okta_name(changeset, _issuer, _action), do: changeset
 
   defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
     send(pid, {:verification_ack, ref})
@@ -524,7 +632,12 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp clear_verification_state(socket) do
-    assign(socket, pending_verification: nil, active_verification: nil)
+    assign(socket,
+      pending_verification: nil,
+      active_verification: nil,
+      verification_error: nil,
+      verified_domains: []
+    )
   end
 
   defp format_verification_error_reason(reason) when is_binary(reason), do: reason
@@ -626,6 +739,7 @@ defmodule PortalWeb.Settings.Authentication do
           providers: nil,
           has_trust_anchors?: false,
           verification_error: nil,
+          verified_domains: [],
           pending_confirm: nil,
           open_provider_actions_id: nil
         )
@@ -643,6 +757,7 @@ defmodule PortalWeb.Settings.Authentication do
       providers: providers,
       has_trust_anchors?: Database.has_trust_anchors?(socket.assigns.subject),
       verification_error: nil,
+      verified_domains: [],
       pending_confirm: nil,
       open_provider_actions_id: nil
     )
@@ -665,7 +780,7 @@ defmodule PortalWeb.Settings.Authentication do
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <Navigation.docs_action path="/authenticate" />
+            <Navigation.docs_action show_label path="/authenticate" />
             <Navigation.link
               patch={~p"/#{@account}/settings/authentication/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
@@ -687,7 +802,7 @@ defmodule PortalWeb.Settings.Authentication do
                   Context
                 </th>
                 <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                  Issuer
+                  Organization
                 </th>
                 <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                   Portal TTL
@@ -841,6 +956,7 @@ defmodule PortalWeb.Settings.Authentication do
               <.provider_form
                 account_id={@account.id}
                 verification_error={@verification_error}
+                verified_domains={@verified_domains}
                 form={@form}
                 type={@type}
                 submit_event="submit_provider"
@@ -892,6 +1008,7 @@ defmodule PortalWeb.Settings.Authentication do
             <.provider_form
               account_id={@account.id}
               verification_error={@verification_error}
+              verified_domains={@verified_domains}
               form={@form}
               type={@type}
               submit_event="submit_provider"
@@ -1084,7 +1201,7 @@ defmodule PortalWeb.Settings.Authentication do
             </td>
             <td class="px-6 py-3">
               <span class="font-mono text-xs text-body">
-                {Map.get(@provider, :issuer) || "—"}
+                {provider_organizations(@provider)}
               </span>
             </td>
             <td class="px-6 py-3 text-sm tabular-nums text-body">
@@ -1177,8 +1294,8 @@ defmodule PortalWeb.Settings.Authentication do
                     <Core.icon
                       name={
                         if @provider.is_disabled,
-                          do: "ri-checkbox-circle-line",
-                          else: "ri-close-circle-line"
+                          do: "ri-play-circle-line",
+                          else: "ri-pause-circle-line"
                       }
                       class="w-3.5 h-3.5 shrink-0"
                     />
@@ -1227,7 +1344,8 @@ defmodule PortalWeb.Settings.Authentication do
   defp provider_action_allowed?(type), do: type not in ["email_otp", "userpass", "x509"]
 
   defp provider_has_sessions?(provider) do
-    provider.client_tokens_count > 0 or provider.portal_sessions_count > 0
+    provider.client_tokens_count > 0 or provider.portal_sessions_count > 0 or
+      provider.oauth_tokens_count > 0
   end
 
   defp provider_pending_state(provider, %{id: id, action: action}) when id == provider.id,
@@ -1264,6 +1382,7 @@ defmodule PortalWeb.Settings.Authentication do
   attr :type, :string, required: true
   attr :submit_event, :string, required: true
   attr :verification_error, :any, default: nil
+  attr :verified_domains, :list, default: []
   attr :is_legacy, :boolean, default: false
 
   defp provider_form(assigns) do
@@ -1371,6 +1490,10 @@ defmodule PortalWeb.Settings.Authentication do
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
             Provider Configuration
           </p>
+          <p class="text-xs text-subtle">
+            Only users from the verified tenants below can use this authentication provider.
+            Verify another tenant to allow users from another organization to use the same sign-in option.
+          </p>
           <div>
             <label
               for={@form[:email_claim].id}
@@ -1390,6 +1513,25 @@ defmodule PortalWeb.Settings.Authentication do
             />
             <p class="mt-1 text-xs text-subtle">
               The OIDC claim to use as the user's email address during sign-in.
+            </p>
+          </div>
+          <div :if={(get_field(@form.source, :tenant_ids) || []) != []}>
+            <label
+              for={@form[:sign_in_tenant_id].id}
+              class="block text-xs font-medium text-body mb-1.5"
+            >
+              Sign-in Tenant
+            </label>
+            <Form.input
+              field={@form[:sign_in_tenant_id]}
+              type="select"
+              prompt="Each user's home tenant"
+              options={get_field(@form.source, :tenant_ids)}
+            />
+            <p class="mt-1 text-xs text-subtle">
+              Users sign in through this tenant instead of their home tenant.
+              Select a tenant to allow B2B guest users of that tenant to sign in.
+              Guest users have an external UPN, so use the Email claim for them.
             </p>
           </div>
         </div>
@@ -1651,8 +1793,15 @@ defmodule PortalWeb.Settings.Authentication do
         </div>
 
         <%!-- Verification --%>
+        <.verified_organizations
+          :if={@type in ["entra", "google"]}
+          form={@form}
+          type={@type}
+          verification_error={@verification_error}
+          verified_domains={@verified_domains}
+        />
         <div
-          :if={@type in ["entra", "google", "github", "okta", "oidc"] and not @is_legacy}
+          :if={@type in ["github", "okta", "oidc"] and not @is_legacy}
           class="pt-4 border-t border-border"
         >
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
@@ -1694,6 +1843,127 @@ defmodule PortalWeb.Settings.Authentication do
     </.form>
     """
   end
+
+  attr :form, :any, required: true
+  attr :type, :string, required: true
+  attr :verification_error, :any, default: nil
+  attr :verified_domains, :list, default: []
+
+  defp verified_organizations(assigns) do
+    toggles? = assigns.type == "google" and assigns.verified_domains != []
+
+    assigns = assign(assigns,
+      values: if(toggles?, do: assigns.verified_domains, else: verified_values(assigns.form.source, assigns.type)),
+      toggles?: toggles?,
+      enabled: get_field(assigns.form.source, :workspace_domains) || [],
+      label: if(assigns.type == "entra", do: "tenant", else: "domain"),
+      verified?: verified?(assigns.form)
+    )
+
+    ~H"""
+    <div class="pt-4 border-t border-border space-y-3">
+      <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+        {if @type == "google" and @values == [], do: "Verification", else: "Verified #{if @type == "entra", do: "tenants", else: "domains"}"}
+        <span :if={@type == "entra" or not @verified?} class="text-error">*</span>
+      </p>
+      <p :if={@type == "google" and @values != []} class="text-xs text-subtle">
+        Only users whose Google Workspace domain is enabled can use this provider.
+        Sign in again as a Workspace administrator to see all of your organization's domains
+        and change which are enabled.
+      </p>
+      <p :if={@type == "google" and @values == []} class="text-xs text-subtle">
+        Verifying with a Google Workspace account needs a Workspace administrator. It saves the
+        organization's verified domains and enables the administrator's own domain. New providers
+        verified with a personal account accept personal Google accounts only.
+      </p>
+      <p :if={@type == "google" and @values == [] and @verified?} class="text-xs text-success">
+        <Core.icon name="ri-checkbox-circle-line" class="inline w-3.5 h-3.5" />
+        <%= if get_field(@form.source, :is_legacy_unrestricted) do %>
+          Existing provider. Personal and Workspace Google accounts can sign in.
+        <% else %>
+          Verified provider. Personal Google accounts only.
+        <% end %>
+      </p>
+      <p :if={@values == [] and @type == "entra"} class="text-xs text-subtle">
+        Verify at least one {@label} to save this provider.
+      </p>
+      <Core.flash :if={@verification_error} kind={:error} class="mb-3">
+        {@verification_error}
+      </Core.flash>
+      <div :if={@values != []} class="rounded border border-border overflow-hidden">
+        <table id="verified-organizations" class="w-full text-sm border-collapse">
+          <thead class="bg-raised">
+            <tr class="border-b border-border">
+              <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-subtle">
+                {if @type == "entra", do: "Tenant ID", else: "Domain"}
+              </th>
+              <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-subtle">
+                {if @toggles?, do: "Enabled", else: "Status"}
+              </th>
+              <th :if={@type == "entra"} scope="col" class="w-10">
+                <span class="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border bg-surface">
+            <tr :for={{value, index} <- Enum.with_index(@values)} id={"verified-organization-#{index}"}>
+              <td class="px-3 py-2 font-mono text-xs text-body break-all">
+                {value}
+                <span :if={@toggles? and index == 0} class="ml-1 font-sans text-subtle">
+                  (primary)
+                </span>
+              </td>
+              <td :if={not @toggles?} class="px-3 py-2">
+                <span class="inline-flex items-center gap-1 text-xs text-success">
+                  <Core.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
+                </span>
+              </td>
+              <td :if={@toggles?} class="px-3 py-2">
+                <span title={if @enabled == [value], do: "At least one domain must be enabled"}>
+                  <Core.toggle
+                    id={"verified-domain-toggle-#{index}"}
+                    size="sm"
+                    checked={value in @enabled}
+                    disabled={@enabled == [value]}
+                    aria-label={"Enable #{value}"}
+                    phx-click="toggle_verified_domain"
+                    phx-value-domain={value}
+                  />
+                </span>
+              </td>
+              <td :if={@type == "entra"} class="px-2 py-2 text-right">
+                <Form.icon_button
+                  :if={index > 0}
+                  icon="ri-delete-bin-line"
+                  title={"Remove #{@label} #{value}"}
+                  size="sm"
+                  phx-click="remove_verified_organization"
+                  phx-value-organization={value}
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <Form.button
+        type="button"
+        id="verify-button"
+        style="primary"
+        size="xs"
+        icon="ri-external-link-line"
+        phx-click="start_verification"
+        phx-hook="OpenURL"
+        disabled={not ready_to_verify?(@form)}
+      >
+        {verify_button_label(@type, @values, @label)}
+      </Form.button>
+    </div>
+    """
+  end
+
+  defp verify_button_label(_type, [], _label), do: "Verify Now"
+  defp verify_button_label("google", _values, _label), do: "Refresh domains"
+  defp verify_button_label(_type, _values, label), do: "Verify another #{label}"
 
   defp verification_help_text(form, type) do
     if verified?(form) do
@@ -1759,20 +2029,40 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp verification_errors(changeset) do
     changeset.errors
-    |> Enum.filter(fn {field, _error} -> field in [:issuer] end)
-    |> Enum.map_join(" ", fn {_field, {message, _opts}} -> message end)
+    |> Enum.filter(fn {field, _error} ->
+      field in [:issuer, :tenant_ids, :workspace_domains]
+    end)
+    |> case do
+      [] -> nil
+      errors -> Enum.map_join(errors, " ", fn {_field, {message, _opts}} -> message end)
+    end
   end
 
   defp ready_to_verify?(form) do
     Enum.all?(form.source.errors, fn
       # We'll set these fields during verification
-      {excluded, _errors} when excluded in [:is_verified, :issuer] ->
+      {excluded, _errors}
+      when excluded in [:is_verified, :issuer, :tenant_ids, :workspace_domains] ->
         true
 
       {_field, _errors} ->
         false
     end)
   end
+
+  defp provider_organizations(%Entra.AuthProvider{tenant_ids: tenant_ids}),
+    do: Enum.join(tenant_ids, ", ")
+
+  defp provider_organizations(%Google.AuthProvider{workspace_domains: [_ | _] = domains}),
+    do: Enum.join(domains, ", ")
+
+  defp provider_organizations(%Google.AuthProvider{workspace_domains: nil, is_legacy_unrestricted: true}),
+    do: "Unrestricted Google accounts"
+
+  defp provider_organizations(%Google.AuthProvider{workspace_domains: nil}),
+    do: "Personal Google accounts"
+
+  defp provider_organizations(provider), do: Map.get(provider, :issuer) || "—"
 
   defp context_badge(assigns) do
     {label, classes} =
@@ -1823,13 +2113,27 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
-  defp changeset(struct, attrs, socket) do
+  defp changeset(struct, attrs, socket, verified_fields \\ %{}) do
     schema = struct.__struct__
     changeset = cast(struct, attrs, Map.get(@fields, schema))
 
     changeset
+    |> Form.keep_when_blank([:client_secret])
+    |> cast(verified_fields, Map.keys(verified_fields))
     |> maybe_initialize_with_parent(socket.assigns.subject.account.id)
     |> schema.changeset()
+    |> Form.reset_on_change(:client_secret, issuer_fields(schema))
+  end
+
+  # Verification and sign-in both send the client secret to the issuer.
+  defp issuer_fields(Okta.AuthProvider), do: [okta_domain: "Okta domain"]
+  defp issuer_fields(OIDC.AuthProvider), do: [discovery_document_uri: "discovery document URI"]
+  defp issuer_fields(_schema), do: []
+
+  # Rebuilt from the stored record so the typed changes stay changes and reach
+  # the update; applying them first would leave them out of the save.
+  defp resubmit(previous, attrs, socket) do
+    changeset(previous.data, Map.merge(previous.params, attrs), socket)
   end
 
   defp extract_disable_error(changeset) do
@@ -1869,13 +2173,11 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp verified?(form) do
-    schema = form.source.data.__struct__
-
-    # Email/OTP and Userpass providers don't require verification
-    if schema in [EmailOTP.AuthProvider, Userpass.AuthProvider] do
-      true
-    else
-      get_field(form.source, :is_verified) == true
+    case form.source.data.__struct__ do
+      Entra.AuthProvider -> get_field(form.source, :tenant_ids) not in [nil, []]
+      Google.AuthProvider -> get_field(form.source, :is_verified) == true
+      schema when schema in [EmailOTP.AuthProvider, Userpass.AuthProvider] -> true
+      _schema -> get_field(form.source, :is_verified) == true
     end
   end
 
@@ -1961,6 +2263,53 @@ defmodule PortalWeb.Settings.Authentication do
     days = div(seconds, 86_400)
     "#{days}d"
   end
+
+  defp toggle_provider(provider, socket) do
+    new_disabled_state = not provider.is_disabled
+
+    can_disable =
+      provider.id != Credential.auth_provider_id(socket.assigns.subject.credential) or
+        not new_disabled_state
+
+    changeset =
+      if can_disable do
+        provider
+        |> change(is_disabled: new_disabled_state)
+        |> validate_not_disabling_default_provider()
+      else
+        provider
+        |> change(is_disabled: new_disabled_state)
+        |> add_error(
+          :is_disabled,
+          "You cannot disable the provider you are currently signed in with."
+        )
+      end
+
+    case Database.update_provider(changeset, socket.assigns.subject) do
+      {:ok, _provider} ->
+        action = if new_disabled_state, do: "disabled", else: "enabled"
+
+        {:noreply,
+         socket
+         |> init()
+         |> put_flash(:success, "Authentication provider #{action} successfully.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        Logger.info("Failed to toggle authentication provider",
+          errors: inspect(changeset.errors),
+          changes: inspect(changeset.changes)
+        )
+
+        {:noreply, put_flash(socket, :error, extract_disable_error(changeset))}
+
+      {:error, reason} ->
+        Logger.info("Failed to toggle authentication provider", reason: inspect(reason))
+        {:noreply, put_flash(socket, :error, "Failed to update authentication provider.")}
+    end
+  end
+
+  defp stale_event?("submit_provider", %{live_action: action}) when action not in [:new, :edit], do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defmodule Database do
     alias Portal.{AuthProvider, EmailOTP, X509, Userpass, OIDC, Entra, Google, GitHub, Okta, Safe}
@@ -2086,7 +2435,7 @@ defmodule PortalWeb.Settings.Authentication do
       provider_ids = Enum.map(providers, & &1.id)
 
       client_tokens_counts =
-        from(ct in Portal.ClientToken,
+        from(ct in Portal.DeviceToken,
           where: ct.auth_provider_id in ^provider_ids,
           group_by: ct.auth_provider_id,
           select: {ct.auth_provider_id, count(ct.id)}
@@ -2105,29 +2454,46 @@ defmodule PortalWeb.Settings.Authentication do
         |> Safe.all()
         |> Map.new()
 
+      oauth_tokens_counts =
+        from(t in Portal.OAuthToken,
+          where: t.auth_provider_id in ^provider_ids,
+          group_by: t.auth_provider_id,
+          select: {t.auth_provider_id, count(t.id)}
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Map.new()
+
       Enum.map(providers, fn provider ->
         provider
         |> Map.put(:client_tokens_count, Map.get(client_tokens_counts, provider.id, 0))
         |> Map.put(:portal_sessions_count, Map.get(portal_sessions_counts, provider.id, 0))
+        |> Map.put(:oauth_tokens_count, Map.get(oauth_tokens_counts, provider.id, 0))
       end)
     end
 
     # Already handled by cascade delete
-    def revoke_sessions_for_provider(nil, _subject), do: {:ok, 0}
-
     def revoke_sessions_for_provider(provider, subject) do
       Safe.transact(fn ->
         {client_tokens_deleted, _} =
-          from(ct in Portal.ClientToken, where: ct.auth_provider_id == ^provider.id)
-          |> Safe.scoped(subject)
-          |> Safe.delete_all()
+          from(ct in Portal.DeviceToken, where: ct.auth_provider_id == ^provider.id)
+          |> Portal.Authentication.delete_client_tokens(subject)
 
         {portal_sessions_deleted, _} =
           from(ps in Portal.PortalSession, where: ps.auth_provider_id == ^provider.id)
           |> Safe.scoped(subject)
           |> Safe.delete_all()
 
-        {:ok, client_tokens_deleted + portal_sessions_deleted}
+        from(c in Portal.OAuthAuthorizationCode, where: c.auth_provider_id == ^provider.id)
+        |> Safe.scoped(subject)
+        |> Safe.delete_all()
+
+        {oauth_tokens_deleted, _} =
+          from(t in Portal.OAuthToken, where: t.auth_provider_id == ^provider.id)
+          |> Safe.scoped(subject)
+          |> Safe.delete_all()
+
+        {:ok, client_tokens_deleted + portal_sessions_deleted + oauth_tokens_deleted}
       end)
     end
   end

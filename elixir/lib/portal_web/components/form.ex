@@ -156,12 +156,14 @@ defmodule PortalWeb.Components.Form do
     assigns
     |> assign(field: nil, id: assigns.id || field.id)
     |> assign(:errors, errors)
+    |> assign(:rest, stored_secret_rest(field, assigns.rest))
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
     |> assign_new(:value, fn ->
-      if assigns.value_id do
-        resolve_field_value(field, assigns.value_id)
-      else
-        field.value
+      cond do
+        assigns.value_id -> resolve_field_value(field, assigns.value_id)
+        redacted?(field) -> submitted_value(field)
+        assigns.type == "password" -> password_value(field)
+        true -> field.value
       end
     end)
     |> input()
@@ -485,6 +487,112 @@ defmodule PortalWeb.Components.Form do
     end)
   end
 
+  # A redacted field only echoes what the browser itself submitted, never the
+  # stored value, so an edit form cannot leak a saved secret into the page.
+  defp redacted?(%{form: %{source: %Ecto.Changeset{data: %schema{}}}, field: name}) do
+    function_exported?(schema, :__schema__, 1) and name in schema.__schema__(:redact_fields)
+  end
+
+  defp redacted?(_field), do: false
+
+  defp submitted_value(field) do
+    Map.get(field.form.params || %{}, to_string(field.field))
+  end
+
+  # A password input holds a secret, so a schema field behind one must be
+  # redacted, which keeps it out of logs and gives it the stored-secret handling
+  # above. The match names only the schema and field, never the value.
+  defp password_value(%{form: %{source: %Ecto.Changeset{data: %schema{}}}, field: name} = field) do
+    if function_exported?(schema, :__schema__, 1) do
+      {_schema, _field, true} = {schema, name, name in schema.__schema__(:redact_fields)}
+    end
+
+    submitted_value(field)
+  end
+
+  defp password_value(field), do: submitted_value(field)
+
+  # A stored secret satisfies the required check, and a blank box keeps it.
+  defp stored_secret_rest(field, rest) do
+    if redacted?(field) and stored_value?(field) do
+      rest
+      |> Map.delete(:required)
+      |> Map.put_new(:placeholder, "Leave blank to keep the current value")
+    else
+      rest
+    end
+  end
+
+  # Only a saved value counts, so a virtual field such as a password
+  # confirmation stays required however much is typed into it, and a secret
+  # reset by a destination change asks for a new one.
+  defp stored_value?(%{form: %{source: changeset}, field: name}) do
+    not is_nil(Map.get(changeset.data, name)) and
+      Ecto.Changeset.fetch_change(changeset, name) != {:ok, nil}
+  end
+
+  ### Stored secrets ###
+
+  @doc "An empty input keeps the stored value."
+  @spec keep_when_blank(Ecto.Changeset.t(), [atom()]) :: Ecto.Changeset.t()
+  def keep_when_blank(changeset, fields) do
+    Enum.reduce(fields, changeset, fn field, changeset ->
+      case Ecto.Changeset.fetch_change(changeset, field) do
+        {:ok, nil} -> Ecto.Changeset.delete_change(changeset, field)
+        _other -> changeset
+      end
+    end)
+  end
+
+  @doc """
+  Forgets a stored secret when any of the `destinations` (`field: label`)
+  changed and the secret was not typed in this submission, and asks for it
+  again. A secret that is already being cleared is left alone.
+
+  Call it after the schema changeset: `validate_required/3` drops a nil change,
+  which would put the stored value back, so the error is added here.
+  """
+  @spec reset_on_change(Ecto.Changeset.t(), atom(), keyword(String.t())) :: Ecto.Changeset.t()
+  def reset_on_change(changeset, secret, destinations) do
+    changed =
+      Enum.find(destinations, fn {field, _label} -> Ecto.Changeset.changed?(changeset, field) end)
+
+    if changed && stored?(changeset, secret) && not submitted?(changeset, secret) &&
+         not clearing?(changeset, secret) do
+      {_field, label} = changed
+
+      message =
+        if secret in changeset.required do
+          "Required for the new #{label}."
+        else
+          "Enter it again, or remove it, for the new #{label}."
+        end
+
+      # The error is shown although the secret input is untouched.
+      %{changeset | params: Map.delete(changeset.params || %{}, "_unused_#{secret}")}
+      |> Ecto.Changeset.put_change(secret, nil)
+      |> Ecto.Changeset.add_error(secret, message, validation: :required)
+    else
+      changeset
+    end
+  end
+
+  defp stored?(changeset, secret), do: not is_nil(Map.get(changeset.data, secret))
+
+  defp clearing?(changeset, secret),
+    do: Ecto.Changeset.fetch_change(changeset, secret) == {:ok, nil}
+
+  # Typing the stored value again leaves no change, so the submission is
+  # what shows it was entered.
+  defp submitted?(%Ecto.Changeset{params: %{} = params}, field) do
+    case Map.get(params, Atom.to_string(field)) do
+      value when is_binary(value) -> String.trim(value) != ""
+      _other -> false
+    end
+  end
+
+  defp submitted?(_changeset, _field), do: false
+
   ### Dialogs ###
 
   @doc """
@@ -633,94 +741,6 @@ defmodule PortalWeb.Components.Form do
         </div>
       </div>
     </dialog>
-    """
-  end
-
-  attr :id, :string, required: true, doc: "The id of the dialog"
-  attr :class, :string, default: "", doc: "Custom classes to be added to the button"
-  attr :style, :string, default: "danger", doc: "The style of the button"
-  attr :confirm_style, :string, default: "danger", doc: "The style of the confirm button"
-  attr :icon, :string, default: nil, doc: "The icon of the button"
-  attr :size, :string, default: "md", doc: "The size of the button"
-  attr :type, :string, default: "button", doc: "The button type"
-  attr :on_confirm, :string, required: true, doc: "The phx event to broadcast on confirm"
-  attr :disabled, :boolean, default: false, doc: "Whether the button is disabled"
-
-  attr :on_confirm_id, :string,
-    default: nil,
-    doc: "The phx event id value to broadcast on confirm"
-
-  slot :dialog_title, doc: "The title of the dialog"
-  slot :dialog_content, doc: "The content of the dialog"
-  slot :dialog_confirm_button, doc: "The content of the confirm button of the dialog"
-  slot :dialog_cancel_button, doc: "The content of the cancel button of the dialog"
-  slot :inner_block, required: true, doc: "The label for the button"
-
-  def button_with_confirmation(assigns) do
-    ~H"""
-    <dialog
-      id={"#{@id}_dialog"}
-      class={[
-        "backdrop:bg-gray-800/75 bg-transparent",
-        "w-full md:inset-0 max-h-full",
-        "overflow-y-auto overflow-x-hidden"
-      ]}
-    >
-      <form method="dialog" class="flex items-center justify-center min-h-screen p-4">
-        <div class="relative bg-elevated border border-border rounded-md shadow-sm max-w-2xl">
-          <div class="flex items-center justify-between p-4 md:p-5 border-b border-border rounded-t">
-            <h3 class="text-xl font-semibold text-heading">
-              {render_slot(@dialog_title)}
-            </h3>
-            <button
-              class="text-subtle bg-transparent hover:text-heading ml-2"
-              type="submit"
-              value="cancel"
-            >
-              <Core.icon name="ri-close-line" class="h-4 w-4" />
-              <span class="sr-only">Close modal</span>
-            </button>
-          </div>
-          <div class="p-4 md:p-5 text-body text-base">
-            {render_slot(@dialog_content)}
-          </div>
-          <div class="flex items-center justify-end p-4 md:p-5 border-t border-border rounded-b">
-            <.button
-              data-dialog-action="cancel"
-              type="submit"
-              value="cancel"
-              style="info"
-              class="px-5 py-2.5"
-            >
-              {render_slot(@dialog_cancel_button)}
-            </.button>
-            <.button
-              data-dialog-action="confirm"
-              phx-click={@on_confirm}
-              phx-value-id={@on_confirm_id}
-              type="submit"
-              style={@confirm_style}
-              value="confirm"
-              class="py-2.5 px-5 ms-3"
-            >
-              {render_slot(@dialog_confirm_button)}
-            </.button>
-          </div>
-        </div>
-      </form>
-    </dialog>
-    <.button
-      id={@id}
-      style={@style}
-      size={@size}
-      icon={@icon}
-      type={@type}
-      class={@class}
-      disabled={@disabled}
-      phx-hook="ConfirmDialog"
-    >
-      {render_slot(@inner_block)}
-    </.button>
     """
   end
 

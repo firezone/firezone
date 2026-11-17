@@ -11,7 +11,8 @@ debug_exit() {
     echo "Bailing out. Waiting a couple seconds for things to settle..."
     sleep 5
     docker compose ps -a
-    resolvectl dns tun-firezone || true
+    resolvectl status || true
+    cat /etc/resolv.conf || true
     systemctl status "$SERVICE_NAME" || true
     journalctl -eu "$SERVICE_NAME" || true
     exit 1
@@ -26,6 +27,9 @@ sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 create_token_file
 
 sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
+
+# Some runners point `/etc/resolv.conf` at an egress proxy instead of `systemd-resolved`.
+sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 HTTPBIN=dns
 HTTPBIN_FQDN="$HTTPBIN.httpbin.search.test"

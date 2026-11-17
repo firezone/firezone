@@ -493,7 +493,9 @@ defmodule PortalWeb.GettingStartedTest do
 
       assert resource_id == resource.id
       gateway = Portal.Repo.get_by!(Portal.Device, account_id: account.id, id: gateway_id)
-      assert gateway.site_id == site.id
+
+      assert Portal.Repo.get_by!(Portal.SiteDevice, account_id: account.id, device_id: gateway.id).site_id ==
+               site.id
 
       for {tab, icon} <- [
             {"debian", "icon-os-debian"},
@@ -511,7 +513,7 @@ defmodule PortalWeb.GettingStartedTest do
       assert has_element?(view, "#getting-started-gateway-systemd", "gateway-systemd-install.sh")
       refute render(view) =~ "FIREZONE_ID"
 
-      gateway |> Map.put(:site_id, site.id) |> online()
+      online(%{gateway | site: site})
       assert eventually(fn -> status_done?(view, "gateway") end)
       continue(view)
 
@@ -758,6 +760,28 @@ defmodule PortalWeb.GettingStartedTest do
 
       assert has_element?(view, "#getting-started-client-linux", "ARM64")
       refute has_element?(view, "#getting-started-client-macos")
+    end
+
+    test "tells the Client where this deployment is", %{conn: conn, account: account, actor: actor} do
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev/")
+      Portal.Config.put_env_override(:api_url_override, nil)
+      Portal.Config.put_env_override(:api_external_url, "https://eu.api.firezone.dev/")
+
+      view = open_with_user_agent(conn, account, actor, "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)")
+
+      assert has_element?(view, "#getting-started-client-urls", "https://eu.app.firezone.dev/")
+      assert has_element?(view, "#getting-started-client-urls", "https://eu.api.firezone.dev/")
+    end
+
+    test "skips the settings step for the default URLs", %{conn: conn, account: account, actor: actor} do
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev/")
+      Portal.Config.put_env_override(:api_url_override, nil)
+      Portal.Config.put_env_override(:api_external_url, "https://api.firezone.dev/")
+
+      view = open_with_user_agent(conn, account, actor, "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)")
+
+      assert has_element?(view, "#getting-started-client-macos")
+      refute has_element?(view, "#getting-started-client-urls")
     end
   end
 

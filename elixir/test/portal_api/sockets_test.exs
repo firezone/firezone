@@ -222,15 +222,43 @@ defmodule PortalAPI.SocketsTest do
       assert Enum.uniq(details) == details
     end
 
-    test "returns 503 with retry-after header for rate_limit" do
-      conn = Plug.Test.conn(:get, "/")
+    test "registration throttling rounds Retry-After up" do
+      result = Sockets.handle_error(rate_limit_conn("gateway/1.6.4"), {:rate_limit, 3_085_715})
+      assert result.status == 429
+      assert Plug.Conn.get_resp_header(result, "retry-after") == ["3086"]
+      assert_problem_json(result, "rate_limit")
+    end
 
-      result = Sockets.handle_error(conn, :rate_limit)
+    test "returns 429 with retry-after header for rate_limit" do
+      result = Sockets.handle_error(rate_limit_conn("apple-client/1.5.20"), :rate_limit)
 
-      assert result.status == 503
-      assert json_body(result)["detail"] == "Service Unavailable"
+      assert result.status == 429
+      assert json_body(result)["detail"] == "Too Many Requests"
       assert Plug.Conn.get_resp_header(result, "retry-after") == ["1"]
       assert_problem_json(result, "rate_limit")
+    end
+
+    test "returns 429 to every component version that retries a 429" do
+      for product <-
+            ~w[apple-client/1.5.20 android-client/1.5.9 gui-client/1.5.10 headless-client/1.5.6 gateway/1.5.0 relay/1.0.0] do
+        assert Sockets.handle_error(rate_limit_conn(product), :rate_limit).status == 429
+      end
+    end
+
+    test "returns 503 to versions that stop on a 429" do
+      for product <-
+            ~w[apple-client/1.5.19 android-client/1.5.8 gui-client/1.5.9 headless-client/1.5.5 gateway/1.4.19 connlib/1.5.30] do
+        result = Sockets.handle_error(rate_limit_conn(product), :rate_limit)
+
+        assert result.status == 503
+        assert json_body(result)["detail"] == "Service Unavailable"
+        assert_problem_json(result, "rate_limit")
+      end
+    end
+
+    test "returns 503 when the user agent is missing or unparsable" do
+      assert Sockets.handle_error(Plug.Test.conn(:get, "/"), :rate_limit).status == 503
+      assert Sockets.handle_error(rate_limit_conn("gateway/nope"), :rate_limit).status == 503
     end
 
     test "returns 400 with changeset errors" do
@@ -262,6 +290,11 @@ defmodule PortalAPI.SocketsTest do
   end
 
   defp json_body(conn), do: JSON.decode!(conn.resp_body)
+
+  defp rate_limit_conn(product) do
+    Plug.Test.conn(:get, "/")
+    |> Plug.Conn.put_req_header("user-agent", "Ubuntu/24.4.0 #{product} (x86_64; 6.8.0)")
+  end
 
   defp assert_problem_json(conn, code) do
     [content_type] = Plug.Conn.get_resp_header(conn, "content-type")

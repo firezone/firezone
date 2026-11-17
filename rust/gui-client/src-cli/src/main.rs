@@ -1,6 +1,6 @@
 //! Remote control for the running Firezone GUI Client.
 
-use crate::cli::{Cli, Cmd, InternetResourceCmd, ResourcesCmd};
+use crate::cli::{Cli, Cmd, HostCandidatesCmd, InternetResourceCmd, ResourcesCmd};
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use clap::Parser as _;
 use connlib_model::ResourceView;
@@ -8,6 +8,7 @@ use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, TunnelStatus};
 use secrecy::SecretString;
 use std::{
     io::{BufRead as _, IsTerminal as _},
+    net::IpAddr,
     process::ExitCode,
 };
 use tokio::runtime::Runtime;
@@ -194,6 +195,21 @@ fn run(cli: Cli) -> Result<()> {
             command: InternetResourceCmd::Disable,
         } => expect_ack(&rt, ClientMsg::SetInternetResourceEnabled(false))
             .context("Failed to disable Internet Resource")?,
+        Cmd::HostCandidates {
+            command: HostCandidatesCmd::Add { ip },
+        } => add_host_candidate(&rt, ip).context("Failed to add host candidate")?,
+        Cmd::HostCandidates {
+            command: HostCandidatesCmd::Remove { ip },
+        } => remove_host_candidate(&rt, ip).context("Failed to remove host candidate")?,
+        Cmd::HostCandidates {
+            command: HostCandidatesCmd::List,
+        } => {
+            print_host_candidates(&host_candidates(&rt).context("Failed to list host candidates")?)
+        }
+        Cmd::HostCandidates {
+            command: HostCandidatesCmd::Clear,
+        } => expect_ack(&rt, ClientMsg::SetAdditionalHostCandidates(Vec::new()))
+            .context("Failed to clear host candidates")?,
     }
 
     Ok(())
@@ -269,6 +285,41 @@ fn list_resources(rt: &Runtime) -> Result<()> {
     Ok(())
 }
 
+fn add_host_candidate(rt: &Runtime, ip: IpAddr) -> Result<()> {
+    let mut ips = host_candidates(rt)?;
+
+    if ips.contains(&ip) {
+        return Ok(());
+    }
+
+    ips.push(ip);
+    expect_ack(rt, ClientMsg::SetAdditionalHostCandidates(ips))?;
+
+    Ok(())
+}
+
+fn remove_host_candidate(rt: &Runtime, ip: IpAddr) -> Result<()> {
+    let mut ips = host_candidates(rt)?;
+
+    let Some(index) = ips.iter().position(|candidate| *candidate == ip) else {
+        return Ok(());
+    };
+
+    ips.remove(index);
+    expect_ack(rt, ClientMsg::SetAdditionalHostCandidates(ips))?;
+
+    Ok(())
+}
+
+fn host_candidates(rt: &Runtime) -> Result<Vec<IpAddr>> {
+    let reply = rt.block_on(gui_ipc::request(ClientMsg::ListAdditionalHostCandidates))?;
+    let ServerMsg::AdditionalHostCandidates(ips) = reply else {
+        bail!("Unexpected reply: {reply:?}");
+    };
+
+    Ok(ips)
+}
+
 fn expect_ack(rt: &Runtime, msg: ClientMsg) -> Result<()> {
     let reply = rt.block_on(gui_ipc::request(msg))?;
 
@@ -338,6 +389,16 @@ fn print_resources(resources: &[ResourceView]) {
             .join("  ");
 
         println!("{}", line.trim_end());
+    }
+}
+
+#[allow(
+    clippy::print_stdout,
+    reason = "the whole point of this subcommand is to print the host candidates to stdout"
+)]
+fn print_host_candidates(ips: &[IpAddr]) {
+    for ip in ips {
+        println!("{ip}");
     }
 }
 
@@ -460,6 +521,30 @@ mod tests {
             command(&["firezone", "internet-resource", "disable"]),
             Cmd::InternetResource {
                 command: InternetResourceCmd::Disable
+            }
+        ));
+        assert!(matches!(
+            command(&["firezone", "host-candidates", "add", "192.168.2.1"]),
+            Cmd::HostCandidates {
+                command: HostCandidatesCmd::Add { ip }
+            } if ip == IpAddr::from([192, 168, 2, 1])
+        ));
+        assert!(matches!(
+            command(&["firezone", "host-candidates", "remove", "fd00::1"]),
+            Cmd::HostCandidates {
+                command: HostCandidatesCmd::Remove { ip }
+            } if ip == IpAddr::from([0xfd00, 0, 0, 0, 0, 0, 0, 1])
+        ));
+        assert!(matches!(
+            command(&["firezone", "host-candidates", "list"]),
+            Cmd::HostCandidates {
+                command: HostCandidatesCmd::List
+            }
+        ));
+        assert!(matches!(
+            command(&["firezone", "host-candidates", "clear"]),
+            Cmd::HostCandidates {
+                command: HostCandidatesCmd::Clear
             }
         ));
     }

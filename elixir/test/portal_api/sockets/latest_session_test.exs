@@ -54,21 +54,73 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
       assert device.firezone_id == "client-supplied"
     end
 
+    test "writes the token to token_id", %{client: client, token: token} do
+      upsert(attested_entry(client, token))
+
+      device = Repo.get_by!(Portal.Device, account_id: client.account_id, id: client.id)
+      assert device.token_id == token.id
+    end
+
     test "persists a tokenless X.509 session without treating it as revoked", %{
       client: client,
       token: token
     } do
-      entry = client |> attested_entry(token) |> Map.put(:client_token_id, nil)
+      entry = client |> attested_entry(token) |> Map.put(:token_id, nil)
 
       assert {1, [], []} = upsert(entry)
 
       device = Repo.get_by!(Portal.Device, account_id: client.account_id, id: client.id)
-      assert is_nil(device.client_token_id)
+      assert is_nil(device.token_id)
+    end
+  end
+
+  describe "device actors" do
+    setup %{client: client} do
+      Portal.DeviceActor
+      |> Repo.get_by!(account_id: client.account_id, device_id: client.id)
+      |> Repo.delete!()
+
+      :ok
+    end
+
+    test "records the actor that connected from the device", %{client: client, token: token} do
+      upsert(attested_entry(client, token))
+
+      assert %Portal.DeviceActor{first_seen_at: first_seen_at, last_seen_at: last_seen_at} =
+               Repo.get_by!(Portal.DeviceActor,
+                 account_id: client.account_id,
+                 device_id: client.id,
+                 actor_id: client.actor_id
+               )
+
+      assert first_seen_at == last_seen_at
+    end
+
+    test "moves last_seen_at forward and keeps first_seen_at", %{client: client, token: token} do
+      earlier = DateTime.add(DateTime.utc_now(), -1, :hour)
+      LatestSession.upsert_all([{attested_entry(client, token), %{timestamp: earlier}}])
+      upsert(attested_entry(client, token))
+
+      device_actor =
+        Repo.get_by!(Portal.DeviceActor,
+          account_id: client.account_id,
+          device_id: client.id,
+          actor_id: client.actor_id
+        )
+
+      assert device_actor.first_seen_at == earlier
+      assert DateTime.after?(device_actor.last_seen_at, earlier)
+    end
+
+    test "records nothing for a session without an actor", %{client: client, token: token} do
+      upsert(client |> attested_entry(token) |> Map.put(:actor_id, nil))
+
+      refute Repo.get_by(Portal.DeviceActor, account_id: client.account_id, device_id: client.id)
     end
   end
 
   defp upsert(attrs) do
-    LatestSession.upsert_all([{attrs, %{timestamp: DateTime.utc_now()}}], :client_token_id)
+    LatestSession.upsert_all([{attrs, %{timestamp: DateTime.utc_now()}}])
   end
 
   defp attested_keys do
@@ -89,7 +141,7 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
       last_attested_cert_fingerprint: "fp-1",
       last_attested_cert_issuer: <<"issuer-der">>,
       last_attested_at: DateTime.utc_now(),
-      client_token_id: token.id,
+      token_id: token.id,
       public_key: generate_public_key(),
       user_agent: "iOS/12.5 (iPhone) connlib/1.4.0",
       remote_ip: %Postgrex.INET{address: {100, 64, 0, 2}},

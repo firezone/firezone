@@ -9,11 +9,11 @@ run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
 # rewrite. A dispatch can also narrow the run to a single target.
 "on":
   schedule:
-    - cron: "0 8 1 * *" # monthly, 08:00 UTC on the 1st
+    - cron: "0 8 * * 0" # weekly, 08:00 UTC on Sundays
   workflow_dispatch:
     inputs:
       target:
-        description: "A single fuzz target to work on, e.g. 'tunnel-proto'. Leave empty for every target in rust/tests/fuzz/targets.json."
+        description: "A single fuzz target to work on, e.g. 'tunnel'. Leave empty for every target in rust/tests/fuzz/targets.json."
         required: false
         type: string
         default: ""
@@ -115,11 +115,18 @@ jobs:
         with:
           name: fuzz-${{ matrix.fuzz-target }}
           path: rust/tests/fuzz/corpus/${{ matrix.fuzz-target }}
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          repositories: ${{ github.repository }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: ./.github/actions/propose-fuzz-corpus
         with:
           target: ${{ matrix.fuzz-target }}
           branch-prefix: chore/fuzz-cmin-
           title: "chore(fuzz): minimize the ${{ matrix.fuzz-target }} corpus"
-          body: "The monthly fuzz job minimized the `${{ matrix.fuzz-target }}` corpus by AFL++ edge coverage and feedback."
-          gpg-key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
-          token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          body: "The weekly fuzz job minimized the `${{ matrix.fuzz-target }}` corpus by AFL++ edge coverage and feedback."
+          token: ${{ steps.app-token.outputs.token }}

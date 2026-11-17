@@ -2,6 +2,7 @@
 package dev.firezone.android.features.auth.ui
 
 import android.app.Application
+import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.features.auth.AuthCallbackOutcome
 import dev.firezone.android.features.auth.PendingAuthSession
 import org.junit.Assert.assertEquals
@@ -17,7 +18,7 @@ class AuthFlowUiTest {
     @Test
     fun `the fabricated callback completes the request it was built from`() {
         val session = PendingAuthSession()
-        session.begin(nonce = "nonce-", state = STATE)
+        session.begin(nonce = "nonce-", state = STATE, signedInWith = SIGN_IN_SETTINGS)
 
         val outcome = session.complete(fabricatedAuthCallback(STATE))
 
@@ -27,7 +28,7 @@ class AuthFlowUiTest {
     @Test
     fun `a callback fabricated for another request is refused`() {
         val session = PendingAuthSession()
-        session.begin(nonce = "nonce-", state = STATE)
+        session.begin(nonce = "nonce-", state = STATE, signedInWith = SIGN_IN_SETTINGS)
 
         val outcome = session.complete(fabricatedAuthCallback("a-different-state"))
 
@@ -36,5 +37,6 @@ class AuthFlowUiTest {
 
     private companion object {
         const val STATE = "the-state-the-request-issued"
+        val SIGN_IN_SETTINGS = SignInSettings("example-corp", "https://app.firezone.dev", "wss://api.firezone.dev")
     }
 }

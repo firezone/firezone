@@ -32,7 +32,7 @@ impl SocketPool {
         _src: Option<IpAddr>,
         _dst: SocketAddr,
         _datagrams: usize,
-        _recv_buffers: &crate::RecvBuffers,
+        _recv_buf_size: usize,
     ) -> Arc<OwnedSocket> {
         self.wildcard.clone()
     }

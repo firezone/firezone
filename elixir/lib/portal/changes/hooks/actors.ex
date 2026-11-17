@@ -14,6 +14,7 @@ defmodule Portal.Changes.Hooks.Actors do
   @impl true
   def on_update(lsn, old_data, data) do
     :ok = handle_update_side_effects(old_data, data)
+    :ok = handle_password_change(old_data, data)
 
     old_actor = struct_from_params(Portal.Actor, old_data)
     actor = struct_from_params(Portal.Actor, data)
@@ -28,7 +29,8 @@ defmodule Portal.Changes.Hooks.Actors do
     PubSub.Changes.broadcast(actor.account_id, :actors, change)
   end
 
-  # Delete api_tokens, client_tokens, and portal_sessions when an actor is disabled
+  # Client tokens are kept: a disabled actor cannot use them, and its clients
+  # connect again when the actor is enabled.
   defp handle_update_side_effects(
          %{
            "is_disabled" => false,
@@ -37,41 +39,59 @@ defmodule Portal.Changes.Hooks.Actors do
          },
          %{"is_disabled" => true}
        ) do
-    Database.delete_client_tokens_for_actor(account_id, actor_id)
     Database.delete_portal_sessions_for_actor(account_id, actor_id)
+    Database.delete_oauth_grants_for_actor(account_id, actor_id)
 
     :ok
   end
 
-  # Delete portal_sessions when an active account_admin_user is changed to account_user
+  # Delete portal_sessions and OAuth grants when an account_admin_user loses
+  # the admin role. Only an admin can grant an MCP client access, so the grant
+  # and every token issued under it go with the role.
   defp handle_update_side_effects(
+         %{"type" => "account_admin_user"},
          %{
-           "is_disabled" => false,
-           "type" => "account_admin_user"
-         },
-         %{
-           "is_disabled" => false,
-           "type" => "account_user",
+           "type" => type,
            "account_id" => account_id,
            "id" => actor_id
          }
-       ) do
+       )
+       when type != "account_admin_user" do
     Database.delete_portal_sessions_for_actor(account_id, actor_id)
+    Database.delete_oauth_grants_for_actor(account_id, actor_id)
 
     :ok
   end
 
   defp handle_update_side_effects(_old_data, _new_data), do: :ok
 
+  defp handle_password_change(
+         %{"password_hash" => old_password_hash},
+         %{
+           "password_hash" => password_hash,
+           "account_id" => account_id,
+           "id" => actor_id
+         }
+       )
+       when old_password_hash != password_hash do
+    Database.delete_client_tokens_for_actor(account_id, actor_id)
+    Database.delete_portal_sessions_for_actor(account_id, actor_id)
+
+    :ok
+  end
+
+  defp handle_password_change(_old_data, _new_data), do: :ok
+
   defmodule Database do
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
+    alias Portal.OAuthGrant
     alias Portal.PortalSession
     alias Portal.Safe
     import Ecto.Query
 
     def delete_client_tokens_for_actor(account_id, actor_id) do
-      from(c in ClientToken,
-        where: c.account_id == ^account_id and c.actor_id == ^actor_id
+      from(t in DeviceToken,
+        where: t.account_id == ^account_id and t.actor_id == ^actor_id
       )
       |> Safe.unscoped()
       |> Safe.delete_all()
@@ -80,6 +100,15 @@ defmodule Portal.Changes.Hooks.Actors do
     def delete_portal_sessions_for_actor(account_id, actor_id) do
       from(p in PortalSession,
         where: p.account_id == ^account_id and p.actor_id == ^actor_id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    # Authorization codes and tokens cascade with their grant.
+    def delete_oauth_grants_for_actor(account_id, actor_id) do
+      from(g in OAuthGrant,
+        where: g.account_id == ^account_id and g.actor_id == ^actor_id
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

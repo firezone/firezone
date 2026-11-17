@@ -4,6 +4,13 @@
 //! This makes it easier to directly take the values from the network buffer and use them in these structs (and vice-versa).
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
+mod payload;
+mod rate_limit;
+
+pub use payload::{RELAYABLE_HEADER_LEN, is_relayable};
+pub use rate_limit::{RateLimitCounter, RateLimiter, Route, Verdict};
 
 use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -239,6 +246,78 @@ impl PortAndPeerV6 {
     }
 }
 
+/// One in this many relayed packets is reported as a [`StatsEvent`].
+///
+/// Every event wakes up userspace and all CPUs wake it up through the same lock.
+/// Reporting every packet therefore caps the throughput of the entire relay.
+pub const STATS_SAMPLING_INTERVAL: u32 = 256;
+
+/// Exact totals for relayed packets, independent of perf-event sampling.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PacketCounts {
+    pub packets: u64,
+    pub bytes: u64,
+}
+
+impl<'a> core::iter::Sum<&'a PacketCounts> for PacketCounts {
+    fn sum<I: Iterator<Item = &'a PacketCounts>>(iter: I) -> Self {
+        iter.fold(Self::default(), |total, counts| Self {
+            packets: total.packets + counts.packets,
+            bytes: total.bytes + counts.bytes,
+        })
+    }
+}
+
+/// Indices into the per-CPU array that counts relayed packets by incoming IP version and ECN codepoint.
+///
+/// | Index  | IP version | ECN codepoint  |
+/// |--------|------------|----------------|
+/// | 0..=3  | IPv4       | `index`        |
+/// | 4..=7  | IPv6       | `index - 4`    |
+///
+/// [`PacketCounter::index`] and [`PacketCounter::ip_version_and_ecn`] convert between the two
+/// and are inverses of each other.
+pub struct PacketCounter;
+
+impl PacketCounter {
+    pub const NUM_ENTRIES: u32 = 8;
+
+    /// The index of the counter for packets of the given IP version and ECN codepoint.
+    ///
+    /// Only the two lowest bits of `ecn` form the codepoint.
+    /// The eBPF program only relays IPv4 and IPv6, so any other version counts as IPv6.
+    pub const fn index(ip_version: u8, ecn: u8) -> u32 {
+        match (ip_version, ecn & 0b11) {
+            (4, 0b00) => 0,
+            (4, 0b01) => 1,
+            (4, 0b10) => 2,
+            (4, _) => 3,
+            (_, 0b00) => 4,
+            (_, 0b01) => 5,
+            (_, 0b10) => 6,
+            (_, _) => 7,
+        }
+    }
+
+    /// The IP version and ECN codepoint counted at `index`, or `None` if there is no such counter.
+    pub const fn ip_version_and_ecn(index: u32) -> Option<(u8, u8)> {
+        let counter = match index {
+            0 => (4, 0b00),
+            1 => (4, 0b01),
+            2 => (4, 0b10),
+            3 => (4, 0b11),
+            4 => (6, 0b00),
+            5 => (6, 0b01),
+            6 => (6, 0b10),
+            7 => (6, 0b11),
+            _ => return None,
+        };
+
+        Some(counter)
+    }
+}
+
 /// Local perf-buffer ABI: integer fields use native endianness on the shared host.
 /// IP version and ECN are individual bytes and have no byte-order conversion.
 #[repr(C)]
@@ -340,6 +419,26 @@ fn duration_as_nanos_u64(d: core::time::Duration) -> u64 {
 mod stats_event_tests {
     use super::*;
     use network_types::ip::{Ipv4Hdr, Ipv6Hdr};
+
+    #[test]
+    fn packet_counter_index_round_trips() {
+        for ip_version in [4, 6] {
+            for ecn in 0..=3 {
+                let index = PacketCounter::index(ip_version, ecn);
+
+                assert!(index < PacketCounter::NUM_ENTRIES);
+                assert_eq!(
+                    PacketCounter::ip_version_and_ecn(index),
+                    Some((ip_version, ecn))
+                );
+            }
+        }
+
+        assert_eq!(
+            PacketCounter::ip_version_and_ecn(PacketCounter::NUM_ENTRIES),
+            None
+        );
+    }
 
     #[test]
     fn extracts_ecn_from_network_order_headers() {
@@ -475,6 +574,8 @@ mod stats_event_tests {
 mod userspace {
     use super::*;
 
+    unsafe impl aya::Pod for PacketCounts {}
+
     unsafe impl aya::Pod for ClientAndChannelV4 {}
 
     unsafe impl aya::Pod for PortAndPeerV4 {}
@@ -482,4 +583,6 @@ mod userspace {
     unsafe impl aya::Pod for ClientAndChannelV6 {}
 
     unsafe impl aya::Pod for PortAndPeerV6 {}
+
+    unsafe impl<T> aya::Pod for Route<T> where T: aya::Pod {}
 }

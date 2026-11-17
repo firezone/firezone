@@ -95,8 +95,9 @@ defmodule PortalAPI.PolicyController do
       ]}}}
     ```
 
-    Omit `postures` or use null for no posture requirement. Non-null postures
-    without the entitlement return 403. Invalid expressions return 422 with
+    Non-empty `conditions` without the `policy_conditions` entitlement return
+    403. Omit `postures` or use null for no posture requirement. Non-null
+    postures without the entitlement return 403. Invalid expressions return 422 with
     details in `validation_errors.postures`. See `PolicyPostureNode` for the
     complete field catalog, operator types, platform behavior, and limits.
     `GET /posture_fields` lists the same fields as structured data.
@@ -123,6 +124,7 @@ defmodule PortalAPI.PolicyController do
     subject = conn.assigns.subject
 
     with :ok <- Database.validate_internet_resource_policy(params, subject),
+         :ok <- validate_conditions(params, subject),
          :ok <- validate_postures(params, subject),
          {:ok, policy} <- Database.create_policy(params, subject) do
       conn
@@ -152,6 +154,10 @@ defmodule PortalAPI.PolicyController do
     to remove the posture requirement; clearing is allowed even after an
     account downgrade. Other policy attributes, including `conditions`, are
     unchanged when omitted. Conditions and postures must both hold.
+
+    Non-empty `conditions` require the `policy_conditions` entitlement or
+    return 403. Sending an empty list to remove them is allowed even after
+    an account downgrade.
 
     Non-null postures require the `device_posture` entitlement (Enterprise)
     or return 403. Invalid expressions return 422 with a path in
@@ -191,6 +197,7 @@ defmodule PortalAPI.PolicyController do
 
     with {:ok, policy} <- Database.fetch_policy(id, subject),
          :ok <- Database.validate_internet_resource_policy(params, subject),
+         :ok <- validate_conditions(params, subject),
          :ok <- validate_postures(params, subject),
          {:ok, policy} <- Database.update_policy(policy, params, subject) do
       json(conn, JSON.encode(policy))
@@ -231,6 +238,16 @@ defmodule PortalAPI.PolicyController do
       error -> Error.handle(conn, error)
     end
   end
+
+  defp validate_conditions(%{"conditions" => conditions}, subject) when conditions not in [nil, []] do
+    if Portal.Account.policy_conditions_enabled?(subject.account) do
+      :ok
+    else
+      {:error, :forbidden, reason: "Policy conditions are not enabled for this account"}
+    end
+  end
+
+  defp validate_conditions(_params, _subject), do: :ok
 
   defp validate_postures(%{"postures" => postures}, subject) when not is_nil(postures) do
     if Portal.Account.device_posture_enabled?(subject.account) do
@@ -368,7 +385,7 @@ defmodule PortalAPI.PolicyController do
     # so we only do the request-specific casting here.
     defp create_changeset(attrs, %Authentication.Subject{} = subject) do
       %Policy{}
-      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled is_disabled postures]a)
+      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation is_disabled postures]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
       |> put_change(:account_id, subject.account.id)
@@ -376,7 +393,7 @@ defmodule PortalAPI.PolicyController do
 
     defp changeset(%Policy{} = policy, attrs) do
       policy
-      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled is_disabled postures]a)
+      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation is_disabled postures]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     end

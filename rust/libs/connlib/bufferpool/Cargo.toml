@@ -8,14 +8,13 @@ license = { workspace = true }
 path = "lib.rs"
 
 [dependencies]
-bytes = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 
 [dev-dependencies]
 divan = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }
-tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+tokio = { workspace = true, features = ["sync"] }
 
 [[bench]]
 name = "pool"

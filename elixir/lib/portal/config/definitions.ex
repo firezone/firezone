@@ -46,6 +46,43 @@ defmodule Portal.Config.Definitions do
   end
 
   ##############################################
+  ## Configuration Source
+  ##############################################
+
+  @doc """
+  Where the portal reads its settings from.
+
+  `environment` reads every setting from environment variables. `azure` reads
+  them from the Azure App Configuration store at
+  `AZURE_APP_CONFIGURATION_ENDPOINT`, resolving Key Vault references with the
+  VM's managed identity (`AZURE_CLIENT_ID`). Settings the store does not have
+  fall back to environment variables.
+
+  This setting and the store endpoint are always read from environment
+  variables.
+  """
+  defconfig(
+    :config_adapter,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:environment, :azure]),
+    default: :environment
+  )
+
+  @doc """
+  Comma-separated endpoints of the Azure App Configuration store, primary first
+  and then its replicas, e.g.
+  `https://fzconfigprod.azconfig.io,https://fzconfigprod-westus3.azconfig.io`.
+  They are tried in order. Required when `CONFIG_ADAPTER` is `azure`.
+  """
+  defconfig(:azure_app_configuration_endpoint, {:array, ",", :string}, default: [])
+
+  @doc """
+  File that keeps the last settings read from App Configuration. When no
+  endpoint can be read at boot, the portal boots from this file instead.
+  It holds secrets, so it is written with mode 0600.
+  """
+  defconfig(:azure_app_configuration_cache_path, :string, default: nil)
+
+  ##############################################
   ## Background Jobs
   ##############################################
 
@@ -65,16 +102,6 @@ defmodule Portal.Config.Definitions do
   at supervisor start, which requires a live database.
   """
   defconfig(:oban_enabled, :boolean, default: true)
-
-  @doc """
-  Enable or disable the Changes (CDC) replication consumer for this app instance.
-  """
-  defconfig(:changes_replication_enabled, :boolean, default: false)
-
-  @doc """
-  Enable or disable the ChangeLogs replication consumer for this app instance.
-  """
-  defconfig(:change_logs_replication_enabled, :boolean, default: false)
 
   ##############################################
   ## Web Server
@@ -125,6 +152,17 @@ defmodule Portal.Config.Definitions do
       |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
       |> Portal.Changeset.normalize_url(key)
     end
+  )
+
+  @doc """
+  The Firezone Cloud region this deployment keeps its customer data in, shown to
+  users on the sign in pages and in account settings. On-prem deployments keep
+  the default and show nothing.
+  """
+  defconfig(
+    :data_residency_region,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:us, :eu, :on_prem]),
+    default: :on_prem
   )
 
   @doc """
@@ -198,12 +236,12 @@ defmodule Portal.Config.Definitions do
   @doc """
   The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
-  defconfig(:api_ingestion_refill_rate, :integer, default: 1)
+  defconfig(:api_ingestion_refill_rate, :integer, default: 100)
 
   @doc """
   The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
   """
-  defconfig(:api_ingestion_capacity, :integer, default: 1)
+  defconfig(:api_ingestion_capacity, :integer, default: 1_000)
 
   @doc """
   How often, in seconds, clients and gateways upload batched flow logs to the ingest API.
@@ -221,10 +259,10 @@ defmodule Portal.Config.Definitions do
   defconfig(:flow_logs_upload_batch_size, :integer, default: 1_000)
 
   @doc """
-  The base URL clients and gateways POST flow logs to.
+  The base URL clients and gateways POST flow logs to. Unset disables uploads.
   """
   defconfig(:flow_logs_api_url, :string,
-    default: "https://flow-api.firezone.dev/",
+    default: nil,
     changeset: fn changeset, key ->
       changeset
       |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
@@ -319,6 +357,26 @@ defmodule Portal.Config.Definitions do
       )
     end
   )
+
+  @doc """
+  Internal HTTPS port for the `ops` application. Leave unset to serve it over
+  plain HTTP only.
+  """
+  defconfig(:phoenix_https_ops_port, :integer,
+    default: nil,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
+  JSON object mapping `ops` hostnames to their TLS certificate and key files,
+  in the same format as `PHOENIX_HTTPS_SNI_HOSTS`.
+  """
+  defconfig(:phoenix_https_ops_sni_hosts, :map, default: %{})
 
   @doc """
   The IP address or hostname allowed as the WebSocket origin for the ops endpoint.
@@ -456,6 +514,37 @@ defmodule Portal.Config.Definitions do
   Entra access tokens when DATABASE_ENTRA_AUTH is enabled.
   """
   defconfig(:azure_client_id, :string, default: nil)
+
+  @doc """
+  Table service endpoint of the Azure Storage account that holds the shared
+  slug registry of Firezone Cloud, for example
+  https://firezoneslugs.table.core.windows.net. When set, the portal reserves
+  every account slug there before it writes it to its own database. Unset, the
+  default for on-prem, keeps slugs in this portal's database only.
+  """
+  defconfig(:slug_registry_table_url, :string, default: nil)
+
+  @doc """
+  Blob container in the other Firezone Cloud region that a region transfer
+  uploads accounts to, for example
+  https://firezonetransfereu.blob.core.windows.net/transfers.
+  """
+  defconfig(:region_transfer_outbox_url, :string, default: nil)
+
+  @doc """
+  Blob container in this region that the other Firezone Cloud region uploads
+  transferred accounts to, for example
+  https://firezonetransferus.blob.core.windows.net/transfers.
+  """
+  defconfig(:region_transfer_inbox_url, :string, default: nil)
+
+  @doc """
+  Blob container in this region that holds the profile photos that directory
+  sync copies from Entra and Google, for example
+  https://firezoneavatarsus.blob.core.windows.net/avatars. Unset, the default
+  for on-prem, turns photo sync off and people show an icon instead.
+  """
+  defconfig(:avatars_container_url, :string, default: nil)
 
   @doc """
   Size of the connection pool to the PostgreSQL database.
@@ -613,7 +702,8 @@ defmodule Portal.Config.Definitions do
     end
   )
 
-  # sobelow_skip ["DOS.StringToAtom"]
+  # Cluster configuration comes from administrator-controlled environment variables.
+  # sobelow_skip ["DOS.StringToAtom", "DOS.ModuleConcat"]
   defp dump_cluster_adapter_config(map, adapter) do
     keyword = Dumper.keyword(map)
 
@@ -806,13 +896,6 @@ defmodule Portal.Config.Definitions do
   ## Health
   ##############################################
 
-  @doc """
-  Path to the file that signals the service is draining.
-
-  When this file exists, the `/readyz` endpoint will return 503 with status "draining".
-  """
-  defconfig(:draining_file_path, :string, default: "/var/run/firezone/draining")
-
   ##############################################
   ## Telemetry
   ##############################################
@@ -856,6 +939,19 @@ defmodule Portal.Config.Definitions do
 
   @doc "Azure managed identity audience used for Ads federation."
   defconfig(:google_ads_workload_identity_audience, :string, default: nil)
+
+  @doc "Cloudflare Turnstile site key rendered on the sign-up forms. Challenges are disabled unless the secret key is also set."
+  defconfig(:turnstile_site_key, :string, default: nil)
+
+  @doc "Cloudflare Turnstile secret key used to verify sign-up challenges."
+  defconfig(:turnstile_secret_key, :string,
+    default: nil,
+    sensitive: true,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
 
   @doc "OpenAI Ads pixel receiving portal conversions."
   defconfig(:openai_conversions_pixel_id, :string, default: nil)
@@ -912,7 +1008,7 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Sender address of the founder follow-up email sent 15 minutes after a web sign-up.
+  Sender address of the founder follow-up emails sent 15 minutes and 3 days after a web sign-up.
 
   The follow-up email is disabled when this is unset or blank. The address must be
   allowed as a sender on the outbound email adapter.
@@ -937,16 +1033,6 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Enable or disable the Firezone telemetry collection.
-  """
-  defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)
-
-  @doc """
-  Name of the bucket to store client-, relay- and gateway-submitted instrumentation logs in.
-  """
-  defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
-
-  @doc """
   Reporter to use for sending metrics to the telemetry backend.
   """
   defconfig(
@@ -965,6 +1051,60 @@ defmodule Portal.Config.Definitions do
   defconfig(:telemetry_metrics_reporter_opts, :map,
     default: %{},
     dump: &Dumper.keyword/1
+  )
+
+  @doc """
+  OTLP/HTTP endpoint receiving the portal's metrics, e.g. `https://otlp.example.com/v1/metrics`.
+  """
+  defconfig(:otlp_metrics_endpoint, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
+    end
+  )
+
+  @doc """
+  OTLP/HTTP endpoint receiving the portal's traces, e.g. `https://otlp.example.com/v1/traces`.
+  """
+  defconfig(:otlp_traces_endpoint, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
+    end
+  )
+
+  @doc """
+  How the OTLP/HTTP exporters authenticate. When unset, requests carry the
+  `OTEL_EXPORTER_OTLP_HEADERS`.
+
+  Set to `azure-managed-identity` to send a managed identity token for Azure Monitor instead.
+  """
+  defconfig(
+    :otlp_auth,
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values: [azure_managed_identity: "azure-managed-identity"]
+    ),
+    default: nil
+  )
+
+  @doc """
+  Headers the OTLP/HTTP exporters send when `OTLP_AUTH` is unset, as a comma-separated list
+  of `key=value` pairs with percent-encoded values, e.g. `api-key=secret,x-tenant=1`.
+  """
+  defconfig(:otel_exporter_otlp_headers, {:array, ",", :string},
+    default: [],
+    sensitive: true,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_format(changeset, key, ~r/^[^=]*[^=\s][^=]*=([^%]|%[[:xdigit:]]{2})*$/,
+        message: "must be a key=value pair with a percent-encoded value"
+      )
+    end,
+    dump: fn headers ->
+      for header <- headers do
+        [key, value] = String.split(header, "=", parts: 2)
+        {String.trim(key), value |> String.trim() |> URI.decode()}
+      end
+    end
   )
 
   ##############################################
@@ -1024,6 +1164,19 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  Comma-separated email addresses that approve email sign-ups whose mail servers (MX
+  records) are not known. Each approver gets a personal approval link, and all of them
+  get a confirmation naming who approved. Sign-ups are never held for review
+  when this is empty.
+  """
+  defconfig(:sign_up_review_approvers, {:array, ",", :string},
+    default: [],
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_email(changeset, key)
+    end
+  )
+
+  @doc """
   Recipient address for posture provider interest and feedback emails.
   Interest registration and feedback are disabled when unset or blank.
   """
@@ -1073,6 +1226,7 @@ defmodule Portal.Config.Definitions do
           Swoosh.Adapters.Mandrill,
           Swoosh.Adapters.Postmark,
           Swoosh.Adapters.ProtonBridge,
+          Swoosh.Adapters.Resend,
           Swoosh.Adapters.SMTP,
           Swoosh.Adapters.SMTP2GO,
           Swoosh.Adapters.Sendgrid,
@@ -1119,6 +1273,7 @@ defmodule Portal.Config.Definitions do
           Swoosh.Adapters.Mandrill,
           Swoosh.Adapters.Postmark,
           Swoosh.Adapters.ProtonBridge,
+          Swoosh.Adapters.Resend,
           Swoosh.Adapters.SMTP,
           Swoosh.Adapters.SMTP2GO,
           Swoosh.Adapters.Sendgrid,
@@ -1154,6 +1309,12 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:acs_event_grid_webhook_signing_secret, :string, sensitive: true, default: nil)
 
+  @doc """
+  Resend API key used to move outbound email to Resend from the remote console
+  when Azure Communication Services is down.
+  """
+  defconfig(:resend_api_key, :string, sensitive: true, default: nil)
+
   ##############################################
   ## Billing flags
   ##############################################
@@ -1163,6 +1324,27 @@ defmodule Portal.Config.Definitions do
   defconfig(:stripe_webhook_signing_secret, :string, sensitive: true, default: nil)
   defconfig(:stripe_default_price_id, :string, default: nil)
   defconfig(:stripe_plan_product_ids, {:json_array, :string}, default: [])
+
+  ##############################################
+  ## YC Deals
+  ##############################################
+
+  @doc """
+  JSON object of YC deal ID to the secret YC Deals uses to sign that deal's
+  redemption webhook with HMAC-SHA256.
+  """
+  defconfig(:yc_deal_webhook_secrets, :map, sensitive: true, default: %{})
+
+  @doc """
+  JSON object of YC deal ID to the Stripe coupon its single-use promotion codes apply.
+  """
+  defconfig(:yc_deal_coupon_ids, :map, default: %{})
+
+  @doc """
+  YC deal webhook URL of another region's portal. Each redemption is sent
+  there too, so the same code works in that region's Stripe account.
+  """
+  defconfig(:yc_deal_mirror_url, :string, default: nil)
 
   ##############################################
   ## Local development and Staging Helpers

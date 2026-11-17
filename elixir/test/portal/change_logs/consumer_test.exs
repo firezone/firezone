@@ -45,6 +45,14 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert "trust_anchor_certificates" in tables
     end
 
+    test "includes account slugs in the audit publication", %{tables: tables} do
+      assert "account_slugs" in tables
+    end
+
+    test "includes site assignments in the audit publication", %{tables: tables} do
+      assert "site_devices" in tables
+    end
+
     test "includes the provider log sink tables but not the delivery machinery", %{
       tables: tables
     } do
@@ -168,6 +176,19 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert attrs.log_id == LogId.build_change_log(@seq_start, 0)
     end
 
+    test "logs a registered account slug", %{account: account, initial_state: initial_state} do
+      data = %{"slug" => "new-slug", "account_id" => account.id, "inserted_at" => "2026-10-27T00:00:00Z"}
+
+      result_state = Consumer.on_write(initial_state, 12346, :insert, "account_slugs", nil, data)
+
+      attrs = result_state.flush_buffer[12346]
+      assert attrs.object == "account_slugs"
+      assert attrs.operation == :insert
+      assert attrs.account_id == account.id
+      assert attrs.after == data
+      assert attrs.before == nil
+    end
+
     test "adds insert operation to flush buffer for non-account tables", %{
       account: account,
       initial_state: initial_state
@@ -284,6 +305,33 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       attrs = result_state.flush_buffer[12347]
       assert attrs.after["api_key"] == "[redacted]"
       assert attrs.after["api_url"] == "https://acme.workshop.cloud"
+    end
+
+    test "redacts device token secrets in the buffered snapshot", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "secret_salt" => "salt",
+        "secret_hash" => "hash"
+      }
+
+      result_state =
+        Consumer.on_write(
+          initial_state,
+          12348,
+          :delete,
+          "device_tokens",
+          data,
+          nil
+        )
+
+      attrs = result_state.flush_buffer[12348]
+      assert attrs.before["secret_salt"] == "[redacted]"
+      assert attrs.before["secret_hash"] == "[redacted]"
+      assert attrs.before["id"] == data["id"]
     end
 
     test "preserves existing buffer items", %{account: account, initial_state: initial_state} do

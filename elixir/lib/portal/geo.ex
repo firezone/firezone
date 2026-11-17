@@ -331,18 +331,22 @@ defmodule Portal.Geo do
     region = get_header(headers, "x-geo-location-region")
     city = get_header(headers, "x-geo-location-city")
 
-    coords =
-      case get_header(headers, "x-geo-location-coordinates") do
-        nil ->
-          {nil, nil}
-
-        coords ->
-          [lat, lon] = String.split(coords, ",", parts: 2)
-          {String.to_float(lat), String.to_float(lon)}
-      end
+    coords = parse_coordinates(get_header(headers, "x-geo-location-coordinates"))
 
     {region, city, maybe_put_default_coordinates(region, coords)}
   end
+
+  defp parse_coordinates(coords) when is_binary(coords) do
+    with [lat, lon] <- String.split(coords, ",", parts: 2),
+         {lat, ""} <- Float.parse(String.trim(lat)),
+         {lon, ""} <- Float.parse(String.trim(lon)) do
+      {lat, lon}
+    else
+      _ -> {nil, nil}
+    end
+  end
+
+  defp parse_coordinates(_coords), do: {nil, nil}
 
   defp degrees_to_radians(deg) do
     deg * :math.pi() / 180

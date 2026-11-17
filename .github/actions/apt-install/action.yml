@@ -8,6 +8,10 @@ inputs:
     description: "Whether to run `apt-get update` first. Set to false to reuse an index already refreshed by an earlier call in the same job."
     required: false
     default: "true"
+  install-recommends:
+    description: "Whether to install the packages' recommended packages too."
+    required: false
+    default: "true"
 runs:
   using: "composite"
   steps:
@@ -27,6 +31,7 @@ runs:
       shell: bash
       env:
         PACKAGES: ${{ inputs.packages }}
+        INSTALL_RECOMMENDS: ${{ inputs.install-recommends }}
       run: |
         read -ra packages <<< "$PACKAGES"
-        sudo apt-get --yes install -- "${packages[@]}"
+        sudo apt-get --yes --option "APT::Install-Recommends=$INSTALL_RECOMMENDS" install -- "${packages[@]}"

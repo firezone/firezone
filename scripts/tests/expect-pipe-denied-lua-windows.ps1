@@ -99,12 +99,12 @@ if (-not [W32.PipeProbe]::ImpersonateLoggedOnUser($luaToken)) {
 # `ERROR_FILE_NOT_FOUND`: the tunnel pipe exists as soon as the
 # service is up, but the GUI pipe is bound lazily, only once the
 # controller reaches its main loop (after WebView2 init + the
-# tunnel connect) ~several seconds post-launch. 30s of slack
-# comfortably covers that on a cold CI runner; a denied open does
+# tunnel connect). Cold CI VMs can take over 45s to initialize
+# Tauri, so allow 120s for the pipe to appear. A denied open does
 # not consume the server's accept slot.
 $h = $INVALID_HANDLE
 $lastError = 0
-for ($i = 0; $i -lt 300; $i++) {
+for ($i = 0; $i -lt 1200; $i++) {
     $h = [W32.PipeProbe]::CreateFileW(
         $PipePath, $READ_CONTROL, 0, [IntPtr]::Zero, $OPEN_EXISTING, 0, [IntPtr]::Zero
     )

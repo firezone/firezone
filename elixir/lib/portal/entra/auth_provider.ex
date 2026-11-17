@@ -1,7 +1,6 @@
 defmodule Portal.Entra.AuthProvider do
   use Ecto.Schema
   import Ecto.Changeset
-  import Portal.Changeset
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -25,7 +24,8 @@ defmodule Portal.Entra.AuthProvider do
       foreign_key: :id,
       define_field: false
 
-    field :issuer, :string
+    field :tenant_ids, {:array, Ecto.UUID}
+    field :sign_in_tenant_id, Ecto.UUID
 
     field :context, Ecto.Enum,
       values: ~w[clients_and_portal clients_only portal_only]a,
@@ -47,10 +47,20 @@ defmodule Portal.Entra.AuthProvider do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:name, :context, :issuer, :is_verified])
+    |> validate_required([:name, :context, :tenant_ids, :is_verified])
     |> validate_acceptance(:is_verified)
-    |> validate_length(:issuer, min: 1, max: 2_000)
-    |> validate_uri(:issuer, block_private_ips: true)
+    |> update_change(:tenant_ids, &Enum.uniq/1)
+    |> validate_length(:tenant_ids, min: 1)
+    |> check_constraint(:tenant_ids, name: :tenant_ids_must_not_be_empty)
+    |> exclusion_constraint(:tenant_ids,
+      name: :entra_auth_providers_tenant_ids_excl,
+      message: "A tenant is already verified on another Entra authentication provider in this account."
+    )
+    |> validate_sign_in_tenant_id()
+    |> check_constraint(:sign_in_tenant_id,
+      name: :sign_in_tenant_id_must_be_verified,
+      message: "must be a verified tenant"
+    )
     |> validate_number(:portal_session_lifetime_secs,
       greater_than_or_equal_to: @portal_session_lifetime_min,
       less_than_or_equal_to: @portal_session_lifetime_max
@@ -61,10 +71,6 @@ defmodule Portal.Entra.AuthProvider do
     )
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
-    |> unique_constraint(:issuer,
-      name: :entra_auth_providers_account_id_issuer_index,
-      message: "An Entra authentication provider with this issuer already exists."
-    )
     |> unique_constraint(:name,
       name: :entra_auth_providers_account_id_name_index,
       message: "An Entra authentication provider with this name already exists."
@@ -75,4 +81,14 @@ defmodule Portal.Entra.AuthProvider do
 
   def default_portal_session_lifetime_secs, do: @default_portal_session_lifetime_secs
   def default_client_session_lifetime_secs, do: @default_client_session_lifetime_secs
+
+  defp validate_sign_in_tenant_id(changeset) do
+    tenant_id = get_field(changeset, :sign_in_tenant_id)
+
+    if is_nil(tenant_id) or tenant_id in (get_field(changeset, :tenant_ids) || []) do
+      changeset
+    else
+      add_error(changeset, :sign_in_tenant_id, "must be a verified tenant")
+    end
+  end
 end

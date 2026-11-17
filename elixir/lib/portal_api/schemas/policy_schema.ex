@@ -26,12 +26,7 @@ defmodule PortalAPI.Schemas.Policy do
         `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a
         comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an
         IANA timezone name, e.g. `"M/09:00-17:00/America/New_York"`.
-      * `client_verified` with `is`: `values` is a single-element list
-        containing `"true"` or `"false"`.
-      * `device_attested` with `is`: `values` is a single-element list
-        containing `"true"` or `"false"`. `"true"` requires the Client to
-        have presented a valid X.509 certificate from one of the account's
-        trust anchors on its current connection.
+      * `client_verified` with `is`: `values` must be `["true"]`.
       """,
       type: :object,
       properties: %{
@@ -44,8 +39,7 @@ defmodule PortalAPI.Schemas.Policy do
             "remote_ip",
             "auth_provider_id",
             "current_utc_datetime",
-            "client_verified",
-            "device_attested"
+            "client_verified"
           ]
         },
         operator: %Schema{
@@ -146,10 +140,13 @@ defmodule PortalAPI.Schemas.Policy do
     result and can also match missing data; use a positive `enrolled is true`
     check when enrollment is required.
 
-    Leaves that do not apply to the device's platform are removed before
-    evaluation, including inside `or` and `not`. An expression with no
-    applicable leaves passes. If the platform is unknown, no leaves are
-    removed. Each field lists the platforms it applies to.
+    The device's platform comes from its matched provider records, such as
+    the operating system an MDM or EDR reports. Leaves that do not apply to
+    that platform are removed before evaluation, including inside `or` and
+    `not`. An expression with no applicable leaves passes. A provider with a
+    matched record keeps its leaves, except leaves on fields narrower than
+    the provider. If no record names a platform, no leaves are removed. Each
+    field lists the platforms it applies to.
     Provider `os_up_to_date` fields are computed from known OS releases;
     they are not raw provider attributes.
 
@@ -228,6 +225,16 @@ defmodule PortalAPI.Schemas.Policy do
               "Defaults to true. Always false for Internet Resource policies.",
           default: true
         },
+        require_attestation: %Schema{
+          example: false,
+          type: :boolean,
+          description:
+            "Whether the Client must present a valid X.509 certificate from one of the account's " <>
+              "trust anchors on its current connection. Device posture checks then match only on " <>
+              "the identifiers that certificate proves. Defaults to false. Setting it to true " <>
+              "returns 422 when the account has no trust anchors.",
+          default: false
+        },
         is_disabled: %Schema{
           example: false,
           type: :boolean,
@@ -288,6 +295,13 @@ defmodule PortalAPI.Schemas.Policy do
           description:
             "Whether flow logs are reported for connections authorized by this Policy. " <>
               "Always false for Internet Resource policies."
+        },
+        require_attestation: %Schema{
+          type: :boolean,
+          description:
+            "Whether the Client must present a valid X.509 certificate from one of the account's " <>
+              "trust anchors on its current connection. Setting it to true returns 422 when the " <>
+              "account has no trust anchors."
         },
         is_disabled: %Schema{
           example: false,
@@ -370,6 +384,12 @@ defmodule PortalAPI.Schemas.Policy do
           type: :boolean,
           description: "Whether flow logs are reported for connections authorized by this Policy"
         },
+        require_attestation: %Schema{
+          example: false,
+          type: :boolean,
+          description:
+            "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors"
+        },
         is_disabled: %Schema{
           example: false,
           type: :boolean,
@@ -407,6 +427,7 @@ defmodule PortalAPI.Schemas.Policy do
         :id,
         :is_disabled,
         :postures,
+        :require_attestation,
         :resource_id
       ]
     })

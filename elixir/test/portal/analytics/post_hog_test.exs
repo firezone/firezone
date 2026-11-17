@@ -94,8 +94,28 @@ defmodule Portal.Analytics.PostHogTest do
     assert conn.request_path == "/batch/"
     assert body == %{
              "api_key" => "phc_test",
-             "batch" => [put_in(event, ["properties", "web_external_url"], nil)]
+             "batch" => [
+               event
+               |> put_in(["properties", "web_external_url"], nil)
+               |> put_in(["properties", "data_residency_region"], "on_prem")
+             ]
            }
+  end
+
+  test "tags events with the data residency region" do
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:posthog_body, JSON.decode!(body)})
+      Req.Test.json(conn, %{"status" => "Ok"})
+    end)
+
+    Portal.Config.put_env_override(:data_residency_region, :eu)
+
+    assert :ok = PostHog.capture("Portal Attribution Received", "anonymous-id", %{})
+
+    assert_receive {:posthog_body, %{"properties" => %{"data_residency_region" => "eu"}}}
   end
 
   test "does not send empty batches" do

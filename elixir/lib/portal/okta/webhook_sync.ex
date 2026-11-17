@@ -71,12 +71,47 @@ defmodule Portal.Okta.WebhookSync do
     access_token = Okta.Sync.get_access_token!(client, directory)
     synced_at = DateTime.utc_now()
 
+    # Org-wide events name users the API service app may not be allowed to
+    # read, so assignment is checked before the user is fetched.
+    if assigned?(directory, client, access_token, user_id) do
+      fetch_and_refresh_user(directory, client, access_token, synced_at, user_id)
+    else
+      remove_identity(directory, user_id)
+    end
+  end
+
+  defp apply_change(directory, "group", group_id) do
+    Logger.info("Applying Okta group event", okta_directory_id: directory.id, group_id: group_id)
+    client = APIClient.new(directory)
+    access_token = Okta.Sync.get_access_token!(client, directory)
+    synced_at = DateTime.utc_now()
+    group = Database.get_group(directory.account_id, directory.id, group_id)
+
+    if assigned_group?(directory, client, access_token, group_id) do
+      fetch_and_refresh_group(directory, client, access_token, synced_at, group_id, group)
+    else
+      remove_group(directory, group)
+    end
+
+    Portal.Policy.reconnect_orphaned_policies(directory.account_id)
+    :ok
+  end
+
+  defp apply_change(directory, resource, _resource_id) do
+    Logger.info("Ignoring Okta event for unsupported resource",
+      okta_directory_id: directory.id,
+      resource: resource
+    )
+
+    :ok
+  end
+
+  defp fetch_and_refresh_user(directory, client, access_token, synced_at, user_id) do
     case APIClient.get_user(client, access_token, user_id) do
       # A suspended or deactivated user whose actor this directory created
       # stays, so the upsert disables the actor; any other one is removed.
       {:ok, %Req.Response{status: 200, body: %{"id" => ^user_id} = user}} ->
-        if Okta.Sync.keep_users(directory, [user]) != [] and
-             assigned?(directory, client, access_token, user_id) do
+        if Okta.Sync.keep_users(directory, [user]) != [] do
           refresh_user(directory, client, access_token, synced_at, user)
         else
           remove_identity(directory, user_id)
@@ -93,21 +128,11 @@ defmodule Portal.Okta.WebhookSync do
     end
   end
 
-  defp apply_change(directory, "group", group_id) do
-    Logger.info("Applying Okta group event", okta_directory_id: directory.id, group_id: group_id)
-    client = APIClient.new(directory)
-    access_token = Okta.Sync.get_access_token!(client, directory)
-    synced_at = DateTime.utc_now()
-    group = Database.get_group(directory.account_id, directory.id, group_id)
-
+  defp fetch_and_refresh_group(directory, client, access_token, synced_at, group_id, group) do
     case APIClient.get_group(client, access_token, group_id) do
       {:ok, %Req.Response{status: 200, body: %{"id" => ^group_id} = okta_group}} ->
-        if assigned_group?(directory, client, access_token, group_id) do
-          Okta.Sync.upsert_group(directory, synced_at, Okta.Sync.group_attrs(okta_group))
-          Okta.Sync.sync_group_members(directory, client, access_token, synced_at, group_id)
-        else
-          remove_group(directory, group)
-        end
+        Okta.Sync.upsert_group(directory, synced_at, Okta.Sync.group_attrs(okta_group))
+        Okta.Sync.sync_group_members(directory, client, access_token, synced_at, group_id)
 
       {:ok, %Req.Response{status: 404}} ->
         remove_group(directory, group)
@@ -118,18 +143,6 @@ defmodule Portal.Okta.WebhookSync do
       {:error, error} ->
         raise Okta.SyncError, error: error, directory_id: directory.id, step: :get_group
     end
-
-    Portal.Policy.reconnect_orphaned_policies(directory.account_id)
-    :ok
-  end
-
-  defp apply_change(directory, resource, _resource_id) do
-    Logger.info("Ignoring Okta event for unsupported resource",
-      okta_directory_id: directory.id,
-      resource: resource
-    )
-
-    :ok
   end
 
   defp refresh_user(directory, client, access_token, synced_at, user) do
@@ -156,6 +169,9 @@ defmodule Portal.Okta.WebhookSync do
     case APIClient.list_user_apps(client, access_token, user_id) do
       {:ok, %Req.Response{status: 200, body: apps}} when is_list(apps) ->
         apps != []
+
+      {:ok, %Req.Response{status: 404}} ->
+        false
 
       {:ok, response} ->
         raise Okta.SyncError, error: response, directory_id: directory.id, step: :list_user_apps
@@ -186,6 +202,9 @@ defmodule Portal.Okta.WebhookSync do
     case APIClient.list_group_apps(client, access_token, group_id) do
       {:ok, %Req.Response{status: 200, body: apps}} when is_list(apps) ->
         apps != []
+
+      {:ok, %Req.Response{status: 404}} ->
+        false
 
       {:ok, response} ->
         raise Okta.SyncError, error: response, directory_id: directory.id, step: :list_group_apps

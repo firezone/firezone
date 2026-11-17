@@ -97,11 +97,65 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookControllerTes
       assert response(conn, 400) == "Bad Request: missing aeg-event-type header"
     end
 
+    test "warns when the webhook secret is invalid", %{conn: conn} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/json")
+            |> put_req_header("aeg-event-type", "Notification")
+            |> put_req_header("aeg-sas-key", "wrong")
+            |> post("/integrations/azure_communication_services/webhooks", notification_payload())
+
+          assert response(conn, 401) == "Unauthorized"
+        end)
+
+      assert log =~ "ACS Event Grid webhook failed authentication"
+      assert log =~ "remote_ip=127.0.0.1"
+    end
+
+    test "rejects an unauthenticated notification before parsing its body", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("aeg-event-type", "Notification")
+        |> put_req_header("aeg-sas-key", "wrong")
+        |> post("/integrations/azure_communication_services/webhooks", "{not json")
+
+      assert response(conn, 401) == "Unauthorized"
+    end
+
+    test "warns when the aeg-event-type header is missing", %{conn: conn} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/json")
+            |> post("/integrations/azure_communication_services/webhooks", notification_payload())
+
+          assert response(conn, 400) == "Bad Request: missing aeg-event-type header"
+        end)
+
+      assert log =~ "ACS Event Grid webhook rejected"
+      assert log =~ "missing_event_type"
+    end
+
+    test "rejects repeated aeg-event-type headers instead of crashing", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> Map.update!(:req_headers, &[{"aeg-event-type", "Notification"}, {"aeg-event-type", "Notification"} | &1])
+        |> post("/integrations/azure_communication_services/webhooks", notification_payload())
+
+      assert response(conn, 400) == "Bad Request: invalid aeg-event-type header"
+    end
+
     test "returns 400 for invalid JSON", %{conn: conn} do
       conn =
         conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("aeg-event-type", "Notification")
+        |> put_req_header("aeg-sas-key", "acs-secret")
         |> post(
           "/integrations/azure_communication_services/webhooks",
           "{not valid json"

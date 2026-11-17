@@ -152,7 +152,8 @@
           Log.warning("MockTunnelSession: failed to encode the log chunk: \(error)")
           responseHandler(nil)
         }
-      case .setInternetResourceEnabled, .signOut, .getEncodedFirezoneId, .drainFlowLogs:
+      case .setInternetResourceEnabled, .setLogFilter, .setAdditionalHostCandidates, .manualReset,
+        .setForceRelayedConnections, .signOut, .getEncodedFirezoneId, .drainFlowLogs:
         responseHandler(nil)
       }
     }
@@ -185,11 +186,11 @@
 
     let session: MockTunnelSession
 
-    init(session: MockTunnelSession) {
+    init(session: MockTunnelSession, configuration: Configuration) {
       self.session = session
 
       let proto = NETunnelProviderProtocol()
-      proto.providerConfiguration = Configuration.shared.toProviderConfiguration()
+      proto.providerConfiguration = configuration.toProviderConfiguration()
       proto.providerBundleIdentifier = extensionBundleIdentifier
       proto.serverAddress = "Firezone"
       protocolConfiguration = proto

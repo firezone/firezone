@@ -31,7 +31,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
         _opts
       )
       when as in ["client", "gui-client", "headless-client"] do
-    with %Account{} = account <- Database.get_account_by_id_or_slug(account_id_or_slug),
+    with %Account{} = account <- PortalWeb.Accounts.get_by_id_or_slug(account_id_or_slug),
          provider when is_struct(provider) <- Database.get_default_provider_for_account(account) do
       redirect_params = PortalWeb.Authentication.take_sign_in_redirect_params(conn.params)
 
@@ -78,16 +78,6 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       GitHub,
       Entra
     }
-
-    def get_account_by_id_or_slug(id_or_slug) do
-      if Portal.Repo.valid_uuid?(id_or_slug) do
-        where(Account, [a], a.id == ^id_or_slug)
-      else
-        where(Account, [a], a.slug == ^id_or_slug)
-      end
-      |> Safe.unscoped()
-      |> Safe.one()
-    end
 
     def get_default_provider_for_account(account) do
       account_id = account.id

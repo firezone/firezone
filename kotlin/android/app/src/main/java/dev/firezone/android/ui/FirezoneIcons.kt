@@ -7,7 +7,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-// Material Symbols Rounded (https://fonts.google.com/icons), path data copied verbatim.
+// Material rounded icons (https://fonts.google.com/icons).
 object FirezoneIcons {
     val ArrowBack: ImageVector by lazy {
         materialSymbol(
@@ -127,6 +127,17 @@ object FirezoneIcons {
         )
     }
 
+    val Lock: ImageVector by lazy {
+        materialSymbol(
+            name = "Lock",
+            pathData =
+                "M 720 320 h -40 V 240 c 0 -110.4 -89.6 -200 -200 -200 S 280 129.6 280 240 v 80 H 240 c -44 0 -80 36 -80 80 v 400 c " +
+                    "0 44 36 80 80 80 h 480 c 44 0 80 -36 80 -80 V 400 c 0 -44 -36 -80 -80 -80 z m -240 360 c -44 0 -80 -36 -80 -80 s 36" +
+                    " -80 80 -80 80 36 80 80 -36 80 -80 80 z M 360 320 V 240 c 0 -66.4 53.6 -120 120 -120 s 120 53.6 120 120 v 80 H 360 " +
+                    "z",
+        )
+    }
+
     val Logout: ImageVector by lazy {
         materialSymbol(
             name = "Logout",
@@ -138,6 +149,18 @@ object FirezoneIcons {
                     "Q457,840 440,840L200,840ZM687,520L400,520Q383,520 371.5,508.5Q360,497 360,480Q360,463 371.5,451.5Q383,440 400,440" +
                     "L687,440L612,365Q601,354 601,338Q601,322 612,310Q623,298 640,297.5Q657,297 669,309L812,452Q824,464 824,480" +
                     "Q824,496 812,508L669,651Q657,663 640.5,662.5Q624,662 612,650Q601,638 601.5,621.5Q602,605 613,594L687,520Z",
+        )
+    }
+
+    val MoreVert: ImageVector by lazy {
+        materialSymbol(
+            name = "MoreVert",
+            pathData =
+                "M480,800Q447,800 423.5,776.5Q400,753 400,720Q400,687 423.5,663.5Q447,640 480,640Q513,640 536.5,663.5" +
+                    "Q560,687 560,720Q560,753 536.5,776.5Q513,800 480,800ZM480,560Q447,560 423.5,536.5Q400,513 400,480" +
+                    "Q400,447 423.5,423.5Q447,400 480,400Q513,400 536.5,423.5Q560,447 560,480Q560,513 536.5,536.5Q513,560 480,560Z" +
+                    "M480,320Q447,320 423.5,296.5Q400,273 400,240Q400,207 423.5,183.5Q447,160 480,160Q513,160 536.5,183.5" +
+                    "Q560,207 560,240Q560,273 536.5,296.5Q513,320 480,320Z",
         )
     }
 

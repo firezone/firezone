@@ -147,7 +147,7 @@ private fun SignInRoute(onSignInLaunched: () -> Unit) {
             context.startActivity(Intent(context, AuthActivity::class.java))
             onSignInLaunched()
         },
-        onSettings = { context.startActivity(SettingsActivity.createIntent(context, isUserSignedIn = false)) },
+        onSettings = { context.startActivity(SettingsActivity.createIntent(context)) },
     )
 }
 

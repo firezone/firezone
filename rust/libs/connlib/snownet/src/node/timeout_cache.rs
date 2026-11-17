@@ -2,21 +2,18 @@ use std::{ops::ControlFlow, time::Instant};
 
 #[derive(Debug, Default)]
 pub struct TimeoutCache {
-    inner: Option<(Instant, &'static str)>,
+    inner: Option<Instant>,
 }
 
 impl TimeoutCache {
-    pub fn update(
-        &mut self,
-        value: impl Into<Option<(Instant, &'static str)>>,
-    ) -> Option<(Instant, &'static str)> {
+    pub fn update(&mut self, value: impl Into<Option<Instant>>) -> Option<Instant> {
         self.inner = value.into();
 
         self.inner
     }
 
     pub fn check(&mut self, now: Instant) -> ControlFlow<()> {
-        let Some((timeout, _)) = self.inner else {
+        let Some(timeout) = self.inner else {
             return ControlFlow::Break(());
         };
 
@@ -41,7 +38,7 @@ mod tests {
         let mut cache = TimeoutCache::default();
         let now = Instant::now();
 
-        cache.update((now + Duration::from_secs(1), "test"));
+        cache.update(now + Duration::from_secs(1));
 
         assert_eq!(cache.check(now), ControlFlow::Break(()));
     }
@@ -51,7 +48,7 @@ mod tests {
         let mut cache = TimeoutCache::default();
         let now = Instant::now();
 
-        cache.update((now + Duration::from_secs(1), "test"));
+        cache.update(now + Duration::from_secs(1));
 
         assert_eq!(
             cache.check(now + Duration::from_secs(1)),

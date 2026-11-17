@@ -5,7 +5,7 @@ use platform::ServerStream;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
-    bytes::BytesMut,
+    bytes::{Bytes, BytesMut},
     codec::{FramedRead, FramedWrite, LengthDelimitedCodec},
 };
 
@@ -132,7 +132,7 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
 
     fn encode(&mut self, msg: &E, buf: &mut BytesMut) -> Result<()> {
         let msg = serde_json::to_string(msg)?;
-        self.inner.encode(msg.into(), buf)?;
+        self.inner.encode(Bytes::from(msg), buf)?;
         Ok(())
     }
 }

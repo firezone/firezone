@@ -46,8 +46,13 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Transact
 use tokio::time::Instant;
 use url::Url;
 
-/// Size of the per-datagram header: an 8-byte sequence number + 8-byte send timestamp.
-pub const TURN_HEADER_SIZE: usize = 16;
+/// Smallest datagram payload: the relay only forwards WireGuard and STUN, so every payload is a
+/// WireGuard data message (8-byte header + 8-byte sequence number + 8-byte send timestamp, padded
+/// to the 32-byte minimum of a real data message).
+pub const MIN_TURN_PAYLOAD_SIZE: usize = 32;
+
+/// WireGuard data message header: message type 4 and a zero receiver index.
+const WIREGUARD_DATA_HEADER: [u8; 8] = [4, 0, 0, 0, 0, 0, 0, 0];
 
 /// Size of a `ChannelData` header (channel number + length), prepended to every datagram.
 const CHANNEL_DATA_HEADER_SIZE: usize = 4;
@@ -81,13 +86,6 @@ const MAX_BATCH: usize = 64;
 
 /// How many probes the peer sends to open its NAT mapping toward the relayed address.
 const PUNCH_COUNT: usize = 5;
-
-bufferpool::buffer_pool!(
-    /// Room for any STUN control message or probe we send.
-    static CONTROL_MESSAGES: Vec<u8> = (2048, "turn-loadtest-control"),
-    batch: 4
-);
-bufferpool::buffer_pool!(static BATCHES: Vec<u8>, "turn-loadtest", batch: 2);
 
 /// Extra time the receiver keeps listening after the sender stops, to drain in-flight datagrams.
 const DRAIN_GRACE: Duration = Duration::from_secs(2);
@@ -575,7 +573,6 @@ async fn send(
     counters: &Counters,
 ) -> Result<SendStats> {
     let frame_size = CHANNEL_DATA_HEADER_SIZE + config.payload_size;
-    let pool = BATCHES.with_capacity(MAX_BATCH * frame_size);
     let frame_bits = (frame_size * 8) as f64;
     let packets_per_second = config.bitrate_bps as f64 * flows.get() as f64 / frame_bits;
     let send_end = data_start + config.duration;
@@ -612,7 +609,7 @@ async fn send(
             sequence += 1;
         }
 
-        let packet = pool.pull_initialised(&batch);
+        let packet = bufferpool::Bytes::copied_from(&batch);
         socket
             .send(DatagramOut {
                 src: None,
@@ -758,6 +755,7 @@ fn write_frame(batch: &mut Vec<u8>, channel: u16, sequence: u64, payload_size: u
     batch.extend_from_slice(&(payload_size as u16).to_be_bytes());
 
     let payload_start = batch.len();
+    batch.extend_from_slice(&WIREGUARD_DATA_HEADER);
     batch.extend_from_slice(&sequence.to_be_bytes());
     batch.extend_from_slice(&unix_nanos().to_be_bytes());
     batch.resize(payload_start + payload_size, 0); // Pad to the configured payload size.
@@ -765,8 +763,11 @@ fn write_frame(batch: &mut Vec<u8>, channel: u16, sequence: u64, payload_size: u
 
 /// Parse the sequence number and send timestamp from a received payload.
 fn parse_payload(packet: &[u8]) -> Option<(u64, u64)> {
-    let sequence = u64::from_be_bytes(packet.get(0..8)?.try_into().ok()?);
-    let sent_nanos = u64::from_be_bytes(packet.get(8..16)?.try_into().ok()?);
+    if packet.get(0..8)? != WIREGUARD_DATA_HEADER {
+        return None;
+    }
+    let sequence = u64::from_be_bytes(packet.get(8..16)?.try_into().ok()?);
+    let sent_nanos = u64::from_be_bytes(packet.get(16..24)?.try_into().ok()?);
 
     Some((sequence, sent_nanos))
 }
@@ -1160,7 +1161,7 @@ async fn send_datagram(
     bytes: &[u8],
     segment_size: usize,
 ) -> Result<()> {
-    let packet = CONTROL_MESSAGES.pull_initialised(bytes);
+    let packet = bufferpool::Bytes::copied_from(bytes);
 
     socket
         .send(DatagramOut {
@@ -1175,7 +1176,7 @@ async fn send_datagram(
 
 /// Bind a GSO-enabled UDP socket, enlarging its buffers on a best-effort basis.
 fn bind_socket(addr: SocketAddr) -> Result<PerfUdpSocket> {
-    let mut socket = socket_factory::udp(addr)?.into_perf()?;
+    let mut socket = socket_factory::udp(addr)?.into_perf();
 
     socket.set_buffer_sizes(
         socket_factory::SEND_BUFFER_SIZE,
@@ -1210,9 +1211,9 @@ fn parse_payload_size(s: &str) -> Result<usize, String> {
         .parse()
         .map_err(|e| format!("invalid payload size: {e}"))?;
 
-    if size < TURN_HEADER_SIZE {
+    if size < MIN_TURN_PAYLOAD_SIZE {
         return Err(format!(
-            "payload size must be at least {TURN_HEADER_SIZE} bytes (sequence header)"
+            "payload size must be at least {MIN_TURN_PAYLOAD_SIZE} bytes (WireGuard data message)"
         ));
     }
     if size > MAX_TURN_PAYLOAD_SIZE {
@@ -1325,7 +1326,7 @@ mod tests {
 
     #[test]
     fn parse_payload_rejects_short_input() {
-        assert!(parse_payload(&[0u8; 8]).is_none());
+        assert!(parse_payload(&WIREGUARD_DATA_HEADER).is_none());
     }
 
     #[test]

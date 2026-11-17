@@ -77,6 +77,7 @@ defmodule Portal.PolicyFixtures do
         :group_id,
         :resource_id,
         :flow_log_uploads_enabled,
+        :require_attestation,
         :postures
       ])
       |> Ecto.Changeset.cast_embed(:conditions,

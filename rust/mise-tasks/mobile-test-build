@@ -25,6 +25,6 @@ fi
 mkdir -p "$(dirname "$binaries_file")"
 read -ra flags <<<"$(mise run -q //rust:mobile-test-packages "$triple")"
 
-cargo test --no-run --message-format=json --target "$triple" "${flags[@]}" |
+cargo test --no-run --message-format=json-render-diagnostics --target "$triple" "${flags[@]}" |
     jq -r 'select(.reason == "compiler-artifact" and .executable != null and .profile.test) | "\(.manifest_path | sub("/Cargo.toml$"; ""))\t\(.executable)"' \
         >"$binaries_file"

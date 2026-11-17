@@ -47,12 +47,20 @@ class FakeSession(
         commands.trySend("reset")
     }
 
+    override fun setAdditionalHostCandidates(ips: List<String>) {
+        commands.trySend("setAdditionalHostCandidates=$ips")
+    }
+
     override fun setDns(dnsServers: List<String>) {
         commands.trySend("setDns=$dnsServers")
     }
 
     override fun setInternetResourceState(active: Boolean) {
         commands.trySend("setInternetResourceState=$active")
+    }
+
+    override fun setForceRelayedConnections(enabled: Boolean) {
+        commands.trySend("setForceRelayedConnections=$enabled")
     }
 
     suspend fun awaitCommand(command: String) {

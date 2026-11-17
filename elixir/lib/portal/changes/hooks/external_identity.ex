@@ -21,7 +21,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
   end
 
   defmodule Database do
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.PortalSession
     alias Portal.Safe
     import Ecto.Query
@@ -29,11 +29,11 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
     def delete_client_tokens(account_id, actor_id, issuer) do
       auth_provider_ids = auth_provider_ids_for_issuer(issuer)
 
-      from(c in ClientToken,
+      from(t in DeviceToken,
         where:
-          c.account_id == ^account_id and
-            c.actor_id == ^actor_id and
-            c.auth_provider_id in subquery(auth_provider_ids)
+          t.account_id == ^account_id and
+            t.actor_id == ^actor_id and
+            t.auth_provider_id in subquery(auth_provider_ids)
       )
       |> Safe.unscoped()
       |> Safe.delete_all()
@@ -56,7 +56,9 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
       from(g in Portal.Google.AuthProvider, where: g.issuer == ^issuer, select: g.id)
       |> union(^from(gh in Portal.GitHub.AuthProvider, where: gh.issuer == ^issuer, select: gh.id))
       |> union(^from(o in Portal.Okta.AuthProvider, where: o.issuer == ^issuer, select: o.id))
-      |> union(^from(e in Portal.Entra.AuthProvider, where: e.issuer == ^issuer, select: e.id))
+      |> union(^from(e in Portal.Entra.AuthProvider,
+        where: fragment("? = ANY(SELECT 'https://login.microsoftonline.com/' || unnest(?)::text || '/v2.0')", ^issuer, e.tenant_ids),
+        select: e.id))
       |> union(
         ^from(oidc in Portal.OIDC.AuthProvider, where: oidc.issuer == ^issuer, select: oidc.id)
       )

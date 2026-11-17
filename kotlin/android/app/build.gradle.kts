@@ -65,7 +65,7 @@ android {
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.5.18"
+        versionName = "1.5.19"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
@@ -162,6 +162,8 @@ android {
             // location, and the JaCoCo agent skips those by default, so nothing a Robolectric test
             // executes was counted. The JDK's own location-less classes cannot be instrumented.
             all { test ->
+                // Robolectric reflects into `jdk.internal.access` to intercept `FileDescriptor`.
+                test.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
                 test.extensions.configure<JacocoTaskExtension> {
                     isIncludeNoLocationClasses = true
                     excludes = listOf("jdk.internal.*")
@@ -304,7 +306,7 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.1")
     // Mints the test certificates; the platform offers no way to build one.
     androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     // Unit Tests
@@ -315,15 +317,15 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:5.5.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:5.5.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.1")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.5.1")
 
     // Moshi
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
     implementation("com.squareup.moshi:moshi:1.15.2")
 
     // Gson
-    implementation("com.google.code.gson:gson:2.14.0")
+    implementation("com.google.code.gson:gson:2.15.0")
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0")
@@ -345,7 +347,7 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.19.1@aar")
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.60.0")
+    implementation("io.sentry:sentry-android:8.61.0")
 
     // Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
@@ -375,9 +377,9 @@ dependencies {
     // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
     // resolves activities against the debug manifest, which this artifact declares it in.
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
-    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.78.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.78.0")
+    testImplementation("org.robolectric:robolectric:4.17")
 }
 
 roborazzi {

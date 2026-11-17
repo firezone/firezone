@@ -16,6 +16,12 @@ defmodule PortalWeb.Resources do
 
   @device_search_refill_threshold 5
 
+  @form_events ~w[change_resource_form submit_resource_form]
+
+  @selected_resource_events ~w[
+    open_grant_form submit_grant disable_policy enable_policy remove_group_access delete_resource
+  ]
+
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
 
@@ -58,6 +64,7 @@ defmodule PortalWeb.Resources do
         ],
         loader: &load_resources/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -154,6 +161,10 @@ defmodule PortalWeb.Resources do
      |> assign(filter_site: filter_site, selected_resource: nil, selected_groups: [])
      |> assign(resource_state_assigns(socket))}
   end
+
+  defp stale_event?(event, %{resource_form: %{form: nil}}) when event in @form_events, do: true
+  defp stale_event?(event, %{selected_resource: nil}) when event in @selected_resource_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp resource_state_assigns(socket, overrides \\ []) do
     [
@@ -390,7 +401,7 @@ defmodule PortalWeb.Resources do
           Network endpoints accessible through Firezone.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/resources" />
+          <Navigation.docs_action show_label size="md" path="/deploy/resources" />
           <Form.button style="primary" icon="ri-add-line" phx-click="open_new_form">
             New Resource
           </Form.button>
@@ -659,10 +670,16 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
-  def handle_event("open_edit_form", _params, socket) do
-    resource = socket.assigns.selected_resource
-
+  def handle_event(
+        "open_edit_form",
+        _params,
+        %{assigns: %{selected_resource: %Resource{} = resource}} = socket
+      ) do
     {:noreply, push_patch(socket, to: edit_resource_path(socket, resource.id))}
+  end
+
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_resource: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("cancel_resource_form", _params, socket) do
@@ -685,11 +702,23 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
-  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
+  def handle_event(
+        "change_policy_authorizations_page",
+        %{"page" => page},
+        %{assigns: %{selected_resource: %Resource{} = resource}} = socket
+      ) do
     {:noreply,
      push_patch(socket,
-       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}", tab: "authorizations", page: page)
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource.id}", tab: "authorizations", page: page)
      )}
+  end
+
+  def handle_event(
+        "change_policy_authorizations_page",
+        _params,
+        %{assigns: %{selected_resource: nil}} = socket
+      ) do
+    {:noreply, socket}
   end
 
   def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
@@ -1566,7 +1595,7 @@ defmodule PortalWeb.Resources do
     alias Portal.Resource
     alias Portal.Policy
     alias Portal.PolicyAuthorization
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Actor
     alias Portal.Device
     alias Portal.Site
@@ -1705,7 +1734,6 @@ defmodule PortalWeb.Resources do
       from(c in Device, as: :devices)
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.id in ^device_ids)
-      |> preload(:actor)
       |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
@@ -1713,7 +1741,9 @@ defmodule PortalWeb.Resources do
           []
 
         devices ->
-          Portal.Presence.Devices.preload_presence(devices)
+          devices
+          |> Portal.Devices.put_latest_actor(subject)
+          |> Portal.Presence.Devices.preload_presence()
       end
     end
 
@@ -1874,7 +1904,7 @@ defmodule PortalWeb.Resources do
         on: g.id == p.group_id and g.account_id == p.account_id,
         as: :groups
       )
-      |> join(:inner, [policy_authorizations: pa], t in ClientToken,
+      |> join(:inner, [policy_authorizations: pa], t in DeviceToken,
         on: t.id == pa.token_id and t.account_id == pa.account_id,
         as: :tokens
       )
@@ -1934,7 +1964,7 @@ defmodule PortalWeb.Resources do
     def insert_policy(attrs, subject) do
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
+        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()

@@ -1,6 +1,6 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 
-use crate::auth;
+use crate::{auth, settings::ControlPlane};
 use anyhow::{Context as _, Result, bail};
 use gui_ipc::{ClientMsg, ServerMsg};
 use secrecy::SecretString;
@@ -50,6 +50,7 @@ pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
 
     let mut fragment = None;
     let mut state = None;
+    let mut region = None;
 
     // There's probably a way to get serde to do this
     for (key, value) in url.query_pairs() {
@@ -66,6 +67,12 @@ pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
                 }
                 state = Some(SecretString::from(value.as_ref()));
             }
+            "region" => {
+                if region.is_some() {
+                    bail!("`region` should appear at most once");
+                }
+                region = Some(value.into_owned());
+            }
             _ => {}
         }
     }
@@ -73,6 +80,11 @@ pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
     Ok(auth::Response {
         fragment: fragment.context("URL should have `fragment`")?,
         state: state.context("URL should have `state`")?,
+        control_plane: match region.as_deref() {
+            Some("us") => Some(ControlPlane::CloudUs),
+            Some("eu") => Some(ControlPlane::CloudEu),
+            _ => None,
+        },
     })
 }
 
@@ -142,6 +154,25 @@ mod tests {
         let actual_result = parse_callback_wrapper(input);
         assert!(actual_result.is_err());
 
+        Ok(())
+    }
+
+    #[test]
+    fn callback_region_selects_only_known_control_planes() -> Result<()> {
+        for (query, expected) in [
+            ("", None),
+            ("&region=us", Some(ControlPlane::CloudUs)),
+            ("&region=eu", Some(ControlPlane::CloudEu)),
+            ("&region=unknown", None),
+        ] {
+            let response = parse_callback_wrapper(&format!(
+                "firezone://handle_client_sign_in_callback/?fragment=secret&state=secret{query}"
+            ))?;
+            assert_eq!(response.control_plane, expected);
+        }
+        assert!(parse_callback_wrapper(
+            "firezone://handle_client_sign_in_callback/?fragment=secret&state=secret&region=us&region=eu"
+        ).is_err());
         Ok(())
     }
 

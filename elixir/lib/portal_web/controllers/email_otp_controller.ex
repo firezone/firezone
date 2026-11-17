@@ -24,7 +24,7 @@ defmodule PortalWeb.EmailOTPController do
       when is_binary(email) do
     context_type = context_type(params)
 
-    with {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
+    with {:ok, account} <- PortalWeb.Accounts.fetch_by_id_or_slug(account_id_or_slug),
          {:ok, _provider} <- Database.fetch_provider_by_id(account, auth_provider_id) do
       conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id, context_type)
 
@@ -47,7 +47,7 @@ defmodule PortalWeb.EmailOTPController do
   end
 
   @spec verify(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def verify(conn, %{"secret" => entered_code} = params) do
+  def verify(conn, %{"secret" => entered_code} = params) when is_binary(entered_code) do
     result =
       Portal.Timing.execute_with_constant_time(
         fn -> do_verify(conn, params, String.downcase(entered_code)) end,
@@ -68,7 +68,7 @@ defmodule PortalWeb.EmailOTPController do
 
     with {:ok, actor_id, passcode_id, email, initiated_context_type} <- fetch_state(conn),
          :ok <- validate_initiated_context(initiated_context_type, context_type),
-         {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
+         {:ok, account} <- PortalWeb.Accounts.fetch_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
          false <- client_seat_restricted?(account, actor_id, context_type),
@@ -100,7 +100,7 @@ defmodule PortalWeb.EmailOTPController do
       |> PortalWeb.Cookie.EmailOTP.delete()
       |> PortalWeb.Cookie.LastUsedProvider.put(params["auth_provider_id"])
 
-    :ok = Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, result.email})
+    :ok = Portal.Mailer.RateLimiter.reset_rate_limit(rate_limit_key(result.email))
     signed_in(conn, context_type, result.account, result.actor, result.session_or_token, params)
   end
 
@@ -181,7 +181,7 @@ defmodule PortalWeb.EmailOTPController do
 
   defp rate_limit_email_otp(email) do
     case Portal.Mailer.RateLimiter.rate_limit(
-           {:sign_in_link, email},
+           rate_limit_key(email),
            3,
            :timer.minutes(5),
            fn -> :ok end
@@ -191,13 +191,17 @@ defmodule PortalWeb.EmailOTPController do
     end
   end
 
+  defp rate_limit_key(email) do
+    {:sign_in_link, email |> String.trim() |> String.downcase()}
+  end
+
   defp send_email_otp(conn, actor, code, auth_provider_id, params) do
     Portal.Mailer.AuthEmail.sign_in_link_email(
       actor,
       DateTime.utc_now(),
       auth_provider_id,
       code,
-      conn.assigns.user_agent,
+      conn.assigns[:user_agent],
       conn.remote_ip,
       sanitize(params)
     )
@@ -268,9 +272,7 @@ defmodule PortalWeb.EmailOTPController do
 
       :gui_client ->
         attrs = %{
-          type: :client,
           secret_nonce: params["nonce"],
-          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
@@ -281,9 +283,7 @@ defmodule PortalWeb.EmailOTPController do
 
       :headless_client ->
         attrs = %{
-          type: :client,
           secret_nonce: "",
-          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
@@ -425,19 +425,7 @@ defmodule PortalWeb.EmailOTPController do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.{Account, Actor, EmailOTP}
-
-    def fetch_account_by_id_or_slug(id_or_slug) do
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
-
-      query
-      |> Safe.unscoped()
-      |> Safe.one()
-      |> handle_nil()
-    end
+    alias Portal.{Actor, EmailOTP}
 
     def fetch_provider_by_id(account, id) do
       from(p in EmailOTP.AuthProvider,

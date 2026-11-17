@@ -6,8 +6,9 @@
 //! flow-control hand-off once per batch instead of once per packet.
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
+use bufferpool::Bytes;
 use futures::future::{self, Either};
-use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
+use ip_packet::{IpPacket, IpVersion};
 use libc::{AF_INET, AF_INET6, iovec};
 use opentelemetry::KeyValue;
 use std::ffi::c_void;
@@ -33,7 +34,7 @@ pub trait Device {
     /// Returns how many packets were received; zero means the device is closed.
     fn recv(
         &self,
-        bufs: &mut [IpPacketBuf],
+        bufs: &mut [Bytes],
         lens: &mut [usize],
     ) -> impl Future<Output = io::Result<usize>>;
 
@@ -62,7 +63,7 @@ impl Fd {
 }
 
 impl Device for Fd {
-    async fn recv(&self, bufs: &mut [IpPacketBuf], lens: &mut [usize]) -> io::Result<usize> {
+    async fn recv(&self, bufs: &mut [Bytes], lens: &mut [usize]) -> io::Result<usize> {
         self.fd
             .async_io(Interest::READABLE, |fd| {
                 // Safety: The file descriptor is valid within this module.
@@ -181,8 +182,9 @@ where
         .block_on(async move {
             let device = open()?;
 
-            let mut bufs: Vec<IpPacketBuf> =
-                (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
+            let mut bufs = std::iter::repeat_with(ip_packet::packet_buffer)
+                .take(MAX_BATCH_SIZE)
+                .collect::<Vec<_>>();
             let mut lens = [0usize; MAX_BATCH_SIZE];
 
             'recv: loop {
@@ -220,8 +222,7 @@ where
                         continue; // Empty or truncated datagram.
                     }
 
-                    // `Default` refills the slot with a fresh buffer from the pool.
-                    let buf = std::mem::take(buf);
+                    let buf = std::mem::replace(buf, ip_packet::packet_buffer());
 
                     match IpPacket::new(buf, len).context("Failed to parse IP packet") {
                         Ok(packet) => {
@@ -324,7 +325,7 @@ unsafe fn send_batch(
 unsafe fn recv_batch(
     syscalls: &sys::BatchSyscalls,
     fd: RawFd,
-    bufs: &mut [IpPacketBuf],
+    bufs: &mut [Bytes],
     lens: &mut [usize],
 ) -> io::Result<usize> {
     let count = bufs.len().min(MAX_BATCH_SIZE);
@@ -334,7 +335,7 @@ unsafe fn recv_batch(
     let mut msgs = [sys::msghdr_x::ZEROED; MAX_BATCH_SIZE];
 
     for i in 0..count {
-        let dst = bufs[i].buf();
+        let dst = &mut bufs[i];
         iovs[i] = [
             iovec {
                 iov_base: afs[i].as_mut_ptr() as *mut c_void,
