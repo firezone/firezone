@@ -53,7 +53,7 @@ impl Ipv6Cursor {
     }
 }
 
-pub struct Generator<'a> {
+pub struct TunnelGenerator<'a> {
     input: Unstructured<'a>,
 
     socket_ip4: Ipv4Cursor,
@@ -83,7 +83,7 @@ pub struct Generator<'a> {
     local_names: BTreeMap<DomainName, SiteId>,
 }
 
-impl<'a> Generator<'a> {
+impl<'a> TunnelGenerator<'a> {
     pub fn new(data: &'a [u8]) -> Self {
         Self {
             input: Unstructured::new(data),

@@ -6,7 +6,7 @@ use dns_types::{DomainName, RecordType};
 use itertools::Itertools as _;
 use tunnel_proto::dns;
 
-use super::context::Generator;
+use super::context::TunnelGenerator;
 use super::packets::{host_in_v4, host_in_v6};
 use super::values::arb_domain_matching_dns_resource;
 use crate::fake_portal::FakePortal;
@@ -115,7 +115,7 @@ pub(super) fn targets(state: &TunnelModel, portal: &FakePortal) -> Vec<DnsQueryT
 }
 
 pub(super) fn generate(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     targets: &[DnsQueryTarget],
     state: &TunnelModel,
 ) -> Transition {
@@ -161,7 +161,7 @@ pub(super) fn generate(
 }
 
 fn generate_query(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     target: DnsQueryTarget,
     domain_tree: &[DomainName],
 ) -> (ClientId, DnsQuery) {
@@ -218,7 +218,7 @@ fn generate_query(
 }
 
 fn arb_known_ptr_target(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     state: &TunnelModel,
     client_id: ClientId,
 ) -> Option<KnownPtrTarget> {
@@ -255,7 +255,7 @@ fn arb_known_ptr_target(
     })
 }
 
-fn arb_dns_transport(g: &mut Generator) -> DnsTransport {
+fn arb_dns_transport(g: &mut TunnelGenerator) -> DnsTransport {
     if g.bool() {
         DnsTransport::Udp {
             local_port: g.u16(),
@@ -265,13 +265,16 @@ fn arb_dns_transport(g: &mut Generator) -> DnsTransport {
     }
 }
 
-fn arb_dns_query_id(g: &mut Generator) -> u16 {
+fn arb_dns_query_id(g: &mut TunnelGenerator) -> u16 {
     if g.bool() { g.u16() } else { 33333 }
 }
 
 /// If the domain has an A/AAAA record, pick from {PTR, MX, A, AAAA};
 /// otherwise pick from the available record types.
-fn arb_maybe_available_response_rtype(g: &mut Generator, available: &[RecordType]) -> RecordType {
+fn arb_maybe_available_response_rtype(
+    g: &mut TunnelGenerator,
+    available: &[RecordType],
+) -> RecordType {
     if available.contains(&RecordType::A) || available.contains(&RecordType::AAAA) {
         // A/AAAA are weighted up: they are the only types that resolve DNS
         // resources to (proxy) IPs and thereby feed the packet / NAT paths,
@@ -294,7 +297,7 @@ fn arb_maybe_available_response_rtype(g: &mut Generator, available: &[RecordType
     }
 }
 
-fn arb_unassigned_ptr_query_ip(g: &mut Generator) -> IpAddr {
+fn arb_unassigned_ptr_query_ip(g: &mut TunnelGenerator) -> IpAddr {
     use tunnel_proto::{IPV4_RESOURCES, IPV6_RESOURCES};
 
     match arb_ptr_query_ip(g) {
@@ -309,7 +312,7 @@ fn arb_unassigned_ptr_query_ip(g: &mut Generator) -> IpAddr {
     }
 }
 
-fn arb_ptr_query_ip(g: &mut Generator) -> IpAddr {
+fn arb_ptr_query_ip(g: &mut TunnelGenerator) -> IpAddr {
     use tunnel_proto::{IPV4_RESOURCES, IPV6_RESOURCES};
     match g.choose_index(3) {
         0 => IpAddr::V4(host_in_v4(g, IPV4_RESOURCES)),
