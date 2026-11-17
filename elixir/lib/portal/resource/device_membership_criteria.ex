@@ -3,17 +3,18 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
   The criteria a device pool uses to decide which devices it holds, stored as JSON in
   `resources.device_membership_criteria`.
 
-  It is one leaf that compares a column against a literal or an attribute of the
-  subject asking for access. Wire shapes:
+  It is one leaf that compares a device attribute against a literal or an
+  attribute of the subject asking for access. Wire shapes:
 
       {"device": {"field": "id", "op": "in", "value": ["<device id>", ...]}}
       {"device": {"field": "actor_id", "op": "eq", "value": {"subject": "actor_id"}}}
       {"device": {"field": "account_id", "op": "eq", "value": {"subject": "account_id"}}}
       {"actor_group": {"field": "id", "op": "eq", "value": "<group id>"}}
 
-  The top-level key names where the field lives: `device` is the devices table and
-  `actor_group` the groups the device's actor is a member of. Other sources,
-  combinators and values can be added later without changing stored criteria.
+  The top-level key names where the field lives: `device` is the device, where
+  `actor_id` matches any actor that has connected from it, and `actor_group` the
+  groups those actors are members of. Other sources, combinators and values can be
+  added later without changing stored criteria.
   """
   use Ecto.Type
   import Ecto.Query
