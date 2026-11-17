@@ -31,7 +31,7 @@ use crate::{
     clock::Clock,
     network::{EdgeConfig, ExecMutScope, Host, PollTimeout},
     real_relay::RealRelay,
-    relay_model::{Environment, ModelHost, Observed, RelayModel},
+    relay_model::{ModelHost, Observed, RelayModel},
     relay_transition::{Crafting, Garbage, Interference, Target, Transition},
     stun,
 };
@@ -203,7 +203,7 @@ impl RealRelaySystem {
             "The client's relay addresses changed in a transition that must not interrupt relaying"
         );
 
-        if model.must_relay(self.environment()) {
+        if model.must_relay() {
             self.probe(model);
         }
     }
@@ -274,12 +274,6 @@ impl RealRelaySystem {
         );
 
         true
-    }
-
-    pub(crate) fn environment(&self) -> Environment {
-        Environment {
-            credentials_valid: self.credentials_boot == Some(self.relay_boots),
-        }
     }
 
     /// The portal hands the client the relay with fresh credentials; the client starts over.
@@ -385,10 +379,8 @@ impl RealRelaySystem {
                 now + RETRANSMISSION
             });
 
-            let credentials_valid = self.environment().credentials_valid;
-            self.observed.credentials_lapsed |= !credentials_valid;
-
-            let lacks_relay = self.client.inner().allocation.is_none() || !credentials_valid;
+            let lacks_relay = self.client.inner().allocation.is_none()
+                || self.credentials_boot != Some(self.relay_boots);
             if !lacks_relay || !self.portal_reachable || handovers == MAX_HANDOVERS {
                 return;
             }

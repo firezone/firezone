@@ -14,20 +14,11 @@ use connlib_model::IpStack;
 
 use crate::relay_transition::{Target, Transition};
 
-/// What the expectations depend on besides the model's own state.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Environment {
-    /// Whether the credentials that the portal last issued are for the running relay.
-    pub(crate) credentials_valid: bool,
-}
-
 /// What happened while a transition ran.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Observed {
     /// The network lost one of the control datagrams.
     pub(crate) lost_datagram: bool,
-    /// The client's credentials were invalid at some point.
-    pub(crate) credentials_lapsed: bool,
     /// The client saw a forged answer to a `BINDING` request.
     pub(crate) forged_binding: bool,
 }
@@ -42,7 +33,7 @@ pub(crate) struct RelayModel {
     pub(crate) peer: ModelHost,
 
     portal_reachable: bool,
-    /// Whether the client may have given up on the relay while the portal could not hand it back.
+    /// Whether the client may have lost the relay while the portal could not hand it back.
     stranded: bool,
 }
 
@@ -80,9 +71,8 @@ impl RelayModel {
     ///
     /// With the portal around, the client always recovers: it is handed the relay again, with
     /// fresh credentials. Without it, the client depends on what it already holds.
-    pub(crate) fn must_relay(&self, env: Environment) -> bool {
-        self.relay_reachable()
-            && (self.portal_reachable || (env.credentials_valid && !self.stranded))
+    pub(crate) fn must_relay(&self) -> bool {
+        self.relay_reachable() && (self.portal_reachable || !self.stranded)
     }
 
     /// Applies a transition, returning whether it was allowed to interrupt relaying.
@@ -107,7 +97,7 @@ impl RelayModel {
                 ..
             } => false,
         };
-        let may_interrupt = may_interrupt || observed.credentials_lapsed || self.stranded;
+        let may_interrupt = may_interrupt || self.stranded;
 
         match transition {
             Transition::Roam { stack } => self.client.stack = *stack,
@@ -129,8 +119,10 @@ impl RelayModel {
         let relay_was_silent = matches!(transition, Transition::Partition { .. })
             || !self.relay_reachable()
             || observed.forged_binding;
+        // A rebooted relay does not accept the client's credentials.
+        let relay_forgot_client = matches!(transition, Transition::RebootRelay);
 
-        if relay_was_silent && !self.portal_reachable {
+        if (relay_was_silent || relay_forgot_client) && !self.portal_reachable {
             self.stranded = true;
         }
 
