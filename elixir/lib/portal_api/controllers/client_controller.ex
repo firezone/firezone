@@ -387,9 +387,6 @@ defmodule PortalAPI.ClientController do
       {queryable, dynamic}
     end
 
-    # firezone_id is unique per (account_id, actor_id) for Clients, not
-    # per account, so this can still match more than one row - callers
-    # must handle that rather than assuming a single result.
     defp filter_by_firezone_id(queryable, firezone_id) do
       dynamic = dynamic([devices: d], d.firezone_id == ^firezone_id)
       {queryable, dynamic}
