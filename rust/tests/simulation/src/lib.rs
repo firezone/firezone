@@ -40,8 +40,8 @@ use tracing_subscriber::{
 };
 
 use crate::{
-    arb::Generator, assertions::check_invariants, clock::Clock,
-    real_tunnel_system::RealTunnelSystem,
+    arb::Generator, assertions::check_invariants, clock::Clock, real_relay_system::RealRelaySystem,
+    real_tunnel_system::RealTunnelSystem, relay_generator::RelayGenerator, relay_model::RelayModel,
 };
 
 type QueryId = u16;
@@ -112,12 +112,12 @@ pub fn run_tunnel(data: &[u8], now: Instant) {
 pub fn run_relay(data: &[u8], now: Instant) {
     let _guard = init_subscriber();
 
-    let mut generator = relay_generator::RelayGenerator::new(data);
+    let mut generator = RelayGenerator::new(data);
     let relay = generator.ip_stack();
     let client = generator.ip_stack();
 
-    let mut model = relay_model::RelayModel::default();
-    let mut system = real_relay_system::RealRelaySystem::new(relay, client, now);
+    let mut model = RelayModel::default();
+    let mut system = RealRelaySystem::new(relay, client, now);
     system.settle();
     system.check(&model, true);
 
