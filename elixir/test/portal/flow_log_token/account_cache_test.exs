@@ -17,12 +17,6 @@ defmodule Portal.FlowLogToken.AccountCacheTest do
     end
   end
 
-  # PubSub hands a change to every local subscriber at once, so once the test
-  # process has it the cache has it too; get_state waits for it to be handled.
-  defp await_change(change) do
-    assert_receive ^change
-    :sys.get_state(AccountCache)
-  end
 
   describe "fetch/2" do
     test "remembers an id with no account", %{account_id: account_id} do
@@ -74,9 +68,8 @@ defmodule Portal.FlowLogToken.AccountCacheTest do
 
       account = %Account{id: account_id}
       change = %Change{lsn: 1, op: :insert, struct: account}
-      :ok = PubSub.Changes.subscribe_to_accounts()
       :ok = PubSub.Changes.broadcast_account(change)
-      await_change(change)
+      await_eviction(account_id)
 
       assert AccountCache.fetch(account_id, loader(account)) == account
     end
@@ -87,9 +80,8 @@ defmodule Portal.FlowLogToken.AccountCacheTest do
       assert AccountCache.fetch(account_id, loader(old)) == old
 
       change = %Change{lsn: 1, op: :update, old_struct: old, struct: new}
-      :ok = PubSub.Changes.subscribe(account_id, :accounts)
       :ok = PubSub.Changes.broadcast(account_id, :accounts, change)
-      await_change(change)
+      await_eviction(account_id)
 
       assert AccountCache.fetch(account_id, loader(new)) == new
     end
@@ -99,11 +91,22 @@ defmodule Portal.FlowLogToken.AccountCacheTest do
       assert AccountCache.fetch(account_id, loader(account)) == account
 
       change = %Change{lsn: 1, op: :delete, old_struct: account}
-      :ok = PubSub.Changes.subscribe(account_id, :accounts)
       :ok = PubSub.Changes.broadcast(account_id, :accounts, change)
-      await_change(change)
+      await_eviction(account_id)
 
       assert AccountCache.fetch(account_id, loader(nil)) == nil
+    end
+  end
+
+  # The change reaches each subscriber in turn, so the cache may handle it
+  # after the broadcast returns.
+  defp await_eviction(account_id, attempts \\ 1_000) do
+    cond do
+      :ets.lookup(AccountCache, account_id) == [] -> :ok
+      attempts == 0 -> flunk("the cache kept #{account_id}")
+      true ->
+        Process.sleep(1)
+        await_eviction(account_id, attempts - 1)
     end
   end
 end
