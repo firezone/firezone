@@ -1,9 +1,15 @@
-use std::time::Duration;
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    time::Duration,
+};
 
 use arbitrary::Unstructured;
 use connlib_model::IpStack;
 
-use crate::relay_transition::{Crafting, Garbage, Interference, Target, Transition};
+use crate::{
+    relay_model::{ModelHost, RelayModel},
+    relay_transition::{Crafting, Garbage, Interference, Target, Transition},
+};
 
 /// Samples the relay simulation's setup and transitions from the input.
 pub(crate) struct RelayGenerator<'a> {
@@ -21,13 +27,37 @@ impl<'a> RelayGenerator<'a> {
         self.input.is_empty()
     }
 
-    /// The address families of a host.
-    pub(crate) fn ip_stack(&mut self) -> IpStack {
-        match self.int(2) {
-            1 => IpStack::Ipv4Only,
-            2 => IpStack::Ipv6Only,
-            _ => IpStack::Dual,
-        }
+    pub(crate) fn model(&mut self) -> RelayModel {
+        let relay = ModelHost {
+            device: "relay",
+            ip4: Ipv4Addr::new(198, 51, 100, 1),
+            ip6: Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 1),
+            port: 3478,
+            stack: self.ip_stack(),
+        };
+        let client = ModelHost {
+            device: "client",
+            ip4: Ipv4Addr::new(203, 0, 113, 10),
+            ip6: Ipv6Addr::new(0x2001, 0xdb8, 2, 0, 0, 0, 0, 10),
+            port: 50000,
+            stack: self.ip_stack(),
+        };
+        let foreign = ModelHost {
+            device: "foreign",
+            ip4: Ipv4Addr::new(203, 0, 113, 200),
+            ip6: Ipv6Addr::new(0x2001, 0xdb8, 2, 0, 0, 0, 0, 200),
+            port: 7000,
+            stack: IpStack::Dual,
+        };
+        let peer = ModelHost {
+            device: "peer",
+            ip4: Ipv4Addr::new(192, 0, 2, 10),
+            ip6: Ipv6Addr::new(0x2001, 0xdb8, 3, 0, 0, 0, 0, 10),
+            port: 40000,
+            stack: IpStack::Dual,
+        };
+
+        RelayModel::from_parts(relay, client, foreign, peer)
     }
 
     pub(crate) fn transition(&mut self) -> (Transition, Interference) {
@@ -69,6 +99,15 @@ impl<'a> RelayGenerator<'a> {
         };
 
         (transition, interference)
+    }
+
+    /// The address families of a host.
+    fn ip_stack(&mut self) -> IpStack {
+        match self.int(2) {
+            1 => IpStack::Ipv4Only,
+            2 => IpStack::Ipv6Only,
+            _ => IpStack::Dual,
+        }
     }
 
     fn crafting(&mut self) -> Crafting {

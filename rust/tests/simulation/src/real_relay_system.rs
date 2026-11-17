@@ -31,7 +31,7 @@ use crate::{
     clock::Clock,
     network::{EdgeConfig, ExecMutScope, Host, PollTimeout},
     real_relay::RealRelay,
-    relay_model::{Environment, Observed, RelayModel},
+    relay_model::{Environment, ModelHost, Observed, RelayModel},
     relay_transition::{Crafting, Garbage, Interference, Target, Transition},
     stun,
 };
@@ -58,26 +58,6 @@ const RESYNC: Duration = Duration::from_secs(16 * 60);
 /// How long a host takes to send a datagram, and again to receive one.
 const LATENCY: Duration = Duration::from_millis(10);
 
-const RELAY_IP4: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 1);
-const RELAY_IP6: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 1);
-const RELAY_PORT: u16 = 3478;
-
-const CLIENT_IP4: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 10);
-const CLIENT_IP6: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 2, 0, 0, 0, 0, 10);
-const CLIENT_PORT: u16 = 50000;
-const CLIENT_DEVICE: &str = "client";
-
-const FOREIGN_IP4: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 200);
-const FOREIGN_IP6: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 2, 0, 0, 0, 0, 200);
-const FOREIGN_PORT: u16 = 7000;
-const FOREIGN_DEVICE: &str = "foreign";
-
-const PEER_IP4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10)), 40000);
-const PEER_IP6: SocketAddr = SocketAddr::new(
-    IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 3, 0, 0, 0, 0, 10)),
-    40000,
-);
-
 /// A WireGuard keepalive, which is a data message with an empty payload: the relay only relays
 /// WireGuard and STUN.
 const WIREGUARD_KEEPALIVE: [u8; 32] = {
@@ -92,7 +72,6 @@ pub(crate) struct RealRelaySystem {
     transmits: BufferedTransmits,
 
     relay: Host<RealRelay>,
-    relay_stack: IpStack,
     /// How often the relay rebooted. Every boot has a secret of its own, so it is a different
     /// relay to the portal.
     relay_boots: u64,
@@ -134,41 +113,44 @@ struct Credentials {
 }
 
 impl RealRelaySystem {
-    /// Builds the client and the relay and lets the portal hand the client the relay.
-    pub(crate) fn new(relay_stack: IpStack, client_stack: IpStack, start: Instant) -> Self {
+    /// Builds the hosts of `model` and lets the portal hand the client the relay.
+    pub(crate) fn new(model: &RelayModel, start: Instant) -> Self {
         let clock = Clock::new(start, DateTime::UNIX_EPOCH);
-        let (ip4, ip6) = interfaces(client_stack, CLIENT_IP4, CLIENT_IP6);
 
         let mut system = Self {
-            relay: new_relay(relay_stack, 0, clock.now()),
-            relay_stack,
+            relay: new_relay(&model.relay, 0, clock.now()),
             clock,
             transmits: BufferedTransmits::default(),
             relay_boots: 0,
             portal_reachable: true,
             credentials: None,
-            client: host(RealAllocation::default(), CLIENT_PORT, ip4, ip6),
+            client: host(RealAllocation::default(), &model.client, model.client.stack),
             at_peers: Vec::new(),
             last_from_client: None,
             interference: Interference::default(),
             observed: Observed::default(),
         };
-        system.settle();
+        system.settle(model);
 
         system
     }
 
-    pub(crate) fn apply(&mut self, transition: &Transition, interference: Interference) {
+    pub(crate) fn apply(
+        &mut self,
+        model: &RelayModel,
+        transition: &Transition,
+        interference: Interference,
+    ) {
         let now = self.clock.now::<Instant>();
         self.interference = interference;
         self.observed = Observed::default();
         self.client.exec_mut(|c| c.relay_addresses_changed = false);
 
         match transition {
-            Transition::Advance { duration } => self.advance(*duration),
+            Transition::Advance { duration } => self.advance(model, *duration),
             Transition::RotateCredentials => {
                 if self.portal_reachable && self.client.inner().allocation.is_some() {
-                    self.connect();
+                    self.connect(model);
                 }
             }
             Transition::Refresh => {
@@ -181,7 +163,7 @@ impl RealRelaySystem {
                 }
             }
             Transition::Roam { stack } => {
-                let (ip4, ip6) = interfaces(*stack, CLIENT_IP4, CLIENT_IP6);
+                let (ip4, ip6) = model.client.interfaces(*stack);
 
                 self.client.port += 1;
                 self.client.update_interface(ip4, ip6);
@@ -189,11 +171,11 @@ impl RealRelaySystem {
             }
             Transition::RebootRelay => {
                 self.relay_boots += 1;
-                self.relay = new_relay(self.relay_stack, self.relay_boots, self.clock.now());
+                self.relay = new_relay(&model.relay, self.relay_boots, self.clock.now());
             }
             Transition::Partition { duration } => {
                 self.client.set_offline();
-                self.advance(*duration);
+                self.advance(model, *duration);
                 self.client
                     .update_interface(self.client.ip4, self.client.ip6);
             }
@@ -201,11 +183,11 @@ impl RealRelaySystem {
             Transition::PortalRecovers => self.portal_reachable = true,
             Transition::Garbage { target, datagram } => match target {
                 Target::RelayFromForeign(crafting) => {
-                    self.garbage_to_relay(false, *crafting, datagram)
+                    self.garbage_to_relay(model, false, *crafting, datagram)
                 }
                 Target::RelayFromClient(crafting) => {
-                    self.garbage_to_relay(true, *crafting, datagram);
-                    self.advance(RESYNC);
+                    self.garbage_to_relay(model, true, *crafting, datagram);
+                    self.advance(model, RESYNC);
                     // The relay may pass on what comes from the client's socket.
                     self.at_peers.clear();
                 }
@@ -213,7 +195,7 @@ impl RealRelaySystem {
             },
         }
 
-        self.settle();
+        self.settle(model);
         self.interference = Interference::default();
 
         assert!(
@@ -230,12 +212,12 @@ impl RealRelaySystem {
         );
 
         if model.must_relay(self.environment()) {
-            self.probe();
+            self.probe(model);
         }
     }
 
     /// Sends data between a peer and the client through every relay address the client announced.
-    fn probe(&mut self) {
+    fn probe(&mut self, model: &RelayModel) {
         let addresses = self.client.inner().relay_addresses.clone();
         assert!(
             !addresses.is_empty(),
@@ -243,20 +225,17 @@ impl RealRelaySystem {
         );
 
         for address in addresses {
-            let peer = match address {
-                SocketAddr::V4(_) => PEER_IP4,
-                SocketAddr::V6(_) => PEER_IP6,
-            };
+            let peer = model.peer.socket_for(address.ip());
 
             // The first attempt binds a channel to the peer if there is none.
             if !self.send_to_peer(peer) {
-                self.settle();
+                self.settle(model);
                 assert!(
                     self.send_to_peer(peer),
                     "The client has no channel to send a peer data over"
                 );
             }
-            self.deliver();
+            self.deliver(model);
             let relayed = mem::take(&mut self.at_peers)
                 .into_iter()
                 .map(|t| (t.src, t.dst, t.payload.to_vec()))
@@ -274,7 +253,7 @@ impl RealRelaySystem {
                 LATENCY,
                 now,
             );
-            self.deliver();
+            self.deliver(model);
             assert_eq!(
                 self.client.inner().received,
                 vec![(peer, address)],
@@ -320,7 +299,7 @@ impl RealRelaySystem {
     }
 
     /// The portal hands the client the relay with fresh credentials; the client starts over.
-    fn connect(&mut self) {
+    fn connect(&mut self, model: &RelayModel) {
         let now = self.clock.now();
         let lifetime_ends = (self.clock.now::<SystemTime>() + CREDENTIAL_LIFETIME)
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -330,7 +309,7 @@ impl RealRelaySystem {
 
         let relay = self.relay.inner();
         let (server, username, password, realm) = relay.explode(
-            CLIENT_DEVICE,
+            model.client.device,
             relay.server.auth_secret(),
             relay.server.public_address(),
             expire_at,
@@ -354,7 +333,13 @@ impl RealRelaySystem {
         });
     }
 
-    fn garbage_to_relay(&mut self, from_client: bool, crafting: Crafting, garbage: &Garbage) {
+    fn garbage_to_relay(
+        &mut self,
+        model: &RelayModel,
+        from_client: bool,
+        crafting: Crafting,
+        garbage: &Garbage,
+    ) {
         let now = self.clock.now();
         let template = self.last_from_client.clone().filter(|_| crafting.mutate);
         let (src, device) = match from_client {
@@ -365,15 +350,11 @@ impl RealRelaySystem {
                     .filter(|s| self.client.sending_socket_for(s.ip()) == Some(*s))
                     .unwrap_or_else(|| any_socket(&self.client));
 
-                (src, CLIENT_DEVICE)
+                (src, model.client.device)
             }
-            false if self.relay.ip4.is_some() => (
-                SocketAddr::new(FOREIGN_IP4.into(), FOREIGN_PORT),
-                FOREIGN_DEVICE,
-            ),
             false => (
-                SocketAddr::new(FOREIGN_IP6.into(), FOREIGN_PORT),
-                FOREIGN_DEVICE,
+                model.foreign.socket_for(any_socket(&self.relay).ip()),
+                model.foreign.device,
             ),
         };
         let Some(dst) = self.relay.sending_socket_for(src.ip()) else {
@@ -417,12 +398,12 @@ impl RealRelaySystem {
     ///
     /// Time only passes for the network and for retransmissions; refreshes and keep-alives wait
     /// for `advance`.
-    fn settle(&mut self) {
+    fn settle(&mut self, model: &RelayModel) {
         let deadline = self.clock.now::<Instant>() + MAX_SETTLE;
         let mut handovers = 0;
 
         loop {
-            self.run(|now| {
+            self.run(model, |now| {
                 assert!(now <= deadline, "The client and the relay do not settle");
 
                 now + RETRANSMISSION
@@ -437,33 +418,33 @@ impl RealRelaySystem {
             }
 
             handovers += 1;
-            self.connect();
+            self.connect(model);
         }
     }
 
     /// Lets time pass, stopping at everything that is due on the way.
-    fn advance(&mut self, duration: Duration) {
+    fn advance(&mut self, model: &RelayModel, duration: Duration) {
         let target = self.clock.now::<Instant>() + duration;
 
-        self.run(|_| target);
+        self.run(model, |_| target);
         self.clock.skip_to(target);
     }
 
     /// Runs for as long as a datagram takes from the client to a peer or back.
-    fn deliver(&mut self) {
+    fn deliver(&mut self, model: &RelayModel) {
         let arrived = self.clock.now::<Instant>() + 4 * LATENCY;
 
-        self.run(|_| arrived);
+        self.run(model, |_| arrived);
     }
 
     /// Steps the hosts and the network through everything that is due until the horizon, which
     /// may move with the clock.
-    fn run(&mut self, horizon: impl Fn(Instant) -> Instant) {
+    fn run(&mut self, model: &RelayModel, horizon: impl Fn(Instant) -> Instant) {
         loop {
             let now = self.clock.now::<Instant>();
 
             while let Some(transmit) = self.transmits.pop(now) {
-                self.dispatch(transmit, now);
+                self.dispatch(model, transmit, now);
             }
             self.client.step(&mut self.transmits, now);
             self.relay.step(&mut self.transmits, now, self.clock.now());
@@ -487,7 +468,7 @@ impl RealRelaySystem {
 
     /// Routes a datagram by its destination, losing and forging the control datagrams that the
     /// current transition asks for.
-    fn dispatch(&mut self, transmit: Transmit, now: Instant) {
+    fn dispatch(&mut self, model: &RelayModel, transmit: Transmit, now: Instant) {
         let src = transmit
             .src
             .expect("datagrams on the network have a source");
@@ -510,7 +491,7 @@ impl RealRelaySystem {
             return;
         }
 
-        if dst == PEER_IP4 || dst == PEER_IP6 {
+        if dst == model.peer.socket_for(dst.ip()) {
             self.at_peers.push(transmit);
             return;
         }
@@ -652,41 +633,25 @@ impl ExecMutScope for RealAllocation {
     fn enter(&self) -> Self::Guard {}
 }
 
-fn new_relay(stack: IpStack, boot: u64, now_utc: SystemTime) -> Host<RealRelay> {
-    let (ip4, ip6) = interfaces(stack, RELAY_IP4, RELAY_IP6);
+fn new_relay(model: &ModelHost, boot: u64, now_utc: SystemTime) -> Host<RealRelay> {
+    let (ip4, ip6) = model.interfaces(model.stack);
 
-    host(
-        RealRelay::new(boot, ip4, ip6, now_utc),
-        RELAY_PORT,
-        ip4,
-        ip6,
-    )
+    host(RealRelay::new(boot, ip4, ip6, now_utc), model, model.stack)
 }
 
-/// A host that is reachable from everywhere.
-fn host<T>(inner: T, port: u16, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Host<T> {
+/// A host that is reachable from everywhere, with the addresses of `stack`.
+fn host<T>(inner: T, model: &ModelHost, stack: IpStack) -> Host<T> {
+    let (ip4, ip6) = model.interfaces(stack);
     let mut host = Host::new(
         inner,
         LATENCY,
-        port,
+        model.port,
         EdgeConfig::Open,
         Ipv4Addr::UNSPECIFIED,
     );
     host.update_interface(ip4, ip6);
 
     host
-}
-
-fn interfaces(
-    stack: IpStack,
-    ip4: Ipv4Addr,
-    ip6: Ipv6Addr,
-) -> (Option<Ipv4Addr>, Option<Ipv6Addr>) {
-    match stack {
-        IpStack::Dual => (Some(ip4), Some(ip6)),
-        IpStack::Ipv4Only => (Some(ip4), None),
-        IpStack::Ipv6Only => (None, Some(ip6)),
-    }
 }
 
 fn any_socket<T>(host: &Host<T>) -> SocketAddr {
@@ -707,12 +672,14 @@ fn datagram(src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8]) -> Transmi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::relay_generator::RelayGenerator;
 
     #[test]
     fn client_relays_data_on_a_working_network() {
-        let mut system = RealRelaySystem::new(IpStack::Dual, IpStack::Dual, Instant::now());
+        let model = RelayGenerator::new(&[]).model();
+        let mut system = RealRelaySystem::new(&model, Instant::now());
 
         assert_eq!(system.client.inner().relay_addresses.len(), 2);
-        system.probe();
+        system.probe(&model);
     }
 }

@@ -5,6 +5,10 @@
 //! [`RelayModel::apply`]. It describes how the client behaves today, flaws included, so that
 //! fixing one shows up as a change here.
 
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+
+use connlib_model::IpStack;
+
 use crate::relay_transition::{Target, Transition};
 
 /// What the expectations depend on besides the transitions.
@@ -28,13 +32,46 @@ pub(crate) struct Observed {
     pub(crate) forged_binding: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct RelayModel {
+    pub(crate) relay: ModelHost,
+    pub(crate) client: ModelHost,
+    /// A host on the internet that has nothing to do with the client.
+    pub(crate) foreign: ModelHost,
+    /// Where the client relays data to.
+    pub(crate) peer: ModelHost,
+
     /// Whether the client may have given up on the relay while the portal could not hand it back.
     stranded: bool,
 }
 
+/// A host with an address of each family, of which it uses those in `stack`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModelHost {
+    /// The device that the host's credentials name.
+    pub(crate) device: &'static str,
+    pub(crate) ip4: Ipv4Addr,
+    pub(crate) ip6: Ipv6Addr,
+    pub(crate) port: u16,
+    pub(crate) stack: IpStack,
+}
+
 impl RelayModel {
+    pub(crate) fn from_parts(
+        relay: ModelHost,
+        client: ModelHost,
+        foreign: ModelHost,
+        peer: ModelHost,
+    ) -> Self {
+        Self {
+            relay,
+            client,
+            foreign,
+            peer,
+            stranded: false,
+        }
+    }
+
     /// Whether relaying must work once a transition has settled.
     ///
     /// With the portal around, the client always recovers: it is handed the relay again, with
@@ -86,5 +123,24 @@ impl RelayModel {
         }
 
         may_interrupt
+    }
+}
+
+impl ModelHost {
+    /// The host's interfaces if it had the address families of `stack`.
+    pub(crate) fn interfaces(&self, stack: IpStack) -> (Option<Ipv4Addr>, Option<Ipv6Addr>) {
+        match stack {
+            IpStack::Dual => (Some(self.ip4), Some(self.ip6)),
+            IpStack::Ipv4Only => (Some(self.ip4), None),
+            IpStack::Ipv6Only => (None, Some(self.ip6)),
+        }
+    }
+
+    /// The host's socket of the address family of `ip`.
+    pub(crate) fn socket_for(&self, ip: IpAddr) -> SocketAddr {
+        match ip {
+            IpAddr::V4(_) => SocketAddr::new(self.ip4.into(), self.port),
+            IpAddr::V6(_) => SocketAddr::new(self.ip6.into(), self.port),
+        }
     }
 }

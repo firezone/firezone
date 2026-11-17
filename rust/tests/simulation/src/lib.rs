@@ -41,7 +41,7 @@ use tracing_subscriber::{
 
 use crate::{
     assertions::check_invariants, clock::Clock, real_relay_system::RealRelaySystem,
-    real_tunnel_system::RealTunnelSystem, relay_generator::RelayGenerator, relay_model::RelayModel,
+    real_tunnel_system::RealTunnelSystem, relay_generator::RelayGenerator,
     tunnel_generator::TunnelGenerator,
 };
 
@@ -114,11 +114,9 @@ pub fn run_relay(data: &[u8], now: Instant) {
     let _guard = init_subscriber();
 
     let mut generator = RelayGenerator::new(data);
-    let relay = generator.ip_stack();
-    let client = generator.ip_stack();
+    let mut model = generator.model();
 
-    let mut model = RelayModel::default();
-    let mut system = RealRelaySystem::new(relay, client, now);
+    let mut system = RealRelaySystem::new(&model, now);
     system.check(&model, true);
 
     for applied in 0..MAX_RELAY_TRANSITIONS {
@@ -130,7 +128,7 @@ pub fn run_relay(data: &[u8], now: Instant) {
 
         tracing::debug!("Applying transition {applied}: {transition:?} with {interference:?}");
 
-        system.apply(&transition, interference);
+        system.apply(&model, &transition, interference);
         let may_interrupt = model.apply(&transition, system.environment(), system.observed);
         system.check(&model, may_interrupt);
     }
