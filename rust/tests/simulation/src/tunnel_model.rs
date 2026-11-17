@@ -540,7 +540,7 @@ impl TunnelModel {
                 client_id,
                 ip4,
                 ip6,
-                network,
+                nat_ip4,
                 dead_window,
                 portal_window,
             } => {
@@ -552,20 +552,11 @@ impl TunnelModel {
                 // out classic ICE flows.
                 let all_frostlink = portal.frostlink();
 
-                let nat_ip4 = match network {
-                    Network::Existing(ip) => *ip,
-                    Network::New(nat) => {
-                        let added = self.network.add_nat(nat.clone());
-                        debug_assert!(added);
-
-                        nat.ip4()
-                    }
-                };
                 let client = self.clients.get_mut(client_id).unwrap();
                 self.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
-                let added = self.network.add_host(*client_id, client, nat_ip4);
+                let added = self.network.add_host(*client_id, client, *nat_ip4);
                 debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.

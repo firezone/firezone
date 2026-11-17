@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 
 use super::context::Generator;
 use super::topology::{
-    arb_dns_record_set, arb_nat, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
+    arb_dns_record_set, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
 };
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_compatible_upstream_do53_servers,
@@ -26,7 +26,7 @@ use crate::network::Host;
 use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::tunnel_model::TunnelModel;
-use crate::tunnel_transition::{Destination, Network, Seq, Transition};
+use crate::tunnel_transition::{Destination, Seq, Transition};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TransitionKind {
@@ -261,10 +261,7 @@ pub(super) fn generate(
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let (ip4, ip6) = arb_socket_ip_stack(g);
             let nat_ips = state.network.nat_ips().collect::<Vec<_>>();
-            let network = match nat_ips.get(g.choose_index(nat_ips.len() + 1)) {
-                Some(ip) => Network::Existing(*ip),
-                None => Network::New(arb_nat(g, portal)),
-            };
+            let nat_ip4 = nat_ips[g.choose_index(nat_ips.len())];
             // Mirror `tunnel_transition::roam_client`: both windows in 0..3000ms.
             let dead_window = Duration::from_millis(g.count(0, 2999) as u64);
             let portal_window = Duration::from_millis(g.count(0, 2999) as u64);
@@ -272,7 +269,7 @@ pub(super) fn generate(
                 client_id,
                 ip4,
                 ip6,
-                network,
+                nat_ip4,
                 dead_window,
                 portal_window,
             }

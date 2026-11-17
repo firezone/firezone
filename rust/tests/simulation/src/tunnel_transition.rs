@@ -7,7 +7,7 @@ use tunnel_proto::{
 
 use super::{
     fake_portal::PeerAuthorization,
-    network::{Host, Nat},
+    network::Host,
     probe::{FlowId, ProbeId, Route, TcpFlow},
     resource::{EditEffect, Resource, ResourceEdit, classify},
     tunnel_model::PrivateKey,
@@ -99,7 +99,7 @@ pub enum Transition {
         client_id: ClientId,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
-        network: Network,
+        nat_ip4: Ipv4Addr,
         dead_window: Duration,
         portal_window: Duration,
     },
@@ -384,15 +384,6 @@ impl EditEffect<'_> {
             } => *forgets_dns_records_matching,
         }
     }
-}
-
-/// The network a Client roams into.
-#[derive(Debug, Clone)]
-pub(crate) enum Network {
-    /// The network behind the NAT device with the given public IPv4 address.
-    Existing(Ipv4Addr),
-    /// The network behind a NAT device that joins the topology with the roam.
-    New(Nat),
 }
 
 #[derive(Debug, Clone)]

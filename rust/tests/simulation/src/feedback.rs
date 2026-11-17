@@ -28,7 +28,7 @@ use tunnel_proto::dns;
 
 use crate::{
     fake_portal::FakePortal,
-    network::EdgeConfig,
+    network::{EdgeConfig, FilterMode, Mapping},
     probe::{
         Answer, DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome,
         ExpectedProbe, FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionRemote, Remote,
@@ -299,6 +299,7 @@ impl Recorder {
         record_dns_refresh_feedback(model, state);
         record_dns_proxy_ip_subset_feedback(state);
         record_shared_dns_resource_gateway_feedback(model);
+        record_shared_nat_feedback(model);
         record_live_dns_flow_feedback(model, state);
         self.record_dns_query_feedback(model, state, portal);
         for _ in self
@@ -1019,6 +1020,19 @@ fn record_dns_proxy_ip_subset_feedback(state: &RealTunnelSystem) {
 }
 
 /// Records the IP stacks of DNS resources sharing a Gateway for a domain the Client resolved.
+/// Records the mode of each NAT device that two or more Clients share.
+fn record_shared_nat_feedback(model: &TunnelModel) {
+    for edge in model.network.edges_shared_by_clients() {
+        let flags = pack(&[
+            edge.mapping == Mapping::EndpointDependent,
+            edge.filter == FilterMode::AddressRestricted,
+            edge.filter == FilterMode::PortRestricted,
+            edge.expiry.inbound_refreshes,
+        ]);
+        record_value!(flags | (edge.expiry.timeout.as_secs() as u16) << 4);
+    }
+}
+
 fn record_shared_dns_resource_gateway_feedback(model: &TunnelModel) {
     for client in model.clients.values() {
         let client = client.inner();
