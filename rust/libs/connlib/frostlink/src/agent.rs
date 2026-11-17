@@ -491,7 +491,7 @@ impl Agent {
         tracing::trace!(local = %path.0, remote = %path.1, "Re-probing primary");
 
         self.primary = None;
-        self.select_primary();
+        self.select_best_measured();
 
         match self.primary.and_then(|p| self.pairs.get_mut(&p)) {
             // A pair that went quiet has to resume the cadence of a primary.
@@ -821,8 +821,8 @@ impl Agent {
 
                 tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
 
-                // A probe reply is bidirectionally validated: it may promote.
-                self.select_primary();
+                // A probe reply is bidirectionally validated: it may promote its pair.
+                self.select_primary(pair);
             }
         }
     }
@@ -1076,32 +1076,37 @@ impl Agent {
     }
 
     /// Runs on every probe reply. Probes can only *promote*: the best measured
-    /// pair takes over an empty primary, or displaces the incumbent only when it
-    /// beats it (see [`beats_primary`]). A worse pair never demotes a working
-    /// primary.
-    fn select_primary(&mut self) {
-        let measured = self.pairs.iter().filter(|(_, s)| s.rtt.is_some());
-
+    /// pair takes over an empty primary, and otherwise only the pair that
+    /// `replied` may displace the incumbent, when it beats it (see
+    /// [`beats_primary`]). A pair that has gone quiet keeps its last RTT, so
+    /// another pair's measurement is no proof that its path still works.
+    fn select_primary(&mut self, replied: (SocketAddr, SocketAddr)) {
         let Some(primary) = self.primary else {
-            if let Some((best, _)) = measured.min_by_key(|(k, s)| pair_score(**k, s)) {
-                self.set_primary(*best);
-            }
+            self.select_best_measured();
             return;
         };
+
+        if replied == primary {
+            return;
+        }
 
         let cur = pair_score(primary, &self.pairs[&primary]);
         let cur_rtt = self.pairs[&primary].rtt.map(|r| r.smoothed);
+        let new = pair_score(replied, &self.pairs[&replied]);
 
-        let Some((best, _)) = measured
-            .filter(|(k, _)| **k != primary)
-            .map(|(k, s)| (*k, pair_score(*k, s)))
-            .filter(|(_, new)| beats_primary(new, &cur, cur_rtt))
-            .min_by(|(_, a), (_, b)| a.cmp(b))
-        else {
+        if !beats_primary(&new, &cur, cur_rtt) {
             return;
-        };
+        }
 
-        self.set_primary(best);
+        self.set_primary(replied);
+    }
+
+    fn select_best_measured(&mut self) {
+        let measured = self.pairs.iter().filter(|(_, s)| s.rtt.is_some());
+
+        if let Some((best, _)) = measured.min_by_key(|(k, s)| pair_score(**k, s)) {
+            self.set_primary(*best);
+        }
     }
 
     fn set_primary(&mut self, path: (SocketAddr, SocketAddr)) {

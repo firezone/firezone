@@ -7,10 +7,10 @@ use std::{
 use connlib_model::{ClientId, GatewayId, ResourceId};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
-use crate::ref_client::RefClient;
-use crate::ref_gateway::RefGateway;
+use crate::model_client::ModelClient;
+use crate::model_gateway::ModelGateway;
 use crate::site_network::{IcmpError, RouteType};
-use crate::transition::{DPort, Destination, Identifier, SPort, Seq};
+use crate::tunnel_transition::{DPort, Destination, Identifier, SPort, Seq};
 
 pub(crate) const DNS_NAT_SESSION_TTL: Duration = Duration::from_secs(2 * 60);
 
@@ -275,11 +275,11 @@ pub(crate) fn remote_response(
     expected: &ExpectedProbe,
     received_request: &ReceivedRequest,
     answer: RemoteResponse,
-    ref_clients: &BTreeMap<ClientId, &RefClient>,
-    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
+    model_clients: &BTreeMap<ClientId, &ModelClient>,
+    model_gateways: &BTreeMap<GatewayId, &ModelGateway>,
 ) -> RemoteResponse {
     let peer = |client: ClientId| {
-        if ref_clients[&client]
+        if model_clients[&client]
             .malicious_behaviour
             .send_untracked_icmp_errors
         {
@@ -288,7 +288,7 @@ pub(crate) fn remote_response(
 
         answer
     };
-    let network = |gateway: GatewayId| match ref_gateways[&gateway]
+    let network = |gateway: GatewayId| match model_gateways[&gateway]
         .routes
         .route(received_request.packet.destination())
     {

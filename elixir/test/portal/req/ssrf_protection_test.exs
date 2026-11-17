@@ -251,14 +251,20 @@ defmodule Portal.Req.SSRFProtectionTest do
     end
   end
 
-  test "retries when the Finch pool shuts down for idleness during checkout" do
+  for reason <- [{:shutdown, :idle_timeout}, :noproc] do
+    test "retries when Finch pool checkout exits with #{inspect(reason)}" do
+      assert_retries_checkout_exit(unquote(Macro.escape(reason)))
+    end
+  end
+
+  defp assert_retries_checkout_exit(reason) do
     attempts = :counters.new(1, [])
 
     adapter = fn request ->
       :counters.add(attempts, 1, 1)
 
       if :counters.get(attempts, 1) == 1 do
-        exit({{:shutdown, :idle_timeout}, {NimblePool, :checkout, [self()]}})
+        exit({reason, {NimblePool, :checkout, [self()]}})
       else
         {request, Req.Response.new(status: 204)}
       end

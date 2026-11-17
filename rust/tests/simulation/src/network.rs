@@ -12,9 +12,9 @@ use std::{
 };
 use tracing::Span;
 
-use super::sim_client::SimClient;
-use super::sim_gateway::SimGateway;
-use super::sim_relay::SimRelay;
+use super::real_client::RealClient;
+use super::real_gateway::RealGateway;
+use super::real_relay::RealRelay;
 
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct Host<T> {
@@ -419,7 +419,7 @@ pub(crate) trait PollTimeout {
     fn poll_timeout(&mut self) -> Option<Instant>;
 }
 
-impl PollTimeout for SimClient {
+impl PollTimeout for RealClient {
     fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
             .chain(self.tunnel.alarm)
@@ -428,15 +428,15 @@ impl PollTimeout for SimClient {
     }
 }
 
-impl PollTimeout for SimGateway {
+impl PollTimeout for RealGateway {
     fn poll_timeout(&mut self) -> Option<Instant> {
         self.tunnel.alarm
     }
 }
 
-impl PollTimeout for SimRelay {
+impl PollTimeout for RealRelay {
     fn poll_timeout(&mut self) -> Option<Instant> {
-        self.sut.poll_timeout()
+        self.server.poll_timeout()
     }
 }
 

@@ -133,10 +133,10 @@ defmodule Portal.Version do
 
   def supports_public_key_changed?(%Device{type: :client} = client) do
     case ComponentVersions.get_component_type_from_user_agent(client.last_seen_user_agent) do
-      :apple -> Version.compare(client.last_seen_version, "1.5.24") != :lt
+      :apple -> Version.compare(client.last_seen_version, "1.5.25") != :lt
       :gui -> Version.compare(client.last_seen_version, "1.5.21") != :lt
       :headless -> Version.compare(client.last_seen_version, "1.5.16") != :lt
-      :android -> Version.compare(client.last_seen_version, "1.5.18") != :lt
+      :android -> Version.compare(client.last_seen_version, "1.5.19") != :lt
     end
   end
 

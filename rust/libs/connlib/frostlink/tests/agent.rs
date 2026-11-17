@@ -388,6 +388,32 @@ fn a_worse_tier_probe_never_demotes_the_primary() {
 }
 
 #[test]
+fn a_primary_reply_does_not_promote_a_quiet_pair_on_its_stale_rtt() {
+    let mut a = agent_with_relay_pairs();
+    a.add_remote_candidate(Candidate::host(addr(5)), Instant::now());
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    let probes = a.tick(t0);
+    a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(10));
+    a.ack_probe(&probes, (addr(1), addr(5)), t0 + ms(30));
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+
+    // (1,5) spends its budget and goes quiet; the primary's keepalive reply
+    // then measures it as slower than (1,5)'s last RTT.
+    let _ = a.advance(t0, t0 + secs(60));
+    let keepalive_at = a.poll_timeout().unwrap();
+    let keepalive = a.tick(keepalive_at);
+    a.ack_probe(&keepalive, (addr(1), addr(3)), keepalive_at + ms(200));
+
+    assert_eq!(
+        a.primary(),
+        Some((addr(1), addr(3))),
+        "only the replying pair may displace the primary",
+    );
+}
+
+#[test]
 fn a_non_primary_pair_goes_quiet_after_its_probe_budget() {
     let mut a = agent_with_relay_pairs();
     let t0 = Instant::now();

@@ -8,19 +8,19 @@ use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 
 /// A device that allows us to travel into the future.
 #[derive(Debug, Clone)]
-pub struct FluxCapacitor {
+pub struct Clock {
     start: Instant,
     now: Arc<Mutex<(Instant, DateTime<Utc>)>>,
 }
 
-impl FormatTime for FluxCapacitor {
+impl FormatTime for Clock {
     fn format_time(&self, w: &mut Writer<'_>) -> fmt::Result {
         let e = self.elapsed();
         write!(w, "{:3}.{:03}s", e.as_secs(), e.subsec_millis())
     }
 }
 
-impl FluxCapacitor {
+impl Clock {
     pub fn new(start: Instant, utc_start: DateTime<Utc>) -> Self {
         Self {
             start,

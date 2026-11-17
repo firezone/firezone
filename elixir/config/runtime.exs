@@ -843,7 +843,8 @@ if config_env() == :prod do
 
   config :portal,
     yc_deal_webhook_secrets: env_var_to_config!(:yc_deal_webhook_secrets),
-    yc_deal_coupon_ids: env_var_to_config!(:yc_deal_coupon_ids)
+    yc_deal_coupon_ids: env_var_to_config!(:yc_deal_coupon_ids),
+    yc_deal_mirror_url: env_var_to_config!(:yc_deal_mirror_url)
 
   config :portal,
          Portal.Mailer.Secondary,

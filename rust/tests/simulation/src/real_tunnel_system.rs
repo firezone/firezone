@@ -1,16 +1,16 @@
 use super::buffered_transmits::BufferedTransmits;
 use super::dns_records::record_ip;
-use super::reference::ReferenceState;
-use super::sim_client::SimClient;
-use super::sim_gateway::SimGateway;
-use super::sim_net::{Host, HostId, RoutingTable};
-use super::sim_relay::SimRelay;
-use super::stub_portal::StubPortal;
-use super::transition::{DPort, Destination, DnsQuery, Identifier, Network, SPort, Seq};
-use crate::flux_capacitor::FluxCapacitor;
+use super::fake_portal::FakePortal;
+use super::network::{Host, HostId, RoutingTable};
+use super::real_client::RealClient;
+use super::real_gateway::RealGateway;
+use super::real_relay::RealRelay;
+use super::tunnel_model::TunnelModel;
+use super::tunnel_transition::{DPort, Destination, DnsQuery, Identifier, Network, SPort, Seq};
+use crate::clock::Clock;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
-use crate::transition::Transition;
+use crate::tunnel_transition::Transition;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, StaticSecret};
 use ip_packet::IpPacket;
 use rand::SeedableRng;
@@ -36,13 +36,13 @@ const MAX_REBINDS: u32 = 50;
 
 /// The actual system-under-test.
 ///
-/// The fuzzer manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
-pub struct TunnelTest {
-    flux_capacitor: FluxCapacitor,
+/// The fuzzer manipulates this using [`Transition`]s and we assert it against [`TunnelModel`].
+pub struct RealTunnelSystem {
+    clock: Clock,
 
-    pub(crate) clients: BTreeMap<ClientId, Host<SimClient>>,
-    pub(crate) gateways: BTreeMap<GatewayId, Host<SimGateway>>,
-    relays: BTreeMap<RelayId, Host<SimRelay>>,
+    pub(crate) clients: BTreeMap<ClientId, Host<RealClient>>,
+    pub(crate) gateways: BTreeMap<GatewayId, Host<RealGateway>>,
+    relays: BTreeMap<RelayId, Host<RealRelay>>,
 
     /// While set and `now` is before the deadline, this client's messages to the
     /// portal are dropped, simulating a client that has not yet reconnected to
@@ -79,26 +79,22 @@ struct ResolvedTcpFlow {
     remote: SocketAddr,
 }
 
-impl TunnelTest {
-    // Initialize the system under test from our reference state.
-    pub fn init_test(
-        ref_state: &ReferenceState,
-        portal: &mut StubPortal,
-        flux_capacitor: FluxCapacitor,
-    ) -> Self {
+impl RealTunnelSystem {
+    // Initialize the real system from our model.
+    pub fn init_test(model: &TunnelModel, portal: &mut FakePortal, clock: Clock) -> Self {
         // Construct client, gateway and relay from the initial state.
-        let mut clients = ref_state
+        let mut clients = model
             .clients
             .iter()
-            .map(|(client_id, ref_client)| {
-                let client = ref_client.map(
-                    |ref_client, _, _| {
-                        ref_client.init(
+            .map(|(client_id, model_client)| {
+                let client = model_client.map(
+                    |model_client, _, _| {
+                        model_client.init(
                             portal.upstream_do53().to_vec(),
                             portal.upstream_doh().to_vec(),
                             portal.search_domain(),
-                            flux_capacitor.now(),
-                            flux_capacitor.now(),
+                            clock.now(),
+                            clock.now(),
                         )
                     },
                     debug_span!("client", cid = %client_id),
@@ -107,17 +103,17 @@ impl TunnelTest {
             })
             .collect::<BTreeMap<_, _>>();
 
-        let mut gateways = ref_state
+        let mut gateways = model
             .gateways
             .iter()
             .map(|(gid, gateway)| {
                 let gateway = gateway.map(
-                    |ref_gateway, _, _| {
-                        ref_gateway.init(
+                    |model_gateway, _, _| {
+                        model_gateway.init(
                             *gid,
-                            ref_state.tcp_services.clone(),
-                            flux_capacitor.now(),
-                            flux_capacitor.now(),
+                            model.tcp_services.clone(),
+                            clock.now(),
+                            clock.now(),
                         )
                     },
                     debug_span!("gateway", %gid),
@@ -127,12 +123,12 @@ impl TunnelTest {
             })
             .collect::<BTreeMap<_, _>>();
 
-        let relays = ref_state
+        let relays = model
             .relays
             .iter()
             .map(|(rid, relay)| {
                 let relay = relay.map(
-                    |seed, ip4, ip6| SimRelay::new(seed, ip4, ip6, flux_capacitor.now()),
+                    |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, clock.now()),
                     debug_span!("relay", %rid),
                 );
 
@@ -142,12 +138,10 @@ impl TunnelTest {
 
         // Configure client and gateway with the relays.
         for client in clients.values_mut() {
-            client
-                .exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+            client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), clock.now()));
         }
         for gateway in gateways.values_mut() {
-            gateway
-                .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), clock.now()));
         }
 
         let upstream_do53_servers = portal
@@ -163,8 +157,8 @@ impl TunnelTest {
         }
 
         let mut this = Self {
-            flux_capacitor,
-            network: ref_state.network.clone(),
+            clock,
+            network: model.network.clone(),
             client_portal_offline_until: None,
             clients,
             gateways,
@@ -176,13 +170,13 @@ impl TunnelTest {
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
-        this.advance(ref_state, portal, &mut buffered_transmits); // Perform initial setup before we apply the first transition.
+        this.advance(model, portal, &mut buffered_transmits); // Perform initial setup before we apply the first transition.
 
         this
     }
 
     pub(crate) fn now(&self) -> Instant {
-        self.flux_capacitor.now()
+        self.clock.now()
     }
 
     pub(crate) fn probe_observations(&self) -> impl Iterator<Item = &ProbeObservation> {
@@ -223,14 +217,14 @@ impl TunnelTest {
         &self.dns_nat_observations
     }
 
-    pub(crate) fn gateway(&self, id: GatewayId) -> Option<&SimGateway> {
+    pub(crate) fn gateway(&self, id: GatewayId) -> Option<&RealGateway> {
         Some(self.gateways.get(&id)?.inner())
     }
 
     /// Drops the bookkeeping of the previous transition before the next one is applied.
     ///
-    /// Runs after the reference model invalidated, so the flows it dropped are known.
-    pub fn invalidate(&mut self, ref_state: &ReferenceState) {
+    /// Runs after the model invalidated, so the flows it dropped are known.
+    pub fn invalidate(&mut self, model: &TunnelModel) {
         for client in self.clients.values_mut() {
             client.exec_mut(|c| {
                 c.tcp_client.drop_unfinished();
@@ -247,28 +241,28 @@ impl TunnelTest {
 
         for _ in self
             .icmp_flows
-            .extract_if(.., |flow_id, _| !ref_state.icmp_flows.contains_key(flow_id))
+            .extract_if(.., |flow_id, _| !model.icmp_flows.contains_key(flow_id))
         {}
         for _ in self
             .udp_flows
-            .extract_if(.., |flow_id, _| !ref_state.udp_flows.contains_key(flow_id))
+            .extract_if(.., |flow_id, _| !model.udp_flows.contains_key(flow_id))
         {}
         for _ in self
             .tcp_flows
-            .extract_if(.., |flow_id, _| !ref_state.tcp_flows.contains_key(flow_id))
+            .extract_if(.., |flow_id, _| !model.tcp_flows.contains_key(flow_id))
         {}
     }
 
-    /// Applies a generated state transition to the system under test.
+    /// Applies a generated state transition to the real system.
     pub fn apply(
         mut self,
         transition: Transition,
-        ref_state: &ReferenceState,
-        portal: &mut StubPortal,
+        model: &TunnelModel,
+        portal: &mut FakePortal,
     ) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
-        let now = self.flux_capacitor.now();
-        let utc_now = self.flux_capacitor.now();
+        let now = self.clock.now();
+        let utc_now = self.clock.now();
         let mut application_probe = None;
 
         // Act: Apply the transition
@@ -290,7 +284,7 @@ impl TunnelTest {
                             | client::Resource::DevicePool(_) => {}
                         }
 
-                        c.sut_mut()
+                        c.state_mut()
                             .add_resource(resource.clone().into_description(), now);
                     });
                 }
@@ -325,7 +319,7 @@ impl TunnelTest {
 
                         for gateway in self.gateways.values_mut() {
                             gateway.exec_mut(|gateway| {
-                                gateway.sut_mut().update_resource(resource.clone())
+                                gateway.state_mut().update_resource(resource.clone())
                             });
                         }
                     }
@@ -350,7 +344,7 @@ impl TunnelTest {
                         }
 
                         client
-                            .sut_mut()
+                            .state_mut()
                             .add_resource(updated.clone().into_description(), now);
                     });
                 }
@@ -359,7 +353,7 @@ impl TunnelTest {
                 for authorization in revoked {
                     if let Some(client) = self.clients.get_mut(&authorization.initiator) {
                         client.exec_mut(|c| {
-                            c.sut_mut().handle_reject_client_device_access(
+                            c.state_mut().handle_reject_client_device_access(
                                 authorization.target,
                                 authorization.pool,
                             )
@@ -367,7 +361,7 @@ impl TunnelTest {
                     }
                     if let Some(client) = self.clients.get_mut(&authorization.target) {
                         client.exec_mut(|c| {
-                            c.sut_mut().handle_reject_client_device_access(
+                            c.state_mut().handle_reject_client_device_access(
                                 authorization.initiator,
                                 authorization.pool,
                             )
@@ -377,7 +371,7 @@ impl TunnelTest {
             }
             Transition::RemoveResource(rid) => {
                 for (client_id, client) in &mut self.clients {
-                    client.exec_mut(|c| c.sut_mut().remove_resource(rid, now));
+                    client.exec_mut(|c| c.state_mut().remove_resource(rid, now));
 
                     if let Some(gateway) = portal
                         .authorized_gateway(*client_id, rid)
@@ -389,8 +383,7 @@ impl TunnelTest {
             }
             Transition::SetInternetResourceState { client_id, active } => {
                 if !active
-                    && let Some(resource) =
-                        ref_state.clients[&client_id].inner().internet_resource()
+                    && let Some(resource) = model.clients[&client_id].inner().internet_resource()
                 {
                     for gateway in self.gateways.values_mut() {
                         gateway.exec_mut(|gateway| {
@@ -402,7 +395,7 @@ impl TunnelTest {
                 self.clients
                     .get_mut(&client_id)
                     .unwrap()
-                    .exec_mut(|c| c.sut_mut().set_internet_resource_state(active, now));
+                    .exec_mut(|c| c.state_mut().set_internet_resource_state(active, now));
             }
             Transition::SendIcmpPacketOnNewFlow {
                 flow_id,
@@ -563,8 +556,8 @@ impl TunnelTest {
             Transition::UpdateUpstreamDo53Servers(upstream_do53) => {
                 for client in self.clients.values_mut() {
                     client.exec_mut(|c| {
-                        let ip = c.sut().tunnel_ip_config().unwrap();
-                        c.sut_mut().update_interface_config(Interface {
+                        let ip = c.state().tunnel_ip_config().unwrap();
+                        c.state_mut().update_interface_config(Interface {
                             ipv4: ip.v4,
                             ipv6: ip.v6,
                             upstream_dns: vec![],
@@ -589,8 +582,8 @@ impl TunnelTest {
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
                 for client in self.clients.values_mut() {
                     client.exec_mut(|c| {
-                        let ip = c.sut().tunnel_ip_config().unwrap();
-                        c.sut_mut().update_interface_config(Interface {
+                        let ip = c.state().tunnel_ip_config().unwrap();
+                        c.state_mut().update_interface_config(Interface {
                             ipv4: ip.v4,
                             ipv6: ip.v6,
                             upstream_dns: vec![],
@@ -604,8 +597,8 @@ impl TunnelTest {
             Transition::UpdateUpstreamSearchDomain(search_domain) => {
                 for client in self.clients.values_mut() {
                     client.exec_mut(|c| {
-                        let ip = c.sut().tunnel_ip_config().unwrap();
-                        c.sut_mut().update_interface_config(Interface {
+                        let ip = c.state().tunnel_ip_config().unwrap();
+                        c.state_mut().update_interface_config(Interface {
                             ipv4: ip.v4,
                             ipv6: ip.v6,
                             upstream_dns: vec![],
@@ -636,15 +629,15 @@ impl TunnelTest {
                 client.set_offline();
 
                 let dead_until = now + dead_window;
-                self.advance_to(ref_state, portal, &mut buffered_transmits, dead_until);
-                self.flux_capacitor.skip_to(dead_until);
+                self.advance_to(model, portal, &mut buffered_transmits, dead_until);
+                self.clock.skip_to(dead_until);
 
                 // 2. The new link comes up: assign the new IPs, re-register the
                 //    client and reset the frostlink agent so it re-gathers candidates.
                 //    The sockets now pass traffic, but the client has not
                 //    reconnected to the portal yet, so any portal-bound message is
                 //    dropped until the portal window elapses.
-                let now = self.flux_capacitor.now::<Instant>();
+                let now = self.clock.now::<Instant>();
                 let nat_ip4 = match network {
                     Network::Existing(ip) => ip,
                     Network::New(nat) => {
@@ -661,38 +654,38 @@ impl TunnelTest {
                 debug_assert!(added);
                 client.exec_mut(|c| {
                     c.tunnel.inner_mut().reset("roam", now);
-                    c.sut_mut().set_portal_connected(false);
+                    c.state_mut().set_portal_connected(false);
                 });
 
                 let portal_until = now + portal_window;
                 self.client_portal_offline_until = Some((client_id, portal_until));
-                self.advance_to(ref_state, portal, &mut buffered_transmits, portal_until);
-                self.flux_capacitor.skip_to(portal_until);
+                self.advance_to(model, portal, &mut buffered_transmits, portal_until);
+                self.clock.skip_to(portal_until);
                 self.client_portal_offline_until = None;
 
                 // 3. Reconnect to the portal: in prod, we reconnect and receive a
                 //    new `init` message.
-                let now = self.flux_capacitor.now::<Instant>();
-                let ref_client = &ref_state.clients[&client_id];
+                let now = self.clock.now::<Instant>();
+                let model_client = &model.clients[&client_id];
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
-                    c.sut_mut().set_portal_connected(true);
+                    c.state_mut().set_portal_connected(true);
                     c.update_relays(iter::empty(), self.relays.iter(), now);
-                    c.sut_mut()
-                        .set_resources(ref_client.inner().resource_descriptions(), now);
+                    c.state_mut()
+                        .set_resources(model_client.inner().resource_descriptions(), now);
                 });
             }
 
             Transition::ReconnectPortal { client_id } => {
                 let client = self.clients.get_mut(&client_id).unwrap();
-                let ref_client = &ref_state.clients[&client_id];
-                let ipv4 = client.inner().sut().tunnel_ip_config().unwrap().v4;
-                let ipv6 = client.inner().sut().tunnel_ip_config().unwrap().v6;
-                let all_resources = ref_client.inner().resource_descriptions();
+                let model_client = &model.clients[&client_id];
+                let ipv4 = client.inner().state().tunnel_ip_config().unwrap().v4;
+                let ipv6 = client.inner().state().tunnel_ip_config().unwrap().v6;
+                let all_resources = model_client.inner().resource_descriptions();
 
                 // Simulate receiving `init`.
                 client.exec_mut(|c| {
-                    c.sut_mut().update_interface_config(Interface {
+                    c.state_mut().update_interface_config(Interface {
                         ipv4,
                         ipv6,
                         upstream_dns: Vec::new(),
@@ -701,7 +694,7 @@ impl TunnelTest {
                         search_domain: portal.search_domain(),
                     });
                     c.update_relays(iter::empty(), self.relays.iter(), now);
-                    c.sut_mut().set_resources(all_resources, now);
+                    c.state_mut().set_resources(all_resources, now);
                 });
             }
             Transition::DeployNewRelays(new_relays) => {
@@ -711,12 +704,12 @@ impl TunnelTest {
                 // Jumping straight between deadlines instead of ticking stops
                 // reaching relay allocation expiry and candidate invalidation.
                 const TICK: Duration = Duration::from_secs(5);
-                let cut_off = self.flux_capacitor.now::<Instant>() + duration;
+                let cut_off = self.clock.now::<Instant>() + duration;
 
-                while self.flux_capacitor.now::<Instant>() < cut_off {
-                    let remaining = cut_off - self.flux_capacitor.now::<Instant>();
-                    self.flux_capacitor.tick(remaining.min(TICK));
-                    self.advance(ref_state, portal, &mut buffered_transmits);
+                while self.clock.now::<Instant>() < cut_off {
+                    let remaining = cut_off - self.clock.now::<Instant>();
+                    self.clock.tick(remaining.min(TICK));
+                    self.advance(model, portal, &mut buffered_transmits);
                 }
             }
             Transition::PartitionRelaysFromPortal => {
@@ -733,9 +726,9 @@ impl TunnelTest {
                 }
 
                 // 2. Advance state to ensure this is reflected.
-                self.advance(ref_state, portal, &mut buffered_transmits);
+                self.advance(model, portal, &mut buffered_transmits);
 
-                let now = self.flux_capacitor.now();
+                let now = self.clock.now();
 
                 // 3. Reconnect all relays.
                 for client in self.clients.values_mut() {
@@ -766,15 +759,15 @@ impl TunnelTest {
                     .clients
                     .iter_mut()
                     .map(|(client_id, client)| {
-                        let ref_client = &ref_state.clients[client_id];
-                        let resources = ref_client
+                        let model_client = &model.clients[client_id];
+                        let resources = model_client
                             .inner()
                             .all_resource_ids()
                             .into_iter()
                             .filter(|resource| *resource != rid)
                             .collect();
 
-                        client.exec_mut(|c| c.sut_mut().remove_resource(rid, now));
+                        client.exec_mut(|c| c.state_mut().remove_resource(rid, now));
 
                         (*client_id, resources)
                     })
@@ -796,7 +789,7 @@ impl TunnelTest {
             } => {
                 self.clients.get_mut(&peer).unwrap().exec_mut(|receiver| {
                     for pool in pools {
-                        receiver.sut_mut().update_access_authorization_expiry(
+                        receiver.state_mut().update_access_authorization_expiry(
                             client,
                             pool,
                             Duration::ZERO,
@@ -808,7 +801,7 @@ impl TunnelTest {
             Transition::RevokePeerAuthorization { client, peer, pool } => {
                 self.clients.get_mut(&peer).unwrap().exec_mut(|receiver| {
                     receiver
-                        .sut_mut()
+                        .state_mut()
                         .handle_reject_client_device_access(client, pool);
                 });
             }
@@ -821,14 +814,14 @@ impl TunnelTest {
                     self.gateways
                         .get_mut(&gid)
                         .unwrap()
-                        .exec_mut(|g| g.sut_mut().remove_access(client_id, &rid, now));
+                        .exec_mut(|g| g.state_mut().remove_access(client_id, &rid, now));
                 }
             }
             Transition::RestartClient { client_id, key } => {
                 // Cleanly shut down the client and send what it sent on the way out.
                 self.replace_client_tunnel(
                     client_id,
-                    ref_state,
+                    model,
                     portal,
                     &mut buffered_transmits,
                     |c, internet_resource_state| {
@@ -843,7 +836,7 @@ impl TunnelTest {
             Transition::CrashClient { client_id, key } => {
                 self.replace_client_tunnel(
                     client_id,
-                    ref_state,
+                    model,
                     portal,
                     &mut buffered_transmits,
                     |c, internet_resource_state| {
@@ -854,10 +847,10 @@ impl TunnelTest {
                 );
 
                 // The portal sees the Client reconnect with a new key and tells its peers and Gateways.
-                let public_key = self.clients[&client_id].inner().sut().public_key();
+                let public_key = self.clients[&client_id].inner().state().public_key();
                 for peer in portal.authorized_peers_of(client_id) {
                     self.clients.get_mut(&peer).unwrap().exec_mut(|c| {
-                        c.sut_mut().handle_public_key_changed(
+                        c.state_mut().handle_public_key_changed(
                             ClientOrGatewayId::Client(client_id),
                             public_key,
                             now,
@@ -866,7 +859,7 @@ impl TunnelTest {
                 }
                 for gateway in self.gateways.values_mut() {
                     gateway.exec_mut(|g| {
-                        g.sut_mut()
+                        g.state_mut()
                             .handle_public_key_changed(client_id, public_key.into(), now)
                     });
                 }
@@ -881,10 +874,10 @@ impl TunnelTest {
                     g.update_relays(iter::empty(), self.relays.iter(), now);
                 });
 
-                let public_key = self.gateways[&gateway_id].inner().sut().public_key();
+                let public_key = self.gateways[&gateway_id].inner().state().public_key();
                 for client_id in clients {
                     self.clients.get_mut(&client_id).unwrap().exec_mut(|c| {
-                        c.sut_mut().handle_public_key_changed(
+                        c.state_mut().handle_public_key_changed(
                             ClientOrGatewayId::Gateway(gateway_id),
                             public_key,
                             now,
@@ -902,7 +895,7 @@ impl TunnelTest {
                 match (recipient, remote) {
                     (ClientOrGatewayId::Client(client_id), remote) => {
                         self.clients.get_mut(&client_id).unwrap().exec_mut(|c| {
-                            c.sut_mut()
+                            c.state_mut()
                                 .handle_public_key_changed(remote, public_key, now)
                         });
                     }
@@ -911,8 +904,11 @@ impl TunnelTest {
                         ClientOrGatewayId::Client(client_id),
                     ) => {
                         self.gateways.get_mut(&gateway_id).unwrap().exec_mut(|g| {
-                            g.sut_mut()
-                                .handle_public_key_changed(client_id, public_key.into(), now)
+                            g.state_mut().handle_public_key_changed(
+                                client_id,
+                                public_key.into(),
+                                now,
+                            )
                         });
                     }
                     (ClientOrGatewayId::Gateway(_), ClientOrGatewayId::Gateway(_)) => {}
@@ -920,10 +916,10 @@ impl TunnelTest {
             }
         };
 
-        self.advance(ref_state, portal, &mut buffered_transmits);
+        self.advance(model, portal, &mut buffered_transmits);
 
         if let Some((probe_id, flow_id)) = application_probe {
-            self.record_dns_nat_observation(ref_state, probe_id, flow_id);
+            self.record_dns_nat_observation(model, probe_id, flow_id);
         }
 
         self
@@ -934,21 +930,21 @@ impl TunnelTest {
     fn replace_client_tunnel(
         &mut self,
         client_id: ClientId,
-        ref_state: &ReferenceState,
-        portal: &StubPortal,
+        model: &TunnelModel,
+        portal: &FakePortal,
         buffered_transmits: &mut BufferedTransmits,
-        restart: impl FnOnce(&mut SimClient, bool) -> Vec<Transmit>,
+        restart: impl FnOnce(&mut RealClient, bool) -> Vec<Transmit>,
     ) {
-        let now = self.flux_capacitor.now();
+        let now = self.clock.now();
         let client = self.clients.get_mut(&client_id).unwrap();
-        let ref_client = &ref_state.clients[&client_id];
+        let model_client = &model.clients[&client_id];
 
         // Copy current state that will be preserved.
-        let ipv4 = client.inner().sut().tunnel_ip_config().unwrap().v4;
-        let ipv6 = client.inner().sut().tunnel_ip_config().unwrap().v6;
-        let system_dns = ref_client.inner().system_dns_resolvers();
-        let all_resources = ref_client.inner().resource_descriptions();
-        let internet_resource_state = ref_client.inner().internet_resource_active;
+        let ipv4 = client.inner().state().tunnel_ip_config().unwrap().v4;
+        let ipv6 = client.inner().state().tunnel_ip_config().unwrap().v6;
+        let system_dns = model_client.inner().system_dns_resolvers();
+        let all_resources = model_client.inner().resource_descriptions();
+        let internet_resource_state = model_client.inner().internet_resource_active;
 
         let transmits = client.exec_mut(|c| restart(c, internet_resource_state));
         for transmit in transmits {
@@ -957,7 +953,7 @@ impl TunnelTest {
 
         client.exec_mut(|c| {
             // Apply to new instance.
-            c.sut_mut().update_interface_config(Interface {
+            c.state_mut().update_interface_config(Interface {
                 ipv4,
                 ipv6,
                 upstream_dns: Vec::new(),
@@ -966,7 +962,7 @@ impl TunnelTest {
                 search_domain: portal.search_domain(),
             });
             c.tunnel.inner_mut().update_system_resolvers(system_dns);
-            c.sut_mut().set_resources(all_resources, now);
+            c.state_mut().set_resources(all_resources, now);
 
             c.update_relays(iter::empty(), self.relays.iter(), now);
         });
@@ -1012,11 +1008,11 @@ impl TunnelTest {
 
     fn record_dns_nat_observation(
         &mut self,
-        ref_state: &ReferenceState,
+        model: &TunnelModel,
         probe_id: ProbeId,
         flow_id: FlowId,
     ) {
-        let Some(expected) = ref_state.expected_probes.get(&probe_id) else {
+        let Some(expected) = model.expected_probes.get(&probe_id) else {
             return;
         };
         let Destination::DomainName { name, .. } = expected.request.destination() else {
@@ -1040,7 +1036,7 @@ impl TunnelTest {
             flow_id,
             submitted: (*submitted).clone(),
             received: (*received).clone(),
-            dns_addresses: ref_state
+            dns_addresses: model
                 .global_dns_records
                 .domain_ips_iter(name)
                 .filter(|ip| ip.is_ipv6() == submitted.packet.destination().is_ipv6())
@@ -1054,7 +1050,7 @@ impl TunnelTest {
     }
 }
 
-impl TunnelTest {
+impl RealTunnelSystem {
     /// Exhaustively advances all state machines (client, gateway & relay).
     ///
     /// For our tests to work properly, each [`Transition`] needs to advance the state as much as possible.
@@ -1066,27 +1062,27 @@ impl TunnelTest {
     /// At most, we will spend 20s of "simulation time" advancing the state.
     fn advance(
         &mut self,
-        ref_state: &ReferenceState,
-        portal: &mut StubPortal,
+        model: &TunnelModel,
+        portal: &mut FakePortal,
         buffered_transmits: &mut BufferedTransmits,
     ) {
-        let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(20);
-        self.advance_to(ref_state, portal, buffered_transmits, cut_off);
+        let cut_off = self.clock.now::<Instant>() + Duration::from_secs(20);
+        self.advance_to(model, portal, buffered_transmits, cut_off);
     }
 
-    /// Like [`TunnelTest::advance`] but advances at most until `cut_off`.
+    /// Like [`RealTunnelSystem::advance`] but advances at most until `cut_off`.
     fn advance_to(
         &mut self,
-        ref_state: &ReferenceState,
-        portal: &mut StubPortal,
+        model: &TunnelModel,
+        portal: &mut FakePortal,
         buffered_transmits: &mut BufferedTransmits,
         cut_off: Instant,
     ) {
-        let global_dns_records = &ref_state.global_dns_records;
+        let global_dns_records = &model.global_dns_records;
 
-        while self.flux_capacitor.now::<Instant>() < cut_off {
-            let now = self.flux_capacitor.now();
-            let now_utc = self.flux_capacitor.now::<SystemTime>();
+        while self.clock.now::<Instant>() < cut_off {
+            let now = self.clock.now();
+            let now_utc = self.clock.now::<SystemTime>();
 
             while let Some(transmit) = buffered_transmits.pop(now) {
                 self.dispatch_transmit(transmit, now);
@@ -1127,12 +1123,12 @@ impl TunnelTest {
                     gateway,
                     &self.relays,
                     portal,
-                    ref_state,
+                    model,
                     now,
                 );
             }
             for (id, event) in client_events {
-                self.on_client_event(id, event, ref_state, portal);
+                self.on_client_event(id, event, model, portal);
             }
 
             if busy
@@ -1144,9 +1140,9 @@ impl TunnelTest {
             }
 
             if !buffered_transmits.is_empty() {
-                self.flux_capacitor.small_tick(); // Small tick to get to the next transmit.
+                self.clock.small_tick(); // Small tick to get to the next transmit.
             } else if let Some(deadline) = self.poll_timeout().filter(|t| *t <= cut_off) {
-                self.flux_capacitor.advance_until(deadline);
+                self.clock.advance_until(deadline);
             } else {
                 break;
             }
@@ -1210,10 +1206,10 @@ impl TunnelTest {
         &mut self,
         src: ClientId,
         event: ClientEvent,
-        ref_state: &ReferenceState,
-        portal: &mut StubPortal,
+        model: &TunnelModel,
+        portal: &mut FakePortal,
     ) {
-        let now = self.flux_capacitor.now();
+        let now = self.clock.now();
 
         // Simulate a client that has not yet reconnected to the portal after a
         // roam: drop the messages it sends to the portal.
@@ -1235,7 +1231,7 @@ impl TunnelTest {
 
                 gateway.exec_mut(|g| {
                     for candidate in candidates {
-                        g.sut_mut().add_ice_candidate(src, candidate, now)
+                        g.state_mut().add_ice_candidate(src, candidate, now)
                     }
                 });
             }
@@ -1247,7 +1243,7 @@ impl TunnelTest {
 
                 gateway.exec_mut(|g| {
                     for candidate in candidates {
-                        g.sut_mut().remove_ice_candidate(src, candidate, now)
+                        g.state_mut().remove_ice_candidate(src, candidate, now)
                     }
                 });
             }
@@ -1259,7 +1255,7 @@ impl TunnelTest {
 
                 client.exec_mut(|c| {
                     for candidate in candidates {
-                        c.sut_mut().add_ice_candidate(src, candidate, now);
+                        c.state_mut().add_ice_candidate(src, candidate, now);
                     }
                 });
             }
@@ -1271,7 +1267,7 @@ impl TunnelTest {
 
                 client.exec_mut(|c| {
                     for candidate in candidates {
-                        c.sut_mut().remove_ice_candidate(src, candidate, now);
+                        c.state_mut().remove_ice_candidate(src, candidate, now);
                     }
                 });
             }
@@ -1289,15 +1285,15 @@ impl TunnelTest {
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
                 let client = self.clients.get_mut(&src).unwrap();
-                let client_key = client.inner().sut().public_key();
-                let client_tun = client.inner().sut().tunnel_ip_config().unwrap();
-                let gateway_key = gateway.inner().sut().public_key();
+                let client_key = client.inner().state().public_key();
+                let client_tun = client.inner().state().tunnel_ip_config().unwrap();
+                let gateway_key = gateway.inner().state().public_key();
                 let (preshared_key, client_ice, gateway_ice) =
                     make_preshared_key_and_ice(client_key, gateway_key);
                 let use_frostlink = portal.frostlink();
 
                 gateway.exec_mut(|g| {
-                    g.sut_mut().create_authorization(
+                    g.state_mut().create_authorization(
                         Client {
                             id: src,
                             public_key: client_key.into(),
@@ -1332,18 +1328,18 @@ impl TunnelTest {
                         gateway,
                         &self.relays,
                         portal,
-                        ref_state,
+                        model,
                         now,
                     );
                 }
 
                 let client = self.clients.get_mut(&src).unwrap();
                 if let Err(e) = client.exec_mut(|c| {
-                    c.sut_mut().handle_resource_access_authorized(
+                    c.state_mut().handle_resource_access_authorized(
                         resource_id,
                         gateway_id,
                         gateway_key,
-                        gateway.inner().sut().tunnel_ip_config().unwrap(),
+                        gateway.inner().state().tunnel_ip_config().unwrap(),
                         site_id,
                         preshared_key,
                         client_ice,
@@ -1379,7 +1375,7 @@ impl TunnelTest {
                     deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::Forbidden);
                     return;
                 }
-                let held = ref_state
+                let held = model
                     .clients
                     .get(&src)
                     .expect("unknown source client")
@@ -1397,12 +1393,12 @@ impl TunnelTest {
                 let filters = portal.device_pool_filters(pool).unwrap_or_default();
 
                 let src_client = self.clients.get(&src).expect("unknown source client");
-                let src_key = src_client.inner().sut().public_key();
-                let src_tun = src_client.inner().sut().tunnel_ip_config().unwrap();
+                let src_key = src_client.inner().state().public_key();
+                let src_tun = src_client.inner().state().tunnel_ip_config().unwrap();
 
                 let remote_client = self.clients.get_mut(&remote_id).expect("unknown client");
-                let remote_tun = remote_client.inner().sut().tunnel_ip_config().unwrap();
-                let remote_key = remote_client.inner().sut().public_key();
+                let remote_tun = remote_client.inner().state().tunnel_ip_config().unwrap();
+                let remote_key = remote_client.inner().state().public_key();
 
                 let (preshared_key, local_client_ice, remote_client_ice) =
                     make_preshared_key_and_ice(src_key, remote_key);
@@ -1414,7 +1410,7 @@ impl TunnelTest {
                     expires_at: None,
                 };
                 remote_client.exec_mut(|c| {
-                    c.sut_mut().handle_client_device_access_authorized(
+                    c.state_mut().handle_client_device_access_authorized(
                         src,
                         src_key,
                         src_tun,
@@ -1435,7 +1431,7 @@ impl TunnelTest {
                 let local_client = self.clients.get_mut(&src).expect("unknown source client");
 
                 local_client.exec_mut(|c| {
-                    c.sut_mut().handle_client_device_access_authorized(
+                    c.state_mut().handle_client_device_access_authorized(
                         remote_id,
                         remote_key,
                         remote_tun,
@@ -1464,7 +1460,7 @@ impl TunnelTest {
                 client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
             }
             ClientEvent::SocketTaken { consecutive } => {
-                let resources = ref_state.clients[&src].inner().resource_descriptions();
+                let resources = model.clients[&src].inner().resource_descriptions();
                 let client = self.clients.get_mut(&src).unwrap();
 
                 if consecutive > MAX_REBINDS {
@@ -1476,7 +1472,7 @@ impl TunnelTest {
                 let port = client.port.wrapping_add(1).max(1);
                 client.port = port;
                 client.exec_mut(|c| {
-                    c.sut_mut().set_portal_connected(false);
+                    c.state_mut().set_portal_connected(false);
                     c.tunnel
                         .inner_mut()
                         .rebind_to_new_port("socket is taken by another device", now);
@@ -1487,29 +1483,29 @@ impl TunnelTest {
                 }
 
                 client.exec_mut(|c| {
-                    c.sut_mut().set_portal_connected(true);
+                    c.state_mut().set_portal_connected(true);
                     c.update_relays(iter::empty(), self.relays.iter(), now);
-                    c.sut_mut().set_resources(resources, now);
+                    c.state_mut().set_resources(resources, now);
                 });
             }
             ClientEvent::DeviceDomainQueried { domain } => {
                 // Mimic the portal: every device resolves, access is asked for per flow.
-                let held = ref_state.clients[&src].inner().device_pool_ids();
+                let held = model.clients[&src].inner().device_pool_ids();
                 let result = portal.resolve_device_domain(&domain, &held);
 
                 let client = self.clients.get_mut(&src).expect("unknown source client");
                 client.exec_mut(|c| {
-                    c.sut_mut()
+                    c.state_mut()
                         .handle_device_domain_resolved(domain, result, now);
                 });
             }
             ClientEvent::DeviceDomainBrowsed { domain } => {
-                let held = ref_state.clients[&src].inner().device_pool_ids();
+                let held = model.clients[&src].inner().device_pool_ids();
                 let result = portal.browse_device_domain(&domain, &held);
 
                 let client = self.clients.get_mut(&src).expect("unknown source client");
                 client.exec_mut(|c| {
-                    c.sut_mut()
+                    c.state_mut()
                         .handle_device_domain_browsed(domain, result, now);
                 });
             }
@@ -1522,7 +1518,7 @@ impl TunnelTest {
     }
 
     fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<u64>>, now: Instant) {
-        let now_utc = self.flux_capacitor.now::<SystemTime>();
+        let now_utc = self.clock.now::<SystemTime>();
         let disconnected = self
             .relays
             .keys()
@@ -1536,7 +1532,7 @@ impl TunnelTest {
                 (
                     relay_id,
                     relay.map(
-                        |seed, ip4, ip6| SimRelay::new(seed, ip4, ip6, now_utc),
+                        |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, now_utc),
                         debug_span!("relay", %relay_id),
                     ),
                 )
@@ -1571,7 +1567,7 @@ impl TunnelTest {
         new_relays: BTreeMap<RelayId, Host<u64>>,
         now: Instant,
     ) {
-        let now_utc = self.flux_capacitor.now::<SystemTime>();
+        let now_utc = self.clock.now::<SystemTime>();
 
         for relay in self.relays.values() {
             self.network.remove_host(relay);
@@ -1583,7 +1579,7 @@ impl TunnelTest {
                 (
                     rid,
                     relay.map(
-                        |seed, ip4, ip6| SimRelay::new(seed, ip4, ip6, now_utc),
+                        |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, now_utc),
                         debug_span!("relay", %rid),
                     ),
                 )
@@ -1607,7 +1603,7 @@ impl TunnelTest {
 
 fn address_from_destination(
     destination: &Destination,
-    state: &TunnelTest,
+    state: &RealTunnelSystem,
     src: &IpAddr,
     client_id: ClientId,
 ) -> IpAddr {
@@ -1632,7 +1628,7 @@ fn address_from_destination(
 }
 
 fn deny_device_access(
-    clients: &mut BTreeMap<ClientId, Host<SimClient>>,
+    clients: &mut BTreeMap<ClientId, Host<RealClient>>,
     src: ClientId,
     ipv4: Option<std::net::Ipv4Addr>,
     ipv6: Option<std::net::Ipv6Addr>,
@@ -1642,7 +1638,7 @@ fn deny_device_access(
         .get_mut(&src)
         .expect("unknown source client")
         .exec_mut(|c| {
-            c.sut_mut()
+            c.state_mut()
                 .handle_client_device_access_denied(ipv4, ipv6, reason)
         });
 }
@@ -1684,11 +1680,11 @@ fn hkdf(domain: &str, client_key: PublicKey, gateway_key: PublicKey) -> [u8; 32]
 fn on_gateway_event(
     src: GatewayId,
     event: GatewayEvent,
-    clients: &mut BTreeMap<ClientId, Host<SimClient>>,
-    gateway: &mut Host<SimGateway>,
-    relays: &BTreeMap<RelayId, Host<SimRelay>>,
-    portal: &mut StubPortal,
-    ref_state: &ReferenceState,
+    clients: &mut BTreeMap<ClientId, Host<RealClient>>,
+    gateway: &mut Host<RealGateway>,
+    relays: &BTreeMap<RelayId, Host<RealRelay>>,
+    portal: &mut FakePortal,
+    model: &TunnelModel,
     now: Instant,
 ) {
     match event {
@@ -1699,7 +1695,7 @@ fn on_gateway_event(
             let client = clients.get_mut(&conn_id).unwrap();
             client.exec_mut(|c| {
                 for candidate in candidates {
-                    c.sut_mut().add_ice_candidate(src, candidate, now)
+                    c.state_mut().add_ice_candidate(src, candidate, now)
                 }
             })
         }
@@ -1710,24 +1706,24 @@ fn on_gateway_event(
             let client = clients.get_mut(&conn_id).unwrap();
             client.exec_mut(|c| {
                 for candidate in candidates {
-                    c.sut_mut().remove_ice_candidate(src, candidate, now)
+                    c.state_mut().remove_ice_candidate(src, candidate, now)
                 }
             })
         }
         GatewayEvent::ResolveDns(r) => {
             let client = clients.iter().find_map(|(id, client)| {
-                (client.inner().sut().public_key() == r.client_public_key()).then_some(*id)
+                (client.inner().state().public_key() == r.client_public_key()).then_some(*id)
             });
             let domain = r.domain().clone();
             let proxy_ips = r.proxy_ips().iter().collect();
-            let resolved_ips = ref_state.gateways[&src]
+            let resolved_ips = model.gateways[&src]
                 .inner()
-                .resolve(&domain, &ref_state.global_dns_records)
+                .resolve(&domain, &model.global_dns_records)
                 .filter_map(|record| record_ip(&record))
                 .collect::<Vec<_>>();
 
             gateway.exec_mut(|g| {
-                g.sut_mut()
+                g.state_mut()
                     .handle_domain_resolved(r, Ok(resolved_ips.clone()), now)
                     .unwrap();
                 if let Some(client) = client {

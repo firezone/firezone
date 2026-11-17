@@ -439,6 +439,7 @@ config :portal, Portal.S3.APIClient,
 
 config :portal, Portal.QRadar.APIClient, req_opts: [retry: :transient]
 config :portal, Portal.HTTP.APIClient, req_opts: [retry: :transient]
+config :portal, Portal.Workers.MirrorYCDealRedemption, req_opts: []
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
@@ -500,7 +501,8 @@ config :portal, sign_up_whitelisted_domains: []
 
 config :portal,
   yc_deal_webhook_secrets: %{},
-  yc_deal_coupon_ids: %{}
+  yc_deal_coupon_ids: %{},
+  yc_deal_mirror_url: nil
 
 config :portal, docker_registry: "ghcr.io/firezone"
 
