@@ -230,12 +230,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayvec"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
-
-[[package]]
 name = "ascii"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2119,21 +2113,6 @@ dependencies = [
  "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
-]
-
-[[package]]
-name = "dimpl"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba6aa42b0c64c3e5311a2afad224b32db1ee129d21c63daaaf8ea747b846cdbc"
-dependencies = [
- "arrayvec",
- "log",
- "nom 8.0.0",
- "once_cell",
- "rand 0.9.4",
- "subtle",
- "time",
 ]
 
 [[package]]
@@ -7753,7 +7732,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8f3d99f2cf6c76a502e45feb896ea71e54787ede8744bcdb215acfbfcb905dd"
 dependencies = [
  "base64ct",
- "dimpl",
  "fastrand",
  "serde",
  "subtle",
