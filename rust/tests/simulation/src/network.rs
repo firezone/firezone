@@ -648,3 +648,97 @@ impl From<ClientId> for HostId {
         Self::Client(v)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NAT_IP: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
+    const SERVER_1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 3478);
+    const SERVER_2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2)), 3478);
+    const HOST_1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 52625);
+    const HOST_2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 52625);
+    const EXPIRY: Expiry = Expiry {
+        timeout: Duration::from_secs(30),
+        inbound_refreshes: false,
+    };
+
+    #[test]
+    fn new_mapping_keeps_internal_port() {
+        let mut nat = Nat::new(
+            NAT_IP,
+            Mapping::EndpointIndependent,
+            FilterMode::Open,
+            EXPIRY,
+        );
+
+        let public = nat.egress(HOST_1, SERVER_1, Instant::now());
+
+        assert_eq!(public, SocketAddr::new(NAT_IP.into(), HOST_1.port()));
+    }
+
+    #[test]
+    fn port_held_by_live_mapping_is_not_reused() {
+        let mut nat = Nat::new(
+            NAT_IP,
+            Mapping::EndpointIndependent,
+            FilterMode::Open,
+            EXPIRY,
+        );
+        let now = Instant::now();
+
+        let first = nat.egress(HOST_1, SERVER_1, now);
+        let second = nat.egress(HOST_2, SERVER_1, now);
+
+        assert_eq!(first.port(), HOST_1.port());
+        assert_ne!(second.port(), HOST_2.port());
+    }
+
+    #[test]
+    fn endpoint_independent_mapping_reuses_public_socket() {
+        let mut nat = Nat::new(
+            NAT_IP,
+            Mapping::EndpointIndependent,
+            FilterMode::Open,
+            EXPIRY,
+        );
+        let now = Instant::now();
+
+        let to_server_1 = nat.egress(HOST_1, SERVER_1, now);
+        let to_server_2 = nat.egress(HOST_1, SERVER_2, now);
+
+        assert_eq!(to_server_1, to_server_2);
+    }
+
+    #[test]
+    fn endpoint_dependent_mapping_mints_public_socket_per_destination() {
+        let mut nat = Nat::new(
+            NAT_IP,
+            Mapping::EndpointDependent,
+            FilterMode::PortRestricted,
+            EXPIRY,
+        );
+        let now = Instant::now();
+
+        let to_server_1 = nat.egress(HOST_1, SERVER_1, now);
+        let to_server_2 = nat.egress(HOST_1, SERVER_2, now);
+
+        assert_ne!(to_server_1, to_server_2);
+    }
+
+    #[test]
+    fn expired_mapping_frees_its_port() {
+        let mut nat = Nat::new(
+            NAT_IP,
+            Mapping::EndpointIndependent,
+            FilterMode::Open,
+            EXPIRY,
+        );
+        let now = Instant::now();
+
+        nat.egress(HOST_1, SERVER_1, now);
+        let public = nat.egress(HOST_2, SERVER_1, now + EXPIRY.timeout);
+
+        assert_eq!(public.port(), HOST_2.port());
+    }
+}
