@@ -11,7 +11,7 @@ pub(crate) enum Transition {
     Advance {
         duration: Duration,
     },
-    /// The portal issues credentials with a later expiry.
+    /// The portal issues fresh credentials.
     ///
     /// An `Allocation` cannot take new credentials, so they replace the allocation.
     RotateCredentials,

@@ -36,8 +36,9 @@ use crate::{
     stun,
 };
 
-/// How long the credentials are valid that the portal issues.
-const CREDENTIAL_LIFETIME: Duration = Duration::from_secs(60 * 60);
+/// When the credentials expire that the portal issues, as for gateways: 2038-01-01T00:00:00Z,
+/// which the simulation never reaches.
+const CREDENTIALS_EXPIRE_AT: Duration = Duration::from_secs(2_145_916_800);
 
 /// A client retransmits a request within this time, so a timer this close belongs to an
 /// exchange that is still going on.
@@ -74,8 +75,8 @@ pub(crate) struct RealRelaySystem {
     relay_boots: u64,
 
     portal_reachable: bool,
-    /// The credentials that the portal last issued.
-    credentials: Option<Credentials>,
+    /// The relay boot that the portal last issued the client credentials for.
+    credentials_boot: Option<u64>,
 
     client: Host<RealAllocation>,
 
@@ -103,12 +104,6 @@ struct RealAllocation {
     received: Vec<(SocketAddr, SocketAddr)>,
 }
 
-struct Credentials {
-    /// The boot of the relay that they are for.
-    relay_boot: u64,
-    expire_at: SystemTime,
-}
-
 impl RealRelaySystem {
     /// Builds the hosts of `model` and lets the portal hand the client the relay.
     pub(crate) fn new(model: &RelayModel, start: Instant) -> Self {
@@ -120,7 +115,7 @@ impl RealRelaySystem {
             transmits: BufferedTransmits::default(),
             relay_boots: 0,
             portal_reachable: true,
-            credentials: None,
+            credentials_boot: None,
             client: host(RealAllocation::default(), &model.client, model.client.stack),
             at_peers: Vec::new(),
             last_from_client: None,
@@ -282,31 +277,21 @@ impl RealRelaySystem {
     }
 
     pub(crate) fn environment(&self) -> Environment {
-        let now = self.clock.now::<SystemTime>();
-
         Environment {
-            credentials_valid: self
-                .credentials
-                .as_ref()
-                .is_some_and(|c| c.relay_boot == self.relay_boots && now <= c.expire_at),
+            credentials_valid: self.credentials_boot == Some(self.relay_boots),
         }
     }
 
     /// The portal hands the client the relay with fresh credentials; the client starts over.
     fn connect(&mut self, model: &RelayModel) {
         let now = self.clock.now();
-        let lifetime_ends = (self.clock.now::<SystemTime>() + CREDENTIAL_LIFETIME)
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("the clock starts at the UNIX epoch");
-        // Whole seconds, because that is what a username carries.
-        let expire_at = SystemTime::UNIX_EPOCH + Duration::from_secs(lifetime_ends.as_secs());
 
         let relay = self.relay.inner();
         let (server, username, password, realm) = relay.explode(
             model.client.device,
             relay.server.auth_secret(),
             relay.server.public_address(),
-            expire_at,
+            SystemTime::UNIX_EPOCH + CREDENTIALS_EXPIRE_AT,
         );
         let allocation = Allocation::new(
             server,
@@ -321,10 +306,7 @@ impl RealRelaySystem {
             c.allocation = Some(allocation);
             c.forget_relay_addresses();
         });
-        self.credentials = Some(Credentials {
-            relay_boot: self.relay_boots,
-            expire_at,
-        });
+        self.credentials_boot = Some(self.relay_boots);
     }
 
     fn garbage_to_relay(

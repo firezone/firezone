@@ -17,7 +17,7 @@ use crate::relay_transition::{Target, Transition};
 /// What the expectations depend on besides the model's own state.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Environment {
-    /// Whether the credentials that the portal last issued are unexpired and for the running relay.
+    /// Whether the credentials that the portal last issued are for the running relay.
     pub(crate) credentials_valid: bool,
 }
 
