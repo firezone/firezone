@@ -11,6 +11,8 @@
 mod apple;
 #[cfg(not(apple))]
 mod fallback;
+#[cfg(any(apple, test))]
+mod keyed_streams;
 
 #[cfg(apple)]
 pub(crate) use apple::SocketPool;

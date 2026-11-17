@@ -35,6 +35,7 @@ memchr = { workspace = true }
 [dev-dependencies]
 bufferpool = { workspace = true }
 derive_more = { workspace = true, features = ["deref"] }
+futures = { workspace = true }
 ip-packet = { workspace = true }
 memchr = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }

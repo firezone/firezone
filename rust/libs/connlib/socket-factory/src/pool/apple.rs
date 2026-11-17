@@ -30,13 +30,10 @@
 //! The catch-all socket also remains the final fallback if creating a source socket fails.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
     task::{Context, Poll, Waker, ready},
     time::{Duration, Instant},
 };
@@ -44,15 +41,14 @@ use std::{
 use anyhow::Result;
 use futures::{
     StreamExt as _,
-    stream::{self, BoxStream, SelectAll},
-    task::AtomicWaker,
+    stream::{self, BoxStream},
 };
 use parking_lot::{Mutex, MutexGuard};
 use quinn_udp::UdpSockRef;
 
 use crate::DatagramBatch;
 
-use super::{OwnedSocket, poll_recv_ready, recv_batch};
+use super::{OwnedSocket, keyed_streams::KeyedStreams, poll_recv_ready, recv_batch};
 
 /// How many flow sockets a pool keeps at most. connlib runs one pool per address family,
 /// so this is effectively the per-family cap.
@@ -84,6 +80,16 @@ const RATE_WINDOW: Duration = Duration::from_secs(1);
 
 type Key = (Option<IpAddr>, SocketAddr);
 
+/// Identifies the socket a receive stream reads from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SocketId {
+    Wildcard,
+    Flow(Key),
+    Source(IpAddr),
+}
+
+type RecvStreams = KeyedStreams<SocketId, BoxStream<'static, Result<DatagramBatch>>>;
+
 /// Unconnected wildcard and source sockets, plus connected per-pair flow sockets.
 pub(crate) struct SocketPool {
     /// Unconnected socket bound to the wildcard address; receives from any peer and is the
@@ -106,8 +112,10 @@ struct Inner {
     flow_sockets_supported: bool,
     buffer_sizes: Option<(usize, usize)>,
     /// Receive streams of the wildcard and all cached sockets.
-    recv_streams: SelectAll<BoxStream<'static, Result<DatagramBatch>>>,
-    /// Waker of the receive task; woken when new sockets appear.
+    recv_streams: RecvStreams,
+    /// Datagrams rescued from evicted sockets before closing them.
+    drained: VecDeque<DatagramBatch>,
+    /// Waker of the receive task; woken when new sockets or drained datagrams appear.
     recv_waker: Option<Waker>,
 }
 
@@ -115,18 +123,8 @@ struct Inner {
 struct CachedSocket {
     socket: Arc<OwnedSocket>,
     created_at: Instant,
-    recv_state: Arc<RecvState>,
-}
-
-/// State shared between a socket's cache entry and its receive stream.
-#[derive(Default)]
-struct RecvState {
     /// Inbound activity, used to keep useful sockets during eviction.
-    last_received: Mutex<Option<Instant>>,
-    /// Set on eviction: the stream then reads the socket dry and ends, closing it.
-    evicted: AtomicBool,
-    /// Waker of the receive stream.
-    waker: AtomicWaker,
+    last_received: Option<Instant>,
 }
 
 impl SocketPool {
@@ -135,13 +133,11 @@ impl SocketPool {
             .local_addr()
             .expect("a bound socket to have a local address");
         let wildcard = Arc::new(wildcard);
-        let wildcard_recv = recv_stream(
-            wildcard.clone(),
-            Arc::default(),
-            recv_buf_size,
-            local.port(),
-        )
-        .boxed();
+        let mut recv_streams = RecvStreams::default();
+        recv_streams.push(
+            SocketId::Wildcard,
+            recv_stream(wildcard.clone(), recv_buf_size, local.port()),
+        );
 
         Self {
             wildcard,
@@ -153,7 +149,8 @@ impl SocketPool {
                 rates: RateGate::default(),
                 flow_sockets_supported: true,
                 buffer_sizes: None,
-                recv_streams: stream::select_all([wildcard_recv]),
+                recv_streams,
+                drained: VecDeque::new(),
                 recv_waker: None,
             }),
             evictions: otel_instruments::flow_socket_evictions(),
@@ -191,12 +188,29 @@ impl SocketPool {
             slot => *slot = Some(cx.waker().clone()),
         }
 
-        match inner.recv_streams.poll_next_unpin(cx) {
-            Poll::Ready(Some(result)) => Poll::Ready(result),
-            // Never happens: the wildcard's stream never ends.
-            Poll::Ready(None) => Poll::Pending,
-            Poll::Pending => Poll::Pending,
+        // Datagrams rescued from evicted sockets are the oldest; yield them first.
+        if let Some(batch) = inner.drained.pop_front() {
+            return Poll::Ready(Ok(batch));
         }
+
+        // Never `None`: the wildcard's stream never ends.
+        let Some((id, result)) = ready!(inner.recv_streams.poll_next_unpin(cx)) else {
+            return Poll::Pending;
+        };
+
+        if result.is_ok() {
+            let cached = match id {
+                SocketId::Wildcard => None,
+                SocketId::Flow(key) => inner.flows.get_mut(&key),
+                SocketId::Source(src) => inner.sources.get_mut(&src),
+            };
+
+            if let Some(cached) = cached {
+                cached.record_received(Instant::now());
+            }
+        }
+
+        Poll::Ready(result)
     }
 
     pub(crate) fn set_buffer_sizes(&self, send: usize, recv: usize, port: u16) {
@@ -237,7 +251,15 @@ impl SocketPool {
                 tracing::debug!(?src, %dst, "Connected new flow socket");
 
                 if inner.flows.len() >= MAX_FLOW_SOCKETS
-                    && let Some((src, dst)) = evict_one(&mut inner.flows)
+                    && let Some((src, dst)) = evict_one(
+                        &mut inner.flows,
+                        SocketId::Flow,
+                        &mut inner.recv_streams,
+                        self.local.port(),
+                        self.recv_buf_size,
+                        &mut inner.drained,
+                        &mut inner.recv_waker,
+                    )
                 {
                     self.evictions.add(1, &[]);
                     tracing::debug!(?src, %dst, "Evicted flow socket");
@@ -246,15 +268,11 @@ impl SocketPool {
                 inner.rates.forget(&key);
 
                 let socket = Arc::new(socket);
-                inner.flows.insert(
-                    key,
-                    CachedSocket::new(
-                        socket.clone(),
-                        self.local.port(),
-                        self.recv_buf_size,
-                        &mut inner.recv_streams,
-                    ),
+                inner.recv_streams.push(
+                    SocketId::Flow(key),
+                    recv_stream(socket.clone(), self.recv_buf_size, self.local.port()),
                 );
+                inner.flows.insert(key, CachedSocket::new(socket.clone()));
 
                 // The receive task only learns about the new socket on its next poll.
                 if let Some(waker) = inner.recv_waker.take() {
@@ -282,19 +300,23 @@ impl SocketPool {
         match create_socket(self.local, Some(src), None, inner.buffer_sizes) {
             Ok(socket) => {
                 if inner.sources.len() >= MAX_SOURCE_SOCKETS {
-                    let _ = evict_one(&mut inner.sources);
+                    let _ = evict_one(
+                        &mut inner.sources,
+                        SocketId::Source,
+                        &mut inner.recv_streams,
+                        self.local.port(),
+                        self.recv_buf_size,
+                        &mut inner.drained,
+                        &mut inner.recv_waker,
+                    );
                 }
 
                 let socket = Arc::new(socket);
-                inner.sources.insert(
-                    src,
-                    CachedSocket::new(
-                        socket.clone(),
-                        self.local.port(),
-                        self.recv_buf_size,
-                        &mut inner.recv_streams,
-                    ),
+                inner.recv_streams.push(
+                    SocketId::Source(src),
+                    recv_stream(socket.clone(), self.recv_buf_size, self.local.port()),
                 );
+                inner.sources.insert(src, CachedSocket::new(socket.clone()));
                 if let Some(waker) = inner.recv_waker.take() {
                     waker.wake();
                 }
@@ -319,22 +341,16 @@ impl SocketPool {
 }
 
 impl CachedSocket {
-    /// Caches `socket`, adding its receive stream to `recv_streams`.
-    fn new(
-        socket: Arc<OwnedSocket>,
-        port: u16,
-        recv_buf_size: usize,
-        recv_streams: &mut SelectAll<BoxStream<'static, Result<DatagramBatch>>>,
-    ) -> Self {
-        let recv_state = Arc::new(RecvState::default());
-        recv_streams
-            .push(recv_stream(socket.clone(), recv_state.clone(), recv_buf_size, port).boxed());
-
+    fn new(socket: Arc<OwnedSocket>) -> Self {
         Self {
             socket,
             created_at: Instant::now(),
-            recv_state,
+            last_received: None,
         }
+    }
+
+    fn record_received(&mut self, now: Instant) {
+        self.last_received = Some(now);
     }
 }
 
@@ -389,18 +405,29 @@ impl RateGate {
     }
 }
 
-/// Evicts the least useful cached socket.
-fn evict_one<K: Ord + Copy>(sockets: &mut BTreeMap<K, CachedSocket>) -> Option<K> {
+/// Evicts and drains the least useful cached socket.
+fn evict_one<K: Ord + Copy>(
+    sockets: &mut BTreeMap<K, CachedSocket>,
+    id: fn(K) -> SocketId,
+    recv_streams: &mut RecvStreams,
+    port: u16,
+    recv_buf_size: usize,
+    drained: &mut VecDeque<DatagramBatch>,
+    recv_waker: &mut Option<Waker>,
+) -> Option<K> {
     let key = sockets
         .iter()
-        .min_by_key(|(_, cached)| {
-            eviction_rank(*cached.recv_state.last_received.lock(), cached.created_at)
-        })
+        .min_by_key(|(_, cached)| eviction_rank(cached.last_received, cached.created_at))
         .map(|(key, _)| *key)?;
     let evicted = sockets.remove(&key)?;
+    let _stream = recv_streams.remove(&id(key));
 
-    evicted.recv_state.evicted.store(true, Ordering::Release);
-    evicted.recv_state.waker.wake();
+    drain(&evicted.socket, port, recv_buf_size, drained);
+    if !drained.is_empty()
+        && let Some(waker) = recv_waker.take()
+    {
+        waker.wake();
+    }
 
     Some(key)
 }
@@ -418,39 +445,28 @@ fn eviction_rank(last_received: Option<Instant>, created_at: Instant) -> (bool, 
     }
 }
 
-/// Receives batches from `socket` until it is evicted and read dry.
+/// Reads an evicted socket dry before it is closed.
 ///
-/// Closing a socket discards its queued datagrams, so an evicted socket is read without
-/// waiting for readiness until it would block. Only then does the stream end, dropping its
-/// reference to the socket.
+/// Closing a socket discards queued datagrams; drain them before another socket receives
+/// subsequent traffic for its address or connected pair. Reads bypass tokio's cached
+/// readiness, which can lag behind the kernel.
+fn drain(socket: &OwnedSocket, port: u16, recv_buf_size: usize, out: &mut VecDeque<DatagramBatch>) {
+    // Stops on the first error, typically `WouldBlock`: the socket is dry.
+    while let Ok(batch) = recv_batch(socket.as_socket(), recv_buf_size, port) {
+        out.push_back(batch);
+    }
+}
+
+/// Receives batches from `socket` for as long as the stream lives.
 fn recv_stream(
     socket: Arc<OwnedSocket>,
-    state: Arc<RecvState>,
     recv_buf_size: usize,
     port: u16,
-) -> impl futures::Stream<Item = Result<DatagramBatch>> {
+) -> BoxStream<'static, Result<DatagramBatch>> {
     stream::poll_fn(move |cx| {
-        // Register before checking `evicted` so an eviction in between still wakes us.
-        state.waker.register(cx.waker());
-
-        if state.evicted.load(Ordering::Acquire) {
-            return match recv_batch(socket.as_socket(), recv_buf_size, port) {
-                Ok(batch) => Poll::Ready(Some(Ok(batch))),
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => Poll::Ready(None),
-                Err(e) => {
-                    tracing::debug!("Failed to read evicted socket dry: {e}");
-                    Poll::Ready(None)
-                }
-            };
-        }
-
-        let result = ready!(poll_recv_ready(cx, socket.as_socket(), recv_buf_size, port));
-        if result.is_ok() {
-            *state.last_received.lock() = Some(Instant::now());
-        }
-
-        Poll::Ready(Some(result))
+        poll_recv_ready(cx, socket.as_socket(), recv_buf_size, port).map(Some)
     })
+    .boxed()
 }
 
 fn create_socket(
