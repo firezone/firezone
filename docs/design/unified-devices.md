@@ -498,8 +498,9 @@ tables, and a migration in the next deploy copies what is missing.
   touches the table (#16377), then the table is dropped (#16378). Done.
 - **1.10 Removed.** No free service account: Gateways stay with the legacy
   Gateway actor (decision 8).
-- **1.11 Client tokens into `device_tokens`.** The same steps as 1.2 to 1.4,
-  1.7 and 1.9, after 1.7, one PR per deploy:
+- **1.11 Client tokens into `device_tokens`.** Done (#16392 to #16398; the
+  device token columns became `devices.token_id` in #16462 to #16468). The
+  same steps as 1.2 to 1.4, 1.7 and 1.9, after 1.7, one PR per deploy:
   - C1: create and revoke write both tables in one transaction. The
     `device_tokens` actor foreign key becomes `ON DELETE CASCADE`, as on
     `client_tokens`. `/client` and `/gateway` accept the `"device"` salt;
@@ -590,18 +591,23 @@ first_seen_at, last_seen_at)`, PK on the three ids, cascading FKs. Ecto
 - **2.7 Migration: `site_devices`.** `(account_id, site_id, device_id,
 inserted_at)`, unique on the three ids, cascading FKs. Ecto schema, `Site`
   associations, consumer lists, hook that broadcasts to the site topic.
+  Shipped. A device holds one site for now (#16288).
 - **2.8 Migration: backfill `site_devices`** from `devices.site_id`.
-  Depends 2.7.
+  Depends 2.7. Shipped in #16286.
 - **2.9 Migration: trigger mirroring `devices.site_id` writes** into
   `site_devices` for one release, so unconverted write paths stay
-  correct. Depends 2.8.
+  correct. Depends 2.8. Not needed: reads moved to `site_devices` (#16290,
+  #16336), writes stopped (#16332) and the column was dropped (#16337).
 - **2.10 Code: presence meta `site_ids`** from `site_devices` at connect; the
-  per-site presence lookups read it. Depends 2.8.
+  per-site presence lookups read it. Depends 2.8. Partly shipped: presence
+  carries the device's one `site_id` from `site_devices`. It becomes a list
+  when a device can serve several sites.
 - **2.11 Code: `Routing.select_receiver` uses `site_devices`.** Candidates are
   online devices whose `site_ids` include the resource's site, never the
   initiator itself, still limited to `type == :gateway` until 4.6. The
   client's connectable resources exclude any resource served by a site the
-  device is assigned to. Depends 0.6, 2.10.
+  device is assigned to. Depends 0.6, 2.10. Partly shipped: the receiver is
+  picked from the gateways online in the resource's site.
 - **2.12 UI: Sites devices tab.** Reads `site_devices`; add existing device
   (picker limited to gateways until 4.6, others shown disabled with reason);
   remove device. Depends 2.8.
@@ -870,7 +876,7 @@ firezone` and `firezone authenticate`. Depends 3.7.
   (2.4 to 2.6), the connected actor comes from the token (2.6b) and lookups
   go by account (2.17). `devices.actor_id` was dropped early: #16567 stopped
   reading and writing it, and #16569 dropped the column. `devices.site_id`
-  remains.
+  was dropped in #16337, without the trigger of 2.9.
 - **6.6 Code and migration: Internet Site becomes a normal site.** Flip
   `managed_by`, drop the pairing validation and the pinned row; Internet
   resource gets a site selector. Depends 0.4 in the fleet, 5.11.
