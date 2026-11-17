@@ -135,7 +135,7 @@ jobs:
       checks: write # Bencher check annotations
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: bencherdev/bencher@7de3c69a85380826613050826b4bce062be2f07d # v0.6.16
+      - uses: bencherdev/bencher@b2484bc6734c8e6da4fad141bd13527a11da3988 # v0.6.17
       - name: Download performance test results
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
