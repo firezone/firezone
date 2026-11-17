@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     fmt,
     hash::Hash,
     iter, mem,
@@ -35,6 +35,8 @@ pub struct Connections<TId, RId> {
 
     established_by_tunnel_id: HashMap<sanstun::TunnelId, TId, FastRandomState>,
     established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
+    /// The connections that received authenticated traffic from each remote socket.
+    established_by_remote: HashMap<SocketAddr, BTreeSet<TId>, FastRandomState>,
 
     disconnected_ids: HashMap<TId, Instant, FastRandomState>,
     disconnected_public_keys: HashMap<[u8; 32], Instant, FastRandomState>,
@@ -51,6 +53,7 @@ impl<TId, RId> Default for Connections<TId, RId> {
             closing: Default::default(),
             established_by_tunnel_id: Default::default(),
             established_by_local_ufrag: Default::default(),
+            established_by_remote: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_tunnel_ids: Default::default(),
@@ -77,6 +80,7 @@ where
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.established_by_local_ufrag.remove(ufrag);
         }
+        self.remove_remotes(id);
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
@@ -254,8 +258,38 @@ where
         if let Some(ufrag) = local_ufrag {
             self.established_by_local_ufrag.insert(ufrag, id);
         }
+        if existing.is_some() {
+            self.remove_remotes(&id);
+        }
 
         existing
+    }
+
+    /// Records that `id` received authenticated traffic from `remote`.
+    ///
+    /// Returns whether this made `remote` contested, see [`Connections::is_contested`].
+    pub(crate) fn add_remote(&mut self, id: TId, remote: SocketAddr) -> bool {
+        let ids = self.established_by_remote.entry(remote).or_default();
+
+        ids.insert(id) && ids.len() == 2
+    }
+
+    /// Whether more than one connection received authenticated traffic from `remote`.
+    ///
+    /// A NAT that maps several devices to the same public socket delivers what we send there to
+    /// whichever of them sent last, so no connection can rely on a contested `remote`.
+    pub(crate) fn is_contested(&self, remote: SocketAddr) -> bool {
+        self.established_by_remote
+            .get(&remote)
+            .is_some_and(|ids| ids.len() > 1)
+    }
+
+    pub(crate) fn iter_mut_by_remote_candidate(
+        &mut self,
+        remote: SocketAddr,
+    ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
+        self.established
+            .filter_mut(move |c| c.agent.has_remote_candidate(remote))
     }
 
     pub(crate) fn iter_mut_by_relay(
@@ -323,6 +357,28 @@ where
         Ok((id, conn))
     }
 
+    pub(crate) fn get_established_mut_for_wireguard_message(
+        &mut self,
+        message: &sanstun::ReceivedMessage,
+        now: Instant,
+    ) -> Result<(TId, &mut Connection<RId>)> {
+        match message {
+            // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
+            sanstun::ReceivedMessage::HandshakeInitiation(init) => {
+                self.get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now)
+            }
+            sanstun::ReceivedMessage::HandshakeResponse(response) => {
+                self.get_established_mut_by_tunnel_id(response.tunnel_id(), now)
+            }
+            sanstun::ReceivedMessage::CookieReply(reply) => {
+                self.get_established_mut_by_tunnel_id(reply.tunnel_id(), now)
+            }
+            sanstun::ReceivedMessage::TransportData(data) => {
+                self.get_established_mut_by_tunnel_id(data.tunnel_id(), now)
+            }
+        }
+    }
+
     pub(crate) fn get_established_mut_for_stun_message(
         &mut self,
         message: &StunMessage,
@@ -360,7 +416,7 @@ where
         bail!("STUN message is not a BINDING")
     }
 
-    pub(crate) fn get_mut_including_closing(
+    fn get_mut_including_closing(
         &mut self,
         id: &TId,
         now: Instant,
@@ -375,17 +431,6 @@ where
             .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
         Ok(connection)
-    }
-
-    /// Returns the connection that owns `path`, see [`Connection::owns_path`].
-    pub(crate) fn path_owner_mut(
-        &mut self,
-        path: (SocketAddr, SocketAddr),
-        allocations: &Allocations<RId>,
-    ) -> Option<(TId, &mut Connection<RId>)> {
-        self.established
-            .filter_mut(|c| c.owns_path(path, allocations))
-            .next()
     }
 
     pub(crate) fn is_closing(&self, id: &TId) -> bool {
@@ -411,6 +456,7 @@ where
         self.missing_relay = false;
         self.failed.clear();
         self.established_by_tunnel_id.clear();
+        self.established_by_remote.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
@@ -489,6 +535,7 @@ where
                 self.established_by_local_ufrag.remove(ufrag);
                 self.disconnected_ufrags.insert(ufrag.to_owned(), now);
             }
+            self.remove_remotes(&id);
         }
 
         self.disconnected_ids
@@ -499,6 +546,16 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_ufrags
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+    }
+
+    fn remove_remotes(&mut self, id: &TId) {
+        for ids in self.established_by_remote.values_mut() {
+            ids.remove(id);
+        }
+        for _ in self
+            .established_by_remote
+            .extract_if(|_, ids| ids.is_empty())
+        {}
     }
 }
 

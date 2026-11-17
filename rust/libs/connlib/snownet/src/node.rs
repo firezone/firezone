@@ -111,7 +111,7 @@ pub struct Node<TId, RId> {
 
     connection_count: Gauge<u64>,
     next_connection_count: Instant,
-    paths_refused: Counter<u64>,
+    contested_addresses: Counter<u64>,
 
     rng: StdRng,
 
@@ -208,7 +208,7 @@ where
             buffered_candidates: Default::default(),
             connection_count: otel_instruments::connection_count(),
             next_connection_count: now,
-            paths_refused: otel_instruments::connection_paths_refused(),
+            contested_addresses: otel_instruments::contested_addresses(),
             unix_now: now,
             unix_ts,
         }
@@ -566,6 +566,15 @@ where
             return;
         };
 
+        if self.connections.is_contested(candidate.addr()) {
+            tracing::debug!(?candidate, "Ignoring candidate at contested address");
+            return;
+        }
+
+        let Ok(c) = self.connections.get_mut(&cid, now) else {
+            return;
+        };
+
         tracing::debug!(?candidate, "Received candidate from remote");
 
         c.add_remote_candidate(cid, candidate.clone(), now);
@@ -678,28 +687,21 @@ where
             probes,
         } = batch;
 
-        let path = (dst, src);
-        let path_taken = if probes.is_empty() {
-            false
-        } else {
-            let (_, conn) = self
-                .connections
-                .get_established_mut_by_tunnel_id(tunnel, now)?;
-
-            // Its own paths need no search, which covers the keepalives of the primary.
-            !conn.agent.is_validated(path)
-                && self.contest_path(path, |_, c| c.tunnel.id() == tunnel, now)
-        };
-
+        let contested = self.connections.is_contested(src);
         let (cid, conn) = self
             .connections
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
-        if path_taken {
-            conn.refuse_path(cid, path, &self.paths_refused, now);
-        }
+        let num_probes = if contested {
+            if !probes.is_empty() {
+                tracing::trace!(%cid, %src, "Dropping probes from contested address");
+            }
 
-        let packets = conn.commit_decrypted(cid, path, data, probes, now);
+            0
+        } else {
+            conn.handle_probes(cid, (dst, src), probes, now)?
+        };
+        let packets = conn.commit_data(cid, data, now);
         conn.handle_tunnel_events(
             cid,
             &mut self.allocations,
@@ -708,6 +710,10 @@ where
             now,
         );
         let packets = packets?;
+
+        if num_probes > 0 || packets.data().next().is_some() {
+            self.add_remote(cid, src, now);
+        }
 
         if self.connections.is_closing(&cid) {
             // A closing connection drops what it receives.
@@ -1192,27 +1198,20 @@ where
             return ControlFlow::Continue(());
         };
 
-        let cid = match self.connections.get_established_mut_for_stun_message(
+        if self.connections.is_contested(from) {
+            tracing::trace!(%from, "Dropping STUN message from contested address");
+
+            return ControlFlow::Break(Ok(()));
+        }
+
+        let (_, c) = match self.connections.get_established_mut_for_stun_message(
             &message,
             &mut self.inflight_stun_requests,
             now,
         ) {
-            Ok((cid, _)) => cid,
-            Err(e) => return ControlFlow::Break(Err(e)),
-        };
-
-        let path = (destination, from);
-        let path_taken = self.contest_path(path, |id, _| id == cid, now);
-        let c = match self.connections.get_mut_including_closing(&cid, now) {
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
-
-        if path_taken {
-            c.refuse_path(cid, path, &self.paths_refused, now);
-
-            return ControlFlow::Break(Ok(()));
-        }
 
         let handled = c.agent.handle_stun_packet(
             now,
@@ -1263,52 +1262,37 @@ where
             }
         };
 
-        let path = (destination, from);
-        let path_taken = match &parsed_packet {
-            sanstun::ReceivedMessage::HandshakeInitiation(init) => {
-                let sender = init.peer_static_public();
-
-                self.contest_path(path, |_, c| c.remote_pub_key == sender, now)
+        match parsed_packet {
+            sanstun::ReceivedMessage::HandshakeInitiation(_) => {
+                return ControlFlow::Break(self.handshakes_try_handle(
+                    from,
+                    destination,
+                    parsed_packet,
+                    packet,
+                    now,
+                ));
             }
-            sanstun::ReceivedMessage::HandshakeResponse(response) => {
-                let tunnel = response.tunnel_id();
-
-                self.contest_path(path, |_, c| c.tunnel.id() == tunnel, now)
+            sanstun::ReceivedMessage::HandshakeResponse(_) => {
+                return ControlFlow::Break(self.handshakes_try_handle(
+                    from,
+                    destination,
+                    parsed_packet,
+                    packet,
+                    now,
+                ));
             }
             sanstun::ReceivedMessage::CookieReply(_)
-            | sanstun::ReceivedMessage::TransportData(_) => false,
-        };
+            | sanstun::ReceivedMessage::TransportData(_) => {}
+        }
 
-        let connection = match &parsed_packet {
-            // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
-            sanstun::ReceivedMessage::HandshakeInitiation(init) => self
-                .connections
-                .get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now),
-            sanstun::ReceivedMessage::HandshakeResponse(response) => self
-                .connections
-                .get_established_mut_by_tunnel_id(response.tunnel_id(), now),
-            sanstun::ReceivedMessage::CookieReply(reply) => self
-                .connections
-                .get_established_mut_by_tunnel_id(reply.tunnel_id(), now),
-            sanstun::ReceivedMessage::TransportData(data) => self
-                .connections
-                .get_established_mut_by_tunnel_id(data.tunnel_id(), now),
-        };
-        let (cid, conn) = match connection {
+        let (cid, conn) = match self
+            .connections
+            .get_established_mut_for_wireguard_message(&parsed_packet, now)
+        {
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
         let tunnel = conn.tunnel.id();
-
-        if path_taken {
-            conn.refuse_path(cid, path, &self.paths_refused, now);
-
-            match conn.agent {
-                // An ICE agent keeps no state for refused paths, so the handshake is dropped here.
-                Agent::Ice(..) => return ControlFlow::Break(Ok(())),
-                Agent::Frostlink(_) => {}
-            }
-        }
 
         let control_flow = conn.decapsulate(
             cid,
@@ -1337,28 +1321,73 @@ where
         }
     }
 
-    /// Returns whether a packet arrived on a `path` that a connection other than its receiver owns.
-    ///
-    /// The NAT in front of the two peers then maps both to the same socket and delivers what
-    /// we send on `path` to the one that sent last: the sender of the packet. The owner
-    /// therefore probes the path anew before it sends on it again.
-    fn contest_path(
+    fn handshakes_try_handle(
         &mut self,
-        path: (SocketAddr, SocketAddr),
-        is_receiver: impl Fn(TId, &Connection<RId>) -> bool,
+        from: SocketAddr,
+        destination: SocketAddr,
+        handshake: sanstun::ReceivedMessage,
+        packet: &[u8],
         now: Instant,
-    ) -> bool {
-        let Some((owner_id, owner)) = self.connections.path_owner_mut(path, &self.allocations)
-        else {
-            return false;
-        };
-        if is_receiver(owner_id, owner) {
-            return false;
+    ) -> Result<()> {
+        if self.connections.is_contested(from) {
+            tracing::trace!(%from, "Dropping handshake from contested address");
+
+            return Ok(());
         }
 
-        owner.agent.reprobe_path(path, now);
+        let (cid, conn) = self
+            .connections
+            .get_established_mut_for_wireguard_message(&handshake, now)?;
 
-        true
+        let control_flow = conn.decapsulate(
+            cid,
+            from,
+            destination,
+            handshake,
+            packet,
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+            now,
+        );
+
+        match control_flow {
+            ControlFlow::Break(Ok(())) => {}
+            ControlFlow::Break(Err(e)) => {
+                return Err(e.context(format!("cid={cid} length={}", packet.len())));
+            }
+            // Only transport data continues to decryption.
+            ControlFlow::Continue(_) => return Ok(()),
+        }
+
+        self.add_remote(cid, from, now);
+
+        Ok(())
+    }
+
+    /// Records that `cid` received authenticated traffic from `remote`.
+    ///
+    /// Once that makes `remote` contested, no connection uses it until fewer than two of those
+    /// that received traffic from it remain.
+    fn add_remote(&mut self, cid: TId, remote: SocketAddr, now: Instant) {
+        if !self.connections.add_remote(cid, remote) {
+            return;
+        }
+
+        tracing::debug!(%cid, %remote, "Remote address contested by several connections");
+
+        self.contested_addresses.add(1, &[]);
+
+        for (cid, c) in self.connections.iter_mut_by_remote_candidate(remote) {
+            let candidates = c
+                .agent
+                .remote_candidates()
+                .filter(|candidate| candidate.addr() == remote)
+                .collect::<Vec<_>>();
+
+            for candidate in candidates {
+                c.remove_remote_candidate(cid, candidate, now);
+            }
+        }
     }
 
     /// Sends `message` back to `remote` on the path a packet from it arrived on at `local`.
@@ -2021,7 +2050,7 @@ where
             match event {
                 sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
                     Agent::Frostlink(agent) => agent.send_handshake_initiation(init, now),
-                    Agent::Ice(..) => self.buffer_or_send(&cid, init, allocations, transmits, now),
+                    Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
                 },
                 sanstun::Event::SendKeepalive(keepalive) => {
                     self.buffer_or_send(&cid, keepalive, allocations, transmits, now)
@@ -2183,7 +2212,7 @@ where
                     Agent::Frostlink(agent) => {
                         agent.handle_handshake_initiation(&mut self.tunnel, init, path, now)
                     }
-                    Agent::Ice(..) => self
+                    Agent::Ice(_) => self
                         .tunnel
                         .handle_handshake_initiation(init, now)
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
@@ -2200,7 +2229,7 @@ where
                         path,
                         now,
                     ),
-                    Agent::Ice(..) => self
+                    Agent::Ice(_) => self
                         .tunnel
                         .handle_handshake_response(response, now)
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
@@ -2225,42 +2254,59 @@ where
         }
     }
 
-    /// Hands the probes to the agent and returns the data packets.
-    fn commit_decrypted<TId>(
+    /// Hands the probes to the agent and returns how many it got.
+    fn handle_probes<TId>(
         &mut self,
         cid: TId,
         path: (SocketAddr, SocketAddr),
-        data: sanstun::DecryptedBatch<Result<IpPacket>>,
         probes: sanstun::DecryptedBatch<frostlink::Probe>,
+        now: Instant,
+    ) -> Result<usize>
+    where
+        TId: fmt::Display + Copy,
+        RId: Ord + fmt::Display + Copy,
+    {
+        if probes.is_empty() {
+            return Ok(0);
+        }
+
+        let probes = self
+            .tunnel
+            .commit_decapsulate(probes, now)
+            .context("Failed to commit path probes")
+            .with_context(|| format!("cid={cid}"))?;
+        let mut num_probes = 0;
+
+        for probe in probes {
+            let probe = match probe {
+                Ok(sanstun::Committed::Data { buffer: probe, .. }) => probe,
+                Ok(sanstun::Committed::Keepalive) => continue,
+                Err(e) => {
+                    tracing::debug!(%cid, "Failed to commit probe: {e}");
+                    continue;
+                }
+            };
+
+            self.state
+                .on_incoming(cid, &mut self.agent, self.default_ice_config, &probe, now);
+            self.agent.handle_probe(probe, path, now);
+            num_probes += 1;
+        }
+
+        Ok(num_probes)
+    }
+
+    /// Returns the data packets.
+    fn commit_data<TId>(
+        &mut self,
+        cid: TId,
+        data: sanstun::DecryptedBatch<Result<IpPacket>>,
         now: Instant,
     ) -> Result<sanstun::CommittedBatch<Result<IpPacket>>>
     where
         TId: fmt::Display + Copy,
         RId: Ord + fmt::Display + Copy,
     {
-        if !probes.is_empty() {
-            let probes = self
-                .tunnel
-                .commit_decapsulate(probes, now)
-                .context("Failed to commit path probes")
-                .with_context(|| format!("cid={cid}"))?;
-
-            for probe in probes {
-                let probe = match probe {
-                    Ok(sanstun::Committed::Data { buffer: probe, .. }) => probe,
-                    Ok(sanstun::Committed::Keepalive) => continue,
-                    Err(e) => {
-                        tracing::debug!(%cid, "Failed to commit probe: {e}");
-                        continue;
-                    }
-                };
-
-                self.state
-                    .on_incoming(cid, &mut self.agent, self.default_ice_config, &probe, now);
-                self.agent.handle_probe(probe, path, now);
-            }
-        }
-
         let committed = self
             .tunnel
             .commit_decapsulate(data, now)
@@ -2274,49 +2320,6 @@ where
         }
 
         Ok(committed)
-    }
-
-    /// Whether this connection validated `path`: Frostlink by an answered probe, ICE by nominating it.
-    fn owns_path(&self, path: (SocketAddr, SocketAddr), allocations: &Allocations<RId>) -> bool
-    where
-        RId: Ord + Hash + fmt::Display + Copy,
-    {
-        let peer_socket = match &self.agent {
-            Agent::Frostlink(agent) => return agent.is_validated(path),
-            Agent::Ice(..) => self.state.peer_socket(),
-        };
-        let is_relay_socket = |local| {
-            self.relay
-                .and_then(|relay| allocations.get_by_id(&relay))
-                .is_some_and(|allocation| allocation.has_socket(local))
-        };
-
-        match peer_socket {
-            Some(PeerSocket::PeerToPeer { source, dest }) => (source, dest) == path,
-            Some(PeerSocket::PeerToRelay { source, dest }) => (source, dest) == path,
-            Some(PeerSocket::RelayToPeer { dest }) => dest == path.1 && is_relay_socket(path.0),
-            Some(PeerSocket::RelayToRelay { dest }) => dest == path.1 && is_relay_socket(path.0),
-            None => false,
-        }
-    }
-
-    /// Makes the agent stop using `path`, which another connection owns.
-    fn refuse_path<TId>(
-        &mut self,
-        cid: TId,
-        path: (SocketAddr, SocketAddr),
-        paths_refused: &Counter<u64>,
-        now: Instant,
-    ) where
-        TId: fmt::Display,
-    {
-        if !self.agent.refuse_path(path, now) {
-            return;
-        }
-
-        tracing::debug!(%cid, local = %path.0, remote = %path.1, "Refused path owned by another connection");
-
-        paths_refused.add(1, &[]);
     }
 
     fn restore_rekey_attempt_time(&mut self) {

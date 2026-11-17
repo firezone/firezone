@@ -127,14 +127,14 @@ pub fn connection_count() -> Gauge<u64> {
         .build()
 }
 
-/// How many paths a connection was refused because another connection owns them.
-pub fn connection_paths_refused() -> Counter<u64> {
+/// How often a remote address became contested by several connections.
+pub fn contested_addresses() -> Counter<u64> {
     connlib_meter()
-        .u64_counter("tunnel.connection.path.refused")
+        .u64_counter("tunnel.address.contested")
         .with_description(
-            "Number of network paths refused to a connection because another connection owns them.",
+            "Number of remote addresses from which several connections received traffic.",
         )
-        .with_unit("{path}")
+        .with_unit("{address}")
         .build()
 }
 

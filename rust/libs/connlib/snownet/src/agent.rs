@@ -2,8 +2,6 @@
 //! `Agent::Frostlink`. Mode-irrelevant operations are no-ops on
 //! the wrong variant.
 
-use std::collections::BTreeSet;
-use std::net::SocketAddr;
 use std::time::Instant;
 
 use is::stun::StunPacket;
@@ -32,18 +30,13 @@ impl CandidateOrigin {
 
 #[derive(derive_more::Debug)]
 pub(crate) enum Agent {
-    Ice(
-        IceAgent,
-        /// The paths refused so far; see [`Agent::refuse_path`].
-        #[debug(skip)]
-        BTreeSet<(SocketAddr, SocketAddr)>,
-    ),
+    Ice(IceAgent),
     Frostlink(#[debug(skip)] frostlink::Agent),
 }
 
 impl Agent {
     pub(crate) fn ice(agent: IceAgent) -> Self {
-        Self::Ice(agent, BTreeSet::new())
+        Self::Ice(agent)
     }
 
     pub(crate) fn frostlink() -> Self {
@@ -68,13 +61,13 @@ impl Agent {
 
     pub(crate) fn is_negotiation_complete(&self) -> bool {
         match self {
-            Self::Ice(a, _) => a.state() == IceConnectionState::Connected,
+            Self::Ice(a) => a.state() == IceConnectionState::Connected,
             Self::Frostlink(agent) => agent.primary().is_some(),
         }
     }
 
     pub(crate) fn apply_ice_config(&mut self, config: IceConfig) {
-        if let Self::Ice(a, _) = self {
+        if let Self::Ice(a) = self {
             a.set_max_stun_retransmits(config.max_retrans);
             a.set_max_stun_rto(config.max_rto);
             a.set_initial_stun_rto(config.initial_rto);
@@ -94,7 +87,7 @@ impl Agent {
             return false;
         }
         match self {
-            Self::Ice(a, _) => {
+            Self::Ice(a) => {
                 a.local_credentials() == local_creds
                     && a.remote_credentials().is_some_and(|c| c == remote_creds)
                     && a.controlling() == matches!(ice_role, IceRole::Controlling)
@@ -106,28 +99,28 @@ impl Agent {
     /// Frostlink fans the init out from `upsert_connection` instead.
     pub(crate) fn send_wg_handshake_after_nomination(&self) -> bool {
         match self {
-            Self::Ice(a, _) => a.controlling(),
+            Self::Ice(a) => a.controlling(),
             Self::Frostlink(_) => false,
         }
     }
 
     pub(crate) fn local_ufrag(&self) -> Option<&str> {
         match self {
-            Self::Ice(a, _) => Some(&a.local_credentials().ufrag),
+            Self::Ice(a) => Some(&a.local_credentials().ufrag),
             Self::Frostlink(_) => None,
         }
     }
 
     pub(crate) fn set_local_credentials(&mut self, creds: IceCreds) {
         match self {
-            Self::Ice(a, _) => a.set_local_credentials(creds),
+            Self::Ice(a) => a.set_local_credentials(creds),
             Self::Frostlink(_) => {}
         }
     }
 
     pub(crate) fn set_remote_credentials(&mut self, creds: IceCreds) {
         match self {
-            Self::Ice(a, _) => a.set_remote_credentials(creds),
+            Self::Ice(a) => a.set_remote_credentials(creds),
             Self::Frostlink(_) => {}
         }
     }
@@ -139,7 +132,7 @@ impl Agent {
         now: Instant,
     ) -> Option<Candidate> {
         match self {
-            Self::Ice(a, _) => a.add_local_candidate(c).cloned(),
+            Self::Ice(a) => a.add_local_candidate(c).cloned(),
             Self::Frostlink(agent) => {
                 let candidate = crate::candidate::to_frostlink(&c)
                     .with_local_preference(origin.frostlink_local_preference());
@@ -154,7 +147,7 @@ impl Agent {
 
     pub(crate) fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
         match self {
-            Self::Ice(a, _) => a.add_remote_candidate(c),
+            Self::Ice(a) => a.add_remote_candidate(c),
             Self::Frostlink(agent) => {
                 agent.add_remote_candidate(crate::candidate::to_frostlink(&c), now)
             }
@@ -163,7 +156,7 @@ impl Agent {
 
     pub(crate) fn invalidate_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
         match self {
-            Self::Ice(a, _) => a.invalidate_candidate(c),
+            Self::Ice(a) => a.invalidate_candidate(c),
             Self::Frostlink(agent) => {
                 let candidate = crate::candidate::to_frostlink(c);
                 let removed_local = agent.remove_local_candidate(&candidate, now);
@@ -176,7 +169,7 @@ impl Agent {
 
     pub(crate) fn local_candidates(&self) -> Box<dyn Iterator<Item = Candidate> + '_> {
         match self {
-            Self::Ice(a, _) => Box::new(a.local_candidates()),
+            Self::Ice(a) => Box::new(a.local_candidates()),
             Self::Frostlink(agent) => Box::new(
                 agent
                     .local_candidates()
@@ -187,7 +180,7 @@ impl Agent {
 
     pub(crate) fn remote_candidates(&self) -> Box<dyn Iterator<Item = Candidate> + '_> {
         match self {
-            Self::Ice(a, _) => Box::new(a.remote_candidates()),
+            Self::Ice(a) => Box::new(a.remote_candidates()),
             Self::Frostlink(agent) => Box::new(
                 agent
                     .remote_candidates()
@@ -198,7 +191,7 @@ impl Agent {
 
     pub(crate) fn contains_remote_candidate(&self, c: &Candidate) -> bool {
         match self {
-            Self::Ice(a, _) => a.remote_candidates().any(|x| &x == c),
+            Self::Ice(a) => a.remote_candidates().any(|x| &x == c),
             Self::Frostlink(agent) => {
                 agent.contains_remote_candidate(&crate::candidate::to_frostlink(c))
             }
@@ -207,64 +200,30 @@ impl Agent {
 
     pub(crate) fn has_remote_candidate(&self, addr: std::net::SocketAddr) -> bool {
         match self {
-            Self::Ice(a, _) => a.remote_candidates().any(|c| c.addr() == addr),
+            Self::Ice(a) => a.remote_candidates().any(|c| c.addr() == addr),
             Self::Frostlink(agent) => agent.remote_candidates().any(|c| c.addr() == addr),
         }
     }
 
     pub(crate) fn remote_candidate_is_relayed(&self, addr: std::net::SocketAddr) -> bool {
         match self {
-            Self::Ice(a, _) => a
+            Self::Ice(a) => a
                 .remote_candidates()
                 .any(|c| c.addr() == addr && c.kind() == is::CandidateKind::Relayed),
             Self::Frostlink(agent) => agent.remote_is_relayed(addr),
         }
     }
 
-    /// Whether the peer answered a probe on `path`. Always `false` on `Self::Ice`.
-    pub(crate) fn is_validated(&self, path: (std::net::SocketAddr, std::net::SocketAddr)) -> bool {
-        match self {
-            Self::Ice(..) => false,
-            Self::Frostlink(agent) => agent.is_validated(path),
-        }
-    }
-
-    /// Returns whether `path` was newly refused.
-    ///
-    /// `Self::Ice` only records it: its STUN messages on a refused path are kept from it.
-    pub(crate) fn refuse_path(
-        &mut self,
-        path: (std::net::SocketAddr, std::net::SocketAddr),
-        now: Instant,
-    ) -> bool {
-        match self {
-            Self::Ice(_, refused) => refused.insert(path),
-            Self::Frostlink(agent) => agent.refuse_path(path, now),
-        }
-    }
-
-    /// No-op on `Self::Ice`.
-    pub(crate) fn reprobe_path(
-        &mut self,
-        path: (std::net::SocketAddr, std::net::SocketAddr),
-        now: Instant,
-    ) {
-        match self {
-            Self::Ice(..) => {}
-            Self::Frostlink(agent) => agent.reprobe_path(path, now),
-        }
-    }
-
     pub(crate) fn handle_stun_packet(&mut self, now: Instant, p: StunPacket<'_>) -> bool {
         match self {
-            Self::Ice(a, _) => a.handle_packet(now, p),
+            Self::Ice(a) => a.handle_packet(now, p),
             Self::Frostlink(_) => false,
         }
     }
 
     pub(crate) fn handle_inbound_data(&mut self, now: Instant) {
         match self {
-            Self::Ice(..) => {}
+            Self::Ice(_) => {}
             Self::Frostlink(agent) => agent.handle_inbound_data(now),
         }
     }
@@ -276,42 +235,42 @@ impl Agent {
         now: Instant,
     ) {
         match self {
-            Self::Ice(..) => {}
+            Self::Ice(_) => {}
             Self::Frostlink(agent) => agent.handle_probe(probe, path, now),
         }
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         match self {
-            Self::Ice(a, _) => a.handle_timeout(now),
+            Self::Ice(a) => a.handle_timeout(now),
             Self::Frostlink(agent) => agent.handle_timeout(now),
         }
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
         match self {
-            Self::Ice(a, _) => a.poll_timeout(),
+            Self::Ice(a) => a.poll_timeout(),
             Self::Frostlink(agent) => agent.poll_timeout(),
         }
     }
 
     pub(crate) fn poll_ice_event(&mut self) -> Option<IceAgentEvent> {
         match self {
-            Self::Ice(a, _) => a.poll_event(),
+            Self::Ice(a) => a.poll_event(),
             Self::Frostlink(_) => None,
         }
     }
 
     pub(crate) fn poll_ice_transmit(&mut self) -> Option<str0m_proto::Transmit> {
         match self {
-            Self::Ice(a, _) => a.poll_transmit(),
+            Self::Ice(a) => a.poll_transmit(),
             Self::Frostlink(_) => None,
         }
     }
 
     pub(crate) fn poll_frostlink_event(&mut self) -> Option<frostlink::Event> {
         match self {
-            Self::Ice(..) => None,
+            Self::Ice(_) => None,
             Self::Frostlink(agent) => agent.poll_event(),
         }
     }
@@ -324,7 +283,7 @@ impl Agent {
 
     pub(crate) fn poll_frostlink_transmit(&mut self) -> Option<frostlink::Transmit> {
         match self {
-            Self::Ice(..) => None,
+            Self::Ice(_) => None,
             Self::Frostlink(agent) => agent.poll_transmit(),
         }
     }
