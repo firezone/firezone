@@ -88,6 +88,7 @@ defmodule PortalAPI.ClientController do
          list_opts = Keyword.put(list_opts, :preload, [:online?]),
          list_opts = Keyword.put(list_opts, :filter, filters),
          {:ok, clients, metadata} <- Database.list_clients(subject, list_opts) do
+      clients = Portal.Devices.put_latest_actor(clients, subject)
       json(conn, JSON.encode(clients, metadata, schema: PortalAPI.Schemas.Client.GetSchema))
     else
       error -> Error.handle(conn, error)
@@ -153,7 +154,7 @@ defmodule PortalAPI.ClientController do
   def show(conn, %{"id" => id}) do
     with {:ok, client} <- Database.fetch_client(id, conn.assigns.subject) do
       client = Devices.preload_presence([client]) |> List.first()
-      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
+      json_client(conn, client)
     else
       error -> Error.handle(conn, error)
     end
@@ -192,7 +193,7 @@ defmodule PortalAPI.ClientController do
     with {:ok, client} <- Database.fetch_client(id, subject),
          changeset = update_changeset(client, params),
          {:ok, client} <- Database.update_client(changeset, subject) do
-      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
+      json_client(conn, client)
     else
       error -> Error.handle(conn, error)
     end
@@ -243,7 +244,7 @@ defmodule PortalAPI.ClientController do
     with {:ok, client} <- Database.fetch_client(id, subject),
          changeset = client |> change() |> put_default_value(:verified_at, DateTime.utc_now()),
          {:ok, client} <- Database.verify_client(changeset, subject) do
-      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
+      json_client(conn, client)
     else
       error -> Error.handle(conn, error)
     end
@@ -274,7 +275,7 @@ defmodule PortalAPI.ClientController do
     with {:ok, client} <- Database.fetch_client(id, subject),
          changeset = client |> change() |> put_change(:verified_at, nil),
          {:ok, client} <- Database.remove_client_verification(changeset, subject) do
-      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
+      json_client(conn, client)
     else
       error -> Error.handle(conn, error)
     end
@@ -303,11 +304,17 @@ defmodule PortalAPI.ClientController do
     subject = conn.assigns.subject
 
     with {:ok, client} <- Database.fetch_client(id, subject),
-         {:ok, client} <- Database.delete_client(client, subject) do
-      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
+         [client] = Portal.Devices.put_latest_actor([client], subject),
+         {:ok, deleted} <- Database.delete_client(client, subject) do
+      json(conn, JSON.encode(%{deleted | actor_id: client.actor_id}, schema: PortalAPI.Schemas.Client.GetSchema))
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  defp json_client(conn, client) do
+    [client] = Portal.Devices.put_latest_actor([client], conn.assigns.subject)
+    json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
   end
 
   defmodule Database do
@@ -389,7 +396,18 @@ defmodule PortalAPI.ClientController do
     end
 
     defp filter_by_actor_id(queryable, actor_id) do
-      {queryable, dynamic([devices: d], d.actor_id == ^actor_id)}
+      {queryable,
+       dynamic(
+         [devices: d],
+         exists(
+           from(da in Portal.DeviceActor,
+             where:
+               da.account_id == parent_as(:devices).account_id and
+                 da.device_id == parent_as(:devices).id and
+                 da.actor_id == ^actor_id
+           )
+         )
+       )}
     end
 
     defp filter_by_id(queryable, {:not_in, ids}) do

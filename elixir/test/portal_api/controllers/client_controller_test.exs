@@ -192,6 +192,29 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["actor_id"] == owner.id
     end
 
+    test "filters by any actor who connected from the client", %{conn: conn, actor: actor, account: account} do
+      later = actor_fixture(account: account)
+      shared = client_fixture(account: account)
+
+      Repo.insert!(%Portal.DeviceActor{
+        account_id: account.id,
+        device_id: shared.id,
+        actor_id: later.id,
+        first_seen_at: DateTime.utc_now(),
+        last_seen_at: DateTime.add(DateTime.utc_now(), 1, :minute)
+      })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", actor_id: later.id)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == shared.id
+      assert data["actor_id"] == later.id
+    end
+
     test "rejects an actor_id that is not a UUID", %{conn: conn, actor: actor} do
       conn =
         conn

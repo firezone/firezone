@@ -75,6 +75,14 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
   end
 
   describe "device actors" do
+    setup %{client: client} do
+      Portal.DeviceActor
+      |> Repo.get_by!(account_id: client.account_id, device_id: client.id)
+      |> Repo.delete!()
+
+      :ok
+    end
+
     test "records the actor that connected from the device", %{client: client, token: token} do
       upsert(attested_entry(client, token))
 

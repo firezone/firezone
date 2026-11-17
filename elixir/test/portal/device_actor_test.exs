@@ -9,19 +9,7 @@ defmodule Portal.DeviceActorTest do
     account = account_fixture()
     actor = actor_fixture(account: account)
     client = client_fixture(account: account, actor: actor)
-    now = DateTime.utc_now()
-
-    device_actor =
-      %DeviceActor{}
-      |> Ecto.Changeset.change(
-        account_id: account.id,
-        device_id: client.id,
-        actor_id: actor.id,
-        first_seen_at: now,
-        last_seen_at: now
-      )
-      |> DeviceActor.changeset()
-      |> Repo.insert!()
+    device_actor = Repo.get_by!(DeviceActor, account_id: account.id, device_id: client.id, actor_id: actor.id)
 
     %{actor: actor, client: client, device_actor: device_actor}
   end

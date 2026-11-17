@@ -648,10 +648,10 @@ defmodule PortalWeb.Devices do
       |> Enum.reject(&is_nil/1)
     end
 
-    defp maybe_preload_devices(devices, preload, _subject) do
+    defp maybe_preload_devices(devices, preload, subject) do
       Enum.reduce(preload, devices, fn
         :actor, devices ->
-          Safe.preload(devices, :actor)
+          Portal.Devices.put_latest_actor(devices, subject)
 
         :online?, devices ->
           Devices.preload_presence(devices)
@@ -720,13 +720,12 @@ defmodule PortalWeb.Devices do
         from(c in Device, as: :devices)
         |> where([devices: d], d.type == :client)
         |> where([devices: d], d.id == ^id)
-        |> preload([:actor])
         |> Safe.scoped(subject)
         |> Safe.one()
 
       case device do
         %Device{type: :client} ->
-          Devices.preload_presence([device]) |> List.first()
+          [device] |> Portal.Devices.put_latest_actor(subject) |> Devices.preload_presence() |> List.first()
 
         _ ->
           nil
