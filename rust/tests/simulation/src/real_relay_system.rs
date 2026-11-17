@@ -32,7 +32,7 @@ use crate::{
     network::{EdgeConfig, ExecMutScope, Host, PollTimeout},
     real_relay::RealRelay,
     relay_model::{Environment, Observed, RelayModel},
-    relay_transition::{Garbage, Loss, Target, Transition},
+    relay_transition::{Crafting, Garbage, Interference, Target, Transition},
     stun,
 };
 
@@ -108,10 +108,8 @@ pub(crate) struct RealRelaySystem {
     /// The data that arrived at the peers.
     at_peers: Vec<Transmit>,
     last_from_client: Option<Transmit>,
-    /// What the current transition still loses.
-    loss: Loss,
-    /// Flips these bits in a copy of the relay's next control datagram and delivers it first.
-    forgery: Option<Garbage>,
+    /// What the network still does to the current transition's control datagrams.
+    interference: Interference,
 
     /// What happened during the current transition.
     pub(crate) observed: Observed,
@@ -153,15 +151,14 @@ impl RealRelaySystem {
             seeds: 0,
             at_peers: Vec::new(),
             last_from_client: None,
-            loss: Loss::default(),
-            forgery: None,
+            interference: Interference::default(),
             observed: Observed::default(),
         }
     }
 
-    pub(crate) fn apply(&mut self, transition: &Transition, loss: Loss) {
+    pub(crate) fn apply(&mut self, transition: &Transition, interference: Interference) {
         let now = self.clock.now::<Instant>();
-        self.loss = loss;
+        self.interference = interference;
         self.observed = Observed::default();
         self.client.exec_mut(|c| c.relay_addresses_changed = false);
 
@@ -203,17 +200,12 @@ impl RealRelaySystem {
             }
             Transition::PortalOutage => self.portal_reachable = false,
             Transition::PortalRecovers => self.portal_reachable = true,
-            Transition::Garbage {
-                target,
-                parse,
-                authenticate,
-                datagram,
-            } => match target {
-                Target::RelayFromForeign => {
-                    self.garbage_to_relay(false, *parse, *authenticate, datagram)
+            Transition::Garbage { target, datagram } => match target {
+                Target::RelayFromForeign(crafting) => {
+                    self.garbage_to_relay(false, *crafting, datagram)
                 }
-                Target::RelayFromClient => {
-                    self.garbage_to_relay(true, *parse, *authenticate, datagram);
+                Target::RelayFromClient(crafting) => {
+                    self.garbage_to_relay(true, *crafting, datagram);
                     self.advance(RESYNC);
                     // The relay may pass on what comes from the client's socket.
                     self.at_peers.clear();
@@ -223,6 +215,7 @@ impl RealRelaySystem {
         }
 
         self.settle();
+        self.interference = Interference::default();
 
         assert!(
             self.at_peers.is_empty(),
@@ -363,15 +356,9 @@ impl RealRelaySystem {
         });
     }
 
-    fn garbage_to_relay(
-        &mut self,
-        from_client: bool,
-        parse: bool,
-        authenticate: bool,
-        garbage: &Garbage,
-    ) {
+    fn garbage_to_relay(&mut self, from_client: bool, crafting: Crafting, garbage: &Garbage) {
         let now = self.clock.now();
-        let template = self.last_from_client.clone().filter(|_| garbage.mutate);
+        let template = self.last_from_client.clone().filter(|_| crafting.mutate);
         let (src, device) = match from_client {
             true => {
                 let src = template
@@ -401,10 +388,11 @@ impl RealRelaySystem {
                 .unwrap_or_default(),
         );
 
-        if parse {
+        if crafting.parse {
             let now_utc = self.clock.now();
-            let nonce =
-                authenticate.then(|| self.relay.exec_mut(|r| r.issue_nonce(src, now, now_utc)));
+            let nonce = crafting
+                .authenticate
+                .then(|| self.relay.exec_mut(|r| r.issue_nonce(src, now, now_utc)));
             let Some(repaired) =
                 stun::repair(&payload, nonce.as_ref(), device, &self.relay.inner().server)
             else {
@@ -418,11 +406,6 @@ impl RealRelaySystem {
     }
 
     fn garbage_to_client(&mut self, garbage: &Garbage) {
-        if garbage.mutate {
-            self.forgery = Some(garbage.clone());
-            return;
-        }
-
         let dst = any_socket(&self.client);
         let Some(src) = self.relay.sending_socket_for(dst.ip()) else {
             return;
@@ -519,7 +502,7 @@ impl RealRelaySystem {
             if is_control && self.client.sending_socket_for(src.ip()) == Some(src) {
                 self.last_from_client = Some(transmit.clone());
 
-                if mem::take(&mut self.loss.to_relay) {
+                if mem::take(&mut self.interference.lose_to_relay) {
                     self.observed.lost_datagram = true;
                     return;
                 }
@@ -542,12 +525,12 @@ impl RealRelaySystem {
         }
 
         if is_control {
-            if mem::take(&mut self.loss.to_client) {
+            if mem::take(&mut self.interference.lose_to_client) {
                 self.observed.lost_datagram = true;
                 return;
             }
 
-            if let Some(garbage) = self.forgery.take() {
+            if let Some(garbage) = self.interference.forge_to_client.take() {
                 self.observed.forged_binding |= relay_client_proto::decode(&transmit.payload)
                     .is_ok_and(|message| message.is_ok_and(|m| m.method() == BINDING));
 

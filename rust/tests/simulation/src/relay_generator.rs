@@ -3,7 +3,7 @@ use std::time::Duration;
 use arbitrary::Unstructured;
 use connlib_model::IpStack;
 
-use crate::relay_transition::{Garbage, Loss, Target, Transition};
+use crate::relay_transition::{Crafting, Garbage, Interference, Target, Transition};
 
 /// Samples the relay simulation's setup and transitions from the input.
 pub(crate) struct RelayGenerator<'a> {
@@ -30,7 +30,7 @@ impl<'a> RelayGenerator<'a> {
         }
     }
 
-    pub(crate) fn transition(&mut self) -> (Transition, Loss) {
+    pub(crate) fn transition(&mut self) -> (Transition, Interference) {
         const ADVANCE_SECS: [u64; 8] = [5, 30, 120, 360, 660, 960, 1860, 3660];
         const PARTITION_SECS: [u64; 4] = [2, 9, 40, 720];
 
@@ -55,29 +55,35 @@ impl<'a> RelayGenerator<'a> {
             12 => Transition::PortalRecovers,
             _ => Transition::Garbage {
                 target: match self.int(2) {
-                    0 => Target::RelayFromForeign,
-                    1 => Target::RelayFromClient,
+                    0 => Target::RelayFromForeign(self.crafting()),
+                    1 => Target::RelayFromClient(self.crafting()),
                     _ => Target::Client,
                 },
-                parse: self.bool(),
-                authenticate: self.bool(),
                 datagram: self.garbage(),
             },
         };
-        let loss = Loss {
-            to_relay: self.bool(),
-            to_client: self.bool(),
+        let interference = Interference {
+            lose_to_relay: self.bool(),
+            lose_to_client: self.bool(),
+            forge_to_client: self.bool().then(|| self.garbage()),
         };
 
-        (transition, loss)
+        (transition, interference)
+    }
+
+    fn crafting(&mut self) -> Crafting {
+        Crafting {
+            parse: self.bool(),
+            authenticate: self.bool(),
+            mutate: self.bool(),
+        }
     }
 
     fn garbage(&mut self) -> Garbage {
-        let mutate = self.bool();
         let len = self.int(255).min(self.input.len());
         let bytes = self.input.bytes(len).unwrap_or_default().to_vec();
 
-        Garbage { mutate, bytes }
+        Garbage { bytes }
     }
 
     fn int(&mut self, max: u8) -> usize {

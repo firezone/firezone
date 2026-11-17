@@ -36,10 +36,6 @@ pub(crate) enum Transition {
     /// A datagram that neither the client nor the relay sent.
     Garbage {
         target: Target,
-        /// Decode the datagram as a STUN message and re-encode it before handing it over.
-        parse: bool,
-        /// Give the message a nonce the relay issued and a matching HMAC.
-        authenticate: bool,
         datagram: Garbage,
     },
 }
@@ -47,30 +43,38 @@ pub(crate) enum Transition {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Target {
     /// To the relay, from a socket on the internet that has nothing to do with the client.
-    RelayFromForeign,
+    RelayFromForeign(Crafting),
     /// To the relay, from the client's own socket and device, as if the two had gone out of sync.
-    RelayFromClient,
+    RelayFromClient(Crafting),
     /// To the client, claiming to be from the relay.
     Client,
 }
 
+/// How a datagram to the relay is made from the garbage.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Crafting {
+    /// Decode the datagram as a STUN message and re-encode it before handing it over.
+    pub(crate) parse: bool,
+    /// Give the message a nonce the relay issued and a matching HMAC.
+    pub(crate) authenticate: bool,
+    /// Start from the last control datagram the client sent instead of from nothing.
+    pub(crate) mutate: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Garbage {
-    /// Start from a real datagram instead of from nothing.
-    ///
-    /// For the relay, that is the last one the client sent. For the client, it is the next
-    /// one the relay sends: the client then sees the mutated copy first.
-    pub(crate) mutate: bool,
     pub(crate) bytes: Vec<u8>,
 }
 
-/// The control datagrams a transition loses, at most the first one it causes in each direction.
-///
-/// Requests are retransmitted, so what must hold after a transition does not depend on this.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(crate) struct Loss {
-    pub(crate) to_relay: bool,
-    pub(crate) to_client: bool,
+/// What the network does to the control datagrams of a transition, at most to the first one
+/// in each direction.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Interference {
+    pub(crate) lose_to_relay: bool,
+    pub(crate) lose_to_client: bool,
+    /// Delivers a copy of the first one that reaches the client ahead of it, with the garbage
+    /// applied.
+    pub(crate) forge_to_client: Option<Garbage>,
 }
 
 impl Garbage {

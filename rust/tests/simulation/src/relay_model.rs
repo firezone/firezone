@@ -57,7 +57,7 @@ impl RelayModel {
             | Transition::RebootRelay
             | Transition::Partition { .. }
             | Transition::Garbage {
-                target: Target::RelayFromClient,
+                target: Target::RelayFromClient(_),
                 ..
             } => true,
             // The client gives up on the relay if a single datagram of this check is lost.
@@ -66,7 +66,7 @@ impl RelayModel {
             | Transition::PortalOutage
             | Transition::PortalRecovers
             | Transition::Garbage {
-                target: Target::RelayFromForeign | Target::Client,
+                target: Target::RelayFromForeign(_) | Target::Client,
                 ..
             } => false,
         };

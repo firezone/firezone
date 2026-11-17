@@ -127,11 +127,11 @@ pub fn run_relay(data: &[u8], now: Instant) {
             break;
         }
 
-        let (transition, loss) = generator.transition();
+        let (transition, interference) = generator.transition();
 
-        tracing::debug!("Applying transition {applied}: {transition:?} with {loss:?}");
+        tracing::debug!("Applying transition {applied}: {transition:?} with {interference:?}");
 
-        system.apply(&transition, loss);
+        system.apply(&transition, interference);
         let may_interrupt = model.apply(&transition, system.environment(), system.observed);
         system.check(&model, may_interrupt);
     }
