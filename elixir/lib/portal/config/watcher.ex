@@ -71,7 +71,10 @@ defmodule Portal.Config.Watcher do
       Logger.warning("Could not read App Configuration", reason: Exception.message(exception))
       {:error, exception}
   catch
-    # Starting :inets or :ssl exits while the node is shutting down
+    # Starting :inets or :ssl exits like this while the node is shutting down
+    :exit, :terminating ->
+      {:error, :terminating}
+
     :exit, reason ->
       Logger.warning("Could not read App Configuration", reason: inspect(reason))
       {:error, reason}

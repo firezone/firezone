@@ -1,5 +1,6 @@
 defmodule Portal.Config.WatcherTest do
   use ExUnit.Case, async: true
+  import ExUnit.CaptureLog
   alias Portal.Config.Watcher
 
   setup do
@@ -132,7 +133,25 @@ defmodule Portal.Config.WatcherTest do
     current = settings([{"FEEDBACK_EMAIL_RECIPIENT", "a@example.com", :live}])
     boot_with(context, current)
 
-    assert Watcher.reload(state(context, nil, fetch: fn -> exit(:terminating) end)) == :error
+    log =
+      capture_log(fn ->
+        assert Watcher.reload(state(context, nil, fetch: fn -> exit(:terminating) end)) == :error
+      end)
+
     assert Agent.get(context.storage, & &1) == current
+    refute log =~ "Could not read App Configuration"
+  end
+
+  test "warns when reading the store exits for another reason", context do
+    current = settings([{"FEEDBACK_EMAIL_RECIPIENT", "a@example.com", :live}])
+    boot_with(context, current)
+
+    log =
+      capture_log(fn ->
+        assert Watcher.reload(state(context, nil, fetch: fn -> exit(:timeout) end)) == :error
+      end)
+
+    assert Agent.get(context.storage, & &1) == current
+    assert log =~ "Could not read App Configuration"
   end
 end
