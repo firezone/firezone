@@ -198,6 +198,71 @@ defmodule Portal.Req.SSRFProtectionTest do
     :gen_tcp.close(listen_socket)
   end
 
+  test "moves pinned requests to a new Finch pool before the old one can idle out" do
+    socket_path =
+      Path.join(System.tmp_dir!(), "ssrf-#{System.unique_integer([:positive])}.sock")
+
+    on_exit(fn -> File.rm(socket_path) end)
+
+    {:ok, listen_socket} =
+      :gen_tcp.listen(0, [
+        :binary,
+        active: false,
+        packet: :raw,
+        reuseaddr: true,
+        ifaddr: {:local, socket_path}
+      ])
+
+    server =
+      Task.async(fn ->
+        for _ <- 1..3 do
+          {:ok, socket} = :gen_tcp.accept(listen_socket)
+          {:ok, _request} = :gen_tcp.recv(socket, 0, 5_000)
+
+          :ok =
+            :gen_tcp.send(
+              socket,
+              "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+
+          :gen_tcp.close(socket)
+        end
+      end)
+
+    host = "logs-#{System.unique_integer([:positive])}.example.com"
+    host_charlist = String.to_charlist(host)
+
+    resolver = fn
+      ^host_charlist, :inet -> {:ok, [{8, 8, 8, 8}]}
+      ^host_charlist, :inet6 -> {:error, :nxdomain}
+    end
+
+    pool = fn window ->
+      %Finch.Pool{
+        scheme: :http,
+        host: "8.8.8.8",
+        port: 80,
+        tag: {SSRFProtection, host, [hostname: host], window}
+      }
+    end
+
+    on_exit(fn -> for window <- 0..1, do: Finch.stop_pool(Req.Finch, pool.(window)) end)
+
+    for now <- [0, 29_999, 30_000] do
+      request =
+        Req.new(url: "http://#{host}/events", unix_socket: socket_path, retry: false)
+        |> SSRFProtection.attach(resolver: resolver, clock: fn :millisecond -> now end)
+
+      assert {:ok, %Req.Response{status: 204}} = Req.get(request)
+    end
+
+    assert {:ok, _pid} = Finch.find_pool(Req.Finch, pool.(0))
+    assert {:ok, _pid} = Finch.find_pool(Req.Finch, pool.(1))
+
+    Task.await(server)
+    :gen_tcp.close(listen_socket)
+  end
+
   test "checks the destination of every redirect" do
     test_pid = self()
 
