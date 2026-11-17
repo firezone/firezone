@@ -22,9 +22,9 @@ mod topology;
 mod transitions;
 mod values;
 
-pub use context::Generator;
+pub use context::TunnelGenerator;
 
-impl Generator<'_> {
+impl TunnelGenerator<'_> {
     pub fn domain_tree(&mut self) -> Vec<DomainName> {
         values::arb_domain_tree(self)
     }
