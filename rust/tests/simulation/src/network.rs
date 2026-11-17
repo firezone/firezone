@@ -707,6 +707,8 @@ mod tests {
     const SERVER_2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2)), 3478);
     const HOST_1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 52625);
     const HOST_2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 52625);
+    /// Keeps the internal port on the first two new mappings.
+    const SEED: u64 = 1;
     const EXPIRY: Expiry = Expiry {
         timeout: Duration::from_secs(30),
         inbound_refreshes: false,
@@ -794,5 +796,42 @@ mod tests {
         let public = nat.egress(HOST_2, SERVER_1, now + EXPIRY.timeout);
 
         assert_eq!(public.port(), HOST_2.port());
+    }
+
+    #[test]
+    fn overloading_keeps_internal_port_held_by_another_mapping() {
+        let mut nat = Nat::new(
+            NAT_IP,
+            Mapping::EndpointIndependent,
+            FilterMode::Open,
+            EXPIRY,
+            PortAssignment::Overloading(fastrand::Rng::with_seed(SEED)),
+        );
+        let now = Instant::now();
+
+        let first = nat.egress(HOST_1, SERVER_1, now);
+        let second = nat.egress(HOST_2, SERVER_1, now);
+
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn overloading_delivers_inbound_to_last_sender() {
+        let mut nat = Nat::new(
+            NAT_IP,
+            Mapping::EndpointIndependent,
+            FilterMode::Open,
+            EXPIRY,
+            PortAssignment::Overloading(fastrand::Rng::with_seed(SEED)),
+        );
+        let now = Instant::now();
+
+        let public = nat.egress(HOST_1, SERVER_1, now);
+        nat.egress(HOST_2, SERVER_1, now + Duration::from_secs(1));
+        let internal = nat
+            .ingress(SERVER_1, public, now + Duration::from_secs(2))
+            .unwrap();
+
+        assert_eq!(internal, HOST_2);
     }
 }
