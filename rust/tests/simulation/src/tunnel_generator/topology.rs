@@ -22,7 +22,7 @@ use crate::dns_records::DnsRecords;
 use crate::fake_portal::{FakePortal, PoolMembers};
 use crate::model_client::ModelClient;
 use crate::model_gateway::ModelGateway;
-use crate::network::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
+use crate::network::{Expiry, FilterMode, Host, Mapping, Nat, RoutingTable};
 use crate::os::SimulatedOs;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
 use crate::site_network::{IcmpError, RouteType, Routes};
@@ -33,12 +33,20 @@ pub(super) fn generate(
     portal: &FakePortal,
     domain_tree: Vec<DomainName>,
 ) -> TunnelModel {
-    let clients = arb_clients(g, portal);
+    let mut network = RoutingTable::default();
+    let hosts = portal.client_tunnel_ips().count() + portal.gateway_tunnel_ips().count();
+    for _ in 0..=hosts {
+        let ok = network.add_nat(arb_nat(g));
+        debug_assert!(ok, "NAT IPs must be unique by construction");
+    }
+    let nat_ips = network.nat_ips().collect::<Vec<_>>();
+
+    let clients = arb_clients(g, portal, &nat_ips, &mut network);
     let dns_resource_records = arb_dns_resource_records(g, portal, &domain_tree);
     let host_routes = arb_host_routes(g, &dns_resource_records, portal.upstream_do53());
     let sites = arb_sites(g, portal, &host_routes);
     let tcp_services = arb_tcp_services(g, &dns_resource_records, &sites);
-    let gateways = arb_gateways(g, portal, &domain_tree, &sites);
+    let gateways = arb_gateways(g, portal, &domain_tree, &sites, &nat_ips, &mut network);
     let relays = arb_relays(g);
 
     let global_dns_records = merge_dns_records(
@@ -46,23 +54,10 @@ pub(super) fn generate(
         dns_resource_records,
     );
 
-    let network = clients
-        .iter()
-        .fold(RoutingTable::default(), |mut network, (id, host)| {
-            let ok = network.add_host(*id, host);
-            debug_assert!(ok, "client socket IPs must be unique by construction");
-            network
-        });
-    let network = gateways.iter().fold(network, |mut network, (id, host)| {
-        let ok = network.add_host(*id, host);
-        debug_assert!(ok, "gateway socket IPs must be unique by construction");
-        network
-    });
-    let network = relays.iter().fold(network, |mut network, (id, host)| {
-        let ok = network.add_host(*id, host);
+    for (id, host) in &relays {
+        let ok = network.add_relay(*id, host);
         debug_assert!(ok, "relay socket IPs must be unique by construction");
-        network
-    });
+    }
 
     TunnelModel::from_parts(
         clients,
@@ -87,7 +82,7 @@ pub(super) fn arb_relays(g: &mut TunnelGenerator) -> BTreeMap<RelayId, Host<u64>
             let id = g.fresh_relay_id();
             let seed = g.u64();
             let latency = g.latency(50);
-            let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4());
+            let host = Host::new(seed, latency, 3478);
             let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
             (id, host)
         })
@@ -149,9 +144,9 @@ pub(super) fn arb_fake_portal(g: &mut TunnelGenerator, domain_tree: &[DomainName
         .collect::<SmallVec<[_; 3]>>();
     g.allocate_site_subnets(&regular_sites);
 
-    let clients = (0..2)
+    let clients = (0..g.count(3, 4))
         .map(|_| (g.fresh_client_id(), g.tunnel_ip4(), g.tunnel_ip6()))
-        .collect::<SmallVec<[_; 2]>>();
+        .collect::<SmallVec<[_; 4]>>();
 
     let upstream_do53 = arb_upstream_do53_servers(g);
     let upstream_doh = arb_upstream_doh_servers(g);
@@ -372,10 +367,19 @@ fn arb_search_domain(g: &mut TunnelGenerator, dns_resources: &[DnsResource]) -> 
 fn arb_clients(
     g: &mut TunnelGenerator,
     portal: &FakePortal,
+    nat_ips: &[Ipv4Addr],
+    network: &mut RoutingTable,
 ) -> BTreeMap<ClientId, Host<ModelClient>> {
     portal
         .client_tunnel_ips()
-        .map(|(id, tun4, tun6)| (id, arb_client_host(g, id, tun4, tun6)))
+        .map(|(id, tun4, tun6)| {
+            let host = arb_client_host(g, id, tun4, tun6);
+            let nat = nat_ips[g.choose_index(nat_ips.len())];
+            let ok = network.add_host(id, &host, nat);
+            debug_assert!(ok, "client socket IPs must be unique by construction");
+
+            (id, host)
+        })
         .collect::<BTreeMap<_, _>>()
 }
 
@@ -411,8 +415,7 @@ fn arb_client_host(
     let (ip4, ip6) = arb_socket_ip_stack(g);
     let port = arb_listening_port(g);
     let latency = g.latency(250);
-    let edge = arb_edge_config(g);
-    with_interface(Host::new(inner, latency, port, edge, g.nat_ip4()), ip4, ip6)
+    with_interface(Host::new(inner, latency, port), ip4, ip6)
 }
 
 fn arb_gateways(
@@ -420,6 +423,8 @@ fn arb_gateways(
     portal: &FakePortal,
     domain_tree: &[DomainName],
     sites: &BTreeMap<SiteId, SiteView>,
+    nat_ips: &[Ipv4Addr],
+    network: &mut RoutingTable,
 ) -> BTreeMap<GatewayId, Host<ModelGateway>> {
     portal
         .gateway_tunnel_ips()
@@ -436,9 +441,12 @@ fn arb_gateways(
                 arb_max_dns_domains_per_client(g),
             );
             let latency = g.latency(200);
-            let edge = arb_edge_config(g);
-            let host = Host::new(inner, latency, 52625, edge, g.nat_ip4());
+            let host = Host::new(inner, latency, 52625);
             let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
+            let nat = nat_ips[g.choose_index(nat_ips.len())];
+            let ok = network.add_host(id, &host, nat);
+            debug_assert!(ok, "gateway socket IPs must be unique by construction");
+
             (id, host)
         })
         .collect::<BTreeMap<_, _>>()
@@ -462,19 +470,21 @@ fn arb_simulated_os(g: &mut TunnelGenerator) -> SimulatedOs {
     }
 }
 
-fn arb_edge_config(g: &mut TunnelGenerator) -> EdgeConfig {
-    match g.choose_index(3) {
-        0 => EdgeConfig::Open,
-        1 => {
+fn arb_nat(g: &mut TunnelGenerator) -> Nat {
+    let ip4 = g.nat_ip4();
+
+    match g.choose_index(2) {
+        0 => {
             let filter = match g.choose_index(3) {
                 0 => FilterMode::Open,
                 1 => FilterMode::AddressRestricted,
                 _ => FilterMode::PortRestricted,
             };
 
-            EdgeConfig::Nat(Mapping::EndpointIndependent, filter, arb_expiry(g))
+            Nat::new(ip4, Mapping::EndpointIndependent, filter, arb_expiry(g))
         }
-        _ => EdgeConfig::Nat(
+        _ => Nat::new(
+            ip4,
             Mapping::EndpointDependent,
             FilterMode::PortRestricted,
             arb_expiry(g),

@@ -637,8 +637,7 @@ impl RealTunnelSystem {
                 let now = self.clock.now::<Instant>();
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
-                client.migrate_nat(nat_ip4);
-                let added = self.network.add_host(client_id, client);
+                let added = self.network.add_host(client_id, client, nat_ip4);
                 debug_assert!(added);
                 client.exec_mut(|c| {
                     c.tunnel.inner_mut().reset("roam", now);
@@ -1152,51 +1151,25 @@ impl RealTunnelSystem {
     /// Dispatches a [`Transmit`] to the correct host.
     ///
     /// This function is basically the "network layer" of our tests.
-    /// It routes by the wire destination and passes the packet through the
-    /// receiving host's network edge, which may translate or drop it.
+    /// The [`RoutingTable`] passes the packet through the NAT devices on its
+    /// way, which may translate or drop it.
     fn dispatch_transmit(&mut self, transmit: Transmit, at: Instant) {
-        let src = transmit
-            .src
-            .expect("`src` should always be set in these tests");
-        let dst = transmit.dst;
-
-        let Some(host) = self.network.host_by_ip(dst.ip()) else {
-            tracing::error!("Unhandled packet: {src} -> {dst}");
+        let Some((host, transmit)) = self.network.route(transmit, at) else {
             return;
         };
 
         match host {
             HostId::Client(id) => {
-                let client = self.clients.get_mut(&id).unwrap();
-
-                match client.ingress(src, dst, at) {
-                    Ok(local_dst) => client.receive(
-                        Transmit {
-                            dst: local_dst,
-                            ..transmit
-                        },
-                        at,
-                    ),
-                    Err(e) => {
-                        tracing::debug!(%src, %dst, "Client's edge dropped packet: {e:#}")
-                    }
-                }
+                self.clients
+                    .get_mut(&id)
+                    .expect("unknown client")
+                    .receive(transmit, at);
             }
             HostId::Gateway(id) => {
-                let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
-
-                match gateway.ingress(src, dst, at) {
-                    Ok(local_dst) => gateway.receive(
-                        Transmit {
-                            dst: local_dst,
-                            ..transmit
-                        },
-                        at,
-                    ),
-                    Err(e) => {
-                        tracing::debug!(%src, %dst, "Gateway's edge dropped packet: {e:#}")
-                    }
-                }
+                self.gateways
+                    .get_mut(&id)
+                    .expect("unknown gateway")
+                    .receive(transmit, at);
             }
             HostId::Relay(id) => {
                 self.relays
@@ -1205,7 +1178,7 @@ impl RealTunnelSystem {
                     .receive(transmit, at);
             }
             HostId::Stale => {
-                tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
+                tracing::debug!(dst = %transmit.dst, "Dropping packet because host roamed away or is offline");
             }
         }
     }
@@ -1524,7 +1497,7 @@ impl RealTunnelSystem {
         }
 
         for (relay_id, relay) in &connected {
-            let added = self.network.add_host(*relay_id, relay);
+            let added = self.network.add_relay(*relay_id, relay);
             debug_assert!(added);
         }
 
@@ -1566,7 +1539,7 @@ impl RealTunnelSystem {
             .collect::<BTreeMap<_, _>>();
 
         for (rid, relay) in &online {
-            let added = self.network.add_host(*rid, relay);
+            let added = self.network.add_relay(*rid, relay);
             debug_assert!(added);
         }
 
