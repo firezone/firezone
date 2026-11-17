@@ -285,9 +285,6 @@ impl RealRelaySystem {
         let now = self.clock.now::<SystemTime>();
 
         Environment {
-            relay_reachable: (self.client.ip4.is_some() && self.relay.ip4.is_some())
-                || (self.client.ip6.is_some() && self.relay.ip6.is_some()),
-            portal_reachable: self.portal_reachable,
             credentials_valid: self
                 .credentials
                 .as_ref()

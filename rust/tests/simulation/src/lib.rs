@@ -129,7 +129,7 @@ pub fn run_relay(data: &[u8], now: Instant) {
         tracing::debug!("Applying transition {applied}: {transition:?} with {interference:?}");
 
         system.apply(&model, &transition, interference);
-        let may_interrupt = model.apply(&transition, system.environment(), system.observed);
+        let may_interrupt = model.apply(&transition, system.observed);
         system.check(&model, may_interrupt);
     }
 }
