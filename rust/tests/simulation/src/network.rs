@@ -560,8 +560,10 @@ impl RoutingTable {
         self.nats.keys().copied()
     }
 
-    /// The edge of each NAT device that two or more Clients sit behind.
-    pub(crate) fn edges_shared_by_clients(&self) -> impl Iterator<Item = EdgeConfig> + '_ {
+    /// The edge and port assignment of each NAT device that two or more Clients sit behind.
+    pub(crate) fn edges_shared_by_clients(
+        &self,
+    ) -> impl Iterator<Item = (EdgeConfig, &PortAssignment)> + '_ {
         self.nats.iter().filter_map(|(ip, nat)| {
             let clients = self
                 .attachments
@@ -569,7 +571,7 @@ impl RoutingTable {
                 .filter(|(id, attached)| matches!(id, HostId::Client(_)) && *attached == ip)
                 .count();
 
-            (clients >= 2).then(|| nat.edge_config())
+            (clients >= 2).then(|| (nat.edge_config(), &nat.assignment))
         })
     }
 
