@@ -230,7 +230,7 @@ impl CidrResource {
             id: resource.id,
             address: resource.address,
             name: resource.name,
-            address_description: non_blank(resource.address_description),
+            address_description: resource.address_description,
             sites: resource.sites,
             filters: resource.filters,
         }
@@ -283,7 +283,7 @@ impl DnsResource {
             id: resource.id,
             address: resource.address,
             name: resource.name,
-            address_description: non_blank(resource.address_description),
+            address_description: resource.address_description,
             sites: resource.sites,
             ip_stack: resource.ip_stack.unwrap_or(IpStack::Dual),
             filters: resource.filters,
@@ -300,10 +300,6 @@ impl DnsResource {
             status,
         }
     }
-}
-
-fn non_blank(description: Option<String>) -> Option<String> {
-    description.filter(|d| !d.trim().is_empty())
 }
 
 #[cfg(test)]
@@ -383,25 +379,6 @@ mod tests {
         };
 
         assert_eq!(dns.ip_stack, IpStack::Dual)
-    }
-
-    #[test]
-    fn blank_address_description_is_none() {
-        let resource = Resource::from_description(ResourceDescription::Dns(serde_json::json!({
-            "address": "example.com",
-            "address_description": " ",
-            "id": "03000143-e25e-45c7-aafb-144990e57dce",
-            "name": "example.com",
-            "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
-            "type": "dns"
-        })))
-        .unwrap();
-
-        let Resource::Dns(dns) = resource else {
-            panic!("Unexpected resource")
-        };
-
-        assert_eq!(dns.address_description, None)
     }
 
     #[test]

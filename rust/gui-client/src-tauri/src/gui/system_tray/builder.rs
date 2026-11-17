@@ -97,6 +97,10 @@ fn resource_header(res: &ResourceView) -> Item {
         return copyable(&res.pastable());
     };
 
+    if address_description.is_empty() {
+        return copyable(&res.pastable());
+    }
+
     let Ok(url) = Url::parse(address_description) else {
         return copyable(address_description);
     };
