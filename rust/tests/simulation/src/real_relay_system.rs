@@ -332,7 +332,7 @@ impl RealRelaySystem {
         );
 
         if crafting.parse {
-            payload = stun::reencode(&payload)?;
+            payload = stun::round_trip(&payload)?;
         }
 
         self.relay.receive(datagram(Some(src), dst, &payload), now);
