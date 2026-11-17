@@ -71,6 +71,9 @@ updates:
       codeql:
         patterns:
           - github/codeql-action/*
+      oasdiff:
+        patterns:
+          - oasdiff/oasdiff-action/*
   - package-ecosystem: cargo
     target-branch: main
     directory: rust/
