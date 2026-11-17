@@ -9,7 +9,7 @@ use dns_types::DomainName;
 use itertools::Itertools as _;
 use smallvec::SmallVec;
 
-use super::context::Generator;
+use super::context::TunnelGenerator;
 use super::topology::{
     arb_dns_record_set, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
 };
@@ -91,7 +91,7 @@ enum ExistingFlow<'a> {
 }
 
 pub(super) fn generate(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     state: &TunnelModel,
     portal: &FakePortal,
     now: Instant,
@@ -473,7 +473,7 @@ pub(super) fn generate(
 }
 
 fn arb_resource_edit(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     state: &TunnelModel,
     portal: &FakePortal,
     old: Resource,
@@ -498,7 +498,7 @@ fn arb_resource_edit(
             ip_stack,
             filters,
         }) => {
-            let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 6] = [
+            let edits: [Option<Box<dyn FnOnce(&mut TunnelGenerator) + '_>>; 6] = [
                 Some(Box::new(|g| {
                     *address = arb_different_dns_resource_address(g, address, state)
                 })),
@@ -525,7 +525,7 @@ fn arb_resource_edit(
             sites,
             filters,
         }) => {
-            let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 5] = [
+            let edits: [Option<Box<dyn FnOnce(&mut TunnelGenerator) + '_>>; 5] = [
                 Some(Box::new(|g| {
                     *address = arb_different_cidr_resource_address(g, *address)
                 })),
@@ -546,10 +546,11 @@ fn arb_resource_edit(
             name,
             filters,
         }) => {
-            let mut edits = SmallVec::<[Box<dyn FnOnce(&mut Generator) + '_>; 2]>::from_buf([
-                Box::new(|g| *name = arb_different_name(g, name)),
-                Box::new(|g| *filters = arb_different_filters(g, filters)),
-            ]);
+            let mut edits =
+                SmallVec::<[Box<dyn FnOnce(&mut TunnelGenerator) + '_>; 2]>::from_buf([
+                    Box::new(|g| *name = arb_different_name(g, name)),
+                    Box::new(|g| *filters = arb_different_filters(g, filters)),
+                ]);
 
             edits.swap_remove(g.choose_index(edits.len()))(g);
         }
@@ -568,7 +569,7 @@ fn has_alternative_site(current: &[Site], portal: &FakePortal) -> bool {
         .any(|site| current.len() != 1 || current.first() != Some(site))
 }
 
-fn arb_different_site(g: &mut Generator, current: &[Site], portal: &FakePortal) -> Vec<Site> {
+fn arb_different_site(g: &mut TunnelGenerator, current: &[Site], portal: &FakePortal) -> Vec<Site> {
     let sites = portal
         .regular_sites()
         .iter()
@@ -579,7 +580,7 @@ fn arb_different_site(g: &mut Generator, current: &[Site], portal: &FakePortal) 
     vec![site.clone()]
 }
 
-fn arb_different_name(g: &mut Generator, current: &str) -> String {
+fn arb_different_name(g: &mut TunnelGenerator, current: &str) -> String {
     let name = g.lower_ascii(4, 10);
 
     if name != current {
@@ -590,7 +591,7 @@ fn arb_different_name(g: &mut Generator, current: &str) -> String {
 }
 
 fn arb_resource_with_different_type(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     portal: &FakePortal,
     domain_tree: &[DomainName],
     resource: &Resource,
@@ -644,7 +645,7 @@ fn arb_resource_with_different_type(
 
 /// Reproduces `Union::new_weighted`: partition `int_in_range` over the summed
 /// weight. Identical bytes always pick the same arm.
-fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> TransitionKind {
+fn weighted_choose(g: &mut TunnelGenerator, opts: &[(TransitionKind, u32)]) -> TransitionKind {
     let total = opts.iter().map(|(_, weight)| *weight).sum::<u32>();
     assert!(total > 0, "there is always at least one legal transition");
 

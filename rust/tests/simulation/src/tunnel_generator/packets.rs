@@ -9,7 +9,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
 use tunnel_proto::messages::{Filter, PortRange};
 
-use super::context::Generator;
+use super::context::TunnelGenerator;
 use crate::fake_portal::FakePortal;
 use crate::tunnel_model::TunnelModel;
 use crate::tunnel_transition::{Destination, Transition};
@@ -257,7 +257,7 @@ fn revoked_protocols(filters: &[Filter]) -> Vec<Protocol> {
         .collect()
 }
 
-pub(super) fn generate(g: &mut Generator, target: PacketTarget) -> Transition {
+pub(super) fn generate(g: &mut TunnelGenerator, target: PacketTarget) -> Transition {
     match target {
         PacketTarget::Cidr {
             client_id,
@@ -324,7 +324,7 @@ pub(super) fn generate(g: &mut Generator, target: PacketTarget) -> Transition {
     }
 }
 
-fn internet_resource_rejected_destination(g: &mut Generator, source: IpAddr) -> IpAddr {
+fn internet_resource_rejected_destination(g: &mut TunnelGenerator, source: IpAddr) -> IpAddr {
     match source {
         IpAddr::V4(_) => {
             let networks = [
@@ -356,7 +356,7 @@ fn internet_resource_rejected_destination(g: &mut Generator, source: IpAddr) -> 
     }
 }
 
-pub(super) fn host_in_v4(g: &mut Generator, network: Ipv4Network) -> Ipv4Addr {
+pub(super) fn host_in_v4(g: &mut TunnelGenerator, network: Ipv4Network) -> Ipv4Addr {
     let host_bits = 32 - network.netmask();
     let base = u32::from(network.network_address());
     let off = if host_bits == 0 {
@@ -369,7 +369,7 @@ pub(super) fn host_in_v4(g: &mut Generator, network: Ipv4Network) -> Ipv4Addr {
     Ipv4Addr::from(base.wrapping_add(off))
 }
 
-pub(super) fn host_in_v6(g: &mut Generator, network: Ipv6Network) -> Ipv6Addr {
+pub(super) fn host_in_v6(g: &mut TunnelGenerator, network: Ipv6Network) -> Ipv6Addr {
     let host_bits = 128 - network.netmask();
     let base = u128::from(network.network_address());
     let off = if host_bits == 0 {
@@ -388,11 +388,11 @@ pub(super) fn host_in_v6(g: &mut Generator, network: Ipv6Network) -> Ipv6Addr {
 }
 
 /// Selects a subset of the online clients as a pool's members.
-pub(super) fn arb_pool_members(g: &mut Generator, state: &TunnelModel) -> BTreeSet<ClientId> {
+pub(super) fn arb_pool_members(g: &mut TunnelGenerator, state: &TunnelModel) -> BTreeSet<ClientId> {
     state.clients.keys().filter(|_| g.bool()).copied().collect()
 }
 
-fn host_in_network(g: &mut Generator, network: IpNetwork) -> IpAddr {
+fn host_in_network(g: &mut TunnelGenerator, network: IpNetwork) -> IpAddr {
     match network {
         IpNetwork::V4(network) => IpAddr::V4(host_in_v4(g, network)),
         IpNetwork::V6(network) => IpAddr::V6(host_in_v6(g, network)),
@@ -410,7 +410,7 @@ fn tcp_service_ports(state: &TunnelModel, domain: &DomainName) -> Vec<u16> {
 }
 
 fn arb_filtered_packet(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     client_id: ClientId,
     src: IpAddr,
     dst: DstSpec,
@@ -455,7 +455,7 @@ fn arb_filtered_packet(
 }
 
 fn arb_tcp_connection(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     client_id: ClientId,
     src: IpAddr,
     domain: DomainName,
@@ -506,7 +506,7 @@ fn arb_tcp_connection(
 }
 
 fn arb_unfiltered_packet(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     client_id: ClientId,
     src: IpAddr,
     dst: IpAddr,
@@ -524,7 +524,7 @@ fn arb_unfiltered_packet(
     }
 }
 fn arb_icmp_packet(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     client_id: ClientId,
     src: IpAddr,
     dst: DstSpec,
@@ -546,7 +546,7 @@ fn arb_icmp_packet(
 }
 
 fn arb_udp_packet(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     client_id: ClientId,
     src: IpAddr,
     dst: DstSpec,
@@ -568,7 +568,7 @@ fn arb_udp_packet(
     }
 }
 
-fn arb_destination(g: &mut Generator, dst: DstSpec) -> Destination {
+fn arb_destination(g: &mut TunnelGenerator, dst: DstSpec) -> Destination {
     let resolved_ip = g.u32();
     into_destination(dst, resolved_ip)
 }
@@ -580,7 +580,7 @@ fn into_destination(dst: DstSpec, resolved_ip: u32) -> Destination {
     }
 }
 
-fn arb_non_dns_port(g: &mut Generator) -> u16 {
+fn arb_non_dns_port(g: &mut TunnelGenerator) -> u16 {
     non_dns_port(g.u32_in(0..=65533))
 }
 
