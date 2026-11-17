@@ -212,9 +212,23 @@ fn try_recv_batch(
     recv_buf_size: usize,
     port: u16,
 ) -> io::Result<DatagramBatch> {
+    let batch = socket.inner.try_io(Interest::READABLE, || {
+        recv_batch(socket, recv_buf_size, port)
+    })?;
+
+    Ok(batch)
+}
+
+/// Receives a batch of datagrams from the given socket without blocking, regardless of
+/// tokio's cached readiness.
+pub(crate) fn recv_batch(
+    socket: Socket<'_>,
+    recv_buf_size: usize,
+    port: u16,
+) -> io::Result<DatagramBatch> {
     let mut batch = RecvBatch::pull(recv_buf_size);
 
-    let len = socket.inner.try_io(Interest::READABLE, || {
+    let len = {
         // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
         // ICMP errors on receive that we skip past; hence the `never_loop` allow elsewhere.
         #[cfg_attr(not(apple), allow(clippy::never_loop))]
@@ -231,7 +245,7 @@ fn try_recv_batch(
                 result => break result,
             }
         }
-    })?;
+    }?;
 
     #[cfg(windows)]
     if crate::uro::detect_broken_coalescing(

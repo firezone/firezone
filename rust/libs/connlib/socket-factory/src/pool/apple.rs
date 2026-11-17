@@ -30,25 +30,29 @@
 //! The catch-all socket also remains the final fallback if creating a source socket fails.
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::BTreeMap,
     io,
     net::{IpAddr, SocketAddr},
-    sync::Arc,
-    task::{Context, Poll, Waker},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    task::{Context, Poll, Waker, ready},
     time::{Duration, Instant},
 };
 
 use anyhow::Result;
 use futures::{
     StreamExt as _,
-    stream::{self, AbortHandle, BoxStream, SelectAll},
+    stream::{self, BoxStream, SelectAll},
+    task::AtomicWaker,
 };
 use parking_lot::{Mutex, MutexGuard};
 use quinn_udp::UdpSockRef;
 
-use crate::{DatagramBatch, RecvBatch};
+use crate::DatagramBatch;
 
-use super::{OwnedSocket, poll_recv_ready};
+use super::{OwnedSocket, poll_recv_ready, recv_batch};
 
 /// How many flow sockets a pool keeps at most. connlib runs one pool per address family,
 /// so this is effectively the per-family cap.
@@ -101,11 +105,9 @@ struct Inner {
     /// Unconnected source sockets and the wildcard remain available.
     flow_sockets_supported: bool,
     buffer_sizes: Option<(usize, usize)>,
-    /// Datagrams rescued from evicted sockets before closing them.
-    drained: VecDeque<DatagramBatch>,
     /// Receive streams of the wildcard and all cached sockets.
     recv_streams: SelectAll<BoxStream<'static, Result<DatagramBatch>>>,
-    /// Waker of the receive task; woken when new sockets or drained datagrams appear.
+    /// Waker of the receive task; woken when new sockets appear.
     recv_waker: Option<Waker>,
 }
 
@@ -113,10 +115,18 @@ struct Inner {
 struct CachedSocket {
     socket: Arc<OwnedSocket>,
     created_at: Instant,
+    recv_state: Arc<RecvState>,
+}
+
+/// State shared between a socket's cache entry and its receive stream.
+#[derive(Default)]
+struct RecvState {
     /// Inbound activity, used to keep useful sockets during eviction.
-    last_received: Arc<Mutex<Option<Instant>>>,
-    /// Ends the socket's receive stream, whose reference otherwise keeps the socket open.
-    recv_stream: AbortHandle,
+    last_received: Mutex<Option<Instant>>,
+    /// Set on eviction: the stream then reads the socket dry and ends, closing it.
+    evicted: AtomicBool,
+    /// Waker of the receive stream.
+    waker: AtomicWaker,
 }
 
 impl SocketPool {
@@ -125,7 +135,13 @@ impl SocketPool {
             .local_addr()
             .expect("a bound socket to have a local address");
         let wildcard = Arc::new(wildcard);
-        let wildcard_recv = recv_stream(wildcard.clone(), recv_buf_size, local.port()).boxed();
+        let wildcard_recv = recv_stream(
+            wildcard.clone(),
+            Arc::default(),
+            recv_buf_size,
+            local.port(),
+        )
+        .boxed();
 
         Self {
             wildcard,
@@ -137,7 +153,6 @@ impl SocketPool {
                 rates: RateGate::default(),
                 flow_sockets_supported: true,
                 buffer_sizes: None,
-                drained: VecDeque::new(),
                 recv_streams: stream::select_all([wildcard_recv]),
                 recv_waker: None,
             }),
@@ -174,11 +189,6 @@ impl SocketPool {
         match &mut inner.recv_waker {
             Some(existing) if existing.will_wake(cx.waker()) => {}
             slot => *slot = Some(cx.waker().clone()),
-        }
-
-        // Datagrams rescued from evicted sockets are the oldest; yield them first.
-        if let Some(batch) = inner.drained.pop_front() {
-            return Poll::Ready(Ok(batch));
         }
 
         match inner.recv_streams.poll_next_unpin(cx) {
@@ -227,13 +237,7 @@ impl SocketPool {
                 tracing::debug!(?src, %dst, "Connected new flow socket");
 
                 if inner.flows.len() >= MAX_FLOW_SOCKETS
-                    && let Some((src, dst)) = evict_one(
-                        &mut inner.flows,
-                        self.local.port(),
-                        self.recv_buf_size,
-                        &mut inner.drained,
-                        &mut inner.recv_waker,
-                    )
+                    && let Some((src, dst)) = evict_one(&mut inner.flows)
                 {
                     self.evictions.add(1, &[]);
                     tracing::debug!(?src, %dst, "Evicted flow socket");
@@ -278,13 +282,7 @@ impl SocketPool {
         match create_socket(self.local, Some(src), None, inner.buffer_sizes) {
             Ok(socket) => {
                 if inner.sources.len() >= MAX_SOURCE_SOCKETS {
-                    let _ = evict_one(
-                        &mut inner.sources,
-                        self.local.port(),
-                        self.recv_buf_size,
-                        &mut inner.drained,
-                        &mut inner.recv_waker,
-                    );
+                    let _ = evict_one(&mut inner.sources);
                 }
 
                 let socket = Arc::new(socket);
@@ -328,24 +326,14 @@ impl CachedSocket {
         recv_buf_size: usize,
         recv_streams: &mut SelectAll<BoxStream<'static, Result<DatagramBatch>>>,
     ) -> Self {
-        let last_received = Arc::new(Mutex::new(None));
-        let (stream, abort) =
-            stream::abortable(recv_stream(socket.clone(), recv_buf_size, port).inspect({
-                let last_received = last_received.clone();
-
-                move |result| {
-                    if result.is_ok() {
-                        *last_received.lock() = Some(Instant::now());
-                    }
-                }
-            }));
-        recv_streams.push(stream.boxed());
+        let recv_state = Arc::new(RecvState::default());
+        recv_streams
+            .push(recv_stream(socket.clone(), recv_state.clone(), recv_buf_size, port).boxed());
 
         Self {
             socket,
             created_at: Instant::now(),
-            last_received,
-            recv_stream: abort,
+            recv_state,
         }
     }
 }
@@ -401,27 +389,18 @@ impl RateGate {
     }
 }
 
-/// Evicts and drains the least useful cached socket.
-fn evict_one<K: Ord + Copy>(
-    sockets: &mut BTreeMap<K, CachedSocket>,
-    port: u16,
-    recv_buf_size: usize,
-    drained: &mut VecDeque<DatagramBatch>,
-    recv_waker: &mut Option<Waker>,
-) -> Option<K> {
+/// Evicts the least useful cached socket.
+fn evict_one<K: Ord + Copy>(sockets: &mut BTreeMap<K, CachedSocket>) -> Option<K> {
     let key = sockets
         .iter()
-        .min_by_key(|(_, cached)| eviction_rank(*cached.last_received.lock(), cached.created_at))
+        .min_by_key(|(_, cached)| {
+            eviction_rank(*cached.recv_state.last_received.lock(), cached.created_at)
+        })
         .map(|(key, _)| *key)?;
     let evicted = sockets.remove(&key)?;
 
-    drain(&evicted.socket, port, recv_buf_size, drained);
-    evicted.recv_stream.abort();
-    if !drained.is_empty()
-        && let Some(waker) = recv_waker.take()
-    {
-        waker.wake();
-    }
+    evicted.recv_state.evicted.store(true, Ordering::Release);
+    evicted.recv_state.waker.wake();
 
     Some(key)
 }
@@ -439,37 +418,38 @@ fn eviction_rank(last_received: Option<Instant>, created_at: Instant) -> (bool, 
     }
 }
 
-/// Reads an evicted socket dry before it is closed.
+/// Receives batches from `socket` until it is evicted and read dry.
 ///
-/// Closing a socket discards queued datagrams; drain them before another socket receives
-/// subsequent traffic for its address or connected pair.
-fn drain(socket: &OwnedSocket, port: u16, recv_buf_size: usize, out: &mut VecDeque<DatagramBatch>) {
-    let socket = socket.as_socket();
-
-    loop {
-        let mut batch = RecvBatch::pull(recv_buf_size);
-
-        let len = {
-            let (mut io_bufs, metas) = batch.recv_slices();
-
-            match socket.recv(&mut io_bufs, metas) {
-                Ok(len) => len,
-                Err(_) => break, // Typically `WouldBlock`: the socket is dry.
-            }
-        };
-
-        out.push_back(DatagramBatch::new(batch.buffers, batch.metas, port, len));
-    }
-}
-
-/// Receives batches from `socket` for as long as the stream lives.
+/// Closing a socket discards its queued datagrams, so an evicted socket is read without
+/// waiting for readiness until it would block. Only then does the stream end, dropping its
+/// reference to the socket.
 fn recv_stream(
     socket: Arc<OwnedSocket>,
+    state: Arc<RecvState>,
     recv_buf_size: usize,
     port: u16,
 ) -> impl futures::Stream<Item = Result<DatagramBatch>> {
     stream::poll_fn(move |cx| {
-        poll_recv_ready(cx, socket.as_socket(), recv_buf_size, port).map(Some)
+        // Register before checking `evicted` so an eviction in between still wakes us.
+        state.waker.register(cx.waker());
+
+        if state.evicted.load(Ordering::Acquire) {
+            return match recv_batch(socket.as_socket(), recv_buf_size, port) {
+                Ok(batch) => Poll::Ready(Some(Ok(batch))),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => Poll::Ready(None),
+                Err(e) => {
+                    tracing::debug!("Failed to read evicted socket dry: {e}");
+                    Poll::Ready(None)
+                }
+            };
+        }
+
+        let result = ready!(poll_recv_ready(cx, socket.as_socket(), recv_buf_size, port));
+        if result.is_ok() {
+            *state.last_received.lock() = Some(Instant::now());
+        }
+
+        Poll::Ready(Some(result))
     })
 }
 
