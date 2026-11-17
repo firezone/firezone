@@ -6,7 +6,7 @@ use super::real_client::RealClient;
 use super::real_gateway::RealGateway;
 use super::real_relay::RealRelay;
 use super::tunnel_model::TunnelModel;
-use super::tunnel_transition::{DPort, Destination, DnsQuery, Identifier, Network, SPort, Seq};
+use super::tunnel_transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
 use crate::clock::Clock;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
@@ -610,7 +610,7 @@ impl RealTunnelSystem {
                 client_id,
                 ip4,
                 ip6,
-                network,
+                nat_ip4,
                 dead_window,
                 portal_window,
             } => {
@@ -635,16 +635,6 @@ impl RealTunnelSystem {
                 //    reconnected to the portal yet, so any portal-bound message is
                 //    dropped until the portal window elapses.
                 let now = self.clock.now::<Instant>();
-                let nat_ip4 = match network {
-                    Network::Existing(ip) => ip,
-                    Network::New(nat) => {
-                        let ip = nat.ip4();
-                        let added = self.network.add_nat(nat);
-                        debug_assert!(added);
-
-                        ip
-                    }
-                };
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
                 let added = self.network.add_host(client_id, client, nat_ip4);

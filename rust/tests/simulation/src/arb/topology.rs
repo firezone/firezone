@@ -34,7 +34,8 @@ pub(super) fn generate(
     domain_tree: Vec<DomainName>,
 ) -> TunnelModel {
     let mut network = RoutingTable::default();
-    for _ in 0..g.count(1, 4) {
+    let hosts = portal.client_tunnel_ips().count() + portal.gateway_tunnel_ips().count();
+    for _ in 0..=hosts {
         let ok = network.add_nat(arb_nat(g));
         debug_assert!(ok, "NAT IPs must be unique by construction");
     }
@@ -462,7 +463,7 @@ fn arb_simulated_os(g: &mut Generator) -> SimulatedOs {
     }
 }
 
-pub(super) fn arb_nat(g: &mut Generator) -> Nat {
+fn arb_nat(g: &mut Generator) -> Nat {
     let ip4 = g.nat_ip4();
 
     match g.choose_index(2) {
