@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 use tunnel_proto::MaliciousBehaviour;
 use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53};
 
-use super::context::Generator;
+use super::context::TunnelGenerator;
 use super::packets::{host_in_v4, host_in_v6};
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_dns_resource_address,
@@ -29,7 +29,7 @@ use crate::site_network::{IcmpError, RouteType, Routes};
 use crate::tunnel_model::TunnelModel;
 
 pub(super) fn generate(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     portal: &FakePortal,
     domain_tree: Vec<DomainName>,
 ) -> TunnelModel {
@@ -75,11 +75,11 @@ pub(super) fn generate(
     )
 }
 
-pub(super) fn pick_site<'a>(g: &mut Generator, sites: &'a [Site]) -> &'a Site {
+pub(super) fn pick_site<'a>(g: &mut TunnelGenerator, sites: &'a [Site]) -> &'a Site {
     &sites[g.choose_index(sites.len())]
 }
 
-pub(super) fn arb_relays(g: &mut Generator) -> BTreeMap<RelayId, Host<u64>> {
+pub(super) fn arb_relays(g: &mut TunnelGenerator) -> BTreeMap<RelayId, Host<u64>> {
     let n = g.count(1, 2);
 
     (0..n)
@@ -104,7 +104,7 @@ pub(super) fn with_interface<T>(
     host
 }
 
-pub(super) fn arb_socket_ip_stack(g: &mut Generator) -> (Option<Ipv4Addr>, Option<Ipv6Addr>) {
+pub(super) fn arb_socket_ip_stack(g: &mut TunnelGenerator) -> (Option<Ipv4Addr>, Option<Ipv6Addr>) {
     match g.choose_index(3) {
         0 => (Some(g.socket_ip4()), None),
         1 => (None, Some(g.socket_ip6())),
@@ -113,7 +113,7 @@ pub(super) fn arb_socket_ip_stack(g: &mut Generator) -> (Option<Ipv4Addr>, Optio
 }
 
 pub(super) fn arb_dns_record_set(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     subnet: Option<(Ipv4Network, Ipv6Network)>,
 ) -> BTreeSet<OwnedRecordData> {
     let n = g.count(1, 5);
@@ -136,7 +136,7 @@ pub(super) fn arb_dns_record_set(
 
 const SITE_NAMES: [&str; 3] = ["sydney", "us-west", "us-east"];
 
-pub(super) fn arb_fake_portal(g: &mut Generator, domain_tree: &[DomainName]) -> FakePortal {
+pub(super) fn arb_fake_portal(g: &mut TunnelGenerator, domain_tree: &[DomainName]) -> FakePortal {
     let internet_site = Site {
         id: g.fresh_site_id(),
         name: "Internet".to_owned(),
@@ -193,7 +193,7 @@ pub(super) fn arb_fake_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
     .with_frostlink(g.bool())
 }
 
-fn arb_cidr_resource(g: &mut Generator, site: &Site) -> CidrResource {
+fn arb_cidr_resource(g: &mut TunnelGenerator, site: &Site) -> CidrResource {
     let id = g.fresh_resource_id();
     let address = match g.site_subnet(site.id).filter(|_| g.flip(50)) {
         Some(subnet) => arb_local_cidr_address(g, subnet),
@@ -211,7 +211,10 @@ fn arb_cidr_resource(g: &mut Generator, site: &Site) -> CidrResource {
 }
 
 /// Picks a network around a site's subnet, which may also cover other sites' subnets.
-fn arb_local_cidr_address(g: &mut Generator, (v4, v6): (Ipv4Network, Ipv6Network)) -> IpNetwork {
+fn arb_local_cidr_address(
+    g: &mut TunnelGenerator,
+    (v4, v6): (Ipv4Network, Ipv6Network),
+) -> IpNetwork {
     if g.bool() {
         let ip = host_in_v4(g, v4);
         let netmask = g.count(24, 32) as u8;
@@ -225,7 +228,11 @@ fn arb_local_cidr_address(g: &mut Generator, (v4, v6): (Ipv4Network, Ipv6Network
     IpNetwork::V6(Ipv6Network::new_truncate(ip, netmask).unwrap())
 }
 
-fn arb_dns_resource(g: &mut Generator, site: &Site, domain_tree: &[DomainName]) -> DnsResource {
+fn arb_dns_resource(
+    g: &mut TunnelGenerator,
+    site: &Site,
+    domain_tree: &[DomainName],
+) -> DnsResource {
     DnsResource {
         id: g.fresh_resource_id(),
         address: arb_dns_resource_address(g, domain_tree),
@@ -237,7 +244,7 @@ fn arb_dns_resource(g: &mut Generator, site: &Site, domain_tree: &[DomainName]) 
     }
 }
 
-fn arb_internet_resource(g: &mut Generator, site: &Site) -> InternetResource {
+fn arb_internet_resource(g: &mut TunnelGenerator, site: &Site) -> InternetResource {
     InternetResource {
         name: "Internet Resource".to_owned(),
         id: g.fresh_resource_id(),
@@ -246,7 +253,7 @@ fn arb_internet_resource(g: &mut Generator, site: &Site) -> InternetResource {
 }
 
 fn arb_device_pool_resource(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     clients: &[(ClientId, Ipv4Addr, Ipv6Addr)],
 ) -> (DevicePoolResource, PoolMembers) {
     let resource = DevicePoolResource {
@@ -270,7 +277,7 @@ fn arb_device_pool_resource(
 }
 
 fn arb_cidr_resources(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     sites: &[Site],
     upstream_do53: &[tunnel_proto::messages::UpstreamDo53],
 ) -> SmallVec<[CidrResource; 8]> {
@@ -333,7 +340,7 @@ fn arb_cidr_resources(
 }
 
 fn arb_dns_resources(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     sites: &[Site],
     domain_tree: &[DomainName],
 ) -> SmallVec<[DnsResource; 8]> {
@@ -345,7 +352,7 @@ fn arb_dns_resources(
         .collect()
 }
 
-fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option<DomainName> {
+fn arb_search_domain(g: &mut TunnelGenerator, dns_resources: &[DnsResource]) -> Option<DomainName> {
     if !g.flip(50) {
         return None;
     }
@@ -362,7 +369,10 @@ fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option
     candidates().nth(index)
 }
 
-fn arb_clients(g: &mut Generator, portal: &FakePortal) -> BTreeMap<ClientId, Host<ModelClient>> {
+fn arb_clients(
+    g: &mut TunnelGenerator,
+    portal: &FakePortal,
+) -> BTreeMap<ClientId, Host<ModelClient>> {
     portal
         .client_tunnel_ips()
         .map(|(id, tun4, tun6)| (id, arb_client_host(g, id, tun4, tun6)))
@@ -370,7 +380,7 @@ fn arb_clients(g: &mut Generator, portal: &FakePortal) -> BTreeMap<ClientId, Hos
 }
 
 fn arb_client_host(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     id: ClientId,
     tun4: Ipv4Addr,
     tun6: Ipv6Addr,
@@ -406,7 +416,7 @@ fn arb_client_host(
 }
 
 fn arb_gateways(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     portal: &FakePortal,
     domain_tree: &[DomainName],
     sites: &BTreeMap<SiteId, SiteView>,
@@ -434,7 +444,7 @@ fn arb_gateways(
         .collect::<BTreeMap<_, _>>()
 }
 
-fn arb_max_dns_domains_per_client(g: &mut Generator) -> Option<usize> {
+fn arb_max_dns_domains_per_client(g: &mut TunnelGenerator) -> Option<usize> {
     if !g.flip(20) {
         return None;
     }
@@ -442,7 +452,7 @@ fn arb_max_dns_domains_per_client(g: &mut Generator) -> Option<usize> {
     Some(g.count(1, 4))
 }
 
-fn arb_simulated_os(g: &mut Generator) -> SimulatedOs {
+fn arb_simulated_os(g: &mut TunnelGenerator) -> SimulatedOs {
     match g.choose_index(5) {
         0 => SimulatedOs::Linux,
         1 => SimulatedOs::Android,
@@ -452,7 +462,7 @@ fn arb_simulated_os(g: &mut Generator) -> SimulatedOs {
     }
 }
 
-fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
+fn arb_edge_config(g: &mut TunnelGenerator) -> EdgeConfig {
     match g.choose_index(3) {
         0 => EdgeConfig::Open,
         1 => {
@@ -480,7 +490,7 @@ fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
 /// refreshes every flow it depends on at least that often, including reply
 /// traffic on the pair the peer chose, so any expiry-induced connectivity loss
 /// is a real liveness bug and not an artifact of the model.
-fn arb_expiry(g: &mut Generator) -> Expiry {
+fn arb_expiry(g: &mut TunnelGenerator) -> Expiry {
     let timeout = Duration::from_secs(match g.choose_index(4) {
         0 => 30,
         1 => 60,
@@ -494,7 +504,7 @@ fn arb_expiry(g: &mut Generator) -> Expiry {
     }
 }
 
-fn arb_listening_port(g: &mut Generator) -> u16 {
+fn arb_listening_port(g: &mut TunnelGenerator) -> u16 {
     match g.choose_index(3) {
         0 => 52625,
         1 => 3478,
@@ -506,7 +516,7 @@ fn arb_listening_port(g: &mut Generator) -> u16 {
 ///
 /// A name keeps the network it was first generated in, so all its addresses are in one.
 fn arb_dns_resource_records(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     portal: &FakePortal,
     domain_tree: &[DomainName],
 ) -> DnsRecords {
@@ -540,7 +550,7 @@ fn arb_dns_resource_records(
 }
 
 fn arb_site_specific_dns_records(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     portal: &FakePortal,
     site: SiteId,
     domain_tree: &[DomainName],
@@ -553,7 +563,7 @@ fn arb_site_specific_dns_records(
 }
 
 fn arb_records_for_dns_resource(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     address: &str,
     domain_tree: &[DomainName],
 ) -> DnsRecords {
@@ -567,7 +577,7 @@ fn arb_records_for_dns_resource(
         .collect()
 }
 
-fn arb_name_count(g: &mut Generator, address: &str) -> usize {
+fn arb_name_count(g: &mut TunnelGenerator, address: &str) -> usize {
     if address.contains('*') || address.contains('?') {
         return g.count(1, 3);
     }
@@ -581,7 +591,7 @@ fn merge_dns_records(mut records: DnsRecords, next: DnsRecords) -> DnsRecords {
 }
 
 fn arb_resolved_ips(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     subnet: Option<(Ipv4Network, Ipv6Network)>,
 ) -> BTreeSet<OwnedRecordData> {
     let n = g.count(1, 5);
@@ -592,7 +602,10 @@ fn arb_resolved_ips(
 }
 
 /// Picks a public address, or one in `subnet`.
-fn arb_dns_resource_ip(g: &mut Generator, subnet: Option<(Ipv4Network, Ipv6Network)>) -> IpAddr {
+fn arb_dns_resource_ip(
+    g: &mut TunnelGenerator,
+    subnet: Option<(Ipv4Network, Ipv6Network)>,
+) -> IpAddr {
     if g.bool() {
         let last = g.u8();
 
@@ -617,7 +630,7 @@ fn arb_dns_resource_ip(g: &mut Generator, subnet: Option<(Ipv4Network, Ipv6Netwo
 }
 
 /// Generates records for names from the tree; a name local to a site resolves within its subnet.
-fn arb_global_dns_records(g: &mut Generator, domain_tree: &[DomainName]) -> DnsRecords {
+fn arb_global_dns_records(g: &mut TunnelGenerator, domain_tree: &[DomainName]) -> DnsRecords {
     let n = g.count(0, 4);
     (0..n)
         .map(|_| {
@@ -632,7 +645,7 @@ fn arb_global_dns_records(g: &mut Generator, domain_tree: &[DomainName]) -> DnsR
 
 /// Generates the routes every site shares: hosts that answer with an ICMP error.
 fn arb_host_routes(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     records: &DnsRecords,
     upstream_do53: &[UpstreamDo53],
 ) -> Vec<(IpNetwork, RouteType)> {
@@ -675,7 +688,7 @@ struct SiteView {
 /// A site delivers to its own subnet and answers traffic to other sites' subnets the same
 /// way, and its resolver may not resolve names local to other sites.
 fn arb_sites(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     portal: &FakePortal,
     host_routes: &[(IpNetwork, RouteType)],
 ) -> BTreeMap<SiteId, SiteView> {
@@ -732,7 +745,7 @@ fn arb_sites(
         .collect()
 }
 
-fn arb_icmp_error(g: &mut Generator) -> IcmpError {
+fn arb_icmp_error(g: &mut TunnelGenerator) -> IcmpError {
     match g.choose_index(5) {
         0 => IcmpError::Network,
         1 => IcmpError::Host,
@@ -743,7 +756,7 @@ fn arb_icmp_error(g: &mut Generator) -> IcmpError {
 }
 
 fn arb_tcp_services(
-    g: &mut Generator,
+    g: &mut TunnelGenerator,
     records: &DnsRecords,
     sites: &BTreeMap<SiteId, SiteView>,
 ) -> BTreeMap<DomainName, BTreeSet<u16>> {

@@ -2,7 +2,6 @@
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-mod arb;
 mod assertions;
 mod buffered_transmits;
 mod clock;
@@ -29,6 +28,7 @@ mod resource;
 mod site_network;
 mod stun;
 mod tcp;
+mod tunnel_generator;
 mod tunnel_model;
 mod tunnel_transition;
 
@@ -40,8 +40,9 @@ use tracing_subscriber::{
 };
 
 use crate::{
-    arb::Generator, assertions::check_invariants, clock::Clock, real_relay_system::RealRelaySystem,
+    assertions::check_invariants, clock::Clock, real_relay_system::RealRelaySystem,
     real_tunnel_system::RealTunnelSystem, relay_generator::RelayGenerator, relay_model::RelayModel,
+    tunnel_generator::TunnelGenerator,
 };
 
 type QueryId = u16;
@@ -75,7 +76,7 @@ pub fn run_tunnel(data: &[u8], now: Instant) {
 
     let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
     let clock = Clock::new(now, utc_start);
-    let mut generator = Generator::new(data);
+    let mut generator = TunnelGenerator::new(data);
     let domain_tree = generator.domain_tree();
     let mut portal = generator.portal(&domain_tree);
     let mut model = generator.model(&portal, domain_tree);
