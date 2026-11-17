@@ -203,6 +203,19 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.last_seen_version == "1.3.0"
     end
 
+    test "records the connecting actor on a new client before the session flush" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(ip: @client_remote_ip, token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      client = Map.fetch!(socket.assigns, :client)
+
+      assert Repo.get_by!(Portal.DeviceActor, device_id: client.id).actor_id == token.actor_id
+    end
+
     test "creates a new client for service account identity" do
       account = account_fixture()
       actor = actor_fixture(account: account, type: :service_account)

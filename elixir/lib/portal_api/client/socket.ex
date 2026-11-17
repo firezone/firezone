@@ -650,9 +650,34 @@ defmodule PortalAPI.Client.Socket do
             {:error, failed}
           end
 
+        {:ok, client} ->
+          insert_device_actor(client, subject.actor.id)
+          {:ok, client}
+
         result ->
           result
       end
+    end
+
+    # The session flush also writes this row, but a new device would have no
+    # user until then.
+    defp insert_device_actor(client, actor_id) do
+      now = DateTime.utc_now()
+
+      Safe.unscoped()
+      |> Safe.insert_all(
+        Portal.DeviceActor,
+        [
+          %{
+            account_id: client.account_id,
+            device_id: client.id,
+            actor_id: actor_id,
+            first_seen_at: now,
+            last_seen_at: now
+          }
+        ],
+        on_conflict: :nothing
+      )
     end
 
     defp put_proof_changes(changeset, proof) do

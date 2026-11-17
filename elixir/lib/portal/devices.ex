@@ -99,14 +99,8 @@ defmodule Portal.Devices do
   def put_latest_actor(devices, %Authentication.Subject{} = subject) when is_list(devices) do
     actors = devices |> Enum.map(& &1.id) |> Database.latest_actors(subject)
 
-    stored_actors =
-      devices
-      |> Enum.reject(&(Map.has_key?(actors, &1.id) or is_nil(&1.actor_id)))
-      |> Enum.map(& &1.actor_id)
-      |> Database.actors_by_id(subject)
-
     Enum.map(devices, fn device ->
-      actor = Map.get(actors, device.id) || Map.get(stored_actors, device.actor_id)
+      actor = Map.get(actors, device.id)
       %{device | actor: actor, actor_id: actor && actor.id}
     end)
   end
@@ -132,18 +126,6 @@ defmodule Portal.Devices do
       |> case do
         {:error, _} -> %{}
         rows -> Map.new(rows)
-      end
-    end
-
-    def actors_by_id([], _subject), do: %{}
-
-    def actors_by_id(actor_ids, subject) do
-      from(a in Portal.Actor, where: a.id in ^actor_ids)
-      |> Safe.scoped(subject)
-      |> Safe.all()
-      |> case do
-        {:error, _} -> %{}
-        actors -> Map.new(actors, &{&1.id, &1})
       end
     end
 
