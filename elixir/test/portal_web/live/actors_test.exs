@@ -1718,7 +1718,7 @@ defmodule PortalWeb.ActorsTest do
       refute html =~ other_actor.name
     end
 
-    test "deletes actor with client devices without crashing", %{
+    test "deletes an actor and keeps their client devices", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1734,7 +1734,7 @@ defmodule PortalWeb.ActorsTest do
       render_click(lv, "delete", %{"id" => other_actor.id})
 
       assert is_nil(Portal.Repo.get_by(Portal.Actor, account_id: account.id, id: other_actor.id))
-      assert is_nil(Portal.Repo.get_by(Portal.Device, account_id: account.id, id: client.id))
+      assert %Portal.Device{actor_id: nil} = Portal.Repo.get_by(Portal.Device, account_id: account.id, id: client.id)
     end
   end
 

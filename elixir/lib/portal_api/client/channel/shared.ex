@@ -3371,12 +3371,13 @@ defmodule PortalAPI.Client.Channel.Shared do
     def fetch_device_with_actor_and_account(%Device{} = client) do
       from(device in Device,
         join: actor in Portal.Actor,
-        on: actor.account_id == device.account_id and actor.id == device.actor_id,
+        on: actor.account_id == device.account_id and actor.id == ^client.actor_id,
         join: account in Portal.Account,
         on: account.id == device.account_id,
         where: device.account_id == ^client.account_id,
         where: device.id == ^client.id,
-        preload: [actor: actor, account: account]
+        select_merge: %{actor_id: actor.id, actor: actor},
+        preload: [account: account]
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.one()

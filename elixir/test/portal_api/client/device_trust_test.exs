@@ -73,6 +73,25 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert is_binary(verified.last_attested_cert_serial)
     end
 
+    test "finds the device row another actor's connect wrote", %{account: account, pki: pki, subject: subject} do
+      {:ok, attested} = DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject)
+
+      existing =
+        Portal.DeviceFixtures.client_fixture(
+          account: account,
+          actor: Portal.ActorFixtures.actor_fixture(account: account),
+          firezone_id: nil,
+          last_attested_mdm_device_id: attested.identifiers.last_attested_mdm_device_id,
+          last_attested_cert_fingerprint: "fp-other",
+          last_attested_at: DateTime.utc_now()
+        )
+
+      assert {:ok, %{device: %Portal.Device{id: id}, matched_on: :mdm_device_id}} =
+               DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject)
+
+      assert id == existing.id
+    end
+
     test "verifies an EC P-256 leaf", %{pki: pki, subject: subject} do
       assert {:ok, verified} = DeviceTrust.attest(connect_info(leaf(pki, :ec)), subject)
       assert verified.identifiers.last_attested_device_serial == "C02XK1ZGJGH5"

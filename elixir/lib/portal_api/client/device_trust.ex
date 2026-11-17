@@ -1038,7 +1038,6 @@ defmodule PortalAPI.Client.DeviceTrust do
     # which keeps the outer joins from dropping the result when a certificate
     # is unknown to every one of these tables.
     def attestation_state(issuer, serial, mdm_device_id, crl_points, subject) do
-      actor_id = subject.actor.id
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
       from(a in Portal.Account,
@@ -1048,7 +1047,7 @@ defmodule PortalAPI.Client.DeviceTrust do
         on: s.account_id == a.id and s.issuer == ^issuer and s.serial == ^serial,
         left_join: d in Portal.Device,
         on:
-          d.account_id == a.id and d.actor_id == ^actor_id and d.type == :client and
+          d.account_id == a.id and d.type == :client and
             (fragment("? = ?", d.last_attested_mdm_device_id, ^mdm_device_id) or
                (d.last_attested_cert_issuer == ^issuer and
                   d.last_attested_cert_serial == ^serial)),
@@ -1058,7 +1057,9 @@ defmodule PortalAPI.Client.DeviceTrust do
               "CASE WHEN ? = ? THEN 0 ELSE 1 END",
               d.last_attested_mdm_device_id,
               ^mdm_device_id
-            )
+            ),
+          desc_nulls_last: d.last_seen_at,
+          asc: d.id
         ],
         limit: 1,
         select: %{
