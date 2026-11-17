@@ -187,7 +187,7 @@ defmodule Portal.Repo.Seeds do
     end)
     |> Enum.chunk_every(5_000)
     |> Enum.each(fn devices ->
-      Repo.insert_all(Device, devices)
+      Repo.insert_all(Device, devices, timeout: :infinity)
 
       Repo.insert_all(
         DeviceActor,
@@ -199,7 +199,8 @@ defmodule Portal.Repo.Seeds do
             first_seen_at: now,
             last_seen_at: now
           }
-        end)
+        end),
+        timeout: :infinity
       )
     end)
 
