@@ -560,22 +560,33 @@ first_seen_at, last_seen_at)`, PK on the three ids, cascading FKs. Ecto
   flush queue. Depends 2.1. Shipped in #16469.
 - **2.4 Code: pool criteria read `device_actors`.** Own-devices and
   actor-group SQL use EXISTS on the new table; presence-based `member?`
-  unchanged. Criteria tests. Depends 2.2.
+  unchanged. Criteria tests. Depends 2.2. Shipped in #16563. Known edge
+  case: the presence check for an online target uses the actor connected on
+  it, while the SQL check counts every actor that has used it. A device that
+  several people use can be in a pool while offline and out of it while
+  online. Kept as is, since most organizations have one user per device.
 - **2.5 Code: seats from `device_actors.last_seen_at`.** Billing tests.
   Depends 2.2. Shipped in #16473. The unit stays one seat per actor.
 - **2.6 UI: Devices "Owner" becomes "Users"**; actor detail lists devices via
   `device_actors`; actor delete hook disconnects that actor's sessions.
-  Depends 2.2.
+  Depends 2.2. Partly shipped in #16563: the device pages, pool member lists
+  and REST show the actor that connected last. With one user per device,
+  the common case, that actor is the owner, so the "Owner" label stays. The
+  "Users" list is not built.
 - **2.6b Code: the connected actor comes from the token.** The client
   socket, channel, presence and cache use the actor of the token that
   connected, held on the socket, and never read `devices.actor_id`.
-  Depends 2.3.
+  Depends 2.3. Shipped in #16563, which also writes the `device_actors` row
+  when a device is created, so a new device has a user before its first
+  session flush.
 - **2.6c Migration: deleting an actor keeps its devices.** The devices
   `actor_id` FK becomes `ON DELETE SET NULL`; `device_type_client_fields`
   is dropped and `actor_id` becomes nullable. Only the actor's
   `device_actors` rows go. A device with no users stays, because flow logs
   and other records refer to it; a later sweep can delete such devices.
-  Depends 2.6, 2.6b.
+  Depends 2.6, 2.6b. Shipped in #16566. The REST API shows the nil UUID as
+  the `actor_id` of a Client with no users, so the field stays a non-null
+  UUID, and filtering by the nil UUID lists those Clients.
 - **2.7 Migration: `site_devices`.** `(account_id, site_id, device_id,
 inserted_at)`, unique on the three ids, cascading FKs. Ecto schema, `Site`
   associations, consumer lists, hook that broadcasts to the site topic.
@@ -609,18 +620,24 @@ inserted_at)`, unique on the three ids, cascading FKs. Ecto schema, `Site`
   `last_seen_at` is null; move
   `device_actors`, both sides of `policy_authorizations`, `site_devices`, listed
   pool ids (jsonb), posture rows; delete the rest. Announce slug changes.
-  Depends 0.1, 2.2, 2.8.
+  Depends 0.1, 2.2, 2.8. The Client part shipped in #16565: rows sharing a
+  `firezone_id` merge into the most recently seen one, which takes their
+  `device_actors` rows, device-bound tokens and listed pool ids. Their
+  policy authorizations are deleted with them, and a connected duplicate
+  reconnects onto the kept row. No Client shared a certificate or MDM id
+  across actors in either region, so nothing was merged on those.
 - **2.16 Migration: identity uniqueness without actor.** Unique `(account_id,
 firezone_id) WHERE firezone_id IS NOT NULL` and `(account_id, issuer,
 serial)`; drop the actor-scoped indexes. Depends 2.15. The Gateway part
   shipped in #16560: Gateways that already shared a `firezone_id` across
   Sites are flagged `firezone_id_exempt` and left out of the index until
   their admins clean them up, and the actor-scoped `firezone_id` index now
-  covers Clients only.
+  covers Clients only. The Client part shipped in #16565 (`firezone_id`) and
+  #16566 (certificate and MDM id).
 - **2.17 Code: lookups without actor.** Client socket `find_by_firezone_id`
   by account; attested lookup in `device_trust.ex` by account; `Device`
   changeset validations by presence of fields rather than `type`. Depends
-  2.16.
+  2.16. The lookups shipped in #16564. The changeset part is not done.
 - **2.18 Code: evaluator accepts any device.** `Policies.Evaluator`,
   `Condition`, `Postures.Evaluator` drop the `type: :client` guards; the
   session actor is passed explicitly. Depends 2.17.
@@ -851,7 +868,9 @@ firezone` and `firezone authenticate`. Depends 3.7.
   `devices.actor_id`.** Depends 2.9 and 2.17 deployed, and no code reads
   `devices.actor_id`: lists, pools, hooks and billing read `device_actors`
   (2.4 to 2.6), the connected actor comes from the token (2.6b) and lookups
-  go by account (2.17).
+  go by account (2.17). `devices.actor_id` was dropped early: #16567 stopped
+  reading and writing it, and #16569 dropped the column. `devices.site_id`
+  remains.
 - **6.6 Code and migration: Internet Site becomes a normal site.** Flip
   `managed_by`, drop the pairing validation and the pinned row; Internet
   resource gets a site selector. Depends 0.4 in the fleet, 5.11.
