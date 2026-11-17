@@ -119,7 +119,6 @@ pub fn run_relay(data: &[u8], now: Instant) {
 
     let mut model = RelayModel::default();
     let mut system = RealRelaySystem::new(relay, client, now);
-    system.settle();
     system.check(&model, true);
 
     for applied in 0..MAX_RELAY_TRANSITIONS {

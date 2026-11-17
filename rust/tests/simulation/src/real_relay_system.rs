@@ -134,11 +134,12 @@ struct Credentials {
 }
 
 impl RealRelaySystem {
+    /// Builds the client and the relay and lets the portal hand the client the relay.
     pub(crate) fn new(relay_stack: IpStack, client_stack: IpStack, start: Instant) -> Self {
         let clock = Clock::new(start, DateTime::UNIX_EPOCH);
         let (ip4, ip6) = interfaces(client_stack, CLIENT_IP4, CLIENT_IP6);
 
-        Self {
+        let mut system = Self {
             relay: new_relay(relay_stack, 0, clock.now()),
             relay_stack,
             clock,
@@ -153,7 +154,10 @@ impl RealRelaySystem {
             last_from_client: None,
             interference: Interference::default(),
             observed: Observed::default(),
-        }
+        };
+        system.settle();
+
+        system
     }
 
     pub(crate) fn apply(&mut self, transition: &Transition, interference: Interference) {
@@ -419,7 +423,7 @@ impl RealRelaySystem {
     ///
     /// Time only passes for the network and for retransmissions; refreshes and keep-alives wait
     /// for `advance`.
-    pub(crate) fn settle(&mut self) {
+    fn settle(&mut self) {
         let deadline = self.clock.now::<Instant>() + MAX_SETTLE;
         let mut handovers = 0;
 
@@ -709,8 +713,6 @@ mod tests {
     #[test]
     fn client_relays_data_on_a_working_network() {
         let mut system = RealRelaySystem::new(IpStack::Dual, IpStack::Dual, Instant::now());
-
-        system.settle();
 
         assert_eq!(system.client.inner().relay_addresses.len(), 2);
         system.probe();
