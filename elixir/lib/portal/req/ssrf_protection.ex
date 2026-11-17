@@ -181,12 +181,14 @@ defmodule Portal.Req.SSRFProtection do
   end
 
   # A Finch pool that shuts down for idleness while a request is checking out
-  # a connection exits the caller (sneako/finch#393). Surfacing it as a
-  # transport error lets Req's retry step handle it instead.
+  # a connection exits the caller (sneako/finch#393), either with the pool's
+  # shutdown reason or with :noproc if the pool is already gone. Surfacing it
+  # as a transport error lets Req's retry step handle it instead.
   defp call_adapter(adapter, request) do
     run_adapter(adapter, request)
   catch
-    :exit, {{:shutdown, :idle_timeout}, {NimblePool, :checkout, _pools}} ->
+    :exit, {reason, {NimblePool, :checkout, _pools}}
+    when reason in [:noproc, {:shutdown, :idle_timeout}] ->
       {request, %Req.TransportError{reason: :closed}}
   end
 

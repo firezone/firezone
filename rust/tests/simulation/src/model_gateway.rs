@@ -1,9 +1,9 @@
 use super::{
     dns_records::DnsRecords,
-    reference::PrivateKey,
-    sim_gateway::SimGateway,
-    sim_net::ExecMutScope,
+    network::ExecMutScope,
+    real_gateway::RealGateway,
     site_network::{Routes, SiteNetwork},
+    tunnel_model::PrivateKey,
 };
 use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;
@@ -15,9 +15,9 @@ use std::{
 };
 use tunnel_proto::{GatewayState, IpConfig};
 
-/// Reference state for a particular gateway.
+/// Model of a particular gateway.
 #[derive(Debug, Clone)]
-pub struct RefGateway {
+pub struct ModelGateway {
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
@@ -30,8 +30,8 @@ pub struct RefGateway {
     max_dns_domains_per_client: Option<usize>,
 }
 
-impl RefGateway {
-    /// Construct a [`RefGateway`] from generated parts.
+impl ModelGateway {
+    /// Construct a [`ModelGateway`] from generated parts.
     pub(crate) fn from_parts(
         key: PrivateKey,
         tunnel_ip4: Ipv4Addr,
@@ -61,8 +61,8 @@ impl RefGateway {
         tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         now: Instant,
         utc_now: DateTime<Utc>,
-    ) -> SimGateway {
-        let mut sut = GatewayState::new(
+    ) -> RealGateway {
+        let mut state = GatewayState::new(
             self.key.0,
             now,
             utc_now
@@ -71,18 +71,18 @@ impl RefGateway {
                 .unwrap(),
         ); // Cheating a bit here by reusing the key as seed.
         if let Some(max) = self.max_dns_domains_per_client {
-            sut.set_max_dns_domains_per_client(max);
+            state.set_max_dns_domains_per_client(max);
         }
-        sut.update_tun_device(IpConfig {
+        state.update_tun_device(IpConfig {
             v4: self.tunnel_ip4,
             v6: self.tunnel_ip6,
         });
 
         let network = SiteNetwork::new(self.routes, tcp_services, now);
 
-        SimGateway::new(
+        RealGateway::new(
             id,
-            sut,
+            state,
             network,
             self.site_specific_dns_records,
             self.max_dns_domains_per_client,
@@ -107,7 +107,7 @@ impl RefGateway {
     }
 }
 
-impl ExecMutScope for RefGateway {
+impl ExecMutScope for ModelGateway {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}

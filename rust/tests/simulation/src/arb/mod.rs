@@ -10,9 +10,9 @@ use std::time::Instant;
 
 use dns_types::DomainName;
 
-use crate::reference::ReferenceState;
-use crate::stub_portal::StubPortal;
-use crate::transition::Transition;
+use crate::fake_portal::FakePortal;
+use crate::tunnel_model::TunnelModel;
+use crate::tunnel_transition::Transition;
 
 mod context;
 mod dns_queries;
@@ -29,22 +29,18 @@ impl Generator<'_> {
         values::arb_domain_tree(self)
     }
 
-    pub fn portal(&mut self, domain_tree: &[DomainName]) -> StubPortal {
-        topology::arb_stub_portal(self, domain_tree)
+    pub fn portal(&mut self, domain_tree: &[DomainName]) -> FakePortal {
+        topology::arb_fake_portal(self, domain_tree)
     }
 
-    pub fn reference_state(
-        &mut self,
-        portal: &StubPortal,
-        domain_tree: Vec<DomainName>,
-    ) -> ReferenceState {
+    pub fn model(&mut self, portal: &FakePortal, domain_tree: Vec<DomainName>) -> TunnelModel {
         topology::generate(self, portal, domain_tree)
     }
 
     pub fn transition(
         &mut self,
-        state: &ReferenceState,
-        portal: &StubPortal,
+        state: &TunnelModel,
+        portal: &FakePortal,
         now: Instant,
     ) -> Transition {
         transitions::generate(self, state, portal, now)

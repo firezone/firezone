@@ -416,18 +416,16 @@ defmodule PortalAPI.Gateway.Socket do
     end
 
     # Site-token connects find a gateway by its firezone_id, so a gateway only
-    # takes one that no other gateway in its site holds.
+    # takes one that no other gateway in its account holds.
     def update_firezone_id(site, changeset, subject) do
       firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
       Safe.transact(fn ->
-        {:ok, _} =
-          Safe.unscoped()
-          |> Safe.query("SELECT pg_advisory_xact_lock($1)", [registration_lock_key(site, firezone_id)])
+        lock_registration(site, firezone_id)
 
-        case find_gateway(site, firezone_id, subject) do
-          nil -> update_gateway(changeset, subject)
-          %Device{} -> {:error, :firezone_id_taken}
+        case gateway_in_account?(site, firezone_id, subject) do
+          false -> update_gateway(changeset, subject)
+          true -> {:error, :firezone_id_taken}
           {:error, :unauthorized} = error -> error
         end
       end)
@@ -447,7 +445,8 @@ defmodule PortalAPI.Gateway.Socket do
     end
 
     # The lookup runs again under a lock so two first connects of one gateway
-    # cannot both insert it.
+    # cannot both insert it. A gateway that connects with another site's token
+    # moves to that site while it is offline.
     def find_or_create_gateway(site, changeset, subject) do
       firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
@@ -459,14 +458,57 @@ defmodule PortalAPI.Gateway.Socket do
     end
 
     defp find_or_insert_locked(site, firezone_id, changeset, subject) do
-      {:ok, _} =
-        Safe.unscoped()
-        |> Safe.query("SELECT pg_advisory_xact_lock($1)", [registration_lock_key(site, firezone_id)])
+      lock_registration(site, firezone_id)
 
       case find_gateway(site, firezone_id, subject) do
-        nil -> insert_gateway(changeset, subject)
+        nil -> move_or_insert_gateway(site, firezone_id, changeset, subject)
         %Device{} = gateway -> {:ok, gateway}
         {:error, :unauthorized} = error -> error
+      end
+    end
+
+    defp move_or_insert_gateway(site, firezone_id, changeset, subject) do
+      case find_gateway_in_other_site(site, firezone_id, subject) do
+        nil -> insert_gateway(changeset, subject)
+        %Device{} = gateway -> move_gateway(gateway, site, subject)
+        {:error, :unauthorized} = error -> error
+      end
+    end
+
+    defp find_gateway_in_other_site(site, firezone_id, subject) do
+      from(d in Device,
+        join: sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        where: sd.site_id != ^site.id,
+        where: d.firezone_id == ^firezone_id,
+        where: d.type == :gateway,
+        order_by: [desc_nulls_last: d.last_seen_at, asc: d.id],
+        limit: 1
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    # Authorizations toward the gateway were granted for the old site's
+    # resources, so they go with the move.
+    defp move_gateway(gateway, site, subject) do
+      if Portal.PG.members(gateway.id) == [] do
+        {_count, _} =
+          from(sd in SiteDevice,
+            where: sd.device_id == ^gateway.id,
+            update: [set: [site_id: ^site.id]]
+          )
+          |> Safe.scoped(subject)
+          |> Safe.update_all([])
+
+        {_count, _} =
+          from(pa in Portal.PolicyAuthorization, where: pa.receiving_device_id == ^gateway.id)
+          |> Safe.scoped(subject)
+          |> Safe.delete_all()
+
+        {:ok, gateway}
+      else
+        {:error, :conflict}
       end
     end
 
@@ -484,6 +526,16 @@ defmodule PortalAPI.Gateway.Socket do
       |> Safe.one()
     end
 
+    defp gateway_in_account?(site, firezone_id, subject) do
+      from(d in Device,
+        where: d.account_id == ^site.account_id,
+        where: d.firezone_id == ^firezone_id,
+        where: d.type == :gateway
+      )
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
+    end
+
     @dialyzer {:no_opaque, [insert_gateway: 2]}
     defp insert_gateway(changeset, subject) do
       with :ok <- Portal.Devices.RegistrationRateLimit.check(subject.account) do
@@ -491,11 +543,11 @@ defmodule PortalAPI.Gateway.Socket do
       end
     end
 
-    defp registration_lock_key(site, firezone_id) do
+    defp lock_registration(site, firezone_id) do
       <<key::signed-64, _::binary>> =
-        :crypto.hash(:sha256, "gateway_registration:" <> site.id <> ":" <> firezone_id)
+        :crypto.hash(:sha256, "gateway_registration:" <> site.account_id <> ":" <> firezone_id)
 
-      key
+      {:ok, _} = Safe.unscoped() |> Safe.query("SELECT pg_advisory_xact_lock($1)", [key])
     end
   end
 end

@@ -1,10 +1,14 @@
 defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
   use PortalAPI.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   alias Portal.Billing.Stripe.APIClient
+  alias Portal.Workers.MirrorYCDealRedemption
   alias PortalAPI.Integrations.YC.WebhookController
 
   @secret "yc-secret"
+  # Derived from @secret and the redemption ID of payload/1.
+  @code "YCHDNTAFHVKN"
   @path "/integrations/yc/webhooks"
 
   setup do
@@ -57,26 +61,24 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
     end
 
     test "creates a single-use promotion code and emails it", %{conn: conn} do
-      test_pid = self()
-
-      Req.Test.stub(APIClient, fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        send(test_pid, {:stripe, conn.method, conn.request_path, conn, URI.decode_query(body)})
-        Req.Test.json(conn, %{"id" => "promo_123", "code" => "YC8K2F9Q"})
-      end)
+      stub_stripe()
 
       conn = post_signed(conn, payload())
 
       assert %{"message" => message} = json_response(conn, 200)
-      assert message =~ "YC8K2F9Q"
+      assert message =~ @code
       assert message =~ "The code expires on December 13, 2026."
       assert message =~ "We also emailed it to you."
       assert String.length(message) <= 500
+
+      assert_receive {:stripe, "GET", "/v1/promotion_codes", lookup_conn, _params}
+      assert URI.decode_query(lookup_conn.query_string)["code"] == @code
 
       assert_receive {:stripe, "POST", "/v1/promotion_codes", stripe_conn, params}
       assert Plug.Conn.get_req_header(stripe_conn, "idempotency-key") == ["yc-deal-2417-123456"]
 
       assert params == %{
+               "code" => @code,
                "coupon" => "coupon_yc",
                "max_redemptions" => "1",
                "expires_at" => to_string(DateTime.to_unix(~U[2026-12-13 16:54:57Z])),
@@ -95,35 +97,76 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
       assert job.args["request"]["to"] == [%{"name" => "", "address" => "alice@example.com"}]
       assert job.args["request"]["subject"] == "Your Firezone YC deal code"
       assert job.args["request"]["text_body"] =~ "Hi Alice,"
-      assert job.args["request"]["text_body"] =~ "YC8K2F9Q"
+      assert job.args["request"]["text_body"] =~ @code
       assert job.args["request"]["text_body"] =~ "expires on December 13, 2026"
+
+      refute_enqueued(worker: MirrorYCDealRedemption)
     end
 
-    test "sends Stripe the same expiry when YC retries", %{conn: conn} do
-      test_pid = self()
+    test "returns the existing code without creating another", %{conn: conn} do
+      stub_stripe(existing: [%{"id" => "promo_123", "code" => @code}])
 
-      Req.Test.stub(APIClient, fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        send(test_pid, {:expires_at, URI.decode_query(body)["expires_at"]})
-        Req.Test.json(conn, %{"code" => "YC8K2F9Q"})
-      end)
+      conn = post_signed(conn, payload())
+
+      assert json_response(conn, 200)["message"] =~ @code
+      refute_received {:stripe, "POST", "/v1/promotion_codes", _conn, _params}
+    end
+
+    test "sends the redemption to the other region's portal", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, :yc_deal_mirror_url, "https://eu.example.com/yc")
+      stub_stripe()
+
+      body = payload()
+      conn = post_signed(conn, body)
+
+      assert json_response(conn, 200)
+      signature = WebhookController.sign(@secret, body)
+
+      assert_enqueued(
+        worker: MirrorYCDealRedemption,
+        args: %{"body" => body, "signature" => signature}
+      )
+    end
+
+    test "neither emails nor mirrors a mirrored redemption", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, :yc_deal_mirror_url, "https://eu.example.com/yc")
+      stub_stripe()
+
+      body = payload()
+
+      conn =
+        conn
+        |> put_req_header("x-yc-signature", WebhookController.sign(@secret, body))
+        |> put_req_header("content-type", "application/json")
+        |> post(@path <> "?skip_email=true", body)
+
+      assert %{"message" => message} = json_response(conn, 200)
+      assert message =~ @code
+      refute message =~ "emailed"
+
+      assert [] == [worker: Portal.Workers.OutboundEmail] |> Oban.Job.query() |> Repo.all()
+      refute_enqueued(worker: MirrorYCDealRedemption)
+    end
+
+    test "sends Stripe the same request when YC retries", %{conn: conn} do
+      stub_stripe()
 
       body = payload()
       post_signed(conn, body)
       post_signed(build_conn(), body)
 
-      assert_receive {:expires_at, first}
-      assert_receive {:expires_at, ^first}
+      assert_receive {:stripe, "POST", "/v1/promotion_codes", _conn, first}
+      assert_receive {:stripe, "POST", "/v1/promotion_codes", _conn, ^first}
     end
 
     test "returns the code without emailing when the payload has no email", %{conn: conn} do
-      Req.Test.stub(APIClient, &Req.Test.json(&1, %{"code" => "YC8K2F9Q"}))
+      stub_stripe()
 
       body = payload(%{"email" => nil})
       conn = post_signed(conn, body)
 
       assert %{"message" => message} = json_response(conn, 200)
-      assert message =~ "YC8K2F9Q"
+      assert message =~ @code
       refute message =~ "emailed"
 
       assert [] == [worker: Portal.Workers.OutboundEmail] |> Oban.Job.query() |> Repo.all()
@@ -149,6 +192,20 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
       assert %{"message" => message} = json_response(conn, 502)
       assert message =~ "support@firezone.dev"
     end
+  end
+
+  defp stub_stripe(opts \\ []) do
+    test_pid = self()
+
+    Req.Test.stub(APIClient, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:stripe, conn.method, conn.request_path, conn, URI.decode_query(body)})
+
+      case conn.method do
+        "GET" -> Req.Test.json(conn, %{"data" => Keyword.get(opts, :existing, [])})
+        "POST" -> Req.Test.json(conn, %{"id" => "promo_123", "code" => @code})
+      end
+    end)
   end
 
   defp post_signed(conn, body) do
