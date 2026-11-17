@@ -1019,7 +1019,6 @@ fn record_dns_proxy_ip_subset_feedback(state: &RealTunnelSystem) {
     }
 }
 
-/// Records the IP stacks of DNS resources sharing a Gateway for a domain the Client resolved.
 /// Records the mode of each NAT device that two or more Clients share.
 fn record_shared_nat_feedback(model: &TunnelModel) {
     for edge in model.network.edges_shared_by_clients() {
@@ -1033,6 +1032,7 @@ fn record_shared_nat_feedback(model: &TunnelModel) {
     }
 }
 
+/// Records the IP stacks of DNS resources sharing a Gateway for a domain the Client resolved.
 fn record_shared_dns_resource_gateway_feedback(model: &TunnelModel) {
     for client in model.clients.values() {
         let client = client.inner();
