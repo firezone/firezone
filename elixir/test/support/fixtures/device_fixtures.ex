@@ -160,9 +160,7 @@ defmodule Portal.DeviceFixtures do
       ])
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, account.id)
-      |> Ecto.Changeset.put_change(:actor_id, actor.id)
       |> Ecto.Changeset.put_assoc(:account, account)
-      |> Ecto.Changeset.put_assoc(:actor, actor)
       |> Portal.Device.changeset()
       |> Portal.Repo.insert()
 
@@ -200,7 +198,7 @@ defmodule Portal.DeviceFixtures do
       on_conflict: :nothing
     )
 
-    Portal.Repo.preload(device, :actor)
+    %{device | actor_id: actor.id, actor: actor}
   end
 
   @doc """
@@ -232,7 +230,6 @@ defmodule Portal.DeviceFixtures do
       for n <- 1..count do
         %{
           account_id: account.id,
-          actor_id: actor.id,
           type: :client,
           name: "Bulk device #{n}",
           firezone_id: "bulk-device-#{n}",
@@ -246,6 +243,13 @@ defmodule Portal.DeviceFixtures do
 
     {^count, devices} =
       Portal.Repo.insert_all(Portal.Device, rows, returning: [:account_id, :id, :slug])
+
+    Portal.Repo.insert_all(
+      Portal.DeviceActor,
+      for device <- devices do
+        %{account_id: account.id, device_id: device.id, actor_id: actor.id, first_seen_at: now, last_seen_at: now}
+      end
+    )
 
     devices
   end

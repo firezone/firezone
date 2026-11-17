@@ -3376,7 +3376,8 @@ defmodule PortalAPI.Client.Channel.Shared do
         on: account.id == device.account_id,
         where: device.account_id == ^client.account_id,
         where: device.id == ^client.id,
-        preload: [actor: actor, account: account]
+        select_merge: %{actor_id: actor.id, actor: actor},
+        preload: [account: account]
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.one()

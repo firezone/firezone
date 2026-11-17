@@ -9,6 +9,7 @@ defmodule PortalAPI.Schemas.PoolMember do
              for: Portal.Device,
              internal: [
                :posture, :account_id,
+               :actor,
                :actor_id,
                :attested?,
                :attested_until,

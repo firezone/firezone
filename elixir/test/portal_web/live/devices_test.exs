@@ -131,6 +131,30 @@ defmodule PortalWeb.DevicesTest do
       end
     end
 
+    test "finds a device by any of its users", %{conn: conn, account: account, actor: actor} do
+      later = actor_fixture(account: account, name: "Later Person", email: "later@example.com")
+      client = client_fixture(account: account, name: "Shared Laptop")
+      other_client = client_fixture(account: account, actor: actor, name: "Other Laptop")
+      now = DateTime.utc_now()
+
+      Repo.insert!(%Portal.DeviceActor{
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: later.id,
+        first_seen_at: now,
+        last_seen_at: now
+      })
+
+      conn = authorize_conn(conn, actor)
+
+      for search <- [later.name, later.email] do
+        {:ok, lv, _html} = live(conn, ~p"/#{account}/devices?#{%{"devices_filter[search]" => search}}")
+
+        assert has_element?(lv, "#device-#{client.id}")
+        refute has_element?(lv, "#device-#{other_client.id}")
+      end
+    end
+
     test "offers the trust levels to filter by", %{conn: conn, account: account, actor: actor} do
       client_fixture(account: account, actor: actor)
 
