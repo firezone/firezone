@@ -29,7 +29,7 @@ use stun_codec::rfc5389::{
 use crate::{
     buffered_transmits::BufferedTransmits,
     clock::Clock,
-    network::{EdgeConfig, ExecMutScope, Host, PollTimeout},
+    network::{ExecMutScope, Host, PollTimeout},
     real_relay::RealRelay,
     relay_model::{ModelHost, Observed, RelayModel},
     relay_transition::{Crafting, Garbage, Interference, Target, Transition},
@@ -452,10 +452,9 @@ impl RealRelaySystem {
             return;
         }
 
-        // Answers to foreign sockets and to sockets the client left go nowhere.
-        if self.client.sending_socket_for(dst.ip()) != Some(dst)
-            || self.client.ingress(src, dst, now).is_err()
-        {
+        // Answers to foreign sockets, to sockets the client left and to a client that is offline
+        // go nowhere.
+        if self.client.sending_socket_for(dst.ip()) != Some(dst) || self.client.is_offline() {
             return;
         }
 
@@ -598,13 +597,7 @@ fn new_relay(model: &ModelHost, boot: u64, now_utc: SystemTime) -> Host<RealRela
 /// A host that is reachable from everywhere, with the addresses of `stack`.
 fn host<T>(inner: T, model: &ModelHost, stack: IpStack) -> Host<T> {
     let (ip4, ip6) = model.interfaces(stack);
-    let mut host = Host::new(
-        inner,
-        model.latency,
-        model.port,
-        EdgeConfig::Open,
-        Ipv4Addr::UNSPECIFIED,
-    );
+    let mut host = Host::new(inner, model.latency, model.port);
     host.update_interface(ip4, ip6);
 
     host
