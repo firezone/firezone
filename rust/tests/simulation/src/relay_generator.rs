@@ -34,6 +34,7 @@ impl<'a> RelayGenerator<'a> {
             ip6: Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 1),
             port: 3478,
             stack: self.ip_stack(),
+            latency: self.latency(50),
         };
         let client = ModelHost {
             device: "client",
@@ -41,6 +42,7 @@ impl<'a> RelayGenerator<'a> {
             ip6: Ipv6Addr::new(0x2001, 0xdb8, 2, 0, 0, 0, 0, 10),
             port: 50000,
             stack: self.ip_stack(),
+            latency: self.latency(250),
         };
         let foreign = ModelHost {
             device: "foreign",
@@ -48,6 +50,7 @@ impl<'a> RelayGenerator<'a> {
             ip6: Ipv6Addr::new(0x2001, 0xdb8, 2, 0, 0, 0, 0, 200),
             port: 7000,
             stack: IpStack::Dual,
+            latency: Duration::ZERO,
         };
         let peer = ModelHost {
             device: "peer",
@@ -55,6 +58,7 @@ impl<'a> RelayGenerator<'a> {
             ip6: Ipv6Addr::new(0x2001, 0xdb8, 3, 0, 0, 0, 0, 10),
             port: 40000,
             stack: IpStack::Dual,
+            latency: Duration::ZERO,
         };
 
         RelayModel::from_parts(relay, client, foreign, peer)
@@ -108,6 +112,10 @@ impl<'a> RelayGenerator<'a> {
             2 => IpStack::Ipv6Only,
             _ => IpStack::Dual,
         }
+    }
+
+    fn latency(&mut self, max: u64) -> Duration {
+        Duration::from_millis(self.input.int_in_range(10..=max - 1).unwrap_or(10))
     }
 
     fn crafting(&mut self) -> Crafting {

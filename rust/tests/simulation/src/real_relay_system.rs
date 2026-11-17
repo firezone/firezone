@@ -55,9 +55,6 @@ const MAX_SETTLE: Duration = Duration::from_secs(60);
 /// without the client knowing is in the way until its binding is gone.
 const RESYNC: Duration = Duration::from_secs(16 * 60);
 
-/// How long a host takes to send a datagram, and again to receive one.
-const LATENCY: Duration = Duration::from_millis(10);
-
 /// A WireGuard keepalive, which is a data message with an empty payload: the relay only relays
 /// WireGuard and STUN.
 const WIREGUARD_KEEPALIVE: [u8; 32] = {
@@ -250,7 +247,7 @@ impl RealRelaySystem {
             self.client.exec_mut(|c| c.received.clear());
             self.transmits.push(
                 datagram(Some(peer), address, &WIREGUARD_KEEPALIVE),
-                LATENCY,
+                model.peer.latency,
                 now,
             );
             self.deliver(model);
@@ -430,9 +427,11 @@ impl RealRelaySystem {
         self.clock.skip_to(target);
     }
 
-    /// Runs for as long as a datagram takes from the client to a peer or back.
+    /// Runs for as long as a datagram takes from the client through the relay to a peer and back.
     fn deliver(&mut self, model: &RelayModel) {
-        let arrived = self.clock.now::<Instant>() + 4 * LATENCY;
+        let round_trip =
+            2 * (self.client.latency() + 2 * self.relay.latency()) + model.peer.latency;
+        let arrived = self.clock.now::<Instant>() + round_trip;
 
         self.run(model, |_| arrived);
     }
@@ -644,7 +643,7 @@ fn host<T>(inner: T, model: &ModelHost, stack: IpStack) -> Host<T> {
     let (ip4, ip6) = model.interfaces(stack);
     let mut host = Host::new(
         inner,
-        LATENCY,
+        model.latency,
         model.port,
         EdgeConfig::Open,
         Ipv4Addr::UNSPECIFIED,

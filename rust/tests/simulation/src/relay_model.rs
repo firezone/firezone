@@ -5,7 +5,10 @@
 //! [`RelayModel::apply`]. It describes how the client behaves today, flaws included, so that
 //! fixing one shows up as a change here.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    time::Duration,
+};
 
 use connlib_model::IpStack;
 
@@ -54,6 +57,8 @@ pub(crate) struct ModelHost {
     pub(crate) ip6: Ipv6Addr,
     pub(crate) port: u16,
     pub(crate) stack: IpStack,
+    /// How long the host takes to send a datagram, and again to receive one.
+    pub(crate) latency: Duration,
 }
 
 impl RelayModel {
