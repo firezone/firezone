@@ -687,21 +687,20 @@ where
             probes,
         } = batch;
 
-        let contested = self.connections.is_contested(src);
+        let probes = if self.connections.is_contested(src) {
+            if !probes.is_empty() {
+                tracing::trace!(%src, "Dropping probes from contested address");
+            }
+
+            None
+        } else {
+            Some(probes)
+        };
         let (cid, conn) = self
             .connections
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
-        let num_probes = if contested {
-            if !probes.is_empty() {
-                tracing::trace!(%cid, %src, "Dropping probes from contested address");
-            }
-
-            0
-        } else {
-            conn.handle_probes(cid, (dst, src), probes, now)?
-        };
-        let packets = conn.commit_data(cid, data, now);
+        let packets = conn.commit_decrypted(cid, (dst, src), data, probes, now);
         conn.handle_tunnel_events(
             cid,
             &mut self.allocations,
@@ -710,10 +709,6 @@ where
             now,
         );
         let packets = packets?;
-
-        if num_probes > 0 || packets.data().next().is_some() {
-            self.add_remote(cid, src, now);
-        }
 
         if self.connections.is_closing(&cid) {
             // A closing connection drops what it receives.
@@ -814,13 +809,18 @@ where
 
         self.connections.clear_relays(gc.removed.into_iter());
 
+        let mut validated_remotes = Vec::new();
         self.connections.handle_timeout(
             &mut self.allocations,
             &mut self.buffered_transmits,
             &mut self.pending_events,
             &mut self.inflight_stun_requests,
+            &mut validated_remotes,
             now,
         );
+        for (cid, remote) in validated_remotes {
+            self.add_remote(cid, remote, now);
+        }
 
         if now >= self.next_connection_count {
             self.next_connection_count = now + CONNECTION_COUNT_INTERVAL;
@@ -1262,33 +1262,36 @@ where
             }
         };
 
-        match parsed_packet {
-            sanstun::ReceivedMessage::HandshakeInitiation(_) => {
-                return ControlFlow::Break(self.handshakes_try_handle(
-                    from,
-                    destination,
-                    parsed_packet,
-                    packet,
-                    now,
-                ));
-            }
-            sanstun::ReceivedMessage::HandshakeResponse(_) => {
-                return ControlFlow::Break(self.handshakes_try_handle(
-                    from,
-                    destination,
-                    parsed_packet,
-                    packet,
-                    now,
-                ));
-            }
-            sanstun::ReceivedMessage::CookieReply(_)
-            | sanstun::ReceivedMessage::TransportData(_) => {}
-        }
+        let connection = match &parsed_packet {
+            sanstun::ReceivedMessage::HandshakeInitiation(_)
+                if self.connections.is_contested(from) =>
+            {
+                tracing::trace!(%from, "Dropping handshake from contested address");
 
-        let (cid, conn) = match self
-            .connections
-            .get_established_mut_for_wireguard_message(&parsed_packet, now)
-        {
+                return ControlFlow::Break(Ok(()));
+            }
+            // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
+            sanstun::ReceivedMessage::HandshakeInitiation(init) => self
+                .connections
+                .get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now),
+            sanstun::ReceivedMessage::HandshakeResponse(_)
+                if self.connections.is_contested(from) =>
+            {
+                tracing::trace!(%from, "Dropping handshake from contested address");
+
+                return ControlFlow::Break(Ok(()));
+            }
+            sanstun::ReceivedMessage::HandshakeResponse(response) => self
+                .connections
+                .get_established_mut_by_tunnel_id(response.tunnel_id(), now),
+            sanstun::ReceivedMessage::CookieReply(reply) => self
+                .connections
+                .get_established_mut_by_tunnel_id(reply.tunnel_id(), now),
+            sanstun::ReceivedMessage::TransportData(data) => self
+                .connections
+                .get_established_mut_by_tunnel_id(data.tunnel_id(), now),
+        };
+        let (cid, conn) = match connection {
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
@@ -1321,53 +1324,10 @@ where
         }
     }
 
-    fn handshakes_try_handle(
-        &mut self,
-        from: SocketAddr,
-        destination: SocketAddr,
-        handshake: sanstun::ReceivedMessage,
-        packet: &[u8],
-        now: Instant,
-    ) -> Result<()> {
-        if self.connections.is_contested(from) {
-            tracing::trace!(%from, "Dropping handshake from contested address");
-
-            return Ok(());
-        }
-
-        let (cid, conn) = self
-            .connections
-            .get_established_mut_for_wireguard_message(&handshake, now)?;
-
-        let control_flow = conn.decapsulate(
-            cid,
-            from,
-            destination,
-            handshake,
-            packet,
-            &mut self.allocations,
-            &mut self.buffered_transmits,
-            now,
-        );
-
-        match control_flow {
-            ControlFlow::Break(Ok(())) => {}
-            ControlFlow::Break(Err(e)) => {
-                return Err(e.context(format!("cid={cid} length={}", packet.len())));
-            }
-            // Only transport data continues to decryption.
-            ControlFlow::Continue(_) => return Ok(()),
-        }
-
-        self.add_remote(cid, from, now);
-
-        Ok(())
-    }
-
-    /// Records that `cid` received authenticated traffic from `remote`.
+    /// Records that `cid` validated a path to `remote`.
     ///
     /// Once that makes `remote` contested, no connection uses it until fewer than two of those
-    /// that received traffic from it remain.
+    /// that validated it remain.
     fn add_remote(&mut self, cid: TId, remote: SocketAddr, now: Instant) {
         if !self.connections.add_remote(cid, remote) {
             return;
@@ -1797,6 +1757,7 @@ where
         transmits: &mut VecDeque<Transmit>,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
+        validated_remotes: &mut Vec<(TId, SocketAddr)>,
     ) where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + Hash + fmt::Display,
@@ -1866,6 +1827,8 @@ where
                             "Nominated a relay different from what we set out to! Weird?"
                         );
                     }
+
+                    validated_remotes.push((cid, destination));
 
                     let remote_socket =
                         self.peer_socket_for_tuple(allocations, source, destination);
@@ -1962,6 +1925,9 @@ where
                         cid,
                         now,
                     );
+                }
+                frostlink::Event::PathValidated { remote, .. } => {
+                    validated_remotes.push((cid, remote));
                 }
             }
         }
@@ -2254,59 +2220,42 @@ where
         }
     }
 
-    /// Hands the probes to the agent and returns how many it got.
-    fn handle_probes<TId>(
+    /// Hands the probes to the agent and returns the data packets.
+    fn commit_decrypted<TId>(
         &mut self,
         cid: TId,
         path: (SocketAddr, SocketAddr),
-        probes: sanstun::DecryptedBatch<frostlink::Probe>,
-        now: Instant,
-    ) -> Result<usize>
-    where
-        TId: fmt::Display + Copy,
-        RId: Ord + fmt::Display + Copy,
-    {
-        if probes.is_empty() {
-            return Ok(0);
-        }
-
-        let probes = self
-            .tunnel
-            .commit_decapsulate(probes, now)
-            .context("Failed to commit path probes")
-            .with_context(|| format!("cid={cid}"))?;
-        let mut num_probes = 0;
-
-        for probe in probes {
-            let probe = match probe {
-                Ok(sanstun::Committed::Data { buffer: probe, .. }) => probe,
-                Ok(sanstun::Committed::Keepalive) => continue,
-                Err(e) => {
-                    tracing::debug!(%cid, "Failed to commit probe: {e}");
-                    continue;
-                }
-            };
-
-            self.state
-                .on_incoming(cid, &mut self.agent, self.default_ice_config, &probe, now);
-            self.agent.handle_probe(probe, path, now);
-            num_probes += 1;
-        }
-
-        Ok(num_probes)
-    }
-
-    /// Returns the data packets.
-    fn commit_data<TId>(
-        &mut self,
-        cid: TId,
         data: sanstun::DecryptedBatch<Result<IpPacket>>,
+        probes: Option<sanstun::DecryptedBatch<frostlink::Probe>>,
         now: Instant,
     ) -> Result<sanstun::CommittedBatch<Result<IpPacket>>>
     where
         TId: fmt::Display + Copy,
         RId: Ord + fmt::Display + Copy,
     {
+        if let Some(probes) = probes.filter(|p| !p.is_empty()) {
+            let probes = self
+                .tunnel
+                .commit_decapsulate(probes, now)
+                .context("Failed to commit path probes")
+                .with_context(|| format!("cid={cid}"))?;
+
+            for probe in probes {
+                let probe = match probe {
+                    Ok(sanstun::Committed::Data { buffer: probe, .. }) => probe,
+                    Ok(sanstun::Committed::Keepalive) => continue,
+                    Err(e) => {
+                        tracing::debug!(%cid, "Failed to commit probe: {e}");
+                        continue;
+                    }
+                };
+
+                self.state
+                    .on_incoming(cid, &mut self.agent, self.default_ice_config, &probe, now);
+                self.agent.handle_probe(probe, path, now);
+            }
+        }
+
         let committed = self
             .tunnel
             .commit_decapsulate(data, now)

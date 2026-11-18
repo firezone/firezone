@@ -19,4 +19,10 @@ pub enum Event {
         local: SocketAddr,
         remote: SocketAddr,
     },
+    /// A probe we sent on this pair was answered for the first time since the pair was created
+    /// or restarted, proving the path works both ways.
+    PathValidated {
+        local: SocketAddr,
+        remote: SocketAddr,
+    },
 }

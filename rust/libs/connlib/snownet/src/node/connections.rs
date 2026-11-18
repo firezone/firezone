@@ -35,7 +35,7 @@ pub struct Connections<TId, RId> {
 
     established_by_tunnel_id: HashMap<sanstun::TunnelId, TId, FastRandomState>,
     established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
-    /// The connections that received authenticated traffic from each remote socket.
+    /// The connections that validated a path to each remote socket.
     established_by_remote: HashMap<SocketAddr, BTreeSet<TId>, FastRandomState>,
 
     disconnected_ids: HashMap<TId, Instant, FastRandomState>,
@@ -134,6 +134,7 @@ where
         transmits: &mut VecDeque<Transmit>,
         events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
+        validated_remotes: &mut Vec<(TId, SocketAddr)>,
         now: Instant,
     ) {
         self.reindex();
@@ -161,6 +162,7 @@ where
                 transmits,
                 events,
                 inflight_stun_requests,
+                validated_remotes,
             );
         }
 
@@ -178,6 +180,7 @@ where
                 transmits,
                 &mut VecDeque::new(),
                 inflight_stun_requests,
+                &mut Vec::new(),
             );
 
             // The goodbye may have to wait for a channel binding or a handshake, e.g. when
@@ -265,16 +268,21 @@ where
         existing
     }
 
-    /// Records that `id` received authenticated traffic from `remote`.
+    /// Records that `id` validated a path to `remote`.
     ///
     /// Returns whether this made `remote` contested, see [`Connections::is_contested`].
     pub(crate) fn add_remote(&mut self, id: TId, remote: SocketAddr) -> bool {
+        // `id` may have failed and been removed after it validated `remote`.
+        if self.established.get(&id).is_none() {
+            return false;
+        }
+
         let ids = self.established_by_remote.entry(remote).or_default();
 
         ids.insert(id) && ids.len() == 2
     }
 
-    /// Whether more than one connection received authenticated traffic from `remote`.
+    /// Whether more than one connection validated a path to `remote`.
     ///
     /// A NAT that maps several devices to the same public socket delivers what we send there to
     /// whichever of them sent last, so no connection can rely on a contested `remote`.
@@ -355,28 +363,6 @@ where
             })?;
 
         Ok((id, conn))
-    }
-
-    pub(crate) fn get_established_mut_for_wireguard_message(
-        &mut self,
-        message: &sanstun::ReceivedMessage,
-        now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>)> {
-        match message {
-            // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
-            sanstun::ReceivedMessage::HandshakeInitiation(init) => {
-                self.get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now)
-            }
-            sanstun::ReceivedMessage::HandshakeResponse(response) => {
-                self.get_established_mut_by_tunnel_id(response.tunnel_id(), now)
-            }
-            sanstun::ReceivedMessage::CookieReply(reply) => {
-                self.get_established_mut_by_tunnel_id(reply.tunnel_id(), now)
-            }
-            sanstun::ReceivedMessage::TransportData(data) => {
-                self.get_established_mut_by_tunnel_id(data.tunnel_id(), now)
-            }
-        }
     }
 
     pub(crate) fn get_established_mut_for_stun_message(
@@ -810,6 +796,7 @@ mod tests {
             &mut VecDeque::new(),
             &mut VecDeque::default(),
             &mut InflightStunRequests::default(),
+            &mut Vec::new(),
             now,
         );
     }

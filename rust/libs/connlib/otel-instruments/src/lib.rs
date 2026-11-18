@@ -132,7 +132,7 @@ pub fn contested_addresses() -> Counter<u64> {
     connlib_meter()
         .u64_counter("tunnel.address.contested")
         .with_description(
-            "Number of remote addresses from which several connections received traffic.",
+            "Number of remote addresses that several connections validated a path to.",
         )
         .with_unit("{address}")
         .build()
