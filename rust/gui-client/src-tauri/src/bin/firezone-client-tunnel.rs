@@ -63,8 +63,8 @@ pub struct Cli {
 
     /// Maximum length of time to retry connecting to the portal if we're having internet issues or
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
-    #[arg(short, long, env = "MAX_PARTITION_TIME")]
-    max_partition_time: Option<humantime::Duration>,
+    #[arg(short, long, env = "MAX_PARTITION_TIME", value_parser = bin_shared::parse_duration)]
+    max_partition_time: Option<std::time::Duration>,
 }
 
 #[derive(clap::Subcommand, Default)]

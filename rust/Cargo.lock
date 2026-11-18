@@ -798,6 +798,7 @@ dependencies = [
  "ip_network",
  "ipconfig",
  "itertools 0.15.0",
+ "jiff",
  "known-dirs",
  "libc",
  "logging",
@@ -2628,7 +2629,6 @@ dependencies = [
  "git-sha",
  "hex",
  "hickory-resolver",
- "humantime",
  "ip-packet",
  "logging",
  "mimalloc",
@@ -2667,7 +2667,6 @@ dependencies = [
  "async-runtime",
  "backoff",
  "bin-shared",
- "chrono",
  "clap",
  "client-ipc",
  "client-shared",
@@ -2682,9 +2681,9 @@ dependencies = [
  "futures",
  "gui-ipc",
  "hex",
- "humantime",
  "ip-packet",
  "ip_network",
+ "jiff",
  "keyring-core",
  "known-dirs",
  "ksni",
@@ -2756,7 +2755,6 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "git-sha",
- "humantime",
  "ip-packet",
  "ip_network",
  "known-dirs",
@@ -2888,11 +2886,11 @@ dependencies = [
  "backoff",
  "base64 0.23.1",
  "bytes",
- "chrono",
  "filetime",
  "flow-log-spool",
  "http",
  "http-client",
+ "jiff",
  "serde",
  "serde_json",
  "serde_with",
@@ -2912,8 +2910,8 @@ dependencies = [
  "anyhow-ext",
  "atomicfs",
  "base64 0.23.1",
- "chrono",
  "flow-log-spool",
+ "jiff",
  "nix",
  "serde",
  "serde_json",
@@ -2930,13 +2928,13 @@ name = "flow-tracker"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
- "chrono",
  "connlib-model",
  "dns-types",
  "fast-random-state",
  "flow-log-spool",
  "flow-log-writer",
  "ip-packet",
+ "jiff",
  "jsonschema",
  "serde",
  "serde_json",
@@ -3904,12 +3902,6 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
-name = "humantime"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15cdd26707701c53297e2fa6afb323d55fbc1d0810c3aec078ae3ef0424c3c15"
 
 [[package]]
 name = "hybrid-array"
@@ -5944,11 +5936,11 @@ dependencies = [
  "anyhow-ext",
  "backoff",
  "base64 0.23.1",
- "chrono",
  "futures",
  "hex",
  "hostname",
  "itertools 0.15.0",
+ "jiff",
  "libc",
  "logging",
  "os_info",
@@ -7456,7 +7448,6 @@ dependencies = [
  "arbitrary",
  "bufferpool",
  "bytecodec",
- "chrono",
  "connlib-model",
  "derive_more",
  "dns-over-tcp",
@@ -7468,6 +7459,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.15.0",
+ "jiff",
  "l3-tcp",
  "rand 0.10.3",
  "relay-server-proto",
@@ -9217,7 +9209,6 @@ dependencies = [
  "anyhow-ext",
  "base64 0.23.1",
  "bimap",
- "chrono",
  "connlib-model",
  "deadline-map",
  "derive_more",
@@ -9231,6 +9222,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.15.0",
+ "jiff",
  "l3-udp-dns-client",
  "logging",
  "lru",

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use std::{
     fmt,
     sync::{Arc, Mutex},
@@ -10,7 +10,7 @@ use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 #[derive(Debug, Clone)]
 pub struct Clock {
     start: Instant,
-    now: Arc<Mutex<(Instant, DateTime<Utc>)>>,
+    now: Arc<Mutex<(Instant, Timestamp)>>,
 }
 
 impl FormatTime for Clock {
@@ -21,7 +21,7 @@ impl FormatTime for Clock {
 }
 
 impl Clock {
-    pub fn new(start: Instant, utc_start: DateTime<Utc>) -> Self {
+    pub fn new(start: Instant, utc_start: Timestamp) -> Self {
         Self {
             start,
             now: Arc::new(Mutex::new((start, utc_start))),
@@ -89,23 +89,23 @@ impl Clock {
 }
 
 pub trait PickNow {
-    fn pick_now(now: Instant, utc_now: DateTime<Utc>) -> Self;
+    fn pick_now(now: Instant, utc_now: Timestamp) -> Self;
 }
 
 impl PickNow for Instant {
-    fn pick_now(now: Instant, _: DateTime<Utc>) -> Self {
+    fn pick_now(now: Instant, _: Timestamp) -> Self {
         now
     }
 }
 
-impl PickNow for DateTime<Utc> {
-    fn pick_now(_: Instant, utc_now: DateTime<Utc>) -> Self {
+impl PickNow for Timestamp {
+    fn pick_now(_: Instant, utc_now: Timestamp) -> Self {
         utc_now
     }
 }
 
 impl PickNow for SystemTime {
-    fn pick_now(_: Instant, utc_now: DateTime<Utc>) -> Self {
+    fn pick_now(_: Instant, utc_now: Timestamp) -> Self {
         utc_now.into()
     }
 }
