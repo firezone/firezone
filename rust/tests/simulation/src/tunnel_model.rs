@@ -1170,9 +1170,10 @@ impl TunnelModel {
 
             // The gateway keeps the authorizations of a client whose connection failed or
             // that stopped using a resource without closing the connection.
-            if permitting.iter().any(|cidr| {
-                portal.site_for_resource(cidr.id) == portal.site_for_resource(resource)
-            }) {
+            if permitting
+                .iter()
+                .any(|cidr| portal.site_for_resource(cidr.id) == portal.site_for_resource(resource))
+            {
                 return vec![Some(RejectionResponse::Prohibited), None];
             }
 

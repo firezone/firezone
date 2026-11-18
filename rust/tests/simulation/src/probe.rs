@@ -201,6 +201,15 @@ pub(crate) enum Answer {
 }
 
 impl ExpectedOutcome {
+    /// The ICMP error the Client receives in place of anything receiving the packet.
+    pub(crate) fn rejection(self) -> Option<RejectionResponse> {
+        match self {
+            ExpectedOutcome::Dropped => None,
+            ExpectedOutcome::RoundTripCompleted(..) => None,
+            ExpectedOutcome::Rejected { response, .. } => Some(response),
+        }
+    }
+
     /// The remote the packet reached, if any.
     pub(crate) fn remote(self) -> Option<Remote> {
         match self {

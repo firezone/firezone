@@ -7,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::{ClientId, GatewayId, ResourceId};
 use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;
@@ -66,13 +66,16 @@ impl TunnelModel {
         expirable
     }
 
-    /// Resources a Gateway currently holds an authorization for.
+    /// Resources some client holds an authorization for that was not revoked on its Gateway.
     pub(crate) fn revocable_resource_ids(&self, portal: &FakePortal) -> Vec<ResourceId> {
-        let authorized = portal.authorized_resources();
-
         self.deauthorizable_resource_ids(portal)
             .into_iter()
-            .filter(|resource| authorized.contains(resource))
+            .filter(|resource| {
+                self.clients.iter().any(|(id, client)| {
+                    client.inner().gateway_for_resource(*resource).is_some()
+                        && !portal.is_revoked_on_gateway(*id, *resource)
+                })
+            })
             .collect()
     }
 
@@ -372,15 +375,33 @@ impl TunnelModel {
             .collect()
     }
 
-    pub(crate) fn connected_gateway_ipv4_ips(&self) -> Vec<(ClientId, Ipv4Network)> {
+    /// The Gateways `client` certainly holds a connection to, once per resource it reaches
+    /// through them.
+    ///
+    /// A Gateway closes the connection once every resource the client reaches through it was
+    /// revoked on it, unless it holds more than the client uses.
+    pub(crate) fn connected_gateways<'a>(
+        &'a self,
+        portal: &'a FakePortal,
+        client: ClientId,
+    ) -> impl Iterator<Item = GatewayId> + 'a {
+        let model = self.clients[&client].inner();
+
+        model
+            .connected_resources()
+            .filter(move |resource| !portal.is_revoked_on_gateway(client, *resource))
+            .filter_map(|resource| model.gateway_for_resource(resource))
+    }
+
+    pub(crate) fn connected_gateway_ipv4_ips(
+        &self,
+        portal: &FakePortal,
+    ) -> Vec<(ClientId, Ipv4Network)> {
         self.clients
-            .iter()
-            .flat_map(|(id, client)| {
-                client
-                    .inner()
-                    .connected_resources()
-                    .filter_map(|r| {
-                        let gateway = client.inner().gateway_for_resource(r)?;
+            .keys()
+            .flat_map(|id| {
+                self.connected_gateways(portal, *id)
+                    .filter_map(|gateway| {
                         let gateway_host = self.gateways.get(&gateway)?;
 
                         Some((*id, gateway_host.inner().tunnel_ip4.into()))
@@ -390,15 +411,15 @@ impl TunnelModel {
             .collect()
     }
 
-    pub(crate) fn connected_gateway_ipv6_ips(&self) -> Vec<(ClientId, Ipv6Network)> {
+    pub(crate) fn connected_gateway_ipv6_ips(
+        &self,
+        portal: &FakePortal,
+    ) -> Vec<(ClientId, Ipv6Network)> {
         self.clients
-            .iter()
-            .flat_map(|(id, client)| {
-                client
-                    .inner()
-                    .connected_resources()
-                    .filter_map(|r| {
-                        let gateway = client.inner().gateway_for_resource(r)?;
+            .keys()
+            .flat_map(|id| {
+                self.connected_gateways(portal, *id)
+                    .filter_map(|gateway| {
                         let gateway_host = self.gateways.get(&gateway)?;
 
                         Some((*id, gateway_host.inner().tunnel_ip6.into()))
