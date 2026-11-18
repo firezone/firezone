@@ -21,7 +21,12 @@ export default function ResourcesPage({
   signIn,
   ...actions
 }: ResourcesPageProps) {
-  if (resources === null && (!session || session === "SignedOut")) {
+  // Nothing is known before the first events arrive, which is not worth a flash of either state.
+  if (resources === null && session === null) {
+    return null;
+  }
+
+  if (resources === null && session === "SignedOut") {
     return (
       <Message>
         <ResourcesIcon />

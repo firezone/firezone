@@ -163,6 +163,98 @@ pub struct SessionChanged(pub SessionViewModel);
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ResourcesChanged(pub Option<Vec<ResourceViewModel>>);
 
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
+
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct LogFilterChanged(pub LogFilterViewModel);
+
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct DeveloperSettingsChanged(pub DeveloperSettingsViewModel);
+
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct LogsRecounted(pub FileCount);
+
+/// The platform keystore's certificate as the device trust page renders it.
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct X509CertificateChanged(pub Option<X509Certificate>);
+
+/// A certificate the Tunnel service loaded from the platform keystore.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509Certificate {
+    pub fields: Vec<X509DetailField>,
+}
+
+/// A label-value row of the certificate, and what is wrong with it.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509DetailField {
+    pub label: String,
+    /// What the row carries, [`None`] when it carries nothing.
+    pub value: Option<String>,
+    /// Why the value is not usable as what the row names, [`None`] when it is.
+    pub problem: Option<X509ValidationError>,
+}
+
+/// Mirrors [`x509_keystore::ValidationError`].
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509ValidationError {
+    Empty,
+    TooLong,
+    Ambiguous,
+    PlaceholderIdentifier,
+    UnknownAttribute,
+    NotYetValid,
+    Expired,
+    MissingClientAuthEku,
+    DigitalSignatureNotAllowed,
+}
+
+impl From<Option<&x509_keystore::ParsedCertificate>> for X509CertificateChanged {
+    fn from(certificate: Option<&x509_keystore::ParsedCertificate>) -> Self {
+        Self(certificate.map(X509Certificate::from))
+    }
+}
+
+impl From<&x509_keystore::ParsedCertificate> for X509Certificate {
+    fn from(certificate: &x509_keystore::ParsedCertificate) -> Self {
+        Self {
+            fields: certificate
+                .detail_fields()
+                .into_iter()
+                .map(X509DetailField::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<x509_keystore::DetailField> for X509DetailField {
+    fn from(field: x509_keystore::DetailField) -> Self {
+        Self {
+            label: field.label,
+            value: field.value,
+            problem: field.problem.map(X509ValidationError::from),
+        }
+    }
+}
+
+impl From<x509_keystore::ValidationError> for X509ValidationError {
+    fn from(error: x509_keystore::ValidationError) -> Self {
+        match error {
+            x509_keystore::ValidationError::Empty => Self::Empty,
+            x509_keystore::ValidationError::TooLong => Self::TooLong,
+            x509_keystore::ValidationError::Ambiguous => Self::Ambiguous,
+            x509_keystore::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
+            x509_keystore::ValidationError::UnknownAttribute => Self::UnknownAttribute,
+            x509_keystore::ValidationError::NotYetValid => Self::NotYetValid,
+            x509_keystore::ValidationError::Expired => Self::Expired,
+            x509_keystore::ValidationError::MissingClientAuthEku => Self::MissingClientAuthEku,
+            x509_keystore::ValidationError::DigitalSignatureNotAllowed => {
+                Self::DigitalSignatureNotAllowed
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
 pub struct ResourceViewModel {
     pub id: String,
@@ -285,98 +377,6 @@ impl From<&ConnectedDeviceView> for ConnectedDevice {
             tunnel_ipv6: device.tun_ipv6,
             client_name: device.name.clone(),
             client_id: device.id.to_string(),
-        }
-    }
-}
-
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
-
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct LogFilterChanged(pub LogFilterViewModel);
-
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct DeveloperSettingsChanged(pub DeveloperSettingsViewModel);
-
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct LogsRecounted(pub FileCount);
-
-/// The platform keystore's certificate as the device trust page renders it.
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct X509CertificateChanged(pub Option<X509Certificate>);
-
-/// A certificate the Tunnel service loaded from the platform keystore.
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub struct X509Certificate {
-    pub fields: Vec<X509DetailField>,
-}
-
-/// A label-value row of the certificate, and what is wrong with it.
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub struct X509DetailField {
-    pub label: String,
-    /// What the row carries, [`None`] when it carries nothing.
-    pub value: Option<String>,
-    /// Why the value is not usable as what the row names, [`None`] when it is.
-    pub problem: Option<X509ValidationError>,
-}
-
-/// Mirrors [`x509_keystore::ValidationError`].
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509ValidationError {
-    Empty,
-    TooLong,
-    Ambiguous,
-    PlaceholderIdentifier,
-    UnknownAttribute,
-    NotYetValid,
-    Expired,
-    MissingClientAuthEku,
-    DigitalSignatureNotAllowed,
-}
-
-impl From<Option<&x509_keystore::ParsedCertificate>> for X509CertificateChanged {
-    fn from(certificate: Option<&x509_keystore::ParsedCertificate>) -> Self {
-        Self(certificate.map(X509Certificate::from))
-    }
-}
-
-impl From<&x509_keystore::ParsedCertificate> for X509Certificate {
-    fn from(certificate: &x509_keystore::ParsedCertificate) -> Self {
-        Self {
-            fields: certificate
-                .detail_fields()
-                .into_iter()
-                .map(X509DetailField::from)
-                .collect(),
-        }
-    }
-}
-
-impl From<x509_keystore::DetailField> for X509DetailField {
-    fn from(field: x509_keystore::DetailField) -> Self {
-        Self {
-            label: field.label,
-            value: field.value,
-            problem: field.problem.map(X509ValidationError::from),
-        }
-    }
-}
-
-impl From<x509_keystore::ValidationError> for X509ValidationError {
-    fn from(error: x509_keystore::ValidationError) -> Self {
-        match error {
-            x509_keystore::ValidationError::Empty => Self::Empty,
-            x509_keystore::ValidationError::TooLong => Self::TooLong,
-            x509_keystore::ValidationError::Ambiguous => Self::Ambiguous,
-            x509_keystore::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
-            x509_keystore::ValidationError::UnknownAttribute => Self::UnknownAttribute,
-            x509_keystore::ValidationError::NotYetValid => Self::NotYetValid,
-            x509_keystore::ValidationError::Expired => Self::Expired,
-            x509_keystore::ValidationError::MissingClientAuthEku => Self::MissingClientAuthEku,
-            x509_keystore::ValidationError::DigitalSignatureNotAllowed => {
-                Self::DigitalSignatureNotAllowed
-            }
         }
     }
 }
@@ -590,13 +590,16 @@ pub async fn set_internet_resource_enabled(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn copy_to_clipboard(
-    managed: tauri::State<'_, Managed>,
-    text: String,
-) -> Result<(), Error> {
-    managed
-        .send_request(ControllerRequest::CopyToClipboard(text))
-        .await?;
+pub async fn copy_to_clipboard(text: String) -> Result<(), Error> {
+    // Dropping the clipboard blocks until a clipboard manager has taken over the contents.
+    tokio::task::spawn_blocking(move || {
+        arboard::Clipboard::new()
+            .context("Couldn't access clipboard")?
+            .set_text(text)
+            .context("Couldn't copy text to clipboard")
+    })
+    .await
+    .context("Failed to await clipboard task")??;
 
     Ok(())
 }

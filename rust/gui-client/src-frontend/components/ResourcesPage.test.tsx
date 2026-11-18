@@ -62,7 +62,7 @@ function render() {
   const actions = {
     setFavorite: vi.fn(),
     setInternetResourceEnabled: vi.fn(),
-    copy: vi.fn(),
+    copy: vi.fn().mockResolvedValue({ status: "ok", data: null }),
   };
 
   root.render(

@@ -5,6 +5,7 @@ import {
   Connection,
   ResourceKind,
   ResourceViewModel,
+  Result,
 } from "../generated/bindings";
 import { STATUS_TEXT, StatusDot } from "./ConnectionStatus";
 import { ManagedToggleSwitch } from "./ManagedInput";
@@ -17,10 +18,12 @@ const KIND_TEXT: Record<ResourceKind["type"], string> = {
   DevicePool: "Device pool",
 };
 
+type Copy = (text: string) => Promise<Result<null, string>>;
+
 export interface ResourceActions {
   setFavorite: (resourceId: string, favorite: boolean) => void;
   setInternetResourceEnabled: (enabled: boolean) => void;
-  copy: (text: string) => void;
+  copy: Copy;
 }
 
 interface ResourceDetailsProps extends ResourceActions {
@@ -134,7 +137,7 @@ function ConnectionSection({ connection }: { connection: Connection }) {
             <StatusDot status={connection.status} />
             {label}
           </p>
-          <p className="mt-1 text-xs text-body">{explanation}</p>
+          <p className="mt-1 text-balance text-xs text-body">{explanation}</p>
         </div>
       </Field>
     </Section>
@@ -143,7 +146,7 @@ function ConnectionSection({ connection }: { connection: Connection }) {
 
 interface ConnectedDevicesProps {
   devices: ConnectedDevice[];
-  copy: (text: string) => void;
+  copy: Copy;
 }
 
 function ConnectedDevices({ devices, copy }: ConnectedDevicesProps) {
@@ -169,7 +172,7 @@ function ConnectedDevices({ devices, copy }: ConnectedDevicesProps) {
 
 interface DeviceProps {
   device: ConnectedDevice;
-  copy: (text: string) => void;
+  copy: Copy;
 }
 
 function Device({ device, copy }: DeviceProps) {
@@ -282,7 +285,7 @@ function isWebUrl(text: string): boolean {
 interface CopyButtonProps {
   label: string;
   value: string;
-  copy: (text: string) => void;
+  copy: Copy;
 }
 
 function CopyButton({ label, value, copy }: CopyButtonProps) {
@@ -299,10 +302,9 @@ function CopyButton({ label, value, copy }: CopyButtonProps) {
     <button
       aria-label={`Copy ${label}`}
       className="icon-button -my-1.5 -mr-2 shrink-0"
-      onClick={() => {
-        copy(value);
-        setCopied(true);
-      }}
+      onClick={() =>
+        void copy(value).then((result) => setCopied(result.status === "ok"))
+      }
       title="Copy"
       type="button"
     >

@@ -156,7 +156,6 @@ pub enum ControllerRequest {
         favorite: bool,
     },
     SetInternetResourceEnabled(bool),
-    CopyToClipboard(String),
 }
 
 // The failure flags are all mutually exclusive
@@ -697,12 +696,10 @@ impl<I: GuiIntegration> Controller<I> {
                 .integration
                 .open_url(self.auth_url())
                 .context("Couldn't open auth page")?,
-            CopyToClipboard(s) | SystemTrayMenu(system_tray::Event::Copy(s)) => {
-                arboard::Clipboard::new()
-                    .context("Couldn't access clipboard")?
-                    .set_text(s)
-                    .context("Couldn't copy resource URL or other text to clipboard")?
-            }
+            SystemTrayMenu(system_tray::Event::Copy(s)) => arboard::Clipboard::new()
+                .context("Couldn't access clipboard")?
+                .set_text(s)
+                .context("Couldn't copy resource URL or other text to clipboard")?,
             SystemTrayMenu(system_tray::Event::CancelSignIn) => match &self.status {
                 Status::Disconnected | Status::WaitingForPortal => {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
