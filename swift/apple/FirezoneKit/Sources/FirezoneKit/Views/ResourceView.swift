@@ -144,7 +144,7 @@ import SwiftUI
               .font(.system(size: 14))
               .foregroundColor(.secondary)
               .frame(width: 110, alignment: .leading)
-            if let url = URL(string: description), url.host != nil {
+            if let url = resource.descriptionURL {
               Button(
                 action: {
                   openURL(url)
