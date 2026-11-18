@@ -374,7 +374,7 @@ impl Io {
     }
 
     fn fake() -> (Io, FakeEnds) {
-        let (sockets, v4, v6) = Sockets::fake();
+        let (sockets, v4, v6) = Sockets::fake(0);
         let (tun, tun_tx, tun_rx) = tun::fake(1);
         let ends = FakeEnds {
             v4,

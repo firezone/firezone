@@ -31,9 +31,6 @@ use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, messages::Interface};
 
-/// How many times in a row the Client and Gateway event loops move to another port before they fail.
-const MAX_REBINDS: u32 = 50;
-
 /// The actual system-under-test.
 ///
 /// The fuzzer manipulates this using [`Transition`]s and we assert it against [`TunnelModel`].
@@ -87,12 +84,14 @@ impl RealTunnelSystem {
             .clients
             .iter()
             .map(|(client_id, model_client)| {
+                let listen_port = model_client.port;
                 let client = model_client.map(
                     |model_client, _, _| {
                         model_client.init(
                             portal.upstream_do53().to_vec(),
                             portal.upstream_doh().to_vec(),
                             portal.search_domain(),
+                            listen_port,
                             clock.now(),
                             clock.now(),
                         )
@@ -107,11 +106,13 @@ impl RealTunnelSystem {
             .gateways
             .iter()
             .map(|(gid, gateway)| {
+                let listen_port = gateway.port;
                 let gateway = gateway.map(
                     |model_gateway, _, _| {
                         model_gateway.init(
                             *gid,
                             model.tcp_services.clone(),
+                            listen_port,
                             clock.now(),
                             clock.now(),
                         )
@@ -1206,7 +1207,7 @@ impl RealTunnelSystem {
         let portal_unreachable = self
             .client_portal_offline_until
             .is_some_and(|(cid, until)| cid == src && now < until);
-        if portal_unreachable && !matches!(event, ClientEvent::SocketTaken { .. }) {
+        if portal_unreachable {
             tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
             return;
@@ -1448,35 +1449,6 @@ impl RealTunnelSystem {
                 );
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
-            }
-            ClientEvent::SocketTaken { consecutive } => {
-                let resources = model.clients[&src].inner().resource_descriptions();
-                let client = self.clients.get_mut(&src).unwrap();
-
-                if consecutive > MAX_REBINDS {
-                    tracing::error!(%src, "Socket is still taken by another device after rebinding to {MAX_REBINDS} different ports");
-                    return;
-                }
-
-                // Mimic the event loop: listen on a new port, reset and reconnect to the portal.
-                let port = client.port.wrapping_add(1).max(1);
-                client.port = port;
-                client.exec_mut(|c| {
-                    c.state_mut().set_portal_connected(false);
-                    c.tunnel
-                        .inner_mut()
-                        .rebind_to_new_port("socket is taken by another device", now);
-                });
-
-                if portal_unreachable {
-                    return;
-                }
-
-                client.exec_mut(|c| {
-                    c.state_mut().set_portal_connected(true);
-                    c.update_relays(iter::empty(), self.relays.iter(), now);
-                    c.state_mut().set_resources(resources, now);
-                });
             }
             ClientEvent::DeviceDomainQueried { domain } => {
                 // Mimic the portal: every device resolves, access is asked for per flow.
@@ -1729,21 +1701,6 @@ fn on_gateway_event(
                 now,
             );
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
-        }
-        GatewayEvent::SocketTaken { consecutive } => {
-            if consecutive > MAX_REBINDS {
-                tracing::error!(%src, "Socket is still taken by another device after rebinding to {MAX_REBINDS} different ports");
-                return;
-            }
-
-            // Mimic the event loop: listen on a new port and reset.
-            let port = gateway.port.wrapping_add(1).max(1);
-            gateway.port = port;
-            gateway.exec_mut(|g| {
-                g.tunnel
-                    .inner_mut()
-                    .rebind_to_new_port("socket is taken by another device", now)
-            });
         }
     }
 }

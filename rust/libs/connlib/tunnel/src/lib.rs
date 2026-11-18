@@ -127,9 +127,9 @@ impl<TRoleState> Tunnel<TRoleState> {
     /// crypto jobs as they are submitted, the TUN device's, the IPv4 and IPv6 sockets' and the
     /// recursive DNS resolver's through the returned [`FakeTunnelEnds`].
     ///
-    /// Nothing else can bind a socket.
-    pub fn fake(role_state: TRoleState) -> (Self, FakeTunnelEnds) {
-        let (sockets, socket_v4, socket_v6) = Sockets::fake();
+    /// The sockets listen on `listen_port`. Nothing else can bind a socket.
+    pub fn fake(role_state: TRoleState, listen_port: u16) -> (Self, FakeTunnelEnds) {
+        let (sockets, socket_v4, socket_v6) = Sockets::fake(listen_port);
         let (tun, tun_inbound, tun_outbound) = tun::fake(tun::CHANNEL_CAPACITY);
         let (resolver, dns) = resolver::channels();
         let tcp: Arc<dyn SocketFactory<TcpSocket>> =
@@ -198,7 +198,7 @@ pub trait Role: Sized {
     ) -> Poll<Result<Self::Event, TunnelError>>;
     fn poll_timeout(&mut self) -> Option<Instant>;
     fn handle_timeout(&mut self, now: Instant);
-    fn reset(&mut self, now: Instant, reason: &str);
+    fn reset_on_new_port(&mut self, now: Instant);
     fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant);
 }
 
@@ -221,8 +221,8 @@ impl Role for ClientState {
         ClientState::handle_timeout(self, now);
     }
 
-    fn reset(&mut self, now: Instant, reason: &str) {
-        ClientState::reset(self, now, reason);
+    fn reset_on_new_port(&mut self, now: Instant) {
+        ClientState::reset_on_new_port(self, now);
     }
 
     fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
@@ -249,8 +249,8 @@ impl Role for GatewayState {
         GatewayState::handle_timeout(self, now);
     }
 
-    fn reset(&mut self, now: Instant, reason: &str) {
-        GatewayState::reset(self, now, reason);
+    fn reset_on_new_port(&mut self, now: Instant) {
+        GatewayState::reset_on_new_port(self, now);
     }
 
     fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
@@ -282,17 +282,9 @@ impl<R: Role> Tunnel<R> {
         self.role_state.handle_timeout(now);
     }
 
-    pub fn reset(&mut self, reason: &str, now: Instant) {
-        self.reset_state(reason, now);
-        self.io.reset();
-    }
-
-    /// Binds our UDP sockets to a new port that the OS picks and resets.
-    pub fn rebind_to_new_port(&mut self, reason: &str, now: Instant) {
-        self.io.reset_on_new_port();
-        let ips = mem::take(&mut self.additional_host_candidates);
-        self.set_additional_host_candidates(ips, now);
-        self.reset_state(reason, now);
+    /// The local port our UDP sockets are bound to.
+    pub fn listen_port(&self) -> u16 {
+        self.io.listen_port()
     }
 
     /// Advertises the given local IPs as additional host candidates on our UDP port.
@@ -304,7 +296,16 @@ impl<R: Role> Tunnel<R> {
         self.additional_host_candidates = ips;
     }
 
-    fn reset_state(&mut self, reason: &str, now: Instant) {
+    /// Binds our UDP sockets to a new port that the OS picks and resets.
+    fn rebind_to_new_port(&mut self, now: Instant) {
+        self.io.reset_on_new_port();
+        let ips = mem::take(&mut self.additional_host_candidates);
+        self.set_additional_host_candidates(ips, now);
+        self.handle_overdue_timeout(now);
+        self.role_state.reset_on_new_port(now);
+    }
+
+    fn handle_overdue_timeout(&mut self, now: Instant) {
         if self
             .role_state
             .poll_timeout()
@@ -312,8 +313,6 @@ impl<R: Role> Tunnel<R> {
         {
             self.role_state.handle_timeout(now);
         }
-
-        self.role_state.reset(now, reason);
     }
 }
 
@@ -355,6 +354,12 @@ impl ClientTunnel {
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
+    }
+
+    pub fn reset(&mut self, reason: &str, now: Instant) {
+        self.handle_overdue_timeout(now);
+        self.role_state.reset(now, reason);
+        self.io.reset();
     }
 
     /// Drops every datagram sent directly to a peer while `enabled`, forcing connections through a relay.
@@ -402,6 +407,10 @@ impl ClientTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            if self.role_state.is_socket_taken() {
+                self.rebind_to_new_port(now);
+            }
+
             let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
             let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
             let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
@@ -649,6 +658,10 @@ impl GatewayTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            if self.role_state.is_socket_taken() {
+                self.rebind_to_new_port(now);
+            }
+
             let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
             let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
             let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);

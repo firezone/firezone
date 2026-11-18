@@ -35,9 +35,6 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 /// How long we allow a DNS resolution via hickory.
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// How many times in a row the Gateway moves to another port because of [`GatewayEvent::SocketTaken`] before it fails.
-const MAX_REBINDS: u32 = 50;
-
 pub struct Eventloop {
     clock: Clock,
     // Tunnel is `Option` because we need to take ownership on shutdown.
@@ -323,28 +320,8 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(GatewayEvent::SocketTaken { consecutive }) => {
-                self.rebind_to_new_port(consecutive)?
-            }
             Err(error) => self.handle_tunnel_error(error)?,
         }
-
-        Ok(())
-    }
-
-    fn rebind_to_new_port(&mut self, consecutive: u32) -> Result<()> {
-        if consecutive > MAX_REBINDS {
-            anyhow::bail!(
-                "Socket is still taken by another device after rebinding to {MAX_REBINDS} different ports"
-            );
-        }
-
-        let now = self.clock.now();
-        let Some(tunnel) = self.tunnel.as_mut() else {
-            return Ok(());
-        };
-
-        tunnel.rebind_to_new_port("socket is taken by another device", now);
 
         Ok(())
     }

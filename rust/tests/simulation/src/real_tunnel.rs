@@ -29,8 +29,8 @@ pub(crate) struct RealTunnel<R> {
 }
 
 impl<R: Role> RealTunnel<R> {
-    pub(crate) fn new(state: R) -> Self {
-        let (tunnel, ends) = Tunnel::fake(state);
+    pub(crate) fn new(state: R, listen_port: u16) -> Self {
+        let (tunnel, ends) = Tunnel::fake(state, listen_port);
 
         Self {
             inner: tunnel,

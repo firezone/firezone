@@ -180,6 +180,8 @@ impl Sockets {
         self.overflow_v6.clear();
 
         let Some(socket_factory) = self.socket_factory.clone() else {
+            // Fake sockets have no OS to pick a port, so they move to the next one.
+            self.listen_port = self.listen_port.wrapping_add(1).max(1);
             return;
         };
 
@@ -849,8 +851,8 @@ impl Drop for ThreadedUdpSocket {
 }
 
 impl Sockets {
-    /// Creates sockets for both families without threads; the returned ends play their part.
-    pub(crate) fn fake() -> (Self, SocketThreadEnds, SocketThreadEnds) {
+    /// Creates sockets for both families on `listen_port` without threads; the returned ends play their part.
+    pub(crate) fn fake(listen_port: u16) -> (Self, SocketThreadEnds, SocketThreadEnds) {
         let fake_socket = |addr: SocketAddr| {
             let (main_thread_ends, socket_thread_ends) = channels(addr);
             let socket = ThreadedUdpSocket {
@@ -868,6 +870,7 @@ impl Sockets {
         let sockets = Self {
             socket_v4: Some(socket_v4),
             socket_v6: Some(socket_v6),
+            listen_port,
             ..Self::without_sockets(None)
         };
 

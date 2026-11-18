@@ -199,6 +199,8 @@ pub struct ClientState {
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientOrGatewayId>,
+    /// Whether a relay found another device's allocation on our socket since we last moved to a new port.
+    socket_taken: bool,
 
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
@@ -227,6 +229,7 @@ impl ClientState {
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             authorization_rejections: Default::default(),
             portal: Default::default(),
+            socket_taken: false,
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
             resource_stub_resolver: ResourceStubResolver::new(records),
@@ -2300,10 +2303,7 @@ impl ClientState {
                         excluded_relay_ids: blocked,
                     });
                 }
-                snownet::Event::SocketTaken { consecutive } => {
-                    self.buffered_events
-                        .push_back(ClientEvent::SocketTaken { consecutive });
-                }
+                snownet::Event::SocketTaken => self.socket_taken = true,
             }
         }
 
@@ -2472,9 +2472,28 @@ impl ClientState {
     }
 
     pub fn reset(&mut self, now: Instant, reason: &str) {
+        self.reset_node(snownet::StaticKey::Rotate, now, reason);
+    }
+
+    /// Whether we need to move to a new port because another device behind our NAT uses our public socket.
+    pub fn is_socket_taken(&self) -> bool {
+        self.socket_taken
+    }
+
+    /// Resets after our sockets moved to a new port, keeping our key.
+    pub fn reset_on_new_port(&mut self, now: Instant) {
+        self.socket_taken = false;
+        self.reset_node(
+            snownet::StaticKey::Keep,
+            now,
+            "socket is taken by another device",
+        );
+    }
+
+    fn reset_node(&mut self, key: snownet::StaticKey, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
-        self.node.reset(snownet::StaticKey::Rotate, now);
+        self.node.reset(key, now);
         self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.

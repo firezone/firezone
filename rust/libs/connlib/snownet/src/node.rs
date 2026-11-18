@@ -97,7 +97,6 @@ pub struct Node<TId, RId> {
 
     allocations: Allocations<RId>,
     additional_host_candidates: Vec<Candidate>,
-    consecutive_sockets_taken: u32,
 
     connections: Connections<TId, RId>,
     buffered_candidates: BufferedCandidates<TId>,
@@ -202,7 +201,6 @@ where
             last_now: now,
             allocations,
             additional_host_candidates: Default::default(),
-            consecutive_sockets_taken: 0,
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
             buffered_candidates: Default::default(),
@@ -1404,13 +1402,7 @@ where
                     }
                 }
                 relay_client_proto::Event::SocketTaken => {
-                    self.consecutive_sockets_taken += 1;
-                    self.pending_events.push_back(Event::SocketTaken {
-                        consecutive: self.consecutive_sockets_taken,
-                    });
-                }
-                relay_client_proto::Event::Refreshed => {
-                    self.consecutive_sockets_taken = 0;
+                    self.pending_events.push_back(Event::SocketTaken);
                 }
             }
         }
@@ -1610,11 +1602,7 @@ pub enum Event<TId, RId> {
     ///
     /// The NAT in front of us maps both of us to the same public socket.
     /// Upper layers should bind to a different local port and call [`Node::reset`].
-    SocketTaken {
-        /// How often in a row, including this time, a relay found our socket taken without an
-        /// allocation refresh succeeding in between.
-        consecutive: u32,
-    },
+    SocketTaken,
 }
 
 /// What [`Node::reset`] does with our static key when it closes all connections.

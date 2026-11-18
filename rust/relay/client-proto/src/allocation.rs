@@ -124,8 +124,6 @@ pub enum Event {
     ///
     /// The NAT in front of us maps both of us to the same public socket.
     SocketTaken,
-    /// The relay refreshed our allocation.
-    Refreshed,
 }
 
 /// A datagram to send to the relay.
@@ -756,7 +754,6 @@ impl Allocation {
                 }
 
                 self.allocation_lifetime = Some((now, lifetime.lifetime()));
-                self.events.push_back(Event::Refreshed);
 
                 self.log_update(now);
             }
@@ -2953,21 +2950,6 @@ mod tests {
     }
 
     #[test]
-    fn successful_refresh_emits_refreshed() {
-        let now = Instant::now();
-        let mut allocation = Allocation::for_test_ip4(now)
-            .with_binding_response(PEER1, now)
-            .with_allocate_response(&[RELAY_ADDR_IP4], now);
-        let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
-
-        allocation.refresh(now);
-        let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(refresh_success(&refresh), now);
-
-        assert_eq!(allocation.poll_event(), Some(Event::Refreshed));
-    }
-
-    #[test]
     fn wrong_credentials_on_allocate_is_unhandled() {
         let now = Instant::now();
         let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
@@ -3352,17 +3334,6 @@ mod tests {
             request.transaction_id(),
         );
         message.add_attribute(ErrorCode::from(BadRequest));
-
-        message
-    }
-
-    fn refresh_success(request: &Message<Attribute>) -> Message<Attribute> {
-        let mut message = Message::new(
-            MessageClass::SuccessResponse,
-            REFRESH,
-            request.transaction_id(),
-        );
-        message.add_attribute(Lifetime::new(ALLOCATION_LIFETIME).unwrap());
 
         message
     }

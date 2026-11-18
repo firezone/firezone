@@ -60,12 +60,13 @@ impl RealGateway {
         network: SiteNetwork,
         site_specific_dns_records: DnsRecords,
         max_dns_domains_per_client: Option<usize>,
+        listen_port: u16,
     ) -> Self {
         state.set_flow_logs_enabled(true);
 
         Self {
             id,
-            tunnel: RealTunnel::new(state),
+            tunnel: RealTunnel::new(state, listen_port),
             site_specific_dns_records,
             probe_observations: Default::default(),
             dns_servers: Default::default(),
@@ -101,7 +102,7 @@ impl RealGateway {
         if let Some(max) = self.max_dns_domains_per_client {
             state.set_max_dns_domains_per_client(max);
         }
-        self.tunnel = RealTunnel::new(state);
+        self.tunnel = RealTunnel::new(state, self.tunnel.inner().listen_port());
 
         for client in self
             .authorized_resources
@@ -485,6 +486,7 @@ impl Host<RealGateway> {
             (event, busy)
         });
 
+        self.port = self.inner().tunnel.inner().listen_port();
         for transmit in self.exec_mut(|g| g.tunnel.take_sent()) {
             transmits.push_from(transmit, self, now);
         }
