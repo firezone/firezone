@@ -92,7 +92,7 @@ function ResourceBrowser({ resources, ...actions }: ResourceBrowserProps) {
 
   return (
     <div className="flex h-full">
-      <div className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
+      <div className="flex w-72 shrink-0 flex-col border-r border-border bg-surface">
         <div className="relative p-2">
           <RemixIcon
             className="pointer-events-none absolute left-4.5 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle"
