@@ -9267,7 +9267,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Portal.Cache.Client.Authorizations.put(
+          Portal.Cache.Authorizations.put(
             state.assigns.authorizations_cache,
             ghost_pa_id,
             initiating_client_id,
@@ -9365,7 +9365,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Portal.Cache.Client.Authorizations.put(
+          Portal.Cache.Authorizations.put(
             state.assigns.authorizations_cache,
             pa.id,
             initiating_client_id,
@@ -9480,7 +9480,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       state = :sys.get_state(socket.channel_pid)
 
-      assert Portal.Cache.Client.Authorizations.has_resource?(
+      assert Portal.Cache.Authorizations.has_resource?(
                state.assigns.authorizations_cache,
                pool_resource.id
              )
@@ -9518,7 +9518,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       state = :sys.get_state(socket.channel_pid)
 
-      refute Portal.Cache.Client.Authorizations.has_resource?(
+      refute Portal.Cache.Authorizations.has_resource?(
                state.assigns.authorizations_cache,
                pool_resource.id
              )
@@ -9549,13 +9549,13 @@ defmodule PortalAPI.Client.ChannelTest do
       state = :sys.get_state(socket.channel_pid)
       cache = state.assigns.authorizations_cache
 
-      assert Portal.Cache.Client.Authorizations.has_resource?(cache, pool_resource.id)
+      assert Portal.Cache.Authorizations.has_resource?(cache, pool_resource.id)
 
       initiating_client_id = initiating_client.id
       pool_resource_id = pool_resource.id
 
       assert [{^initiating_client_id, ^pool_resource_id}] =
-               Portal.Cache.Client.Authorizations.all_pairs_for_resource(cache, pool_resource.id)
+               Portal.Cache.Authorizations.all_pairs_for_resource(cache, pool_resource.id)
     end
 
     test "init payload includes inbound authorizations so reconnects rehydrate connlib", %{
@@ -9631,7 +9631,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       state = :sys.get_state(socket.channel_pid)
 
-      assert Portal.Cache.Client.Authorizations.has_resource?(
+      assert Portal.Cache.Authorizations.has_resource?(
                state.assigns.authorizations_cache,
                pool_resource.id
              )
@@ -9640,7 +9640,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       state = :sys.get_state(socket.channel_pid)
 
-      refute Portal.Cache.Client.Authorizations.has_resource?(
+      refute Portal.Cache.Authorizations.has_resource?(
                state.assigns.authorizations_cache,
                pool_resource.id
              )
@@ -9698,7 +9698,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       state = :sys.get_state(socket.channel_pid)
 
-      refute Portal.Cache.Client.Authorizations.has_resource?(
+      refute Portal.Cache.Authorizations.has_resource?(
                state.assigns.authorizations_cache,
                pool_resource.id
              )
@@ -9746,7 +9746,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       refute_push "reject_access", _
 
-      assert Portal.Cache.Client.Authorizations.has_resource?(
+      assert Portal.Cache.Authorizations.has_resource?(
                :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
                pool_resource.id
              )
@@ -9760,7 +9760,7 @@ defmodule PortalAPI.Client.ChannelTest do
         resource_id: ^pool_resource_id
       }
 
-      refute Portal.Cache.Client.Authorizations.has_resource?(
+      refute Portal.Cache.Authorizations.has_resource?(
                :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
                pool_resource.id
              )
@@ -10268,7 +10268,7 @@ defmodule PortalAPI.Client.ChannelTest do
   defp put_inbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
     :sys.replace_state(socket.channel_pid, fn state ->
       cache =
-        Portal.Cache.Client.Authorizations.put(
+        Portal.Cache.Authorizations.put(
           state.assigns.authorizations_cache,
           pa.id,
           pa.initiating_device_id,
@@ -10292,7 +10292,7 @@ defmodule PortalAPI.Client.ChannelTest do
   defp put_outbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
     :sys.replace_state(socket.channel_pid, fn state ->
       cache =
-        Portal.Cache.Client.Authorizations.put(
+        Portal.Cache.Authorizations.put(
           state.assigns.outbound_authorizations_cache,
           pa.id,
           pa.receiving_device_id,
