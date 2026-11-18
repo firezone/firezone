@@ -68,13 +68,25 @@ impl Managed {
 }
 
 pub(crate) struct TauriIntegration {
-    app: tauri::AppHandle,
     tray: system_tray::Tray,
+    /// Declared after `tray`, so the tray is removed before the app exits.
+    app: ExitOnDrop,
+}
+
+struct ExitOnDrop(tauri::AppHandle);
+
+impl Drop for ExitOnDrop {
+    fn drop(&mut self) {
+        tracing::debug!("Instructing Tauri to exit");
+
+        self.0.exit(0);
+    }
 }
 
 impl TauriIntegration {
     fn main_window(&self) -> Result<tauri::WebviewWindow> {
         self.app
+            .0
             .get_webview_window("main")
             .context("Couldn't get handle to window")
     }
@@ -91,18 +103,10 @@ impl TauriIntegration {
     }
 }
 
-impl Drop for TauriIntegration {
-    fn drop(&mut self) {
-        tracing::debug!("Instructing Tauri to exit");
-
-        self.app.exit(0);
-    }
-}
-
 impl GuiIntegration for TauriIntegration {
     fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
         SessionChanged(session.clone())
-            .emit(&self.app)
+            .emit(&self.app.0)
             .context("Failed to emit `session_changed` event")
     }
 
@@ -119,11 +123,11 @@ impl GuiIntegration for TauriIntegration {
             advanced_settings.clone(),
             signed_in_with,
         ))
-        .emit(&self.app)
+        .emit(&self.app.0)
         .context("Failed to emit `general_settings_changed` event")?;
 
         LogFilterChanged(LogFilterViewModel::new(mdm_settings, advanced_settings))
-            .emit(&self.app)
+            .emit(&self.app.0)
             .context("Failed to emit `log_filter_changed` event")?;
 
         Ok(())
@@ -131,7 +135,7 @@ impl GuiIntegration for TauriIntegration {
 
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
         LogsRecounted(file_count.clone())
-            .emit(&self.app)
+            .emit(&self.app.0)
             .context("Failed to emit `logs_recounted` event")?;
 
         Ok(())
@@ -142,7 +146,7 @@ impl GuiIntegration for TauriIntegration {
         certificate: Option<&x509_keystore::ParsedCertificate>,
     ) -> Result<()> {
         X509CertificateChanged::from(certificate)
-            .emit(&self.app)
+            .emit(&self.app.0)
             .context("Failed to emit `x509_certificate_changed` event")?;
 
         Ok(())
@@ -287,6 +291,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let req_tx = ctlr_tx.clone();
+    let tray_tx = ctlr_tx.clone();
     let (ready_tx, mut ready_rx) = mpsc::channel::<tauri::AppHandle>(1);
 
     // Spawn the setup task.
@@ -361,17 +366,31 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
             "BUNDLE_ID should match bundle ID in tauri.conf.json"
         );
 
-        let tray = system_tray::Tray::new(
-            tokio::runtime::Handle::current(),
-            app_handle.clone(),
-            |app, event| match handle_system_tray_event(app, event) {
-                Ok(_) => {}
-                Err(e) => tracing::error!("{e}"),
-            },
-        )?;
+        #[cfg(target_os = "linux")]
+        let tray = system_tray::Tray::new(&tokio::runtime::Handle::current(), move |event| {
+            handle_system_tray_event(&tray_tx, event);
+        });
+        #[cfg(not(target_os = "linux"))]
+        app_handle.on_menu_event(move |_, event| {
+            if let Some(event) = system_tray::decode_menu_event(&event.id().0) {
+                handle_system_tray_event(&tray_tx, event);
+            }
+        });
+        #[cfg(not(target_os = "linux"))]
+        let tray = system_tray::Tray::new({
+            let app = app_handle.clone();
+            Box::new(move |f| {
+                logging::unwrap_or_debug!(
+                    app.run_on_main_thread(f)
+                        .context("Failed to run closure on main thread"),
+                    "{}"
+                );
+            })
+        })
+        .await?;
         let integration = TauriIntegration {
-            app: app_handle,
             tray,
+            app: ExitOnDrop(app_handle),
         };
 
         let legacy_advanced_settings_path = known_dirs::settings()
@@ -548,15 +567,13 @@ async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
     Ok::<_, anyhow::Error>(())
 }
 
-fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -> Result<()> {
+fn handle_system_tray_event(req_tx: &mpsc::Sender<ControllerRequest>, event: system_tray::Event) {
     // `try_send` rather than `blocking_send`: on Linux this runs inside the
     // ksni service's async task, where a blocking send would panic. Tray
     // clicks are human-paced, so the bounded channel won't realistically fill.
-    app.try_state::<Managed>()
-        .context("can't get Managed struct from Tauri")?
-        .req_tx
-        .try_send(ControllerRequest::SystemTrayMenu(event))?;
-    Ok(())
+    if let Err(e) = req_tx.try_send(ControllerRequest::SystemTrayMenu(event)) {
+        tracing::error!("Failed to send tray event: {e}");
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

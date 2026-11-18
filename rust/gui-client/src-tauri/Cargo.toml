@@ -134,9 +134,8 @@ windows-package-identity = { workspace = true }
 x509-keystore = { workspace = true }
 zip = { workspace = true, features = ["deflate", "time"] }
 
-# Windows and macOS keep Tauri's built-in tray.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-tauri = { workspace = true, features = ["tray-icon"] }
+tray-icon = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service-keyring-store = { workspace = true }

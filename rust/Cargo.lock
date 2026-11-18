@@ -2750,6 +2750,7 @@ dependencies = [
  "tracing-journald",
  "tracing-log",
  "tracing-subscriber",
+ "tray-icon",
  "tunnel-bypass-resolver",
  "tunnel-proto",
  "url",
