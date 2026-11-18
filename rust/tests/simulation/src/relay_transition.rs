@@ -34,9 +34,9 @@ pub(crate) enum Transition {
     PortalOutage,
     PortalRecovers,
     /// A datagram that neither the client nor the relay sent.
-    Garbage {
+    Inject {
         target: Target,
-        datagram: Garbage,
+        flips: BitFlips,
     },
 }
 
@@ -51,18 +51,25 @@ pub(crate) enum Target {
     Client,
 }
 
-/// How a datagram to the relay is made from the garbage.
+/// How a datagram to the relay is made from the bit flips.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Crafting {
     /// Decode the datagram as a STUN message and re-encode it before handing it over.
     pub(crate) parse: bool,
-    /// Start from the last control datagram the client sent instead of from nothing.
-    pub(crate) mutate: bool,
+    pub(crate) template: Template,
+}
+
+/// The datagram that the bit flips apply to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Template {
+    Nothing,
+    /// The last control datagram the client sent; without flips, that is a replay.
+    LastFromClient,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Garbage {
-    pub(crate) bytes: Vec<u8>,
+pub(crate) struct BitFlips {
+    pub(crate) mask: Vec<u8>,
 }
 
 /// What the network does to the control datagrams of a transition, at most to the first one
@@ -71,18 +78,19 @@ pub(crate) struct Garbage {
 pub(crate) struct Interference {
     pub(crate) lose_to_relay: bool,
     pub(crate) lose_to_client: bool,
-    /// Delivers a copy of the first one that reaches the client ahead of it, with the garbage
-    /// applied.
-    pub(crate) forge_to_client: Option<Garbage>,
+    /// Delivers a copy of the first one that reaches the client ahead of it, with these bits
+    /// flipped.
+    pub(crate) forge_to_client: Option<BitFlips>,
 }
 
-impl Garbage {
-    /// Flips the bits of `template` that are set in our bytes; what we have beyond it is appended.
+impl BitFlips {
+    /// Flips the bits of `template` that are set in the mask; what the mask has beyond it is
+    /// appended.
     pub(crate) fn apply_to(&self, template: &[u8]) -> Vec<u8> {
         let mut datagram = template.to_vec();
-        datagram.resize(template.len().max(self.bytes.len()), 0);
+        datagram.resize(template.len().max(self.mask.len()), 0);
 
-        for (byte, mask) in datagram.iter_mut().zip(&self.bytes) {
+        for (byte, mask) in datagram.iter_mut().zip(&self.mask) {
             *byte ^= mask;
         }
 

@@ -8,7 +8,7 @@ use connlib_model::IpStack;
 
 use crate::{
     relay_model::{ModelHost, RelayModel},
-    relay_transition::{Crafting, Garbage, Interference, Target, Transition},
+    relay_transition::{BitFlips, Crafting, Interference, Target, Template, Transition},
 };
 
 /// Samples the relay simulation's setup and transitions from the input.
@@ -83,19 +83,19 @@ impl<'a> RelayGenerator<'a> {
             },
             11 => Transition::PortalOutage,
             12 => Transition::PortalRecovers,
-            _ => Transition::Garbage {
+            _ => Transition::Inject {
                 target: match self.int(2) {
                     0 => Target::RelayFromForeign(self.crafting()),
                     1 => Target::RelayFromClient(self.crafting()),
                     _ => Target::Client,
                 },
-                datagram: self.garbage(),
+                flips: self.bit_flips(),
             },
         };
         let interference = Interference {
             lose_to_relay: self.bool(),
             lose_to_client: self.bool(),
-            forge_to_client: self.bool().then(|| self.garbage()),
+            forge_to_client: self.bool().then(|| self.bit_flips()),
         };
 
         (transition, interference)
@@ -117,15 +117,18 @@ impl<'a> RelayGenerator<'a> {
     fn crafting(&mut self) -> Crafting {
         Crafting {
             parse: self.bool(),
-            mutate: self.bool(),
+            template: match self.bool() {
+                true => Template::LastFromClient,
+                false => Template::Nothing,
+            },
         }
     }
 
-    fn garbage(&mut self) -> Garbage {
+    fn bit_flips(&mut self) -> BitFlips {
         let len = self.int(255).min(self.input.len());
-        let bytes = self.input.bytes(len).unwrap_or_default().to_vec();
+        let mask = self.input.bytes(len).unwrap_or_default().to_vec();
 
-        Garbage { bytes }
+        BitFlips { mask }
     }
 
     fn int(&mut self, max: u8) -> usize {

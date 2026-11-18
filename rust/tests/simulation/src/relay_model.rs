@@ -12,7 +12,7 @@ use std::{
 
 use connlib_model::IpStack;
 
-use crate::relay_transition::{Target, Transition};
+use crate::relay_transition::Transition;
 
 /// What happened while a transition ran.
 #[derive(Debug, Clone, Copy, Default)]
@@ -86,10 +86,7 @@ impl RelayModel {
             Transition::Advance { .. }
             | Transition::PortalOutage
             | Transition::PortalRecovers
-            | Transition::Garbage {
-                target: Target::RelayFromForeign(_) | Target::RelayFromClient(_) | Target::Client,
-                ..
-            } => false,
+            | Transition::Inject { .. } => false,
         };
         let may_interrupt = may_interrupt || self.stranded;
 
@@ -105,7 +102,7 @@ impl RelayModel {
             | Transition::Refresh
             | Transition::RebootRelay
             | Transition::Partition { .. }
-            | Transition::Garbage { .. } => {}
+            | Transition::Inject { .. } => {}
         }
 
         // The client gives up on a relay that does not answer. `BINDING` is not authenticated,

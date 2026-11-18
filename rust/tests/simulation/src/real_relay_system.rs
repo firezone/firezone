@@ -33,7 +33,7 @@ use crate::{
     network::{ExecMutScope, Host, PollTimeout},
     real_relay::RealRelay,
     relay_model::{ModelHost, Observed, RelayModel},
-    relay_transition::{Crafting, Garbage, Interference, Target, Transition},
+    relay_transition::{BitFlips, Crafting, Interference, Target, Template, Transition},
     stun,
 };
 
@@ -172,14 +172,14 @@ impl RealRelaySystem {
             }
             Transition::PortalOutage => self.portal_reachable = false,
             Transition::PortalRecovers => self.portal_reachable = true,
-            Transition::Garbage { target, datagram } => match target {
+            Transition::Inject { target, flips } => match target {
                 Target::RelayFromForeign(crafting) => {
-                    self.garbage_to_relay(model, false, *crafting, datagram);
+                    self.inject_to_relay(model, false, *crafting, flips);
                 }
                 Target::RelayFromClient(crafting) => {
-                    from_client = self.garbage_to_relay(model, true, *crafting, datagram);
+                    from_client = self.inject_to_relay(model, true, *crafting, flips);
                 }
-                Target::Client => self.garbage_to_client(datagram),
+                Target::Client => self.inject_to_client(flips),
             },
         }
 
@@ -308,16 +308,19 @@ impl RealRelaySystem {
         self.credentials_boot = Some(self.relay_boots);
     }
 
-    /// Sends the relay a datagram made from the garbage, returning what it sent.
-    fn garbage_to_relay(
+    /// Sends the relay a datagram made from the bit flips, returning what it sent.
+    fn inject_to_relay(
         &mut self,
         model: &RelayModel,
         from_client: bool,
         crafting: Crafting,
-        garbage: &Garbage,
+        flips: &BitFlips,
     ) -> Option<Vec<u8>> {
         let now = self.clock.now();
-        let template = self.last_from_client.clone().filter(|_| crafting.mutate);
+        let template = self
+            .last_from_client
+            .clone()
+            .filter(|_| crafting.template == Template::LastFromClient);
         let src = match from_client {
             true => template
                 .as_ref()
@@ -327,7 +330,7 @@ impl RealRelaySystem {
             false => model.foreign.socket_for(any_socket(&self.relay).ip()),
         };
         let dst = self.relay.sending_socket_for(src.ip())?;
-        let mut payload = garbage.apply_to(
+        let mut payload = flips.apply_to(
             template
                 .as_ref()
                 .map(|t| &t.payload[..])
@@ -343,14 +346,14 @@ impl RealRelaySystem {
         Some(payload)
     }
 
-    fn garbage_to_client(&mut self, garbage: &Garbage) {
+    fn inject_to_client(&mut self, flips: &BitFlips) {
         let dst = any_socket(&self.client);
         let Some(src) = self.relay.sending_socket_for(dst.ip()) else {
             return;
         };
 
         self.client
-            .receive(datagram(Some(src), dst, &garbage.bytes), self.clock.now());
+            .receive(datagram(Some(src), dst, &flips.mask), self.clock.now());
     }
 
     /// Lets the client and the relay finish what they are doing, and the portal react to it.
@@ -467,11 +470,11 @@ impl RealRelaySystem {
                 return;
             }
 
-            if let Some(garbage) = self.interference.forge_to_client.take() {
+            if let Some(flips) = self.interference.forge_to_client.take() {
                 self.observed.forged_binding |= relay_client_proto::decode(&transmit.payload)
                     .is_ok_and(|message| message.is_ok_and(|m| m.method() == BINDING));
 
-                let forged = datagram(Some(src), dst, &garbage.apply_to(&transmit.payload));
+                let forged = datagram(Some(src), dst, &flips.apply_to(&transmit.payload));
                 self.client.exec_mut(|c| c.handle_input(forged, now));
             }
         }
