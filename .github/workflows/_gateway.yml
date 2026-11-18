@@ -115,9 +115,11 @@ jobs:
       binary_artifact: ${{ needs.binary.outputs.artifact }}
       arches: ${{ needs.binary.outputs.arches }}
 
+  # Only a dispatched build packages the `.deb`. On a push, it would just
+  # expire unread as an artifact.
   package:
     needs: binary
-    if: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
+    if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -131,9 +133,6 @@ jobs:
       BINARY_DEST_PATH: firezone-gateway_1.6.6_${{ matrix.arch }}
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
       TARGET: ${{ fromJSON('{"x86_64":"x86_64-unknown-linux-musl","aarch64":"aarch64-unknown-linux-musl","armv7":"armv7-unknown-linux-musleabihf"}')[matrix.arch] }}
-      # Only a dispatched build publishes the `.deb`. On a push, it would just
-      # expire unread as an artifact.
-      BUILDS_DEB: ${{ github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -143,15 +142,12 @@ jobs:
           name: ${{ needs.binary.outputs.artifact }}-${{ matrix.arch }}
           path: rust
       - uses: ./.github/actions/setup-rust-stable
-        if: ${{ env.BUILDS_DEB == 'true' }}
         with:
           targets: ${{ env.TARGET }}
       - uses: ./.github/actions/setup-rust-sccache
-        if: ${{ env.BUILDS_DEB == 'true' }}
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
-        if: ${{ env.BUILDS_DEB == 'true' }}
         with:
           install_args: --cd rust
         env:
@@ -159,6 +155,7 @@ jobs:
       - name: Package binary
         run: cp firezone-gateway "$BINARY_DEST_PATH"
       - name: Azure login (OIDC)
+        if: ${{ github.ref_name == 'main' }}
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
@@ -167,47 +164,7 @@ jobs:
           # The artifacts principal holds only a data-plane role on the storage
           # account, not subscription-wide Reader.
           allow-no-subscriptions: true
-      - name: Copy binary to Azure Blob Storage
-        run: |
-          set -e
-
-          az storage blob upload \
-            --container-name binaries \
-            --name "gateway/${{ env.RESOLVED_SHA }}/${{ matrix.arch }}" \
-            --file firezone-gateway \
-            --overwrite true \
-            --no-progress \
-            --auth-mode login \
-            --account-name firezoneartifacts
-
-          az storage blob upload \
-            --container-name binaries \
-            --name "gateway/${{ env.RESOLVED_SHA }}/${{ matrix.arch }}.sha256sum.txt" \
-            --file firezone-gateway.sha256sum.txt \
-            --overwrite true \
-            --no-progress \
-            --auth-mode login \
-            --account-name firezoneartifacts
-
-      - name: Publish signed deployment manifest
-        if: ${{ github.ref == 'refs/heads/main' }}
-        env:
-          ARCH: ${{ matrix.arch }}
-        run: |
-          set -euo pipefail
-          for suffix in .manifest.json .sigstore.json; do
-            az storage blob upload \
-              --container-name binaries \
-              --name "gateway/$RESOLVED_SHA/$ARCH$suffix" \
-              --file "firezone-gateway$suffix" \
-              --overwrite true \
-              --no-progress \
-              --auth-mode login \
-              --account-name firezoneartifacts
-          done
-
       - name: Create Firezone Gateway .deb package
-        if: ${{ env.BUILDS_DEB == 'true' }}
         run: |
           mkdir -p target/${{ env.TARGET }}/release
           cp firezone-gateway target/${{ env.TARGET }}/release/firezone-gateway
@@ -235,7 +192,6 @@ jobs:
             --auth-mode login \
             --account-name firezoneartifacts
       - name: Upload `.deb` artifact
-        if: ${{ env.BUILDS_DEB == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
