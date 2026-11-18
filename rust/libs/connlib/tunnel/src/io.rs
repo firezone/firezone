@@ -1,11 +1,11 @@
 mod crypto;
 mod device;
+mod udp_gro_train;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{CryptoWorkers, DecryptBatch, DecryptedIpPackets, EncryptBatch};
+pub use crypto::{CryptoWorkers, DecryptedBatch};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gso_train::UdpGsoTrain;
 
 use crate::{
     TunnelError, dns,
@@ -13,7 +13,7 @@ use crate::{
     sockets::{ReceivedDatagrams, Sockets},
 };
 use anyhow::Result;
-use crypto::Decrypting;
+use crypto::{DecryptJobs, DecryptedJobs, Decrypting, EncryptJobs};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -50,7 +50,7 @@ pub struct Io {
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<ReceivedDatagrams>,
-    pub decrypted: Option<DecryptedIpPackets>,
+    pub decrypted: Option<DecryptedJobs>,
     pub dns_queries: Vec<DnsQuery>,
     pub dns_responses: Vec<dns::RecursiveResponse>,
     pub error: TunnelError,
@@ -320,6 +320,14 @@ impl Io {
         self.tun.flush_batch();
     }
 
+    pub fn listen_port(&self) -> u16 {
+        self.sockets.listen_port()
+    }
+
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        self.sockets.set_force_relayed_connections(enabled);
+    }
+
     pub fn reset(&mut self) {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
@@ -327,21 +335,19 @@ impl Io {
         self.resolver.send_control(ResolverControl::Reset);
     }
 
-    /// Starts a batch of encapsulated packets to encrypt off the main thread.
+    /// Creates the jobs that encrypt encapsulated packets off the main thread.
     ///
-    /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
+    /// Their datagrams go to the UDP sockets when dropped. Create them only for the packets
     /// [`Io::poll`] read from the TUN device, which it does only while nothing waits for room in the
     /// UDP sockets.
-    pub fn start_encrypt_batch(&mut self, num_packets: usize) -> EncryptBatch<'_> {
-        self.crypto
-            .start_encrypt_batch(&mut self.sockets, num_packets)
+    pub fn new_encrypt_jobs(&mut self) -> EncryptJobs<'_> {
+        self.crypto.new_encrypt_jobs(&mut self.sockets)
     }
 
-    /// Starts a batch of received data messages to decrypt off the main thread, yielding them via
-    /// [`Input::decrypted`].
-    pub fn start_decrypt_batch(&mut self, num_packets: usize) -> DecryptBatch<'_> {
-        self.crypto
-            .start_decrypt_batch(&mut self.decrypting, num_packets)
+    /// Creates the jobs that decrypt the batches of `received` off the main thread, yielding them
+    /// via [`Input::decrypted`] once dropped.
+    pub fn new_decrypt_jobs(&mut self, received: ReceivedDatagrams) -> DecryptJobs<'_> {
+        self.crypto.new_decrypt_jobs(&mut self.decrypting, received)
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {

@@ -28,7 +28,7 @@ defmodule Portal.Queue.CallbacksTest do
         session_ref: session_ref,
         account_id: account.id,
         device_id: client.id,
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -46,7 +46,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert 1 = on_flush.([{attrs, metadata}])
 
       device = Repo.get_by!(Device, id: client.id, account_id: account.id)
-      assert device.client_token_id == token.id
+      assert device.token_id == token.id
       assert device.public_key == attrs.public_key
       assert device.last_seen_at == timestamp
       assert_receive {:confirm_session_durability, ^session_ref}
@@ -78,7 +78,7 @@ defmodule Portal.Queue.CallbacksTest do
         device_id: client.id,
         actor_id: actor.id,
         firezone_id: "fz-new",
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -127,7 +127,7 @@ defmodule Portal.Queue.CallbacksTest do
         {Map.merge(base, %{
            session_ref: ref_a,
            device_id: client_a.id,
-           client_token_id: token_a.id,
+           token_id: token_a.id,
            inserted_at: older
          }), %{subject: %{"actor_id" => actor.id}, timestamp: older}}
 
@@ -135,7 +135,7 @@ defmodule Portal.Queue.CallbacksTest do
         {Map.merge(base, %{
            session_ref: ref_b,
            device_id: client_b.id,
-           client_token_id: token_b.id,
+           token_id: token_b.id,
            inserted_at: newer
          }), %{subject: %{"actor_id" => actor.id}, timestamp: newer}}
 
@@ -157,8 +157,8 @@ defmodule Portal.Queue.CallbacksTest do
       assert device_a.firezone_id == "fz-a"
 
       # Both sessions persisted and confirmed durability.
-      assert device_a.client_token_id == token_a.id
-      assert device_b.client_token_id == token_b.id
+      assert device_a.token_id == token_a.id
+      assert device_b.token_id == token_b.id
       assert_receive {:confirm_session_durability, ^ref_a}
       assert_receive {:confirm_session_durability, ^ref_b}
     end
@@ -183,7 +183,7 @@ defmodule Portal.Queue.CallbacksTest do
         account_id: account.id,
         device_id: client.id,
         actor_id: actor.id,
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -221,7 +221,7 @@ defmodule Portal.Queue.CallbacksTest do
         account_id: account.id,
         device_id: client.id,
         actor_id: actor.id,
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -289,7 +289,7 @@ defmodule Portal.Queue.CallbacksTest do
         actor_id: actor.id,
         last_attested_device_serial: "SN-STALE",
         last_attested_at: stale_at,
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -340,7 +340,7 @@ defmodule Portal.Queue.CallbacksTest do
         {Map.merge(base, %{
            session_ref: ref_a,
            device_id: client_a.id,
-           client_token_id: token_a.id,
+           token_id: token_a.id,
            last_attested_at: older,
            inserted_at: older
          }), %{subject: %{"actor_id" => actor.id}, timestamp: older}}
@@ -349,7 +349,7 @@ defmodule Portal.Queue.CallbacksTest do
         {Map.merge(base, %{
            session_ref: ref_b,
            device_id: client_b.id,
-           client_token_id: token_b.id,
+           token_id: token_b.id,
            last_attested_at: newer,
            inserted_at: newer
          }), %{subject: %{"actor_id" => actor.id}, timestamp: newer}}
@@ -371,7 +371,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert device_b.last_attested_mdm_device_id == "mdm-cloned"
       assert is_nil(device_a.last_attested_mdm_device_id)
       assert is_nil(device_a.last_attested_at)
-      assert device_a.client_token_id == token_a.id
+      assert device_a.token_id == token_a.id
       assert_receive {:confirm_session_durability, ^ref_a}
       assert_receive {:confirm_session_durability, ^ref_b}
     end
@@ -402,7 +402,7 @@ defmodule Portal.Queue.CallbacksTest do
            last_attested_cert_serial: serial,
            last_attested_cert_fingerprint: fingerprint,
            last_attested_at: attested_at,
-           client_token_id: token.id,
+           token_id: token.id,
            public_key: generate_public_key(),
            user_agent: "test-client/1.0",
            remote_ip: {100, 64, 0, 1},
@@ -458,7 +458,7 @@ defmodule Portal.Queue.CallbacksTest do
         actor_id: actor.id,
         last_attested_mdm_device_id: "mdm-taken",
         last_attested_at: DateTime.utc_now(),
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -479,7 +479,7 @@ defmodule Portal.Queue.CallbacksTest do
       device = Repo.get_by!(Device, id: client.id, account_id: account.id)
       assert is_nil(device.last_attested_mdm_device_id)
       assert is_nil(device.last_attested_at)
-      assert device.client_token_id == token.id
+      assert device.token_id == token.id
       assert_receive {:confirm_session_durability, ^session_ref}
     end
 
@@ -499,7 +499,7 @@ defmodule Portal.Queue.CallbacksTest do
         device_id: client.id,
         actor_id: actor.id,
         firezone_id: "fz-two",
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -516,7 +516,39 @@ defmodule Portal.Queue.CallbacksTest do
 
       device = Repo.get_by!(Device, id: client.id, account_id: account.id)
       assert device.firezone_id == "fz-one"
-      assert device.client_token_id == token.id
+      assert device.token_id == token.id
+      assert_receive {:confirm_session_durability, ^session_ref}
+    end
+
+    test "skips a firezone_id merge that another actor's device holds" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor, firezone_id: "fz-one")
+      _other = client_fixture(account: account, firezone_id: "fz-two")
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: actor.id,
+        firezone_id: "fz-two",
+        token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      assert 1 = on_flush.([{attrs, metadata}])
+      assert Repo.get_by!(Device, id: client.id, account_id: account.id).firezone_id == "fz-one"
       assert_receive {:confirm_session_durability, ^session_ref}
     end
 
@@ -533,7 +565,7 @@ defmodule Portal.Queue.CallbacksTest do
         session_ref: session_ref,
         account_id: account.id,
         device_id: client.id,
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -569,7 +601,7 @@ defmodule Portal.Queue.CallbacksTest do
         session_ref: session_ref,
         account_id: account.id,
         device_id: client.id,
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -585,7 +617,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert 0 = on_flush.([{attrs, metadata}])
 
       device = Repo.get_by!(Device, id: client.id, account_id: account.id)
-      assert is_nil(device.client_token_id)
+      assert is_nil(device.token_id)
       assert is_nil(device.last_seen_at)
       assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
       assert_receive {:disconnect, ^session_ref}
@@ -607,7 +639,7 @@ defmodule Portal.Queue.CallbacksTest do
         session_ref: session_ref,
         account_id: account.id,
         device_id: client.id,
-        client_token_id: token.id,
+        token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -641,7 +673,7 @@ defmodule Portal.Queue.CallbacksTest do
         session_ref: session_ref,
         account_id: account.id,
         device_id: gateway.id,
-        gateway_token_id: token.id,
+        token_id: token.id,
         public_key: gateway.public_key,
         user_agent: "test-gateway/1.0",
         remote_ip: {100, 64, 0, 2},
@@ -657,7 +689,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert 1 = on_flush.([{attrs, %{timestamp: timestamp}}])
 
       device = Repo.get_by!(Device, id: gateway.id, account_id: account.id)
-      assert device.gateway_token_id == token.id
+      assert device.token_id == token.id
       assert device.last_seen_at == timestamp
       assert_receive {:confirm_session_durability, ^session_ref}
 

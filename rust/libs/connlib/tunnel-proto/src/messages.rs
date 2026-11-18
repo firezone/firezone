@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
-use chrono::{DateTime, Utc, serde::ts_seconds};
 use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DoHUrl, DomainName};
 use ip_network::IpNetwork;
@@ -79,12 +78,6 @@ impl PartialEq for Peer {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct ResolveRequest {
-    pub name: DomainName,
-    pub proxy_ips: Vec<IpAddr>,
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
 pub struct DomainResponse {
     pub domain: DomainName,
@@ -135,12 +128,13 @@ impl From<IceRole> for snownet::IceRole {
 #[serde(default)]
 pub struct SnownetCapabilities {
     /// The implementation can negotiate connections without ICE.
-    pub iceless: bool,
+    #[serde(rename = "iceless")]
+    pub frostlink: bool,
 }
 
 impl SnownetCapabilities {
     /// Capabilities of the local snownet implementation, hard-coded at compile time.
-    pub const LOCAL: Self = Self { iceless: true };
+    pub const LOCAL: Self = Self { frostlink: true };
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
@@ -277,8 +271,8 @@ pub enum Relay {
 pub struct Turn {
     pub id: RelayId,
     //// Expire time of the username/password in unix millisecond timestamp UTC
-    #[serde(with = "ts_seconds")]
-    pub expires_at: DateTime<Utc>,
+    #[serde(with = "jiff::fmt::serde::timestamp::second::required")]
+    pub expires_at: jiff::Timestamp,
     /// Address of the relay
     pub addr: SocketAddr,
     /// Username for the relay
@@ -469,6 +463,20 @@ mod tests {
     }
 
     #[test]
+    fn turn_expires_at_deserializes_from_unix_seconds() {
+        let json = r#"{ "type": "turn", "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8", "username": "user", "password": "pass", "addr": "172.28.0.101:3478", "expires_at": 1719367575 }"#;
+
+        let Relay::Turn(turn) = serde_json::from_str::<Relay>(json).unwrap() else {
+            panic!("expected TURN relay");
+        };
+
+        assert_eq!(
+            turn.expires_at,
+            "2024-06-26T02:06:15Z".parse::<jiff::Timestamp>().unwrap()
+        );
+    }
+
+    #[test]
     fn flow_logs_config_ignores_unknown_fields() {
         let json = r#"{ "api_url": "https://api.firezone.dev", "upload_interval_secs": 60, "upload_batch_size": 1000, "future_field": true }"#;
         let config: FlowLogsConfig = serde_json::from_str(json).unwrap();
@@ -480,13 +488,13 @@ mod tests {
     fn snownet_capabilities_default_is_all_false() {
         assert_eq!(
             SnownetCapabilities::default(),
-            SnownetCapabilities { iceless: false }
+            SnownetCapabilities { frostlink: false }
         );
     }
 
     // Compile-time guard so future edits to `LOCAL` don't accidentally turn
-    // off iceless support without us noticing.
-    const _: () = assert!(SnownetCapabilities::LOCAL.iceless);
+    // off frostlink support without us noticing.
+    const _: () = assert!(SnownetCapabilities::LOCAL.frostlink);
 
     #[test]
     fn snownet_capabilities_deserialize_empty_object_is_default() {
@@ -498,6 +506,6 @@ mod tests {
     fn snownet_capabilities_ignores_unknown_fields() {
         let json = r#"{ "iceless": true, "future_feature": true }"#;
         let caps: SnownetCapabilities = serde_json::from_str(json).unwrap();
-        assert!(caps.iceless);
+        assert!(caps.frostlink);
     }
 }

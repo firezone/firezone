@@ -24,9 +24,9 @@ defmodule Portal.LogSinks.Delivery do
 
   require Logger
 
+  # Rows read from the database per page, not a delivery limit: each page is
+  # re-chunked by bytes and the adapter's event cap before it is posted.
   @batch_size 500
-  # Bounds one run; the next scheduler tick resumes from the cursor.
-  @max_batches_per_stream 20
 
   def get_sink(schema, account_id, id) do
     Database.get_sink(schema, account_id, id)
@@ -58,10 +58,14 @@ defmodule Portal.LogSinks.Delivery do
     end
   end
 
+  # A run drains every cursor up to a cutoff fixed at its start, so it never
+  # falls behind and still ends when rows arrive faster than they deliver.
   defp sync_cursors(sink, adapter) do
+    cutoff = DateTime.add(DateTime.utc_now(), -visibility_lag_seconds(), :second)
+
     Database.list_cursors(sink)
     |> Enum.reduce_while({:ok, false}, fn cursor, {:ok, prepared?} ->
-      case sync_cursor(sink, adapter, cursor, @max_batches_per_stream, prepared?) do
+      case sync_cursor(sink, adapter, cursor, cutoff, prepared?) do
         {:ok, prepared?} -> {:cont, {:ok, prepared?}}
         {:error, :undeliverable} -> {:cont, {:ok, true}}
         {:error, reason} -> {:halt, {:error, reason}}
@@ -88,22 +92,20 @@ defmodule Portal.LogSinks.Delivery do
     |> Keyword.get(:max_body_bytes, 512_000)
   end
 
-  defp sync_cursor(_sink, _adapter, _cursor, 0, prepared?), do: {:ok, prepared?}
-
-  defp sync_cursor(sink, adapter, cursor, budget, prepared?) do
-    case Database.next_batch(cursor, @batch_size, visibility_lag_seconds()) do
+  defp sync_cursor(sink, adapter, cursor, cutoff, prepared?) do
+    case Database.next_batch(cursor, @batch_size, cutoff) do
       [] ->
         Database.maybe_complete_backfill(cursor, visibility_lag_seconds())
         {:ok, prepared?}
 
       rows ->
         with :ok <- ensure_prepared(sink, adapter, prepared?) do
-          deliver_batch(sink, adapter, cursor, rows, budget)
+          deliver_batch(sink, adapter, cursor, rows, cutoff)
         end
     end
   end
 
-  defp deliver_batch(sink, adapter, cursor, rows, budget) do
+  defp deliver_batch(sink, adapter, cursor, rows, cutoff) do
     encoded =
       Enum.flat_map(rows, fn row ->
         for {time, _} = event <- render_event(cursor.stream, row, cursor.cursor) do
@@ -114,7 +116,7 @@ defmodule Portal.LogSinks.Delivery do
     chunks = chunk_by_bytes(encoded, max_body_bytes(), max_batch_events(sink, adapter))
 
     case deliver_chunks(sink, adapter, cursor, chunks) do
-      {:ok, cursor} -> sync_cursor(sink, adapter, cursor, budget - 1, true)
+      {:ok, cursor} -> sync_cursor(sink, adapter, cursor, cutoff, true)
       {:error, reason} -> {:error, reason}
     end
   end
@@ -546,9 +548,8 @@ defmodule Portal.LogSinks.Delivery do
       |> Safe.all()
     end
 
-    def next_batch(cursor, limit, lag_seconds) do
+    def next_batch(cursor, limit, guard_cutoff) do
       {schema, guard_column} = Map.fetch!(@stream_sources, cursor.stream)
-      guard_cutoff = DateTime.add(DateTime.utc_now(), -lag_seconds, :second)
 
       query =
         from(l in schema,

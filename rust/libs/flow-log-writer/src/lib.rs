@@ -72,7 +72,6 @@ use std::{
 
 use anyhow::{Context as _, ErrorExt as _, Result};
 use base64::Engine as _;
-use chrono::DateTime;
 use flow_log_spool::serialize;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::registry::LookupSpan;
@@ -120,7 +119,7 @@ where
 
     let (tx, rx) = mpsc::sync_channel::<Command>(CHANNEL_CAPACITY);
     let handle = std::thread::Builder::new()
-        .name("flow-log-writer".to_owned())
+        .name("fz-flowlog-wr".to_owned())
         .spawn({
             let spool_root = spool_root.clone();
 
@@ -399,9 +398,13 @@ impl FieldVisitor {
 
         // The only other field the writer interprets: the file name needs it so
         // a lexical sort of the reports is oldest-first.
-        let flow_start = DateTime::parse_from_rfc3339(self.fields.get("flow_start")?.as_str()?)
+        let flow_start = self
+            .fields
+            .get("flow_start")?
+            .as_str()?
+            .parse::<jiff::Timestamp>()
             .ok()?
-            .timestamp();
+            .as_second();
 
         let identity = flow_identity(&self.fields);
         let completed = self.fields.contains_key("flow_end");
@@ -747,7 +750,6 @@ fn create_dir_secure(path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone as _, Utc};
     use flow_log_spool::deserialize;
     use tracing_subscriber::layer::SubscriberExt as _;
 
@@ -1029,8 +1031,7 @@ mod tests {
 
     /// Emits a `flow_logs` event shaped like `tunnel`'s emission.
     fn emit_event(completed: bool) {
-        let flow_start = Utc.timestamp_opt(1_700_000_000, 500).unwrap();
-        let flow_end = completed.then(|| Utc.timestamp_opt(1_700_000_060, 0).unwrap());
+        let flow_end = completed.then_some("2023-11-14T22:14:20Z");
 
         tracing::trace!(
             target: "flow_logs",
@@ -1043,9 +1044,9 @@ mod tests {
             inner_dst_port = %443,
             outers = %r#"[{"src_ip":"198.51.100.1","src_port":51820,"dst_ip":"203.0.113.7","dst_port":51820}]"#,
             actor_id = "a-1",
-            flow_start = ?flow_start,
-            flow_end = flow_end.map(tracing::field::debug),
-            last_packet = flow_end.map(tracing::field::debug),
+            flow_start = %"2023-11-14T22:13:20.000000500Z",
+            flow_end = flow_end.map(tracing::field::display),
+            last_packet = flow_end.map(tracing::field::display),
             rx_packets = completed.then_some(10_u64),
             tx_packets = completed.then_some(12_u64),
             rx_bytes = completed.then_some(1024_u64),

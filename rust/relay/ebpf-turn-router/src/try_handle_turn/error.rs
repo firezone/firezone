@@ -11,8 +11,10 @@ pub enum Error {
     Ipv4PacketWithOptions,
     NotAChannelDataMessage,
     BadChannelDataLength,
+    NotRelayable,
     NoEntry(SupportedChannel),
     XdpAdjustHeadFailed,
+    ThroughputLimitExceeded,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +40,7 @@ impl Error {
             Error::Ipv4PacketWithOptions => "IPv4 packet has options",
             Error::NotAChannelDataMessage => "Not a channel data message",
             Error::BadChannelDataLength => "Channel data length does not match packet length",
+            Error::NotRelayable => "Payload is neither WireGuard nor STUN",
             Error::NoEntry(ch) => match ch {
                 SupportedChannel::Udp4ToChan => "No entry in UDPv4 to channel IPv4 or IPv6 map",
                 SupportedChannel::Chan4ToUdp => "No entry in channel IPv4 to UDPv4 or UDPv6 map",
@@ -45,6 +48,7 @@ impl Error {
                 SupportedChannel::Chan6ToUdp => "No entry in channel IPv6 to UDPv4 or UDPv6 map",
             },
             Error::XdpAdjustHeadFailed => "Failed to adjust tail",
+            Error::ThroughputLimitExceeded => "Channel exceeds its throughput limit",
         }
     }
 }

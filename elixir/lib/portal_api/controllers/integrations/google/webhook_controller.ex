@@ -9,14 +9,21 @@ defmodule PortalAPI.Integrations.Google.WebhookController do
   def handle_webhook(conn, _params) do
     conn = fetch_query_params(conn)
 
-    headers = %{
-      token: header(conn, "x-goog-channel-token"),
-      state: header(conn, "x-goog-resource-state")
-    }
+    token = header(conn, "x-goog-channel-token")
+    state = header(conn, "x-goog-resource-state")
 
+    # Dropped notifications still get a 200 so the response does not reveal
+    # whether the directory or the token was wrong.
+    case Google.Webhooks.authenticate(conn.query_params["directory_id"], token) do
+      {:ok, directory} -> receive_notification(conn, directory, state)
+      {:error, :unauthorized} -> send_resp(conn, 200, "")
+    end
+  end
+
+  defp receive_notification(conn, directory, state) do
     case read_body(conn, length: @max_body_bytes) do
       {:ok, body, conn} ->
-        Portal.Conn.wrap_errors(conn, &handle_body(&1, headers, body))
+        Portal.Conn.wrap_errors(conn, &handle_body(&1, directory, state, body))
 
       {:more, _, conn} ->
         send_resp(conn, 413, "Request Entity Too Large")
@@ -27,8 +34,8 @@ defmodule PortalAPI.Integrations.Google.WebhookController do
     end
   end
 
-  defp handle_body(conn, headers, body) do
-    :ok = Google.Webhooks.handle_notification(conn.query_params["directory_id"], headers, decode(body))
+  defp handle_body(conn, directory, state, body) do
+    :ok = Google.Webhooks.handle_notification(directory, state, decode(body))
     send_resp(conn, 200, "")
   end
 

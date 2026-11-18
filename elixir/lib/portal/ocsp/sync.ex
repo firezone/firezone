@@ -11,11 +11,12 @@ defmodule Portal.Ocsp.Sync do
   use Oban.Worker, queue: :ocsp_sync, max_attempts: 3
   alias Portal.Crypto.Ocsp
   alias Portal.Crypto.X509
+  alias Portal.Req.Bounded
   alias __MODULE__.Database
   require Logger
 
   @max_response_bytes 100_000
-  @request_timeout :timer.seconds(30)
+  @timeout :timer.seconds(30)
   @content_type "application/ocsp-request"
 
   # Refreshed before the answer runs out, so a cached status is never read past
@@ -31,10 +32,11 @@ defmodule Portal.Ocsp.Sync do
         } = args
       }) do
     with {:ok, issuer} <- Base.decode64(encoded_issuer),
-         endpoint when not is_nil(endpoint) <-
+         %{ocsp_is_disabled: false} = endpoint <-
            Database.fetch_endpoint(account_id, issuer, distribution_point) do
       refresh(endpoint, Map.get(args, "serial"))
     else
+      %Portal.RevocationEndpoint{} -> {:ok, :disabled}
       _other -> {:ok, :deleted}
     end
   end
@@ -108,8 +110,8 @@ defmodule Portal.Ocsp.Sync do
   end
 
   # Stops at the first failure that is about the responder rather than about one
-  # certificate. Each question is its own request, retried four times over half a
-  # minute each, so walking the whole fleet through a responder that is down
+  # certificate. Each question is its own request, which with its retries can
+  # take half a minute, so walking the whole fleet through a responder that is down
   # would take the job hours and the next hour's job would pile in behind it.
   defp ask_each(endpoint, issuer_der, serials) do
     Enum.reduce_while(serials, :ok, fn serial, _acc ->
@@ -233,25 +235,27 @@ defmodule Portal.Ocsp.Sync do
   defp send_request(url, request) do
     options =
       [
+        method: :post,
+        url: url,
         headers: [{"content-type", @content_type}],
         body: request,
-        receive_timeout: @request_timeout,
-        max_redirects: 3,
+        max_body_bytes: @max_response_bytes,
+        timeout: @timeout,
         decode_body: false,
         # An OCSP question is idempotent, so unlike a general POST it is safe to
         # retry. Req's default only retries safe methods.
         retry: :transient
       ] ++ request_opts()
 
-    case Req.post(url, options) do
-      {:ok, %{status: 200, body: body}} when byte_size(body) <= @max_response_bytes ->
+    case Bounded.request(options) do
+      {:ok, %{status: 200, body: body}} ->
         {:ok, body}
-
-      {:ok, %{status: 200}} ->
-        {:error, :ocsp_response_too_large}
 
       {:ok, %{status: status}} ->
         {:error, {:http_status, status}}
+
+      {:error, %Bounded.BodyTooLargeError{}} ->
+        {:error, :ocsp_response_too_large}
 
       {:error, %Portal.Req.SSRFProtection.UnsafeURLError{} = exception} ->
         {:error, {:blocked_address, Exception.message(exception)}}
@@ -259,8 +263,6 @@ defmodule Portal.Ocsp.Sync do
       {:error, exception} ->
         {:error, Exception.message(exception)}
     end
-  rescue
-    error -> {:error, Exception.message(error)}
   end
 
   defp request_opts, do: Portal.Config.fetch_env!(:portal, __MODULE__)[:req_opts] || []
@@ -286,7 +288,7 @@ defmodule Portal.Ocsp.Sync do
         where: e.account_id == ^account_id,
         where: e.issuer == ^issuer,
         where: e.ocsp_urls != [],
-        where: e.is_disabled == false,
+        where: e.ocsp_is_disabled == false,
         select: e.distribution_point
       )
       |> Safe.unscoped()
@@ -373,7 +375,7 @@ defmodule Portal.Ocsp.Sync do
       now = DateTime.utc_now()
 
       fields =
-        [ocsp_checked_at: now, ocsp_error: nil] ++ Failure.success_fields(endpoint, :ocsp)
+        [ocsp_checked_at: now, ocsp_error: nil] ++ Failure.success_fields(:ocsp)
 
       endpoint
       |> endpoint_query()
@@ -387,7 +389,7 @@ defmodule Portal.Ocsp.Sync do
 
       fields =
         [ocsp_checked_at: now, ocsp_error: to_message(reason)] ++
-          Failure.error_fields(endpoint, reason, now)
+          Failure.error_fields(endpoint, :ocsp, reason, now)
 
       endpoint
       |> endpoint_query()

@@ -11,6 +11,8 @@
 mod apple;
 #[cfg(not(apple))]
 mod fallback;
+#[cfg(any(apple, test))]
+mod keyed_streams;
 
 #[cfg(apple)]
 pub(crate) use apple::SocketPool;
@@ -24,8 +26,9 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use quinn_udp::UdpSockRef;
+use tokio::io::Interest;
 
-use crate::{DatagramBatch, apply_buffer_size};
+use crate::{DatagramBatch, RecvBatch, apply_buffer_size};
 
 /// A borrowed handle to a UDP socket and its quinn state - the currency the send and receive
 /// paths operate on, regardless of which [`SocketPool`] member it came from.
@@ -87,7 +90,6 @@ impl OwnedSocket {
         }
     }
 
-    #[cfg(apple)]
     pub(crate) fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
         self.socket.local_addr()
     }
@@ -97,11 +99,11 @@ impl OwnedSocket {
         let socket = socket2::SockRef::from(&self.socket);
 
         // Apply each direction independently: failing to set one buffer size must not prevent the other from being applied.
-        if let Err(e) = apply_buffer_size(send, |size| socket.set_send_buffer_size(size)) {
+        if let Err(e) = set_send_buffer_size(&socket, send) {
             tracing::warn!(requested_send_buffer_size = %send, "Failed to set send buffer size: {e}");
         }
 
-        if let Err(e) = apply_buffer_size(recv, |size| socket.set_recv_buffer_size(size)) {
+        if let Err(e) = set_recv_buffer_size(&socket, recv) {
             tracing::warn!(requested_recv_buffer_size = %recv, "Failed to set recv buffer size: {e}");
         }
 
@@ -110,6 +112,55 @@ impl OwnedSocket {
 
         tracing::debug!(requested_send_buffer_size = %send, %send_buffer_size, requested_recv_buffer_size = %recv, %recv_buffer_size, %port, "UDP socket buffer sizes");
     }
+}
+
+fn set_send_buffer_size(socket: &socket2::SockRef<'_>, size: usize) -> io::Result<()> {
+    #[cfg(target_os = "linux")]
+    match force_buffer_size(socket, libc::SO_SNDBUFFORCE, size) {
+        Ok(()) => return Ok(()),
+        Err(e) => tracing::debug!("Failed to force send buffer size: {e}"),
+    }
+
+    apply_buffer_size(size, |size| socket.set_send_buffer_size(size))
+}
+
+fn set_recv_buffer_size(socket: &socket2::SockRef<'_>, size: usize) -> io::Result<()> {
+    #[cfg(target_os = "linux")]
+    match force_buffer_size(socket, libc::SO_RCVBUFFORCE, size) {
+        Ok(()) => return Ok(()),
+        Err(e) => tracing::debug!("Failed to force recv buffer size: {e}"),
+    }
+
+    apply_buffer_size(size, |size| socket.set_recv_buffer_size(size))
+}
+
+/// Sets a buffer size past `net.core.{w,r}mem_max`, which requires `CAP_NET_ADMIN`.
+#[cfg(target_os = "linux")]
+fn force_buffer_size(
+    socket: &socket2::SockRef<'_>,
+    option: libc::c_int,
+    size: usize,
+) -> io::Result<()> {
+    use std::os::fd::AsRawFd as _;
+
+    let value = libc::c_int::try_from(size).unwrap_or(libc::c_int::MAX);
+
+    // SAFETY: `value` outlives the call and the option length matches its type.
+    let ret = unsafe {
+        libc::setsockopt(
+            socket.as_raw_fd(),
+            libc::SOL_SOCKET,
+            option,
+            &value as *const libc::c_int as *const libc::c_void,
+            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+        )
+    };
+
+    if ret != 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(())
 }
 
 /// Opts a socket into URO unless broken coalescing has been observed (see [`crate::uro`]).
@@ -131,14 +182,12 @@ fn enable_gro(socket: &tokio::net::UdpSocket, state: &quinn_udp::UdpSocketState)
 /// Polls a single socket for readiness and, when ready, tries to receive a batch.
 ///
 /// Shared by every [`SocketPool`] implementation.
-pub(crate) fn poll_recv_ready<F>(
+pub(crate) fn poll_recv_ready(
     cx: &mut Context<'_>,
     socket: Socket<'_>,
-    try_recv: &mut F,
-) -> Poll<Result<DatagramBatch>>
-where
-    F: FnMut(Socket<'_>) -> io::Result<DatagramBatch>,
-{
+    recv_buf_size: usize,
+    port: u16,
+) -> Poll<Result<DatagramBatch>> {
     loop {
         match socket.inner.poll_recv_ready(cx) {
             Poll::Pending => return Poll::Pending,
@@ -148,10 +197,69 @@ where
             Poll::Ready(Ok(())) => {}
         }
 
-        match try_recv(socket) {
+        match try_recv_batch(socket, recv_buf_size, port) {
             // The readiness was stale; `try_io` cleared it, so the next poll above suspends.
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
             result => return Poll::Ready(result.context("Failed to read from socket")),
         }
     }
+}
+
+/// Attempts to receive a batch of datagrams from the given socket without blocking.
+///
+/// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
+/// readiness in the process so that waiting for readiness actually suspends.
+fn try_recv_batch(
+    socket: Socket<'_>,
+    recv_buf_size: usize,
+    port: u16,
+) -> io::Result<DatagramBatch> {
+    let batch = socket.inner.try_io(Interest::READABLE, || {
+        recv_batch(socket, recv_buf_size, port)
+    })?;
+
+    Ok(batch)
+}
+
+/// Receives a batch of datagrams from the given socket without blocking, regardless of
+/// tokio's cached readiness.
+pub(crate) fn recv_batch(
+    socket: Socket<'_>,
+    recv_buf_size: usize,
+    port: u16,
+) -> io::Result<DatagramBatch> {
+    let mut batch = RecvBatch::pull(recv_buf_size);
+
+    let len = {
+        // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
+        // ICMP errors on receive that we skip past; hence the `never_loop` allow elsewhere.
+        #[cfg_attr(not(apple), allow(clippy::never_loop))]
+        loop {
+            let (mut io_bufs, metas) = batch.recv_slices();
+
+            match socket.recv(&mut io_bufs, metas) {
+                // Connected sockets surface (one-shot) ICMP errors on receive; they are not fatal.
+                #[cfg(apple)]
+                Err(e) if socket.connected && crate::is_icmp_unreachable(&e) => {
+                    tracing::trace!("Ignoring ICMP error on connected UDP socket: {e}");
+                    continue;
+                }
+                result => break result,
+            }
+        }
+    }?;
+
+    #[cfg(windows)]
+    if crate::uro::detect_broken_coalescing(
+        batch
+            .buffers
+            .iter()
+            .map(|b| &b[..])
+            .zip(batch.metas.iter_mut())
+            .take(len),
+    ) {
+        socket.disable_gro();
+    }
+
+    Ok(DatagramBatch::new(batch.buffers, batch.metas, port, len))
 }

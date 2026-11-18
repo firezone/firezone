@@ -26,6 +26,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
+      - uses: ./.github/actions/checkout-portal-ops
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
       - uses: ./.github/actions/setup-postgres
       - uses: ./.github/actions/setup-elixir
         with:
@@ -43,7 +47,7 @@ jobs:
         env:
           E2E_DEFAULT_WAIT_SECONDS: 20
           CI_ASSERT_RECEIVE_TIMEOUT_MS: 250
-        run: mix coveralls.lcov
+        run: mix coveralls.lcov --warnings-as-errors
 
       - name: Test Report
         if: github.event.pull_request.head.repo.full_name == github.repository && (success() || failure())
@@ -76,6 +80,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
+      - uses: ./.github/actions/checkout-portal-ops
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
       - uses: ./.github/actions/setup-elixir
         id: setup-beam
         with:
@@ -108,6 +116,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
+      - uses: ./.github/actions/checkout-portal-ops
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
@@ -165,7 +177,7 @@ jobs:
       - name: Check for breaking OpenAPI changes
         id: oasdiff
         if: github.base_ref != '' && inputs.check_openapi_breaking_changes
-        uses: oasdiff/oasdiff-action/breaking@9ce3a29eb0e6478dd0140932a678c7fb59d08f22 # v0.1.20
+        uses: oasdiff/oasdiff-action/breaking@8a211b41745fcecdfa4a86531ffbf08934fb14f6 # v0.1.23
         with:
           base: base-openapi.json
           revision: elixir/priv/static/openapi.json
@@ -177,7 +189,7 @@ jobs:
       - name: Build the OpenAPI changelog
         id: changelog
         if: github.base_ref != '' && inputs.check_openapi_breaking_changes
-        uses: oasdiff/oasdiff-action/changelog@9ce3a29eb0e6478dd0140932a678c7fb59d08f22 # v0.1.20
+        uses: oasdiff/oasdiff-action/changelog@8a211b41745fcecdfa4a86531ffbf08934fb14f6 # v0.1.23
         with:
           base: base-openapi.json
           revision: elixir/priv/static/openapi.json

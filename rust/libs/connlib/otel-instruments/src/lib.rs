@@ -4,11 +4,10 @@
 //! All call sites recording to the same instrument must use a single, consistent definition.
 //! Individual data points are differentiated through attributes instead.
 
-use std::ops::ControlFlow;
-use std::time::Duration;
+pub use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter};
 
 use opentelemetry::KeyValue;
-pub use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// How many packets we have processed.
 pub fn network_packets() -> Counter<u64> {
@@ -140,12 +139,60 @@ pub fn dns_lookup_duration() -> Histogram<f64> {
         .build()
 }
 
-/// The length of a queue.
-pub fn queue_length() -> Gauge<u64> {
-    connlib_meter()
-        .u64_gauge("connlib.queue.length")
-        .with_description("The length of a queue.")
-        .build()
+/// Records how many items a queue already held when another one was enqueued.
+///
+/// Recorded by the producer, for one in every [`QueueDepth::SAMPLE_EVERY`] items.
+pub struct QueueDepth<const N: usize> {
+    histogram: Histogram<u64>,
+    attributes: [KeyValue; N],
+    enqueued: AtomicU32,
+}
+
+impl<const N: usize> QueueDepth<N> {
+    const SAMPLE_EVERY: u32 = 32;
+
+    pub fn new(attributes: [KeyValue; N]) -> Self {
+        let histogram = connlib_meter()
+            .u64_histogram("connlib.queue.depth")
+            .with_description("How many items were already queued when an item was enqueued.")
+            .with_unit("{item}")
+            .with_boundaries(
+                (0..10_u32)
+                    .step_by(2)
+                    .chain((10..=100).step_by(10))
+                    .map(f64::from)
+                    .collect(),
+            )
+            .build();
+
+        Self {
+            histogram,
+            attributes,
+            enqueued: AtomicU32::new(0),
+        }
+    }
+
+    pub fn record(&self, depth: usize) {
+        if !self
+            .enqueued
+            .fetch_add(1, Ordering::Relaxed)
+            .is_multiple_of(Self::SAMPLE_EVERY)
+        {
+            return;
+        }
+
+        self.histogram.record(depth as u64, &self.attributes);
+    }
+}
+
+impl<const N: usize> Clone for QueueDepth<N> {
+    fn clone(&self) -> Self {
+        Self {
+            histogram: self.histogram.clone(),
+            attributes: self.attributes.clone(),
+            enqueued: AtomicU32::new(0),
+        }
+    }
 }
 
 /// The number of buffers allocated in a buffer pool.
@@ -184,28 +231,6 @@ pub fn eventloop_poll_duration() -> Histogram<f64> {
         .build()
 }
 
-/// Periodically records the length of a queue to the [`queue_length`] gauge until the queue is gone.
-pub async fn periodic_queue_length<const N: usize>(
-    queue: impl QueueLength,
-    attributes: [KeyValue; N],
-) {
-    periodic_gauge(
-        queue_length(),
-        |gauge| {
-            let len = match queue.queue_length() {
-                Some(len) => len,
-                None => return ControlFlow::Break(()),
-            };
-
-            gauge.record(len, &attributes);
-
-            ControlFlow::Continue(())
-        },
-        Duration::from_secs(1),
-    )
-    .await;
-}
-
 /// Up/down counter of currently active relay allocations.
 pub fn relay_active_allocations() -> UpDownCounter<i64> {
     relay_meter()
@@ -230,6 +255,24 @@ pub fn relay_packets() -> Counter<u64> {
     relay_meter()
         .u64_counter("relay.packets")
         .with_description("The number of relayed packets")
+        .with_unit("{packet}")
+        .build()
+}
+
+/// Counter of relayed payload bytes.
+pub fn relay_bytes() -> Counter<u64> {
+    relay_meter()
+        .u64_counter("relay.bytes")
+        .with_description("The number of relayed payload bytes")
+        .with_unit("By")
+        .build()
+}
+
+/// Counter of packets that exceeded their channel's throughput limit, by action taken.
+pub fn relay_rate_limited_packets() -> Counter<u64> {
+    relay_meter()
+        .u64_counter("relay.rate_limited_packets")
+        .with_description("The number of packets that exceeded their channel's throughput limit")
         .with_unit("{packet}")
         .build()
 }
@@ -263,34 +306,6 @@ pub fn relay_xdp_processing_duration() -> Histogram<u64> {
             100_000.0,
         ])
         .build()
-}
-
-/// Invokes `callback` to record to `gauge` every `interval` until it signals completion.
-pub async fn periodic_gauge<T>(
-    gauge: Gauge<T>,
-    callback: impl Fn(&Gauge<T>) -> ControlFlow<(), ()>,
-    interval: Duration,
-) {
-    while callback(&gauge).is_continue() {
-        tokio::time::sleep(interval).await;
-    }
-}
-
-/// Something whose current queue length can be sampled.
-pub trait QueueLength: Send + Sync + 'static {
-    fn queue_length(&self) -> Option<u64>;
-}
-
-impl<T> QueueLength for tokio::sync::mpsc::WeakSender<T>
-where
-    T: Send + Sync + 'static,
-{
-    fn queue_length(&self) -> Option<u64> {
-        let sender = self.upgrade()?;
-        let len = sender.max_capacity() - sender.capacity();
-
-        Some(len as u64)
-    }
 }
 
 fn connlib_meter() -> Meter {

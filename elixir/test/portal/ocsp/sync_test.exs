@@ -10,6 +10,9 @@ defmodule Portal.Ocsp.SyncTest do
 
   alias Portal.Ocsp.Sync
   alias Portal.Crypto.X509
+  alias Portal.StreamingServer
+
+  @mib 1_048_576
 
   setup do
     account = account_fixture()
@@ -221,6 +224,69 @@ defmodule Portal.Ocsp.SyncTest do
       # One certificate the responder cannot place says nothing about the rest.
       log = capture_log(fn -> assert perform(endpoint) == {:ok, :refreshed} end)
       assert log =~ "does not know a certificate"
+    end
+
+    test "a responder that stops leaves the list fetching", %{account: account, pki: pki} do
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf(pki, :rsa))
+
+      endpoint =
+        revocation_endpoint_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          ocsp_urls: ["ldap://ocsp.example.test"]
+        )
+
+      capture_log(fn -> assert perform(endpoint) == {:ok, :failed} end)
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert endpoint.ocsp_is_disabled
+      assert endpoint.ocsp_errored_at
+      refute endpoint.crl_is_disabled
+      assert is_nil(endpoint.crl_errored_at)
+    end
+
+    test "a responder that comes back clears only its own streak", %{account: account, pki: pki} do
+      leaf = leaf(pki, :rsa)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
+      started = DateTime.add(DateTime.utc_now(), -3, :hour)
+
+      Repo.update_all(Portal.RevocationEndpoint,
+        set: [crl_errored_at: started, ocsp_errored_at: started, crl_error: "timeout"]
+      )
+
+      Req.Test.stub(Sync, fn conn ->
+        Plug.Conn.send_resp(conn, 200, ocsp_response(pki.ca, leaf, status: :good))
+      end)
+
+      assert perform(endpoint) == {:ok, :refreshed}
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert is_nil(endpoint.ocsp_errored_at)
+      assert endpoint.crl_errored_at == started
+    end
+
+    test "stops reading an answer that passes the size limit", %{account: account, pki: pki} do
+      test_pid = self()
+      url = StreamingServer.start(&StreamingServer.send_chunks(&1, test_pid, @mib, 64))
+      Portal.Config.put_env_override(Sync, req_opts: [retry: false, allow_private_ips: true])
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf(pki, :rsa))
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der, ocsp_urls: [url])
+
+      failure(endpoint)
+
+      assert Repo.one!(Portal.RevocationEndpoint).ocsp_error == ":ocsp_response_too_large"
+      assert_receive {:bytes_sent, sent}, 5_000
+      assert sent < 16 * @mib
+    end
+
+    test "does nothing once the responder was turned off", %{account: account, pki: pki} do
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf(pki, :rsa))
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der, ocsp_is_disabled: true)
+
+      Req.Test.stub(Sync, fn _conn -> flunk("a turned-off responder must not be asked") end)
+
+      assert perform(endpoint) == {:ok, :disabled}
     end
 
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do

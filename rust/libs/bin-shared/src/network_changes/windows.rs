@@ -98,7 +98,7 @@ pub async fn new_dns_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
 ) -> Result<impl Stream<Item = Result<()>> + Unpin> {
-    let worker = Worker::new("Firezone DNS notifier worker", move |tx, stopper_rx| {
+    let worker = Worker::new("fz-dns-notify", move |tx, stopper_rx| {
         async_dns::worker_thread(tokio_handle, tx, stopper_rx)?;
         Ok(())
     })?;
@@ -107,7 +107,7 @@ pub async fn new_dns_notifier(
 }
 
 pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + Default + Unpin> {
-    let worker = Worker::new("Firezone network notifier worker", move |tx, stopper_rx| {
+    let worker = Worker::new("fz-net-notify", move |tx, stopper_rx| {
         {
             let com = ComGuard::new()?;
             let listener = Listener::new(&com, tx.clone())?;

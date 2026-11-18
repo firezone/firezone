@@ -77,6 +77,7 @@ fn new_appender(
 
     let (non_blocking, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
         .buffered_lines_limit(MAX_BUFFERED_LINES)
+        .thread_name("fz-log-writer")
         .finish(appender);
 
     (non_blocking, guard)

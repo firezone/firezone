@@ -40,6 +40,8 @@
     /// The control plane the app is configured for; Firezone Cloud (US) when absent.
     let authURL: String?
     let apiURL: String?
+    /// What the running session signed in with; Settings notes any difference from its own.
+    let signedInWith: SignInSettings?
     // swiftlint:disable:next discouraged_optional_boolean - absent in unmanaged fixtures
     let managedVPNConfiguration: Bool?
 
@@ -243,9 +245,9 @@
       configuration.authURL = scenario.authURL ?? "https://app.firezone.dev"
       configuration.apiURL = scenario.apiURL ?? "wss://api.firezone.dev"
       configuration.logFilter = "info"
-      // A scenario's session was never signed in here, so a real sign-in recorded in the
-      // app's defaults would put the sign-in note on the screenshots.
-      configuration.signedInWith = nil
+      // The scenario's rather than a real sign-in recorded in the app's defaults, which would put
+      // the sign-in note on screenshots that are not about it.
+      configuration.signedInWith = scenario.signedInWith
     }
   }
 

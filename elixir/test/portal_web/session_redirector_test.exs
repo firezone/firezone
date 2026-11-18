@@ -85,4 +85,13 @@ defmodule PortalWeb.Session.RedirectorTest do
       assert Redirector.sanitize_redirect_to(account, "/") == "/#{account.slug}/sites"
     end
   end
+
+  describe "sanitize_redirect_to/3 with unsafe characters" do
+    test "rejects an account-scoped path that Phoenix refuses to redirect to" do
+      account = %Portal.Account{id: Ecto.UUID.generate(), slug: "acme"}
+
+      assert Redirector.sanitize_redirect_to(account, "/acme/sites") == "/acme/sites"
+      refute Redirector.sanitize_redirect_to(account, "/acme/\\evil.com") == "/acme/\\evil.com"
+    end
+  end
 end

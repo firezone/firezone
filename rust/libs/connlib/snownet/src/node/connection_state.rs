@@ -160,7 +160,7 @@ impl ConnectionState {
         cid: TId,
         agent: &mut Agent,
         default_ice_config: IceConfig,
-        packet: &IpPacket,
+        packet: &impl fmt::Debug,
         now: Instant,
     ) where
         TId: fmt::Display,

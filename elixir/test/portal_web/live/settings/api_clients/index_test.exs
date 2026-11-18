@@ -525,4 +525,45 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
       refute Repo.get_by(Actor, account_id: account.id, id: api_client.id)
     end
   end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"validate_edit", %{"actor" => %{"name" => "Late"}}},
+          {"update_actor", %{"actor" => %{"name" => "Late"}, "api_token" => %{"scopes" => ["sites:write"]}}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        api_client = actor_fixture(type: :api_client, account: account)
+        api_token_fixture(actor: api_client, account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/api_clients/#{api_client}/edit")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/settings/api_clients")
+
+        render_click(lv, unquote(event), unquote(Macro.escape(params)))
+
+        assert Repo.get_by!(Actor, account_id: account.id, id: api_client.id).name == api_client.name
+      end
+    end
+
+    for event <- ["delete", "disable", "enable"] do
+      test "ignores #{event} for a deleted API client", %{conn: conn, account: account, actor: actor} do
+        api_client = actor_fixture(type: :api_client, account: account)
+        api_token_fixture(actor: api_client, account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/api_clients")
+
+        render_click(lv, "delete", %{"id" => api_client.id})
+        render_click(lv, unquote(event), %{"id" => api_client.id})
+
+        refute render(lv) =~ api_client.name
+      end
+    end
+  end
 end

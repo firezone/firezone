@@ -29,13 +29,12 @@ impl tun::Tun for Io {
 
 impl Io {
     /// Starts IO on an owned TUN descriptor.
-    pub fn new(fd: OwnedFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
+    pub fn new(fd: OwnedFd) -> io::Result<Self> {
         let name = interface_name(&fd)?;
         let fd = Arc::new(fd);
 
         let send_fd = fd.clone();
         let workers = tun::Workers::spawn(
-            runtime,
             move |outbound_rx| crate::plain_ip::tun_send(send_fd, outbound_rx, write),
             move |inbound_tx| crate::plain_ip::tun_recv(fd, inbound_tx, read),
         )?;

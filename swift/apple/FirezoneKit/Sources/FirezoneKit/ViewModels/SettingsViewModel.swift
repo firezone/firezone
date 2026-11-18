@@ -16,6 +16,7 @@ class SettingsViewModel: ObservableObject {
   private var logDirectorySizeTask: Task<Void, Never>?
   private var savedURLs: (authURL: String, apiURL: String)
   private var savedControlPlane: ControlPlane = .custom
+  private var recentlySavedTasks: [SettingsView.Field: Task<Void, Never>] = [:]
 
   // Save and Reset act on one tab's settings only.
   @Published var selectedTab: SettingsView.Tab
@@ -32,6 +33,8 @@ class SettingsViewModel: ObservableObject {
   @Published var accountSlug: String
   @Published var connectOnStart: Bool
   @Published var startOnLogin: Bool
+  /// Text fields whose saved value just changed; each drops out two seconds later.
+  @Published private(set) var recentlySavedFields: Set<SettingsView.Field> = []
 
   /// Formatted size of the log directories; nil while a computation is running.
   @Published private(set) var logDirectorySizeText: String?
@@ -102,8 +105,12 @@ class SettingsViewModel: ObservableObject {
     })
     .store(in: &cancellables)
 
-    // The sign-in note depends on whether the session is running.
+    // The sign-in note and the developer settings depend on whether the session is running.
     store?.$vpnStatus
+      .sink(receiveValue: { [weak self] _ in self?.objectWillChange.send() })
+      .store(in: &cancellables)
+
+    store?.$forceRelayedConnections
       .sink(receiveValue: { [weak self] _ in self?.objectWillChange.send() })
       .store(in: &cancellables)
 
@@ -131,7 +138,7 @@ class SettingsViewModel: ObservableObject {
       controlPlane = detectControlPlane()
     case .logs:
       if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
-    case .deviceTrust:
+    case .deviceTrust, .developer:
       break
     }
 
@@ -140,6 +147,10 @@ class SettingsViewModel: ObservableObject {
 
   /// Saves the settings of `tab`, or of the selected tab, skipping any that are invalid.
   func save(_ tab: SettingsView.Tab? = nil) async throws {
+    let previousTextValues = savedTextValues
+    // Picking a control plane fills in its URLs, which the picker already shows.
+    let isSwitchingControlPlane = controlPlane != savedControlPlane
+
     switch tab ?? selectedTab {
     case .settings:
       syncValuesFromConfiguration()
@@ -169,11 +180,49 @@ class SettingsViewModel: ObservableObject {
       if !configuration.isLogFilterForced, isLogFilterValid() {
         configuration.logFilter = logFilter
       }
-    case .deviceTrust:
+    case .deviceTrust, .developer:
       break
     }
 
+    for (field, value) in savedTextValues where value != previousTextValues[field] {
+      if isSwitchingControlPlane, field == .authURL || field == .apiURL { continue }
+
+      markRecentlySaved(field)
+    }
+
     updateDerivedState()
+  }
+
+  /// Whether `field` holds a value that differs from the saved one.
+  func isDraft(_ field: SettingsView.Field) -> Bool {
+    switch field {
+    case .accountSlug: return accountSlug != configuration.accountSlug
+    case .authURL: return authURL != configuration.authURL
+    case .apiURL: return apiURL != configuration.apiURL
+    case .logFilter: return logFilter != configuration.logFilter
+    }
+  }
+
+  private var savedTextValues: [SettingsView.Field: String] {
+    [
+      .accountSlug: configuration.accountSlug,
+      .authURL: configuration.authURL,
+      .apiURL: configuration.apiURL,
+      .logFilter: configuration.logFilter,
+    ]
+  }
+
+  private func markRecentlySaved(_ field: SettingsView.Field) {
+    recentlySavedFields.insert(field)
+
+    recentlySavedTasks[field]?.cancel()
+    recentlySavedTasks[field] = Task {
+      try? await Task.sleep(for: .seconds(2))
+
+      guard !Task.isCancelled else { return }
+
+      recentlySavedFields.remove(field)
+    }
   }
 
   /// Picks `controlPlane` on the user's behalf: Firezone Cloud brings its own URLs, and Custom brings
@@ -332,7 +381,7 @@ class SettingsViewModel: ObservableObject {
     case .logs:
       shouldDisableResetButton =
         configuration.isLogFilterForced || logFilter == ConfigurationDefaults.logFilter
-    case .deviceTrust:
+    case .deviceTrust, .developer:
       shouldDisableResetButton = true
     }
   }

@@ -5,10 +5,9 @@ defmodule Portal.Cluster.PostgresStrategyTest do
   import Portal.Test.Assertions
 
   alias Portal.Cluster.PostgresStrategy
-  alias Portal.Fixture
 
-  describe "heartbeat and goodbye via LISTEN/NOTIFY" do
-    test "broadcasts heartbeat on startup and goodbye on termination" do
+  describe "heartbeats via LISTEN/NOTIFY" do
+    test "broadcasts a heartbeat on startup" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
       listener = start_supervised!({Postgrex.Notifications, Portal.Repo.config()})
@@ -16,21 +15,16 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       # Use a short heartbeat_interval so connection retries happen quickly
       # in case of transient too_many_connections errors under concurrent test load.
-      _pid =
-        start_supervised!(
-          {PostgresStrategy, [build_state(channel_name: channel_name, heartbeat_interval: 100)]}
-        )
+      start_supervised!(
+        {PostgresStrategy, [build_state(channel_name: channel_name, heartbeat_interval: 100)]}
+      )
 
       assert_receive {:notification, _, _, ^channel_name, "heartbeat:" <> _}, 5000
-      flush_notifications()
-
-      stop_supervised!(PostgresStrategy)
-      assert_receive {:notification, _, _, ^channel_name, "goodbye:" <> _}, 5000
     end
   end
 
   describe "handle_info/2" do
-    test ":heartbeat emits telemetry and schedules next heartbeat" do
+    test ":heartbeat emits the connected node count and schedules the next heartbeat" do
       channel_name = "test_#{System.unique_integer([:positive])}"
       test_pid = self()
 
@@ -43,32 +37,43 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         nil
       )
 
-      _pid =
-        start_supervised!(
-          {PostgresStrategy, [build_state(channel_name: channel_name, heartbeat_interval: 50)]}
-        )
+      start_supervised!(
+        {PostgresStrategy,
+         [
+           build_state(
+             channel_name: channel_name,
+             heartbeat_interval: 50,
+             list_nodes: [:a@node, :b@node]
+           )
+         ]}
+      )
 
-      # Should receive telemetry events
-      assert_receive {:telemetry, %{discovered_nodes_count: 0}}, 1000
+      assert_receive {:telemetry, %{discovered_nodes_count: 2}}, 1000
+      assert_receive {:telemetry, %{discovered_nodes_count: 2}}, 1000
 
       :telemetry.detach("test-handler-#{channel_name}")
     end
 
-    test "handles notification from other nodes" do
+    test "connects to nodes it hears a heartbeat from" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      listener = start_supervised!({Postgrex.Notifications, Portal.Repo.config()})
-      {:ok, _ref} = Postgrex.Notifications.listen(listener, channel_name)
+      pid = start_strategy(channel_name: channel_name)
+
+      send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
+      sync(pid)
+
+      assert_received {:connected, :other@node}
+    end
+
+    test "ignores its own heartbeat" do
+      channel_name = "test_#{System.unique_integer([:positive])}"
 
       pid = start_strategy(channel_name: channel_name)
-      flush_notifications()
 
-      # Simulate a heartbeat from another node by sending directly to the process
-      send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
+      send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:#{node()}"})
+      sync(pid)
 
-      wait_for_connected_node(pid, :other@node)
-
-      assert Process.alive?(pid)
+      refute_received {:connected, _}
     end
 
     test "logs error when connecting to node fails" do
@@ -87,64 +92,16 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       assert Process.alive?(pid)
     end
 
-    test "handles goodbye notification from connected nodes" do
+    test "never disconnects nodes, even ones that stop sending heartbeats" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_strategy(channel_name: channel_name)
+      pid = start_strategy(channel_name: channel_name, list_nodes: [:other@node])
 
-      # First connect the node via heartbeat
-      send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-      wait_for_connected_node(pid, :other@node)
+      send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
+      for _ <- 1..5, do: send(pid, :heartbeat)
+      sync(pid)
 
-      log =
-        capture_log(fn ->
-          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
-          sync(pid)
-          Logger.flush()
-        end)
-
-      assert log =~ "Received goodbye from node"
-      assert Process.alive?(pid)
-    end
-
-    test "ignores goodbye from nodes that were never connected" do
-      channel_name = "test_#{System.unique_integer([:positive])}"
-
-      pid = start_strategy(channel_name: channel_name)
-      node = "unknown#{Fixture.unique_integer()}@node"
-
-      log =
-        capture_log(fn ->
-          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:#{node}"})
-          sync(pid)
-          Logger.flush()
-        end)
-
-      refute Fixture.logged_lines(log, node) =~ "Received goodbye from node"
-      assert Process.alive?(pid)
-    end
-
-    test "only disconnects once when receiving duplicate goodbyes" do
-      channel_name = "test_#{System.unique_integer([:positive])}"
-
-      pid = start_strategy(channel_name: channel_name)
-
-      # First connect the node via heartbeat
-      send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-      wait_for_connected_node(pid, :other@node)
-
-      log =
-        capture_log(fn ->
-          # Send two goodbyes in quick succession
-          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
-          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
-          sync(pid)
-          Logger.flush()
-        end)
-
-      # Should only log disconnect once
-      assert length(Regex.scan(~r/Received goodbye from node/, log)) == 1
-      assert Process.alive?(pid)
+      refute_received {:disconnected, _}
     end
 
     test "handles unknown notifications gracefully" do
@@ -152,7 +109,6 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       pid = start_strategy(channel_name: channel_name)
 
-      # Send unknown notification
       send(pid, {:notification, self(), make_ref(), channel_name, "unknown:payload"})
       sync(pid)
 
@@ -219,183 +175,6 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       assert log =~ "PostgreSQL notify connection died, reconnecting"
       assert Process.alive?(pid)
-    end
-  end
-
-  describe "stale node detection" do
-    test "disconnects stale nodes and logs" do
-      channel_name = "test_#{System.unique_integer([:positive])}"
-
-      pid =
-        start_supervised!(
-          {PostgresStrategy,
-           [build_state(channel_name: channel_name, heartbeat_interval: 50, missed_heartbeats: 1)]}
-        )
-      wait_for_started(pid)
-
-      # Manually inject a stale node into state
-      state = :sys.get_state(pid)
-      stale_time = System.monotonic_time(:millisecond) - 200
-
-      new_state = %{
-        state
-        | node_timestamps: %{:stale@node => stale_time},
-          connected_nodes: [:stale@node]
-      }
-
-      :sys.replace_state(pid, fn _ -> new_state end)
-
-      log =
-        capture_log(fn ->
-          # Trigger heartbeat which checks stale nodes
-          send(pid, :heartbeat)
-          sync(pid)
-          Logger.flush()
-        end)
-
-      assert log =~ "Disconnecting stale nodes"
-
-      # Verify node was removed
-      final_state = :sys.get_state(pid)
-      refute Map.has_key?(final_state.node_timestamps, :stale@node)
-    end
-  end
-
-  describe "threshold logging" do
-    test "does not log error on first threshold violation" do
-      channel_name = "test_#{System.unique_integer([:positive])}"
-
-      pid =
-        start_supervised!(
-          {PostgresStrategy,
-           [build_state(channel_name: channel_name, node_count: 5, heartbeat_interval: 50)]}
-        )
-      wait_for_started(pid)
-
-      # Inject a stale node
-      node = :"node#{Fixture.unique_integer()}@test"
-      state = :sys.get_state(pid)
-      stale_time = System.monotonic_time(:millisecond) - 200
-
-      new_state = %{
-        state
-        | node_timestamps: %{node => stale_time},
-          connected_nodes: [node],
-          missed_heartbeats: 1,
-          below_threshold?: false
-      }
-
-      :sys.replace_state(pid, fn _ -> new_state end)
-
-      log =
-        capture_log(fn ->
-          send(pid, :heartbeat)
-          sync(pid)
-          Logger.flush()
-        end)
-
-      # Should NOT log on first violation — enters pending state instead
-      refute Fixture.logged_lines(log, to_string(node)) =~ "Connected nodes count is below threshold"
-
-      state = :sys.get_state(pid)
-      assert match?({:pending, _}, state.below_threshold?)
-    end
-
-    test "logs error after sustained threshold violation" do
-      channel_name = "test_#{System.unique_integer([:positive])}"
-
-      pid =
-        start_supervised!(
-          {PostgresStrategy,
-           [build_state(channel_name: channel_name, node_count: 5, heartbeat_interval: 50)]}
-        )
-      wait_for_started(pid)
-
-      # Inject a stale node with below_threshold? already pending from the past
-      state = :sys.get_state(pid)
-      stale_time = System.monotonic_time(:millisecond) - 200
-
-      new_state = %{
-        state
-        | node_timestamps: %{:node1@test => stale_time},
-          connected_nodes: [:node1@test],
-          missed_heartbeats: 1,
-          below_threshold?: {:pending, System.monotonic_time(:millisecond) - :timer.seconds(60)}
-      }
-
-      :sys.replace_state(pid, fn _ -> new_state end)
-
-      log =
-        capture_log(fn ->
-          send(pid, :heartbeat)
-          sync(pid)
-          Logger.flush()
-        end)
-
-      assert log =~ "Connected nodes count is below threshold"
-
-      state = :sys.get_state(pid)
-      assert state.below_threshold? == true
-    end
-
-    test "logs recovery when coming back above threshold" do
-      channel_name = "test_#{System.unique_integer([:positive])}"
-
-      pid =
-        start_supervised!(
-          {PostgresStrategy, [build_state(channel_name: channel_name, node_count: 1)]}
-        )
-      wait_for_started(pid)
-
-      # Set state to below threshold (sustained violation already logged)
-      state = :sys.get_state(pid)
-      new_state = %{state | below_threshold?: true, connected_nodes: []}
-      :sys.replace_state(pid, fn _ -> new_state end)
-
-      log =
-        capture_log(fn ->
-          send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-          sync(pid)
-          Logger.flush()
-        end)
-
-      assert log =~ "Connected nodes count is back above threshold"
-    end
-
-    test "does not log recovery from pending state" do
-      channel_name = "test_#{System.unique_integer([:positive])}"
-
-      pid =
-        start_supervised!(
-          {PostgresStrategy, [build_state(channel_name: channel_name, node_count: 1)]}
-        )
-      wait_for_started(pid)
-
-      # Set state to pending (error was never logged)
-      state = :sys.get_state(pid)
-
-      new_state = %{
-        state
-        | below_threshold?: {:pending, System.monotonic_time(:millisecond)},
-          connected_nodes: []
-      }
-
-      :sys.replace_state(pid, fn _ -> new_state end)
-
-      other = "other#{Fixture.unique_integer()}@node"
-
-      log =
-        capture_log(fn ->
-          send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:#{other}"})
-          sync(pid)
-          Logger.flush()
-        end)
-
-      # Should NOT log recovery since the error was never logged
-      refute Fixture.logged_lines(log, other) =~ "Connected nodes count is back above threshold"
-
-      state = :sys.get_state(pid)
-      assert state.below_threshold? == false
     end
   end
 
@@ -516,42 +295,85 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     end
   end
 
-  describe "threshold recovery edge case" do
-    test "does not log recovery when still below threshold" do
-      channel_name = "test_#{System.unique_integer([:positive])}"
-
-      pid =
-        start_supervised!(
-          {PostgresStrategy,
-           [build_state(channel_name: channel_name, node_count: 10, heartbeat_interval: 50)]}
-        )
-      wait_for_started(pid)
-
-      # Set state with below_threshold? as false and only 1 connected node
-      # When we add another node via heartbeat, we'll still be below 10 nodes
-      state = :sys.get_state(pid)
-
-      new_state = %{
-        state
-        | below_threshold?: false,
-          connected_nodes: [:node1@test],
-          node_timestamps: %{:node1@test => System.monotonic_time(:millisecond)}
-      }
-
-      :sys.replace_state(pid, fn _ -> new_state end)
-
-      # Simulate heartbeat from another node - now we have 2 nodes + self = 3, still below 10
-      node2 = "node#{Fixture.unique_integer()}@test"
+  describe "threshold logging" do
+    test "does not log on the first heartbeat below the threshold" do
+      pid = start_strategy(node_count: 5)
 
       log =
         capture_log(fn ->
-          send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:#{node2}"})
+          send(pid, :heartbeat)
           sync(pid)
           Logger.flush()
         end)
 
-      # Should not log recovery since we're still below threshold
-      refute Fixture.logged_lines(log, node2) =~ "Connected nodes count is back above threshold"
+      refute log =~ "Connected nodes count is below threshold"
+      assert match?({:pending, _}, :sys.get_state(pid).below_threshold?)
+    end
+
+    test "logs error after a sustained shortfall" do
+      pid = start_strategy(node_count: 5, list_nodes: [:node1@test])
+
+      :sys.replace_state(pid, fn state ->
+        %{state | below_threshold?: {:pending, System.monotonic_time(:millisecond) - :timer.minutes(10)}}
+      end)
+
+      log =
+        capture_log(fn ->
+          send(pid, :heartbeat)
+          sync(pid)
+          Logger.flush()
+        end)
+
+      assert log =~ "Connected nodes count is below threshold"
+      assert :sys.get_state(pid).below_threshold? == true
+    end
+
+    test "logs recovery once enough nodes are connected again" do
+      pid = start_strategy(node_count: 2, list_nodes: [:node1@test])
+      :sys.replace_state(pid, fn state -> %{state | below_threshold?: true} end)
+
+      log =
+        capture_log(fn ->
+          send(pid, :heartbeat)
+          sync(pid)
+          Logger.flush()
+        end)
+
+      assert log =~ "Connected nodes count is back above threshold"
+      assert :sys.get_state(pid).below_threshold? == false
+    end
+
+    test "does not log recovery from the pending state" do
+      pid = start_strategy(node_count: 2, list_nodes: [:node1@test])
+
+      :sys.replace_state(pid, fn state ->
+        %{state | below_threshold?: {:pending, System.monotonic_time(:millisecond)}}
+      end)
+
+      log =
+        capture_log(fn ->
+          send(pid, :heartbeat)
+          sync(pid)
+          Logger.flush()
+        end)
+
+      refute log =~ "Connected nodes count is back above threshold"
+      assert :sys.get_state(pid).below_threshold? == false
+    end
+
+    test "does not log recovery while still below the threshold" do
+      pid = start_strategy(node_count: 10, list_nodes: [:node1@test, :node2@test])
+      :sys.replace_state(pid, fn state -> %{state | below_threshold?: true} end)
+
+      log =
+        capture_log(fn ->
+          send(pid, :heartbeat)
+          sync(pid)
+          Logger.flush()
+        end)
+
+      refute log =~ "Connected nodes count is back above threshold"
+      assert :sys.get_state(pid).below_threshold? == true
     end
   end
 
@@ -562,15 +384,14 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
     %{
       topology: :test_topology,
-      connect: {__MODULE__, connect_fn, []},
-      disconnect: {__MODULE__, :mock_disconnect, []},
-      list_nodes: {__MODULE__, :mock_list_nodes, []},
+      connect: {__MODULE__, connect_fn, [self()]},
+      disconnect: {__MODULE__, :mock_disconnect, [self()]},
+      list_nodes: {__MODULE__, :mock_list_nodes, [Keyword.get(opts, :list_nodes, [])]},
       config:
         [
           repo: Keyword.get(opts, :repo, Portal.Repo),
           channel_name: Keyword.get(opts, :channel_name, "test_cluster"),
           heartbeat_interval: Keyword.get(opts, :heartbeat_interval, 60_000),
-          missed_heartbeats: Keyword.get(opts, :missed_heartbeats, 3),
           node_count: Keyword.get(opts, :node_count, nil)
         ]
         |> Enum.reject(fn {_, v} -> is_nil(v) end)
@@ -580,23 +401,15 @@ defmodule Portal.Cluster.PostgresStrategyTest do
   defp build_state_with_invalid_repo do
     %{
       topology: :test_topology,
-      connect: {__MODULE__, :mock_connect, []},
-      disconnect: {__MODULE__, :mock_disconnect, []},
-      list_nodes: {__MODULE__, :mock_list_nodes, []},
+      connect: {__MODULE__, :mock_connect, [self()]},
+      disconnect: {__MODULE__, :mock_disconnect, [self()]},
+      list_nodes: {__MODULE__, :mock_list_nodes, [[]]},
       config: [
         repo: __MODULE__.InvalidRepo,
         channel_name: "test_cluster",
         heartbeat_interval: 100
       ]
     }
-  end
-
-  defp flush_notifications do
-    receive do
-      {:notification, _, _, _, _} -> flush_notifications()
-    after
-      0 -> :ok
-    end
   end
 
   defp start_strategy(opts) do
@@ -613,22 +426,23 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     end)
   end
 
-  defp wait_for_connected_node(pid, node) do
-    wait_for(fn ->
-      state = :sys.get_state(pid)
-      assert node in state.connected_nodes
-    end)
-  end
-
   # Forces a synchronous round-trip through the GenServer so prior async
   # messages are handled before the test continues.
   defp sync(pid), do: :sys.get_state(pid)
 
   # Mock functions for Cluster.Strategy callbacks
-  def mock_connect(_node), do: true
-  def mock_disconnect(_node), do: true
-  def mock_list_nodes, do: []
-  def mock_connect_failing(_node), do: false
+  def mock_connect(test_pid, node) do
+    send(test_pid, {:connected, node})
+    true
+  end
+
+  def mock_list_nodes(nodes), do: nodes
+
+  def mock_disconnect(test_pid, node) do
+    send(test_pid, {:disconnected, node})
+    true
+  end
+  def mock_connect_failing(_test_pid, _node), do: false
 
   def mock_configure(opts, test_pid) do
     send(test_pid, :configure_called)

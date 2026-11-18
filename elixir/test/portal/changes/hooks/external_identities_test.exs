@@ -43,7 +43,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentitiesTest do
       }
 
       assert :ok == on_delete(0, old_data)
-      assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
+      assert Repo.get_by(Portal.DeviceToken, id: client_token.id) == nil
     end
 
     test "deletes portal sessions for the matching issuer and actor" do
@@ -96,7 +96,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentitiesTest do
       }
 
       assert :ok == on_delete(0, old_data)
-      assert Repo.get_by(Portal.ClientToken, id: client_token.id) != nil
+      assert Repo.get_by(Portal.DeviceToken, id: client_token.id) != nil
     end
 
     test "does not delete client tokens for a different issuer" do
@@ -123,7 +123,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentitiesTest do
       }
 
       assert :ok == on_delete(0, old_data)
-      assert Repo.get_by(Portal.ClientToken, id: client_token.id) != nil
+      assert Repo.get_by(Portal.DeviceToken, id: client_token.id) != nil
     end
 
     test "deletes client tokens for Google auth provider with matching issuer" do
@@ -150,7 +150,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentitiesTest do
       }
 
       assert :ok == on_delete(0, old_data)
-      assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
+      assert Repo.get_by(Portal.DeviceToken, id: client_token.id) == nil
     end
 
     test "deletes client tokens for GitHub auth provider with matching issuer" do
@@ -174,7 +174,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentitiesTest do
       }
 
       assert :ok == on_delete(0, old_data)
-      assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
+      assert Repo.get_by(Portal.DeviceToken, id: client_token.id) == nil
     end
 
     test "deletes portal sessions for a second verified Entra tenant" do

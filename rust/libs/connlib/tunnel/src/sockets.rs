@@ -13,8 +13,11 @@ use std::env::VarError;
 use std::time::{Duration, Instant};
 use std::{
     io,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    sync::{Arc, Mutex, PoisonError},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    sync::{
+        Arc, Mutex, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
     task::{Context, Poll},
 };
 use tokio::sync::mpsc::{
@@ -23,9 +26,6 @@ use tokio::sync::mpsc::{
 };
 use tokio::sync::oneshot;
 
-pub(crate) const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
-const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
-const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
 /// How many outgoing UDP batches the send task drains from a socket's channel per wakeup.
 ///
 /// The outbound queue is sized as a small multiple of this (see [`QUEUE_SIZE`]), and every queued
@@ -55,11 +55,6 @@ const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
     _ => { 8 }
 };
 
-const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
-    SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
-const UNSPECIFIED_V6_SOCKET: SocketAddrV6 =
-    SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT, 0, 0);
-
 /// Datagrams received from the UDP sockets, in the batches their threads read them in.
 ///
 /// Dropping it hands the emptied vector back to [`Sockets`] for the next receive.
@@ -69,11 +64,6 @@ pub(crate) struct ReceivedDatagrams {
 }
 
 impl ReceivedDatagrams {
-    /// How many datagrams were received, counting every segment of a coalesced one.
-    pub fn len(&self) -> usize {
-        self.batches.iter().map(DatagramBatch::len).sum()
-    }
-
     /// Moves out every received datagram, in the order the sockets received them.
     pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn> + '_ {
         self.batches.iter_mut().flat_map(|batch| batch.drain())
@@ -111,6 +101,8 @@ impl Reserved<'_> {
 pub(crate) struct Sockets {
     /// Binds the sockets; sockets without one are kept as they are across [`Sockets::rebind`].
     socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>,
+    /// The port every (re)bind asks for; a socket that cannot get it takes a free one instead.
+    listen_port: u16,
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
 
@@ -121,6 +113,8 @@ pub(crate) struct Sockets {
     overflow_v6: VecDeque<Outbound>,
     /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
     bind_errors: VecDeque<anyhow::Error>,
+    /// Shared with the send task of every socket, so it outlives [`Sockets::rebind`].
+    force_relayed_connections: Arc<AtomicBool>,
     packet_counter: Counter<u64>,
     dropped_packets: Counter<u64>,
 
@@ -131,22 +125,27 @@ pub(crate) struct Sockets {
 }
 
 impl Sockets {
-    /// Creates sockets for both families, bound to the unspecified address.
-    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
-        let mut sockets = Self::without_sockets(Some(socket_factory));
+    /// Creates sockets for both families, bound to the unspecified address on `listen_port`.
+    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>, listen_port: u16) -> Self {
+        let mut sockets = Self::without_sockets(Some(socket_factory), listen_port);
         sockets.rebind();
 
         sockets
     }
 
-    fn without_sockets(socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>) -> Self {
+    fn without_sockets(
+        socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>,
+        listen_port: u16,
+    ) -> Self {
         Self {
             socket_factory,
+            listen_port,
             socket_v4: None,
             socket_v6: None,
             overflow_v4: VecDeque::new(),
             overflow_v6: VecDeque::new(),
             bind_errors: VecDeque::new(),
+            force_relayed_connections: Arc::default(),
             packet_counter: otel_instruments::network_packets(),
             dropped_packets: otel_instruments::network_packet_dropped(),
             recv_batches: Some(Vec::with_capacity(2 * UDP_RECV_BATCH_LIMIT)),
@@ -166,8 +165,18 @@ impl Sockets {
         self.socket_v4 = None;
         self.socket_v6 = None;
 
-        self.socket_v4 = self.bind(&socket_factory, SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
-        self.socket_v6 = self.bind(&socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
+        self.socket_v4 = self.bind(&socket_factory, unspecified_v4(self.listen_port));
+        self.socket_v6 = self.bind(&socket_factory, unspecified_v6(self.listen_port));
+    }
+
+    pub fn listen_port(&self) -> u16 {
+        self.listen_port
+    }
+
+    /// Drops every datagram sent directly to a peer while `enabled`, leaving only those via a relay.
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        self.force_relayed_connections
+            .store(enabled, Ordering::Relaxed);
     }
 
     fn bind(
@@ -175,7 +184,11 @@ impl Sockets {
         socket_factory: &Arc<dyn SocketFactory<UdpSocket>>,
         addr: SocketAddr,
     ) -> Option<ThreadedUdpSocket> {
-        match ThreadedUdpSocket::new(socket_factory.clone(), addr) {
+        match ThreadedUdpSocket::new(
+            socket_factory.clone(),
+            addr,
+            self.force_relayed_connections.clone(),
+        ) {
             Ok(socket) => Some(socket),
             Err(e) => {
                 // A family we cannot bind is survivable on its own - the other one carries the
@@ -438,6 +451,16 @@ struct MainThreadEnds {
     inbound_rx: mpsc::Receiver<DatagramBatch>,
     /// Send/receive errors, plus a final [`UdpSocketThreadStopped`] when a thread dies.
     error_rx: mpsc::Receiver<anyhow::Error>,
+    queue_depth: otel_instruments::QueueDepth<3>,
+}
+
+impl MainThreadEnds {
+    /// Records how many items the outbound channel held besides the one just reserved.
+    fn record_queue_depth(&self) {
+        let depth = self.outbound_tx.max_capacity() - self.outbound_tx.capacity() - 1;
+
+        self.queue_depth.record(depth);
+    }
 }
 
 /// The ends of a socket's channels that its thread holds.
@@ -447,7 +470,7 @@ pub struct SocketThreadEnds {
     pub(crate) error_tx: mpsc::Sender<anyhow::Error>,
 }
 
-fn channels() -> (MainThreadEnds, SocketThreadEnds) {
+fn channels(addr: SocketAddr) -> (MainThreadEnds, SocketThreadEnds) {
     let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
     let (inbound_tx, inbound_rx) = mpsc::channel(INBOUND_QUEUE_SIZE);
     let (error_tx, error_rx) = mpsc::channel(QUEUE_SIZE);
@@ -457,6 +480,11 @@ fn channels() -> (MainThreadEnds, SocketThreadEnds) {
         waiting_for_room: None,
         inbound_rx,
         error_rx,
+        queue_depth: otel_instruments::QueueDepth::new([
+            otel::attr::queue_item_gso_batch(),
+            otel::attr::network_type_for_addr(addr),
+            otel::attr::network_io_direction_transmit(),
+        ]),
     };
     let socket_thread_ends = SocketThreadEnds {
         outbound_rx,
@@ -468,7 +496,11 @@ fn channels() -> (MainThreadEnds, SocketThreadEnds) {
 }
 
 impl ThreadedUdpSocket {
-    fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
+    fn new(
+        sf: Arc<dyn SocketFactory<UdpSocket>>,
+        preferred_addr: SocketAddr,
+        force_relayed_connections: Arc<AtomicBool>,
+    ) -> io::Result<Self> {
         let (
             main_thread_ends,
             SocketThreadEnds {
@@ -476,27 +508,12 @@ impl ThreadedUdpSocket {
                 inbound_tx,
                 error_tx,
             },
-        ) = channels();
+        ) = channels(preferred_addr);
         let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            main_thread_ends.outbound_tx.downgrade(),
-            [
-                otel::attr::queue_item_gso_batch(),
-                otel::attr::network_type_for_addr(preferred_addr),
-            ],
-        ));
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel::attr::queue_item_gro_batch(),
-                otel::attr::network_type_for_addr(preferred_addr),
-            ],
-        ));
-
         let thread_name = match preferred_addr {
-            SocketAddr::V4(_) => "UDP IPv4".to_owned(),
-            SocketAddr::V6(_) => "UDP IPv6".to_owned(),
+            SocketAddr::V4(_) => "fz-udp-v4".to_owned(),
+            SocketAddr::V6(_) => "fz-udp-v6".to_owned(),
         };
         let join_handle = std::thread::Builder::new()
             .name(thread_name.clone())
@@ -554,7 +571,16 @@ impl ThreadedUdpSocket {
                     let mut outbound = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
 
                     async move {
-                        let send = async |datagram| {
+                        let send = async |datagram: DatagramOut| {
+                            // Only datagrams sent directly to a peer have a `src`.
+                            if datagram.src.is_some()
+                                && force_relayed_connections.load(Ordering::Relaxed)
+                            {
+                                tracing::trace!(dst = %datagram.dst, "Forcing relayed connections; dropping direct datagram");
+
+                                return Ok(());
+                            }
+
                             let Err(e) = socket.send(datagram).await else {
                                 return Ok(());
                             };
@@ -616,6 +642,11 @@ impl ThreadedUdpSocket {
                 });
                 let receive = runtime.spawn({
                     let error_tx = error_tx.clone();
+                    let queue_depth = otel_instruments::QueueDepth::new([
+                        otel::attr::queue_item_gro_batch(),
+                        otel::attr::network_type_for_addr(preferred_addr),
+                        otel::attr::network_io_direction_receive(),
+                    ]);
 
                     async move {
                         loop {
@@ -645,12 +676,16 @@ impl ThreadedUdpSocket {
                                 }
                             };
 
+                            let depth = inbound_tx.max_capacity() - inbound_tx.capacity();
+
                             if inbound_tx.send(batch).await.is_err() {
                                 tracing::debug!(
                                     "Channel for inbound datagrams closed; exiting UDP recv task"
                                 );
                                 return;
                             }
+
+                            queue_depth.record(depth);
                         }
                     }
                 });
@@ -681,7 +716,11 @@ impl ThreadedUdpSocket {
         if ends.waiting_for_room.is_none() {
             // Fast path without registering a waker.
             match ends.outbound_tx.try_reserve() {
-                Ok(permit) => return Poll::Ready(Ok(Reserved::Borrowed(permit))),
+                Ok(permit) => {
+                    ends.record_queue_depth();
+
+                    return Poll::Ready(Ok(Reserved::Borrowed(permit)));
+                }
                 Err(TrySendError::Full(())) => {}
                 Err(TrySendError::Closed(())) => {
                     return Poll::Ready(Err(UdpSocketThreadStopped.into()));
@@ -698,6 +737,7 @@ impl ThreadedUdpSocket {
         let result = ready!(waiting_for_room.poll_unpin(cx));
         ends.waiting_for_room = None;
         let permit = result.map_err(|_| UdpSocketThreadStopped)?;
+        ends.record_queue_depth();
 
         Poll::Ready(Ok(Reserved::Owned(permit)))
     }
@@ -706,6 +746,7 @@ impl ThreadedUdpSocket {
     fn try_reserve(&self) -> Option<Reserved<'_>> {
         let ends = self.main_thread_ends.as_ref()?;
         let permit = ends.outbound_tx.try_reserve().ok()?;
+        ends.record_queue_depth();
 
         Some(Reserved::Borrowed(permit))
     }
@@ -771,8 +812,8 @@ impl Drop for ThreadedUdpSocket {
 impl Sockets {
     /// Creates sockets for both families without threads; the returned ends play their part.
     pub(crate) fn fake() -> (Self, SocketThreadEnds, SocketThreadEnds) {
-        let fake_socket = || {
-            let (main_thread_ends, socket_thread_ends) = channels();
+        let fake_socket = |addr: SocketAddr| {
+            let (main_thread_ends, socket_thread_ends) = channels(addr);
             let socket = ThreadedUdpSocket {
                 thread_name: "fake".to_owned(),
                 join_handle: None,
@@ -781,13 +822,13 @@ impl Sockets {
 
             (socket, socket_thread_ends)
         };
-        let (socket_v4, ends_v4) = fake_socket();
-        let (socket_v6, ends_v6) = fake_socket();
+        let (socket_v4, ends_v4) = fake_socket(unspecified_v4(0));
+        let (socket_v6, ends_v6) = fake_socket(unspecified_v6(0));
 
         let sockets = Self {
             socket_v4: Some(socket_v4),
             socket_v6: Some(socket_v6),
-            ..Self::without_sockets(None)
+            ..Self::without_sockets(None, 0)
         };
 
         (sockets, ends_v4, ends_v6)
@@ -858,6 +899,14 @@ impl SocketThreadEnds {
     }
 }
 
+fn unspecified_v4(port: u16) -> SocketAddr {
+    SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)
+}
+
+fn unspecified_v6(port: u16) -> SocketAddr {
+    SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), port)
+}
+
 fn listen(
     sf: Arc<dyn SocketFactory<UdpSocket>>,
     addresses: &[SocketAddr],
@@ -865,7 +914,7 @@ fn listen(
     let mut last_err = None;
 
     for addr in addresses {
-        match sf.bind(*addr).and_then(|s| s.into_perf()) {
+        match sf.bind(*addr).map(UdpSocket::into_perf) {
             Ok(s) => return Ok(s),
             Err(e) => {
                 tracing::debug!(%addr, "Failed to listen on UDP socket: {e}");

@@ -151,6 +151,19 @@ defmodule PortalAPI.Plugs.RequestLogTest do
       assert log.content_length == 42
     end
 
+    test "records a content-length larger than a bigint as nil", %{account: account} do
+      subject = subject_fixture(account: account, actor: [type: :api_client])
+
+      build_conn(:post, "/policies")
+      |> with_request_id()
+      |> Plug.Conn.put_req_header("content-length", "9999999999999999999")
+      |> Plug.Conn.assign(:subject, subject)
+      |> RequestLog.call([])
+
+      assert [log] = Repo.all(APIRequestLog)
+      assert log.content_length == nil
+    end
+
     test "records a malformed content-length header as nil", %{account: account} do
       subject = subject_fixture(account: account, actor: [type: :api_client])
 

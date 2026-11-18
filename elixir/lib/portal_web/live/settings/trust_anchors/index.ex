@@ -12,6 +12,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   @max_trust_anchors 10
   @max_trust_anchor_certificates 20
 
+  @selected_trust_anchor_events ~w[validate_edit update_trust_anchor delete_trust_anchor]
+
   defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, TrustAnchor}
@@ -82,8 +84,28 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         select: {
           e.issuer,
           %{
-            disabled: fragment("bool_or(?)", e.is_disabled),
-            errored: fragment("bool_or(? IS NOT NULL)", e.errored_at),
+            # Matches stopped?/1 below, over the issuer's rows at once.
+            disabled:
+              fragment(
+                """
+                NOT bool_or(cardinality(?) > 0 AND NOT ?)
+                AND bool_or(? OR NOT EXISTS (
+                  SELECT 1 FROM unnest(?) AS u WHERE u LIKE 'http://%' OR u LIKE 'https://%'
+                ))
+                """,
+                e.ocsp_urls,
+                e.ocsp_is_disabled,
+                e.crl_is_disabled,
+                e.crl_urls
+              ),
+            errored:
+              fragment(
+                "bool_or(? OR ? OR ? IS NOT NULL OR ? IS NOT NULL)",
+                e.crl_is_disabled,
+                e.ocsp_is_disabled,
+                e.crl_errored_at,
+                e.ocsp_errored_at
+              ),
             error_message: fragment("max(coalesce(?, ?))", e.crl_error, e.ocsp_error)
           }
         }
@@ -101,9 +123,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
       |> update(
         set: [
-          errored_at: nil,
-          is_disabled: false,
-          disabled_reason: nil,
+          crl_errored_at: nil,
+          crl_is_disabled: false,
+          ocsp_errored_at: nil,
+          ocsp_is_disabled: false,
           crl_error: nil,
           delta_error: nil,
           ocsp_error: nil,
@@ -135,7 +158,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       |> load_trust_anchors_if_connected()
       |> assign(selected_trust_anchor: nil)
       |> assign(form: nil, input_mode: :paste)
-      |> assign(confirm_delete?: false)
+      |> assign(confirm_delete?: false, pending_update: nil)
       |> assign(revocation: [])
       |> assign(panel_tab: :overview, expanded_endpoint: nil)
       |> allow_upload(:cert_file,
@@ -144,6 +167,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         max_file_size: @max_upload_size,
         auto_upload: true
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -166,7 +190,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     socket =
       socket
       |> assign(selected_trust_anchor: trust_anchor, input_mode: :paste, confirm_delete?: false)
-      |> assign(form: to_form(changeset, as: "trust_anchor"))
+      |> assign(form: to_form(changeset, as: "trust_anchor"), pending_update: nil)
 
     {:noreply, socket}
   end
@@ -194,7 +218,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
        selected_trust_anchor: nil,
        form: nil,
        input_mode: :paste,
-       confirm_delete?: false
+       confirm_delete?: false,
+       pending_update: nil
      )}
   end
 
@@ -215,7 +240,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <Navigation.docs_action path="/device-trust" />
+            <Navigation.docs_action show_label path="/device-trust" />
             <Navigation.link
               patch={~p"/#{@account}/settings/trust_anchors/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
@@ -388,6 +413,26 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               </Form.panel_footer_button>
             </Form.panel_footer>
           </.form>
+
+          <Form.modal
+            :if={@pending_update}
+            id="trust-anchor-remove-certificates-modal"
+            on_close="cancel_update_trust_anchor"
+            on_cancel="cancel_update_trust_anchor"
+            on_confirm="confirm_update_trust_anchor"
+            confirm_style="danger"
+          >
+            <:title>Remove certificates?</:title>
+            <:body>
+              <p>This change removes one or more certificates from this trust anchor.</p>
+              <p class="mt-2">
+                Devices that connected with a certificate will reconnect. If no trust anchor
+                trusts the certificate of a device after this change, that device is disconnected.
+              </p>
+            </:body>
+            <:cancel_button>Cancel</:cancel_button>
+            <:confirm_button>Save</:confirm_button>
+          </Form.modal>
         </div>
       </div>
     </div>
@@ -486,16 +531,16 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     """
   end
 
-  attr :endpoint, :any, required: true
+  attr :entry, :any, required: true
 
   defp endpoint_status_badge(assigns) do
     ~H"""
     <%= cond do %>
-      <% @endpoint.is_disabled -> %>
+      <% stopped?(@entry) -> %>
         <Core.status_badge style={:danger} dot={false}>Not checked</Core.status_badge>
-      <% @endpoint.errored_at -> %>
+      <% failing?(@entry.endpoint) -> %>
         <Core.status_badge style={:warning} dot={false}>Failing</Core.status_badge>
-      <% checked_at(@endpoint) -> %>
+      <% checked_at(@entry.endpoint) -> %>
         <Core.status_badge style={:success} dot={false}>OK</Core.status_badge>
       <% true -> %>
         <Core.status_badge style={:neutral} dot={false}>Pending</Core.status_badge>
@@ -509,7 +554,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     ~H"""
     <div class="space-y-3">
       <p
-        :if={@entry.endpoint.is_disabled}
+        :if={stopped?(@entry)}
         class="flex items-start gap-1.5 text-xs text-danger"
       >
         <Core.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -521,7 +566,19 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       </p>
 
       <p
-        :if={!@entry.endpoint.is_disabled && @entry.endpoint.errored_at}
+        :if={!stopped?(@entry) && stopped_mechanism(@entry.endpoint)}
+        class="flex items-start gap-1.5 text-xs text-warning"
+      >
+        <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          Firezone has stopped using the {stopped_mechanism(@entry.endpoint)} at this
+          address after repeated errors. Edit and Save this trust anchor to start
+          using it again.
+        </span>
+      </p>
+
+      <p
+        :if={!stopped_mechanism(@entry.endpoint) && failing?(@entry.endpoint)}
         class="flex items-start gap-1.5 text-xs text-warning"
       >
         <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -668,7 +725,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   </td>
                   <td class="px-2 py-2 text-body">{checked_via(entry.endpoint)}</td>
                   <td class="px-2 py-2">
-                    <.endpoint_status_badge endpoint={entry.endpoint} />
+                    <.endpoint_status_badge entry={entry} />
                   </td>
                   <td class="px-2 py-2 text-subtle">
                     <Core.icon
@@ -745,6 +802,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             <p class="text-xs text-error">
               <span class="font-medium">Delete this trust anchor?</span>
               <br /> Certificates issued by it will no longer be trusted, and this cannot be undone.
+              Devices that connected with a certificate will reconnect, and devices that no
+              other trust anchor trusts are disconnected.
             </p>
             <div class="flex items-center gap-2">
               <Form.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
@@ -969,27 +1028,38 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("update_trust_anchor", %{"trust_anchor" => attrs}, socket) do
     attrs = resolve_certs_attrs(socket, attrs)
-    changeset =
-      build_edit_changeset(socket.assigns.selected_trust_anchor, attrs, socket.assigns.subject)
+    trust_anchor = socket.assigns.selected_trust_anchor
+    changeset = build_edit_changeset(trust_anchor, attrs, socket.assigns.subject)
 
-    case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
-      {:ok, trust_anchor} ->
-        clear_revocation_errors(trust_anchor, socket.assigns.subject)
-        trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+    if changeset.valid? and removes_certificates?(changeset, trust_anchor) do
+      {:noreply,
+       assign(socket, pending_update: attrs, form: to_form(changeset, as: "trust_anchor"))}
+    else
+      save_trust_anchor(socket, changeset)
+    end
+  end
 
-        socket =
-          socket
-          |> assign(trust_anchors: trust_anchors)
-          |> assign_revocation_health(trust_anchors)
-          |> put_flash(:success, "Trust anchor updated successfully")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
-
+  def handle_event("confirm_update_trust_anchor", _params, socket) do
+    case socket.assigns.pending_update do
+      nil ->
         {:noreply, socket}
 
-      {:error, changeset} ->
-        changeset = surface_certificate_errors(changeset)
-        {:noreply, assign(socket, form: to_form(changeset, as: "trust_anchor"))}
+      attrs ->
+        changeset =
+          build_edit_changeset(
+            socket.assigns.selected_trust_anchor,
+            attrs,
+            socket.assigns.subject
+          )
+
+        socket
+        |> assign(pending_update: nil)
+        |> save_trust_anchor(changeset)
     end
+  end
+
+  def handle_event("cancel_update_trust_anchor", _params, socket) do
+    {:noreply, assign(socket, pending_update: nil)}
   end
 
   def handle_event("confirm_delete_trust_anchor", _params, socket) do
@@ -1055,6 +1125,34 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end
   end
 
+  defp save_trust_anchor(socket, changeset) do
+    case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
+      {:ok, trust_anchor} ->
+        clear_revocation_errors(trust_anchor, socket.assigns.subject)
+        trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+
+        socket =
+          socket
+          |> assign(trust_anchors: trust_anchors)
+          |> assign_revocation_health(trust_anchors)
+          |> put_flash(:success, "Trust anchor updated successfully")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        changeset = surface_certificate_errors(changeset)
+        {:noreply, assign(socket, form: to_form(changeset, as: "trust_anchor"))}
+    end
+  end
+
+  # Removing a certificate deletes its row, and every Client session in the
+  # account that came in on a certificate then reconnects.
+  defp removes_certificates?(changeset, trust_anchor) do
+    kept = changeset |> get_field(:certificates, []) |> MapSet.new(& &1.fingerprint)
+    Enum.any?(trust_anchor.certificates, &(not MapSet.member?(kept, &1.fingerprint)))
+  end
+
   defp build_edit_changeset(trust_anchor, attrs, subject) do
     trust_anchor
     |> cast(attrs, [:name, :certs])
@@ -1098,21 +1196,16 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   # PEM/base64/DER text the admin typed with the normalized raw DER bytes
   # (see `normalize_certs/2` and the schema test asserting on that). Showing
   # those bytes back in the textarea would corrupt the field, so once
-  # normalization has produced `:certificates` changesets, read their
-  # already-armored `:pem` back for display instead of `@form[:certs].value`.
+  # normalization has succeeded, read the already-armored `:pem` of the
+  # certificates the anchor will hold instead of `@form[:certs].value`. Text that
+  # failed to normalize is shown as typed.
   defp certs_display_value(form) do
-    case Ecto.Changeset.get_change(form.source, :certificates) do
-      [_ | _] = certificate_changesets ->
-        certificate_changesets
-        # `put_assoc/3` can't match freshly-built cert changesets against the
-        # existing (unsaved-input) `:id`-less ones they replace, so editing
-        # always emits a `:replace` entry for the old row alongside the
-        # `:insert` for the new one. Only the surviving side belongs on screen.
-        |> Enum.reject(&(&1.action == :replace))
-        |> Enum.map_join(&Ecto.Changeset.get_field(&1, :pem))
+    certificates = Ecto.Changeset.get_field(form.source, :certificates)
 
-      _ ->
-        List.first(form[:certs].value || [], "")
+    if Keyword.has_key?(form.source.errors, :certs) or not is_list(certificates) do
+      List.first(form[:certs].value || [], "")
+    else
+      Enum.map_join(certificates, & &1.pem)
     end
   end
 
@@ -1225,9 +1318,12 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           ocsp: Database.count_revoked_statuses(issuers, subject)
         }
 
-        issuers
-        |> Database.list_revocation_endpoints(subject)
+        rows = Database.list_revocation_endpoints(issuers, subject)
+        responders = rows |> Enum.filter(&live_responder?/1) |> MapSet.new(& &1.issuer)
+
+        rows
         |> Enum.map(&with_revoked_count(&1, counts))
+        |> Enum.map(&Map.put(&1, :responder?, MapSet.member?(responders, &1.endpoint.issuer)))
         |> Enum.sort_by(&X509.describe_name(&1.endpoint.issuer))
       end
 
@@ -1257,7 +1353,24 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     |> Base.url_encode64(padding: false)
   end
 
-  defp failing?(endpoint), do: endpoint.is_disabled or not is_nil(endpoint.errored_at)
+  defp failing?(endpoint) do
+    endpoint.crl_is_disabled or endpoint.ocsp_is_disabled or
+      not is_nil(endpoint.crl_errored_at) or not is_nil(endpoint.ocsp_errored_at)
+  end
+
+  # Nothing checks the certificates bound to this address any more: its list is
+  # off or cannot be fetched, and the issuer has no responder left to fall back
+  # on. The responder is asked per issuer and rides only one of its rows, so a
+  # row without one of its own is still covered by it.
+  defp stopped?(%{endpoint: endpoint, responder?: responder?}) do
+    not responder? and (not checks_via_list?(endpoint) or endpoint.crl_is_disabled)
+  end
+
+  defp live_responder?(endpoint), do: endpoint.ocsp_urls != [] and not endpoint.ocsp_is_disabled
+
+  defp stopped_mechanism(%{crl_is_disabled: true}), do: "revocation list"
+  defp stopped_mechanism(%{ocsp_is_disabled: true}), do: "responder"
+  defp stopped_mechanism(_endpoint), do: nil
 
   defp checked_at(endpoint), do: endpoint.crl_fetched_at || endpoint.ocsp_checked_at
 
@@ -1283,8 +1396,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       {"Revoked certificates", to_string(revoked_count)},
       {"List addresses", format_urls(endpoint.crl_urls)},
       {"Responder addresses", format_urls(endpoint.ocsp_urls)},
-      {"Failing since", endpoint.errored_at},
-      {"Stopped because", endpoint.is_disabled && endpoint.disabled_reason},
       {"First seen", endpoint.inserted_at}
     ]
     |> drop_blanks()
@@ -1299,7 +1410,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         {"Published", endpoint.crl_this_update},
         {"Expires", endpoint.crl_next_update},
         {"CRL number", endpoint.crl_number && to_string(endpoint.crl_number)},
-        {"Error", endpoint.crl_error}
+        {"Error", endpoint.crl_error},
+        {"Failing since", endpoint.crl_errored_at},
+        {"Status", endpoint.crl_is_disabled && "Stopped after repeated errors"}
       ]
       |> drop_blanks()
     end
@@ -1322,7 +1435,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     else
       [
         {"Last checked", endpoint.ocsp_checked_at || "Never"},
-        {"Error", endpoint.ocsp_error}
+        {"Error", endpoint.ocsp_error},
+        {"Failing since", endpoint.ocsp_errored_at},
+        {"Status", endpoint.ocsp_is_disabled && "Stopped after repeated errors"}
       ]
       |> drop_blanks()
     end
@@ -1460,4 +1575,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     do: "Too many files selected (max #{@max_upload_entries})."
 
   defp upload_error_to_string(_reason), do: "Could not upload file."
+
+  defp stale_event?(event, %{selected_trust_anchor: nil}) when event in @selected_trust_anchor_events,
+    do: true
+
+  defp stale_event?(_event, _assigns), do: false
 end

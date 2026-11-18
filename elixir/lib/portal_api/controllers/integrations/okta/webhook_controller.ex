@@ -24,9 +24,16 @@ defmodule PortalAPI.Integrations.Okta.WebhookController do
   def handle_webhook(conn, _params) do
     conn = fetch_query_params(conn)
 
+    case Okta.Webhooks.authenticate(conn.query_params["directory_id"], authorization(conn)) do
+      {:ok, directory} -> receive_events(conn, directory)
+      {:error, :unauthorized} -> send_resp(conn, 401, "Unauthorized")
+    end
+  end
+
+  defp receive_events(conn, directory) do
     case read_body(conn, length: @max_body_bytes) do
       {:ok, body, conn} ->
-        Portal.Conn.wrap_errors(conn, &handle_body(&1, conn.query_params["directory_id"], body))
+        Portal.Conn.wrap_errors(conn, &handle_body(&1, directory, body))
 
       {:more, _, conn} ->
         send_resp(conn, 413, "Request Entity Too Large")
@@ -37,17 +44,14 @@ defmodule PortalAPI.Integrations.Okta.WebhookController do
     end
   end
 
-  defp handle_body(conn, directory_id, body) do
+  defp handle_body(conn, directory, body) do
     with {:ok, %{"data" => %{"events" => events}}} when is_list(events) <- JSON.decode(body),
          true <- length(events) <= @max_events,
-         :ok <- Okta.Webhooks.handle_events(directory_id, authorization(conn), events) do
+         :ok <- Okta.Webhooks.handle_events(directory, events) do
       send_resp(conn, 204, "")
     else
       false ->
         send_resp(conn, 413, "Request Entity Too Large: too many events")
-
-      {:error, :unauthorized} ->
-        send_resp(conn, 401, "Unauthorized")
 
       {:ok, _other} ->
         send_resp(conn, 400, "Bad Request: missing events")

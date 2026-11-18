@@ -49,6 +49,9 @@ test("a rejected log filter shows the returned message and keeps the draft", asy
   await expect
     .element(page.getByLabelText("Log Filter"))
     .toHaveValue("info,connlib=nonsense");
+  await expect
+    .element(page.getByText("Saved", { exact: true }))
+    .not.toBeInTheDocument();
   expect(saveLogFilter).toHaveBeenCalledWith("info,connlib=nonsense");
 });
 

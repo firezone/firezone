@@ -19,7 +19,10 @@ defmodule Portal.Replication.SlotPollerTest do
     end
 
     @impl true
-    def on_begin(state, _msg), do: state
+    def on_begin(state, msg) do
+      send(state.test_pid, {:begin, msg.final_lsn})
+      state
+    end
 
     @impl true
     def on_logical_message(state, msg) do
@@ -203,6 +206,70 @@ defmodule Portal.Replication.SlotPollerTest do
     assert_receive {:write, _, :update, ^table, _old, %{"val" => "after"}}, 5000
     assert_receive {:write, _, :delete, ^table, old_data, nil}, 5000
     assert old_data["id"] == "2"
+  end
+
+  test "fills unchanged out-of-line values in updates from the old tuple", %{
+    aux: aux,
+    table: table
+  } do
+    start_poller!()
+
+    Postgrex.query!(aux, "ALTER TABLE #{table} ALTER COLUMN val SET STORAGE EXTERNAL", [])
+
+    Postgrex.query!(
+      aux,
+      "INSERT INTO #{table} (id, val) SELECT 5, string_agg(md5(i::text), '') FROM generate_series(1, 300) i",
+      []
+    )
+
+    Postgrex.query!(aux, "UPDATE #{table} SET id = 6 WHERE id = 5", [])
+
+    assert_receive {:write, _, :insert, ^table, nil, %{"val" => val}}, 5000
+    assert byte_size(val) == 9600
+
+    assert_receive {:write, _, :update, ^table, %{"id" => "5", "val" => ^val}, %{"id" => "6", "val" => ^val}},
+                   5000
+  end
+
+  test "keeps unchanged out-of-line values marked when the old tuple is not replicated", %{
+    aux: aux,
+    table: table
+  } do
+    start_poller!()
+
+    Postgrex.query!(aux, "ALTER TABLE #{table} REPLICA IDENTITY DEFAULT", [])
+    Postgrex.query!(aux, "ALTER TABLE #{table} ALTER COLUMN val SET STORAGE EXTERNAL", [])
+
+    Postgrex.query!(
+      aux,
+      "INSERT INTO #{table} (id, val) SELECT 7, string_agg(md5(i::text), '') FROM generate_series(1, 300) i",
+      []
+    )
+
+    Postgrex.query!(aux, "UPDATE #{table} SET id = 8 WHERE id = 7", [])
+
+    assert_receive {:write, _, :update, ^table, nil, %{"id" => "8", "val" => :unchanged_toast}}, 5000
+  end
+
+  test "dispatches transactions in commit order with the commit LSN", %{
+    aux: aux,
+    table: table
+  } do
+    start_poller!()
+
+    {:ok, _} =
+      Postgrex.transaction(aux, fn conn ->
+        Postgrex.query!(conn, "INSERT INTO #{table} (id, val) VALUES (20, 'first-written')", [])
+        Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (21, 'first-committed')", [])
+      end)
+
+    assert_receive {:begin, first_commit_lsn}, 5000
+    assert_receive {:write, first_committed_lsn, :insert, ^table, nil, %{"id" => "21"}}, 5000
+    assert_receive {:begin, second_commit_lsn}, 5000
+    assert_receive {:write, first_written_lsn, :insert, ^table, nil, %{"id" => "20"}}, 5000
+
+    assert first_written_lsn < first_committed_lsn
+    assert first_commit_lsn < second_commit_lsn
   end
 
   test "does not poll while another session holds the leadership lock", %{

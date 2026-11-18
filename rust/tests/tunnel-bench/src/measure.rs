@@ -33,10 +33,10 @@ impl Stage {
 
     pub(crate) fn thread_prefix(self) -> &'static str {
         match self {
-            Stage::EventLoop => "event-loop",
-            Stage::Udp => "UDP",
-            Stage::Crypto => "wg-crypto",
-            Stage::Tun => "TUN",
+            Stage::EventLoop => "fz-eventloop",
+            Stage::Udp => "fz-udp",
+            Stage::Crypto => "fz-crypto",
+            Stage::Tun => "fz-tun",
         }
     }
 

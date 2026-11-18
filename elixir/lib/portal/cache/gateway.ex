@@ -128,6 +128,19 @@ defmodule Portal.Cache.Gateway do
   end
 
   @doc """
+    Check if the cache has an authorization for the given client_id.
+  """
+  @spec has_client?(t(), String.t()) :: boolean()
+  def has_client?(%{} = cache, client_id) when is_binary(client_id) do
+    case Ecto.UUID.dump(client_id) do
+      {:ok, cid_bytes} -> Enum.any?(cache, fn {{cid, _rid}, _entry} -> cid == cid_bytes end)
+      :error -> false
+    end
+  end
+
+  def has_client?(%{}, _client_id), do: false
+
+  @doc """
     Return a list of all `{client_id, resource_id}` pairs matching the given resource ID.
   """
   @spec all_pairs_for_resource(t(), Ecto.UUID.t()) :: [{Ecto.UUID.t(), Ecto.UUID.t()}]

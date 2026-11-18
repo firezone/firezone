@@ -125,8 +125,10 @@ defmodule PortalAPI.Client.DeviceTrust do
           last_attested_cert_serial: String.t(),
           last_attested_cert_fingerprint: String.t(),
           last_attested_cert_issuer: binary(),
+          not_after: DateTime.t(),
           device: Portal.Device.t() | nil,
-          matched_on: :mdm_device_id | :cert_identity | nil
+          matched_on: :mdm_device_id | :cert_identity | nil,
+          trust_anchor_certificate_ids: [Ecto.UUID.t()]
         }
 
   @type prepared_authentication :: %{
@@ -202,15 +204,11 @@ defmodule PortalAPI.Client.DeviceTrust do
     with :ok <- ensure_x509_auth_feature_enabled(),
          {:ok, account, auth_provider} <- Database.fetch_x509_account(account_id),
          {:ok, anchors} <- fetch_anchors(account.id),
-         :ok <- validate_leaf(leaf, der, anchors),
+         {:ok, anchor_ids} <- validate_leaf(leaf, der, anchors),
          :ok <- ensure_account_enabled(account),
          {:ok, auth_provider} <- ensure_x509_authentication_enabled(auth_provider),
          {:ok, actor} <- Database.fetch_x509_actor(account, identity),
-         %DateTime{} = certificate_expires_at <- X509.not_after(leaf),
-         expires_at = %{
-           certificate_expires_at
-           | microsecond: {elem(certificate_expires_at.microsecond, 0), 6}
-         },
+         %DateTime{} = expires_at <- not_after(leaf),
          subject = %Subject{
            account: account,
            actor: actor,
@@ -221,7 +219,7 @@ defmodule PortalAPI.Client.DeviceTrust do
            expires_at: expires_at,
            context: context
          },
-         {:ok, proof} <- attest_validated(der, leaf, subject) do
+         {:ok, proof} <- attest_validated(der, leaf, anchor_ids, subject) do
       {:ok, subject, proof}
     else
       {:error, reason}
@@ -284,15 +282,22 @@ defmodule PortalAPI.Client.DeviceTrust do
          {:ok, der} <- presented_certificate(connect_info),
          {:ok, anchors} <- fetch_anchors(subject),
          {:ok, leaf} <- decode_leaf(der),
-         :ok <- validate_leaf(leaf, der, anchors) do
-      attest_validated(der, leaf, subject)
+         {:ok, anchor_ids} <- validate_leaf(leaf, der, anchors) do
+      attest_validated(der, leaf, anchor_ids, subject)
     end
   end
 
-  defp attest_validated(der, leaf, subject) do
+  defp attest_validated(der, leaf, anchor_ids, subject) do
     with {:ok, serial} <- cert_serial(leaf),
          {:ok, issuer} <- cert_issuer(der),
-         state = Database.attestation_state(issuer, serial, mdm_device_id(leaf), subject),
+         state =
+           Database.attestation_state(
+             issuer,
+             serial,
+             mdm_device_id(leaf),
+             crl_points(leaf),
+             subject
+           ),
          :ok <- ensure_not_revoked(state, issuer, serial),
          {:ok, identifiers} <- device_identifiers(leaf) do
       learn_revocation_endpoint(state, issuer, leaf, subject)
@@ -304,8 +309,10 @@ defmodule PortalAPI.Client.DeviceTrust do
          last_attested_cert_serial: serial,
          last_attested_cert_fingerprint: sha256_hex(der),
          last_attested_cert_issuer: issuer,
+         not_after: not_after(leaf),
          device: state.device,
-         matched_on: state.matched_on
+         matched_on: state.matched_on,
+         trust_anchor_certificate_ids: anchor_ids
        }}
     end
   end
@@ -416,17 +423,14 @@ defmodule PortalAPI.Client.DeviceTrust do
     end
   end
 
-  # Which anchor the chain happens to validate against says nothing about who
-  # issued the leaf: an account holding both a root and its intermediate has two
-  # anchors that can each validate the same certificate. The issuer is read off
-  # the leaf itself instead, so only the outcome matters here.
+  # An account holding both a root and its intermediate has two anchors that
+  # can each validate the same certificate, so every matching anchor is kept.
   defp validate_chain(leaf_der, anchors) do
     anchor_ders = Enum.map(anchors, & &1.der)
 
-    if Enum.any?(anchors, &chains_to?(leaf_der, &1.der, anchor_ders)) do
-      :ok
-    else
-      {:error, :untrusted_chain}
+    case anchors |> Enum.filter(&chains_to?(leaf_der, &1.der, anchor_ders)) |> Enum.map(& &1.id) do
+      [] -> {:error, :untrusted_chain}
+      ids -> {:ok, Enum.uniq(ids)}
     end
   end
 
@@ -452,12 +456,8 @@ defmodule PortalAPI.Client.DeviceTrust do
   # reliably say who issued it, and a serial means nothing without that.
   defp ensure_not_revoked(%{revoked?: true}, issuer, serial), do: refuse(issuer, serial)
 
-  # Nothing for a responder to add where the issuer publishes a list: absence
-  # from that list already means not revoked.
-  defp ensure_not_revoked(%{crl_published?: true}, _issuer, _serial), do: :ok
-
-  # Only consulted where the CA publishes no list, since a list covers every
-  # device in one fetch and a responder is one request per certificate.
+  # Checked even when the leaf's own list is current. That list can predate a
+  # revocation the responder already reported.
   defp ensure_not_revoked(%{ocsp_status: "revoked"}, issuer, serial), do: refuse(issuer, serial)
 
   # An answer we do not hold is not a refusal. The device proved possession of a
@@ -489,7 +489,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   # Asked about after the connect is already decided, so the answer lands for the
   # next one rather than holding this device at the door waiting on a responder.
   #
-  # Skipped where the CA publishes a list, which covers the whole fleet in one
+  # Skipped where the CA publishes a current list, which covers the whole fleet in one
   # fetch and already answers for this certificate, and skipped again where the
   # cached answer is still current. What is left is the gap the scheduled run
   # cannot close on its own: a certificate nobody has asked about yet, because
@@ -561,11 +561,26 @@ defmodule PortalAPI.Client.DeviceTrust do
     end)
   end
 
+  # The key of each row the certificate's lists are stored under, for the lists
+  # the fetcher can follow. A list reachable only over ldap is never fetched, so
+  # it can never be current and is left to the responder.
+  defp crl_points(leaf) do
+    leaf
+    |> X509.crl_distribution_points()
+    |> Enum.map(&order_by_scheme/1)
+    |> Enum.flat_map(fn
+      [url | _rest] -> if http_url?(url), do: [url], else: []
+      [] -> []
+    end)
+  end
+
+  defp http_url?(url), do: String.starts_with?(url, ["http://", "https://"])
+
   # HTTP first, since that is all the fetcher speaks. Anything else is kept
   # rather than dropped, so a CA publishing only over ldap is reported as a
   # scheme we cannot follow instead of looking like one that publishes nothing.
   defp order_by_scheme(urls) do
-    Enum.sort_by(urls, &(not String.starts_with?(&1, ["http://", "https://"])))
+    Enum.sort_by(urls, &(not http_url?(&1)))
   end
 
   defp cert_issuer(der) do
@@ -590,6 +605,13 @@ defmodule PortalAPI.Client.DeviceTrust do
       )
 
       {:error, :malformed_cert_serial}
+    end
+  end
+
+  defp not_after(leaf) do
+    case X509.not_after(leaf) do
+      %DateTime{} = not_after -> %{not_after | microsecond: {elem(not_after.microsecond, 0), 6}}
+      nil -> nil
     end
   end
 
@@ -931,7 +953,9 @@ defmodule PortalAPI.Client.DeviceTrust do
     @moduledoc false
     import Ecto.Query
     alias Portal.Crypto.X509
+    alias Portal.RevocationEndpoint
     alias Portal.Safe
+    require RevocationEndpoint
 
     def fetch_x509_account(account_id) do
       query =
@@ -1004,8 +1028,8 @@ defmodule PortalAPI.Client.DeviceTrust do
     }
 
     # Everything the connect needs to decide about this certificate, in one
-    # round trip: whether a list revoked it, whether its issuer publishes a
-    # list we can actually fetch, what its responder last said, and which
+    # round trip: whether a list revoked it, whether every list the certificate
+    # names is enabled and current, what its responder last said, and which
     # device row it belongs to. Read apart they also raced each other, so an
     # endpoint appearing between the coverage check and the responder read
     # could make the connect ignore an answer it had just decided to trust.
@@ -1013,8 +1037,8 @@ defmodule PortalAPI.Client.DeviceTrust do
     # The account is the base because it is the one row guaranteed to exist,
     # which keeps the outer joins from dropping the result when a certificate
     # is unknown to every one of these tables.
-    def attestation_state(issuer, serial, mdm_device_id, subject) do
-      actor_id = subject.actor.id
+    def attestation_state(issuer, serial, mdm_device_id, crl_points, subject) do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
       from(a in Portal.Account,
         left_join: r in Portal.CrlRevocation,
@@ -1023,7 +1047,7 @@ defmodule PortalAPI.Client.DeviceTrust do
         on: s.account_id == a.id and s.issuer == ^issuer and s.serial == ^serial,
         left_join: d in Portal.Device,
         on:
-          d.account_id == a.id and d.actor_id == ^actor_id and d.type == :client and
+          d.account_id == a.id and d.type == :client and
             (fragment("? = ?", d.last_attested_mdm_device_id, ^mdm_device_id) or
                (d.last_attested_cert_issuer == ^issuer and
                   d.last_attested_cert_serial == ^serial)),
@@ -1033,26 +1057,15 @@ defmodule PortalAPI.Client.DeviceTrust do
               "CASE WHEN ? = ? THEN 0 ELSE 1 END",
               d.last_attested_mdm_device_id,
               ^mdm_device_id
-            )
+            ),
+          desc_nulls_last: d.last_seen_at,
+          asc: d.id
         ],
         limit: 1,
         select: %{
           revoked?: not is_nil(r.serial),
           crl_published?:
-            fragment(
-              """
-              EXISTS (
-                SELECT 1 FROM revocation_endpoints e
-                WHERE e.account_id = ? AND e.issuer = ?
-                AND EXISTS (
-                  SELECT 1 FROM unnest(e.crl_urls) AS u
-                  WHERE u LIKE 'http://%' OR u LIKE 'https://%'
-                )
-              )
-              """,
-              a.id,
-              ^issuer
-            ),
+            RevocationEndpoint.crl_covers_points?(a.id, ^issuer, ^crl_points, ^now),
           known_points:
             fragment(
               """

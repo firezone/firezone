@@ -1,16 +1,57 @@
 defmodule PortalAPI.Gateway.SocketTest do
   use PortalAPI.ChannelCase, async: true
+  import Ecto.Query
   import PortalAPI.Gateway.Socket, except: [connect: 3]
   import Portal.AccountFixtures
   import Portal.SiteFixtures
   import Portal.DeviceFixtures
   import Portal.TokenFixtures
   import Portal.SubjectFixtures
+  import Portal.PolicyAuthorizationFixtures
   alias PortalAPI.Gateway.Socket
 
   @connlib_version "1.3.0"
 
   describe "connect/3" do
+    test "new legacy Gateways share the registration bucket with provisioned Gateways" do
+      Portal.Config.put_env_override(:portal, PortalAPI.Sockets.RateLimit,
+        refill_rate: 100_000,
+        capacity: 100_000
+      )
+
+      account = account_fixture(limits: %{users_count: 6, connected_devices_per_actor: 3})
+      site = site_fixture(account: account)
+      subject = subject_fixture(account: account, actor: %{type: :api_client, account: account})
+
+      assert {:ok, provisioned, _single_owner, single_token} =
+               Portal.Devices.provision_gateway(site, "precreated", subject)
+
+      token = gateway_token_fixture(account: account, site: site) |> encode_gateway_token()
+      attrs = connect_attrs(token: token)
+      info = build_connect_info(token: token)
+      assert {:ok, first} = connect(Socket, attrs, connect_info: info)
+      for _ <- 1..54, do: assert(:ok == Portal.Devices.RegistrationRateLimit.check(account))
+      assert {:error, {:rate_limit, _}} = Portal.Devices.RegistrationRateLimit.check(account)
+
+      rotated = Map.put(attrs, "public_key", generate_public_key())
+      assert {:ok, existing} = connect(Socket, rotated, connect_info: info)
+      assert existing.assigns.gateway.id == first.assigns.gateway.id
+
+      assert {:error, {:rate_limit, _}} =
+               connect(Socket, Map.put(attrs, "external_id", Ecto.UUID.generate()),
+                 connect_info: info
+               )
+
+      assert {:ok, existing} =
+               connect(Socket, connect_attrs(token: single_token),
+                 connect_info: build_connect_info(token: single_token)
+               )
+
+      assert existing.assigns.gateway.id == provisioned.id
+      assert {:error, {:rate_limit, _}} = Portal.Devices.provision_gateway(site, "blocked", subject)
+      assert Repo.aggregate(Portal.Device, :count, :id) == 2
+    end
+
     test "returns error when token is missing" do
       connect_info = build_connect_info()
       assert connect(Socket, %{}, connect_info: connect_info) == {:error, :missing_token}
@@ -77,6 +118,27 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.token_id == token1.id
     end
 
+    test "assigns a subject for the token's legacy Gateway actor" do
+      account = account_fixture()
+      token = gateway_token_fixture(account: account, site: site_fixture(account: account))
+      connect_info = build_connect_info(token: encode_gateway_token(token))
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+
+      assert %Portal.Authentication.Subject{
+               actor: %Portal.Actor{type: :legacy_gateway} = actor,
+               account: %Portal.Account{id: account_id},
+               credential: %Portal.Authentication.Credential.GatewayToken{id: token_id},
+               expires_at: nil,
+               context: %Portal.Authentication.Context{type: :gateway}
+             } = socket.assigns.subject
+
+      assert actor.id == token.actor_id
+      assert account_id == account.id
+      assert token_id == token.id
+    end
+
     test "creates a new gateway" do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
@@ -105,11 +167,18 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert is_nil(gateway.firebase_installation_id)
 
       persisted = Portal.Repo.get_by!(Portal.Device, account_id: gateway.account_id, id: gateway.id)
+      assert socket.assigns.site.id == token.site_id
       assert persisted.name == "reported-name"
       assert persisted.device_serial == "reported-serial"
       assert persisted.device_uuid == "reported-uuid"
       assert is_nil(persisted.identifier_for_vendor)
       assert is_nil(persisted.firebase_installation_id)
+
+      assert Portal.Repo.get_by(Portal.SiteDevice,
+               account_id: gateway.account_id,
+               site_id: token.site_id,
+               device_id: gateway.id
+             )
 
       assert is_reference(Map.fetch!(socket.assigns, :session_ref))
       assert gateway.public_key == attrs["public_key"]
@@ -171,7 +240,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       connected_gateway = socket.assigns.gateway
       assert is_reference(socket.assigns.session_ref)
-      assert connected_gateway.gateway_token_id == token.id
+      assert connected_gateway.token_id == token.id
       assert connected_gateway.last_seen_remote_ip_location_region == "Ukraine"
       assert connected_gateway.last_seen_remote_ip_location_city == "Kyiv"
       assert connected_gateway.last_seen_remote_ip_location_lat == 50.4333
@@ -252,6 +321,17 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
     end
 
+    test "refuses a gateway of a disabled account without creating it" do
+      account = disabled_account_fixture()
+      site = site_fixture(account: account)
+      token = gateway_token_fixture(account: account, site: site) |> encode_gateway_token()
+
+      assert connect(Socket, connect_attrs(token: token), connect_info: build_connect_info(token: token)) ==
+               {:error, :invalid_token}
+
+      assert Repo.aggregate(Portal.Device, :count, :id) == 0
+    end
+
     test "connects a gateway with a single-owner token" do
       account = account_fixture()
       site = site_fixture(account: account)
@@ -268,7 +348,24 @@ defmodule PortalAPI.Gateway.SocketTest do
       # is ignored for identification
       assert socket.assigns.gateway.id == gateway.id
       assert socket.assigns.site.id == site.id
-      assert socket.assigns.gateway.gateway_token_id == token.id
+      assert socket.assigns.gateway.token_id == token.id
+    end
+
+    test "takes a single-owner gateway's site from its assignment" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      other_site = site_fixture(account: account)
+
+      Portal.Repo.update_all(
+        from(sd in Portal.SiteDevice, where: sd.account_id == ^account.id and sd.device_id == ^gateway.id),
+        set: [site_id: other_site.id]
+      )
+
+      token = gateway_token_fixture(gateway: gateway)
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.site.id == other_site.id
     end
 
     test "single-owner connect persists the reported firezone_id when blank" do
@@ -362,6 +459,138 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.gateway.firezone_id == gateway.firezone_id
     end
 
+    test "single-owner connect keeps its firezone_id when another gateway in the site holds the reported one" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      holder = gateway_fixture(account: account, site: site)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: holder.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == gateway.id
+      assert Repo.get_by!(Portal.Device, id: gateway.id).firezone_id == gateway.firezone_id
+
+      site_token = gateway_token_fixture(account: account, site: site)
+      attrs = connect_attrs(token: encode_gateway_token(site_token), external_id: holder.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == holder.id
+    end
+
+    test "single-owner connect keeps its firezone_id when a gateway in another site holds the reported one" do
+      account = account_fixture()
+      other_gateway = gateway_fixture(account: account)
+      gateway = gateway_fixture(account: account)
+      token = gateway_token_fixture(gateway: gateway)
+
+      attrs =
+        connect_attrs(token: encode_gateway_token(token), external_id: other_gateway.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == gateway.id
+      assert Repo.get_by!(Portal.Device, id: gateway.id).firezone_id == gateway.firezone_id
+    end
+
+    test "site-token connect moves an offline gateway from another site" do
+      account = account_fixture()
+      old_site = site_fixture(account: account)
+      new_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: old_site)
+      authorization = policy_authorization_fixture(account: account, gateway: gateway, site: old_site)
+      token = gateway_token_fixture(account: account, site: new_site)
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: gateway.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == gateway.id
+      assert socket.assigns.site.id == new_site.id
+
+      assert [%Portal.SiteDevice{site_id: site_id}] =
+               Repo.all(from(sd in Portal.SiteDevice, where: sd.device_id == ^gateway.id))
+
+      assert site_id == new_site.id
+      refute Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
+    end
+
+    test "site-token connect refuses an online gateway in another site" do
+      account = account_fixture()
+      old_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: old_site)
+      token = gateway_token_fixture(account: account, site: site_fixture(account: account))
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: gateway.firezone_id)
+
+      :ok = Portal.PG.join(gateway.id)
+
+      assert {:error, :conflict} = connect(Socket, attrs, connect_info: build_connect_info())
+
+      assert [%Portal.SiteDevice{site_id: site_id}] =
+               Repo.all(from(sd in Portal.SiteDevice, where: sd.device_id == ^gateway.id))
+
+      assert site_id == old_site.id
+    end
+
+    test "site-token connect picks the oldest gateway when two in the site share a firezone_id" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      oldest = gateway_fixture(account: account, site: site)
+      newest = gateway_fixture(account: account, site: site)
+
+      Repo.update_all(
+        from(d in "devices", where: d.id == type(^newest.id, Ecto.UUID)),
+        set: [firezone_id_exempt: true]
+      )
+
+      newest
+      |> Ecto.Changeset.change(
+        firezone_id: oldest.firezone_id,
+        inserted_at: DateTime.add(oldest.inserted_at, 1, :second)
+      )
+      |> Repo.update!()
+
+      token = gateway_token_fixture(account: account, site: site)
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: oldest.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == oldest.id
+    end
+
+    test "site-token connect creates one gateway and one site assignment" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      token = gateway_token_fixture(account: account, site: site)
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: "new-host")
+
+      assert {:ok, first} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert {:ok, second} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert first.assigns.gateway.id == second.assigns.gateway.id
+      assert second.assigns.site.id == site.id
+
+      assert [%Portal.SiteDevice{site_id: site_id}] =
+               Repo.all(
+                 from(sd in Portal.SiteDevice,
+                   where: sd.account_id == ^account.id and sd.device_id == ^first.assigns.gateway.id
+                 )
+               )
+
+      assert site_id == site.id
+    end
+
+    test "rejects a single-owner token whose gateway has no site" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      token = gateway_token_fixture(gateway: gateway)
+
+      Repo.delete_all(
+        from(sd in Portal.SiteDevice, where: sd.account_id == ^account.id and sd.device_id == ^gateway.id)
+      )
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:error, _reason} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert Repo.get_by(Portal.Device, id: gateway.id)
+    end
+
     test "rejects a single-owner token rotated past the grace period" do
       gateway = gateway_fixture()
 
@@ -436,7 +665,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: build_connect_info())
 
-      refute Portal.Repo.get_by(Portal.GatewayToken,
+      refute Portal.Repo.get_by(Portal.DeviceToken,
                account_id: rotated.account_id,
                id: rotated.id
              )

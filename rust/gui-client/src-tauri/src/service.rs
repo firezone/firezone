@@ -62,8 +62,8 @@ pub enum ClientMsg {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
-        #[serde(default)]
-        api_url: Option<url::Url>,
+        /// The token's API URL captured at sign-in, including any MDM override.
+        api_url: url::Url,
     },
     Disconnect,
     /// Persist new advanced settings to the protected on-disk file owned by
@@ -75,6 +75,9 @@ pub enum ClientMsg {
     /// Only a failure to persist them is reported, as [`ServerMsg::AdvancedSettingsApplied`].
     SetAdditionalHostCandidates(Vec<IpAddr>),
     SetInternetResourceState(bool),
+    ManualReset,
+    /// Applies to the running session and every session started while it is on.
+    SetForceRelayedConnections(bool),
     StartTelemetry {
         release: String,
     },
@@ -251,6 +254,7 @@ struct Handler<'a> {
     advanced_settings: AdvancedSettings,
     mdm_settings: MdmSettings,
     session: Session,
+    force_relayed_connections: bool,
     telemetry_release: Option<String>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
@@ -359,8 +363,8 @@ impl Session {
     }
 }
 
-/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
-/// connlib eventloop shares this runtime's single worker.
+/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and stall the
+/// IPC server.
 async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystore::Error> {
     let identity = tokio::task::spawn_blocking(x509_keystore::identity)
         .await
@@ -527,6 +531,7 @@ impl<'a> Handler<'a> {
             advanced_settings,
             mdm_settings,
             session: Session::None,
+            force_relayed_connections: false,
             telemetry_release: None,
             tun_device,
             dns_notifier,
@@ -769,13 +774,6 @@ impl<'a> Handler<'a> {
                 is_internet_resource_active,
                 api_url,
             } => {
-                let api_url = self
-                    .mdm_settings
-                    .api_url
-                    .clone()
-                    .or(api_url)
-                    .unwrap_or_else(|| self.advanced_settings.api_url.clone());
-
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
 
@@ -849,6 +847,14 @@ impl<'a> Handler<'a> {
 
                 connlib.set_internet_resource_state(state);
             }
+            ClientMsg::ManualReset => self.reset_session("requested by user").await,
+            ClientMsg::SetForceRelayedConnections(enabled) => {
+                self.force_relayed_connections = enabled;
+
+                if let Some(connlib) = self.session.as_connlib() {
+                    connlib.set_force_relayed_connections(enabled);
+                }
+            }
             ClientMsg::StartTelemetry { release } => {
                 // This is a bit hacky.
                 // It would be cleaner to pass it down from the `Cli` struct.
@@ -897,12 +903,11 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    /// Returns the API URL selected by MDM, the active session, or the saved settings, in that order.
+    /// Returns the active session's API URL, falling back to MDM or the saved settings.
     fn api_url(&self) -> &str {
-        self.mdm_settings
-            .api_url
-            .as_ref()
-            .or_else(|| self.session.api_url())
+        self.session
+            .api_url()
+            .or(self.mdm_settings.api_url.as_ref())
             .map(|u| u.as_str())
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
@@ -978,17 +983,26 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
+        let listen_port =
+            client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+        let config = client_shared::SessionConfig::new(listen_port)
+            .with_internet_resource_active(is_internet_resource_active)
+            .with_dns_servers(dns)
+            .with_additional_host_candidates(
+                self.advanced_settings.additional_host_candidates.clone(),
+            )
+            .with_flow_logs_dir(known_dirs::flow_logs());
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            is_internet_resource_active,
-            dns,
-            self.advanced_settings.additional_host_candidates.clone(),
-            known_dirs::flow_logs(),
-            false,
-            tokio::runtime::Handle::current(),
-        );
+            config,
+        )
+        .context("Failed to start connlib")?;
+
+        if self.force_relayed_connections {
+            connlib.set_force_relayed_connections(true);
+        }
 
         analytics::new_session(device_id.id, api_url.to_string());
 
@@ -1066,11 +1080,7 @@ pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bo
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()?;
+    let rt = async_runtime::current_thread()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
@@ -1107,9 +1117,7 @@ pub fn run_smoke_test() -> Result<()> {
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
+    let rt = async_runtime::current_thread()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {
         dns_control_method: Default::default(),

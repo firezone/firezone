@@ -22,6 +22,12 @@ defmodule PortalWeb.Devices.Components do
   attr :class, :string, default: ""
   attr :return_to, :string, default: nil
 
+  def actor_name_and_role(%{actor: nil} = assigns) do
+    ~H"""
+    <span class={["text-subtle", @class]}>No user</span>
+    """
+  end
+
   def actor_name_and_role(assigns) do
     ~H"""
     <Navigation.link
@@ -325,7 +331,7 @@ defmodule PortalWeb.Devices.Components do
             />
           </div>
           <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
-            <.device_owner_section account={@account} device={@device} />
+            <.device_owner_section :if={@device.actor} account={@account} device={@device} />
             <.device_pools_section
               :if={@device_pools != []}
               account={@account}

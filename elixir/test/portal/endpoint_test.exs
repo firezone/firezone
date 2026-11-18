@@ -73,6 +73,7 @@ defmodule Portal.EndpointTest do
         |> put_req_header("x-forwarded-host", "app.firezone.test")
         |> put_req_header("x-azure-geo-country", "US")
         |> put_req_header("x-geo-location-region", "US")
+        |> put_req_header("x-geo-location-coordinates", "1,2")
         |> Endpoint.call([])
 
       assert conn.status == 404
@@ -81,6 +82,7 @@ defmodule Portal.EndpointTest do
       assert get_req_header(conn, "x-forwarded-host") == []
       assert get_req_header(conn, "x-azure-geo-country") == []
       assert get_req_header(conn, "x-geo-location-region") == []
+      assert get_req_header(conn, "x-geo-location-coordinates") == []
     end
 
     test "takes the client, host and scheme from a trusted proxy" do
@@ -205,6 +207,23 @@ defmodule Portal.EndpointTest do
       |> Endpoint.call([])
 
     assert wrong_port.private.phoenix_endpoint == PortalWeb.Endpoint
+  end
+
+  test "blocks listed countries before dispatching WebSocket requests" do
+    trust_proxy({127, 0, 0, 1})
+    Portal.Config.put_env_override(:country_code_blocklist, ["UA"])
+
+    conn =
+      :get
+      |> conn("https://api.firezone.test/client/v3/websocket")
+      |> put_req_header("upgrade", "websocket")
+      |> put_req_header("x-forwarded-for", "1.2.3.4")
+      |> put_req_header("x-azure-geo-country", "UA")
+      |> Endpoint.call([])
+
+    assert conn.status == 403
+    assert conn.halted
+    assert conn.private.phoenix_endpoint == Endpoint
   end
 
   test "rejects unknown hostnames" do

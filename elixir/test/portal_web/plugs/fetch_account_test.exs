@@ -34,6 +34,15 @@ defmodule PortalWeb.Plugs.FetchAccountTest do
       assert redirected_to(conn) == "https://eu.app.firezone.dev/eu-acme/sites?page=2"
     end
 
+    test "skips the registry for a segment that cannot be a slug", %{conn: conn} do
+      stub_registry(fn _conn -> flunk("unexpected registry request") end)
+
+      conn = conn |> Map.put(:path_info, ["/.aws/credentials", "sign_in"]) |> FetchAccount.call([])
+
+      refute conn.halted
+      refute Map.has_key?(conn.assigns, :account)
+    end
+
     test "keeps going for a slug nobody holds", %{conn: conn} do
       stub_registry(fn _conn -> :default end)
 
@@ -107,7 +116,7 @@ defmodule PortalWeb.Plugs.FetchAccountTest do
       conn: conn,
       account: account
     } do
-      account = update_account(account, slug: "acme-corp")
+      account = put_legacy_slug(account, "acme-corp")
 
       conn =
         conn

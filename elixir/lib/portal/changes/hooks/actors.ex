@@ -14,6 +14,7 @@ defmodule Portal.Changes.Hooks.Actors do
   @impl true
   def on_update(lsn, old_data, data) do
     :ok = handle_update_side_effects(old_data, data)
+    :ok = handle_password_change(old_data, data)
 
     old_actor = struct_from_params(Portal.Actor, old_data)
     actor = struct_from_params(Portal.Actor, data)
@@ -28,8 +29,8 @@ defmodule Portal.Changes.Hooks.Actors do
     PubSub.Changes.broadcast(actor.account_id, :actors, change)
   end
 
-  # Delete client_tokens, portal_sessions, and OAuth grants when an actor is
-  # disabled. Re-enabling the actor would otherwise bring them all back.
+  # Client tokens are kept: a disabled actor cannot use them, and its clients
+  # connect again when the actor is enabled.
   defp handle_update_side_effects(
          %{
            "is_disabled" => false,
@@ -38,7 +39,6 @@ defmodule Portal.Changes.Hooks.Actors do
          },
          %{"is_disabled" => true}
        ) do
-    Database.delete_client_tokens_for_actor(account_id, actor_id)
     Database.delete_portal_sessions_for_actor(account_id, actor_id)
     Database.delete_oauth_grants_for_actor(account_id, actor_id)
 
@@ -65,16 +65,33 @@ defmodule Portal.Changes.Hooks.Actors do
 
   defp handle_update_side_effects(_old_data, _new_data), do: :ok
 
+  defp handle_password_change(
+         %{"password_hash" => old_password_hash},
+         %{
+           "password_hash" => password_hash,
+           "account_id" => account_id,
+           "id" => actor_id
+         }
+       )
+       when old_password_hash != password_hash do
+    Database.delete_client_tokens_for_actor(account_id, actor_id)
+    Database.delete_portal_sessions_for_actor(account_id, actor_id)
+
+    :ok
+  end
+
+  defp handle_password_change(_old_data, _new_data), do: :ok
+
   defmodule Database do
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.OAuthGrant
     alias Portal.PortalSession
     alias Portal.Safe
     import Ecto.Query
 
     def delete_client_tokens_for_actor(account_id, actor_id) do
-      from(c in ClientToken,
-        where: c.account_id == ^account_id and c.actor_id == ^actor_id
+      from(t in DeviceToken,
+        where: t.account_id == ^account_id and t.actor_id == ^actor_id
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

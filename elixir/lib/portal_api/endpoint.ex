@@ -22,13 +22,11 @@ defmodule PortalAPI.Endpoint do
     plug Phoenix.CodeReloader
   end
 
-  plug Portal.Plugs.CountryCodeBlocklist
-
   plug Plug.RequestId
   plug PortalAPI.Plugs.PutDynamicRepo
   # TODO: Rework LoggerJSON to use Telemetry and integrate it
   # https://hexdocs.pm/phoenix/Phoenix.Logger.html
-  plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
+  plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: {__MODULE__, :log_level, []}
 
   socket "/gateway", PortalAPI.Gateway.Socket,
     websocket: [
@@ -104,6 +102,11 @@ defmodule PortalAPI.Endpoint do
       _ -> conn
     end
   end
+
+  # Flow-log uploads are high-volume; telemetry already counts them.
+  @doc false
+  def log_level(%Plug.Conn{path_info: ["ingestion" | _]}), do: :debug
+  def log_level(%Plug.Conn{}), do: :info
 
   def put_hsts_header(conn, _opts) do
     scheme =

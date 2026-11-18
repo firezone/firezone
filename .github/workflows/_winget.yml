@@ -1,0 +1,84 @@
+name: Publish to winget
+# Submits the release's installers to microsoft/winget-pkgs. komac pushes the
+# manifests to a branch of the firezone/winget-pkgs fork and opens the pull
+# request as `firezone-bot`, an account outside the organisation: apps cannot
+# open pull requests there.
+on:
+  workflow_call:
+    inputs:
+      identifier:
+        description: "The winget package, e.g. Firezone.Client.GUI"
+        required: true
+        type: string
+      release_name:
+        description: "The release, e.g. gui-client-1.5.20"
+        required: true
+        type: string
+      release_tag:
+        description: "The release's tag"
+        required: true
+        type: string
+    secrets:
+      BOT_PRIVATE_KEY:
+        required: true
+      WINGET_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  # komac analyses the installers like Windows would, e.g. for their install location.
+  submit:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: read
+      security-events: write # trivy SARIF upload from setup-mise
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust/gui-client github:russellbanks/Komac
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          owner: firezone
+          repositories: winget-pkgs
+          permission-contents: write
+          # Syncing the fork is refused when upstream changed its workflows.
+          permission-workflows: write
+      - name: Sync firezone/winget-pkgs with upstream
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          if ! response=$(gh api -X POST repos/firezone/winget-pkgs/merge-upstream -f branch=master 2>&1); then
+            echo "::error::Could not sync firezone/winget-pkgs with microsoft/winget-pkgs: $response"
+            exit 1
+          fi
+          echo "$response"
+      - name: Submit the manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          KOMAC_FORK_OWNER: firezone
+          IDENTIFIER: ${{ inputs.identifier }}
+          RELEASE_NAME: ${{ inputs.release_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          NO_COLOR: "1"
+        run: |
+          set -euo pipefail
+
+          mapfile -t urls < <(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            --jq '.assets[] | select(.name | test("\\.(exe|msi|msix|appx)(bundle)?$")) | .browser_download_url')
+
+          mise --cd rust/gui-client exec -- komac update "$IDENTIFIER" --version "${RELEASE_NAME##*-}" --urls "${urls[@]}" \
+            --release-notes-url https://www.firezone.dev/changelog --submit

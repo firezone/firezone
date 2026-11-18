@@ -80,16 +80,118 @@ defmodule PortalWeb.SignUpTest do
       refute html =~ ~s(name="registration[phone]")
     end
 
-    test "links the same page on the EU portal from the US portal", %{conn: conn} do
+    test "shows the cloud region picker first, instead of the footer line", %{conn: conn} do
       Portal.Config.put_env_override(:data_residency_region, :us)
       Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
 
-      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "input#region-option-us[checked]")
+      assert has_element?(lv, "label[for='region-option-us']", "United States")
+      assert has_element?(lv, "label[for='region-option-us']", "Data is stored in Iowa and Arizona")
+      assert has_element?(lv, "a#region-option-eu", "Data is stored in Sweden and France")
 
       assert has_element?(
                lv,
-               "#other-region-portal[href='https://eu.app.firezone.dev/sign_up/email']"
+               "a#region-option-eu[href='https://eu.app.firezone.dev/sign_up']",
+               "European Union"
              )
+
+      assert has_element?(
+               lv,
+               "#region-picker-help",
+               "Changing regions later requires scheduled downtime."
+             )
+
+      assert has_element?(
+               lv,
+               "#region-picker-help a[href='https://www.firezone.dev/kb/architecture/regional-availability']",
+               "Learn about regional availability"
+             )
+      refute has_element?(lv, "#data-residency")
+    end
+
+    test "shows the chosen region without a picker on the email form", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      assert has_element?(lv, "#selected-region", "European Union")
+      refute has_element?(lv, "#selected-region", "scheduled downtime")
+      refute has_element?(lv, "#selected-region", "Data is stored in")
+      refute has_element?(lv, "#region-picker")
+      refute has_element?(lv, "#data-residency")
+    end
+
+    test "hands the website attribution and query to the other region's portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+      distinct_id = "7d2ed047-64d3-41f9-9a41-ac2c9b92e761"
+
+      conn =
+        get(
+          conn,
+          "/sign_up?fz_website_id=#{distinct_id}&fz_website_path=%2Fpricing" <>
+            "&fz_mktg=true&fz_gclid=google-click&utm_source=openai"
+        )
+
+      assert redirected_to(conn) == "/sign_up?utm_source=openai"
+      {:ok, lv, _html} = live(recycle(conn), "/sign_up?utm_source=openai")
+
+      href =
+        lv
+        |> element("a#region-option-eu")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.attribute("href")
+        |> List.first()
+
+      uri = URI.parse(href)
+      assert "#{uri.scheme}://#{uri.host}#{uri.path}" == "https://eu.app.firezone.dev/sign_up"
+
+      assert URI.decode_query(uri.query) == %{
+               "fz_website_id" => distinct_id,
+               "fz_website_path" => "/pricing",
+               "fz_mktg" => "true",
+               "fz_gclid" => "google-click",
+               "utm_source" => "openai"
+             }
+    end
+
+    test "leaves the regional marketing default to the other region's portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "a#region-option-eu[href='https://eu.app.firezone.dev/sign_up']")
+    end
+
+    test "links the US sign-up chooser from the EU portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "input#region-option-eu[checked]")
+      assert has_element?(lv, "a#region-option-us[href='https://app.firezone.dev/sign_up']")
+    end
+
+    test "does not link another region's portal outside Firezone Cloud", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "input#region-option-us[checked]")
+      assert has_element?(lv, "input#region-option-eu[disabled]")
+      refute has_element?(lv, "a#region-option-eu")
+    end
+
+    test "hides the cloud region picker on-prem", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      refute has_element?(lv, "#region-picker")
     end
 
     test "renders the sign-up on a branded card for small screens", %{conn: conn} do
@@ -143,6 +245,18 @@ defmodule PortalWeb.SignUpTest do
 
       assert html =~ "Something went wrong"
       assert html =~ "Google sign-up session is invalid or has expired"
+    end
+
+    test "shows the chosen region without a link to the other portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+      conn = with_google_identity(conn, email: "ada@example.com", name: "Ada Lovelace")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      assert has_element?(lv, "#selected-region", "United States")
+      refute has_element?(lv, "#region-picker")
+      refute has_element?(lv, "a[href^='https://eu.app.firezone.dev']")
     end
 
     test "valid token shows the form with the verified email and prefilled name", %{conn: conn} do
@@ -623,6 +737,35 @@ defmodule PortalWeb.SignUpTest do
     end
   end
 
+  describe "per IP email limit" do
+    test "limits emails from one client IP across addresses", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, PortalWeb.PublicEmailRateLimit, per_ip_per_hour: 1)
+      ip = {10, :rand.uniform(255), :rand.uniform(255), :rand.uniform(255)}
+      conn = Plug.Test.put_peer_data(conn, %{address: ip, port: 443, ssl_cert: nil})
+
+      attrs = fn email ->
+        %{
+          registration: %{
+            email: email,
+            account: %{name: "Test Corp"},
+            actor: %{name: "Test User"},
+            sign_up_survey: @survey
+          }
+        }
+      end
+
+      {:ok, lv, _} = live(conn, ~p"/sign_up/email")
+      lv |> form("form", attrs.("ip-limit-1@example.com")) |> render_submit()
+      assert_email_sent(to: "ip-limit-1@example.com")
+
+      {:ok, lv, _} = live(conn, ~p"/sign_up/email")
+      html = lv |> form("form", attrs.("ip-limit-2@example.com")) |> render_submit()
+
+      assert html =~ "Too many attempts"
+      refute_email_sent()
+    end
+  end
+
   describe "form validation" do
     test "shows email validation error on change", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
@@ -714,6 +857,302 @@ defmodule PortalWeb.SignUpTest do
       refute_email_sent()
     end
 
+  end
+
+  describe "turnstile" do
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Turnstile,
+        site_key: "test-site-key",
+        secret_key: "test-secret-key",
+        req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+      )
+
+      :ok
+    end
+
+    # Cloudflare answers with `result` and reports every request it receives to the test.
+    defp stub_turnstile(result) do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:cloudflare_request, URI.decode_query(body)})
+
+        case result do
+          :approve -> Req.Test.json(conn, %{"success" => true})
+          :refuse -> Req.Test.json(conn, %{"success" => false, "error-codes" => ["invalid-input-response"]})
+          :down -> Plug.Conn.send_resp(conn, 503, "unavailable")
+        end
+      end)
+    end
+
+    defp email_registration(email \\ "newuser@example.com") do
+      [
+        registration: %{
+          email: email,
+          phone: "",
+          account: %{name: "Test Corp"},
+          actor: %{name: "Test User"},
+          sign_up_survey: @survey
+        }
+      ]
+    end
+
+    defp submit_email_form(lv, extra \\ %{}, email \\ "newuser@example.com") do
+      lv |> form("form", email_registration(email)) |> render_submit(extra)
+    end
+
+    test "the email page renders the widget and a token field inside the form", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/sign_up/email")
+
+      assert html =~ ~s(id="email-turnstile-widget")
+      assert html =~ ~s(data-sitekey="test-site-key")
+      assert has_element?(lv, "#sign-up-form input[name=cf-turnstile-response][data-turnstile-token]")
+    end
+
+    test "the widget hides a script-blocked message until the hook shows it", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+      assert has_element?(lv, "#email-turnstile-widget [data-turnstile-error][hidden]", "allow challenges.cloudflare.com")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+      assert has_element?(lv, "#choose-turnstile-widget [data-turnstile-error][hidden]")
+    end
+
+    test "each step has its own widget so patching between them remounts it", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/sign_up")
+      assert html =~ ~s(id="choose-turnstile-widget")
+      refute html =~ "email-turnstile-widget"
+
+      html = lv |> element(~s(a[href="/sign_up/email"])) |> render_click()
+
+      assert_patch(lv, ~p"/sign_up/email")
+      assert html =~ ~s(id="email-turnstile-widget")
+      refute html =~ "choose-turnstile-widget"
+    end
+
+    test "the method chooser renders one widget and a token field in each provider form", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/sign_up")
+
+      assert length(Regex.scan(~r/phx-hook="Turnstile"/, html)) == 1
+      assert html =~ ~s(id="choose-turnstile-widget")
+      assert has_element?(lv, "#google-sign-up input[name=cf-turnstile-response][data-turnstile-token]")
+      assert has_element?(lv, "#github-sign-up input[name=cf-turnstile-response][data-turnstile-token]")
+    end
+
+    test "the identity step renders no widget because the identity is already verified", %{conn: conn} do
+      for {provider, conn} <- [
+            {"google", with_google_identity(conn)},
+            {"github", with_github_identity(conn)}
+          ] do
+        {:ok, _lv, html} = live(conn, ~p"/sign_up/#{provider}")
+        refute html =~ "turnstile"
+      end
+    end
+
+    test "no page renders a widget when no keys are configured", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, Portal.Turnstile, site_key: nil, secret_key: nil)
+
+      for path <- [~p"/sign_up", ~p"/sign_up/email"] do
+        {:ok, _lv, html} = live(conn, path)
+        refute html =~ "turnstile"
+      end
+    end
+
+    test "no widget renders when only the site key is configured", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, Portal.Turnstile, secret_key: nil)
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/email")
+      refute html =~ "turnstile"
+    end
+
+    test "email: sends the verification email and gives Cloudflare the token", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"})
+
+      assert html =~ "Check your email"
+      assert_email_sent()
+      assert_receive {:cloudflare_request, form}
+      assert form["response"] == "good-token"
+      assert form["secret"] == "test-secret-key"
+      assert form["remoteip"] =~ ~r/^\d+\.\d+\.\d+\.\d+$/
+    end
+
+    test "email: rejects a submission without a token and never calls Cloudflare", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv)
+
+      assert html =~ "Please complete the verification and try again."
+      assert html =~ "newuser@example.com"
+      assert has_element?(lv, "#sign-up-form #turnstile-form-error", "Please complete the verification and try again.")
+      refute html =~ "Check your email"
+      refute_receive {:cloudflare_request, _}
+      refute_email_sent()
+    end
+
+    test "email: rejects an empty token", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => ""})
+
+      assert html =~ "Please complete the verification and try again."
+      refute_receive {:cloudflare_request, _}
+      refute_email_sent()
+    end
+
+    test "email: rejects a token Cloudflare refuses and asks the widget for a new one", %{conn: conn} do
+      stub_turnstile(:refuse)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "bad-token"})
+
+      assert html =~ "Please complete the verification and try again."
+      assert html =~ "newuser@example.com"
+      assert_push_event(lv, "turnstile:reset", %{})
+      refute_email_sent()
+    end
+
+    test "email: signs nobody up while Cloudflare is unavailable", %{conn: conn} do
+      stub_turnstile(:down)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"})
+
+      assert html =~ "We couldn&#39;t verify your request right now."
+      assert has_element?(lv, "#sign-up-form #turnstile-form-error", "We couldn't verify your request right now.")
+      assert_push_event(lv, "turnstile:reset", %{})
+      refute_email_sent()
+    end
+
+    test "email: the form-level error goes away once the form changes", %{conn: conn} do
+      stub_turnstile(:refuse)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+      submit_email_form(lv, %{"cf-turnstile-response" => "bad-token"})
+      assert has_element?(lv, "#turnstile-form-error")
+
+      lv |> form("form", email_registration()) |> render_change()
+
+      refute has_element?(lv, "#turnstile-form-error")
+    end
+
+    test "email: an invalid form is sent back without calling Cloudflare", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"}, "not-an-email")
+
+      refute html =~ "Check your email"
+      refute has_element?(lv, "#turnstile-form-error")
+      refute_receive {:cloudflare_request, _}
+      refute_email_sent()
+    end
+
+    test "email: accepts a fresh token after a refused one", %{conn: conn} do
+      stub_turnstile(:refuse)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+      assert submit_email_form(lv, %{"cf-turnstile-response" => "stale-token"}) =~ "Please complete the verification"
+      refute_email_sent()
+
+      stub_turnstile(:approve)
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "fresh-token"})
+
+      assert html =~ "Check your email"
+      assert_email_sent()
+    end
+
+    test "email: an existing owner email also needs a valid token", %{conn: conn} do
+      email = "owner@example.com"
+      account_fixture(metadata: %{stripe: %{billing_email: email}})
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      assert submit_email_form(lv, %{}, email) =~ "Please complete the verification"
+      refute_email_sent()
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"}, email)
+      assert html =~ "Check your email"
+      assert_email_sent()
+    end
+
+    test "email: the honeypot answers without calling Cloudflare", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html =
+        lv
+        |> form("form", registration: %{email: "bot@example.com", phone: "555-0100", account: %{name: "Bot Corp"}, actor: %{name: "Bot User"}, sign_up_survey: @survey})
+        |> render_submit(%{"cf-turnstile-response" => "good-token"})
+
+      assert html =~ "Check your email"
+      refute_receive {:cloudflare_request, _}
+      refute_email_sent()
+    end
+
+    test "email: validating the form never calls Cloudflare", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      lv |> form("form", email_registration()) |> render_change()
+
+      refute_receive {:cloudflare_request, _}
+    end
+
+    for provider <- ["google", "github"] do
+      @provider provider
+
+      test "#{provider}: completing the identity step needs no token", %{conn: conn} do
+        email = "identity-#{@provider}@example.com"
+        stub_turnstile(:refuse)
+
+        Stripe.stub(
+          [{"POST", "/v1/customers", 200, Stripe.customer_object("cus_identity", "Identity Corp", email)}] ++
+            Stripe.mock_create_subscription_endpoint()
+        )
+
+        conn =
+          if @provider == "google",
+            do: with_google_identity(conn, email: email),
+            else: with_github_identity(conn, email: email)
+
+        conn = get(conn, ~p"/sign_up/#{@provider}")
+        {:ok, lv, _html} = live(conn)
+
+        conn =
+          submit_identity_form(lv, recycle(conn), @provider, %{
+            account: %{name: "Identity Corp"},
+            actor: %{name: "Identity User"},
+            sign_up_survey: @survey
+          })
+
+        assert redirected_to(conn) =~ "/sites"
+        assert Portal.Repo.get_by!(Portal.Account, name: "Identity Corp")
+        refute_receive {:cloudflare_request, _}
+      end
+    end
+
+    test "verify link: completing the sign-up needs no token", %{conn: conn} do
+      email = "verify-link@example.com"
+      stub_turnstile(:refuse)
+
+      Stripe.stub(
+        [{"POST", "/v1/customers", 200, Stripe.customer_object("cus_verify", "Test Corp", email)}] ++
+          Stripe.mock_create_subscription_endpoint()
+      )
+
+      {conn, browser_id} = sign_up_browser(conn)
+      token = sign_up_token(email, browser_id)
+
+      {:ok, lv, _html} = live(conn, ~p"/verify_sign_up?token=#{token}")
+      conn = follow_trigger_action(form(lv, "#verify-sign-up-form"), recycle(conn))
+
+      assert redirected_to(conn) =~ "/sites"
+      assert Portal.Repo.get_by!(Portal.Account, name: "Test Corp")
+      refute_receive {:cloudflare_request, _}
+    end
   end
 
   describe "sign-up survey" do

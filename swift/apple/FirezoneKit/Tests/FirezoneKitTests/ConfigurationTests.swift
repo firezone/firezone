@@ -285,6 +285,40 @@ struct ConfigurationTests {
     #expect(providerConfiguration[Configuration.Keys.apiURL] == "wss://saved-user-change.api")
   }
 
+  @Test("Settings save marks only the text fields it changed as recently saved")
+  @MainActor
+  func settingsSaveMarksChangedFields() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    try await viewModel.save(.settings)
+    try await viewModel.save(.logs)
+
+    #expect(viewModel.recentlySavedFields.isEmpty)
+
+    viewModel.accountSlug = "example-corp"
+    try await viewModel.save(.settings)
+
+    #expect(viewModel.recentlySavedFields == [.accountSlug])
+  }
+
+  @Test("Editing a text field makes it a draft until it is saved")
+  @MainActor
+  func editingMakesDraftUntilSaved() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(!viewModel.isDraft(.accountSlug))
+
+    viewModel.accountSlug = "example-corp"
+
+    #expect(viewModel.isDraft(.accountSlug))
+
+    try await viewModel.save(.settings)
+
+    #expect(!viewModel.isDraft(.accountSlug))
+  }
+
   // MARK: - ControlPlane
 
   @Test("Saved US URLs show Firezone Cloud (US)")
@@ -1044,7 +1078,7 @@ struct ProviderMessageCodableTests {
   func valuelessCasesRoundTrip() throws {
     let cases: [ProviderMessage] = [
       .signOut, .clearLogs, .getLogFolderSize, .exportLogs, .getEncodedFirezoneId,
-      .drainFlowLogs, .getStatus,
+      .drainFlowLogs, .getStatus, .manualReset,
     ]
 
     for message in cases {
@@ -1075,6 +1109,17 @@ struct ProviderMessageCodableTests {
       #expect(enabled == true)
     } else {
       Issue.record("Expected .setInternetResourceEnabled, got \(decoded)")
+    }
+  }
+
+  @Test("setForceRelayedConnections round-trips through JSON")
+  func setForceRelayedConnectionsRoundTrip() throws {
+    let decoded = try roundTrip(.setForceRelayedConnections(true))
+
+    if case .setForceRelayedConnections(let enabled) = decoded {
+      #expect(enabled == true)
+    } else {
+      Issue.record("Expected .setForceRelayedConnections, got \(decoded)")
     }
   }
 

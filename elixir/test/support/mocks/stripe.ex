@@ -75,18 +75,6 @@ defmodule Portal.Mocks.Stripe do
     [{"POST", "/v1/customers", 200, response}]
   end
 
-  def mock_update_customer_endpoint(account, resp \\ %{}) do
-    response =
-      Map.merge(
-        customer_object(account.metadata.stripe.customer_id, account.name, "foo@example.com", %{
-          "account_id" => account.id
-        }),
-        resp
-      )
-
-    [{"POST", "/v1/customers/#{account.metadata.stripe.customer_id}", 200, response}]
-  end
-
   def mock_fetch_customer_endpoint(account, resp \\ %{}) do
     response =
       Map.merge(

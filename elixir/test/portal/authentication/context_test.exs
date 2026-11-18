@@ -8,4 +8,11 @@ defmodule Portal.Authentication.ContextTest do
 
     assert context.remote_ip == {107, 197, 104, 68}
   end
+
+  test "build/4 truncates the user agent to 255 code points" do
+    user_agent = String.duplicate("é", 300)
+    context = Context.build({127, 0, 0, 1}, user_agent, [], :client)
+
+    assert context.user_agent == String.duplicate("é", 255)
+  end
 end

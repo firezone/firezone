@@ -160,7 +160,7 @@ pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocke
     uploader.nudge();
 
     std::thread::Builder::new()
-        .name("flow-log-uploader".to_owned())
+        .name("fz-flowlog-up".to_owned())
         .spawn({
             // The thread holds a sender too, so dropping the handle detaches
             // rather than stops it (gateway and desktop drop it right away).
@@ -896,7 +896,7 @@ mod tests {
             "inner_src_port": 1,
             "inner_dst_ip": "10.0.0.2",
             "inner_dst_port": 2,
-            "flow_start": chrono::Utc::now().to_rfc3339(),
+            "flow_start": jiff::Timestamp::now().to_string(),
         });
 
         std::fs::write(path, flow_log_spool::serialize(&payload).unwrap()).unwrap();

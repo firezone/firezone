@@ -1,4 +1,4 @@
-use crate::{ConnectedAs, PHOENIX_TOPIC};
+use crate::{ConnectedAs, PHOENIX_TOPIC, SessionConfig};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -24,9 +24,10 @@ use tunnel::messages::client::{
     ClientDeviceAccessDenied, ClientIceCandidateError, ClientIceCandidates, ClientRejectAccess,
     DeviceDomainBrowseFailed, DeviceDomainBrowsed, DeviceDomainResolutionFailed,
     DeviceDomainResolved, EgressMessages, FailReason, GatewayIceCandidates, IngressMessages,
-    InitClient, ResourceAuthorization, ResourceFiltersUpdated,
+    InitClient, Peer, PublicKeyChanged, ResourceAuthorization, ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
+use tunnel::unroutable_packet::RoutingError;
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
@@ -85,6 +86,7 @@ pub enum Command {
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
     SetAdditionalHostCandidates(Vec<IpAddr>),
+    SetForceRelayedConnections(bool),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -164,18 +166,22 @@ impl Eventloop {
     pub(crate) fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        is_internet_resource_active: bool,
-        dns_servers: Vec<IpAddr>,
-        additional_host_candidates: Vec<IpAddr>,
-        flow_logs_dir: Option<std::path::PathBuf>,
-        local_flow_logs: bool,
+        config: SessionConfig,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
         connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
-    ) -> Self {
+    ) -> Result<Self> {
+        let SessionConfig {
+            listen_port,
+            is_internet_resource_active,
+            dns_servers,
+            additional_host_candidates,
+            flow_logs_dir,
+            local_flow_logs,
+        } = config;
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
         let mut clock = Clock::new();
@@ -183,25 +189,31 @@ impl Eventloop {
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
+            listen_port,
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
-        );
+        )
+        .context("Failed to create tunnel")?;
         tunnel.update_system_resolvers(dns_servers.clone());
         tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
-        tokio::spawn(phoenix_channel_event_loop(
-            portal,
-            PublicKeyParam(tunnel.public_key().to_bytes()),
-            portal_event_tx,
-            portal_cmd_rx,
-            udp_socket_factory.clone(),
-            tcp_socket_factory,
-            dns_servers,
-        ));
+        let public_key = PublicKeyParam(tunnel.public_key().to_bytes());
+        async_runtime::spawn_thread("fz-portal", move || {
+            phoenix_channel_event_loop(
+                portal,
+                public_key,
+                portal_event_tx,
+                portal_cmd_rx,
+                udp_socket_factory,
+                tcp_socket_factory,
+                dns_servers,
+            )
+        })
+        .context("Failed to spawn portal thread")?;
 
-        Self {
+        Ok(Self {
             clock,
             tunnel: Some(tunnel),
             resolver_bypass,
@@ -216,7 +228,7 @@ impl Eventloop {
             tun_config_sender,
             connected_as_sender,
             user_notification_sender,
-        }
+        })
     }
 }
 
@@ -339,6 +351,15 @@ impl Eventloop {
                 };
 
                 tunnel.set_additional_host_candidates(ips, now);
+            }
+            Command::SetForceRelayedConnections(enabled) => {
+                let Some(tunnel) = self.tunnel.as_ref() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tracing::info!(enabled, "Setting force relayed connections");
+
+                tunnel.set_force_relayed_connections(enabled);
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -523,6 +544,13 @@ impl Eventloop {
                 return Err(e);
             }
 
+            if e.any_downcast_ref::<tunnel::UnroutablePacket>()
+                .is_some_and(|e| e.reason() == RoutingError::RoutingLoop)
+                && telemetry::feature_flags::fail_on_routing_loop()
+            {
+                return Err(e);
+            }
+
             if let Some(e) = e.any_downcast_ref::<tunnel::UnroutablePacket>() {
                 tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
                 continue;
@@ -681,7 +709,7 @@ impl Eventloop {
                 preshared_key,
                 client_ice_credentials,
                 gateway_ice_credentials,
-                use_iceless,
+                use_frostlink,
                 flow_logs_ingest_token,
             }) => {
                 persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
@@ -698,7 +726,7 @@ impl Eventloop {
                     preshared_key,
                     client_ice_credentials,
                     gateway_ice_credentials,
-                    use_iceless,
+                    use_frostlink,
                     flow_logs_ingest_token,
                     now,
                 ) {
@@ -751,7 +779,7 @@ impl Eventloop {
                 local_ice_credentials,
                 remote_ice_credentials,
                 ice_role,
-                use_iceless,
+                use_frostlink,
                 resource_id,
                 resource,
                 expires_at,
@@ -779,7 +807,7 @@ impl Eventloop {
                     local_ice_credentials,
                     remote_ice_credentials,
                     ice_role,
-                    use_iceless,
+                    use_frostlink,
                     client_name,
                     client_slug,
                     resource_id,
@@ -800,6 +828,18 @@ impl Eventloop {
                 tunnel
                     .state_mut()
                     .handle_reject_client_device_access(client_id, resource_id);
+            }
+            IngressMessages::PublicKeyChanged(PublicKeyChanged { peer, public_key }) => {
+                let peer = match peer {
+                    Peer::Client { client_id } => ClientOrGatewayId::Client(client_id),
+                    Peer::Gateway { gateway_id } => ClientOrGatewayId::Gateway(gateway_id),
+                };
+
+                tunnel.state_mut().handle_public_key_changed(
+                    peer,
+                    PublicKey::from(public_key.0),
+                    now,
+                );
             }
             // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
             IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
@@ -1082,8 +1122,7 @@ async fn resolve_portal_host_ips(
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
-    let etc_hosts_ips = etc_hosts_dns_client::resolve(host.clone())
-        .await
+    let etc_hosts_ips = etc_hosts_dns_client::resolve(&host)
         .context("Failed to lookup portal host from `/etc/hosts`")
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();

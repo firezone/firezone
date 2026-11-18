@@ -160,7 +160,10 @@ const _: () = assert!(std::mem::size_of::<IpPacket>() == 32);
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum Transport {
     Udp,
-    Tcp,
+    /// `control` is set for segments that carry SYN, FIN or RST.
+    Tcp {
+        control: bool,
+    },
     Icmpv4,
     Icmpv6,
     Other(IpProtocol),
@@ -331,7 +334,11 @@ impl IpPacket {
 
                 anyhow::ensure!(tcp.data_offset() >= 5, "TCP data offset must be at least 5");
 
-                Transport::Tcp
+                Transport::Tcp {
+                    control: tcp
+                        .flags()
+                        .intersects(TcpFlags::SYN | TcpFlags::FIN | TcpFlags::RST),
+                }
             }
             (IpVersion::V4, IpProtocol::ICMP) => {
                 ValidIcmpV4::parse(l4).context("Failed to parse ICMPv4 header")?;
@@ -352,13 +359,18 @@ impl IpPacket {
             (_, other) => Transport::Other(other),
         };
 
-        Ok(Self {
+        let packet = Self {
             buf,
             len: u16::try_from(len)?,
             ip_header_length: u16::try_from(ip_header_length)?,
             transport,
             version,
-        })
+        };
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        let packet = packet.without_ipv4_options();
+
+        Ok(packet)
     }
 
     pub fn version(&self) -> IpVersion {
@@ -381,6 +393,15 @@ impl IpPacket {
         }
     }
 
+    /// Returns the source address followed by the destination address, as in the IP header.
+    #[inline]
+    pub fn address_bytes(&self) -> &[u8] {
+        match self.version {
+            IpVersion::V4 => &self.buf[12..20],
+            IpVersion::V6 => &self.buf[8..40],
+        }
+    }
+
     /// Reads the address at `offset` of the IPv4 header, whose length was checked on construction.
     fn ipv4_addr_at(&self, offset: usize) -> std::net::Ipv4Addr {
         let octets: [u8; 4] = self.buf[offset..offset + 4]
@@ -399,9 +420,10 @@ impl IpPacket {
         std::net::Ipv6Addr::from(octets)
     }
 
+    #[inline]
     pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
         match self.transport {
-            Transport::Tcp => Ok(Protocol::Tcp(self.transport_u16_at(0))),
+            Transport::Tcp { .. } => Ok(Protocol::Tcp(self.transport_u16_at(0))),
             Transport::Udp => Ok(Protocol::Udp(self.transport_u16_at(0))),
             Transport::Icmpv4 => Ok(Protocol::IcmpEcho(self.icmp_echo_id()?)),
             Transport::Icmpv6 => Ok(Protocol::IcmpEcho(self.icmp_echo_id()?)),
@@ -409,9 +431,10 @@ impl IpPacket {
         }
     }
 
+    #[inline]
     pub fn destination_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
         match self.transport {
-            Transport::Tcp => Ok(Protocol::Tcp(self.transport_u16_at(2))),
+            Transport::Tcp { .. } => Ok(Protocol::Tcp(self.transport_u16_at(2))),
             Transport::Udp => Ok(Protocol::Udp(self.transport_u16_at(2))),
             Transport::Icmpv4 => Ok(Protocol::IcmpEcho(self.icmp_echo_id()?)),
             Transport::Icmpv6 => Ok(Protocol::IcmpEcho(self.icmp_echo_id()?)),
@@ -422,13 +445,14 @@ impl IpPacket {
     pub fn layer4_payload_len(&self) -> usize {
         match self.transport {
             Transport::Udp => self.payload().len() - UdpSlice::HEADER_LEN,
-            Transport::Tcp => self.payload().len() - self.tcp_header_len(),
+            Transport::Tcp { .. } => self.payload().len() - self.tcp_header_len(),
             Transport::Icmpv4 | Transport::Icmpv6 => self.payload().len() - Icmpv4Slice::HEADER_LEN,
             Transport::Other(_) => self.payload().len(),
         }
     }
 
     /// The flags of a TCP packet, read at the fixed offset of the header validated on construction.
+    #[inline]
     pub fn tcp_flags(&self) -> Option<TcpFlags> {
         if !self.is_tcp() {
             return None;
@@ -463,6 +487,7 @@ impl IpPacket {
     }
 
     /// Reads the big-endian `u16` at `offset` of the TCP or UDP header, whose length was checked on construction.
+    #[inline]
     fn transport_u16_at(&self, offset: usize) -> u16 {
         let bytes: [u8; 2] = self.payload()[offset..offset + 2]
             .try_into()
@@ -998,6 +1023,7 @@ impl IpPacket {
     /// Essentially, the only time we need to update the ECN flags is:
     /// - if the IP packet signalled an ECN-capable transport (i.e. the originating network stack is ECN-capable)
     /// - and we have experienced congestion along the way (i.e. the provided ECN value is [`Ecn::Ce`]).
+    #[inline]
     pub fn with_ecn_from_transport(self, ecn: Ecn) -> Self {
         use Ecn::*;
 
@@ -1060,6 +1086,40 @@ impl IpPacket {
         self
     }
 
+    /// Returns the packet without IPv4 options; IPv6 packets are returned as they are.
+    ///
+    /// Some Linux kernels mishandle IPv4 options on TCP handshakes (CVE-2026-98432).
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[inline]
+    fn without_ipv4_options(mut self) -> Self {
+        // `0x45` is IPv4 with the minimum header length, i.e. without options.
+        if matches!(self.version, IpVersion::V4) && self.buf[0] != 0x45 {
+            self.strip_ipv4_options();
+        }
+
+        self
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[cold]
+    fn strip_ipv4_options(&mut self) {
+        let header_len = self.ip_header_length();
+        let len = self.len();
+        let new_len = len - (header_len - Ipv4HeaderSlice::MIN_LEN);
+
+        // The transport checksums do not cover IPv4 options, so they stay valid.
+        self.buf
+            .copy_within(header_len..len, Ipv4HeaderSlice::MIN_LEN);
+        self.buf[0] = 0x45;
+        self.buf[2..4].copy_from_slice(&(new_len as u16).to_be_bytes());
+
+        self.len = new_len as u16;
+        self.ip_header_length = Ipv4HeaderSlice::MIN_LEN as u16;
+
+        self.set_ipv4_checksum();
+    }
+
+    #[inline]
     pub fn ecn(&self) -> Ecn {
         // Read the bits straight from the header: this is called for every packet and
         // parsing the header to reach them would, for IPv6, also walk the extension
@@ -1095,7 +1155,7 @@ impl IpPacket {
     pub fn next_header(&self) -> IpProtocol {
         match self.transport {
             Transport::Udp => IpProtocol::UDP,
-            Transport::Tcp => IpProtocol::TCP,
+            Transport::Tcp { .. } => IpProtocol::TCP,
             Transport::Icmpv4 => IpProtocol::ICMP,
             Transport::Icmpv6 => IpProtocol::ICMP_V6,
             Transport::Other(protocol) => protocol,
@@ -1106,8 +1166,24 @@ impl IpPacket {
         matches!(self.transport, Transport::Udp)
     }
 
+    #[inline]
     pub fn is_tcp(&self) -> bool {
-        matches!(self.transport, Transport::Tcp)
+        matches!(self.transport, Transport::Tcp { .. })
+    }
+
+    /// Returns whether the packet is UDP or a TCP segment without SYN, FIN or RST.
+    ///
+    /// Such packets don't change the state of their flow, so later packets of the
+    /// flow can reuse the decisions taken for an earlier one.
+    #[inline]
+    pub fn is_batchable(&self) -> bool {
+        match self.transport {
+            Transport::Udp => true,
+            Transport::Tcp { control } => !control,
+            Transport::Icmpv4 => false,
+            Transport::Icmpv6 => false,
+            Transport::Other(_) => false,
+        }
     }
 
     pub fn is_icmp(&self) -> bool {
@@ -1129,6 +1205,7 @@ impl IpPacket {
         &self.buf[..self.len()]
     }
 
+    #[inline]
     pub fn payload(&self) -> &[u8] {
         &self.buf[self.ip_header_length()..self.len()]
     }
@@ -1355,6 +1432,56 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    fn ipv4_options_are_stripped_on_parse() {
+        use ingot::ip::Ipv4;
+        use ingot::tcp::Tcp;
+        use ingot::types::Emit as _;
+
+        let options = [0x94, 0x04, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00];
+        let payload = b"foobar";
+        let tcp = Tcp {
+            source: 1234,
+            destination: 443,
+            data_offset: 5,
+            flags: TcpFlags::SYN,
+            ..Default::default()
+        };
+        let header_len = Ipv4HeaderSlice::MIN_LEN + options.len();
+        let total_len = header_len + tcp.packet_length() + payload.len();
+        let ipv4 = Ipv4 {
+            ihl: (header_len / 4) as u8,
+            total_len: total_len as u16,
+            hop_limit: 64,
+            protocol: IpProtocol::TCP,
+            source: Ipv4Addr::new(10, 0, 0, 1).into(),
+            destination: Ipv4Addr::new(10, 0, 0, 2).into(),
+            options: options.to_vec(),
+            ..Default::default()
+        };
+        let mut buf = packet_buffer();
+        let rest = ipv4.emit_prefix(&mut buf[..total_len]).unwrap();
+        let rest = tcp.emit_prefix(rest).unwrap();
+        rest.copy_from_slice(payload);
+
+        let packet = IpPacket::new(buf, total_len).unwrap();
+
+        let header = packet.ipv4_header().unwrap();
+        assert!(header.options().is_empty());
+        assert_eq!(usize::from(header.total_len()), total_len - options.len());
+        assert_eq!(packet.packet().len(), total_len - options.len());
+        assert_eq!(header.source(), Ipv4Addr::new(10, 0, 0, 1));
+        assert_eq!(header.destination(), Ipv4Addr::new(10, 0, 0, 2));
+        assert_eq!(
+            packet.calculate_ipv4_header_checksum().unwrap(),
+            header.checksum()
+        );
+        let tcp = packet.as_tcp().unwrap();
+        assert!(tcp.syn());
+        assert_eq!(tcp.payload(), payload);
+    }
+
+    #[test]
     fn transport_accessors_match_parsed_header() {
         let packet = crate::make::tcp_packet_with_options(
             Ipv4Addr::LOCALHOST,
@@ -1383,5 +1510,67 @@ mod tests {
         );
         assert_eq!(packet.layer4_payload_len(), tcp.payload().len());
         assert_eq!(packet.tcp_flags(), Some(TcpFlags::SYN | TcpFlags::ACK));
+    }
+
+    #[test]
+    fn udp_and_tcp_segments_without_control_flags_are_batchable() {
+        let udp =
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
+
+        assert!(udp.is_batchable());
+        assert!(tcp_segment(TcpFlags::ACK).is_batchable());
+        assert!(tcp_segment(TcpFlags::ACK | TcpFlags::PSH).is_batchable());
+    }
+
+    #[test]
+    fn tcp_segments_with_control_flags_are_not_batchable() {
+        for flags in [
+            TcpFlags::SYN,
+            TcpFlags::SYN | TcpFlags::ACK,
+            TcpFlags::FIN | TcpFlags::ACK,
+            TcpFlags::RST,
+        ] {
+            assert!(!tcp_segment(flags).is_batchable(), "{flags:?}");
+        }
+    }
+
+    #[test]
+    fn icmp_is_not_batchable() {
+        for packet in [
+            crate::make::icmp_request_packet(
+                Ipv4Addr::LOCALHOST.into(),
+                Ipv4Addr::LOCALHOST,
+                1,
+                1,
+                &[],
+            ),
+            crate::make::icmp_request_packet(
+                Ipv6Addr::LOCALHOST.into(),
+                Ipv6Addr::LOCALHOST,
+                1,
+                1,
+                &[],
+            ),
+        ] {
+            assert!(!packet.unwrap().is_batchable());
+        }
+    }
+
+    fn tcp_segment(flags: TcpFlags) -> IpPacket {
+        let packet = crate::make::tcp_packet(
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            1234,
+            443,
+            crate::make::TcpFlags::default(),
+            b"foobar",
+        )
+        .unwrap();
+        let len = packet.packet().len();
+        let mut buf = packet_buffer();
+        buf[..len].copy_from_slice(packet.packet());
+        buf[packet.ip_header_length() + 13] = flags.bits();
+
+        IpPacket::new(buf, len).unwrap()
     }
 }

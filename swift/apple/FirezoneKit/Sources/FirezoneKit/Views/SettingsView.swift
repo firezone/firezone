@@ -19,7 +19,7 @@ public struct SettingsView: View {
   private let store: Store
   private let configuration: Configuration
 
-  private enum Field: Hashable {
+  enum Field: Hashable {
     case accountSlug
     case authURL
     case apiURL
@@ -28,6 +28,8 @@ public struct SettingsView: View {
 
   @FocusState private var focusedField: Field?
   @State private var isConfirmingReset = false
+  @State private var versionTapCount = 0
+  @AppStorage(DeveloperSettings.isUnlockedKey) private var isDeveloperSettingsUnlocked = false
 
   #if os(iOS)
     private struct LogArchive: Identifiable {
@@ -56,12 +58,14 @@ public struct SettingsView: View {
     case settings
     case deviceTrust
     case logs
+    case developer
 
     var title: String {
       switch self {
       case .settings: return "Settings"
       case .deviceTrust: return "Device Trust"
       case .logs: return "Diagnostics"
+      case .developer: return "Developer"
       }
     }
 
@@ -71,6 +75,7 @@ public struct SettingsView: View {
         case .settings: return "gearshape"
         case .deviceTrust: return "checkmark.shield"
         case .logs: return "stethoscope"
+        case .developer: return "hammer"
         }
       }
     #endif
@@ -86,6 +91,7 @@ public struct SettingsView: View {
   public var body: some View {
     sizedContent
       .onChange(of: focusedField) { _ in commitTextFields() }
+      .onChange(of: viewModel.selectedTab) { _ in commitTextFields() }
       .onChange(of: viewModel.controlPlane) { _ in commit(.settings) }
       .onChange(of: viewModel.connectOnStart) { _ in commit(.settings) }
       .onChange(of: viewModel.startOnLogin) { _ in commit(.settings) }
@@ -142,6 +148,14 @@ public struct SettingsView: View {
               }
               .badge(viewModel.isLogFilterValid() ? nil : "!")
               .tag(Tab.logs)
+            if isDeveloperSettingsUnlocked {
+              developerTab
+                .tabItem {
+                  Image(systemName: "hammer")
+                  Text(Tab.developer.title)
+                }
+                .tag(Tab.developer)
+            }
           }
           .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -165,6 +179,11 @@ public struct SettingsView: View {
         logsTab
           .tabItem { Label(Tab.logs.title, systemImage: Tab.logs.systemImage) }
           .tag(Tab.logs)
+        if isDeveloperSettingsUnlocked {
+          developerTab
+            .tabItem { Label(Tab.developer.title, systemImage: Tab.developer.systemImage) }
+            .tag(Tab.developer)
+        }
       }
     #else
       #error("Unsupported platform")
@@ -258,6 +277,7 @@ public struct SettingsView: View {
         }
       }
       .formStyle(.grouped)
+      .endsEditingOnTap($focusedField)
       .scrollDisabled(true)
       .fixedSize(horizontal: false, vertical: true)
       .frame(width: Self.paneWidth)
@@ -269,16 +289,19 @@ public struct SettingsView: View {
               managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
                 .foregroundStyle(.secondary)
                 .font(.caption)
-              TextField(
-                PlaceholderText.accountSlug,
-                text: $viewModel.accountSlug
-              )
-              .autocorrectionDisabled()
-              .textInputAutocapitalization(.never)
-              .submitLabel(.done)
-              .focused($focusedField, equals: .accountSlug)
-              .onSubmit { commit(.settings) }
-              .disabled(configuration.isAccountSlugForced)
+              HStack {
+                TextField(
+                  PlaceholderText.accountSlug,
+                  text: $viewModel.accountSlug
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+                .focused($focusedField, equals: .accountSlug)
+                .onSubmit { commit(.settings) }
+                .disabled(configuration.isAccountSlugForced)
+                saveStateSlot(.accountSlug, isManaged: configuration.isAccountSlugForced)
+              }
             }
             .background {
               if #available(iOS 18, *), UIDevice.current.userInterfaceIdiom == .pad {
@@ -315,32 +338,38 @@ public struct SettingsView: View {
                 managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
                   .foregroundStyle(.secondary)
                   .font(.caption)
-                TextField(
-                  PlaceholderText.authURL,
-                  text: $viewModel.authURL
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .focused($focusedField, equals: .authURL)
-                .onSubmit { commit(.settings) }
-                .disabled(configuration.isAuthURLForced)
+                HStack {
+                  TextField(
+                    PlaceholderText.authURL,
+                    text: $viewModel.authURL
+                  )
+                  .autocorrectionDisabled()
+                  .textInputAutocapitalization(.never)
+                  .submitLabel(.done)
+                  .focused($focusedField, equals: .authURL)
+                  .onSubmit { commit(.settings) }
+                  .disabled(configuration.isAuthURLForced)
+                  saveStateSlot(.authURL, isManaged: configuration.isAuthURLForced)
+                }
                 errorText(viewModel.authURLError)
               }
               VStack(alignment: .leading, spacing: 2) {
                 managedLabel("API URL", isManaged: configuration.isApiURLForced)
                   .foregroundStyle(.secondary)
                   .font(.caption)
-                TextField(
-                  PlaceholderText.apiURL,
-                  text: $viewModel.apiURL
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .focused($focusedField, equals: .apiURL)
-                .onSubmit { commit(.settings) }
-                .disabled(configuration.isApiURLForced)
+                HStack {
+                  TextField(
+                    PlaceholderText.apiURL,
+                    text: $viewModel.apiURL
+                  )
+                  .autocorrectionDisabled()
+                  .textInputAutocapitalization(.never)
+                  .submitLabel(.done)
+                  .focused($focusedField, equals: .apiURL)
+                  .onSubmit { commit(.settings) }
+                  .disabled(configuration.isApiURLForced)
+                  saveStateSlot(.apiURL, isManaged: configuration.isApiURLForced)
+                }
                 errorText(viewModel.apiURLError)
               }
             }
@@ -373,6 +402,7 @@ public struct SettingsView: View {
               .padding(.bottom)
           }
         }
+        .endsEditingOnTap($focusedField)
       }
       .background(Color(uiColor: .secondarySystemBackground))
     #endif
@@ -387,16 +417,19 @@ public struct SettingsView: View {
               managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
                 .foregroundStyle(.secondary)
                 .font(.caption)
-              TextField(
-                PlaceholderText.logFilter,
-                text: $viewModel.logFilter
-              )
-              .autocorrectionDisabled()
-              .textInputAutocapitalization(.never)
-              .submitLabel(.done)
-              .focused($focusedField, equals: .logFilter)
-              .onSubmit { commit(.logs) }
-              .disabled(configuration.isLogFilterForced)
+              HStack {
+                TextField(
+                  PlaceholderText.logFilter,
+                  text: $viewModel.logFilter
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+                .focused($focusedField, equals: .logFilter)
+                .onSubmit { commit(.logs) }
+                .disabled(configuration.isLogFilterForced)
+                saveStateSlot(.logFilter, isManaged: configuration.isLogFilterForced)
+              }
               errorText(viewModel.logFilterError)
             }
             LogFilesView(
@@ -445,27 +478,10 @@ public struct SettingsView: View {
             managedNote(configuration.isLogFilterForced)
           }
           Section("About") {
-            HStack {
-              Text("Version")
-                .foregroundStyle(.secondary)
-              Spacer()
-              if let shortGitSha = BundleHelper.shortGitSha,
-                let commitURL = BundleHelper.commitURL
-              {
-                HStack(spacing: 0) {
-                  Text("\(BundleHelper.version) (")
-                  Link(shortGitSha, destination: commitURL)
-                  Text(")")
-                }
-              } else {
-                Text(BundleHelper.version)
-              }
-            }
-            .contextMenu {
-              Button("Copy") { UIPasteboard.general.string = BundleHelper.versionDescription }
-            }
+            versionRow
           }
         }
+        .endsEditingOnTap($focusedField)
       }
     #elseif os(macOS)
       Form {
@@ -506,8 +522,12 @@ public struct SettingsView: View {
             paneFooter
           }
         }
+        Section("About") {
+          versionRow
+        }
       }
       .formStyle(.grouped)
+      .endsEditingOnTap($focusedField)
       .scrollDisabled(true)
       .fixedSize(horizontal: false, vertical: true)
       .frame(width: Self.paneWidth)
@@ -560,6 +580,115 @@ public struct SettingsView: View {
     }
   }
 
+  private var versionRow: some View {
+    Group {
+      #if os(macOS)
+        LabeledContent("Version") { versionText }
+      #elseif os(iOS)
+        HStack {
+          Text("Version")
+            .foregroundStyle(.secondary)
+          Spacer()
+          versionText
+        }
+      #endif
+    }
+    .contentShape(Rectangle())
+    .onTapGesture {
+      versionTapCount += 1
+      if versionTapCount == 7 { isDeveloperSettingsUnlocked = true }
+    }
+    .contextMenu {
+      Button("Copy") { Clipboard.copy(BundleHelper.versionDescription) }
+    }
+  }
+
+  @ViewBuilder
+  private var versionText: some View {
+    if let shortGitSha = BundleHelper.shortGitSha,
+      let commitURL = BundleHelper.commitURL
+    {
+      HStack(spacing: 0) {
+        Text("\(BundleHelper.version) (")
+        Link(shortGitSha, destination: commitURL)
+        Text(")")
+      }
+    } else {
+      Text(BundleHelper.version)
+    }
+  }
+
+  private var developerTab: some View {
+    #if os(iOS)
+      Form {
+        developerSettingsSection
+      }
+    #elseif os(macOS)
+      Form {
+        developerSettingsSection
+      }
+      .formStyle(.grouped)
+      .scrollDisabled(true)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(width: Self.paneWidth)
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  @ViewBuilder
+  private var developerSettingsSection: some View {
+    #if os(iOS)
+      Section {
+        Button("Reset connlib", action: resetConnlib)
+          .disabled(store.vpnStatus != .connected)
+        Toggle("Force relayed connections", isOn: forceRelayedConnections)
+          .toggleStyle(.switch)
+      }
+      Section {
+        Button("Hide Developer Settings", action: hideDeveloperSettings)
+      }
+    #elseif os(macOS)
+      Section {
+        LabeledContent("Reset connlib") {
+          Button("Reset", action: resetConnlib)
+            .disabled(store.vpnStatus != .connected)
+        }
+        Toggle("Force relayed connections", isOn: forceRelayedConnections)
+          .toggleStyle(.switch)
+      } footer: {
+        HStack {
+          Spacer()
+          Button("Hide Developer Settings", action: hideDeveloperSettings)
+        }
+      }
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  private var forceRelayedConnections: Binding<Bool> {
+    Binding(
+      get: { store.forceRelayedConnections },
+      set: { enabled in
+        withErrorHandler { try await store.setForceRelayedConnections(enabled) }
+      }
+    )
+  }
+
+  private func resetConnlib() {
+    withErrorHandler { try await store.resetConnlib() }
+  }
+
+  private func hideDeveloperSettings() {
+    viewModel.selectedTab = .logs
+    isDeveloperSettingsUnlocked = false
+    versionTapCount = 0
+    if store.forceRelayedConnections {
+      withErrorHandler { try await store.setForceRelayedConnections(false) }
+    }
+  }
+
   private var resetButton: some View {
     Button("Reset to Defaults") { isConfirmingReset = true }
       .disabled(viewModel.shouldDisableResetButton)
@@ -585,6 +714,38 @@ public struct SettingsView: View {
     }
   }
 
+  #if os(iOS)
+    /// Always takes up the same room, so that the text field does not shift when an icon appears.
+    private func saveStateSlot(_ field: Field, isManaged: Bool) -> some View {
+      let isDraft = !isManaged && viewModel.isDraft(field)
+      let isSaved = !isManaged && !isDraft && viewModel.recentlySavedFields.contains(field)
+
+      return Image(systemName: "checkmark.circle.fill")
+        .hidden()
+        .overlay {
+          if isDraft {
+            Circle()
+              .fill(.orange)
+              .frame(width: 7, height: 7)
+              .transition(.opacity)
+              .accessibilityHidden(true)
+          } else if isSaved {
+            Image(systemName: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+              .transition(.opacity)
+              .accessibilityLabel("Saved")
+              .onAppear {
+                if #available(iOS 17, *) {
+                  AccessibilityNotification.Announcement("Saved").post()
+                }
+              }
+          }
+        }
+        .animation(.easeInOut, value: isDraft)
+        .animation(.easeInOut, value: isSaved)
+    }
+  #endif
+
   @ViewBuilder
   private func managedNote(_ isManaged: Bool) -> some View {
     if isManaged {
@@ -603,8 +764,15 @@ public struct SettingsView: View {
   @ViewBuilder
   private var signInFooter: some View {
     if viewModel.showsSignInChangeNote {
-      Text("Sign out and sign in again after changing the account slug or control plane.")
-        .foregroundStyle(.secondary)
+      HStack(alignment: .firstTextBaseline, spacing: 4) {
+        Image(systemName: "info.circle")
+          .font(.caption)
+          .accessibilityHidden(true)
+        Text("Changes to account slug and control plane only take effect on the next sign-in.")
+          .multilineTextAlignment(.leading)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .foregroundStyle(Color.secondary)
     }
   }
 
@@ -695,6 +863,23 @@ public struct SettingsView: View {
         #endif
       }
     }
+  }
+}
+
+extension View {
+  /// A click or tap on a form's background does not take focus from its text fields. Only active
+  /// while a field is focused, so that it never competes with the form's controls otherwise.
+  fileprivate func endsEditingOnTap<Value: Hashable>(
+    _ focus: FocusState<Value?>.Binding
+  ) -> some View {
+    contentShape(Rectangle())
+      .gesture(
+        TapGesture().onEnded { focus.wrappedValue = nil },
+        including: focus.wrappedValue == nil ? .subviews : .all
+      )
+      #if os(iOS)
+        .scrollDismissesKeyboard(.interactively)
+      #endif
   }
 }
 

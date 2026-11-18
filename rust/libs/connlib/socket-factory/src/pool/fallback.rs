@@ -4,7 +4,6 @@
 //! so everywhere else all traffic uses a single unconnected socket.
 
 use std::{
-    io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
@@ -14,16 +13,25 @@ use anyhow::Result;
 
 use crate::DatagramBatch;
 
-use super::{OwnedSocket, Socket, poll_recv_ready};
+use super::{OwnedSocket, poll_recv_ready};
 
 pub(crate) struct SocketPool {
     wildcard: Arc<OwnedSocket>,
+    port: u16,
+    recv_buf_size: usize,
 }
 
 impl SocketPool {
-    pub(crate) fn new(wildcard: OwnedSocket) -> Self {
+    pub(crate) fn new(wildcard: OwnedSocket, recv_buf_size: usize) -> Self {
+        let port = wildcard
+            .local_addr()
+            .expect("a bound socket to have a local address")
+            .port();
+
         Self {
             wildcard: Arc::new(wildcard),
+            port,
+            recv_buf_size,
         }
     }
 
@@ -32,20 +40,12 @@ impl SocketPool {
         _src: Option<IpAddr>,
         _dst: SocketAddr,
         _datagrams: usize,
-        _recv_buf_size: usize,
     ) -> Arc<OwnedSocket> {
         self.wildcard.clone()
     }
 
-    pub(crate) fn poll_recv<F>(
-        &self,
-        cx: &mut Context<'_>,
-        mut try_recv: F,
-    ) -> Poll<Result<DatagramBatch>>
-    where
-        F: FnMut(Socket<'_>) -> io::Result<DatagramBatch>,
-    {
-        poll_recv_ready(cx, self.wildcard.as_socket(), &mut try_recv)
+    pub(crate) fn poll_recv(&self, cx: &mut Context<'_>) -> Poll<Result<DatagramBatch>> {
+        poll_recv_ready(cx, self.wildcard.as_socket(), self.recv_buf_size, self.port)
     }
 
     pub(crate) fn set_buffer_sizes(&self, send: usize, recv: usize, port: u16) {

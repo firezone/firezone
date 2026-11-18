@@ -3,6 +3,99 @@ defmodule Portal.Billing.Stripe.APIClientTest do
   import Portal.AccountFixtures
   alias Portal.Billing.Stripe.APIClient
   alias Portal.Mocks.Stripe
+  import Req.Test, only: [verify_on_exit!: 1]
+
+  describe "request/4" do
+    setup :verify_on_exit!
+
+    setup do
+      Portal.Config.put_env_override(APIClient,
+        endpoint: "https://api.stripe.com",
+        req_opts: [plug: {Req.Test, APIClient}, retry_delay: 0]
+      )
+    end
+
+    test "retries a POST with the same idempotency key" do
+      test_pid = self()
+
+      for status <- [429, 409] do
+        Req.Test.expect(APIClient, fn conn ->
+          send(test_pid, {:key, Plug.Conn.get_req_header(conn, "idempotency-key")})
+          Plug.Conn.send_resp(conn, status, "{}")
+        end)
+      end
+
+      Req.Test.expect(APIClient, fn conn ->
+        send(test_pid, {:key, Plug.Conn.get_req_header(conn, "idempotency-key")})
+        Req.Test.json(conn, %{"id" => "cus_retried"})
+      end)
+
+      assert {:ok, %{"id" => "cus_retried"}} =
+               APIClient.create_customer("test_token", "Test", "test@example.com", %{})
+
+      assert_received {:key, [key]}
+      assert_received {:key, [^key]}
+      assert_received {:key, [^key]}
+    end
+
+    test "does not retry a server error, since Stripe would replay it" do
+      Req.Test.expect(APIClient, fn conn -> Plug.Conn.send_resp(conn, 500, "{}") end)
+
+      assert {:error, :retry_later} = APIClient.create_customer("test_token", "Test", "test@example.com", %{})
+    end
+
+    test "retries a server error when Stripe says a retry can help" do
+      Req.Test.expect(APIClient, fn conn ->
+        conn |> Plug.Conn.put_resp_header("stripe-should-retry", "true") |> Plug.Conn.send_resp(503, "{}")
+      end)
+
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "cus_retried"}) end)
+
+      assert {:ok, %{"id" => "cus_retried"}} =
+               APIClient.update_customer_metadata("test_token", "cus_retried", %{account_slug: "acme"})
+    end
+
+    test "gives up after two retries" do
+      Req.Test.expect(APIClient, 3, fn conn -> Plug.Conn.send_resp(conn, 429, "{}") end)
+
+      assert {:error, {429, _body}} =
+               APIClient.update_customer_metadata("test_token", "cus_limited", %{account_slug: "acme"})
+    end
+
+    test "does not retry a DELETE" do
+      Req.Test.expect(APIClient, fn conn -> Plug.Conn.send_resp(conn, 429, "{}") end)
+
+      assert {:error, {429, _body}} = APIClient.cancel_subscription("test_token", "sub_test")
+    end
+
+    test "sends a new idempotency key for each call" do
+      test_pid = self()
+
+      Req.Test.stub(APIClient, fn conn ->
+        send(test_pid, {:key, Plug.Conn.get_req_header(conn, "idempotency-key")})
+        Req.Test.json(conn, %{"id" => "cus_test"})
+      end)
+
+      assert {:ok, _customer} = APIClient.update_customer_metadata("test_token", "cus_test", %{account_slug: "a"})
+      assert {:ok, _customer} = APIClient.update_customer_metadata("test_token", "cus_test", %{account_slug: "b"})
+
+      assert_received {:key, [first]}
+      assert_received {:key, [second]}
+      assert first != second
+    end
+
+    test "sends no idempotency key on a GET" do
+      test_pid = self()
+
+      Req.Test.stub(APIClient, fn conn ->
+        send(test_pid, {:key, Plug.Conn.get_req_header(conn, "idempotency-key")})
+        Req.Test.json(conn, %{"id" => "cus_test"})
+      end)
+
+      assert {:ok, _customer} = APIClient.fetch_customer("test_token", "cus_test")
+      assert_received {:key, []}
+    end
+  end
 
   describe "create_customer/4" do
     test "returns customer on success" do

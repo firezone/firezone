@@ -12,6 +12,7 @@ use ip_packet::{Ecn, IpVersion};
 use socket_factory::DatagramBatch;
 use tokio::sync::oneshot;
 
+use super::crypto::DecryptedJob;
 use super::*;
 use crate::sockets::{QUEUE_SIZE, SocketThreadEnds};
 
@@ -217,7 +218,8 @@ async fn dns_responses_flow_while_udp_and_tun_are_stalled() {
         Arc::new(socket_factory::tcp),
         Arc::new(socket_factory::udp),
         BTreeSet::new(),
-    );
+    )
+    .unwrap();
 
     stall_udp(&mut io, V4_PEER);
     stall_tun(&mut io);
@@ -308,6 +310,30 @@ async fn send_errors_do_not_hold_up_later_datagrams() {
 }
 
 #[tokio::test]
+async fn forced_relayed_connections_drop_direct_datagrams_across_rebinds() {
+    let peer = tokio::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))
+        .await
+        .unwrap();
+    let peer_addr = peer.local_addr().unwrap();
+    let mut io = Io::real();
+
+    io.set_force_relayed_connections(true);
+    io.sockets.rebind();
+    io.send_network(snownet::Transmit {
+        src: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)),
+        ..transmit(peer_addr, 8)
+    });
+    io.send_network(transmit(peer_addr, 4));
+    poll_fn(|cx| io.flush(cx)).await.unwrap();
+
+    let (len, _) = tokio::time::timeout(Duration::from_secs(5), peer.recv_from(&mut [0; 16]))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(len, 4);
+}
+
+#[tokio::test]
 async fn rebind_dns_clears_all_servers_on_failure() {
     let _guard = logging::test("debug");
 
@@ -339,7 +365,7 @@ impl Io {
         let (resolver, _) = resolver::channels();
 
         Io::new(
-            Sockets::new(udp.clone()),
+            Sockets::new(udp.clone(), 0),
             CryptoWorkers::default(),
             resolver,
             Arc::new(socket_factory::tcp),
@@ -402,7 +428,7 @@ fn stall_tun(io: &mut Io) {
 fn add_finished_decrypt_job(io: &mut Io) {
     let job = io.decrypting.add_job();
 
-    assert!(job.send(DecryptedIpPackets::default()).is_ok());
+    assert!(job.send(DecryptedJob::default()).is_ok());
 }
 
 fn fill_decrypt_backlog(io: &mut Io, ends: &mut FakeEnds) {
@@ -419,14 +445,14 @@ struct FakeEnds {
     v6: SocketThreadEnds,
     tun_tx: tun::InboundTx,
     tun_rx: tun::OutboundRx,
-    decrypt_jobs: Vec<oneshot::Sender<DecryptedIpPackets>>,
+    decrypt_jobs: Vec<oneshot::Sender<DecryptedJob>>,
 }
 
 impl FakeEnds {
     fn finish_decrypt_job(&mut self) {
         let job = self.decrypt_jobs.remove(0);
 
-        assert!(job.send(DecryptedIpPackets::default()).is_ok());
+        assert!(job.send(DecryptedJob::default()).is_ok());
     }
 }
 

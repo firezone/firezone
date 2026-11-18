@@ -7,17 +7,16 @@ use std::{
 };
 
 use fast_random_state::FastRandomState;
+use ip_packet::Ecn;
 use is::Candidate;
 use itertools::Itertools as _;
 use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
+use relay_client_proto::{Allocation, FreeReason};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
-use crate::{
-    RelaySocket, Transmit,
-    allocation::{self, Allocation, FreeReason},
-};
+use crate::{RelaySocket, Transmit};
 
 /// How long we ignore a relay after freeing its allocation because of a failure.
 const BLOCK_DURATION: Duration = Duration::from_secs(60);
@@ -50,6 +49,31 @@ where
     #[cfg(test)]
     pub(crate) fn for_test() -> Self {
         Self::new(&mut StdRng::seed_from_u64(0))
+    }
+
+    /// Answers the pending BINDING request of the given relay, `rtt` after `sent_at`.
+    #[cfg(test)]
+    pub(crate) fn receive_binding_response(&mut self, id: &RId, rtt: Duration, sent_at: Instant) {
+        use std::net::Ipv4Addr;
+        use stun_codec::{
+            Message, MessageClass,
+            rfc5389::{attributes::XorMappedAddress, methods::BINDING},
+        };
+
+        let allocation = self.inner.get_mut(id).unwrap();
+        let local = SocketAddr::from((Ipv4Addr::LOCALHOST, 33333));
+
+        let request = allocation.poll_transmit().unwrap();
+        let binding = relay_client_proto::decode(&request.payload)
+            .unwrap()
+            .unwrap();
+        let mut response = Message::new(
+            MessageClass::SuccessResponse,
+            BINDING,
+            binding.transaction_id(),
+        );
+        response.add_attribute(XorMappedAddress::new(local));
+        allocation.handle_input(request.dst, local, response, sent_at + rtt);
     }
 
     /// Restarts every allocation in place, keeping the portal-issued credentials but
@@ -92,6 +116,14 @@ where
         self.inner
             .iter_mut()
             .find_map(|(id, a)| a.has_socket(addr).then_some((*id, a)))
+    }
+
+    pub(crate) fn has_server(&self, socket: SocketAddr) -> bool {
+        self.inner.values().any(|a| a.server().matches(socket))
+    }
+
+    pub(crate) fn host_candidates(&self) -> impl Iterator<Item = &Candidate> {
+        self.inner.values().flat_map(|a| a.host_candidates())
     }
 
     pub(crate) fn get_mut_by_server(&mut self, socket: SocketAddr) -> MutAllocationRef<'_, RId> {
@@ -227,7 +259,7 @@ where
             .map(|(rid, _)| *rid)
     }
 
-    pub(crate) fn poll_event(&mut self) -> Option<(RId, allocation::Event)> {
+    pub(crate) fn poll_event(&mut self) -> Option<(RId, relay_client_proto::Event)> {
         self.inner
             .iter_mut()
             .filter_map(|(id, a)| Some((*id, a.poll_event()?)))
@@ -241,10 +273,18 @@ where
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<Transmit> {
-        self.inner
+        let transmit = self
+            .inner
             .values_mut()
             .filter_map(Allocation::poll_transmit)
-            .next()
+            .next()?;
+
+        Some(Transmit {
+            src: None,
+            dst: transmit.dst,
+            payload: transmit.payload,
+            ecn: Ecn::NonEct,
+        })
     }
 
     /// Performs garbage-collection across all our allocations.
@@ -261,7 +301,8 @@ where
                     match e {
                         FreeReason::AuthenticationError
                         | FreeReason::ProtocolFailure
-                        | FreeReason::UnhandledResponse => {
+                        | FreeReason::UnhandledResponse
+                        | FreeReason::AllocationQuotaReached => {
                             self.blocked.insert(*rid, now + BLOCK_DURATION);
                         }
                         FreeReason::NoResponseReceived => {}
@@ -384,9 +425,8 @@ mod tests {
     use stun_codec::{
         Message, MessageClass,
         rfc5389::{
-            attributes::{ErrorCode, XorMappedAddress},
+            attributes::{ErrorCode, MessageIntegrity},
             errors::ServerError,
-            methods::BINDING,
         },
         rfc5766::methods::ALLOCATE,
     };
@@ -587,21 +627,12 @@ mod tests {
 
     /// Rejects the allocation's ALLOCATE request with an unhandled error.
     fn reject_allocation(allocations: &mut Allocations<u64>, rid: u64, now: Instant) {
+        allocations.receive_binding_response(&rid, Duration::ZERO, now);
+
         let allocation = allocations.get_mut_by_id(&rid).unwrap();
         let local = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 33333));
 
-        let binding = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
-            .unwrap()
-            .unwrap();
-        let mut response = Message::new(
-            MessageClass::SuccessResponse,
-            BINDING,
-            binding.transaction_id(),
-        );
-        response.add_attribute(XorMappedAddress::new(local));
-        allocation.handle_input(SERVER_V4, local, response, now);
-
-        let allocate = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
+        let allocate = relay_client_proto::decode(&allocation.poll_transmit().unwrap().payload)
             .unwrap()
             .unwrap();
         let mut response = Message::new(
@@ -610,6 +641,15 @@ mod tests {
             allocate.transaction_id(),
         );
         response.add_attribute(ErrorCode::from(ServerError));
+        // The allocation only accepts responses that are signed with the credentials from `upsert`.
+        let integrity = MessageIntegrity::new_long_term_credential(
+            &response,
+            &Username::new("test".to_owned()).unwrap(),
+            &Realm::new("firezone".to_owned()).unwrap(),
+            "password",
+        )
+        .unwrap();
+        response.add_attribute(integrity);
         allocation.handle_input(SERVER_V4, local, response, now);
     }
 
@@ -696,10 +736,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
             );
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .set_rtt(Duration::from_millis(rtt_ms));
+            allocations.receive_binding_response(&rid, Duration::from_millis(rtt_ms), now);
         }
         for _ in 0..1000 {
             let rid = allocations.sample().unwrap();
@@ -722,10 +759,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
             );
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .set_rtt(Duration::from_millis(rtt_ms));
+            allocations.receive_binding_response(&rid, Duration::from_millis(rtt_ms), now);
         }
         let mut counts = [0u32; 2];
 
@@ -756,10 +790,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
             );
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .set_rtt(Duration::from_millis(rtt_ms));
+            allocations.receive_binding_response(&rid, Duration::from_millis(rtt_ms), now);
         }
         for _ in 0..100 {
             let rid = allocations.sample().unwrap();
@@ -780,10 +811,7 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         );
-        allocations
-            .get_mut_by_id(&1)
-            .unwrap()
-            .set_rtt(Duration::from_millis(500));
+        allocations.receive_binding_response(&1, Duration::from_millis(500), now);
         let rid = allocations.sample().unwrap();
         assert_eq!(rid, 1);
     }

@@ -69,7 +69,7 @@ defmodule Portal.OAuth.ClientAuthenticationTest do
     assert DateTime.to_unix(expiry) == exp + 60
   end
 
-  test "key fetches have request and receive deadlines and disable implicit decoding" do
+  test "key fetches have a receive deadline and disable implicit decoding" do
     pid = self()
 
     adapter = fn request ->
@@ -87,7 +87,6 @@ defmodule Portal.OAuth.ClientAuthenticationTest do
 
     assert {:ok, [_]} = ClientMetadata.fetch_jwks("https://client.example.com/keys")
     assert_receive {:fetch_options, options}
-    assert options[:request_timeout] == 5000
     assert options[:receive_timeout] == 5000
     assert options[:raw] == true
     assert options[:redirect] == false

@@ -16,6 +16,7 @@ defmodule PortalAPI.Plugs.IngestionRateLimit do
         conn
 
       {:deny, retry_after_ms} ->
+        Portal.Telemetry.flow_log_upload_denied(:ip, :unknown)
         retry_after = max(ceil(retry_after_ms / 1000), 1)
 
         conn

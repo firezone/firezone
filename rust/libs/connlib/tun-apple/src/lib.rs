@@ -24,7 +24,7 @@ use tokio::io::Interest;
 /// Receive buffer we request for the utun control socket via `SO_RCVBUF`.
 ///
 /// The kernel default (`ctl_recvsize`) is 512 KiB, only a few hundred MTU-sized
-/// packets, after which inbound packets are backpressured. A larger buffer lets the kernel
+/// packets, after which the kernel drops further packets. A larger buffer lets the kernel
 /// queue more while we drain it. 8 MiB matches the default `kern.ipc.maxsockbuf`
 /// ceiling, the most the kernel grants without raising that system-wide limit.
 const RECV_BUFFER_SIZE: libc::c_int = if cfg!(target_os = "ios") {
@@ -33,18 +33,6 @@ const RECV_BUFFER_SIZE: libc::c_int = if cfg!(target_os = "ios") {
     8 * 1024 * 1024
 };
 
-/// How many packets the kernel may park in the socket receive buffer before it pauses
-/// the interface's output queue until we read them.
-///
-/// XNU defaults this to 1, so every packet costs a full read + flow-control roundtrip
-/// before the kernel hands us the next one. We size it to [`RECV_BUFFER_SIZE`] at the
-/// TUN MTU ([`ip_packet::MAX_IP_SIZE`]), rounded up to a power of two, leaving the byte
-/// buffer as the limit that actually governs how much is queued.
-const MAX_PENDING_PACKETS: u32 =
-    (RECV_BUFFER_SIZE as u32 / ip_packet::MAX_IP_SIZE as u32).next_power_of_two();
-
-/// From XNU's `bsd/net/if_utun.h`.
-const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
 /// From XNU's `bsd/net/if_utun.h`.
 const UTUN_OPT_SLOT_SIZE: libc::c_int = 21;
 
@@ -59,15 +47,13 @@ impl Io {
     /// # Safety
     ///
     /// The descriptor must remain open until this IO and its workers have stopped.
-    pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
+    pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
         let name = name(fd)?;
         set_non_blocking(fd)?;
         raise_recv_buffer(fd);
-        raise_max_pending_packets(fd);
         let max_coalesced_len = max_coalesced_len(fd);
         let workers = match sys::batch_syscalls() {
             Some(syscalls) => tun::Workers::spawn(
-                runtime,
                 move |outbound_rx| {
                     let open = move || bulk::Fd::open(fd, Interest::WRITABLE, syscalls);
 
@@ -80,7 +66,6 @@ impl Io {
                 },
             )?,
             None => tun::Workers::spawn(
-                runtime,
                 move |outbound_rx| per_packet_io::tun_send(fd, outbound_rx, per_packet::write),
                 move |inbound_tx| per_packet_io::tun_recv(fd, inbound_tx, per_packet::read),
             )?,
@@ -95,14 +80,12 @@ impl Io {
         name: impl Into<String>,
         device: D,
         max_coalesced_len: Option<usize>,
-        runtime: &tokio::runtime::Handle,
     ) -> io::Result<Self>
     where
         D: Device + Clone + Send + 'static,
     {
         let send_device = device.clone();
         let workers = tun::Workers::spawn(
-            runtime,
             move |outbound_rx| bulk::send(move || Ok(send_device), outbound_rx, max_coalesced_len),
             move |inbound_tx| bulk::recv(move || Ok(device), inbound_tx),
         )?;
@@ -162,41 +145,6 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
             _ => Ok(()),
         },
     }
-}
-
-/// Raises the limit of packets the kernel buffers on the utun socket so it can run
-/// ahead of our reads instead of in lock-step.
-fn raise_max_pending_packets(fd: RawFd) {
-    let current = match get_sockopt::<u32>(fd, libc::SYSPROTO_CONTROL, UTUN_OPT_MAX_PENDING_PACKETS)
-    {
-        Ok(current) => current,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to get `UTUN_OPT_MAX_PENDING_PACKETS`");
-            return;
-        }
-    };
-
-    tracing::debug!(current, "Queried `UTUN_OPT_MAX_PENDING_PACKETS`");
-
-    if current >= MAX_PENDING_PACKETS {
-        return;
-    }
-
-    if let Err(e) = set_sockopt(
-        fd,
-        libc::SYSPROTO_CONTROL,
-        UTUN_OPT_MAX_PENDING_PACKETS,
-        &MAX_PENDING_PACKETS,
-    ) {
-        tracing::warn!(error = %e, "Failed to set `UTUN_OPT_MAX_PENDING_PACKETS`");
-        return;
-    }
-
-    tracing::debug!(
-        previous = current,
-        new = MAX_PENDING_PACKETS,
-        "Raised `UTUN_OPT_MAX_PENDING_PACKETS`"
-    );
 }
 
 /// The largest packet we may coalesce TCP segments into, if the utun accepts more than one segment.

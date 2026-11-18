@@ -46,7 +46,7 @@ const BURST: usize = 10_000;
 /// shallow enough that no UDP receive buffer overflows: macOS caps a socket buffer at 8 MiB
 /// (`kern.ipc.maxsockbuf`), which holds about 4096 datagrams of [`SIZE`] bytes. The crypto workers
 /// make the pipeline deeper than that on many-core machines, so Linux, whose benchmark container
-/// raises `rmem_max` to 16 MiB, keeps twice as many in flight.
+/// has `CAP_NET_ADMIN` to force a 16 MiB receive buffer, keeps twice as many in flight.
 const IN_FLIGHT: usize = cfg_select! {
     target_os = "macos" => { 4_096 }
     _ => { 8_192 }
@@ -257,17 +257,20 @@ impl EventLoop {
             .unwrap();
         let handle = runtime.handle().clone();
         let _guard = handle.enter();
-        let tun = device.io(&handle);
+        let tun = device.io();
         let thread = match host {
             AnyHost::Client(client) => {
-                let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now);
+                let mut tunnel =
+                    ClientTunnel::new(tcp, udp, socket.port(), BTreeSet::new(), false, now)
+                        .unwrap();
                 *tunnel.state_mut() = client.into_state();
                 tunnel.set_tun(tun);
 
                 run(tunnel, runtime, now)
             }
             AnyHost::Gateway(gateway) => {
-                let mut tunnel = GatewayTunnel::new(tcp, udp, BTreeSet::new(), now);
+                let mut tunnel =
+                    GatewayTunnel::new(tcp, udp, socket.port(), BTreeSet::new(), now).unwrap();
                 *tunnel.state_mut() = gateway.into_state();
                 tunnel.set_tun(tun);
 
@@ -300,7 +303,7 @@ where
     R: Role + Send + 'static,
 {
     std::thread::Builder::new()
-        .name("event-loop".to_owned())
+        .name("fz-eventloop".to_owned())
         .spawn(move || {
             // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
             // are irrelevant here: a lost packet fails the benchmark.
@@ -527,7 +530,7 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
         .build()
         .unwrap();
     let _guard = runtime.enter();
-    let mut socket = socket_factory::udp(socket).unwrap().into_perf().unwrap();
+    let mut socket = socket_factory::udp(socket).unwrap().into_perf();
     socket.set_buffer_sizes(
         socket_factory::SEND_BUFFER_SIZE,
         socket_factory::RECV_BUFFER_SIZE,

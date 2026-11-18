@@ -21,6 +21,8 @@ defmodule Portal.Release do
     {:ok, _, _} = do_migration(Portal.Repo, manual)
   end
 
+  # Release operators execute trusted seed scripts shipped with the application.
+  # sobelow_skip ["RCE.Compile"]
   def seed(directory \\ seed_script_path(@otp_app)) do
     IO.puts("Starting #{@otp_app} app..")
     {:ok, _} = Application.ensure_all_started(@otp_app)

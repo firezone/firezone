@@ -19,10 +19,14 @@ config :portal, sql_sandbox: true
 
 config :portal, run_manual_migrations: true
 
+config :portal, flow_logs_api_url: "https://flow-api.firezone.dev/"
+
 config :portal, Portal.Repo,
   database: database,
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: 5,
+  # Support parallel test cases while leaving room for the other pools and
+  # replication connections under PostgreSQL's default connection limit.
+  pool_size: min(System.schedulers_online() * 2, 12),
   queue_target: 1000
 
 for repo <- [
@@ -156,6 +160,12 @@ config :portal, Portal.HTTP.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Workers.MirrorYCDealRedemption,
+  req_opts: [
+    plug: {Req.Test, Portal.Workers.MirrorYCDealRedemption},
+    retry: false
+  ]
+
 config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
 
 config :portal, Portal.Azure.ManagedIdentity,
@@ -165,9 +175,45 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: false
   ]
 
+config :portal, Portal.OTLP.MetricsExporter,
+  req_opts: [
+    plug: {Req.Test, Portal.OTLP.MetricsExporter},
+    retry: false
+  ]
+
+config :portal, Portal.OTLP.TracesExporter,
+  req_opts: [
+    plug: {Req.Test, Portal.OTLP.TracesExporter},
+    retry: false
+  ]
+
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
     plug: {Req.Test, Portal.SlugRegistry.AzureTable},
+    retry: false
+  ]
+
+config :portal, Portal.Ops.RegionTransfer.Storage,
+  req_opts: [
+    plug: {Req.Test, Portal.Ops.RegionTransfer.Storage},
+    retry: false
+  ]
+
+config :portal, Portal.Avatars.Picture,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Picture},
+    retry: false
+  ],
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
+  ]
+
+config :portal, Portal.Avatars.Storage,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Storage},
     retry: false
   ]
 
@@ -223,6 +269,9 @@ config :portal, Portal.Sophos.APIClient,
 config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []
+
+# Tests stub the MX lookup with `resolve_mx`.
+config :portal, PortalWeb.SignUpReview, []
 
 config :portal, Portal.Telemetry, enabled: false
 
@@ -370,6 +419,11 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+# Tests share the loopback address, so dedicated tests override these per process.
+config :portal, PortalWeb.PublicEmailRateLimit,
+  per_ip_per_hour: 100_000,
+  global_per_hour: 100_000
+
 # MCP controller tests share the loopback source IP, so dedicated limiter tests
 # pass strict values directly while the general suite uses a practically
 # unbounded bucket.
@@ -377,7 +431,7 @@ config :portal, PortalAPI.Plugs.MCPRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
-# The ingestion endpoint defaults to a strict 1 req/s per IP; keep it effectively
+# The ingestion endpoint limits requests per IP; keep it effectively
 # disabled in general tests (which share localhost) to avoid cross-test 429s.
 # Dedicated rate-limit tests pass strict opts directly to the plug instead.
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
@@ -387,7 +441,7 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
+    "img-src 'self' data: https://firezone.statuspage.io",
     "style-src 'self'",
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",
@@ -396,6 +450,7 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   ]
 
 config :portal, :constant_execution_time, 1
+config :portal, PortalAPI.Client.Channel.Shared, device_lookup_constant_time: 1
 config :portal, :pending_verification_timeout, 1_000
 
 ###############################
@@ -446,7 +501,11 @@ assert_receive_timeout =
 
 ex_unit_config = [
   formatters: [JUnitFormatter, ExUnit.CLIFormatter],
-  capture_log: true,
+  # Failure diagnostics need warnings/errors; explicit capture_log assertions
+  # can still capture info logs without copying them into every other test.
+  capture_log: [level: :warning],
+  # Let async work overlap while bounding contention on machines with many cores.
+  max_cases: min(System.schedulers_online() * 2, 24),
   assert_receive_timeout: assert_receive_timeout
 ]
 
@@ -454,6 +513,10 @@ config :ex_unit, ex_unit_config
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
+
+# Request/channel logs are copied into every concurrent capture_log session.
+# Keep application logs available for assertions without that framework noise.
+config :phoenix, :logger, false
 
 config :sentry,
   environment_name: :test
@@ -467,4 +530,10 @@ config :portal, Portal.Analytics.OpenAI,
 
 config :portal, Portal.Analytics.GoogleAds,
   endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+  req_opts: [retry: false]
+
+config :portal, Portal.Turnstile,
+  site_key: nil,
+  secret_key: nil,
+  endpoint: "https://challenges.cloudflare.com/turnstile/v0/siteverify",
   req_opts: [retry: false]

@@ -69,10 +69,8 @@ struct Cli {
     #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
 
-    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
-    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
-    #[arg(short, long, env = "MAX_PARTITION_TIME")]
-    max_partition_time: Option<humantime::Duration>,
+    #[command(flatten)]
+    partition: bin_shared::max_partition_time::MaxPartitionTimeArgs,
 
     #[arg(
         short = 'u',
@@ -120,7 +118,7 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
 
-    /// Dump internal metrics to stdout every 60s.
+    /// Where to export metrics to.
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
@@ -158,10 +156,6 @@ struct Cli {
     #[arg(default_value = known_dirs::default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: PathBuf,
 
-    /// Increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
-    #[arg(long, env = "FIREZONE_INC_BUF", hide = true, default_value_t = false)]
-    inc_buf: bool,
-
     /// Track flow logs even when the portal has them disabled, and emit them
     /// to the log output by adding the `flow_logs=trace` log directive.
     ///
@@ -173,7 +167,6 @@ struct Cli {
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum MetricsExporter {
-    Stdout,
     OtelCollector,
     Sentry,
 }
@@ -181,10 +174,6 @@ enum MetricsExporter {
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
-    }
-
-    fn is_inc_buf_allowed(&self) -> bool {
-        self.inc_buf
     }
 }
 
@@ -308,6 +297,7 @@ fn try_main() -> Result<()> {
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
+        git_sha = git_sha::git_sha(),
         system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         "`headless-client` started logging"
     );
@@ -336,26 +326,7 @@ fn try_main() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()
-        .context("Failed to create tokio runtime")?;
-
-    if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
-        let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
-        let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
-
-        match std::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()) {
-            Ok(()) => tracing::info!("Set `core.rmem_max` to {recv_buf_size}",),
-            Err(e) => tracing::info!("Failed to increase `core.rmem_max`: {e}"),
-        };
-        match std::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()) {
-            Ok(()) => tracing::info!("Set `core.wmem_max` to {send_buf_size}",),
-            Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
-        };
-    }
+    let rt = async_runtime::current_thread()?;
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id.clone() {
@@ -382,7 +353,7 @@ fn try_main() -> Result<()> {
     let token = get_token(token_env_var, &cli.token_path)?
         .context("Cannot authenticate without a token")?;
     // TODO: Should this default to 30 days?
-    let max_partition_time = cli.max_partition_time.map(|d| d.into());
+    let max_partition_time = cli.partition.max_partition_time;
 
     // The certificate is optional device attestation. A keystore or private-key failure must
     // not prevent a token-authenticated session from reaching the portal.
@@ -433,12 +404,6 @@ fn try_main() -> Result<()> {
                 (MetricsExporter::Sentry, _) => {
                     opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
                 }
-                (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                        .with_resource(resource)
-                        .build(),
-                ),
                 (MetricsExporter::OtelCollector, Some(endpoint)) => {
                     opentelemetry::global::set_meter_provider(
                         SdkMeterProvider::builder()
@@ -477,17 +442,21 @@ fn try_main() -> Result<()> {
             flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
         }
 
+        let listen_port =
+            client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+        let config = client_shared::SessionConfig::new(listen_port)
+            .with_internet_resource_active(cli.activate_internet_resource)
+            .with_dns_servers(dns_controller.system_resolvers())
+            .with_additional_host_candidates(cli.additional_host_candidates.clone())
+            .with_flow_logs_dir(flow_logs_dir.clone())
+            .with_local_flow_logs(cli.flow_logs);
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            cli.activate_internet_resource,
-            dns_controller.system_resolvers(),
-            cli.additional_host_candidates.clone(),
-            flow_logs_dir.clone(),
-            cli.flow_logs,
-            rt.handle().clone(),
-        );
+            config,
+        )
+        .context("Failed to start connlib")?;
 
         analytics::new_session(firezone_id.clone(), cli.api_url.to_string());
 

@@ -1316,6 +1316,7 @@ defmodule PortalWeb.GettingStarted do
     alias Portal.Resource
     alias Portal.Safe
     alias Portal.Site
+    alias Portal.SiteDevice
 
     @default_site_name "Default Site"
 
@@ -1335,7 +1336,17 @@ defmodule PortalWeb.GettingStarted do
       devices =
         from(d in Device, as: :devices)
         |> where([devices: d], d.type == :client)
-        |> where([devices: d], d.actor_id == ^subject.actor.id)
+        |> where(
+          [devices: d],
+          exists(
+            from(da in Portal.DeviceActor,
+              where:
+                da.account_id == parent_as(:devices).account_id and
+                  da.device_id == parent_as(:devices).id and
+                  da.actor_id == ^subject.actor.id
+            )
+          )
+        )
         |> where([devices: d], d.id in ^ids)
         |> Safe.scoped(subject)
         |> Safe.all()
@@ -1514,7 +1525,11 @@ defmodule PortalWeb.GettingStarted do
     defp pending_gateway(gateway_id, site_id, subject) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.id == ^gateway_id and d.type == :gateway)
-      |> where([devices: d], d.site_id == ^site_id and is_nil(d.firezone_id))
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([devices: d, site_device: sd], sd.site_id == ^site_id and is_nil(d.firezone_id))
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do

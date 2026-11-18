@@ -183,12 +183,12 @@ where
 
             let encrypted = connection
                 .encapsulate(cid, socket, &goodbye.packet, now, allocations)
-                .and_then(|encapsulation| {
-                    let Some(encapsulation) = encapsulation else {
+                .and_then(|batch| {
+                    let Some(batch) = batch else {
                         return Ok(None);
                     };
 
-                    let transmit = encapsulation.encrypt(&goodbye.packet)?;
+                    let transmit = batch.encrypt_single(&goodbye.packet)?;
 
                     Ok(Some(transmit))
                 });
@@ -405,8 +405,8 @@ where
         self.established.keys()
     }
 
-    pub(crate) fn all_iceless(&self) -> bool {
-        !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
+    pub(crate) fn all_frostlink(&self) -> bool {
+        !self.established.is_empty() && self.established.values().all(|c| c.agent.is_frostlink())
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
@@ -701,7 +701,7 @@ mod tests {
         let now = Instant::now();
 
         let mut conn = new_connection(Some(1), [1u8; 32]);
-        conn.agent = crate::agent::Agent::path();
+        conn.agent = crate::agent::Agent::frostlink();
         connections.insert_established(1, conn);
 
         connections.reset_for_roam(now);
@@ -724,10 +724,7 @@ mod tests {
             now,
         );
         // Simulate a successful response so the relay is eligible for sampling.
-        allocations
-            .get_mut_by_id(&rid)
-            .unwrap()
-            .set_rtt(Duration::from_millis(20));
+        allocations.receive_binding_response(&rid, Duration::from_millis(20), now);
     }
 
     fn handle_timeout(connections: &mut Connections<u32, u32>, now: Instant) {

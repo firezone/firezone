@@ -82,6 +82,7 @@ defmodule PortalAPI.ActorController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create an Actor",
+    description: "Creates an Actor. Admins can only be created in the portal.",
     request_body:
       {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.CreateRequest,
        required: true},
@@ -132,19 +133,6 @@ defmodule PortalAPI.ActorController do
     end
   end
 
-  defp check_billing_limits(account, :account_admin_user) do
-    cond do
-      not Billing.can_create_users?(account) ->
-        {:error, :forbidden, reason: "Users limit reached"}
-
-      not Billing.can_create_admin_users?(account) ->
-        {:error, :forbidden, reason: "Admins limit reached"}
-
-      true ->
-        :ok
-    end
-  end
-
   defp check_billing_limits(account, :account_user) do
     if Billing.can_create_users?(account) do
       :ok
@@ -154,17 +142,6 @@ defmodule PortalAPI.ActorController do
   end
 
   defp check_billing_limits(_account, _type), do: :ok
-
-  defp check_role_promotion_limits(account, actor, changeset) do
-    new_type = get_change(changeset, :type)
-
-    if actor.type != :account_admin_user and new_type == :account_admin_user and
-         not Billing.can_create_admin_users?(account) do
-      {:error, :forbidden, reason: "Admins limit reached"}
-    else
-      :ok
-    end
-  end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
@@ -178,7 +155,9 @@ defmodule PortalAPI.ActorController do
 
     - Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.
     - End all active sessions for this Actor, both in the admin portal and on
-      connected Client devices. The user will be signed out immediately.
+      connected Client devices, no matter how the Actor signed in (identity
+      provider, email OTP, or username and password). The user will be signed
+      out immediately.
 
     The Actor will need to sign in again through their identity provider, which
     re-links it under the new email.
@@ -189,6 +168,9 @@ defmodule PortalAPI.ActorController do
 
     **Setting `is_disabled` to `true` immediately revokes all of the Actor's
     active Client tokens and portal sessions.** An Actor cannot disable itself.
+
+    Admins and API clients can only be changed in the portal, and users can only
+    be promoted to admin there.
     """,
     parameters: [
       id: [
@@ -217,12 +199,11 @@ defmodule PortalAPI.ActorController do
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "actor" => params}) do
     subject = conn.assigns.subject
-    account = subject.account
 
     with {:ok, actor} <- Database.fetch_actor(id, subject),
+         :ok <- ensure_manageable(actor),
          changeset <- actor_changeset(actor, params),
          :ok <- ensure_not_self_disable(actor, changeset, subject),
-         :ok <- check_role_promotion_limits(account, actor, changeset),
          {:ok, actor} <- Database.update_actor(changeset, subject) do
       json(conn, JSON.encode(actor))
     else
@@ -237,6 +218,7 @@ defmodule PortalAPI.ActorController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete an Actor",
+    description: "Deletes an Actor. Admins and API clients can only be deleted in the portal.",
     parameters: [
       id: [
         in: :path,
@@ -247,7 +229,7 @@ defmodule PortalAPI.ActorController do
     ],
     responses:
       [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
-        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
+        ProblemDetails.responses([:bad_request, :unauthorized, :forbidden, :too_many_requests, :not_found])
 
   # coveralls-ignore-stop
 
@@ -255,12 +237,29 @@ defmodule PortalAPI.ActorController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- Database.delete_actor_by_id(id, subject) do
+    with {:ok, actor} <- Database.fetch_actor(id, subject),
+         :ok <- ensure_manageable(actor),
+         {:ok, actor} <- Database.delete_actor_by_id(actor.id, subject) do
       json(conn, JSON.encode(actor))
     else
       error -> Error.handle(conn, error)
     end
   end
+
+  # A token's scopes must not reach past the actors it is allowed to manage.
+  # Admins can only be created or changed in the portal, otherwise a token with
+  # actors:write could mint a portal admin for itself and bypass every scope.
+  # API clients are portal-managed too, otherwise a narrow token could revoke
+  # the tokens of an API client that has more scopes than itself.
+  defp ensure_manageable(%Portal.Actor{type: :account_admin_user}) do
+    {:error, :forbidden, reason: "Admins can only be managed in the portal"}
+  end
+
+  defp ensure_manageable(%Portal.Actor{type: :api_client}) do
+    {:error, :forbidden, reason: "API clients can only be managed in the portal"}
+  end
+
+  defp ensure_manageable(_actor), do: :ok
 
   # Disabling an Actor revokes its own credentials, so letting a caller disable
   # the Actor behind the current request would lock it out mid-request.
@@ -279,19 +278,25 @@ defmodule PortalAPI.ActorController do
     |> validate_exclusion(:type, [:api_client],
       message: "API clients cannot be created via the API"
     )
+    |> validate_exclusion(:type, [:account_admin_user],
+      message: "admins can only be created in the portal"
+    )
   end
 
   defp actor_changeset(actor, attrs) do
     actor
     |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in, :is_disabled])
     |> validate_required([:name, :type])
+    |> validate_exclusion(:type, [:account_admin_user],
+      message: "users can only be promoted to admin in the portal"
+    )
   end
 
   defmodule Database do
     import Ecto.Query
     alias Portal.Actor
     alias Portal.APIToken
-    alias Portal.Device
+    alias Portal.DeviceToken
     alias Portal.ExternalIdentity
     alias Portal.OAuthToken
     alias Portal.PortalSession
@@ -422,18 +427,19 @@ defmodule PortalAPI.ActorController do
       actor_id = changeset.data.id
 
       with {:ok, actor} <- update_actor_changeset(changeset, subject),
-           {_count, _} <- clear_identities_for_actor(actor_id, subject) do
+           {count, _} when is_integer(count) <- clear_identities_for_actor(actor_id, subject),
+           {count, _} when is_integer(count) <- clear_portal_sessions_for_actor(actor_id, subject),
+           {count, _} when is_integer(count) <- clear_client_tokens_for_actor(actor_id, subject) do
         {:ok, actor}
       end
     end
 
     defp select_last_seen_at(queryable) do
       client_seen_at =
-        from(d in Device,
-          where: d.account_id == parent_as(:actors).account_id,
-          where: d.actor_id == parent_as(:actors).id,
-          where: d.type == :client,
-          select: max(d.last_seen_at)
+        from(da in Portal.DeviceActor,
+          where: da.account_id == parent_as(:actors).account_id,
+          where: da.actor_id == parent_as(:actors).id,
+          select: max(da.last_seen_at)
         )
 
       portal_signed_in_at =
@@ -476,6 +482,17 @@ defmodule PortalAPI.ActorController do
       from(i in ExternalIdentity, where: i.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
+    end
+
+    defp clear_portal_sessions_for_actor(actor_id, subject) do
+      from(s in PortalSession, where: s.actor_id == ^actor_id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+    end
+
+    defp clear_client_tokens_for_actor(actor_id, subject) do
+      from(t in DeviceToken, where: t.actor_id == ^actor_id)
+      |> Portal.Authentication.delete_client_tokens(subject)
     end
   end
 end

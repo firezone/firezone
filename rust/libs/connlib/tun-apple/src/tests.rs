@@ -9,9 +9,6 @@ use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use std::os::fd::RawFd;
 use std::time::{Duration, Instant};
 
-/// From XNU's `bsd/net/if_utun.h`.
-const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
-
 const LOCAL: Ipv4Addr = Ipv4Addr::new(169, 254, 33, 1);
 const PEER: Ipv4Addr = Ipv4Addr::new(169, 254, 33, 2);
 
@@ -23,7 +20,6 @@ fn recv_reads_packets_routed_through_the_interface() {
 
     let (fd, name) = create_utun();
     set_nonblocking(fd);
-    raise_max_pending_packets(fd, 64);
     configure(&name);
 
     let (tx, mut rx) = tun::inbound_channel();
@@ -36,7 +32,7 @@ fn recv_reads_packets_routed_through_the_interface() {
         .expect("spawn recv thread");
 
     // The kernel routes datagrams addressed to the point-to-point peer out the utun,
-    // where they queue (we raised the pending limit) for `recv` to read as a batch.
+    // where they queue for `recv` to read.
     const COUNT: usize = 8;
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).expect("bind UDP socket");
     for i in 0..COUNT {
@@ -144,25 +140,6 @@ fn set_nonblocking(fd: RawFd) {
             io::Error::last_os_error()
         );
     }
-}
-
-fn raise_max_pending_packets(fd: RawFd, packets: u32) {
-    // Safety: `fd` is valid; the option's value is a `u32`.
-    let ret = unsafe {
-        libc::setsockopt(
-            fd,
-            libc::SYSPROTO_CONTROL,
-            UTUN_OPT_MAX_PENDING_PACKETS,
-            &packets as *const u32 as *const c_void,
-            size_of::<u32>() as libc::socklen_t,
-        )
-    };
-    assert_eq!(
-        ret,
-        0,
-        "setsockopt(UTUN_OPT_MAX_PENDING_PACKETS): {}",
-        io::Error::last_os_error()
-    );
 }
 
 /// Brings the interface up with a point-to-point address so traffic to [`PEER`] routes out it.

@@ -41,11 +41,11 @@ from PIL import Image, ImageChops
 # an area no larger.
 #
 # Over every re-render this gallery has produced, the smallest real change
-# averages 8 across a block. Invisible wobble reaches 5: the title bar's material
-# draws a window title a shade heavier, darkening every pixel of it by nine levels
-# and leaving the rest of the screen alone.
+# averages 8 across a block. Invisible wobble reaches 7: the title bar's material
+# draws a window title a shade heavier, darkening every pixel of it by up to 13
+# levels and leaving the rest of the screen alone.
 BLOCK = 8
-BLOCK_TOLERANCE = 6
+BLOCK_TOLERANCE = 7
 
 
 def committed(revision: str, path: str) -> bytes | None:

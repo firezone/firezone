@@ -51,11 +51,6 @@ jobs:
       - run: cargo fmt -- --check
       - run: mise run deny
         shell: bash
-      # cargo-shear does not compile the workspace; it runs `cargo metadata` and
-      # parses sources, so it piggy-backs on the toolchain already set up here.
-      - run: cargo shear
-        name: cargo shear
-        shell: bash
 
   test:
     name: test-${{ matrix.runs-on }}
@@ -238,8 +233,8 @@ jobs:
             filter: "instructions::packet_group::*"
           - group: idle-ice
             filter: "instructions::idle_group::idle::ice"
-          - group: idle-iceless
-            filter: "instructions::idle_group::idle::iceless"
+          - group: idle-frostlink
+            filter: "instructions::idle_group::idle::frostlink"
     runs-on: ubuntu-24.04
     env:
       # Replaces the workflow's `RUSTFLAGS`, which would drop the frame pointers from `.cargo/config.toml`.
@@ -287,7 +282,7 @@ jobs:
           pattern: instructions-*
           path: ${{ runner.temp }}/instructions
           merge-multiple: true
-      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+      - uses: bencherdev/bencher@7de3c69a85380826613050826b4bce062be2f07d # v0.6.16
       - name: Report to Bencher
         working-directory: ${{ runner.temp }}
         env:

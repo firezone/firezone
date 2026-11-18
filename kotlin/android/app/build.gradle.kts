@@ -65,7 +65,7 @@ android {
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.5.18"
+        versionName = "1.5.19"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
@@ -306,7 +306,7 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.1")
     // Mints the test certificates; the platform offers no way to build one.
     androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     // Unit Tests
@@ -325,7 +325,7 @@ dependencies {
     implementation("com.squareup.moshi:moshi:1.15.2")
 
     // Gson
-    implementation("com.google.code.gson:gson:2.14.0")
+    implementation("com.google.code.gson:gson:2.15.0")
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0")
@@ -377,8 +377,8 @@ dependencies {
     // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
     // resolves activities against the debug manifest, which this artifact declares it in.
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.78.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.78.0")
     testImplementation("org.robolectric:robolectric:4.17")
 }
 

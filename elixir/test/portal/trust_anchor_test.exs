@@ -411,5 +411,33 @@ defmodule Portal.TrustAnchorTest do
 
       assert Enum.map(updated.certificates, &certificate_der/1) == [sample_cert_der()]
     end
+
+    test "keeps the rows of certificates that stay on the anchor" do
+      trust_anchor = trust_anchor_fixture(%{certs: [sample_cert_der()]})
+      [original] = trust_anchor.certificates
+
+      {:ok, updated} =
+        trust_anchor
+        |> change(%{name: "Renamed", certs: [sample_cert_der(), sample_additional_ca_der()]})
+        |> TrustAnchor.changeset()
+        |> Repo.update()
+
+      assert original.id in Enum.map(updated.certificates, & &1.id)
+      assert length(updated.certificates) == 2
+    end
+
+    test "deletes the rows of certificates that leave the anchor" do
+      trust_anchor = trust_anchor_fixture(%{certs: [sample_cert_der()]})
+      [original] = trust_anchor.certificates
+
+      {:ok, updated} =
+        trust_anchor
+        |> change(%{certs: [sample_additional_ca_der()]})
+        |> TrustAnchor.changeset()
+        |> Repo.update()
+
+      refute original.id in Enum.map(updated.certificates, & &1.id)
+      refute Repo.get_by(Portal.TrustAnchorCertificate, id: original.id)
+    end
   end
 end

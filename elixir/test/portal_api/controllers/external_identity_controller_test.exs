@@ -164,6 +164,33 @@ defmodule PortalAPI.IdentityControllerTest do
                |> DateTime.to_iso8601()
     end
 
+    test "returns the sign-in picture, or the directory one without it", %{conn: conn, account: account, actor: actor} do
+      with_claim =
+        identity_fixture(
+          account: account,
+          actor: actor,
+          picture: "https://idp.example.com/claim.jpg",
+          directory_picture: "https://idp.example.com/directory.jpg"
+        )
+
+      directory_only =
+        identity_fixture(account: account, actor: actor, directory_picture: "https://idp.example.com/directory.jpg")
+
+      for {identity, picture} <- [
+            {with_claim, "https://idp.example.com/claim.jpg"},
+            {directory_only, "https://idp.example.com/directory.jpg"}
+          ] do
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> get("/actors/#{actor.id}/external_identities/#{identity.id}")
+
+        assert %{"data" => %{"picture" => ^picture} = data} = json_response(conn, 200)
+        refute Map.has_key?(data, "directory_picture")
+      end
+    end
+
     test "returns not found for non-existent identity", %{conn: conn, actor: actor} do
       conn =
         conn
@@ -237,6 +264,22 @@ defmodule PortalAPI.IdentityControllerTest do
       assert data["email"] == identity.email
 
       refute Repo.get_by(Portal.ExternalIdentity, id: identity.id)
+    end
+
+    test "does not delete identities of admins", %{conn: conn, account: account, actor: actor} do
+      admin = actor_fixture(account: account, type: :account_admin_user)
+      identity = synced_identity_fixture(account: account, actor: admin)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/actors/#{admin.id}/external_identities/#{identity.id}")
+
+      assert %{"status" => 403, "detail" => "Admins can only be managed in the portal"} =
+               json_response(conn, 403)
+
+      assert Repo.get_by(Portal.ExternalIdentity, id: identity.id)
     end
 
     test "returns not found for non-existent identity", %{conn: conn, actor: actor} do

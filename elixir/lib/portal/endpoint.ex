@@ -6,7 +6,7 @@ defmodule Portal.Endpoint do
   use Phoenix.Endpoint, otp_app: :portal
 
   @forwarded_headers ~w(x-forwarded-for x-forwarded-host x-forwarded-port x-forwarded-proto)
-  @geo_headers ~w(x-azure-geo-country x-geo-location-region x-geo-location-city)
+  @geo_headers ~w(x-azure-geo-country x-geo-location-region x-geo-location-city x-geo-location-coordinates)
   @proxy_headers @forwarded_headers ++ @geo_headers
   @rewrite_on Plug.RewriteOn.init([:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto])
   @real_ip_opts [
@@ -21,6 +21,9 @@ defmodule Portal.Endpoint do
   plug Portal.Health
   plug :apply_forwarded_headers
   plug :redirect_to_https
+  # Runs before dispatch so it also covers the WebSocket routes, which the
+  # inner endpoints dispatch before any of their own plugs.
+  plug Portal.Plugs.CountryCodeBlocklist
   plug :dispatch
 
   # Clients reach this listener directly, so the headers they send are only

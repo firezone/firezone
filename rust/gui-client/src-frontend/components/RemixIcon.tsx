@@ -3,6 +3,7 @@ import home from "remixicon/icons/Buildings/home-line.svg";
 import palette from "remixicon/icons/Design/palette-line.svg";
 import database from "remixicon/icons/Device/database-2-line.svg";
 import certificate from "remixicon/icons/Document/certificate-line.svg";
+import code from "remixicon/icons/Development/code-s-slash-line.svg";
 import arrowDown from "remixicon/icons/Arrows/arrow-down-s-line.svg";
 import alert from "remixicon/icons/System/alert-line.svg";
 import check from "remixicon/icons/System/checkbox-circle-line.svg";
@@ -19,6 +20,7 @@ const icons = {
   certificate,
   check,
   close,
+  code,
   database,
   "delete-bin": deleteBin,
   home,

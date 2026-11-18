@@ -7,6 +7,10 @@ mod from_ipv4_channel;
 mod from_ipv4_udp;
 mod from_ipv6_channel;
 mod from_ipv6_udp;
+mod mac;
+mod payload;
+mod per_cpu;
+mod rate_limit;
 mod ref_mut_at;
 mod routing;
 mod stats;
@@ -21,16 +25,15 @@ use aya_log_ebpf::*;
 use channel_data::CdHdr;
 use ebpf_shared::{
     ClientAndChannel, ClientAndChannelV4, ClientAndChannelV6, PortAndPeer, PortAndPeerV4,
-    PortAndPeerV6,
+    PortAndPeerV6, Verdict,
 };
 use network_types::{
     eth::{EthHdr, EtherType},
     ip::{IpError, IpProto, Ipv4Hdr, Ipv6Hdr},
     udp::UdpHdr,
 };
+use payload::ensure_relayable;
 use ref_mut_at::ref_mut_at;
-
-use crate::time::KernelInstant;
 
 /// Lower bound for TURN UDP ports
 const LOWER_PORT: u16 = 49152;
@@ -45,14 +48,22 @@ const DNS_PORT: u16 = 53;
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
-    let start = KernelInstant::now();
+    let sample = stats::start_sample();
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
-    let (num_bytes, ip_version) = match eth.ether_type() {
-        Ok(EtherType::Ipv4) => (try_handle_turn_ipv4(ctx)?, 4),
-        Ok(EtherType::Ipv6) => (try_handle_turn_ipv6(ctx)?, 6),
+    let (num_bytes, verdict, ip_version) = match eth.ether_type() {
+        Ok(EtherType::Ipv4) => {
+            let (num_bytes, verdict) = try_handle_turn_ipv4(ctx)?;
+
+            (num_bytes, verdict, 4)
+        }
+        Ok(EtherType::Ipv6) => {
+            let (num_bytes, verdict) = try_handle_turn_ipv6(ctx)?;
+
+            (num_bytes, verdict, 6)
+        }
         _ => return Err(Error::NotIp),
     };
 
@@ -71,13 +82,16 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         }
         _ => return Err(Error::NotIp),
     };
-    stats::emit(ctx, num_bytes, start.elapsed(), ip_version, ecn);
+
+    rate_limit::enforce(ctx, verdict)?;
+
+    stats::record(ctx, sample, num_bytes, ip_version, ecn);
 
     Ok(())
 }
 
 #[inline(always)]
-fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
+fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
@@ -98,22 +112,23 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     }
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
-        try_handle_from_ipv4_udp(ctx)?;
+        let verdict = try_handle_from_ipv4_udp(ctx, udp_payload_len)?;
 
-        return Ok(udp_payload_len);
+        return Ok((udp_payload_len, verdict));
     }
 
     if udp.dst_port() == 3478 {
-        try_handle_from_ipv4_channel_data(ctx)?;
+        let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
+        let verdict = try_handle_from_ipv4_channel_data(ctx, num_bytes)?;
 
-        return Ok(udp_payload_len - CdHdr::LEN as u16);
+        return Ok((num_bytes, verdict));
     }
 
     Err(Error::NotTurn)
 }
 
 #[inline(always)]
-fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
+fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
@@ -129,27 +144,34 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     }
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
-        try_handle_from_ipv6_udp(ctx)?;
+        let verdict = try_handle_from_ipv6_udp(ctx, udp_payload_len)?;
 
-        return Ok(udp_payload_len);
+        return Ok((udp_payload_len, verdict));
     }
 
     if udp.dst_port() == 3478 {
-        try_handle_from_ipv6_channel_data(ctx)?;
+        let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
+        let verdict = try_handle_from_ipv6_channel_data(ctx, num_bytes)?;
 
-        return Ok(udp_payload_len - CdHdr::LEN as u16);
+        return Ok((num_bytes, verdict));
     }
 
     Err(Error::NotTurn)
 }
 
 #[inline(always)]
-fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_from_ipv4_udp(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
+
+    ensure_relayable(
+        ctx,
+        EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN,
+        udp.len() - UdpHdr::LEN as u16,
+    )?;
 
     let pp = PortAndPeerV4::new(ipv4.src_addr(), udp.dst_port(), udp.src_port());
 
@@ -163,7 +185,7 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
         udp.len() - UdpHdr::LEN as u16
     );
 
-    let cc = routing::get_client_and_channel(pp)?;
+    let (cc, verdict) = routing::route_from_peer(pp, num_bytes)?;
 
     match cc {
         ClientAndChannel::V4(cc) => {
@@ -192,11 +214,11 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
         }
     }
 
-    Ok(())
+    Ok(verdict)
 }
 
 #[inline(always)]
-fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_from_ipv4_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
@@ -220,6 +242,12 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::BadChannelDataLength);
     }
 
+    ensure_relayable(
+        ctx,
+        EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN + CdHdr::LEN,
+        channel_data_len,
+    )?;
+
     let cc = ClientAndChannelV4::new(ipv4.src_addr(), udp.src_port(), channel_number);
 
     trace!(
@@ -232,7 +260,7 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         udp.len() - UdpHdr::LEN as u16
     );
 
-    let pp = routing::get_port_and_peer(cc)?;
+    let (pp, verdict) = routing::route_from_client(cc, num_bytes)?;
 
     match pp {
         PortAndPeer::V4(pp) => {
@@ -288,7 +316,7 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
             }
         }
 
-        return Ok(());
+        return Ok(verdict);
     }
 
     match pp {
@@ -296,16 +324,22 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         PortAndPeer::V6(pp) => from_ipv4_channel::to_ipv6_udp(ctx, &pp)?,
     }
 
-    Ok(())
+    Ok(verdict)
 }
 
 #[inline(always)]
-fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_from_ipv6_udp(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
+
+    ensure_relayable(
+        ctx,
+        EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN,
+        udp.len() - UdpHdr::LEN as u16,
+    )?;
 
     let pp = PortAndPeerV6::new(ipv6.src_addr(), udp.dst_port(), udp.src_port());
 
@@ -319,7 +353,7 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
         udp.len() - UdpHdr::LEN as u16
     );
 
-    let cc = routing::get_client_and_channel(pp)?;
+    let (cc, verdict) = routing::route_from_peer(pp, num_bytes)?;
 
     match cc {
         ClientAndChannel::V4(cc) => {
@@ -348,11 +382,11 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
         }
     }
 
-    Ok(())
+    Ok(verdict)
 }
 
 #[inline(always)]
-fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_from_ipv6_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
@@ -376,6 +410,12 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::BadChannelDataLength);
     }
 
+    ensure_relayable(
+        ctx,
+        EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN + CdHdr::LEN,
+        channel_data_len,
+    )?;
+
     let cc = ClientAndChannelV6::new(ipv6.src_addr(), udp.src_port(), cd.number());
 
     trace!(
@@ -388,7 +428,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         udp.len() - UdpHdr::LEN as u16
     );
 
-    let pp = routing::get_port_and_peer(cc)?;
+    let (pp, verdict) = routing::route_from_client(cc, num_bytes)?;
 
     match pp {
         PortAndPeer::V4(pp) => {
@@ -444,7 +484,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
             }
         }
 
-        return Ok(());
+        return Ok(verdict);
     }
 
     match pp {
@@ -452,23 +492,31 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         PortAndPeer::V6(pp) => from_ipv6_channel::to_ipv6_udp(ctx, &pp)?,
     }
 
-    Ok(())
+    Ok(verdict)
 }
 
 #[inline(always)]
 fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
-    let ipv4_public = config::public_ipv4_address()?;
-    let ipv6_public = config::public_ipv6_address()?;
+    let own_ip = match ip {
+        IpAddr::V4(_) => config::public_ipv4_address().map(IpAddr::V4),
+        IpAddr::V6(_) => config::public_ipv6_address().map(IpAddr::V6),
+    };
 
-    Ok(ip == ipv4_public || ip == ipv6_public)
+    match own_ip {
+        Ok(own_ip) => Ok(ip == own_ip),
+        // A relay without a public address of this family cannot be the peer.
+        Err(Error::IpAddrUnset) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 #[inline(always)]
 fn ensure_udp(proto: Result<IpProto, IpError>) -> Result<(), Error> {
     let proto = proto.map_err(|_| Error::NotUdp)?;
 
-    match proto {
-        IpProto::Udp => Ok(()),
-        _ => Err(Error::NotUdp),
+    if proto != IpProto::Udp {
+        return Err(Error::NotUdp);
     }
+
+    Ok(())
 }

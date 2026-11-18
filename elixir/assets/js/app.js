@@ -15,6 +15,7 @@ import { ThemeToggle } from "./hooks/theme";
 import { SidebarCollapse } from "./hooks/sidebar_collapse";
 import { DatetimeRangeFilter } from "./hooks/datetime_range_filter";
 import { PostureJsonEditor } from "./hooks/posture_json_editor";
+import { Turnstile } from "./hooks/turnstile";
 import {
   PageSizePreference,
   getPageSizePreference,
@@ -26,6 +27,7 @@ Hooks.ThemeToggle = ThemeToggle;
 Hooks.SidebarCollapse = SidebarCollapse;
 Hooks.DatetimeRangeFilter = DatetimeRangeFilter;
 Hooks.PostureJsonEditor = PostureJsonEditor;
+Hooks.Turnstile = Turnstile;
 Hooks.PageSizePreference = PageSizePreference;
 Hooks.SupportForm = {
   mounted() {

@@ -11,12 +11,12 @@
 #![cfg_attr(test, allow(clippy::print_stdout))]
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
-use anyhow::{Context as _, ErrorExt as _, Result};
+use anyhow::{Context as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::{CryptoWorkers, Io};
-use packet_counts::{TunPacketCounts, UdpPacketCounts};
+use packet_counts::{DroppedTunPackets, TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use sockets::Sockets;
@@ -29,7 +29,6 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use tun::Tun;
-use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
 mod packet_counts;
@@ -111,7 +110,7 @@ pub struct Tunnel<TRoleState> {
     io: Io,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
-    dropped_packets: opentelemetry::metrics::Counter<u64>,
+    dropped_tun_packets: DroppedTunPackets,
 
     /// Set when the last poll handled IO whose effects only `handle_timeout` completes.
     ///
@@ -144,7 +143,7 @@ impl<TRoleState> Tunnel<TRoleState> {
                 udp,
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
         };
 
@@ -266,19 +265,20 @@ impl ClientTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        listen_port: u16,
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
         now: Instant,
-    ) -> Self {
-        Self {
+    ) -> std::io::Result<Self> {
+        Ok(Self {
             io: Io::new(
-                Sockets::new(udp_socket_factory.clone()),
+                Sockets::new(udp_socket_factory.clone(), listen_port),
                 CryptoWorkers::default(),
                 resolver::spawn(
                     tcp_socket_factory.clone(),
                     udp_socket_factory.clone(),
                     BTreeSet::default(),
-                ),
+                )?,
                 tcp_socket_factory,
                 udp_socket_factory,
             ),
@@ -289,12 +289,12 @@ impl ClientTunnel {
                 now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Should be able to compute UNIX timestamp"),
+                    .map_err(std::io::Error::other)?,
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
-        }
+        })
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -317,7 +317,12 @@ impl ClientTunnel {
     /// Advertises the given local IPs as additional host candidates on our UDP port.
     pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
         self.role_state
-            .set_additional_host_candidates(listen_sockets(ips), now);
+            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
+    }
+
+    /// Drops every datagram sent directly to a peer while `enabled`, forcing connections through a relay.
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        self.io.set_force_relayed_connections(enabled);
     }
 
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
@@ -414,86 +419,113 @@ impl ClientTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut batch = self.io.start_encrypt_batch(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs();
 
-                    for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
-                        match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
-                            Ok(None) => {}
+                    let mut packets = packets
+                        .prefetching()
+                        .inspect(|p| tun_received.record(p))
+                        .peekable();
+
+                    while let Some(packet) = packets.next() {
+                        let mut tun_batch = match self.role_state.handle_tun_input(packet, now) {
+                            Ok(Some(tun_batch)) => tun_batch,
+                            Ok(None) => continue,
                             Err(e) => {
-                                error.push(e.context("Failed to handle packet from TUN device"))
+                                self.dropped_tun_packets.record(&e, 1);
+                                error.push(e.context("Failed to handle packet from TUN device"));
+                                continue;
+                            }
+                        };
+
+                        while let Some(packet) = packets.next_if(|p| tun_batch.accepts(p)) {
+                            tun_batch.push(packet);
+                        }
+
+                        let num_packets = tun_batch.num_packets();
+
+                        match tun_batch.finish() {
+                            Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
+                            Err(e) => {
+                                self.dropped_tun_packets.record(&e, num_packets);
+                                error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
                     }
-
-                    // Packets encrypted inline would go out after this batch, despite their lower counters.
-                    #[cfg(debug_assertions)]
-                    assert_eq!(
-                        self.role_state.num_buffered_transmits(),
-                        0,
-                        "No packets must be encrypted inline while a batch is encrypted off the main thread"
-                    );
 
                     self.needs_timeout = true;
 
                     tick.want_continue();
                 }
 
-                if let Some(mut datagrams) = network {
-                    let mut decrypts = self.io.start_decrypt_batch(datagrams.len());
+                if let Some(received) = network {
+                    let mut jobs = self.io.new_decrypt_jobs(received);
+                    let (mut batches, segments) = jobs.split();
+                    let mut segments = segments
+                        .inspect(|segment| udp_received.record(segment))
+                        .peekable();
 
-                    for datagram in datagrams.drain() {
-                        let mut datagram = decrypts.add(datagram);
+                    while let Some(segment) = segments.next() {
+                        let (local, from) = (segment.local(), segment.from());
 
-                        for segment in datagram.segments() {
-                            let packet = &datagram[segment];
+                        let mut batch = match self
+                            .role_state
+                            .handle_network_input(local, from, &segment, now)
+                            .with_context(|| FailedToHandleNetworkPacket { local, from })
+                        {
+                            Ok(Some(batch)) => batch,
+                            Ok(None) => {
+                                self.needs_timeout = true;
+                                continue;
+                            }
+                            Err(e) => {
+                                error.push(e);
+                                continue;
+                            }
+                        };
 
-                            udp_received.record(packet);
+                        while segments
+                            .next_if(|next| next.may_join(&segment) && batch.push(next, now))
+                            .is_some()
+                        {}
 
-                            match self
-                                .role_state
-                                .handle_network_input(
-                                    datagram.local(),
-                                    datagram.from(),
-                                    packet,
-                                    now,
-                                )
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local(),
-                                    from: datagram.from(),
-                                }) {
-                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
-                                Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e),
-                            };
-                        }
+                        batches.add(batch.finish(), &segment);
                     }
 
                     tick.want_continue();
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain().prefetching() {
-                        let result = self.role_state.handle_peer_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        );
-
-                        match result {
-                            Ok(Some(packet)) => {
-                                let packet = packet.with_ecn_from_transport(received.ecn);
-
-                                tun_transmitted.record(&packet);
-                                self.io.queue_tun(packet);
+                    for io::DecryptedBatch {
+                        local,
+                        from,
+                        ecn,
+                        packets,
+                    } in decrypted.drain()
+                    {
+                        let batch = match self
+                            .role_state
+                            .handle_peer_batch(packets, local, from, now)
+                        {
+                            Ok(batch) => batch,
+                            Err(e) => {
+                                error.push(e.context(FailedToHandleNetworkPacket { local, from }));
+                                continue;
                             }
-                            Ok(None) => self.needs_timeout = true,
-                            Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
-                                local: received.local,
-                                from: received.from,
-                            })),
                         };
+
+                        for result in batch {
+                            match result {
+                                Ok(Some(packet)) => {
+                                    let packet = packet.with_ecn_from_transport(ecn);
+
+                                    tun_transmitted.record(&packet);
+                                    self.io.queue_tun(packet);
+                                }
+                                Ok(None) => self.needs_timeout = true,
+                                Err(e) => error
+                                    .push(e.context(FailedToHandleNetworkPacket { local, from })),
+                            };
+                        }
                     }
 
                     self.io.flush_tun_batch();
@@ -515,18 +547,19 @@ impl GatewayTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        listen_port: u16,
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
-    ) -> Self {
-        Self {
+    ) -> std::io::Result<Self> {
+        Ok(Self {
             io: Io::new(
-                Sockets::new(udp_socket_factory.clone()),
+                Sockets::new(udp_socket_factory.clone(), listen_port),
                 CryptoWorkers::default(),
                 resolver::spawn(
                     tcp_socket_factory.clone(),
                     udp_socket_factory.clone(),
                     nameservers,
-                ),
+                )?,
                 tcp_socket_factory,
                 udp_socket_factory,
             ),
@@ -535,12 +568,12 @@ impl GatewayTunnel {
                 now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Should be able to compute UNIX timestamp"),
+                    .map_err(std::io::Error::other)?,
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
-        }
+        })
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -550,7 +583,7 @@ impl GatewayTunnel {
     /// Advertises the given local IPs as additional host candidates on our UDP port.
     pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
         self.role_state
-            .set_additional_host_candidates(listen_sockets(ips), now);
+            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
     }
 
     /// Shut down the Gateway tunnel.
@@ -643,100 +676,113 @@ impl GatewayTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut batch = self.io.start_encrypt_batch(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs();
 
-                    for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
-                        match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
-                            Ok(None) => {}
+                    let mut packets = packets
+                        .prefetching()
+                        .inspect(|p| tun_received.record(p))
+                        .peekable();
+
+                    while let Some(packet) = packets.next() {
+                        let mut tun_batch = match self.role_state.handle_tun_input(packet, now) {
+                            Ok(Some(tun_batch)) => tun_batch,
+                            Ok(None) => continue,
                             Err(e) => {
-                                let routing_error = e
-                                    .any_downcast_ref::<UnroutablePacket>()
-                                    .map(|e| e.reason())
-                                    .unwrap_or(RoutingError::Other);
+                                self.dropped_tun_packets.record(&e, 1);
+                                error.push(e.context("Failed to handle packet from TUN device"));
+                                continue;
+                            }
+                        };
 
-                                // TODO: Include more attributes here like IPv4/IPv6?
-                                self.dropped_packets.add(
-                                    1,
-                                    &[
-                                        otel::attr::error_type(routing_error),
-                                        otel::attr::network_io_direction_receive(),
-                                    ],
-                                );
+                        while let Some(packet) = packets.next_if(|p| tun_batch.accepts(p)) {
+                            tun_batch.push(packet);
+                        }
 
+                        let num_packets = tun_batch.num_packets();
+
+                        match tun_batch.finish() {
+                            Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
+                            Err(e) => {
+                                self.dropped_tun_packets.record(&e, num_packets);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
                     }
-
-                    // Packets encrypted inline would go out after this batch, despite their lower counters.
-                    #[cfg(debug_assertions)]
-                    assert_eq!(
-                        self.role_state.num_buffered_transmits(),
-                        0,
-                        "No packets must be encrypted inline while a batch is encrypted off the main thread"
-                    );
 
                     self.needs_timeout = true;
 
                     tick.want_continue();
                 }
 
-                if let Some(mut datagrams) = network {
-                    let mut decrypts = self.io.start_decrypt_batch(datagrams.len());
+                if let Some(received) = network {
+                    let mut jobs = self.io.new_decrypt_jobs(received);
+                    let (mut batches, segments) = jobs.split();
+                    let mut segments = segments
+                        .inspect(|segment| udp_received.record(segment))
+                        .peekable();
 
-                    for datagram in datagrams.drain() {
-                        let mut datagram = decrypts.add(datagram);
+                    while let Some(segment) = segments.next() {
+                        let (local, from) = (segment.local(), segment.from());
 
-                        for segment in datagram.segments() {
-                            let packet = &datagram[segment];
+                        let mut batch = match self
+                            .role_state
+                            .handle_network_input(local, from, &segment, now)
+                            .with_context(|| FailedToHandleNetworkPacket { local, from })
+                        {
+                            Ok(Some(batch)) => batch,
+                            Ok(None) => {
+                                self.needs_timeout = true;
+                                continue;
+                            }
+                            Err(e) => {
+                                error.push(e);
+                                continue;
+                            }
+                        };
 
-                            udp_received.record(packet);
+                        while segments
+                            .next_if(|next| next.may_join(&segment) && batch.push(next, now))
+                            .is_some()
+                        {}
 
-                            match self
-                                .role_state
-                                .handle_network_input(
-                                    datagram.local(),
-                                    datagram.from(),
-                                    packet,
-                                    now,
-                                )
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local(),
-                                    from: datagram.from(),
-                                }) {
-                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
-                                Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e),
-                            };
-                        }
+                        batches.add(batch.finish(), &segment);
                     }
 
                     tick.want_continue();
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain().prefetching() {
-                        let result = self.role_state.handle_peer_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        );
-
-                        match result {
-                            Ok(Some(packet)) => {
-                                let packet = packet.with_ecn_from_transport(received.ecn);
-
-                                tun_transmitted.record(&packet);
-                                self.io.queue_tun(packet);
+                    for io::DecryptedBatch {
+                        local,
+                        from,
+                        ecn,
+                        packets,
+                    } in decrypted.drain()
+                    {
+                        let batch = match self
+                            .role_state
+                            .handle_peer_batch(packets, local, from, now)
+                        {
+                            Ok(batch) => batch,
+                            Err(e) => {
+                                error.push(e.context(FailedToHandleNetworkPacket { local, from }));
+                                continue;
                             }
-                            Ok(None) => self.needs_timeout = true,
-                            Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
-                                local: received.local,
-                                from: received.from,
-                            })),
                         };
+
+                        for result in batch {
+                            match result {
+                                Ok(Some(packet)) => {
+                                    let packet = packet.with_ecn_from_transport(ecn);
+
+                                    tun_transmitted.record(&packet);
+                                    self.io.queue_tun(packet);
+                                }
+                                Ok(None) => self.needs_timeout = true,
+                                Err(e) => error
+                                    .push(e.context(FailedToHandleNetworkPacket { local, from })),
+                            };
+                        }
                     }
 
                     self.io.flush_tun_batch();
@@ -807,8 +853,8 @@ pub struct FailedToHandleNetworkPacket {
     from: SocketAddr,
 }
 
-fn listen_sockets(ips: Vec<IpAddr>) -> Vec<SocketAddr> {
+fn listen_sockets(ips: Vec<IpAddr>, port: u16) -> Vec<SocketAddr> {
     ips.into_iter()
-        .map(|ip| SocketAddr::new(ip, sockets::DEFAULT_LISTEN_PORT))
+        .map(|ip| SocketAddr::new(ip, port))
         .collect()
 }

@@ -20,6 +20,7 @@ use std::{
 };
 
 mod authorization_rejections;
+mod batch;
 mod cache;
 mod client;
 mod conn_track;
@@ -55,7 +56,7 @@ pub const IPV6_TUNNEL: Ipv6Network =
 pub use client::dns_config::DnsMapping;
 pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
 pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest, SiteDnsQuery};
+pub use gateway::{GatewayState, ResolveDnsRequest, SiteDnsQuery};
 #[cfg(feature = "malicious-behaviour")]
 pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};
 pub use unroutable_packet::UnroutablePacket;

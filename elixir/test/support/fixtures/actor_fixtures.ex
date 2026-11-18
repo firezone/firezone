@@ -96,6 +96,20 @@ defmodule Portal.ActorFixtures do
   end
 
   @doc """
+  Generate the actor that owns an account's legacy Gateway tokens. Built as a
+  struct because no cast may set this type.
+  """
+  def legacy_gateway_actor_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+    account = Map.get_lazy(attrs, :account, fn -> account_fixture() end)
+
+    %Portal.Actor{account_id: account.id, type: :legacy_gateway, name: "Legacy Gateway"}
+    |> Ecto.Changeset.change()
+    |> Portal.Actor.changeset()
+    |> Portal.Repo.insert!()
+  end
+
+  @doc """
   Generate an actor with an email.
   """
   def actor_with_email_fixture(attrs \\ %{}) do

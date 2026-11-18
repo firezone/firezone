@@ -1,13 +1,13 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::{DomainName, Query, RecordType};
 use fast_random_state::FastRandomState;
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
@@ -17,9 +17,31 @@ use crate::filter_engine::FilterEngine;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken, Key};
+use crate::p2p_control::dns_resource_nat::ProxyIps;
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{IpConfig, NotAllowedResource, NotClientIp, p2p_control};
+
+/// How many domains of DNS resources we translate at most for one client, unless configured otherwise.
+///
+/// To set up a new domain over this, we forget the least recently set up domain if it is at least [`MIN_DNS_DOMAIN_AGE`] old.
+/// We tell the client with a [`NatStatus::Evicted`](p2p_control::dns_resource_nat::NatStatus::Evicted) status.
+/// The client then sets up the NAT for that domain again with its next packet for it.
+///
+/// If that domain is younger, we do not set up the new domain.
+pub(crate) const DEFAULT_MAX_DNS_DOMAINS: usize = 4096;
+
+/// How long we keep a domain before we evict it for a new one.
+///
+/// This is longer than the client needs to send its first packets after we confirm the NAT.
+const MIN_DNS_DOMAIN_AGE: Duration = Duration::from_secs(60);
+
+/// A domain that [`ClientOnGateway::setup_nat`] evicted, with the resources it was set up for.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct EvictedDomain {
+    pub(crate) domain: DomainName,
+    pub(crate) resources: HashSet<ResourceId, FastRandomState>,
+}
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -40,12 +62,31 @@ pub struct ClientOnGateway {
     internet_resource_enabled: Option<ResourceId>,
     routing_table: RoutingTable<RouteEntry>,
     permanent_translations: HashMap<IpAddr, TranslationState, FastRandomState>,
+    max_dns_domains: usize,
     nat_table: NatTable,
+}
+
+/// How [`ClientOnGateway::translate_inbound`] rewrote a packet.
+#[derive(Debug, Clone, Copy)]
+pub enum InboundRewrite {
+    None,
+    /// The source was translated from the resource's IP to the client's proxy IP.
+    Source(Protocol, IpAddr),
+    /// The packet was replaced by an ICMP error for the client.
+    IcmpError,
+}
+
+/// How [`ClientOnGateway::translate_outbound`] rewrote a packet.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OutboundRewrite {
+    None,
+    /// The destination was translated from the client's proxy IP to the resource's IP.
+    Destination(Protocol, IpAddr),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
-    Send(IpPacket),
+    Send(IpPacket, OutboundRewrite),
     IcmpError {
         reply: IpPacket,
         /// Identifies traffic rejected by the access policy.
@@ -59,6 +100,7 @@ impl ClientOnGateway {
         public_key: Key,
         client_tun: IpConfig,
         gateway_tun: IpConfig,
+        max_dns_domains: usize,
     ) -> ClientOnGateway {
         ClientOnGateway {
             id,
@@ -69,6 +111,7 @@ impl ClientOnGateway {
             resources: ExpiringMap::default(),
             routing_table: RoutingTable::new(),
             permanent_translations: Default::default(),
+            max_dns_domains,
             nat_table: Default::default(),
             internet_resource_enabled: None,
         }
@@ -85,42 +128,57 @@ impl ClientOnGateway {
     }
 
     /// Setup the NAT for a domain of a DNS resource.
+    ///
+    /// Returns the domain we evicted to stay within the maximum number of domains, if any.
+    /// Fails with [`TooManyDnsDomains`] if we cannot evict a domain yet.
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
     pub(crate) fn setup_nat(
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
         resolved_ips: BTreeSet<IpAddr>,
-        proxy_ips: BTreeSet<IpAddr>,
-    ) -> Result<()> {
-        // Proxy IPs are chosen by the Client; anything we accept here ends up in our routing table.
-        for proxy_ip in &proxy_ips {
-            anyhow::ensure!(
-                is_dns_addr(*proxy_ip),
-                "Proxy IP {proxy_ip} is not within {IPV4_RESOURCES} or {IPV6_RESOURCES}"
-            );
+        proxy_ips: ProxyIps,
+        now: Instant,
+    ) -> Result<Option<EvictedDomain>> {
+        for proxy_ip in proxy_ips.iter() {
             // A Client only re-assigns proxy IPs with a new key, which resets its state.
             anyhow::ensure!(
                 self.permanent_translations
-                    .get(proxy_ip)
+                    .get(&proxy_ip)
                     .is_none_or(|state| state.domain == name),
-                ProxyIpAlreadyAssigned(*proxy_ip)
+                ProxyIpAlreadyAssigned(proxy_ip)
             );
         }
 
-        let resource = self
-            .resources
-            .get_mut(&resource_id)
-            .context("Unknown resource")?;
+        // Changing the IP stack of a resource changes which of the 4 IPv4 and 4 IPv6 proxy IPs of a domain a Client assigns.
+        // A well-behaved client never changes these IPs so we can enforce that there must never be more than 4 per IP version.
+        let domain_proxy_ips = self
+            .permanent_translations
+            .iter()
+            .filter(|(_, state)| state.domain == name)
+            .map(|(proxy_ip, _)| *proxy_ip)
+            .chain(proxy_ips.iter())
+            .collect::<BTreeSet<_>>();
+        anyhow::ensure!(
+            domain_proxy_ips.iter().filter(|ip| ip.is_ipv4()).count() <= 4
+                && domain_proxy_ips.iter().filter(|ip| ip.is_ipv6()).count() <= 4,
+            TooManyProxyIpsForDomain(name)
+        );
 
-        let ResourceOnGateway::Dns {
-            address, domains, ..
-        } = resource
-        else {
+        let resource = &self
+            .resources
+            .get(&resource_id)
+            .context("Unknown resource")?
+            .value;
+        let filter = FilterEngine::new(resource.filters());
+
+        let ResourceOnGateway::Dns { address, .. } = resource else {
             bail!("Cannot setup NAT for non-DNS resource")
         };
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
+
+        let evicted = self.make_room_for_dns_domain(&name, now)?;
 
         if resolved_ips.is_empty() {
             tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain");
@@ -131,7 +189,7 @@ impl ClientOnGateway {
 
         tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Setting up DNS resource NAT");
 
-        for proxy_ip in proxy_ips {
+        for proxy_ip in proxy_ips.iter() {
             let maybe_real_ip = match proxy_ip {
                 IpAddr::V4(_) => resolved_ipv4.next(),
                 IpAddr::V6(_) => resolved_ipv6.next(),
@@ -142,16 +200,82 @@ impl ClientOnGateway {
             let state = self
                 .permanent_translations
                 .entry(proxy_ip)
-                .or_insert_with(|| TranslationState::new(name.clone()));
+                .or_insert_with(|| TranslationState::new(name.clone(), now));
 
             state.resources.insert(resource_id);
             state.resolved_ip = maybe_real_ip.copied();
+            state.set_up_at = now;
+
+            self.routing_table.upsert(
+                IpNetwork::from(proxy_ip),
+                RouteEntry {
+                    filter: filter.clone(),
+                    resource_id,
+                },
+            );
         }
 
-        domains.insert(name, resolved_ips);
-        self.recalculate_filters();
+        Ok(evicted)
+    }
 
-        Ok(())
+    /// Evicts the least recently set up domain if setting up `name` would go over the limit.
+    ///
+    /// Fails if that domain is younger than [`MIN_DNS_DOMAIN_AGE`].
+    fn make_room_for_dns_domain(
+        &mut self,
+        name: &DomainName,
+        now: Instant,
+    ) -> Result<Option<EvictedDomain>> {
+        // Every domain has at least one translation.
+        if self.permanent_translations.len() < self.max_dns_domains {
+            return Ok(None);
+        }
+
+        let domains = self.dns_domains();
+
+        if domains.contains_key(name) || domains.len() < self.max_dns_domains {
+            return Ok(None);
+        }
+
+        let (oldest, _) = domains
+            .into_iter()
+            .filter(|(_, set_up_at)| now.duration_since(*set_up_at) >= MIN_DNS_DOMAIN_AGE)
+            .min_by_key(|(domain, set_up_at)| (*set_up_at, *domain))
+            .ok_or(TooManyDnsDomains)?;
+
+        let domain = oldest.clone();
+
+        tracing::debug!(%domain, "Evicting DNS resource NAT");
+
+        let evicted = self
+            .permanent_translations
+            .extract_if(|_, state| state.domain == domain)
+            .collect::<Vec<_>>();
+        let mut resources = HashSet::<ResourceId, FastRandomState>::default();
+
+        for (proxy_ip, state) in evicted {
+            self.routing_table
+                .remove_where(IpNetwork::from(proxy_ip), |entry| {
+                    state.resources.contains(&entry.resource_id)
+                });
+            resources.extend(state.resources);
+        }
+
+        Ok(Some(EvictedDomain { domain, resources }))
+    }
+
+    /// The domains we translate, with when we last set up their NAT.
+    fn dns_domains(&self) -> HashMap<&DomainName, Instant, FastRandomState> {
+        let mut domains = HashMap::<_, Instant, FastRandomState>::default();
+
+        for state in self.permanent_translations.values() {
+            domains
+                .entry(&state.domain)
+                .and_modify(|set_up_at| *set_up_at = (*set_up_at).max(state.set_up_at))
+                .or_insert(state.set_up_at);
+        }
+
+        domains
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -305,18 +429,20 @@ impl ClientOnGateway {
     }
 
     fn recalculate_cidr_filters(&mut self) {
-        for (id, resource) in self.resources.iter().filter(|(_, r)| r.is_cidr()) {
-            for ip in &resource.ips() {
-                let filter = FilterEngine::new(resource.filters());
-                tracing::trace!(%ip, filters = ?filter, "Installing new filters");
-                self.routing_table.upsert(
-                    *ip,
-                    RouteEntry {
-                        filter,
-                        resource_id: *id,
-                    },
-                );
-            }
+        for (id, resource) in self.resources.iter() {
+            let ResourceOnGateway::Cidr { network, filters } = resource else {
+                continue;
+            };
+
+            let filter = FilterEngine::new(filters);
+            tracing::trace!(ip = %network, filters = ?filter, "Installing new filters");
+            self.routing_table.upsert(
+                *network,
+                RouteEntry {
+                    filter,
+                    resource_id: *id,
+                },
+            );
         }
     }
 
@@ -381,15 +507,19 @@ impl ClientOnGateway {
         Ok(result)
     }
 
-    pub fn translate_inbound(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
+    pub fn translate_inbound(
+        &mut self,
+        packet: &mut IpPacket,
+        now: Instant,
+    ) -> Result<InboundRewrite> {
         // Traffic from our own IP is allowed.
         match packet.source() {
-            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(()),
-            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(()),
+            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(InboundRewrite::None),
+            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(InboundRewrite::None),
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
-        self.transform_tun_to_network(packet, now)?;
+        let rewrite = self.transform_tun_to_network(packet, now)?;
 
         self.ensure_client_ip(packet.destination())?;
         ensure_not_peer_ip(packet.source())
@@ -397,7 +527,7 @@ impl ClientOnGateway {
 
         // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
-            return Ok(());
+            return Ok(rewrite);
         }
 
         let rid = self
@@ -406,7 +536,7 @@ impl ClientOnGateway {
 
         flow_tracker::record_resource(rid);
 
-        Ok(())
+        Ok(rewrite)
     }
 
     fn transform_network_to_tun(
@@ -418,12 +548,12 @@ impl ClientOnGateway {
 
         // Packets to the TUN interface don't get transformed.
         if self.gateway_tun.is_ip(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
+            return Ok(TranslateOutboundResult::Send(packet, OutboundRewrite::None));
         }
 
         // Packets for CIDR resources / Internet resource are forwarded as is.
         if !is_dns_addr(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
+            return Ok(TranslateOutboundResult::Send(packet, OutboundRewrite::None));
         }
 
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
@@ -474,10 +604,17 @@ impl ClientOnGateway {
 
         flow_tracker::record_translated_destination(source_protocol, real_ip);
 
-        Ok(TranslateOutboundResult::Send(packet))
+        Ok(TranslateOutboundResult::Send(
+            packet,
+            OutboundRewrite::Destination(source_protocol, real_ip),
+        ))
     }
 
-    fn transform_tun_to_network(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
+    fn transform_tun_to_network(
+        &mut self,
+        packet: &mut IpPacket,
+        now: Instant,
+    ) -> Result<InboundRewrite> {
         let (proto, ip) = match self.nat_table.translate_incoming(packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
             TranslateIncomingResult::IcmpError(prototype) => {
@@ -487,7 +624,7 @@ impl ClientOnGateway {
                     .into_packet(self.client_tun.v4, self.client_tun.v6)
                     .context("Failed to create ICMP error")?;
 
-                return Ok(());
+                return Ok(InboundRewrite::IcmpError);
             }
             TranslateIncomingResult::ExpiredNatSession => {
                 bail!(UnroutablePacket::expired_nat_session(packet))
@@ -495,7 +632,7 @@ impl ClientOnGateway {
             TranslateIncomingResult::NoNatSession => {
                 // No NAT session means packet is likely for Internet Resource or a CIDR resource.
 
-                return Ok(());
+                return Ok(InboundRewrite::None);
             }
         };
 
@@ -503,7 +640,7 @@ impl ClientOnGateway {
             .translate_source(proto, ip)
             .context("Failed to translate packet to new source")?;
 
-        Ok(())
+        Ok(InboundRewrite::Source(proto, ip))
     }
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
@@ -621,6 +758,14 @@ impl ClientOnGateway {
 pub(super) struct ProxyIpAlreadyAssigned(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
+#[error("Domain {0} has more than 4 IPv4 or IPv6 proxy IPs")]
+pub(super) struct TooManyProxyIpsForDomain(DomainName);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Too many recently set up domains")]
+pub(super) struct TooManyDnsDomains;
+
+#[derive(Debug, thiserror::Error)]
 #[error("Internet resource rejects IP: {0}")]
 struct InternetResourceRejectedAddress(IpAddr);
 
@@ -632,7 +777,6 @@ enum ResourceOnGateway {
     },
     Dns {
         address: String,
-        domains: HashMap<DomainName, BTreeSet<IpAddr>, FastRandomState>,
         filters: Vec<Filter>,
     },
     Internet,
@@ -642,7 +786,6 @@ impl ResourceOnGateway {
     fn new(resource: ResourceDescription) -> Self {
         match resource {
             ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
-                domains: HashMap::default(),
                 filters: r.filters,
                 address: r.address,
             },
@@ -677,32 +820,12 @@ impl ResourceOnGateway {
         }
     }
 
-    fn ips(&self) -> Vec<IpNetwork> {
-        match self {
-            ResourceOnGateway::Cidr { network, .. } => vec![*network],
-            ResourceOnGateway::Dns { domains, .. } => domains
-                .values()
-                .flatten()
-                .copied()
-                .map(IpNetwork::from)
-                .collect(),
-            ResourceOnGateway::Internet => vec![
-                Ipv4Network::DEFAULT_ROUTE.into(),
-                Ipv6Network::DEFAULT_ROUTE.into(),
-            ],
-        }
-    }
-
     fn filters(&self) -> &[Filter] {
         match self {
             ResourceOnGateway::Cidr { filters, .. } => filters,
             ResourceOnGateway::Dns { filters, .. } => filters,
             ResourceOnGateway::Internet => &[],
         }
-    }
-
-    fn is_cidr(&self) -> bool {
-        matches!(self, ResourceOnGateway::Cidr { .. })
     }
 
     fn is_dns(&self) -> bool {
@@ -739,14 +862,17 @@ struct TranslationState {
     resolved_ip: Option<IpAddr>,
     /// The domain we have resolved.
     domain: DomainName,
+    /// When we last set up the NAT for the domain.
+    set_up_at: Instant,
 }
 
 impl TranslationState {
-    fn new(domain: DomainName) -> Self {
+    fn new(domain: DomainName, set_up_at: Instant) -> Self {
         Self {
             resources: HashSet::default(),
             resolved_ip: None,
             domain,
+            set_up_at,
         }
     }
 }
@@ -808,6 +934,8 @@ mod tests {
     };
 
     use anyhow::ErrorExt;
+    use connlib_model::IpStack;
+    use ip_network::Ipv4Network;
     use ip_packet::make::TcpFlags;
 
     use crate::{
@@ -821,7 +949,13 @@ mod tests {
 
     #[test]
     fn gateway_filters_expire_individually() {
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         let now = Instant::now();
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
@@ -901,7 +1035,13 @@ mod tests {
 
     #[test]
     fn re_adding_resource_with_past_expiry_clears_it_on_next_handle_timeout() {
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         let now = Instant::now();
 
         peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
@@ -922,7 +1062,13 @@ mod tests {
     #[test]
     fn tun_dns_queries_require_an_active_dns_resource_and_txt_or_srv_type() {
         let now = Instant::now();
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
         peer.add_resource(bar_cidr_resource(), None, now);
         peer.add_resource(internet_resource(), None, now);
@@ -949,7 +1095,13 @@ mod tests {
 
     #[test]
     fn only_allows_dns_port_on_gateway_tun_ip() {
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
 
         for (client, gateway) in [
             (
@@ -976,7 +1128,7 @@ mod tests {
             ] {
                 assert!(matches!(
                     peer.translate_outbound(request, Instant::now()).unwrap(),
-                    TranslateOutboundResult::Send(_)
+                    TranslateOutboundResult::Send(_, _)
                 ));
             }
 
@@ -1008,14 +1160,21 @@ mod tests {
 
     #[test]
     fn dns_and_cidr_filters_dot_mix() {
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(bar_cidr_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
+            Instant::now(),
         )
         .unwrap();
 
@@ -1074,14 +1233,21 @@ mod tests {
 
     #[test]
     fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(internet_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
+            Instant::now(),
         )
         .unwrap();
 
@@ -1124,7 +1290,13 @@ mod tests {
 
     #[test]
     fn internet_resource_does_not_allow_traffic_to_another_client() {
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         peer.add_resource(internet_resource(), None, Instant::now());
 
         let request = ip_packet::make::udp_packet(
@@ -1145,7 +1317,13 @@ mod tests {
     #[test]
     fn internet_resource_does_not_allow_traffic_from_another_client() {
         let now = Instant::now();
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         peer.add_resource(internet_resource(), None, now);
 
         let mut hairpinned = ip_packet::make::udp_packet(
@@ -1171,13 +1349,20 @@ mod tests {
     fn dns_resource_packet_is_dropped_after_nat_session_expires() {
         let _guard = logging::test("trace");
 
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
+            Instant::now(),
         )
         .unwrap();
 
@@ -1194,7 +1379,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(request, now),
-            Ok(TranslateOutboundResult::Send(_))
+            Ok(TranslateOutboundResult::Send(_, _))
         ));
 
         let mut response = ip_packet::make::udp_packet(
@@ -1239,13 +1424,20 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
+            ProxyIps::for_test(),
+            Instant::now(),
         )
         .unwrap();
 
@@ -1261,19 +1453,20 @@ mod tests {
 
             let result = peer.translate_outbound(request.clone(), now).unwrap();
 
-            assert!(matches!(result, TranslateOutboundResult::Send(_)));
+            assert!(matches!(result, TranslateOutboundResult::Send(_, _)));
 
             peer.setup_nat(
                 foo_name().parse().unwrap(),
                 foo_resource_id(),
                 BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
-                BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
+                ProxyIps::for_test(),
+                Instant::now(),
             )
             .unwrap();
 
             let result = peer.translate_outbound(request, now).unwrap();
 
-            assert!(matches!(result, TranslateOutboundResult::Send(_)));
+            assert!(matches!(result, TranslateOutboundResult::Send(_, _)));
 
             let mut response = ip_packet::make::udp_packet(
                 foo_real_ip1(),
@@ -1299,7 +1492,7 @@ mod tests {
 
             let result = peer.translate_outbound(request, now).unwrap();
 
-            let TranslateOutboundResult::Send(outside_packet) = result else {
+            let TranslateOutboundResult::Send(outside_packet, _) = result else {
                 panic!("Wrong result");
             };
 
@@ -1328,14 +1521,21 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(baz_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
+            ProxyIps::for_test(),
+            Instant::now(),
         )
         .unwrap();
 
@@ -1348,7 +1548,7 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::Send(packet) =
+        let TranslateOutboundResult::Send(packet, _) =
             peer.translate_outbound(request.clone(), now).unwrap()
         else {
             panic!("Bad translation result")
@@ -1360,12 +1560,14 @@ mod tests {
             baz_name().parse().unwrap(),
             baz_resource_id(),
             BTreeSet::from([baz_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
+            ProxyIps::for_test(),
+            Instant::now(),
         );
 
         assert!(result.unwrap_err().any_is::<ProxyIpAlreadyAssigned>());
 
-        let TranslateOutboundResult::Send(packet) = peer.translate_outbound(request, now).unwrap()
+        let TranslateOutboundResult::Send(packet, _) =
+            peer.translate_outbound(request, now).unwrap()
         else {
             panic!("Bad translation result")
         };
@@ -1374,18 +1576,216 @@ mod tests {
     }
 
     #[test]
-    fn setup_dns_resource_nat_ipv4_only_adds_ipv6_translation_state_entries() {
+    fn setting_up_dns_resource_nat_rejects_other_proxy_ips_for_same_domain() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
-
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2(), proxy_ip6_1(), proxy_ip6_2()]),
+            ProxyIps::for_test(),
+            Instant::now(),
+        )
+        .unwrap();
+
+        let result = peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            ProxyIps::new(
+                [5, 6, 7, 8].map(|i| Ipv4Addr::new(100, 96, 0, i)),
+                [4, 5, 6, 7].map(|i| Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i)),
+            )
+            .unwrap(),
+            Instant::now(),
+        );
+
+        assert!(result.unwrap_err().any_is::<TooManyProxyIpsForDomain>());
+        assert_eq!(
+            peer.permanent_translations.len(),
+            ProxyIps::for_test().iter().count()
+        );
+    }
+
+    #[test]
+    fn setting_up_dns_resource_nat_accepts_proxy_ips_of_other_ip_stack() {
+        let _guard = logging::test("trace");
+
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+
+        for ip_stack in [IpStack::Ipv4Only, IpStack::Ipv6Only, IpStack::Dual] {
+            peer.setup_nat(
+                foo_name().parse().unwrap(),
+                foo_resource_id(),
+                BTreeSet::from([foo_real_ip1().into()]),
+                ProxyIps::for_test().for_stack(ip_stack),
+                Instant::now(),
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn setup_nat_evicts_least_recently_set_up_domain() {
+        let _guard = logging::test("debug");
+
+        let now = Instant::now();
+        let mut peer = wildcard_foo_peer();
+
+        for i in 0..MAX_DNS_DOMAINS {
+            setup_wildcard_foo_nat(&mut peer, i, now).unwrap();
+        }
+        setup_wildcard_foo_nat(&mut peer, 0, now + Duration::from_secs(1)).unwrap();
+        let evicted =
+            setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS, now + MIN_DNS_DOMAIN_AGE).unwrap();
+
+        assert_eq!(
+            evicted,
+            Some(EvictedDomain {
+                domain: "d1.foo.com".parse().unwrap(),
+                resources: HashSet::from_iter([wildcard_foo_resource_id()]),
+            })
+        );
+        assert_eq!(peer.dns_domains().len(), MAX_DNS_DOMAINS);
+        assert_eq!(
+            peer.permanent_translations.len(),
+            MAX_DNS_DOMAINS * PROXY_IPS_PER_DOMAIN
+        );
+        assert!(
+            nth_proxy_ips(0)
+                .iter()
+                .all(|ip| peer.permanent_translations.contains_key(&ip))
+        );
+        assert!(
+            nth_proxy_ips(1)
+                .iter()
+                .all(|ip| !peer.permanent_translations.contains_key(&ip))
+        );
+        assert!(peer.routing_table.entries().iter().all(|(network, _)| {
+            nth_proxy_ips(1)
+                .iter()
+                .all(|ip| *network != IpNetwork::from(ip))
+        }));
+
+        peer.recalculate_filters();
+        assert_eq!(
+            peer.routing_table.entries().len(),
+            MAX_DNS_DOMAINS * PROXY_IPS_PER_DOMAIN
+        );
+    }
+
+    #[test]
+    fn setup_nat_refuses_new_domain_while_least_recently_set_up_domain_is_young() {
+        let _guard = logging::test("debug");
+
+        let now = Instant::now();
+        let mut peer = wildcard_foo_peer();
+
+        for i in 0..MAX_DNS_DOMAINS {
+            setup_wildcard_foo_nat(&mut peer, i, now).unwrap();
+        }
+
+        let result = setup_wildcard_foo_nat(
+            &mut peer,
+            MAX_DNS_DOMAINS,
+            now + MIN_DNS_DOMAIN_AGE - Duration::from_secs(1),
+        );
+
+        assert!(result.unwrap_err().any_is::<TooManyDnsDomains>());
+        assert_eq!(peer.dns_domains().len(), MAX_DNS_DOMAINS);
+        assert_eq!(
+            peer.permanent_translations.len(),
+            MAX_DNS_DOMAINS * PROXY_IPS_PER_DOMAIN
+        );
+        assert!(
+            nth_proxy_ips(MAX_DNS_DOMAINS)
+                .iter()
+                .all(|ip| !peer.permanent_translations.contains_key(&ip))
+        );
+    }
+
+    #[test]
+    fn setup_nat_routes_match_full_recalculation() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
+        peer.add_resource(foo_dns_resource(), None, now);
+        peer.add_resource(foo_dns_resource2(), None, now);
+        peer.add_resource(baz_dns_resource(), None, now);
+        peer.add_resource(bar_cidr_resource(), None, now);
+
+        for resource_id in [foo_resource_id(), foo_resource2_id(), foo_resource_id()] {
+            peer.setup_nat(
+                foo_name().parse().unwrap(),
+                resource_id,
+                BTreeSet::from([foo_real_ip1().into()]),
+                ProxyIps::for_test(),
+                Instant::now(),
+            )
+            .unwrap();
+        }
+        peer.setup_nat(
+            baz_name().parse().unwrap(),
+            baz_resource_id(),
+            BTreeSet::from([baz_real_ip1().into()]),
+            ProxyIps::new(
+                [5, 6, 7, 8].map(|i| Ipv4Addr::new(100, 96, 0, i)),
+                [4, 5, 6, 7].map(|i| Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i)),
+            )
+            .unwrap(),
+            Instant::now(),
+        )
+        .unwrap();
+
+        let incremental = peer.routing_table.entries();
+        peer.recalculate_filters();
+
+        assert_eq!(incremental, peer.routing_table.entries());
+    }
+
+    #[test]
+    fn setup_dns_resource_nat_ipv4_only_adds_ipv6_translation_state_entries() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            ProxyIps::for_test(),
+            Instant::now(),
         )
         .unwrap();
 
@@ -1426,7 +1826,13 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
 
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(foo_dns_resource2(), None, Instant::now());
@@ -1435,14 +1841,16 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
+            Instant::now(),
         )
         .unwrap();
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource2_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
+            Instant::now(),
         )
         .unwrap();
 
@@ -1459,7 +1867,7 @@ mod tests {
         assert!(
             matches!(
                 peer.translate_outbound(udp_request, now).unwrap(),
-                TranslateOutboundResult::Send(_)
+                TranslateOutboundResult::Send(_, _)
             ),
             "UDP/{} packet to shared proxy IP should be forwarded",
             foo_allowed_port(),
@@ -1482,37 +1890,11 @@ mod tests {
         assert!(
             matches!(
                 peer.translate_outbound(tcp_request, now).unwrap(),
-                TranslateOutboundResult::Send(_)
+                TranslateOutboundResult::Send(_, _)
             ),
             "TCP/{} packet to shared proxy IP should be forwarded",
             foo_allowed_port2(),
         );
-    }
-
-    #[test]
-    fn rejects_proxy_ips_outside_reserved_ranges() {
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
-
-        let bad_ips = [
-            "1.1.1.1",              // Public internet.
-            "100.64.0.1",           // CG-NAT but reserved for Client tunnel IPs.
-            "2606:4700:4700::1111", // Public internet.
-            "fd00:2021:1111::1",    // Reserved for Client tunnel IPs.
-        ];
-
-        for bad_ip in bad_ips {
-            let result = peer.setup_nat(
-                foo_name().parse().unwrap(),
-                foo_resource_id(),
-                BTreeSet::from([foo_real_ip1().into()]),
-                BTreeSet::from([proxy_ip4_1(), bad_ip.parse().unwrap()]),
-            );
-
-            assert!(result.is_err(), "{bad_ip} should be rejected as proxy IP");
-        }
-
-        assert!(peer.permanent_translations.is_empty());
     }
 
     #[test]
@@ -1521,7 +1903,13 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
 
         let icmp_unreachable = ip_packet::make::icmp_dest_unreachable_network(
             &ip_packet::make::udp_packet(proxy_ip4_1(), client_tun_ipv4(), 443, 50000, &[])
@@ -1536,6 +1924,67 @@ mod tests {
         assert_eq!(error.source().to_string(), "100.64.0.1");
         assert_eq!(error.destination().to_string(), "100.96.0.1");
         assert_eq!(error.proto().to_string(), "ICMP");
+    }
+
+    fn wildcard_foo_peer() -> ClientOnGateway {
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
+        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
+
+        peer
+    }
+
+    fn setup_wildcard_foo_nat(
+        peer: &mut ClientOnGateway,
+        n: usize,
+        now: Instant,
+    ) -> Result<Option<EvictedDomain>> {
+        peer.setup_nat(
+            format!("d{n}.foo.com").parse()?,
+            wildcard_foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            nth_proxy_ips(n),
+            now,
+        )
+    }
+
+    const PROXY_IPS_PER_DOMAIN: usize = 8;
+    const MAX_DNS_DOMAINS: usize = 4;
+
+    /// Different proxy IPs for each `n`.
+    fn nth_proxy_ips(n: usize) -> ProxyIps {
+        let offset = u32::try_from(n).unwrap() * 4;
+
+        ProxyIps::new(
+            [1, 2, 3, 4]
+                .map(|i| Ipv4Addr::from(u32::from(IPV4_RESOURCES.network_address()) + offset + i)),
+            [0, 1, 2, 3].map(|i| {
+                Ipv6Addr::from(
+                    u128::from(IPV6_RESOURCES.network_address()) + u128::from(offset + i),
+                )
+            }),
+        )
+        .unwrap()
+    }
+
+    fn wildcard_foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Dns(
+            crate::messages::gateway::ResourceDescriptionDns {
+                id: wildcard_foo_resource_id(),
+                address: "*.foo.com".to_string(),
+                name: "wildcard foo".to_string(),
+                filters: vec![],
+            },
+        )
+    }
+
+    fn wildcard_foo_resource_id() -> ResourceId {
+        "0f3e0a4c-58a4-4d7e-9a8f-3a4c4e2b9d11".parse().unwrap()
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
@@ -1751,6 +2200,7 @@ mod proptests {
                 v6: client_v6,
             },
             gateway_tun(),
+            DEFAULT_MAX_DNS_DOMAINS,
         );
         for (resource, _, _) in &resources {
             peer.add_resource(resource.clone(), None, Instant::now());
@@ -1805,6 +2255,7 @@ mod proptests {
                 v6: client_v6,
             },
             gateway_tun(),
+            DEFAULT_MAX_DNS_DOMAINS,
         );
 
         for ((filters, _), resource_id) in std::iter::zip(&protocol_config, resources_ids) {
@@ -1865,6 +2316,7 @@ mod proptests {
                 v6: client_v6,
             },
             gateway_tun(),
+            DEFAULT_MAX_DNS_DOMAINS,
         );
         let packet = match protocol {
             Protocol::Tcp { dport } => {
@@ -1924,6 +2376,7 @@ mod proptests {
                 v6: client_v6,
             },
             gateway_tun(),
+            DEFAULT_MAX_DNS_DOMAINS,
         );
 
         let packet_allowed = match protocol_allowed {

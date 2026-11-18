@@ -276,4 +276,18 @@ defmodule PortalWeb.HomeControllerTest do
                "Account ID or Slug can only contain letters, digits and underscore"
     end
   end
+
+  describe "malformed input" do
+    test "rejects an account chooser value that is not a string", %{conn: conn} do
+      assert_error_sent 400, fn ->
+        post(conn, ~p"/sign_in", %{"account_id_or_slug" => ["x"]})
+      end
+    end
+
+    test "redirects attribution links on a doubled slash to a local path", %{conn: conn} do
+      conn = get(conn, "http://www.example.com//sign_up?fz_mktg=true")
+
+      assert redirected_to(conn) == "/sign_up"
+    end
+  end
 end

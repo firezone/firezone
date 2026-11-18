@@ -1,7 +1,7 @@
 defmodule PortalWeb.Cookie.SignUpState do
   @moduledoc """
   Cookie that binds a Google sign-up round trip to the browser that started it.
-  Holds only the OAuth state and the PKCE verifier we generated.
+  Holds the OAuth state and the PKCE verifier we generated.
   """
 
   @enforce_keys [:state, :verifier]

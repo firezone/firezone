@@ -1,7 +1,7 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
   alias Portal.{Banner, Billing, EmailSuppression, Mailer, SlugRegistry}
-  alias Portal.Workers.DeleteAccount
+  alias Portal.Workers.{DeleteAccount, SyncStripeCustomer}
   alias Portal.Ops.AuthProviderNotices
 
   @max_bcc_per_message 50
@@ -141,7 +141,8 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  Deletes a disabled account at once and queues the cancellation of its Stripe subscriptions.
+  Deletes a disabled account at once and queues the cancellation of its Stripe subscriptions
+  and the delete of its profile photos.
   """
   def delete_disabled_account(id) do
     {:ok, _account} = Database.delete_disabled_account(id)
@@ -175,6 +176,46 @@ defmodule Portal.Ops do
           :aborted
       end
     end
+  end
+
+  @stripe_syncs_per_second 10
+
+  @doc """
+  Queues a Stripe sync for every account with a Stripe customer, so each
+  customer gets the account ID, name and slug of its account. The jobs are
+  spread out to stay under the Stripe rate limit. Run it once per region.
+  Running it again only sends the same values again.
+  """
+  def sync_stripe_customers do
+    if Billing.enabled?() do
+      account_ids = Database.stripe_customer_account_ids()
+
+      IO.puts(
+        "About to queue a Stripe sync for #{length(account_ids)} account(s) in region #{SlugRegistry.region()}. Continue? [y/N]"
+      )
+
+      case IO.gets("") do
+        answer when answer in ["y\n", "Y\n"] ->
+          count = queue_stripe_syncs(account_ids)
+
+          IO.puts("Queued #{count} Stripe sync job(s).")
+          {:ok, count}
+
+        _ ->
+          IO.puts("Aborted.")
+          :aborted
+      end
+    else
+      IO.puts("Billing is disabled, so there are no Stripe customers to sync.")
+      {:error, :billing_disabled}
+    end
+  end
+
+  @doc """
+  Changes the slug of an account. The old slug keeps pointing to the account.
+  """
+  def set_account_slug(account_id, slug) do
+    Database.set_account_slug(account_id, slug |> String.trim() |> String.downcase())
   end
 
   @doc """
@@ -573,6 +614,16 @@ defmodule Portal.Ops do
     [scheduled_at: scheduled_at]
   end
 
+  defp queue_stripe_syncs(account_ids) do
+    account_ids
+    |> Enum.with_index()
+    |> Enum.map(fn {account_id, index} ->
+      SyncStripeCustomer.new(%{account_id: account_id}, schedule_in: div(index, @stripe_syncs_per_second))
+    end)
+    |> Oban.insert_all()
+    |> length()
+  end
+
   defp claim_slugs(slugs) do
     slugs
     |> Enum.reduce_while({:ok, 0}, fn %{slug: slug, account_id: account_id}, {:ok, count} ->
@@ -621,10 +672,21 @@ defmodule Portal.Ops do
           |> Safe.one!()
 
         with {:ok, account} <- account |> Safe.unscoped() |> Safe.delete(),
-             {:ok, _job} <- maybe_insert_delete_subscription_job(account) do
+             {:ok, _job} <- maybe_insert_delete_subscription_job(account),
+             {:ok, _job} <- Portal.Avatars.DeleteAccount.insert(account.id) do
           {:ok, account}
         end
       end)
+    end
+
+    def set_account_slug(account_id, slug) do
+      from(a in Account, where: a.id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.one!()
+      |> Ecto.Changeset.cast(%{slug: slug}, [:slug])
+      |> Ecto.Changeset.validate_required(:slug)
+      |> Safe.unscoped()
+      |> Safe.update()
     end
 
     def insert(banner) do
@@ -770,6 +832,15 @@ defmodule Portal.Ops do
 
     def list_account_slugs do
       from(s in Portal.AccountSlug, select: %{slug: s.slug, account_id: s.account_id}, order_by: s.slug)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def stripe_customer_account_ids do
+      from(a in Account,
+        where: not is_nil(fragment("?->'stripe'->>'customer_id'", a.metadata)),
+        select: a.id
+      )
       |> Safe.unscoped()
       |> Safe.all()
     end

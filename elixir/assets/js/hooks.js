@@ -12,12 +12,17 @@ const handleDisableSubmit = (ev) => {
   submit.classList.add("cursor-wait");
   submit.classList.add("opacity-75");
 
+  const label = submit.querySelector("[data-disable-with]");
+  const text = label?.textContent;
+  if (label) label.textContent = label.dataset.disableWith;
+
   ev.target.submit();
 
   setTimeout(() => {
     submit.classList.remove("cursor-wait");
     submit.classList.remove("opacity-75");
     submit.removeAttribute("disabled");
+    if (label) label.textContent = text;
   }, 5000);
 };
 
@@ -58,24 +63,6 @@ Hooks.Modal = {
     if (this.focusedElement) {
       this.focusedElement.focus();
     }
-  },
-};
-
-Hooks.ConfirmDialog = {
-  mounted() {
-    this.el.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      ev.preventDefault();
-
-      let id = ev.currentTarget.getAttribute("id");
-      let dialog_el = document.getElementById(id + "_dialog");
-      dialog_el.returnValue = "cancel";
-      dialog_el.close();
-      dialog_el.showModal();
-
-      let close_button = dialog_el.querySelector("[data-dialog-action=cancel]");
-      close_button.focus();
-    });
   },
 };
 

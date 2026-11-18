@@ -7,6 +7,10 @@ defmodule PortalWeb.Plugs.PutSecurityHeaders do
 
   @x_frame_options "SAMEORIGIN"
 
+  # The Turnstile widget only runs on the sign-up pages, so only those pages may load it.
+  @turnstile_origin "https://challenges.cloudflare.com"
+  @turnstile_directives ~w[script-src connect-src frame-src]
+
   @permissions_policy [
     "browsing-topics=()",
     "camera=()",
@@ -44,8 +48,14 @@ defmodule PortalWeb.Plugs.PutSecurityHeaders do
     }
   end
 
+  defp csp_policy_for(conn) do
+    policy = base_csp_policy_for(conn)
+
+    if turnstile_path?(conn.request_path), do: allow_turnstile(policy), else: policy
+  end
+
   if @live_reload_frame_csp_policy do
-    defp csp_policy_for(conn) do
+    defp base_csp_policy_for(conn) do
       if String.starts_with?(conn.request_path, "/phoenix/live_reload/frame") do
         @live_reload_frame_csp_policy
       else
@@ -53,7 +63,26 @@ defmodule PortalWeb.Plugs.PutSecurityHeaders do
       end
     end
   else
-    defp csp_policy_for(_conn), do: @default_csp_policy
+    defp base_csp_policy_for(_conn), do: @default_csp_policy
+  end
+
+  defp turnstile_path?(path),
+    do: path in ["/sign_up", "/try", "/find_account"] or String.starts_with?(path, "/sign_up/")
+
+  # A directive that is absent falls back to default-src, so a new one starts from its sources.
+  defp allow_turnstile(policy) do
+    fallback_sources =
+      Enum.find_value(policy, "", fn
+        "default-src " <> sources -> sources
+        _directive -> nil
+      end)
+
+    Enum.reduce(@turnstile_directives, policy, fn directive, policy ->
+      case Enum.split_while(policy, &(not String.starts_with?(&1, directive <> " "))) do
+        {before, [existing | rest]} -> before ++ ["#{existing} #{@turnstile_origin}" | rest]
+        {all, []} -> all ++ ["#{directive} #{fallback_sources} #{@turnstile_origin}"]
+      end
+    end)
   end
 
   defp interpolate_nonce(policy, nonce) do

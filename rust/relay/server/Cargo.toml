@@ -6,26 +6,32 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 axum = { workspace = true, features = ["http1", "tokio", "query"] }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 eventloop-budget = { workspace = true }
 futures = { workspace = true }
+git-sha = { workspace = true }
 logging = { workspace = true }
 mimalloc = { workspace = true }
 mio = { workspace = true, features = ["net"] }
 opentelemetry = { workspace = true, features = ["metrics"] }
-opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
+opentelemetry-http = { workspace = true, features = ["reqwest-blocking"] }
+opentelemetry-otlp = { workspace = true, features = ["metrics"] }
 opentelemetry_sdk = { workspace = true }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
 rand = { workspace = true }
-relay-proto = { workspace = true }
+relay-server-proto = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "query", "rustls-no-provider"] }
 rustls = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
 stun_codec = { workspace = true }
@@ -33,7 +39,6 @@ telemetry = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
 tracing = { workspace = true, features = ["log"] }
 tracing-core = { workspace = true }
-tracing-opentelemetry = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
 url = { workspace = true }
 

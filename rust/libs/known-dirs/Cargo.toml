@@ -5,13 +5,11 @@ edition = { workspace = true }
 description = "Platform-specific known directory paths for Firezone"
 license = { workspace = true }
 
-[dependencies]
-anyhow = { workspace = true }
-
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+anyhow = { workspace = true }
 known-folders = { workspace = true }
 
 [lints]

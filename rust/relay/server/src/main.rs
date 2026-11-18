@@ -1,5 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod otlp_metrics;
+
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -11,7 +13,7 @@ use eventloop_budget::Budget;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, VERSION, auth::AccountId, control_endpoint, ebpf, sockets,
+    Sleep, ThroughputLimit, auth::AccountId, control_endpoint, ebpf, sockets,
 };
 use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
@@ -20,7 +22,9 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -31,6 +35,7 @@ use stun_codec::rfc5766::attributes::ChannelNumber;
 use telemetry::RELAY_DSN;
 use tokio::sync::mpsc;
 use tracing::Subscriber;
+use tracing::level_filters::LevelFilter;
 use tracing_core::Dispatch;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
@@ -80,11 +85,13 @@ struct Args {
     #[arg(long, env, default_value = "human", hide = true)]
     log_format: LogFormat,
 
-    /// Which OTLP collector we should connect to.
-    ///
-    /// If set, we will report traces and metrics to this collector via gRPC.
+    /// Full OTLP/HTTP metrics ingestion URL, used verbatim.
     #[arg(long, env, hide = true)]
-    otlp_grpc_endpoint: Option<String>,
+    otlp_metrics_endpoint: Option<Url>,
+
+    /// How to authenticate requests to `otlp_metrics_endpoint`.
+    #[arg(long, env, hide = true)]
+    otlp_auth: Option<otlp_metrics::OtlpAuth>,
 
     /// Enable offloading of TURN traffic to an eBPF program.
     ///
@@ -119,6 +126,12 @@ struct Args {
     #[arg(long, env, hide = true, default_value = "2")]
     num_worker_threads: usize,
 
+    /// Allow clients to relay to peers in private IPv4 networks (RFC 1918).
+    ///
+    /// Only for test networks. All other non-public peers stay forbidden.
+    #[arg(long, env, hide = true, default_value_t = false)]
+    allow_private_peers: bool,
+
     /// Enable sentry.io crash-reporting agent.
     #[arg(long, env = "TELEMETRY", default_value_t = false)]
     telemetry: bool,
@@ -144,7 +157,7 @@ fn main() -> ExitCode {
         .expect("Failed to build tokio runtime");
 
     if args.telemetry {
-        let release = VERSION
+        let release = git_sha::git_sha()
             .expect("relay binary was not patched with a release SHA before enabling telemetry");
         telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
         telemetry::start(args.api_url.as_str(), release, RELAY_DSN);
@@ -164,7 +177,8 @@ fn main() -> ExitCode {
 }
 
 async fn try_main(args: Args) -> Result<()> {
-    let filter_reload_handle = setup_tracing(&args)?;
+    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let filter_reload_handle = setup_tracing(&args, &directives)?;
 
     let ebpf = if let Some(interface) = args.ebpf_offloading.as_deref() {
         if args.ebpf_int4_addr.is_none() {
@@ -193,6 +207,7 @@ async fn try_main(args: Args) -> Result<()> {
             ebpf::Program::try_load(
                 interface,
                 args.ebpf_attach_mode,
+                ebpf_log_level(&directives)?,
                 args.ebpf_int4_addr,
                 args.ebpf_int6_addr,
                 args.public_ip4_addr,
@@ -213,12 +228,18 @@ async fn try_main(args: Args) -> Result<()> {
         }
     };
 
-    let server = Server::new(
+    let mut server = Server::new(
         public_addr,
         make_rng(args.rng_seed),
         args.listen_port,
         args.lowest_port..=args.highest_port,
     );
+
+    if args.allow_private_peers {
+        tracing::info!("Relaying to peers in private networks is allowed");
+
+        server.allow_private_peers();
+    }
 
     let is_connected = Arc::new(AtomicBool::new(false));
 
@@ -226,7 +247,7 @@ async fn try_main(args: Args) -> Result<()> {
         let is_connected = is_connected.clone();
         http_health_check::serve_with_version(
             args.health_check.health_check_addr,
-            *firezone_relay::VERSION,
+            git_sha::git_sha(),
             move || is_connected.load(Ordering::Relaxed),
         )
     });
@@ -282,93 +303,59 @@ async fn try_main(args: Args) -> Result<()> {
     Ok(())
 }
 
+/// The most verbose level at which our log filter enables log records of the eBPF program.
+///
+/// Some layers of our subscriber are not filtered by level, so we cannot ask the subscriber itself.
+fn ebpf_log_level(directives: &str) -> Result<LevelFilter> {
+    let (filter, _) = logging::try_filter(directives)?;
+    let dispatch = Dispatch::new(tracing_subscriber::registry().with(filter));
+
+    let level = tracing::dispatcher::with_default(&dispatch, || {
+        if tracing::enabled!(target: "eBPF", tracing::Level::TRACE) {
+            LevelFilter::TRACE
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::DEBUG) {
+            LevelFilter::DEBUG
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::INFO) {
+            LevelFilter::INFO
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::WARN) {
+            LevelFilter::WARN
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::ERROR) {
+            LevelFilter::ERROR
+        } else {
+            LevelFilter::OFF
+        }
+    });
+
+    Ok(level)
+}
+
 /// Sets up our tracing infrastructure.
 ///
 /// See [`log_layer`] for details on the base log layer.
-///
-/// ## Integration with OTLP
-///
-/// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
-    use opentelemetry::{global, trace::TracerProvider as _};
-    use opentelemetry_otlp::WithExportConfig;
-
+fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
-    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let mut meter_provider =
+        opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(make_otel_metadata());
 
-    let (dispatch, reload_handle) = match args.otlp_grpc_endpoint.clone() {
-        None => {
-            let (filter, reload_handle) = logging::try_filter(&directives)?;
+    let (filter, reload_handle) = logging::try_filter(directives)?;
 
-            let dispatch: Dispatch = tracing_subscriber::registry()
-                .with(log_layer(args).with_filter(filter))
-                .with(sentry_layer())
-                .into();
+    let dispatch: Dispatch = tracing_subscriber::registry()
+        .with(log_layer(args).with_filter(filter))
+        .with(sentry_layer())
+        .into();
 
-            (dispatch, reload_handle)
-        }
-        Some(endpoint) => {
-            let metadata = make_otel_metadata();
-            let grpc_endpoint = format!("http://{endpoint}");
-
-            tracing::trace!(target: "relay", %grpc_endpoint, "Setting up OTLP exporter for collector");
-
-            let exporter = opentelemetry_otlp::SpanExporter::builder()
-                .with_tonic()
-                .with_endpoint(grpc_endpoint.clone())
-                .build()
-                .context("Failed to build OTLP span exporter")?;
-
-            let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-                .with_resource(metadata.clone())
-                .with_batch_exporter(exporter)
-                .build();
-
-            global::set_tracer_provider(tracer_provider.clone());
-
-            tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
-
-            // `LowMemory` ships counters as cumulative (so rate dashboards keep working) but
-            // histograms as delta. Without delta, Azure Monitor pins Min/Max to lifetime
-            // extremes after the first outlier and per-window averages can only be
-            // reconstructed via fragile prev()-based KQL.
-            let exporter = opentelemetry_otlp::MetricExporter::builder()
-                .with_tonic()
-                .with_endpoint(grpc_endpoint)
-                .with_temporality(opentelemetry_sdk::metrics::Temporality::LowMemory)
-                .build()
-                .context("Failed to build OTLP metric exporter")?;
-
-            let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
-                .with_resource(metadata)
-                .with_periodic_exporter(exporter)
-                .build();
-
-            global::set_meter_provider(meter_provider);
-
-            tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
-
-            let (log_filter, log_reload_handle) = logging::try_filter(&directives)?;
-            let (otel_filter, otel_reload_handle) = logging::try_filter(&directives)?;
-
-            let dispatch: Dispatch = tracing_subscriber::registry()
-                .with(log_layer(args).with_filter(log_filter))
-                .with(
-                    tracing_opentelemetry::layer()
-                        .with_tracer(tracer_provider.tracer("relay"))
-                        .with_filter(otel_filter),
-                )
-                .with(sentry_layer())
-                .into();
-
-            (dispatch, log_reload_handle.merge(otel_reload_handle))
-        }
-    };
+    if let Some(endpoint) = &args.otlp_metrics_endpoint {
+        // Reqwest's blocking client initializes its own runtime.
+        meter_provider = tokio::task::block_in_place(|| {
+            otlp_metrics::with_exporter(meter_provider, endpoint, args.otlp_auth)
+        })?;
+    }
+    opentelemetry::global::set_meter_provider(meter_provider.build());
 
     drop(temp_logger_guard); // Drop as late as possible
 
@@ -410,11 +397,43 @@ enum IngressMessages {
 struct Init {
     #[serde(default)]
     account_ids: Vec<AccountId>,
+    /// Throughput limits in bits per second; absent accounts are unlimited.
+    #[serde(default)]
+    throughput_limits_bps: HashMap<AccountId, u64>,
+    #[serde(default)]
+    allocation_limits: HashMap<AccountId, NonZeroUsize>,
 }
 
+impl Init {
+    fn accounts(&self) -> impl Iterator<Item = (AccountId, Option<ThroughputLimit>)> + '_ {
+        self.account_ids.iter().map(|id| {
+            let limit = self
+                .throughput_limits_bps
+                .get(id)
+                .copied()
+                .and_then(ThroughputLimit::from_bits_per_second);
+
+            (*id, limit)
+        })
+    }
+}
+
+/// An account that is new or whose throughput limit changed.
 #[derive(serde::Deserialize, Debug)]
 struct Account {
     account_id: AccountId,
+    /// Throughput limit in bits per second; absent or zero means unlimited.
+    #[serde(default)]
+    throughput_limit_bps: Option<u64>,
+    #[serde(default)]
+    allocation_limit: Option<NonZeroUsize>,
+}
+
+impl Account {
+    fn throughput_limit(&self) -> Option<ThroughputLimit> {
+        self.throughput_limit_bps
+            .and_then(ThroughputLimit::from_bits_per_second)
+    }
 }
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
@@ -450,6 +469,8 @@ struct Eventloop<R> {
 
     stats_log_interval: tokio::time::Interval,
     last_num_bytes_relayed: u64,
+    last_rate_limited_packets: ebpf::RateLimitedPackets,
+    rate_limited_packets_counter: opentelemetry::metrics::Counter<u64>,
 
     buffer: [u8; MAX_UDP_SIZE],
 
@@ -504,6 +525,8 @@ where
             sleep: Sleep::default(),
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
+            last_rate_limited_packets: ebpf::RateLimitedPackets::default(),
+            rate_limited_packets_counter: otel_instruments::relay_rate_limited_packets(),
             sockets,
             ebpf,
             buffer: [0u8; MAX_UDP_SIZE],
@@ -569,12 +592,14 @@ where
                         channel_number,
                         peer,
                         allocation_port,
+                        throughput_limit,
                     } => {
                         if let Err(e) = self.create_channel_binding_in_ebpf_map(
                             client,
                             channel_number,
                             peer,
                             allocation_port,
+                            throughput_limit,
                         ) {
                             tracing::debug!(target: "relay", %client, "Failed to create channel binding in eBPF map: {e:#}");
                         }
@@ -658,6 +683,7 @@ where
                         packet,
                         PeerSocket::new(from),
                         AllocationPort::new(port),
+                        Instant::now(),
                     ) {
                         let total_length = ChannelData::encode_header_to_slice(
                             channel,
@@ -705,12 +731,18 @@ where
                         num_accounts = init.account_ids.len(),
                         "Received TURN account list"
                     );
-                    self.server.set_accounts(init.account_ids);
+                    self.server.set_accounts(init.accounts());
+                    self.server.set_allocation_limits(init.allocation_limits);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
-                    tracing::info!(account_id = %account.account_id, "Added account to TURN allow list");
-                    self.server.add_account(account.account_id);
+                    let throughput_limit = account.throughput_limit();
+
+                    tracing::info!(account_id = %account.account_id, ?throughput_limit, "Added account to TURN allow list");
+                    self.server
+                        .add_account(account.account_id, throughput_limit);
+                    self.server
+                        .set_allocation_limit(account.account_id, account.allocation_limit);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
@@ -748,6 +780,8 @@ where
 
                 tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
 
+                self.record_xdp_rate_limited_packets();
+
                 tick.want_continue();
             }
         }
@@ -761,14 +795,63 @@ where
         channel_number: ChannelNumber,
         peer: PeerSocket,
         allocation_port: AllocationPort,
+        throughput_limit: Option<ThroughputLimit>,
     ) -> Result<()> {
         let Some(ebpf) = self.ebpf.as_mut() else {
             return Ok(()); // ebPF program not loaded ...
         };
 
-        ebpf.add_channel_binding(client, channel_number, peer, allocation_port)?;
+        ebpf.add_channel_binding(
+            client,
+            channel_number,
+            peer,
+            allocation_port,
+            throughput_limit,
+        )?;
 
         Ok(())
+    }
+
+    /// Reports the packets the eBPF program marked or dropped since the last call.
+    fn record_xdp_rate_limited_packets(&mut self) {
+        let Some(ebpf) = self.ebpf.as_ref() else {
+            return;
+        };
+
+        let current = match ebpf.rate_limited_packets() {
+            Ok(current) => current,
+            Err(e) => {
+                tracing::debug!("Failed to read rate-limit counters from eBPF map: {e:#}");
+                return;
+            }
+        };
+
+        let marked = current
+            .marked
+            .saturating_sub(self.last_rate_limited_packets.marked);
+        let dropped = current
+            .dropped
+            .saturating_sub(self.last_rate_limited_packets.dropped);
+        self.last_rate_limited_packets = current;
+
+        self.rate_limited_packets_counter.add(
+            marked,
+            &[
+                otel_attributes::relay_datapath_xdp(),
+                otel_attributes::relay_rate_limit_action_mark(),
+            ],
+        );
+        self.rate_limited_packets_counter.add(
+            dropped,
+            &[
+                otel_attributes::relay_datapath_xdp(),
+                otel_attributes::relay_rate_limit_action_drop(),
+            ],
+        );
+
+        if marked > 0 || dropped > 0 {
+            tracing::debug!(target: "relay", %marked, %dropped, "Rate-limited packets in eBPF");
+        }
     }
 
     fn delete_channel_binding_in_ebpf_map(
@@ -880,6 +963,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ebpf_log_level_follows_log_filter() {
+        assert_eq!(ebpf_log_level("info").unwrap(), LevelFilter::INFO);
+        assert_eq!(
+            ebpf_log_level("debug,eBPF=warn").unwrap(),
+            LevelFilter::WARN
+        );
+        assert_eq!(
+            ebpf_log_level("warn,eBPF=trace").unwrap(),
+            LevelFilter::TRACE
+        );
+        assert_eq!(ebpf_log_level("off").unwrap(), LevelFilter::OFF);
+    }
+
+    #[test]
     fn prints_humanfriendly_throughput() {
         assert_eq!(fmt_human_throughput(42.0), "42.00 B/s");
         assert_eq!(fmt_human_throughput(1_234.0), "1.23 kB/s");
@@ -887,34 +984,85 @@ mod tests {
         assert_eq!(fmt_human_throughput(100_000_000_000.0), "100.00 GB/s");
     }
 
-    // Regression tests to ensure we can parse sockets as well as domains for the otlp-grpc endpoint.
     #[test]
-    fn args_can_parse_otlp_endpoint_from_socket() {
-        let args = Args::try_parse_from([
+    fn args_parse_otlp_auth() {
+        let unset =
+            Args::try_parse_from(["relay", "--api-url", "localhost:1234", "TOKEN"]).unwrap();
+        let azure = Args::try_parse_from([
             "relay",
-            "--otlp-grpc-endpoint",
-            "127.0.0.1:4317",
+            "--otlp-auth",
+            "azure-managed-identity",
             "--api-url",
             "localhost:1234",
             "TOKEN",
         ])
         .unwrap();
+        let invalid = Args::try_parse_from([
+            "relay",
+            "--otlp-auth",
+            "bearer",
+            "--api-url",
+            "localhost:1234",
+            "TOKEN",
+        ]);
 
-        assert_eq!(args.otlp_grpc_endpoint.unwrap(), "127.0.0.1:4317");
+        assert_eq!(unset.otlp_auth, None);
+        assert_eq!(
+            azure.otlp_auth,
+            Some(otlp_metrics::OtlpAuth::AzureManagedIdentity)
+        );
+        assert!(invalid.is_err());
+    }
+
+    // Portals without throughput limits must keep working, e.g. while deploying.
+    #[test]
+    fn accounts_without_throughput_limits_are_unlimited() {
+        let account_id = "00000000-0000-0000-0000-000000000001";
+
+        let init = parse(&format!(
+            r#"{{"event":"init","payload":{{"account_ids":["{account_id}"]}}}}"#
+        ));
+        let added = parse(&format!(
+            r#"{{"event":"account_added","payload":{{"account_id":"{account_id}"}}}}"#
+        ));
+
+        let IngressMessages::Init(init) = init else {
+            panic!("expected init");
+        };
+        let IngressMessages::AccountAdded(added) = added else {
+            panic!("expected account_added");
+        };
+        assert_eq!(init.accounts().next().unwrap().1, None);
+        assert_eq!(added.throughput_limit(), None);
     }
 
     #[test]
-    fn args_can_parse_otlp_endpoint_from_domain() {
-        let args = Args::try_parse_from([
-            "relay",
-            "--otlp-grpc-endpoint",
-            "localhost:4317",
-            "--api-url",
-            "localhost:1234",
-            "TOKEN",
-        ])
-        .unwrap();
+    fn parses_throughput_limits_from_portal() {
+        let limited = "00000000-0000-0000-0000-000000000001";
+        let unlimited = "00000000-0000-0000-0000-000000000002";
 
-        assert_eq!(args.otlp_grpc_endpoint.unwrap(), "localhost:4317");
+        let init = parse(&format!(
+            r#"{{"event":"init","payload":{{"account_ids":["{limited}","{unlimited}"],"throughput_limits_bps":{{"{limited}":5000000}}}}}}"#
+        ));
+        let added = parse(&format!(
+            r#"{{"event":"account_added","payload":{{"account_id":"{unlimited}","throughput_limit_bps":null}}}}"#
+        ));
+
+        let IngressMessages::Init(init) = init else {
+            panic!("expected init");
+        };
+        let IngressMessages::AccountAdded(added) = added else {
+            panic!("expected account_added");
+        };
+        let limits = init.accounts().map(|(_, limit)| limit).collect::<Vec<_>>();
+        assert_eq!(
+            limits,
+            vec![ThroughputLimit::from_bits_per_second(5_000_000), None]
+        );
+        assert_eq!(added.throughput_limit(), None);
+    }
+
+    fn parse(json: &str) -> IngressMessages {
+        serde_json::from_str(json).unwrap()
     }
 }

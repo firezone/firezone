@@ -84,6 +84,17 @@ defmodule Portal.GeoTest do
       assert {"CA", "Toronto", {43.6532, -79.3832}} = Geo.locate(ip, headers)
     end
 
+    test "ignores malformed coordinate headers" do
+      ip = {10, 10, 10, 11}
+
+      Geolix.Adapter.Fake.Storage.set(:city, {%{}, %{}})
+
+      for coords <- ["x", "1.0", "a.0,b.0", "1.0,2.0,3.0"] do
+        headers = [{"x-geo-location-region", "ZZ"}, {"x-geo-location-coordinates", coords}]
+        assert {"ZZ", nil, {nil, nil}} = Geo.locate(ip, headers)
+      end
+    end
+
     test "falls back to Azure header when Geolix returns no data" do
       ip = {11, 11, 11, 11}
 
