@@ -268,7 +268,6 @@ fn resource_submenu(name: &str, description: Option<&str>, address: &str) -> Men
     menu.copyable(address)
 }
 
-/// Opens the description in the browser if it is a URL and copies it otherwise.
 fn description_item(description: &str) -> Item {
     let Ok(url) = Url::parse(description) else {
         return copyable(description);
