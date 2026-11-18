@@ -120,7 +120,7 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
 
-    /// Dump internal metrics to stdout every 60s.
+    /// Where to export metrics to.
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
@@ -169,7 +169,6 @@ struct Cli {
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum MetricsExporter {
-    Stdout,
     OtelCollector,
     Sentry,
 }
@@ -407,12 +406,6 @@ fn try_main() -> Result<()> {
                 (MetricsExporter::Sentry, _) => {
                     opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
                 }
-                (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                        .with_resource(resource)
-                        .build(),
-                ),
                 (MetricsExporter::OtelCollector, Some(endpoint)) => {
                     opentelemetry::global::set_meter_provider(
                         SdkMeterProvider::builder()

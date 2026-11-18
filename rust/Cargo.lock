@@ -2635,7 +2635,6 @@ dependencies = [
  "nix",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry-stdout",
  "opentelemetry_sdk",
  "otel-attributes",
  "otel-instruments",
@@ -2766,7 +2765,6 @@ dependencies = [
  "nix",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry-stdout",
  "opentelemetry_sdk",
  "otel-attributes",
  "phoenix-channel",
@@ -5703,17 +5701,6 @@ dependencies = [
  "prost",
  "tonic",
  "tonic-prost",
-]
-
-[[package]]
-name = "opentelemetry-stdout"
-version = "0.33.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2afbc6661934787ce79bef1e35d0ffe9d62e945f07f664dc1283ce83292b908a"
-dependencies = [
- "chrono",
- "opentelemetry",
- "opentelemetry_sdk",
 ]
 
 [[package]]
