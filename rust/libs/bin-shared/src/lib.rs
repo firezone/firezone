@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 pub mod http_health_check;
+pub mod max_partition_time;
 
 mod dns_control;
 mod network_changes;
@@ -41,33 +42,7 @@ pub const TUNNEL_NAME: &str = "Firezone";
 /// Mark for Firezone sockets to prevent routing loops on Linux.
 pub const FIREZONE_MARK: u32 = 0xfd002021;
 
-/// Parses a duration in jiff's friendly format, e.g. "5m", "1h 30m" or "30d".
-///
-/// Days count as 24 hours.
-pub fn parse_duration(s: &str) -> anyhow::Result<std::time::Duration> {
-    let span = s.parse::<jiff::Span>()?;
-    let duration = span.to_duration(jiff::SpanRelativeTo::days_are_24_hours())?;
-    let duration = std::time::Duration::try_from(duration)?;
-
-    Ok(duration)
-}
-
 pub use dns_control::{DnsControlMethod, DnsController};
 pub use network_changes::{new_dns_notifier, new_network_notifier};
 pub use power::{ResumeNotifier, new_resume_notifier};
 pub use tun_device_manager::{TunDeviceManager, TunIpStack};
-
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use super::*;
-
-    #[test]
-    fn parse_duration_counts_days_as_24_hours() {
-        assert_eq!(
-            parse_duration("30d").unwrap(),
-            Duration::from_secs(30 * 24 * 60 * 60)
-        );
-    }
-}

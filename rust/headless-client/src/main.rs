@@ -69,10 +69,8 @@ struct Cli {
     #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
 
-    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
-    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
-    #[arg(short, long, env = "MAX_PARTITION_TIME", value_parser = bin_shared::parse_duration)]
-    max_partition_time: Option<Duration>,
+    #[command(flatten)]
+    partition: bin_shared::max_partition_time::MaxPartitionTimeArgs,
 
     #[arg(
         short = 'u',
@@ -355,7 +353,7 @@ fn try_main() -> Result<()> {
     let token = get_token(token_env_var, &cli.token_path)?
         .context("Cannot authenticate without a token")?;
     // TODO: Should this default to 30 days?
-    let max_partition_time = cli.max_partition_time;
+    let max_partition_time = cli.partition.max_partition_time;
 
     // The certificate is optional device attestation. A keystore or private-key failure must
     // not prevent a token-authenticated session from reaching the portal.

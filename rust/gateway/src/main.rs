@@ -267,7 +267,10 @@ async fn try_main(cli: Cli) -> Result<()> {
 
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
 
-    let max_partition_time = cli.max_partition_time.unwrap_or(DEFAULT_MAX_PARTITION_TIME);
+    let max_partition_time = cli
+        .partition
+        .max_partition_time
+        .unwrap_or(DEFAULT_MAX_PARTITION_TIME);
 
     let portal = PhoenixChannel::disconnected(
         login,
@@ -462,10 +465,8 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NO_INC_BUF", hide = true)]
     no_inc_buf: bool,
 
-    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
-    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
-    #[arg(short, long, env = "FIREZONE_MAX_PARTITION_TIME", value_parser = bin_shared::parse_duration)]
-    max_partition_time: Option<Duration>,
+    #[command(flatten)]
+    partition: bin_shared::max_partition_time::MaxPartitionTimeArgs,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
