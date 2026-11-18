@@ -172,7 +172,7 @@ or registration, and the legacy adapters enforce them:
   gateway and warned about, not gated. The warning, shown when an admin
   creates the combination (2.12b): users with access to the Internet
   resource can reach any non-private address the site's devices can reach,
-  and gateways below 1.6.5 do not route the site's other resources while
+  and gateways without 0.4 do not route the site's other resources while
   serving the Internet resource. The private-range reject list is the
   enforced boundary on legacy gateways; the unified binary also refuses
   Internet traffic into any resource it serves (5.6).
@@ -411,6 +411,25 @@ Ordering constraint to keep in mind: the portal must serve `/device/v1`
 classification fix (0.4) is not an ordering constraint: co-hosting on a
 pre-fix gateway is warned about at assignment time (2.12b), not prevented.
 
+### Next steps (2026-11-18)
+
+No entity changes in the portal for now: sites, `site_devices`, policies and
+pools stay as they are, so the connlib work is not blocked on model changes.
+Ideas for a simpler admin UI (devices or users set directly on a resource,
+sites created automatically) wait for customer evidence. Devices in several
+sites (2.10 as a list, 2.12, lifting the one-site rule from #16288) is a
+constraint change, not a new entity, and waits for a decision.
+
+Steps still open, in order, each one deploy:
+
+- Admin UI: 1.12, 2.19, 2.21 (Linux deploy tabs only until phase 5b), then
+  2.20 with 1.14, then 2.23.
+- Critical path to `/device/v1`: 3.0, 0.7, 4.1 to 4.12; 3.8 once the phase 3
+  binaries are close. Phase 4 is what 5.9 waits on.
+- Cleanups later phases need: 2.17 (changeset part), 2.18, 2.13.
+- Rust, in parallel with the above: 0.4, 0.5, the phase 3 drafts, then 5.1
+  and 5.2, which need nothing from the portal.
+
 ### Phase 0: prep, no behaviour change
 
 - **0.1 Audit: duplicate `firezone_id`.** Done 2026-10-22; figures kept privately. Read-only query listing devices that
@@ -430,7 +449,9 @@ pre-fix gateway is warned about at assignment time (2.12b), not prevented.
   without the field. No portal change.
 - **0.6 Elixir: `Portal.Routing.select_receiver/3`.** Pure extraction of
   compatible-gateway filtering plus `Device.load_balance_gateways` from
-  `client/channel/shared.ex`. Existing channel tests unchanged.
+  `client/channel/shared.ex`. Existing channel tests unchanged. Done:
+  `Portal.Routing.select_receiver/3` picks from the gateways online in the
+  resource's site.
 - **0.7 Elixir: one payload builder for receivers.** PSK, ICE credentials and
   flow-log token minting shared by the gateway path and the c2c path. Pure
   refactor; existing tests.
@@ -618,7 +639,8 @@ inserted_at)`, unique on the three ids, cascading FKs. Ecto schema, `Site`
   REST docs carry the same sentence. Depends 2.12.
 - **2.13 Code and migration: site delete keeps devices.** `site_id` FK
   becomes SET NULL; UI and REST copy; blocked while resources remain.
-  Depends 2.8.
+  Depends 2.8. Not done: `site_devices` rows go with the site, but deleting
+  a site still deletes its gateways.
 - **2.14 REST: `/sites/:id/gateways` reads `site_devices`; new `POST` and
   `DELETE /sites/:id/devices`.** Depends 2.8.
 - **2.15 Migration: merge duplicate device rows.** Dry-run mode first. For
@@ -891,7 +913,7 @@ The portal deploys on every merge. These are the points where order matters.
 
 | Point | Must be live                               | Release                                                                                     |
 | ----- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| D1    | 0.6, 0.7                                   | R1: gateway 1.6.5 with 0.4 and 0.5                                                          |
+| D1    | 0.6, 0.7                                   | R1: the next gateway release (1.6.6) with 0.4 and 0.5                                       |
 | D2    | 1.1 to 1.7, 1.12 to 1.14                   | none                                                                                        |
 | D3    | 1.8, 1.9, 1.11, after D2 settled           | none                                                                                        |
 | D4    | 2.1 to 2.21                                | none                                                                                        |
@@ -913,7 +935,7 @@ legacy gateways `[m-1, m+1]`, `firezone` 1.7 `[5, 7]`, `firezone` 1.8
 
 | Release             | Serves Clients | Reaches Gateways         | Device to device                 |
 | ------------------- | -------------- | ------------------------ | -------------------------------- |
-| Gateway 1.6.5 (R1)  | 1.5, 1.6, 1.7  | n/a                      | n/a                              |
+| Gateway 1.6.6 (R1)  | 1.5, 1.6, 1.7  | n/a                      | n/a                              |
 | `firezone` 1.7 (R2) | 1.5, 1.6, 1.7  | 1.5, 1.6, `firezone` 1.7 | Clients 1.5, 1.6, `firezone` 1.7 |
 | `firezone` 1.8 (R3) | 1.6, 1.7, 1.8  | 1.6, `firezone` 1.7, 1.8 | Clients 1.6, `firezone` 1.7, 1.8 |
 
