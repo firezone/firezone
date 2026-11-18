@@ -137,7 +137,7 @@ import SwiftUI
           )
         }
 
-        if let description = resource.addressDescription {
+        if let description = resource.addressDescription, !description.isEmpty {
           HStack {
             Text("DESCRIPTION")
               .bold()

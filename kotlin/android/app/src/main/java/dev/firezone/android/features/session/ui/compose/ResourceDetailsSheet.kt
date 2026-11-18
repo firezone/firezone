@@ -93,7 +93,7 @@ private fun NonInternetResourceDetails(
     Column {
         val context = LocalContext.current
 
-        resource.addressDescription?.let { description ->
+        resource.addressDescription?.takeIf { it.isNotEmpty() }?.let { description ->
             val descriptionUri = remember(description) { description.toUri() }
             val isUrl = descriptionUri.scheme != null
 
