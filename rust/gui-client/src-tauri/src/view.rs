@@ -326,8 +326,8 @@ pub async fn reset_client_settings(managed: tauri::State<'_, Managed>) -> Result
 
 /// Pops up the "Save File" dialog
 fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<(), Error> {
-    let now = chrono::Local::now();
-    let datetime_string = now.format("%Y_%m_%d-%H-%M");
+    let now = jiff::Zoned::now();
+    let datetime_string = now.strftime("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
     let filename = stem.with_extension("zip");
     let filename = filename

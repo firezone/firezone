@@ -36,11 +36,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
 use ip_packet::{IcmpError, IpPacket, Protocol, TcpFlags, UnsupportedProtocol};
+use jiff::{SignedDuration, Timestamp};
 use smallvec::{SmallVec, smallvec};
 
 mod token;
@@ -143,10 +143,10 @@ struct RxPacket<S> {
 impl<S> Tracker<S> {
     /// Creates a new tracker; it starts disabled.
     pub fn new(now: Instant, unix_ts: Duration) -> Self {
-        let created_at_utc = i64::try_from(unix_ts.as_secs())
+        let created_at_utc = SignedDuration::try_from(unix_ts)
             .ok()
-            .and_then(|secs| DateTime::from_timestamp(secs, unix_ts.subsec_nanos()))
-            .unwrap_or(DateTime::UNIX_EPOCH);
+            .and_then(|unix_ts| Timestamp::from_duration(unix_ts).ok())
+            .unwrap_or(Timestamp::UNIX_EPOCH);
 
         Self {
             active_tcp_flows: HashMap::default(),
@@ -712,11 +712,11 @@ where
 #[derive(Debug, Clone, Copy)]
 struct Clock {
     created_at: Instant,
-    created_at_utc: DateTime<Utc>,
+    created_at_utc: Timestamp,
 }
 
 impl Clock {
-    fn to_utc(self, instant: Instant) -> DateTime<Utc> {
+    fn to_utc(self, instant: Instant) -> Timestamp {
         self.created_at_utc + instant.duration_since(self.created_at)
     }
 
@@ -1056,8 +1056,8 @@ impl FlowProtocol {
 /// The closing half of a flow log, present only once the flow has ended.
 #[derive(Debug)]
 pub struct FlowClose {
-    pub flow_end: DateTime<Utc>,
-    pub last_packet: DateTime<Utc>,
+    pub flow_end: Timestamp,
+    pub last_packet: Timestamp,
     pub rx_packets: u64,
     pub tx_packets: u64,
     pub rx_bytes: u64,
@@ -1083,7 +1083,7 @@ pub struct Record {
     /// so a tuple the flow returned to appears again.
     pub outers: Vec<FlowContext>,
 
-    pub flow_start: DateTime<Utc>,
+    pub flow_start: Timestamp,
     pub close: Option<FlowClose>,
 }
 
@@ -1170,7 +1170,7 @@ impl Record {
         ingest_token: IngestToken,
         domain: Option<DomainName>,
         outers: Vec<FlowContext>,
-        flow_start: DateTime<Utc>,
+        flow_start: Timestamp,
         close: Option<FlowClose>,
     ) -> Self {
         Self {
@@ -1189,7 +1189,7 @@ impl Record {
 }
 
 impl FlowClose {
-    fn from_stats(stats: &FlowStats, end: DateTime<Utc>, last_packet: DateTime<Utc>) -> Self {
+    fn from_stats(stats: &FlowStats, end: Timestamp, last_packet: Timestamp) -> Self {
         Self {
             flow_end: end,
             last_packet,
@@ -1251,9 +1251,9 @@ pub fn emit(record: &Record) {
 
                 outers = %Outers(&record.outers),
 
-                flow_start = ?record.flow_start,
-                flow_end = close.map(|c| tracing::field::debug(c.flow_end)),
-                last_packet = close.map(|c| tracing::field::debug(c.last_packet)),
+                flow_start = %Rfc3339(record.flow_start),
+                flow_end = close.map(|c| tracing::field::display(Rfc3339(c.flow_end))),
+                last_packet = close.map(|c| tracing::field::display(Rfc3339(c.last_packet))),
                 rx_packets = close.map(|c| c.rx_packets),
                 tx_packets = close.map(|c| c.tx_packets),
                 rx_bytes = close.map(|c| c.rx_bytes),
@@ -1282,6 +1282,23 @@ impl std::fmt::Display for Outers<'_> {
         serde_json::to_writer(FmtWriter(f), self.0).map_err(|_| std::fmt::Error)?;
 
         Ok(())
+    }
+}
+
+/// Renders a timestamp in RFC 3339 with 0, 3, 6 or 9 fractional digits, the
+/// format of all timestamps in flow logs.
+struct Rfc3339(Timestamp);
+
+impl std::fmt::Display for Rfc3339 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let precision = match self.0.subsec_nanosecond() {
+            0 => 0,
+            nanos if nanos % 1_000_000 == 0 => 3,
+            nanos if nanos % 1_000 == 0 => 6,
+            _ => 9,
+        };
+
+        write!(f, "{:.precision$}", self.0)
     }
 }
 
@@ -1392,13 +1409,15 @@ impl FlowStats {
 /// [`Record::outers`], the first packet after a change for every later one.
 /// A [`Tracker`] keeps it as an [`Instant`] until it builds a [`Record`].
 #[derive(Debug, Clone, Copy, serde::Serialize)]
-pub struct FlowContext<T = DateTime<Utc>> {
+#[serde(bound(serialize = "T: Copy + Into<Timestamp>"))]
+pub struct FlowContext<T = Timestamp> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub src_ip: Option<IpAddr>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub src_port: Option<u16>,
     pub dst_ip: IpAddr,
     pub dst_port: u16,
+    #[serde(serialize_with = "serialize_rfc3339")]
     pub path_activated_at: T,
 }
 
@@ -1440,6 +1459,16 @@ impl<T> PartialEq for FlowContext<T> {
 }
 
 impl<T> Eq for FlowContext<T> {}
+
+fn serialize_rfc3339<S>(
+    timestamp: &(impl Copy + Into<Timestamp>),
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.collect_str(&Rfc3339((*timestamp).into()))
+}
 
 /// Appends `context` to a flow's outer tuples if it differs from the current one.
 ///
@@ -1539,12 +1568,12 @@ mod tests {
         let old = FlowContext::new(
             "10.0.0.1:8080".parse::<SocketAddr>().unwrap(),
             "192.168.0.1:443".parse().unwrap(),
-            DateTime::UNIX_EPOCH,
+            Timestamp::UNIX_EPOCH,
         );
         let new = FlowContext::new(
             "1.1.1.1:50000".parse::<SocketAddr>().unwrap(),
             "192.168.0.1:443".parse().unwrap(),
-            DateTime::UNIX_EPOCH,
+            Timestamp::UNIX_EPOCH,
         );
 
         let diff = FlowContextDiff::new(old, new);

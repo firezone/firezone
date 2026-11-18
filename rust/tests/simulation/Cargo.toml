@@ -14,7 +14,6 @@ anyhow = { workspace = true }
 arbitrary = { workspace = true }
 bufferpool = { workspace = true }
 bytecodec = { workspace = true }
-chrono = { workspace = true, features = ["std"] }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 dns-over-tcp = { workspace = true }
@@ -27,6 +26,7 @@ ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 is = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
+jiff = { workspace = true, features = ["std"] }
 l3-tcp = { workspace = true }
 rand = { workspace = true }
 relay-client-proto = { workspace = true }

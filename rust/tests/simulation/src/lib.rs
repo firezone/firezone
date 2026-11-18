@@ -34,7 +34,7 @@ mod tunnel_transition;
 
 use std::time::Instant;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use tracing_subscriber::{
     EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
 };
@@ -74,8 +74,7 @@ const MAX_RELAY_TRANSITIONS: usize = 64;
 pub fn run_tunnel(data: &[u8], now: Instant) {
     let _guard = init_subscriber();
 
-    let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
-    let clock = Clock::new(now, utc_start);
+    let clock = Clock::new(now, Timestamp::UNIX_EPOCH);
     let mut generator = TunnelGenerator::new(data);
     let domain_tree = generator.domain_tree();
     let mut portal = generator.portal(&domain_tree);

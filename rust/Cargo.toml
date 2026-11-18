@@ -111,7 +111,6 @@ bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
 caps = "0.5.6"
-chrono = { version = "0.4.45", default-features = false }
 clap = "4.6.1"
 clap_complete = "4.6.9"
 client-ipc = { path = "gui-client/src-ipc" }
@@ -158,7 +157,6 @@ hmac = "0.13.0"
 http = "1.4.1"
 http-body-util = "0.1.3"
 http-client = { path = "libs/http-client" }
-humantime = "2.3.0"
 hyper = "1.10.1"
 hyper-util = "0.1.20"
 incremental-inet-checksum = { path = "libs/incremental-inet-checksum" }
@@ -168,6 +166,7 @@ ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
 is = "0.11.0"
 itertools = "0.15.0"
+jiff = { version = "0.2.24", default-features = false }
 jsonschema = { version = "0.59.0", default-features = false }
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
@@ -194,7 +193,6 @@ once_cell = "1.21.4"
 opentelemetry = "0.33.1"
 opentelemetry-http = "0.33.1"
 opentelemetry-otlp = "0.33.1"
-opentelemetry-stdout = "0.33.1"
 opentelemetry_sdk = "0.33.1"
 os_info = { version = "3.15.0", default-features = false }
 otel-attributes = { path = "libs/otel-attributes" }
@@ -245,7 +243,7 @@ socket-factory = { path = "libs/connlib/socket-factory" }
 socket2 = { version = "0.6.4" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
-str0m-proto = "0.7"
+str0m-proto = { version = "0.7", default-features = false }
 strum = "0.28.0"
 stun_codec = "0.4.0"
 subprocess = "1.1.0"

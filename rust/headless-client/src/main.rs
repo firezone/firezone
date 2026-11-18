@@ -69,10 +69,8 @@ struct Cli {
     #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
 
-    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
-    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
-    #[arg(short, long, env = "MAX_PARTITION_TIME")]
-    max_partition_time: Option<humantime::Duration>,
+    #[command(flatten)]
+    partition: bin_shared::max_partition_time::MaxPartitionTimeArgs,
 
     #[arg(
         short = 'u',
@@ -120,7 +118,7 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
 
-    /// Dump internal metrics to stdout every 60s.
+    /// Where to export metrics to.
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
@@ -169,7 +167,6 @@ struct Cli {
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum MetricsExporter {
-    Stdout,
     OtelCollector,
     Sentry,
 }
@@ -356,7 +353,7 @@ fn try_main() -> Result<()> {
     let token = get_token(token_env_var, &cli.token_path)?
         .context("Cannot authenticate without a token")?;
     // TODO: Should this default to 30 days?
-    let max_partition_time = cli.max_partition_time.map(|d| d.into());
+    let max_partition_time = cli.partition.max_partition_time;
 
     // The certificate is optional device attestation. A keystore or private-key failure must
     // not prevent a token-authenticated session from reaching the portal.
@@ -407,12 +404,6 @@ fn try_main() -> Result<()> {
                 (MetricsExporter::Sentry, _) => {
                     opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
                 }
-                (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                        .with_resource(resource)
-                        .build(),
-                ),
                 (MetricsExporter::OtelCollector, Some(endpoint)) => {
                     opentelemetry::global::set_meter_provider(
                         SdkMeterProvider::builder()

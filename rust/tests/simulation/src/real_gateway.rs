@@ -9,15 +9,15 @@ use super::{
     site_network::SiteNetwork,
     tunnel_model::PrivateKey,
 };
-use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
+use jiff::Timestamp;
 use std::{
     collections::{BTreeMap, BTreeSet},
     mem,
     net::{IpAddr, SocketAddr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tunnel_proto::{GatewayEvent, GatewayState};
 
@@ -82,7 +82,7 @@ impl RealGateway {
     }
 
     /// Starts a new tunnel as if the Gateway's process died: nothing leaves the old tunnel.
-    pub(crate) fn crash(&mut self, key: PrivateKey, now: Instant, utc_now: DateTime<Utc>) {
+    pub(crate) fn crash(&mut self, key: PrivateKey, now: Instant, utc_now: Timestamp) {
         let ip_config = self
             .state()
             .tunnel_ip_config()
@@ -91,10 +91,7 @@ impl RealGateway {
         let mut state = GatewayState::new(
             key.0,
             now,
-            utc_now
-                .signed_duration_since(DateTime::UNIX_EPOCH)
-                .to_std()
-                .unwrap(),
+            Duration::try_from(utc_now.as_duration()).unwrap(),
         );
         state.update_tun_device(ip_config);
         state.set_flow_logs_enabled(true);

@@ -230,12 +230,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayvec"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
-
-[[package]]
 name = "ascii"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -804,6 +798,7 @@ dependencies = [
  "ip_network",
  "ipconfig",
  "itertools 0.15.0",
+ "jiff",
  "known-dirs",
  "libc",
  "logging",
@@ -2122,21 +2117,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dimpl"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba6aa42b0c64c3e5311a2afad224b32db1ee129d21c63daaaf8ea747b846cdbc"
-dependencies = [
- "arrayvec",
- "log",
- "nom 8.0.0",
- "once_cell",
- "rand 0.9.4",
- "subtle",
- "time",
-]
-
-[[package]]
 name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2649,14 +2629,12 @@ dependencies = [
  "git-sha",
  "hex",
  "hickory-resolver",
- "humantime",
  "ip-packet",
  "logging",
  "mimalloc",
  "nix",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry-stdout",
  "opentelemetry_sdk",
  "otel-attributes",
  "otel-instruments",
@@ -2689,7 +2667,6 @@ dependencies = [
  "async-runtime",
  "backoff",
  "bin-shared",
- "chrono",
  "clap",
  "client-ipc",
  "client-shared",
@@ -2704,9 +2681,9 @@ dependencies = [
  "futures",
  "gui-ipc",
  "hex",
- "humantime",
  "ip-packet",
  "ip_network",
+ "jiff",
  "keyring-core",
  "known-dirs",
  "ksni",
@@ -2778,7 +2755,6 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "git-sha",
- "humantime",
  "ip-packet",
  "ip_network",
  "known-dirs",
@@ -2787,7 +2763,6 @@ dependencies = [
  "nix",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry-stdout",
  "opentelemetry_sdk",
  "otel-attributes",
  "phoenix-channel",
@@ -2911,11 +2886,11 @@ dependencies = [
  "backoff",
  "base64 0.23.1",
  "bytes",
- "chrono",
  "filetime",
  "flow-log-spool",
  "http",
  "http-client",
+ "jiff",
  "serde",
  "serde_json",
  "serde_with",
@@ -2935,8 +2910,8 @@ dependencies = [
  "anyhow-ext",
  "atomicfs",
  "base64 0.23.1",
- "chrono",
  "flow-log-spool",
+ "jiff",
  "nix",
  "serde",
  "serde_json",
@@ -2953,13 +2928,13 @@ name = "flow-tracker"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
- "chrono",
  "connlib-model",
  "dns-types",
  "fast-random-state",
  "flow-log-spool",
  "flow-log-writer",
  "ip-packet",
+ "jiff",
  "jsonschema",
  "serde",
  "serde_json",
@@ -3922,12 +3897,6 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
-name = "humantime"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15cdd26707701c53297e2fa6afb323d55fbc1d0810c3aec078ae3ef0424c3c15"
 
 [[package]]
 name = "hybrid-array"
@@ -5722,17 +5691,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry-stdout"
-version = "0.33.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2afbc6661934787ce79bef1e35d0ffe9d62e945f07f664dc1283ce83292b908a"
-dependencies = [
- "chrono",
- "opentelemetry",
- "opentelemetry_sdk",
-]
-
-[[package]]
 name = "opentelemetry_sdk"
 version = "0.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5973,11 +5931,11 @@ dependencies = [
  "anyhow-ext",
  "backoff",
  "base64 0.23.1",
- "chrono",
  "futures",
  "hex",
  "hostname",
  "itertools 0.15.0",
+ "jiff",
  "libc",
  "logging",
  "os_info",
@@ -7485,7 +7443,6 @@ dependencies = [
  "arbitrary",
  "bufferpool",
  "bytecodec",
- "chrono",
  "connlib-model",
  "derive_more",
  "dns-over-tcp",
@@ -7498,6 +7455,7 @@ dependencies = [
  "ip_network_table",
  "is",
  "itertools 0.15.0",
+ "jiff",
  "l3-tcp",
  "rand 0.10.3",
  "relay-client-proto",
@@ -7614,6 +7572,7 @@ dependencies = [
  "anyhow-ext",
  "bufferpool",
  "derive_more",
+ "futures",
  "ip-packet",
  "libc",
  "memchr",
@@ -7750,7 +7709,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8f3d99f2cf6c76a502e45feb896ea71e54787ede8744bcdb215acfbfcb905dd"
 dependencies = [
  "base64ct",
- "dimpl",
  "fastrand",
  "serde",
  "subtle",
@@ -9249,7 +9207,6 @@ dependencies = [
  "anyhow-ext",
  "base64 0.23.1",
  "bimap",
- "chrono",
  "connlib-model",
  "deadline-map",
  "derive_more",
@@ -9263,6 +9220,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.15.0",
+ "jiff",
  "l3-udp-dns-client",
  "logging",
  "lru",

@@ -15,10 +15,10 @@ use std::{
 };
 
 use bufferpool::Bytes;
-use chrono::DateTime;
 use connlib_model::IpStack;
 use ip_packet::Ecn;
 use is::CandidateKind;
+use jiff::Timestamp;
 use relay_client_proto::{Allocation, Event, channel_data};
 use relay_server_proto::ChannelData;
 use snownet::Transmit;
@@ -105,7 +105,7 @@ struct RealAllocation {
 impl RealRelaySystem {
     /// Builds the hosts of `model` and lets the portal hand the client the relay.
     pub(crate) fn new(model: &RelayModel, start: Instant) -> Self {
-        let clock = Clock::new(start, DateTime::UNIX_EPOCH);
+        let clock = Clock::new(start, Timestamp::UNIX_EPOCH);
 
         let mut system = Self {
             relay: new_relay(&model.relay, 0, clock.now()),
