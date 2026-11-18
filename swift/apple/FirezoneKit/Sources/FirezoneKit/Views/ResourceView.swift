@@ -41,7 +41,7 @@ import SwiftUI
                 .bold()
                 .font(.system(size: 14))
                 .foregroundColor(.secondary)
-                .frame(width: 80, alignment: .leading)
+                .frame(width: 110, alignment: .leading)
               Text(site.name)
             }
             .contextMenu {
@@ -61,7 +61,7 @@ import SwiftUI
                 .bold()
                 .font(.system(size: 14))
                 .foregroundColor(.secondary)
-                .frame(width: 80, alignment: .leading)
+                .frame(width: 110, alignment: .leading)
               statusIndicator(for: resource.status)
               Text(resource.status.toSiteStatus())
                 .padding(.leading, 5)
@@ -122,7 +122,7 @@ import SwiftUI
             .bold()
             .font(.system(size: 14))
             .foregroundColor(.secondary)
-            .frame(width: 80, alignment: .leading)
+            .frame(width: 110, alignment: .leading)
           Text(resource.name)
         }
         .contextMenu {
@@ -143,7 +143,7 @@ import SwiftUI
               .bold()
               .font(.system(size: 14))
               .foregroundColor(.secondary)
-              .frame(width: 80, alignment: .leading)
+              .frame(width: 110, alignment: .leading)
             if let url = URL(string: description), url.host != nil {
               Button(
                 action: {
@@ -178,7 +178,7 @@ import SwiftUI
             .bold()
             .font(.system(size: 14))
             .foregroundColor(.secondary)
-            .frame(width: 80, alignment: .leading)
+            .frame(width: 110, alignment: .leading)
           Text(resource.address ?? "(no address)")
         }
         .contextMenu {
@@ -237,7 +237,7 @@ import SwiftUI
             .bold()
             .font(.system(size: 14))
             .foregroundColor(.secondary)
-            .frame(width: 80, alignment: .leading)
+            .frame(width: 110, alignment: .leading)
           Text(resource.name)
         }
 
