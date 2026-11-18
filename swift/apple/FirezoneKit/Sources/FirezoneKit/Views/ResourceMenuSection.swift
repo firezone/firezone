@@ -49,10 +49,6 @@
             store.configuration.internetResourceEnabled.toggle()
           }
         } else {
-          Button(resource.name) {
-            Clipboard.copy(resource.name)
-          }
-
           if let description = resource.addressDescription {
             if let url = resource.descriptionURL {
               Link(destination: url) {

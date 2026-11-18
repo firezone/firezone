@@ -226,12 +226,11 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
             ),
             ResourceView::Dns(dns) if is_favorite => favorites.add_submenu(
                 &dns.name,
-                resource_submenu(&dns.name, dns.address_description.as_deref(), &dns.address),
+                resource_submenu(dns.address_description.as_deref(), &dns.address),
             ),
             ResourceView::Cidr(cidr) if is_favorite => favorites.add_submenu(
                 &cidr.name,
                 resource_submenu(
-                    &cidr.name,
                     cidr.address_description.as_deref(),
                     &cidr.address.to_string(),
                 ),
@@ -263,8 +262,8 @@ fn internet_resource_submenu(enabled: bool) -> Menu {
     }
 }
 
-fn resource_submenu(name: &str, description: Option<&str>, address: &str) -> Menu {
-    let mut menu = Menu::default().copyable(name);
+fn resource_submenu(description: Option<&str>, address: &str) -> Menu {
+    let mut menu = Menu::default();
 
     if let Some(description) = description.filter(|description| !description.is_empty()) {
         menu.add_item(description_item(description));
@@ -647,7 +646,6 @@ mod tests {
             .add_submenu(
                 "MyCorp GitLab",
                 Menu::default()
-                    .copyable("MyCorp GitLab")
                     .item(
                         Event::Url("https://gitlab.mycorp.com".parse()?),
                         "<https://gitlab.mycorp.com>",
@@ -692,7 +690,6 @@ mod tests {
             .add_submenu(
                 "172.172.0.0/16",
                 Menu::default()
-                    .copyable("172.172.0.0/16")
                     .copyable("cidr resource")
                     .copyable("172.172.0.0/16"),
             )
@@ -739,12 +736,7 @@ mod tests {
             .item(Event::SignOut, SIGN_OUT)
             .separator()
             .disabled(FAVORITE_RESOURCES)
-            .add_submenu(
-                "Git server",
-                Menu::default()
-                    .copyable("Git server")
-                    .copyable("git.example.com"),
-            )
+            .add_submenu("Git server", Menu::default().copyable("git.example.com"))
             .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
