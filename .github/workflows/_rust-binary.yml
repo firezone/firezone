@@ -32,30 +32,13 @@ on:
         value: ${{ format('{0}{1}-{2}-binary', inputs.prefix && format('{0}-', inputs.prefix) || '', inputs.name, inputs.sha || github.sha) }}
       arches:
         description: "The architectures the binary was built for, as a JSON array"
-        value: ${{ jobs.build-arches.outputs.json }}
+        value: '["x86_64","aarch64","armv7"]'
 
 permissions:
   contents: read
 
 jobs:
-  build-arches:
-    runs-on: ubuntu-24.04
-    outputs:
-      json: ${{ steps.arches.outputs.json }}
-    steps:
-      - id: arches
-        env:
-          # Devs are either on amd64 or arm64
-          EXCLUDE: ${{ inputs.stage == 'debug' && 'armv7' || '' }}
-        run: |
-          jq -rn --arg exclude "$EXCLUDE" '[
-            "x86_64",
-            "aarch64", # E.g. AWS Graviton
-            "armv7" # E.g. Raspberry Pi
-          ] | map(select(. != $exclude)) | "json=\(tojson)"' >> "$GITHUB_OUTPUT"
-
   build:
-    needs: build-arches
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -66,7 +49,10 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        arch: ${{ fromJSON(needs.build-arches.outputs.json) }}
+        arch:
+          - x86_64
+          - aarch64 # E.g. AWS Graviton
+          - armv7 # E.g. Raspberry Pi
     env:
       SENTRY_ENVIRONMENT: "production"
       TARGET: ${{ fromJSON('{"x86_64":"x86_64-unknown-linux-musl","aarch64":"aarch64-unknown-linux-musl","armv7":"armv7-unknown-linux-musleabihf"}')[matrix.arch] }}
@@ -146,8 +132,7 @@ jobs:
             > "$BINARY.manifest.json"
           mise install aqua:sigstore/cosign
           mise exec -- cosign sign-blob --yes --bundle "$BINARY.sigstore.json" "$BINARY.manifest.json"
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.prefix && format('{0}-', inputs.prefix) || '' }}${{ inputs.name }}-${{ env.RESOLVED_SHA }}-binary-${{ matrix.arch }}
           path: |

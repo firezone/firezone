@@ -428,7 +428,7 @@ jobs:
   client:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
-    uses: ./.github/workflows/_client.yml
+    uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
       contents: write # create/update GitHub releases

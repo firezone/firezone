@@ -10,7 +10,7 @@ permissions:
 # dispatched ref with images built from that same ref.
 jobs:
   client-perf-images:
-    uses: ./.github/workflows/_client.yml
+    uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
       contents: write # create/update GitHub releases

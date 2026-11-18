@@ -154,8 +154,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Package binary
         run: cp firezone-gateway "$BINARY_DEST_PATH"
-      - name: Azure login (OIDC)
-        if: ${{ github.ref_name == 'main' }}
+      - if: ${{ github.ref_name == 'main' }}
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
@@ -191,8 +190,7 @@ jobs:
             --no-progress \
             --auth-mode login \
             --account-name firezoneartifacts
-      - name: Upload `.deb` artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
           path: rust/${{ env.BINARY_DEST_PATH }}.deb

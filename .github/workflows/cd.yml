@@ -13,7 +13,7 @@ jobs:
   # Builds images that match what's default in docker-compose.yml for
   # local development.
   client-dev-images:
-    uses: ./.github/workflows/_client.yml
+    uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
       contents: write # create/update GitHub releases
@@ -53,7 +53,7 @@ jobs:
 
   # Builds debug images with release binaries for compatibility tests in case the merge_group was skipped.
   client-test-images:
-    uses: ./.github/workflows/_client.yml
+    uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
       contents: write # create/update GitHub releases
@@ -93,7 +93,7 @@ jobs:
 
   # Build data-plane prod images for staging and production environments.
   client-prod-images:
-    uses: ./.github/workflows/_client.yml
+    uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
       contents: write # create/update GitHub releases
@@ -130,7 +130,7 @@ jobs:
 
   # Build data-plane perf images for perf-tests
   client-perf-images:
-    uses: ./.github/workflows/_client.yml
+    uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
       contents: write # create/update GitHub releases
