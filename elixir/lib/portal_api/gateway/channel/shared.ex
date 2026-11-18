@@ -1,6 +1,7 @@
 defmodule PortalAPI.Gateway.Channel.Shared do
   use PortalAPI, :channel
   alias PortalAPI.Gateway.Views
+  alias PortalAPI.Channel.Relays
   alias __MODULE__.Database
 
   alias Portal.{
@@ -12,7 +13,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     PubSub,
     Resource,
     Presence,
-    Routing,
     SchemaHelpers,
     Telemetry
   }
@@ -138,7 +138,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     # Subscribe before selecting relays so no relay presence change is missed.
     :ok = Presence.Relays.subscribe()
-    {:ok, relays} = select_relays(socket)
+    relays = Relays.select(relay_owner(socket))
 
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
@@ -157,7 +157,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         )
 
       # Cache relay IDs and stamp secrets for tracking
-      socket = cache_relays(socket, relays)
+      socket = Relays.cache(socket, relays)
 
       {:noreply, socket}
     end
@@ -193,101 +193,17 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   #### Reacting to relay presence ####
   ####################################
 
-  # Handle relay presence changes from global topic.
-  # Instead of reacting immediately, we debounce by scheduling a delayed check.
-  # This avoids spurious updates during transient relay disconnections.
+  # Relay presence changes are debounced: only the last one in a burst is checked.
   @impl true
   def handle_info(
-        %Phoenix.Socket.Broadcast{
-          event: "presence_diff",
-          topic: "presences:relays" <> _
-        },
+        %Phoenix.Socket.Broadcast{event: "presence_diff", topic: "presences:relays" <> _},
         socket
       ) do
-    # Cancel any existing debounce timer to implement true debouncing
-    # (only the last event in a burst triggers the check)
-    if timer_ref = socket.assigns[:relay_presence_timer_ref] do
-      Process.cancel_timer(timer_ref)
-    end
-
-    # Use a unique reference to identify this timer. When handling the message,
-    # we check if it matches the current ref to prevent processing stale messages
-    # that were already in the mailbox when the timer was cancelled.
-    ref = make_ref()
-    debounce_ms = Portal.Config.get_env(:portal, :relay_presence_debounce_ms, 1_000)
-    timer_ref = Process.send_after(self(), {:check_relay_presence, ref}, debounce_ms)
-
-    socket =
-      socket
-      |> assign(:relay_presence_timer_ref, timer_ref)
-      |> assign(:relay_presence_ref, ref)
-
-    {:noreply, socket}
+    Relays.schedule_check(socket)
   end
 
-  # Debounced relay presence check - queries the CRDT state after the debounce period.
-  # cached_relay_ids is a MapSet of relay IDs we've sent to the gateway.
-  # Presence is keyed by relay ID.
   def handle_info({:check_relay_presence, ref}, socket) do
-    # Only process if the ref matches the current active timer.
-    # This prevents processing stale messages that were already in the mailbox
-    # when Process.cancel_timer/1 was called.
-    if ref != socket.assigns[:relay_presence_ref] do
-      {:noreply, socket}
-    else
-      # Clear the timer references since we're processing now
-      socket =
-        socket
-        |> assign(:relay_presence_timer_ref, nil)
-        |> assign(:relay_presence_ref, nil)
-
-      cached_relay_ids = socket.assigns[:cached_relay_ids] || MapSet.new()
-
-      # Query presence ONCE - use this single snapshot for both determining
-      # disconnected relays and selecting connected relays. This avoids a race
-      # condition where CRDT state changes between queries during rapid
-      # disconnect/reconnect cycles.
-      {:ok, all_online_relays} = Presence.Relays.all_connected_relays()
-      online_relay_ids = MapSet.new(all_online_relays, & &1.id)
-
-      # Find which cached relays are now truly offline (ID no longer in presence)
-      disconnected_ids =
-        cached_relay_ids
-        |> Enum.reject(&MapSet.member?(online_relay_ids, &1))
-        |> Enum.to_list()
-
-      # Send relays_presence if any cached relays are disconnected OR if we have fewer than 2 relays
-      # and more are now available
-      needs_update =
-        disconnected_ids != [] or
-          (MapSet.size(cached_relay_ids) < 2 and not MapSet.subset?(online_relay_ids, cached_relay_ids))
-
-      if needs_update do
-        # Select best relays from the SAME snapshot we used for disconnected_ids
-        location = {
-          socket.assigns.gateway.last_seen_remote_ip_location_lat,
-          socket.assigns.gateway.last_seen_remote_ip_location_lon
-        }
-
-        relays = Routing.select_relays(all_online_relays, location)
-        socket = cache_relays(socket, relays, disconnected_ids)
-
-        push(socket, "relays_presence", %{
-          disconnected_ids: disconnected_ids,
-          connected:
-            Views.Relay.render_many(
-              relays,
-              socket.assigns.gateway,
-              @relay_credentials_expire_at,
-              socket.assigns.gateway.account_id
-            )
-        })
-
-        {:noreply, socket}
-      else
-        {:noreply, socket}
-      end
-    end
+    Relays.check(socket, ref, relay_owner(socket))
   end
 
   ###########################
@@ -734,21 +650,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   def handle_in("no_relays", payload, socket) do
-    {:ok, relays} = select_relays(socket, excluded_relay_ids(payload))
-    socket = cache_relays(socket, relays)
-
-    push(socket, "relays_presence", %{
-      disconnected_ids: [],
-      connected:
-        Views.Relay.render_many(
-          relays,
-          socket.assigns.gateway,
-          @relay_credentials_expire_at,
-          socket.assigns.gateway.account_id
-        )
-    })
-
-    {:noreply, socket}
+    Relays.no_relays(socket, payload, relay_owner(socket))
   end
 
   # Catch-all for unknown messages
@@ -799,41 +701,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     end
   end
 
-  defp select_relays(socket, except_ids \\ []) do
-    {:ok, relays} =
-      Presence.Relays.all_connected_relays(except_ids)
-
-    location = {
-      socket.assigns.gateway.last_seen_remote_ip_location_lat,
-      socket.assigns.gateway.last_seen_remote_ip_location_lon
+  defp relay_owner(socket) do
+    %{
+      device: socket.assigns.gateway,
+      location:
+        {socket.assigns.gateway.last_seen_remote_ip_location_lat,
+         socket.assigns.gateway.last_seen_remote_ip_location_lon},
+      expires_at: @relay_credentials_expire_at
     }
-
-    relays = Routing.select_relays(relays, location)
-
-    {:ok, relays}
   end
-
-  # Every relay we handed out and did not report disconnected: connlib may still
-  # hold an allocation on any of them.
-  defp cache_relays(socket, relays, removed_ids \\ []) do
-    cached_relay_ids =
-      (socket.assigns[:cached_relay_ids] || MapSet.new())
-      |> MapSet.difference(MapSet.new(removed_ids))
-      |> MapSet.union(MapSet.new(relays, fn relay -> relay.id end))
-
-    assign(socket, :cached_relay_ids, cached_relay_ids)
-  end
-
-  defp excluded_relay_ids(%{"excluded_relay_ids" => ids}) when is_list(ids) do
-    Enum.flat_map(ids, fn id ->
-      case Ecto.UUID.cast(id) do
-        {:ok, id} -> [id]
-        :error -> []
-      end
-    end)
-  end
-
-  defp excluded_relay_ids(_payload), do: []
 
   defp init(socket, account, relays) do
     push(socket, "init", %{
@@ -842,12 +718,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
       relays:
-        Views.Relay.render_many(
-          relays,
-          socket.assigns.gateway,
-          @relay_credentials_expire_at,
-          socket.assigns.gateway.account_id
-        ),
+Relays.render(relays, relay_owner(socket)),
       # These aren't used but needed for API compatibility
       config: %{
         ipv4_masquerade_enabled: true,
@@ -872,8 +743,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   defp reinitialize_gateway(socket) do
-    {:ok, relays} = select_relays(socket)
-    socket = cache_relays(socket, relays)
+    relays = Relays.select(relay_owner(socket))
+    socket = Relays.cache(socket, relays)
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
     init(socket, account, relays)
@@ -908,7 +779,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     socket = assign(socket, :account, account)
 
     if old_slug != slug do
-      {:ok, relays} = select_relays(socket)
+      relays = Relays.select(relay_owner(socket))
       init(socket, account, relays)
     end
 
