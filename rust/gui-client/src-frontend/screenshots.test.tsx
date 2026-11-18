@@ -12,6 +12,7 @@ import {
   FileCount,
   GeneralSettingsViewModel,
   LogFilterViewModel,
+  ResourceViewModel,
   SessionViewModel,
   X509Certificate,
   X509DetailField,
@@ -29,8 +30,10 @@ const COLOR_SCHEMES = ["light", "dark"] as const;
 // leaves a field out to render what the user sees before that event arrives.
 interface Screen {
   route: string;
-  click?: string;
+  // The buttons to click, in order.
+  click?: string[];
   session?: SessionViewModel;
+  resources?: ResourceViewModel[];
   generalSettings?: GeneralSettingsViewModel;
   logFilter?: LogFilterViewModel;
   /// The certificate the keystore holds, when the device trust tab is available.
@@ -66,6 +69,183 @@ const logFilter: LogFilterViewModel = {
   log_filter: "info",
   log_filter_is_managed: false,
 };
+
+const signedIn: SessionViewModel = {
+  SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
+};
+
+function device(
+  client_id: string,
+  name: string,
+  tunnel_ipv4: string,
+  tunnel_ipv6: string
+) {
+  return {
+    hostname: `${name}.firezone.network`,
+    tunnel_ipv4,
+    tunnel_ipv6,
+    client_name: name,
+    client_id,
+  };
+}
+
+// The Resources the mock Tunnel service serves (`mock_tunnel.rs`), plus a few that stress
+// the layout.
+const resources: ResourceViewModel[] = [
+  {
+    id: "425233f2-a1cb-4b7d-84f3-850367fa122a",
+    name: "Internet Resource",
+    kind: {
+      type: "Internet",
+      is_enabled: true,
+      connection: { site: "Internet", status: "Online" },
+    },
+  },
+  {
+    id: "0854dca1-2c5b-468a-be85-0eec2f02a211",
+    name: "Engineering wiki",
+    kind: {
+      type: "Dns",
+      address: "wiki.example.com",
+      description: "https://wiki.example.com",
+      is_favorite: true,
+      connection: { site: "Sydney Office", status: "Online" },
+    },
+  },
+  {
+    id: "92da16a4-0eb2-45c2-b882-8573aad73921",
+    name: "Git server",
+    kind: {
+      type: "Dns",
+      address: "git.example.com",
+      description: null,
+      is_favorite: false,
+      connection: { site: "Production Cloud", status: "Unknown" },
+    },
+  },
+  {
+    id: "ed3778b9-dd41-4312-b616-028b0bbaff1c",
+    name: "Internal services",
+    kind: {
+      type: "Dns",
+      address: "*.svc.example.com",
+      description: null,
+      is_favorite: false,
+      connection: { site: "Production Cloud", status: "Unknown" },
+    },
+  },
+  {
+    id: "5b1d1bb5-5b0c-4a53-a4d5-3a9b2c1f7e10",
+    name: "Customer data warehouse (read replica, EU West)",
+    kind: {
+      type: "Dns",
+      address: "warehouse-replica.eu-west-1.analytics.internal.example.com",
+      description: "Read-only. Ask the data team for credentials.",
+      is_favorite: false,
+      connection: { site: "Production Cloud", status: "Online" },
+    },
+  },
+  {
+    id: "be575d17-b0b3-40c9-ac34-e1ec3064d75a",
+    name: "Office network",
+    kind: {
+      type: "Cidr",
+      address: "192.0.2.0/24",
+      description: null,
+      is_favorite: true,
+      connection: { site: "Sydney Office", status: "Online" },
+    },
+  },
+  {
+    id: "8900accd-e39d-4705-ac7c-2189c59b4a1c",
+    name: "Production VPC",
+    kind: {
+      type: "Cidr",
+      address: "198.51.100.0/24",
+      description: null,
+      is_favorite: false,
+      connection: { site: "Production Cloud", status: "Unknown" },
+    },
+  },
+  {
+    id: "6b15c815-cefc-4128-8ab0-d9d6a526bbc7",
+    name: "Lab test bench",
+    kind: {
+      type: "Cidr",
+      address: "203.0.113.0/24",
+      description: null,
+      is_favorite: false,
+      connection: { site: "Hardware Lab", status: "Offline" },
+    },
+  },
+  {
+    id: "c193c2fd-b346-44fb-a7ae-e2b74c492482",
+    name: "Build farm",
+    kind: {
+      type: "DevicePool",
+      is_favorite: false,
+      devices: [
+        device(
+          "47e9e79b-e4eb-4444-af14-ec24c6a2afc2",
+          "build-runner-02",
+          "100.64.7.41",
+          "fd00:2021:1111::29"
+        ),
+        device(
+          "db8221d1-0277-4f05-b0a8-22b32a5a9a46",
+          "build-runner-03",
+          "100.64.7.42",
+          "fd00:2021:1111::2a"
+        ),
+      ],
+    },
+  },
+  {
+    id: "bc643791-3b90-4d41-9cac-753af623f274",
+    name: "Lab hardware",
+    kind: {
+      type: "DevicePool",
+      is_favorite: true,
+      devices: [
+        device(
+          "a21c9663-4d0e-4f4a-a8fa-48790b1e5cef",
+          "bench-controller-01",
+          "100.64.3.18",
+          "fd00:2021:1111::12"
+        ),
+        device(
+          "4a6f80e6-5322-4202-a1ac-1e897aa826a5",
+          "lab-probe-01",
+          "100.64.19.87",
+          "fd00:2021:1111::3c2"
+        ),
+        device(
+          "99fd7f50-02aa-4ebd-aac3-b9b914c4aebb",
+          "lab-probe-02",
+          "100.64.19.88",
+          "fd00:2021:1111::3c3"
+        ),
+        device(
+          "ef39322d-65e2-4dea-af50-6fd4c61a72a6",
+          "sensor-hub-01",
+          "100.64.19.89",
+          "fd00:2021:1111::3c4"
+        ),
+        device(
+          "e8dc5d0d-93ac-4e1b-9532-866dda67ce5b",
+          "vision-rig-01",
+          "100.64.19.86",
+          "fd00:2021:1111::3c1"
+        ),
+      ],
+    },
+  },
+  {
+    id: "4cbe2883-8ed8-4b97-a119-07db08d6aa6c",
+    name: "Shared storage",
+    kind: { type: "DevicePool", is_favorite: false, devices: [] },
+  },
+];
 
 // The subject common name Firezone's MDM integrations provision, from
 // `x509_keystore::SUBJECT_COMMON_NAME`.
@@ -145,11 +325,40 @@ const windowsCertificate: Certificate = {
 const screens: Record<string, Screen> = {
   "overview-signed-out": { route: "/overview", session: "SignedOut" },
   "overview-loading": { route: "/overview", session: "Loading" },
-  "overview-signed-in": {
-    route: "/overview",
-    session: {
-      SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
-    },
+  "overview-signed-in": { route: "/overview", session: signedIn },
+  "resources-signed-out": { route: "/resources", session: "SignedOut" },
+  "resources-empty": { route: "/resources", session: signedIn, resources: [] },
+  resources: { route: "/resources", session: signedIn, resources },
+  "resources-dns": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    click: ["Engineering wiki"],
+  },
+  "resources-offline": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    click: ["Lab test bench"],
+  },
+  "resources-internet": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    click: ["Internet Resource"],
+  },
+  "resources-device-pool": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    click: ["Lab hardware", "bench-controller-01.firezone.network"],
+  },
+  "resources-search": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    input: { label: "Search Resources", value: "production" },
+    click: ["Customer data warehouse"],
   },
   "general-settings": { route: "/general-settings", generalSettings },
   "general-settings-custom": {
@@ -211,12 +420,12 @@ const screens: Record<string, Screen> = {
     route: "/diagnostics",
     logCount: { bytes: 3_400_000, files: 17 },
     logFilter,
-    click: "Clear Logs",
+    click: ["Clear Logs"],
   },
   "settings-reset-confirmation": {
     route: "/general-settings",
     generalSettings,
-    click: "Reset to Defaults",
+    click: ["Reset to Defaults"],
   },
   "diagnostics-managed": {
     route: "/diagnostics",
@@ -299,6 +508,8 @@ for (const [name, screen] of Object.entries(screens)) {
 
       await act(async () => {
         if (screen.session) await events.sessionChanged.emit(screen.session);
+        if (screen.resources)
+          await events.resourcesChanged.emit(screen.resources);
         if (screen.generalSettings)
           await events.generalSettingsChanged.emit(screen.generalSettings);
         if (screen.logFilter)
@@ -325,8 +536,8 @@ for (const [name, screen] of Object.entries(screens)) {
         await settle();
       }
 
-      if (screen.click) {
-        const button = page.getByRole("button", { name: screen.click });
+      for (const name of screen.click ?? []) {
+        const button = page.getByRole("button", { name });
         await act(async () => {
           await button.click();
         });
