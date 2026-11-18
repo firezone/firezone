@@ -30,7 +30,7 @@
     }
   }
 
-  /// Submenu containing resource details, site info, and actions
+  /// Submenu containing resource details and actions
   struct ResourceDetailsSubmenu: View {
     let resource: Resource
     @EnvironmentObject var store: Store
@@ -49,63 +49,29 @@
             store.configuration.internetResourceEnabled.toggle()
           }
         } else {
-          // Show address - clickable if it's a valid URL
-          if let displayAddress = resource.addressDescription ?? resource.address {
-            if let url = URL(string: displayAddress), url.scheme != nil {
-              Link(destination: url) {
-                Text(displayAddress)
-                  .foregroundColor(.blue)
-                  .underline()
-              }
-            } else {
-              Button(displayAddress) {
-                Clipboard.copy(displayAddress)
-              }
-            }
-          }
-
-          Divider()
-
-          Text("Resource")
-            .foregroundStyle(.secondary)
-
           Button(resource.name) {
             Clipboard.copy(resource.name)
           }
 
+          if let description = resource.addressDescription {
+            if let url = resource.descriptionURL {
+              Link(destination: url) {
+                Text(description)
+                  .foregroundColor(.blue)
+                  .underline()
+              }
+            } else {
+              Button(description) {
+                Clipboard.copy(description)
+              }
+            }
+          }
+
           if let address = resource.address {
-            Button("Copy address") {
+            Button(address) {
               Clipboard.copy(address)
             }
           }
-
-          Button(favoriteToggleTitle) {
-            toggleFavorite()
-          }
-        }
-
-        // Site information (if available)
-        if let site = resource.sites.first {
-          Divider()
-
-          Text("Site")
-            .foregroundStyle(.secondary)
-
-          Button(site.name) {
-            Clipboard.copy(site.name)
-          }
-
-          Button {
-            Clipboard.copy(resource.status.toSiteStatus())
-          } label: {
-            HStack {
-              if let icon = resource.status.statusIcon {
-                Image(nsImage: icon)
-              }
-              Text(resource.status.toSiteStatus())
-            }
-          }
-          .help(resource.status.toSiteStatusTooltip())
         }
       }
     }
@@ -113,94 +79,35 @@
     var internetResourceToggleTitle: String {
       store.configuration.internetResourceEnabled ? "Disable this resource" : "Enable this resource"
     }
-
-    var favoriteToggleTitle: String {
-      store.favorites.contains(resource.id) ? "Remove from favorites" : "Add to favorites"
-    }
-
-    func toggleFavorite() {
-      if store.favorites.contains(resource.id) {
-        store.favorites.remove(resource.id)
-      } else {
-        store.favorites.add(resource.id)
-      }
-    }
   }
 
-  /// Main resources section showing favorites and other resources
+  /// The Internet Resource and the favorites, followed by the item that opens the Resources window
   struct ResourcesSection: View {
     @EnvironmentObject var store: Store
-
-    /// Partitioned resources for display.
-    /// If no resources are favorited, all resources show directly in the menu.
-    /// Otherwise, favorites show directly and others go in the "Other Resources" submenu.
-    private var partitionedResources:
-      (
-        internetResource: Resource?,
-        directlyShown: [Resource],
-        others: [Resource]
-      )
-    {
-      let allResources = store.resourceList.asArray()
-
-      // Check if user has favorited anything (excluding internet resource)
-      let hasAnyFavorites = allResources.contains {
-        !$0.isInternetResource() && store.favorites.contains($0.id)
-      }
-
-      return allResources.reduce(
-        into: (internetResource: nil, directlyShown: [], others: [])
-      ) { result, resource in
-        if resource.isInternetResource() {
-          result.internetResource = resource
-        } else if !hasAnyFavorites {
-          // No favorites: show all resources directly
-          result.directlyShown.append(resource)
-        } else if store.favorites.contains(resource.id) {
-          // Has favorites: show only favorites directly
-          result.directlyShown.append(resource)
-        } else {
-          // Has favorites: non-favorites go to submenu
-          result.others.append(resource)
-        }
-      }
-    }
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-      let resources = partitionedResources
+      let sections = ResourceSections(store.resourceList.asArray(), favorites: store.favorites)
 
       Group {
-        // Header text
-        Text(resourcesHeaderText)
-          .foregroundStyle(.secondary)
+        if !sections.favorites.isEmpty {
+          Text("Favorite Resources")
+            .foregroundStyle(.secondary)
+        }
 
-        // Internet resource (always first if present)
-        if let internet = resources.internetResource {
+        if let internet = sections.internet {
           ResourceMenuItem(resource: internet)
         }
 
-        // Directly shown resources (favorites, or all if no favorites)
-        ForEach(resources.directlyShown) { resource in
+        ForEach(sections.favorites) { resource in
           ResourceMenuItem(resource: resource)
         }
 
-        // Other Resources submenu (only when favorites exist and there are non-favorites)
-        if !resources.others.isEmpty {
-          Menu("Other Resources") {
-            ForEach(resources.others) { resource in
-              ResourceMenuItem(resource: resource)
-            }
-          }
+        Button("Resources") {
+          openWindow(id: ResourcesView.windowID)
+          // A menu bar app is not active while its menu is used.
+          NSApp.activate(ignoringOtherApps: true)
         }
-      }
-    }
-
-    var resourcesHeaderText: String {
-      switch store.resourceList {
-      case .loading:
-        return "Loading Resources..."
-      case .loaded(let list):
-        return list.isEmpty ? "No Resources" : "Resources"
       }
     }
   }

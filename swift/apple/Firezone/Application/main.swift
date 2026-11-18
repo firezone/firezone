@@ -72,6 +72,8 @@ import Foundation
   switch FirezoneKit.MockWindow.fromCommandLine() {
   case .main:
     UITestMainApp.main()
+  case .resources:
+    UITestResourcesApp.main()
   case .settings:
     UITestSettingsApp.main()
   case .about:

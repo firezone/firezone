@@ -69,6 +69,16 @@ public struct Resource: Codable, Identifiable, Hashable, Sendable {
   public func isDevicePool() -> Bool {
     self.type == ResourceType.devicePool
   }
+
+  /// The description as a link, when it is a URL with a scheme.
+  var descriptionURL: URL? {
+    guard let addressDescription,
+      let url = URL(string: addressDescription),
+      url.scheme != nil
+    else { return nil }
+
+    return url
+  }
 }
 
 public enum ResourceStatus: String, Codable, Sendable {
@@ -87,22 +97,31 @@ public enum ResourceStatus: String, Codable, Sendable {
     }
   }
 
-  // Longer explanation shown when hovering over the site status menu item
-  public func toSiteStatusTooltip() -> String {
-    switch self {
-    case .offline:
-      return "No healthy Gateways are online in this Site."
-    case .online:
-      return "You're connected to a healthy Gateway in this Site."
-    case .unknown:
-      return """
-        No connection has been attempted to Resources in this Site.
-        Access a Resource to establish a Gateway connection.
-        """
-    }
-  }
-
   #if os(macOS)
+    /// How the Resources window names this status.
+    var label: String {
+      switch self {
+      case .offline:
+        return "Offline"
+      case .online:
+        return "Connected"
+      case .unknown:
+        return "No activity"
+      }
+    }
+
+    /// What the status means for reaching the Resource.
+    var explanation: String {
+      switch self {
+      case .offline:
+        return "No healthy Gateways are online in this Site."
+      case .online:
+        return "You're connected to a healthy Gateway in this Site."
+      case .unknown:
+        return "No connection has been attempted yet. Access the Resource to connect."
+      }
+    }
+
     /// Returns the system status icon for this resource status
     public var statusIcon: NSImage? {
       switch self {

@@ -4,8 +4,8 @@
 //  LICENSE: Apache-2.0
 //
 
-// iOS counterpart of the macOS menu's device pool submenu
-// (see ConnectedDevicesMenuSection.swift). Renders as a list section inside ResourceView.
+// iOS counterpart of the device pool details in the macOS Resources window
+// (see ResourceDetailView.swift). Renders as a list section inside ResourceView.
 
 #if os(iOS)
   import SwiftUI

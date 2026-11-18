@@ -11,7 +11,7 @@
   /// into an "And N more…" row. Mirrors the desktop client's tray (`MAX_DEVICES_INLINE`).
   private let maxDevicesInline = 20
 
-  /// Submenu content of a device pool, listing its connected devices.
+  /// Submenu content of a device pool: the hostname of each connected device, copied on click.
   struct DevicePoolSubmenu: View {
     let devices: [ConnectedDevice]
 
@@ -22,7 +22,9 @@
       } else {
         let visible = devices.prefix(maxDevicesInline)
         ForEach(visible) { device in
-          ConnectedDeviceMenuItem(device: device)
+          Button(device.domain) {
+            Clipboard.copy(device.domain)
+          }
         }
 
         let hidden = devices.count - visible.count
@@ -30,54 +32,6 @@
           Divider()
           Text(hidden == 1 ? "And 1 more device…" : "And \(hidden) more devices…")
             .foregroundStyle(.secondary)
-        }
-      }
-    }
-  }
-
-  /// A single connected device, labelled by slug, with details in a submenu.
-  struct ConnectedDeviceMenuItem: View {
-    let device: ConnectedDevice
-
-    var body: some View {
-      Menu(device.slug) {
-        ConnectedDeviceDetailsSubmenu(device: device)
-      }
-    }
-  }
-
-  /// Copyable details for a connected device: domain, tunnel IPs and client details.
-  struct ConnectedDeviceDetailsSubmenu: View {
-    let device: ConnectedDevice
-
-    var body: some View {
-      Group {
-        Text("Device")
-          .foregroundStyle(.secondary)
-        Button(device.domain) {
-          Clipboard.copy(device.domain)
-        }
-
-        Divider()
-
-        Text("Tunnel IPs")
-          .foregroundStyle(.secondary)
-        Button(device.tunIPv4) {
-          Clipboard.copy(device.tunIPv4)
-        }
-        Button(device.tunIPv6) {
-          Clipboard.copy(device.tunIPv6)
-        }
-
-        Divider()
-
-        Text("Client Details")
-          .foregroundStyle(.secondary)
-        Button(device.id) {
-          Clipboard.copy(device.id)
-        }
-        Button(device.name) {
-          Clipboard.copy(device.name)
         }
       }
     }
