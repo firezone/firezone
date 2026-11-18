@@ -478,6 +478,34 @@ After that, the visible steps: 1.12's callers in the UI, 2.19, 2.21 (Linux
 deploy tabs only until phase 5b), 2.20 with 1.14, 2.23, 2.13. Rust in
 parallel: 0.4, 0.5, the phase 3 drafts, then 5.1 and 5.2.
 
+**Receiving side: one message between portal nodes.** Consolidate to the
+shape `/device/v1` needs, so the unified binary adds an adapter, not a path.
+Today the initiating client channel sends `:create_authorization` to a
+gateway channel, which replies `:connect` once the gateway echoes the signed
+ref, and `:client_device_access_authorized` to a client channel, which
+replies `:device_access_acked` at once. Both become:
+
+- `{:authorize, {pid, ref}, request}` to the receiver's channel. The request
+  carries ids, the cacheable resource, the secrets from `connection_secrets`,
+  the expiry, the policy authorization and the initiator's iceless
+  capability. The receiver renders payloads for its own protocol version,
+  which also ends the client-to-client payload being rendered with the
+  initiator's session.
+- `{:authorized, ref, reply}` back to the initiator: the receiver's id, keys,
+  addresses, name, slug and site, and the resolved `use_iceless`.
+
+The receiver's adapter only picks the ack: the device echoes the signed ref
+(gateways, and every `/device/v1` device) or the channel acks at once
+(clients on `/client` v1 to v3).
+
+Deploys, each after the previous one is fully rolled out:
+
+1. Receivers handle `:authorize` and initiators handle `:authorized`, next to
+   the old messages. Senders do not change.
+2. Senders switch to `:authorize` and `:authorized`.
+3. The old messages and their handlers go. Requests time out after 15
+   seconds, so a few minutes after deploy 2 none are in flight.
+
 ### Phase 0: prep, no behaviour change
 
 - **0.1 Audit: duplicate `firezone_id`.** Done 2026-10-22; figures kept privately. Read-only query listing devices that
