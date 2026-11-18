@@ -49,7 +49,7 @@
             store.configuration.internetResourceEnabled.toggle()
           }
         } else {
-          if let description = resource.addressDescription {
+          if let description = resource.addressDescription, !description.isEmpty {
             if let url = resource.descriptionURL {
               Link(destination: url) {
                 Text(description)

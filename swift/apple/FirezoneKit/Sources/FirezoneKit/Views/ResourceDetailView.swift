@@ -23,7 +23,7 @@
               CopyableRow(label: "Address", value: address)
             }
 
-            if let description = resource.addressDescription {
+            if let description = resource.addressDescription, !description.isEmpty {
               if let url = resource.descriptionURL {
                 LabeledContent("Description") {
                   Link(description, destination: url)
