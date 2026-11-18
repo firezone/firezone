@@ -14,11 +14,11 @@ use super::{
     tunnel_model::PrivateKey,
     tunnel_transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
-use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceView};
 use dns_types::{DomainName, Query, RecordData, RecordType, ResponseCode, prelude::*};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
+use jiff::Timestamp;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -126,7 +126,7 @@ impl RealClient {
         key: PrivateKey,
         is_internet_resource_active: bool,
         now: Instant,
-        utc_now: DateTime<Utc>,
+        utc_now: Timestamp,
     ) -> Vec<Transmit> {
         let dns_resource_records = self.dns_resource_record_cache.clone();
 
@@ -140,10 +140,7 @@ impl RealClient {
             dns_resource_records,
             is_internet_resource_active,
             now,
-            utc_now
-                .signed_duration_since(DateTime::UNIX_EPOCH)
-                .to_std()
-                .unwrap(),
+            Duration::try_from(utc_now.as_duration()).unwrap(),
         );
         state.set_flow_logs_enabled(true);
         let old = std::mem::replace(&mut self.tunnel, RealTunnel::new(state));
@@ -163,7 +160,7 @@ impl RealClient {
         key: PrivateKey,
         is_internet_resource_active: bool,
         now: Instant,
-        utc_now: DateTime<Utc>,
+        utc_now: Timestamp,
     ) {
         self.dns_resource_record_cache.clear();
         self.dns_records.clear();
