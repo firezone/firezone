@@ -79,7 +79,9 @@
         } header: {
           Text("Connection")
         } footer: {
+          // macOS 15 otherwise pushes the footer to the trailing edge.
           Text(resource.status.explanation)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
     }

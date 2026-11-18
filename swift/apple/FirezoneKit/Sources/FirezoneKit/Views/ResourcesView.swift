@@ -113,10 +113,16 @@
 
     var body: some View {
       HStack(spacing: 8) {
-        // Device pools have no status, and keep the space so that the names line up.
-        ResourceStatusIcon(status: resource.status)
-          .opacity(resource.isDevicePool() ? 0 : 1)
-          .accessibilityHidden(resource.isDevicePool())
+        if resource.isDevicePool() {
+          // Device pools have no status. As wide as the status dot, so that the names line up.
+          Image(systemName: "desktopcomputer")
+            .imageScale(.small)
+            .foregroundStyle(.secondary)
+            .frame(width: 16)
+            .accessibilityHidden(true)
+        } else {
+          ResourceStatusIcon(status: resource.status)
+        }
 
         VStack(alignment: .leading, spacing: 2) {
           Text(resource.name)
