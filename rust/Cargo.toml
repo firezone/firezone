@@ -85,6 +85,7 @@ license = "Apache-2.0"
 edition = "2024"
 
 [workspace.dependencies]
+accesskit = "0.25.1"
 admx-macro = { path = "gui-client/src-admx-macro" }
 afl = "0.18.2"
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
@@ -142,6 +143,8 @@ flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }
 flow-tracker = { path = "libs/connlib/flow-tracker" }
 foldhash = "0.2.0"
+freya = { version = "=0.6.0-alpha.1", default-features = false, features = ["winit", "gpu", "accessibility", "platform-text-gamma"] }
+freya-testing = "=0.6.0-alpha.1"
 frostlink = { path = "libs/connlib/frostlink" }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
@@ -242,8 +245,6 @@ smoltcp = { version = "0.14.0", default-features = false }
 snownet = { path = "libs/connlib/snownet" }
 socket-factory = { path = "libs/connlib/socket-factory" }
 socket2 = { version = "0.6.4" }
-specta = "=2.0.0-rc.22"
-specta-typescript = "0.0.9"
 str0m-proto = "0.7"
 strum = { version = "0.28.0", features = ["derive"] }
 stun_codec = "0.4.0"
@@ -251,11 +252,6 @@ subprocess = "1.1.0"
 subtle = "2.5.0"
 supports-color = "3.0.2"
 syn = "3.0.0"
-tauri = "2.12.0"
-tauri-build = { version = "2.7.0", default-features = false }
-tauri-plugin-opener = "2.7.0"
-tauri-runtime = "2.12.0"
-tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 telemetry = { path = "libs/telemetry" }
 tempfile = "3.26.0"
 test-case = "3.3.1"

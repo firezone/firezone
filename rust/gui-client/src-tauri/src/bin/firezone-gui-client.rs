@@ -44,7 +44,7 @@ fn main() -> ExitCode {
         telemetry::configure(Arc::new(socket_factory::tcp));
 
         // Start telemetry in `entrypoint` mode so that crashes during settings
-        // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
+        // load, GUI setup, IPC connect, or the Hello-wait window are captured.
         // The controller re-targets it at the real environment once `Hello`
         // arrives; we flush on every exit path below.
         telemetry::start(
@@ -206,17 +206,6 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         Ok(()) => {}
         Err(anyhow) => {
             if cli.no_error_dialog {
-                return Err(anyhow);
-            }
-
-            if anyhow
-                .chain()
-                .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
-                .is_some_and(|e| matches!(e, tauri_runtime::Error::CreateWebview(_)))
-            {
-                dialog::error(
-                    "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-gui-client>.",
-                )?;
                 return Err(anyhow);
             }
 
@@ -386,7 +375,7 @@ enum Cmd {
     #[command(hide = true)]
     SetAutostart(SetAutostartArgs),
     /// Drive only the launch-lock + GUI IPC handshake — no controller, no
-    /// auth, no tunnel-service IPC, no Tauri UI. Two invocations exercise
+    /// auth, no tunnel-service IPC, no GUI. Two invocations exercise
     /// the single-instance hand-off end to end:
     ///
     /// - First invocation: acquires the lock, binds the GUI pipe, prints

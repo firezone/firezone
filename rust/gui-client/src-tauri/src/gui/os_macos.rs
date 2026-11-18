@@ -1,4 +1,4 @@
-//! This file is a stub only to do Tauri UI dev natively on a Mac.
+//! This file is a stub only to do UI dev natively on a Mac.
 use anyhow::Result;
 
 pub async fn set_autostart(_enabled: bool) -> Result<()> {

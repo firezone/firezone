@@ -2,7 +2,7 @@
 //!
 //! ksni speaks the tray D-Bus protocols directly, so it can attach per-item
 //! `icon-data` (a PNG) — letting GNOME (with the AppIndicator extension) and
-//! KDE render the colored Site-status dots, which Tauri's `libappindicator`
+//! KDE render the colored Site-status dots, which `libappindicator`
 //! path could not. Stock icon themes only ship monochrome *symbolic* status
 //! icons, so rather than a themed `icon-name` we embed our own PNGs — the same
 //! green/red/grey assets the Windows tray uses.
