@@ -1175,6 +1175,26 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "What best describes your role?"
     end
 
+    test "the dead and connected renders show the questions in the same order", %{conn: conn} do
+      conn = get(conn, ~p"/sign_up/email")
+      dead_order = survey_order(html_response(conn, 200))
+
+      {:ok, _lv, html} = live(recycle(conn), ~p"/sign_up/email")
+
+      assert survey_order(html) == dead_order
+      assert Enum.sort(dead_order) == ~w[motivation referral_source role switching use_case]
+    end
+
+    test "different browsers see the questions in different orders" do
+      orders =
+        for _ <- 1..20, uniq: true do
+          {:ok, _lv, html} = live(build_conn(), ~p"/sign_up/email")
+          survey_order(html)
+        end
+
+      assert length(orders) > 1
+    end
+
     test "unanswered questions keep the form with errors", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
@@ -1541,5 +1561,11 @@ defmodule PortalWeb.SignUpTest do
     assert job.args == %{"account_id" => account.id, "actor_id" => actor.id}
     delay = DateTime.diff(job.scheduled_at, DateTime.utc_now(), :second)
     assert_in_delta delay, 15 * 60, 60
+  end
+
+  defp survey_order(html) do
+    ~r/<select[^>]*name="registration\[sign_up_survey\]\[(\w+)\]"/
+    |> Regex.scan(html, capture: :all_but_first)
+    |> List.flatten()
   end
 end
