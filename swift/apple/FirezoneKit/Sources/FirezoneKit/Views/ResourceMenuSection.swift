@@ -81,7 +81,8 @@
     }
   }
 
-  /// The Internet Resource and the favorites, followed by the item that opens the Resources window
+  /// The Internet Resource and the favorites, then the item that opens the Resources window,
+  /// which leads the items below it.
   struct ResourcesSection: View {
     @EnvironmentObject var store: Store
     @Environment(\.openWindow) private var openWindow
@@ -101,6 +102,10 @@
 
         ForEach(sections.favorites) { resource in
           ResourceMenuItem(resource: resource)
+        }
+
+        if sections.internet != nil || !sections.favorites.isEmpty {
+          Divider()
         }
 
         Button("Resources") {
