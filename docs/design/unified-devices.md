@@ -423,6 +423,15 @@ sites created automatically) wait for customer evidence. Devices in several
 sites (2.10 as a list, 2.12, lifting the one-site rule from #16288) is a
 constraint change, not a new entity, and waits for a decision.
 
+When devices can be in several sites, a site-token connect must still find a
+gateway only through its home site, the site of the token it connects with.
+Sites an admin adds only affect routing. The gateways flagged
+`firezone_id_exempt` are mostly cloned VMs that share a `firezone_id` across
+sites. Each needs its own row: never merge them, and never widen the lookup to
+every site a device routes for, or both clones resolve to one row and the
+legacy socket refuses the second (first-wins). The same rule is a comment on
+`find_gateway` in `PortalAPI.Gateway.Socket`.
+
 Steps still open, in order, each one deploy:
 
 - Admin UI: 1.12, 2.19, 2.21 (Linux deploy tabs only until phase 5b), then
