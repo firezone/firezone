@@ -95,6 +95,30 @@ async setForceRelayedConnections(enabled: boolean) : Promise<Result<null, Error>
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async setFavorite(resourceId: string, favorite: boolean) : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_favorite", { resourceId, favorite }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setInternetResourceEnabled(enabled: boolean) : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_internet_resource_enabled", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async copyToClipboard(text: string) : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("copy_to_clipboard", { text }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -106,6 +130,7 @@ developerSettingsChanged: DeveloperSettingsChanged,
 generalSettingsChanged: GeneralSettingsChanged,
 logFilterChanged: LogFilterChanged,
 logsRecounted: LogsRecounted,
+resourcesChanged: ResourcesChanged,
 sessionChanged: SessionChanged,
 x509CertificateChanged: X509CertificateChanged
 }>({
@@ -113,6 +138,7 @@ developerSettingsChanged: "developer-settings-changed",
 generalSettingsChanged: "general-settings-changed",
 logFilterChanged: "log-filter-changed",
 logsRecounted: "logs-recounted",
+resourcesChanged: "resources-changed",
 sessionChanged: "session-changed",
 x509CertificateChanged: "x509-certificate-changed"
 })
@@ -132,6 +158,18 @@ auth_url?: string | null;
  * Only used for [`ControlPlane::Custom`].
  */
 api_url?: string | null }
+/**
+ * A device of a device pool that the Client is connected to.
+ */
+export type ConnectedDevice = { hostname: string; tunnel_ipv4: string; tunnel_ipv6: string; client_name: string; client_id: string }
+/**
+ * The connection to the Site that serves a Resource.
+ */
+export type Connection = { site: string | null; status: ConnectionStatus }
+/**
+ * Mirrors [`ResourceStatus`].
+ */
+export type ConnectionStatus = "Unknown" | "Online" | "Offline"
 /**
  * The control plane a client signs in to: a Firezone Cloud deployment, or [`ControlPlane::Custom`] for any other URLs.
  */
@@ -157,6 +195,12 @@ signed_in_with: SignInSettingsViewModel | null }
 export type LogFilterChanged = LogFilterViewModel
 export type LogFilterViewModel = { log_filter: string; log_filter_is_managed: boolean }
 export type LogsRecounted = FileCount
+export type ResourceKind = { type: "Dns"; address: string; description: string | null; is_favorite: boolean; connection: Connection } | { type: "Cidr"; address: string; description: string | null; is_favorite: boolean; connection: Connection } | { type: "Internet"; is_enabled: boolean; connection: Connection } | { type: "DevicePool"; is_favorite: boolean; devices: ConnectedDevice[] }
+export type ResourceViewModel = { id: string; name: string; kind: ResourceKind }
+/**
+ * The Resources of the session, [`None`] while not signed in.
+ */
+export type ResourcesChanged = ResourceViewModel[] | null
 export type SessionChanged = SessionViewModel
 export type SessionViewModel = { SignedIn: { account_slug: string; actor_name: string } } | "Loading" | "SignedOut"
 export type SignInSettingsViewModel = { account_slug: string; control_plane: ControlPlane; auth_url: string; api_url: string }

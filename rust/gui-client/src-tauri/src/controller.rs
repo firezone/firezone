@@ -8,7 +8,7 @@ use crate::{
         DeveloperSettingsViewModel, GeneralSettings, MdmSettings, SignInSettings,
     },
     updates, uptime,
-    view::{ClientSettingsForm, SessionViewModel},
+    view::{ClientSettingsForm, ResourceViewModel, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
 use client_ipc::{self as ipc, SocketId};
@@ -81,6 +81,7 @@ pub struct Controller<I: GuiIntegration> {
 
 pub trait GuiIntegration {
     fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()>;
+    fn notify_resources_changed(&self, resources: Option<Vec<ResourceViewModel>>) -> Result<()>;
     fn notify_settings_changed(
         &self,
         mdm_settings: MdmSettings,
@@ -125,6 +126,7 @@ pub trait GuiIntegration {
         signed_in_with: Option<SignInSettings>,
     ) -> Result<()>;
     fn show_about_page(&self) -> Result<()>;
+    fn show_resources_page(&self) -> Result<()>;
 }
 
 #[derive(strum::Display)]
@@ -149,6 +151,12 @@ pub enum ControllerRequest {
     ResetConnlib,
     SetDeveloperSettingsUnlocked(bool),
     SetForceRelayedConnections(bool),
+    SetFavorite {
+        resource: ResourceId,
+        favorite: bool,
+    },
+    SetInternetResourceEnabled(bool),
+    CopyToClipboard(String),
 }
 
 // The failure flags are all mutually exclusive
@@ -345,7 +353,7 @@ impl<I: GuiIntegration> Controller<I> {
         self.refresh_ui_state();
 
         if !ran_before::get().await? || !self.general_settings.start_minimized {
-            let (_, session_view_model) = self.build_ui_state();
+            let (_, session_view_model, _) = self.build_ui_state();
 
             self.integration.show_overview_page(&session_view_model)?;
             self.reload_device_trust().await?;
@@ -671,18 +679,30 @@ impl<I: GuiIntegration> Controller<I> {
                     .open_url(url.expose_secret())
                     .context("Couldn't open auth page")?;
             }
-            SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
-                self.general_settings.favorite_resources.insert(resource_id);
+            SetFavorite {
+                resource,
+                favorite: true,
+            } => {
+                self.general_settings.favorite_resources.insert(resource);
+                self.refresh_favorite_resources().await?;
+            }
+            SetFavorite {
+                resource,
+                favorite: false,
+            } => {
+                self.general_settings.favorite_resources.remove(&resource);
                 self.refresh_favorite_resources().await?;
             }
             SystemTrayMenu(system_tray::Event::AdminPortal) => self
                 .integration
                 .open_url(self.auth_url())
                 .context("Couldn't open auth page")?,
-            SystemTrayMenu(system_tray::Event::Copy(s)) => arboard::Clipboard::new()
-                .context("Couldn't access clipboard")?
-                .set_text(s)
-                .context("Couldn't copy resource URL or other text to clipboard")?,
+            CopyToClipboard(s) | SystemTrayMenu(system_tray::Event::Copy(s)) => {
+                arboard::Clipboard::new()
+                    .context("Couldn't access clipboard")?
+                    .set_text(s)
+                    .context("Couldn't copy resource URL or other text to clipboard")?
+            }
             SystemTrayMenu(system_tray::Event::CancelSignIn) => match &self.status {
                 Status::Disconnected | Status::WaitingForPortal => {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
@@ -699,21 +719,19 @@ impl<I: GuiIntegration> Controller<I> {
                     self.sign_out().await?;
                 }
             },
-            SystemTrayMenu(system_tray::Event::RemoveFavorite(resource_id)) => {
-                self.general_settings
-                    .favorite_resources
-                    .remove(&resource_id);
-                self.refresh_favorite_resources().await?;
-            }
             SystemTrayMenu(system_tray::Event::EnableInternetResource) => {
                 self.set_internet_resource_enabled(true).await?;
             }
             SystemTrayMenu(system_tray::Event::DisableInternetResource) => {
                 self.set_internet_resource_enabled(false).await?;
             }
+            SetInternetResourceEnabled(enabled) => {
+                self.set_internet_resource_enabled(enabled).await?;
+            }
             SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
                 match window {
                     system_tray::Window::About => self.integration.show_about_page()?,
+                    system_tray::Window::Resources => self.integration.show_resources_page()?,
                     system_tray::Window::Settings => self.integration.show_settings_page(
                         self.mdm_settings.clone(),
                         self.general_settings.clone(),
@@ -974,7 +992,7 @@ impl<I: GuiIntegration> Controller<I> {
                 gui_ipc::ServerMsg::Ack
             }
             gui_ipc::ClientMsg::NewInstance => {
-                let (_, session_view_model) = self.build_ui_state();
+                let (_, session_view_model, _) = self.build_ui_state();
 
                 self.integration.show_overview_page(&session_view_model)?;
                 self.reload_device_trust().await?;
@@ -1194,12 +1212,19 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    fn build_ui_state(&self) -> (system_tray::ConnlibState, SessionViewModel) {
+    fn build_ui_state(
+        &self,
+    ) -> (
+        system_tray::ConnlibState,
+        SessionViewModel,
+        Option<Vec<ResourceViewModel>>,
+    ) {
         // A browser round-trip is in flight, which is the one state connlib knows nothing about.
         if self.auth.ongoing_request().is_some() {
             return (
                 system_tray::ConnlibState::WaitingForBrowser,
                 SessionViewModel::Loading,
+                None,
             );
         }
 
@@ -1207,10 +1232,12 @@ impl<I: GuiIntegration> Controller<I> {
             Status::Disconnected => (
                 system_tray::ConnlibState::SignedOut,
                 SessionViewModel::SignedOut,
+                None,
             ),
             Status::Quitting => (
                 system_tray::ConnlibState::Quitting,
                 SessionViewModel::Loading,
+                None,
             ),
             Status::TunnelReady { resources } => match &self.connected_as {
                 Some(connected) => (
@@ -1224,26 +1251,41 @@ impl<I: GuiIntegration> Controller<I> {
                         account_slug: connected.account_slug.clone(),
                         actor_name: connected.actor_name.clone(),
                     },
+                    Some(
+                        resources
+                            .iter()
+                            .map(|resource| {
+                                ResourceViewModel::new(
+                                    resource,
+                                    &self.general_settings.favorite_resources,
+                                    self.general_settings.internet_resource_enabled(),
+                                )
+                            })
+                            .collect(),
+                    ),
                 ),
                 None => (
                     system_tray::ConnlibState::WaitingForPortal,
                     SessionViewModel::Loading,
+                    None,
                 ),
             },
             Status::WaitingForPortal => (
                 system_tray::ConnlibState::WaitingForPortal,
                 SessionViewModel::Loading,
+                None,
             ),
             Status::WaitingForTunnel => (
                 system_tray::ConnlibState::WaitingForTunnel,
                 SessionViewModel::Loading,
+                None,
             ),
         }
     }
 
     /// Refreshes our UI state (i.e. tray-menu and GUI).
     fn refresh_ui_state(&mut self) {
-        let (connlib, session_view_model) = self.build_ui_state();
+        let (connlib, session_view_model, resources) = self.build_ui_state();
 
         self.integration.set_tray_menu(system_tray::AppState {
             connlib,
@@ -1256,6 +1298,9 @@ impl<I: GuiIntegration> Controller<I> {
         });
         if let Err(e) = self.integration.notify_session_changed(&session_view_model) {
             tracing::warn!("Failed to send notify session change: {e:#}")
+        }
+        if let Err(e) = self.integration.notify_resources_changed(resources) {
+            tracing::warn!("Failed to send notify resources change: {e:#}")
         }
     }
 
@@ -1550,6 +1595,7 @@ mod tests {
     use parking_lot::{Mutex, MutexGuard};
 
     use super::*;
+    use crate::view::{Connection, ConnectionStatus, ResourceKind};
 
     #[tokio::test]
     async fn fails_without_receiving_hello() {
@@ -1650,7 +1696,11 @@ mod tests {
         // Startup shows the overview page.
         mock_tunnel.rx_reload_x509().await;
 
-        for window in [system_tray::Window::Settings, system_tray::Window::About] {
+        for window in [
+            system_tray::Window::Settings,
+            system_tray::Window::About,
+            system_tray::Window::Resources,
+        ] {
             test_controller
                 .ctrl_tx
                 .send(ControllerRequest::SystemTrayMenu(
@@ -1848,6 +1898,46 @@ mod tests {
             matches!(msg, service::ClientMsg::SetInternetResourceState(true)),
             "expected `SetInternetResourceState(true)` but got {msg:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn favoriting_a_resource_marks_it_in_the_resources_view() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        test_controller.sign_in().await;
+        mock_tunnel.start_ok().await;
+        mock_tunnel.send_connected_to_portal("firezone").await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SetFavorite {
+                resource: ResourceId::from_u128(1),
+                favorite: true,
+            })
+            .await
+            .unwrap();
+
+        let favorite = ResourceViewModel {
+            id: "00000000-0000-0000-0000-000000000001".to_owned(),
+            name: "foo.example.com".to_owned(),
+            kind: ResourceKind::Dns {
+                address: "foo.example.com".to_owned(),
+                description: None,
+                is_favorite: true,
+                connection: Connection {
+                    site: Some("Example Site".to_owned()),
+                    status: ConnectionStatus::Offline,
+                },
+            },
+        };
+        test_controller
+            .wait_integration(|i| {
+                (i.resources.last()? == &Some(vec![favorite.clone()])).then_some(())
+            })
+            .await;
     }
 
     #[tokio::test]
@@ -2954,6 +3044,7 @@ mod tests {
     #[derive(Default)]
     struct MockIntegration {
         sessions: Vec<SessionViewModel>,
+        resources: Vec<Option<Vec<ResourceViewModel>>>,
         mdm_settings: Vec<MdmSettings>,
         general_settings: Vec<GeneralSettings>,
         developer_settings: Vec<DeveloperSettingsViewModel>,
@@ -2970,6 +3061,7 @@ mod tests {
         shown_overview_page: Vec<SessionViewModel>,
         shown_settings_page: Vec<(MdmSettings, GeneralSettings, AdvancedSettings)>,
         shown_about_page: Vec<()>,
+        shown_resources_page: Vec<()>,
         tray_menu_opens: Vec<()>,
         tray_menu_closes: Vec<()>,
     }
@@ -2983,6 +3075,15 @@ mod tests {
     impl GuiIntegration for Arc<Mutex<MockIntegration>> {
         fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
             self.lock().sessions.push(session.clone());
+
+            Ok(())
+        }
+
+        fn notify_resources_changed(
+            &self,
+            resources: Option<Vec<ResourceViewModel>>,
+        ) -> Result<()> {
+            self.lock().resources.push(resources);
 
             Ok(())
         }
@@ -3098,6 +3199,12 @@ mod tests {
 
         fn show_about_page(&self) -> Result<()> {
             self.lock().shown_about_page.push(());
+
+            Ok(())
+        }
+
+        fn show_resources_page(&self) -> Result<()> {
+            self.lock().shown_resources_page.push(());
 
             Ok(())
         }

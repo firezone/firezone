@@ -1,9 +1,16 @@
-use std::{path::PathBuf, time::Duration};
+use std::{
+    collections::HashSet,
+    net::{Ipv4Addr, Ipv6Addr},
+    path::PathBuf,
+    time::Duration,
+};
 
 use anyhow::{Context as _, Result};
+use connlib_model::{ConnectedDeviceView, ResourceId, ResourceStatus, ResourceView};
 use logging::err_with_src;
 use serde::Serialize;
 use tauri_plugin_dialog::DialogExt as _;
+use tunnel_proto::dns::DEVICE_DOMAIN;
 
 use crate::{
     controller::ControllerRequest,
@@ -151,6 +158,136 @@ pub enum SessionViewModel {
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct SessionChanged(pub SessionViewModel);
+
+/// The Resources of the session, [`None`] while not signed in.
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct ResourcesChanged(pub Option<Vec<ResourceViewModel>>);
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+pub struct ResourceViewModel {
+    pub id: String,
+    pub name: String,
+    pub kind: ResourceKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(tag = "type")]
+pub enum ResourceKind {
+    Dns {
+        address: String,
+        description: Option<String>,
+        is_favorite: bool,
+        connection: Connection,
+    },
+    Cidr {
+        address: String,
+        description: Option<String>,
+        is_favorite: bool,
+        connection: Connection,
+    },
+    Internet {
+        is_enabled: bool,
+        connection: Connection,
+    },
+    DevicePool {
+        is_favorite: bool,
+        devices: Vec<ConnectedDevice>,
+    },
+}
+
+/// The connection to the Site that serves a Resource.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+pub struct Connection {
+    pub site: Option<String>,
+    pub status: ConnectionStatus,
+}
+
+/// Mirrors [`ResourceStatus`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+pub enum ConnectionStatus {
+    Unknown,
+    Online,
+    Offline,
+}
+
+/// A device of a device pool that the Client is connected to.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+pub struct ConnectedDevice {
+    pub hostname: String,
+    pub tunnel_ipv4: Ipv4Addr,
+    pub tunnel_ipv6: Ipv6Addr,
+    pub client_name: String,
+    pub client_id: String,
+}
+
+impl ResourceViewModel {
+    pub fn new(
+        resource: &ResourceView,
+        favorites: &HashSet<ResourceId>,
+        internet_resource_enabled: bool,
+    ) -> Self {
+        let is_favorite = favorites.contains(&resource.id());
+        let description = resource
+            .address_description()
+            .filter(|description| !description.is_empty())
+            .map(str::to_owned);
+        let connection = Connection {
+            site: resource.sites().first().map(|site| site.name.clone()),
+            status: ConnectionStatus::from(resource.status()),
+        };
+
+        let kind = match resource {
+            ResourceView::Dns(dns) => ResourceKind::Dns {
+                address: dns.address.clone(),
+                description,
+                is_favorite,
+                connection,
+            },
+            ResourceView::Cidr(cidr) => ResourceKind::Cidr {
+                address: cidr.address.to_string(),
+                description,
+                is_favorite,
+                connection,
+            },
+            ResourceView::Internet(_) => ResourceKind::Internet {
+                is_enabled: internet_resource_enabled,
+                connection,
+            },
+            ResourceView::DevicePool(pool) => ResourceKind::DevicePool {
+                is_favorite,
+                devices: pool.devices.iter().map(ConnectedDevice::from).collect(),
+            },
+        };
+
+        Self {
+            id: resource.id().to_string(),
+            name: resource.name().to_owned(),
+            kind,
+        }
+    }
+}
+
+impl From<ResourceStatus> for ConnectionStatus {
+    fn from(status: ResourceStatus) -> Self {
+        match status {
+            ResourceStatus::Unknown => Self::Unknown,
+            ResourceStatus::Online => Self::Online,
+            ResourceStatus::Offline => Self::Offline,
+        }
+    }
+}
+
+impl From<&ConnectedDeviceView> for ConnectedDevice {
+    fn from(device: &ConnectedDeviceView) -> Self {
+        Self {
+            hostname: format!("{}.{DEVICE_DOMAIN}", device.slug),
+            tunnel_ipv4: device.tun_ipv4,
+            tunnel_ipv6: device.tun_ipv6,
+            client_name: device.name.clone(),
+            client_id: device.id.to_string(),
+        }
+    }
+}
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
@@ -420,6 +557,50 @@ pub async fn set_force_relayed_connections(
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn set_favorite(
+    managed: tauri::State<'_, Managed>,
+    resource_id: String,
+    favorite: bool,
+) -> Result<(), Error> {
+    let resource = resource_id
+        .parse::<ResourceId>()
+        .context("Invalid Resource ID")?;
+
+    managed
+        .send_request(ControllerRequest::SetFavorite { resource, favorite })
+        .await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_internet_resource_enabled(
+    managed: tauri::State<'_, Managed>,
+    enabled: bool,
+) -> Result<(), Error> {
+    managed
+        .send_request(ControllerRequest::SetInternetResourceEnabled(enabled))
+        .await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn copy_to_clipboard(
+    managed: tauri::State<'_, Managed>,
+    text: String,
+) -> Result<(), Error> {
+    managed
+        .send_request(ControllerRequest::CopyToClipboard(text))
+        .await?;
+
+    Ok(())
+}
+
 #[derive(Debug, specta::Type, Serialize)]
 pub struct Error(String);
 
@@ -437,6 +618,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .events(tauri_specta::collect_events![
             SessionChanged,
+            ResourcesChanged,
             GeneralSettingsChanged,
             LogFilterChanged,
             DeveloperSettingsChanged,
@@ -455,6 +637,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             reset_connlib,
             set_developer_settings_unlocked,
             set_force_relayed_connections,
+            set_favorite,
+            set_internet_resource_enabled,
+            copy_to_clipboard,
         ])
         .typ::<Error>()
 }
