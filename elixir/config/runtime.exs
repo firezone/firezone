@@ -116,12 +116,10 @@ if config_env() == :prod do
          ] ++ direct_pool_base_opts
 
   config :portal, Portal.ChangeLogs.Consumer,
-    enabled: env_var_to_config!(:change_logs_replication_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name)
 
   config :portal, Portal.Changes.Consumer,
-    enabled: env_var_to_config!(:changes_replication_enabled),
     region: env_var_to_config!(:region),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
     publication_name: env_var_to_config!(:database_changes_publication_name)
@@ -233,6 +231,12 @@ if config_env() == :prod do
 
   config :portal, slug_registry_table_url: env_var_to_config!(:slug_registry_table_url)
 
+  config :portal,
+    region_transfer_outbox_url: env_var_to_config!(:region_transfer_outbox_url),
+    region_transfer_inbox_url: env_var_to_config!(:region_transfer_inbox_url)
+
+  config :portal, avatars_container_url: env_var_to_config!(:avatars_container_url)
+
   # Shared cookie and proxy config (used by both Web and API endpoints)
   config :portal,
     cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
@@ -261,6 +265,9 @@ if config_env() == :prod do
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
 
+    # Log an error when outbound emails stop getting delivery reports
+    {"* * * * *", Portal.Workers.CheckOutboundEmailDeliveryLag},
+
     # Delete policy_authorizations whose device postures stopped holding
     {"*/15 * * * *", Portal.Workers.DeleteStalePostureAuthorizations},
 
@@ -273,6 +280,9 @@ if config_env() == :prod do
     # Release registry slugs this region no longer holds locally: a claim whose
     # local write rolled back, or the slugs of a deleted account
     {"*/30 * * * *", Portal.Workers.SweepSlugRegistry},
+
+    # Delete profile photos that no identity links to any more
+    {"30 4 * * *", Portal.Avatars.Prune},
 
     # Schedule Entra directory sync daily; Graph change notifications cover
     # the hours in between
@@ -673,25 +683,54 @@ if config_env() == :prod do
   ##### PortalOps Endpoint ######
   ###############################
 
-  config :portal, PortalOps.Endpoint,
-    http: [
-      ip: env_var_to_config!(:phoenix_listen_address).address,
-      port: env_var_to_config!(:phoenix_http_ops_port),
-      http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-    ],
-    url: [
-      scheme: "http",
-      host: "localhost",
-      port: env_var_to_config!(:phoenix_http_ops_port),
-      path: nil
-    ],
-    secret_key_base: env_var_to_config!(:ops_secret_key_base),
-    live_view: [
-      signing_salt: env_var_to_config!(:ops_live_view_signing_salt)
-    ],
-    check_origin: [
-      "//#{env_var_to_config!(:ops_websocket_origin)}:#{env_var_to_config!(:ops_websocket_port)}"
-    ]
+  ops_https =
+    case env_var_to_config(:phoenix_https_ops_port) do
+      nil ->
+        []
+
+      port ->
+        sni_hosts = env_var_to_config!(:phoenix_https_ops_sni_hosts)
+
+        if sni_hosts == %{} do
+          raise "PHOENIX_HTTPS_OPS_SNI_HOSTS must be set when PHOENIX_HTTPS_OPS_PORT is set"
+        end
+
+        [
+          https: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: port,
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options),
+            thousand_island_options: [
+              transport_options: [sni_fun: Portal.TLS.sni_fun(sni_hosts, nil)]
+            ]
+          ]
+        ]
+    end
+
+  config :portal,
+         PortalOps.Endpoint,
+         ops_https ++
+           [
+             http: [
+               ip: env_var_to_config!(:phoenix_listen_address).address,
+               port: env_var_to_config!(:phoenix_http_ops_port),
+               http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+             ],
+             # The address people reach, used in links such as sign-up review emails.
+             url: [
+               scheme: if(ops_https == [], do: "http", else: "https"),
+               host: env_var_to_config!(:ops_websocket_origin),
+               port: env_var_to_config!(:ops_websocket_port),
+               path: nil
+             ],
+             secret_key_base: env_var_to_config!(:ops_secret_key_base),
+             live_view: [
+               signing_salt: env_var_to_config!(:ops_live_view_signing_salt)
+             ],
+             check_origin: [
+               "//#{env_var_to_config!(:ops_websocket_origin)}:#{env_var_to_config!(:ops_websocket_port)}"
+             ]
+           ]
 
   ###############################
   ##### Third-party configs #####
@@ -769,6 +808,9 @@ if config_env() == :prod do
   config :portal, Portal.Mailer.InternalEmail,
     recipient: env_var_to_config!(:feedback_email_recipient)
 
+  config :portal, Portal.Workers.SignUpReviewRequest,
+    approvers: env_var_to_config!(:sign_up_review_approvers)
+
   config :portal, Portal.Workers.SignUpFollowUp,
     from_email: env_var_to_config(:sign_up_follow_up_from_email),
     bcc_email: env_var_to_config(:sign_up_follow_up_bcc_email)
@@ -798,6 +840,11 @@ if config_env() == :prod do
            adapter: env_var_to_config!(:outbound_email_adapter),
            from_email: env_var_to_config!(:outbound_email_from)
          ] ++ env_var_to_config!(:outbound_email_adapter_opts)
+
+  config :portal,
+    yc_deal_webhook_secrets: env_var_to_config!(:yc_deal_webhook_secrets),
+    yc_deal_coupon_ids: env_var_to_config!(:yc_deal_coupon_ids),
+    yc_deal_mirror_url: env_var_to_config!(:yc_deal_mirror_url)
 
   config :portal,
          Portal.Mailer.Secondary,

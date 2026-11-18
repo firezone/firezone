@@ -9,11 +9,19 @@ class SettingsPagesTest {
     fun `the device trust page appears only when asked for`() {
         assertEquals(
             listOf(SettingsPage.GENERAL, SettingsPage.LOGS),
-            settingsPages(showDeviceTrust = false),
+            settingsPages(showDeviceTrust = false, showDeveloperSettings = false),
         )
         assertEquals(
             listOf(SettingsPage.GENERAL, SettingsPage.DEVICE_TRUST, SettingsPage.LOGS),
-            settingsPages(showDeviceTrust = true),
+            settingsPages(showDeviceTrust = true, showDeveloperSettings = false),
+        )
+    }
+
+    @Test
+    fun `the developer page comes last and only when unlocked`() {
+        assertEquals(
+            listOf(SettingsPage.GENERAL, SettingsPage.LOGS, SettingsPage.DEVELOPER),
+            settingsPages(showDeviceTrust = false, showDeveloperSettings = true),
         )
     }
 }

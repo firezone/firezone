@@ -352,6 +352,7 @@ defmodule PortalWeb.OIDCController do
          :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, params) do
+      :ok = Portal.Avatars.Picture.enqueue(identity)
       conn = Cookie.LastUsedProvider.put(conn, provider.id)
       signed_in(conn, context_type, account, identity, session_or_token, provider, tokens, params)
     else
@@ -413,7 +414,7 @@ defmodule PortalWeb.OIDCController do
 
     error = authorization_error_message(reason)
     log_sign_in_redirect_error(account.id, error)
-    path = error_path_for_context(account, params, error)
+    path = error_path_for_context(account, params)
 
     conn
     |> put_flash(:error, error)
@@ -789,6 +790,8 @@ defmodule PortalWeb.OIDCController do
          :ok <- check_admin(identity, context_type),
          :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, identity, provider, params) do
+      :ok = Portal.Avatars.Picture.enqueue(identity)
+
       {:ok,
        %{
          conn: conn,
@@ -941,7 +944,6 @@ defmodule PortalWeb.OIDCController do
       account_id: identity.account_id,
       actor_id: identity.actor_id,
       auth_provider_id: provider.id,
-      identity_id: identity.id,
       expires_at: expires_at
     }
 
@@ -2131,7 +2133,7 @@ defmodule PortalWeb.OIDCController do
   defp redirect_with_error_context(conn, error) do
     {account_id, account_slug, original_params} = fetch_error_context(conn)
     log_sign_in_redirect_error(account_id, error)
-    redirect_for_error(conn, error, error_path_for_context(account_slug, original_params, error))
+    redirect_for_error(conn, error, error_path_for_context(account_slug, original_params))
   end
 
   defp log_sign_in_redirect_error(nil, _error), do: :ok
@@ -2146,18 +2148,12 @@ defmodule PortalWeb.OIDCController do
   defp error_path("", _params), do: ~p"/sign_in"
   defp error_path(account, params), do: ~p"/#{account}/sign_in?#{sanitize(params)}"
 
-  defp error_path_for_context(account, params, error) do
+  defp error_path_for_context(account, params) do
     if client_context?(params) and account != "" do
-      ~p"/#{account}/sign_in/client_auth_error?#{client_error_params(params, error)}"
+      ~p"/#{account}/sign_in/client_auth_error?#{sanitize(params)}"
     else
       error_path(account, params)
     end
-  end
-
-  defp client_error_params(params, error) do
-    params
-    |> sanitize()
-    |> Map.put("error", error)
   end
 
   defp sanitize(params) do

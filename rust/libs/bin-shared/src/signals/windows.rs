@@ -49,7 +49,6 @@ impl Hangup {
 
     /// Waits forever - Only implemented for Linux
     pub async fn recv(&mut self) {
-        let () = std::future::pending().await;
-        unreachable!()
+        std::future::pending::<!>().await
     }
 }

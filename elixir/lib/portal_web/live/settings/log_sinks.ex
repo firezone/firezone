@@ -47,6 +47,8 @@ defmodule PortalWeb.Settings.LogSinks do
 
   @streams ~w[change session api_request flow]
 
+  @form_events ~w[validate submit_sink]
+
   @common_fields ~w[name is_disabled disabled_reason error_message errored_at error_email_count
                     enabled_streams retroactive]a
 
@@ -88,7 +90,10 @@ defmodule PortalWeb.Settings.LogSinks do
         s3_setup_tab: "console"
       )
 
-    {:ok, init_if_connected(socket)}
+    {:ok,
+     socket
+     |> init_if_connected()
+     |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)}
   end
 
   # New Log Sink
@@ -102,7 +107,8 @@ defmodule PortalWeb.Settings.LogSinks do
        type: type,
        form: to_form(changeset),
        submit_failed?: false,
-       open_sink_actions_id: nil
+       open_sink_actions_id: nil,
+       pending_confirm: nil
      )}
   end
 
@@ -124,7 +130,8 @@ defmodule PortalWeb.Settings.LogSinks do
        type: type,
        form: to_form(changeset),
        submit_failed?: false,
-       open_sink_actions_id: nil
+       open_sink_actions_id: nil,
+       pending_confirm: nil
      )}
   end
 
@@ -195,8 +202,12 @@ defmodule PortalWeb.Settings.LogSinks do
 
   def handle_event("delete_sink", %{"id" => id}, socket) do
     sink = socket.assigns.log_sinks |> Enum.find(fn s -> s.id == id end)
+    socket = assign(socket, pending_confirm: nil)
 
-    case Database.delete_sink(sink, socket.assigns.subject) do
+    case sink && Database.delete_sink(sink, socket.assigns.subject) do
+      nil ->
+        {:noreply, socket}
+
       {:ok, _sink} ->
         {:noreply,
          socket
@@ -211,38 +222,11 @@ defmodule PortalWeb.Settings.LogSinks do
   end
 
   def handle_event("toggle_sink", %{"id" => id}, socket) do
-    sink = socket.assigns.log_sinks |> Enum.find(fn s -> s.id == id end)
-    new_disabled_state = not sink.is_disabled
-    account = socket.assigns.account
+    socket = assign(socket, pending_confirm: nil)
 
-    cond do
-      new_disabled_state == false && sink.disabled_reason == "Sync error" ->
-        {:noreply,
-         put_flash(socket, :error, "Edit and save this log sink to enable it.")}
-
-      new_disabled_state == false && not account.features.log_sinks ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Log sinks are available on the Enterprise plan. Please upgrade your plan."
-         )}
-
-      true ->
-        changeset = toggle_sink_changeset(sink, new_disabled_state)
-        action = if(new_disabled_state, do: "disabled", else: "enabled")
-
-        case Database.update_sink(changeset, socket.assigns.subject) do
-          {:ok, _sink} ->
-            {:noreply,
-             socket
-             |> init()
-             |> put_flash(:success, "Log sink #{action} successfully.")}
-
-          {:error, reason} ->
-            Logger.info("Failed to toggle log sink: #{inspect(reason)}")
-            {:noreply, put_flash(socket, :error, "Failed to update log sink.")}
-        end
+    case Enum.find(socket.assigns.log_sinks, &(&1.id == id)) do
+      nil -> {:noreply, socket}
+      sink -> toggle_sink(sink, socket)
     end
   end
 
@@ -291,6 +275,16 @@ defmodule PortalWeb.Settings.LogSinks do
 
   def handle_event("close_sink_actions", _params, socket) do
     {:noreply, assign(socket, open_sink_actions_id: nil)}
+  end
+
+  def handle_event("request_confirm", %{"id" => id, "action" => action}, socket)
+      when action in ["delete", "toggle"] do
+    {:noreply,
+     assign(socket, pending_confirm: %{id: id, action: action}, open_sink_actions_id: nil)}
+  end
+
+  def handle_event("cancel_confirm", _params, socket) do
+    {:noreply, assign(socket, pending_confirm: nil)}
   end
 
   def handle_info({:sentinel_log_sink_complete, tenant_id, verification_ref}, socket) do
@@ -396,6 +390,7 @@ defmodule PortalWeb.Settings.LogSinks do
                       account={@account}
                       sink={sink}
                       open_sink_actions_id={@open_sink_actions_id}
+                      pending_confirm={@pending_confirm}
                     />
                   </tbody>
                 </table>
@@ -719,24 +714,92 @@ defmodule PortalWeb.Settings.LogSinks do
   attr :account, :any, required: true
   attr :sink, :any, required: true
   attr :open_sink_actions_id, :string, default: nil
+  attr :pending_confirm, :map, default: nil
 
   defp sink_row(assigns) do
     toggle_disabled = assigns.sink.is_disabled and not assigns.account.features.log_sinks
-    assigns = assign(assigns, toggle_disabled: toggle_disabled)
+    pending_action = sink_pending_action(assigns.sink, assigns.pending_confirm)
+
+    assigns =
+      assign(assigns,
+        toggle_disabled: toggle_disabled,
+        is_pending_toggle: pending_action == "toggle",
+        is_pending_delete: pending_action == "delete"
+      )
 
     ~H"""
-    <tr class="border-b border-border hover:bg-raised">
+    <tr class={[
+      "border-b transition-colors",
+      @is_pending_toggle && "border-warning/30 bg-warning-light",
+      @is_pending_delete && "border-danger/30 bg-danger-light",
+      !@is_pending_toggle && !@is_pending_delete && "border-border hover:bg-raised"
+    ]}>
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
           <Core.provider_icon provider={@type} size="lg" />
           <div class="min-w-0">
-            <span class="text-sm font-medium text-heading truncate" title={@sink.name}>
+            <span
+              class={[
+                "text-sm font-medium truncate",
+                @is_pending_toggle && "text-warning",
+                @is_pending_delete && "text-danger",
+                !@is_pending_toggle && !@is_pending_delete && "text-heading"
+              ]}
+              title={@sink.name}
+            >
               {@sink.name}
             </span>
             <span class="block text-xs text-subtle font-mono">{@sink.id}</span>
           </div>
         </div>
       </td>
+      <%= cond do %>
+        <% @is_pending_toggle -> %>
+          <td colspan="6" class="px-6 py-3">
+            <div class="flex items-center gap-4">
+              <span class="text-xs text-warning">
+                {if @sink.is_disabled,
+                  do: "Enable this log sink?",
+                  else:
+                    "Disable this log sink? Logs will not be delivered while disabled, and logs that expire from retention in the meantime are not recoverable."}
+              </span>
+              <div class="flex items-center gap-2 ml-auto shrink-0">
+                <Form.button phx-click="cancel_confirm" size="xs">
+                  Cancel
+                </Form.button>
+                <Form.button
+                  phx-click="toggle_sink"
+                  phx-value-id={@sink.id}
+                  size="xs"
+                  style="warning"
+                >
+                  {if @sink.is_disabled, do: "Enable", else: "Disable"}
+                </Form.button>
+              </div>
+            </div>
+          </td>
+        <% @is_pending_delete -> %>
+          <td colspan="6" class="px-6 py-3">
+            <div class="flex items-center gap-4">
+              <span class="text-xs text-danger">
+                Delete this log sink? Delivery state is deleted with it; re-creating the sink starts over.
+              </span>
+              <div class="flex items-center gap-2 ml-auto shrink-0">
+                <Form.button phx-click="cancel_confirm" size="xs">
+                  Cancel
+                </Form.button>
+                <Form.button
+                  phx-click="delete_sink"
+                  phx-value-id={@sink.id}
+                  size="xs"
+                  style="danger"
+                >
+                  Delete
+                </Form.button>
+              </div>
+            </div>
+          </td>
+        <% true -> %>
       <td class="px-6 py-3 w-28">
         <.sink_status_badge sink={@sink} />
       </td>
@@ -792,67 +855,44 @@ defmodule PortalWeb.Settings.LogSinks do
               <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
               Re-verify to enable
             </Navigation.link>
-            <Form.button_with_confirmation
+            <button
               :if={not (@sink.is_disabled and @sink.disabled_reason == "Sync error")}
-              id={"toggle-sink-#{@sink.id}"}
-              on_confirm="toggle_sink"
-              on_confirm_id={@sink.id}
-              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body border-0 bg-transparent"
+              type="button"
+              phx-click="request_confirm"
+              phx-value-id={@sink.id}
+              phx-value-action="toggle"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
               <Core.icon
                 name={
                   if @sink.is_disabled,
-                    do: "ri-checkbox-circle-line",
-                    else: "ri-close-circle-line"
+                    do: "ri-play-circle-line",
+                    else: "ri-pause-circle-line"
                 }
                 class="w-3.5 h-3.5 shrink-0"
               />
               {if @sink.is_disabled, do: "Enable", else: "Disable"}
-              <:dialog_title>
-                {if @sink.is_disabled, do: "Enable", else: "Disable"} Log Sink
-              </:dialog_title>
-              <:dialog_content>
-                <p>
-                  Are you sure you want to {if @sink.is_disabled,
-                    do: "enable",
-                    else: "disable"} <strong>{@sink.name}</strong>?
-                </p>
-                <%= if not @sink.is_disabled do %>
-                  <p class="mt-2">
-                    Logs will not be delivered while disabled, and logs that expire from
-                    retention in the meantime are not recoverable.
-                  </p>
-                <% end %>
-              </:dialog_content>
-              <:dialog_confirm_button>
-                {if @sink.is_disabled, do: "Enable", else: "Disable"}
-              </:dialog_confirm_button>
-              <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-            </Form.button_with_confirmation>
+            </button>
             <div class="my-1 border-t border-border"></div>
-            <Form.button_with_confirmation
-              id={"delete-sink-#{@sink.id}"}
-              on_confirm="delete_sink"
-              on_confirm_id={@sink.id}
-              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error border-0 bg-transparent"
+            <button
+              type="button"
+              phx-click="request_confirm"
+              phx-value-id={@sink.id}
+              phx-value-action="delete"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
             >
               <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
-              <:dialog_title>Delete Log Sink</:dialog_title>
-              <:dialog_content>
-                <p>
-                  Are you sure you want to delete <strong>{@sink.name}</strong>?
-                  Delivery state is deleted with it; re-creating the sink starts over.
-                </p>
-              </:dialog_content>
-              <:dialog_confirm_button>Delete</:dialog_confirm_button>
-              <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-            </Form.button_with_confirmation>
+            </button>
           </Core.actions_dropdown>
         </div>
       </td>
+      <% end %>
     </tr>
     """
   end
+
+  defp sink_pending_action(%{id: id}, %{id: id, action: action}), do: action
+  defp sink_pending_action(_sink, _pending_confirm), do: nil
 
   attr :sink, :any, required: true
 
@@ -2376,7 +2416,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp init_if_connected(socket) do
     if connected?(socket),
       do: init(socket, new: true),
-      else: assign(socket, log_sinks: nil, open_sink_actions_id: nil)
+      else: assign(socket, log_sinks: nil, open_sink_actions_id: nil, pending_confirm: nil)
   end
 
   defp init(socket, opts \\ []) do
@@ -2387,10 +2427,51 @@ defmodule PortalWeb.Settings.LogSinks do
       socket
       |> assign_new(:log_sinks, fn -> log_sinks end)
       |> assign_new(:open_sink_actions_id, fn -> nil end)
+      |> assign_new(:pending_confirm, fn -> nil end)
     else
-      assign(socket, log_sinks: log_sinks, open_sink_actions_id: nil)
+      assign(socket, log_sinks: log_sinks, open_sink_actions_id: nil, pending_confirm: nil)
     end
   end
+
+  defp toggle_sink(sink, socket) do
+    new_disabled_state = not sink.is_disabled
+    account = socket.assigns.account
+
+    cond do
+      new_disabled_state == false && sink.disabled_reason == "Sync error" ->
+        {:noreply,
+         put_flash(socket, :error, "Edit and save this log sink to enable it.")}
+
+      new_disabled_state == false && not account.features.log_sinks ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Log sinks are available on the Enterprise plan. Please upgrade your plan."
+         )}
+
+      true ->
+        changeset = toggle_sink_changeset(sink, new_disabled_state)
+        action = if(new_disabled_state, do: "disabled", else: "enabled")
+
+        case Database.update_sink(changeset, socket.assigns.subject) do
+          {:ok, _sink} ->
+            {:noreply,
+             socket
+             |> init()
+             |> put_flash(:success, "Log sink #{action} successfully.")}
+
+          {:error, reason} ->
+            Logger.info("Failed to toggle log sink: #{inspect(reason)}")
+            {:noreply, put_flash(socket, :error, "Failed to update log sink.")}
+        end
+    end
+  end
+
+  defp stale_event?(event, %{live_action: action}) when event in @form_events and action not in [:new, :edit],
+    do: true
+
+  defp stale_event?(_event, _assigns), do: false
 
   defmodule Database do
     import Ecto.Query

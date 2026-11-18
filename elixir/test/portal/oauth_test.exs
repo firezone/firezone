@@ -9,6 +9,7 @@ defmodule Portal.OAuthTest do
   alias Portal.OAuth
   alias Portal.OAuth.ClientMetadata
   alias Portal.Req.SSRFProtection.UnsafeURLError
+  alias Portal.StreamingServer
   alias Portal.Scope
 
   @verifier "a-code-verifier-long-enough-to-satisfy-the-pkce-rules"
@@ -191,6 +192,41 @@ defmodule Portal.OAuthTest do
                ClientMetadata.fetch("https://127.0.0.1/client.json")
 
       refute_receive :unsafe_adapter_called
+    end
+
+    test "stops waiting for icons that are slow to arrive" do
+      client_id = "https://localhost/slow-icons.json"
+      icon_url = StreamingServer.start(&StreamingServer.drip(&1, 100))
+
+      adapter = fn request ->
+        if request.url.path == "/slow-icons.json" do
+          body = %{
+            "client_id" => client_id,
+            "client_name" => "Slow icons",
+            "redirect_uris" => [redirect_uri()],
+            "logo_uri" => "https://localhost/logo.png",
+            "client_uri" => "https://localhost"
+          }
+
+          {request, Req.Response.new(status: 200, body: body)}
+        else
+          Req.Finch.run(%{request | url: URI.parse(icon_url <> request.url.path)})
+        end
+      end
+
+      config = Portal.Config.fetch_env!(:portal, ClientMetadata)
+
+      Portal.Config.put_env_override(
+        :portal,
+        ClientMetadata,
+        Keyword.put(config, :req_opts, adapter: adapter, retry: false)
+      )
+
+      started = System.monotonic_time(:millisecond)
+
+      assert {:ok, client} = ClientMetadata.fetch(client_id)
+      assert client.logo_data == nil
+      assert System.monotonic_time(:millisecond) - started < 8_000
     end
 
     test "rejects a redirect uri the metadata does not list", %{client: client} do
@@ -448,7 +484,10 @@ defmodule Portal.OAuthTest do
     end)
 
     assert {:ok, client, _} =
-             OAuth.validate_client(%{"client_id" => client_id, "redirect_uri" => redirect_uri()})
+             OAuth.validate_client(
+               %{"client_id" => client_id, "redirect_uri" => redirect_uri()},
+               store: true
+             )
 
     assert client.token_endpoint_auth_method == "none"
     context = %{context | client: client}
@@ -528,6 +567,63 @@ defmodule Portal.OAuthTest do
       assert {:ok, _} =
                OAuth.refresh(Map.merge(refresh, signed_assertion(client, keys)), @resource)
     end
+
+    test "keeps a code presented under another client for its own client", context do
+      keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
+
+      client =
+        oauth_client_fixture(
+          token_endpoint_auth_method: "private_key_jwt",
+          jwks_uri: "https://localhost/jwks.json"
+        )
+
+      other = oauth_client_fixture()
+      context = %{context | client: client}
+      Req.Test.stub(ClientMetadata, &Req.Test.json(&1, keys.jwks))
+      code = consent(context)
+      params = exchange_params(context, code)
+
+      assert {:error, "invalid_grant", _} =
+               OAuth.exchange(%{params | "client_id" => other.client_id}, @resource)
+
+      assert {:ok, _} =
+               OAuth.exchange(Map.merge(params, signed_assertion(client, keys)), @resource)
+    end
+
+    test "keeps a token family when an old refresh token comes from another client", context do
+      keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
+
+      client =
+        oauth_client_fixture(
+          token_endpoint_auth_method: "private_key_jwt",
+          jwks_uri: "https://localhost/jwks.json"
+        )
+
+      other = oauth_client_fixture()
+      context = %{context | client: client}
+      Req.Test.stub(ClientMetadata, &Req.Test.json(&1, keys.jwks))
+      refresh = refreshable_token(context)
+      params = refresh_params(context, refresh)
+
+      assert {:ok, rotated} =
+               OAuth.refresh(Map.merge(params, signed_assertion(client, keys)), @resource)
+
+      assert {:error, "invalid_grant", _} =
+               OAuth.refresh(%{params | "client_id" => other.client_id}, @resource)
+
+      current = refresh_params(context, rotated.refresh_token)
+
+      assert {:ok, latest} =
+               OAuth.refresh(Map.merge(current, signed_assertion(client, keys)), @resource)
+
+      assert {:error, "invalid_grant", _} =
+               OAuth.refresh(Map.merge(params, signed_assertion(client, keys)), @resource)
+
+      latest = refresh_params(context, latest.refresh_token)
+
+      assert {:error, "invalid_grant", _} =
+               OAuth.refresh(Map.merge(latest, signed_assertion(client, keys)), @resource)
+    end
   end
 
   describe "consent/2 and exchange/2" do
@@ -541,6 +637,15 @@ defmodule Portal.OAuthTest do
       assert response.expires_in == OAuth.access_ttl_seconds()
       assert is_binary(response.access_token)
       assert is_binary(response.refresh_token)
+    end
+
+    test "keeps the provider the person signed in with on the issued tokens", context do
+      code = consent(context)
+
+      assert {:ok, _response} = OAuth.exchange(exchange_params(context, code), @resource)
+
+      token = Portal.Repo.get_by!(Portal.OAuthToken, actor_id: context.actor.id)
+      assert token.auth_provider_id == context.subject.credential.auth_provider_id
     end
 
     test "records the grant so the client is not asked twice", context do
@@ -801,6 +906,35 @@ defmodule Portal.OAuthTest do
       refresh = refreshable_token(context)
 
       account |> Ecto.Changeset.change(is_disabled: true) |> Portal.Repo.update!()
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.refresh(refresh_params(context, refresh), @resource)
+    end
+
+    test "refuses a refresh token while its auth provider is disabled", context do
+      refresh = refreshable_token(context)
+      provider = Portal.Repo.get_by!(Portal.EmailOTP.AuthProvider, account_id: context.account.id)
+
+      provider = provider |> Ecto.Changeset.change(is_disabled: true) |> Portal.Repo.update!()
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.refresh(refresh_params(context, refresh), @resource)
+
+      provider |> Ecto.Changeset.change(is_disabled: false) |> Portal.Repo.update!()
+
+      assert {:ok, _response} = OAuth.refresh(refresh_params(context, refresh), @resource)
+    end
+
+    test "refuses a refresh token with no auth provider", context do
+      {token, _access, refresh} =
+        oauth_token_fixture(
+          account: context.account,
+          actor: context.actor,
+          client: context.client,
+          resource: @resource
+        )
+
+      token |> Ecto.Changeset.change(auth_provider_id: nil) |> Portal.Repo.update!()
 
       assert {:error, "invalid_grant", _description} =
                OAuth.refresh(refresh_params(context, refresh), @resource)

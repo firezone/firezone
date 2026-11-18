@@ -5,6 +5,16 @@ defmodule PortalWeb.Sites do
   alias Portal.Presence
   alias __MODULE__.Database
 
+  @resource_form_events ~w[resource_change resource_submit]
+
+  @edit_form_events ~w[change_site_edit_form submit_site_edit_form]
+
+  @selected_site_events ~w[
+    confirm_rotate_gateway_token confirm_delete_gateway confirm_revoke_gateway_token
+    revoke_all_gateway_tokens show_all_gateways show_online_gateways deploy_gateway
+    delete_site open_site_edit_form cancel_site_edit_form
+  ]
+
   def mount(_params, _session, socket) do
     if connected?(socket) do
       :ok = Presence.Devices.Account.subscribe(socket.assigns.account.id)
@@ -23,6 +33,7 @@ defmodule PortalWeb.Sites do
       |> assign(internet_resource: nil)
       |> assign(internet_site: nil)
       |> assign(site_state_reset_assigns())
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     socket =
       if connected?(socket) do
@@ -176,6 +187,13 @@ defmodule PortalWeb.Sites do
       new_site: base_new_site_state()
     ]
   end
+
+  defp stale_event?(event, %{site_resource_form: %{form: nil}}) when event in @resource_form_events, do: true
+  defp stale_event?(event, %{site_edit: %{form: nil}}) when event in @edit_form_events, do: true
+
+  defp stale_event?("new_site_submit", %{new_site: %{form: nil}}), do: true
+  defp stale_event?(event, %{selected_site: nil}) when event in @selected_site_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp site_state_reset_assigns do
     [
@@ -730,7 +748,8 @@ defmodule PortalWeb.Sites do
     subject = socket.assigns.subject
     gateway_id = socket.assigns.site_panel.rename_gateway_id
 
-    with {:ok, gateway} <- Database.fetch_gateway(gateway_id, subject),
+    with {:ok, gateway} <-
+           Database.fetch_gateway(gateway_id, socket.assigns.selected_site, subject),
          {:ok, _gateway} <- Database.rename_gateway(gateway, name, subject) do
       {gateways, total_gateway_count} =
         load_panel_gateways(
@@ -768,7 +787,8 @@ defmodule PortalWeb.Sites do
   def handle_event("confirm_rotate_gateway_token", %{"id" => gateway_id}, socket) do
     subject = socket.assigns.subject
 
-    with {:ok, gateway} <- Database.fetch_gateway(gateway_id, subject),
+    with {:ok, gateway} <-
+           Database.fetch_gateway(gateway_id, socket.assigns.selected_site, subject),
          {:ok, _token, encoded_token} <- Database.rotate_gateway_token(gateway, subject) do
       prior_tokens = Map.get(socket.assigns.site_panel.device_tokens, gateway_id, [])
       device_tokens = load_device_tokens(socket.assigns.selected_site.id, subject)
@@ -817,7 +837,11 @@ defmodule PortalWeb.Sites do
   end
 
   def handle_event("confirm_delete_gateway", %{"id" => gateway_id}, socket) do
-    case Database.delete_gateway_by_id(gateway_id, socket.assigns.subject) do
+    case Database.delete_gateway_by_id(
+           gateway_id,
+           socket.assigns.selected_site,
+           socket.assigns.subject
+         ) do
       {count, _} when count > 0 ->
         site_id = socket.assigns.selected_site.id
 
@@ -1100,7 +1124,11 @@ defmodule PortalWeb.Sites do
   end
 
   def handle_event("confirm_revoke_gateway_token", %{"id" => token_id}, socket) do
-    case Database.delete_gateway_token_by_id(token_id, socket.assigns.subject) do
+    case Database.delete_gateway_token_by_id(
+           token_id,
+           socket.assigns.selected_site,
+           socket.assigns.subject
+         ) do
       {count, _} when count > 0 ->
         tokens =
           Database.list_gateway_tokens_for_site(
@@ -1438,12 +1466,17 @@ defmodule PortalWeb.Sites do
       |> Safe.update()
     end
 
-    @spec fetch_gateway(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+    @spec fetch_gateway(Ecto.UUID.t(), Site.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Device.t()} | {:error, :not_found} | {:error, :unauthorized}
-    def fetch_gateway(id, subject) do
+    def fetch_gateway(id, site, subject) do
       result =
         from(d in Device, as: :devices)
         |> where([devices: d], d.id == ^id and d.type == :gateway)
+        |> join(:inner, [devices: d], sd in SiteDevice,
+          on: sd.account_id == d.account_id and sd.device_id == d.id,
+          as: :site_device
+        )
+        |> where([site_device: sd], sd.site_id == ^site.id)
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -1511,11 +1544,16 @@ defmodule PortalWeb.Sites do
       |> Safe.delete()
     end
 
-    @spec delete_gateway_by_id(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+    @spec delete_gateway_by_id(Ecto.UUID.t(), Site.t(), Portal.Authentication.Subject.t()) ::
             {non_neg_integer(), nil} | {:error, :unauthorized}
-    def delete_gateway_by_id(id, subject) do
+    def delete_gateway_by_id(id, site, subject) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.id == ^id and d.type == :gateway)
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.site_id == ^site.id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
     end
@@ -1531,10 +1569,10 @@ defmodule PortalWeb.Sites do
       |> Safe.all()
     end
 
-    @spec delete_gateway_token_by_id(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+    @spec delete_gateway_token_by_id(Ecto.UUID.t(), Site.t(), Portal.Authentication.Subject.t()) ::
             {non_neg_integer(), nil} | {:error, :unauthorized}
-    def delete_gateway_token_by_id(token_id, subject) do
-      from(t in DeviceToken, where: t.id == ^token_id)
+    def delete_gateway_token_by_id(token_id, site, subject) do
+      from(t in DeviceToken, where: t.id == ^token_id and t.site_id == ^site.id)
       |> Portal.Authentication.delete_gateway_tokens(subject)
     end
 

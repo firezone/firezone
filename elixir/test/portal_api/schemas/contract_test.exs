@@ -45,8 +45,8 @@ defmodule PortalAPI.Schemas.ContractTest do
       aliases: [online: :online?, rotated_at: :gateway_token_rotated_at]
     },
     %{schema: PortalAPI.Schemas.PoolMember.Schema, struct: Portal.Device},
-    %{schema: PortalAPI.Schemas.ClientToken.Schema, struct: Portal.ClientToken},
-    %{schema: PortalAPI.Schemas.ClientToken.ResponseSchema, struct: Portal.ClientToken},
+    %{schema: PortalAPI.Schemas.ClientToken.Schema, struct: Portal.DeviceToken},
+    %{schema: PortalAPI.Schemas.ClientToken.ResponseSchema, struct: Portal.DeviceToken},
     %{schema: PortalAPI.Schemas.GatewayToken.Schema, struct: Portal.DeviceToken},
     %{
       schema: PortalAPI.Schemas.ExternalIdentity.Schema,

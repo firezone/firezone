@@ -1139,4 +1139,28 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       refute html =~ "Raced CA"
     end
   end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"validate_edit", %{"trust_anchor" => %{"name" => "Late"}}},
+          {"update_trust_anchor", %{"trust_anchor" => %{"name" => "Late"}}},
+          {"delete_trust_anchor", %{}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        trust_anchor = trust_anchor_fixture(account: account, name: "Corporate Issuing CA")
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+
+        render_click(lv, unquote(event), unquote(Macro.escape(params)))
+
+        assert render(lv) =~ "Corporate Issuing CA"
+      end
+    end
+  end
 end

@@ -2,7 +2,6 @@
 
 use anyhow::{Context, Result};
 use std::collections::BTreeMap;
-use std::convert::Infallible;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -29,7 +28,7 @@ const MIN_CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 #[must_use = "Dropping this handle immediately stops the cleanup thread -- store it in a variable to keep cleanup running"]
 pub struct CleanupHandle {
     // Channel used for drop-based shutdown only, no messages are ever sent.
-    _stop_tx: mpsc::Sender<Infallible>,
+    _stop_tx: mpsc::Sender<!>,
 }
 
 /// Start a background thread that periodically enforces log size cap.
@@ -50,7 +49,7 @@ pub fn start_log_cleanup_thread(
     } else {
         interval
     };
-    let (stop_tx, stop_rx) = mpsc::channel::<Infallible>();
+    let (stop_tx, stop_rx) = mpsc::channel::<!>();
 
     let result = thread::Builder::new()
         .name("fz-log-cleanup".into())

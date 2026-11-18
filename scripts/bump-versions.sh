@@ -23,14 +23,14 @@ next_apple_client_version="1.5.25"
 current_android_client_version="1.5.18"
 next_android_client_version="1.5.19"
 
-current_gui_client_version="1.5.20"
-next_gui_client_version="1.5.21"
+current_gui_client_version="1.5.21"
+next_gui_client_version="1.5.22"
 
-current_headless_client_version="1.5.15"
-next_headless_client_version="1.5.16"
+current_headless_client_version="1.5.16"
+next_headless_client_version="1.5.17"
 
-current_gateway_version="1.6.4"
-next_gateway_version="1.6.5"
+current_gateway_version="1.6.5"
+next_gateway_version="1.6.6"
 
 function cargo_update_workspace() {
     pushd rust >/dev/null

@@ -296,8 +296,7 @@ defmodule PortalAPI.ActorController do
     import Ecto.Query
     alias Portal.Actor
     alias Portal.APIToken
-    alias Portal.ClientToken
-    alias Portal.Device
+    alias Portal.DeviceToken
     alias Portal.ExternalIdentity
     alias Portal.OAuthToken
     alias Portal.PortalSession
@@ -437,11 +436,10 @@ defmodule PortalAPI.ActorController do
 
     defp select_last_seen_at(queryable) do
       client_seen_at =
-        from(d in Device,
-          where: d.account_id == parent_as(:actors).account_id,
-          where: d.actor_id == parent_as(:actors).id,
-          where: d.type == :client,
-          select: max(d.last_seen_at)
+        from(da in Portal.DeviceActor,
+          where: da.account_id == parent_as(:actors).account_id,
+          where: da.actor_id == parent_as(:actors).id,
+          select: max(da.last_seen_at)
         )
 
       portal_signed_in_at =
@@ -493,9 +491,8 @@ defmodule PortalAPI.ActorController do
     end
 
     defp clear_client_tokens_for_actor(actor_id, subject) do
-      from(c in ClientToken, where: c.actor_id == ^actor_id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
+      from(t in DeviceToken, where: t.actor_id == ^actor_id)
+      |> Portal.Authentication.delete_client_tokens(subject)
     end
   end
 end

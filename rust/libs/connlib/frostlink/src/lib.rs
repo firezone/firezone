@@ -28,8 +28,8 @@
 //! scoped to the pair). A reply is proof the path works both ways and carries
 //! its RTT. Pairs are ranked by tier, then candidate priority, then RTT, and
 //! **probes can only promote the primary, never demote it**: the best measured
-//! pair takes an empty primary or displaces the incumbent only when it scores
-//! strictly better.
+//! pair takes an empty primary, and a pair displaces the incumbent only on its
+//! own reply and only when it scores strictly better.
 //!
 //! A pair goes quiet after [`PROBE_BUDGET`] probes — *unless* it is the primary
 //! (which keeps a slow [`PRIMARY_KEEPALIVE`] cadence so an idle connection's NAT
@@ -47,6 +47,8 @@
 //! init with no data in between — is taken as distress ([`REKEY_DISTRESS_ATTEMPTS`]),
 //! clearing the primary and re-probing every pair. A new candidate is the same
 //! kind of signal and does the same. Pairs already probing keep their state.
+
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod agent;
 mod candidate;

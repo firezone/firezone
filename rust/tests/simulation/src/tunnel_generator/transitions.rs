@@ -1,0 +1,681 @@
+use std::{
+    collections::BTreeMap,
+    iter,
+    time::{Duration, Instant},
+};
+
+use connlib_model::{ClientOrGatewayId, Site};
+use dns_types::DomainName;
+use itertools::Itertools as _;
+use smallvec::SmallVec;
+
+use super::context::TunnelGenerator;
+use super::topology::{
+    arb_dns_record_set, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
+};
+use super::values::{
+    arb_address_description, arb_cidr_resource_address, arb_compatible_upstream_do53_servers,
+    arb_different_address_description, arb_different_cidr_resource_address,
+    arb_different_dns_resource_address, arb_different_filters, arb_different_ip_stack_kind,
+    arb_dns_resource_address, arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
+};
+use super::{dns_queries, packets};
+use crate::dns_records::record_ip;
+use crate::fake_portal::FakePortal;
+use crate::network::Host;
+use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
+use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
+use crate::tunnel_model::TunnelModel;
+use crate::tunnel_transition::{Destination, Seq, Transition};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TransitionKind {
+    // Always-legal.
+    UpdateSystemDnsServers,
+    UpdateUpstreamDo53Servers,
+    UpdateUpstreamDoHServers,
+    UpdateUpstreamSearchDomain,
+    RoamClient,
+    DeployNewRelays,
+    PartitionRelaysFromPortal,
+    RebootRelaysWhilePartitioned,
+    Idle,
+    // State-gated.
+    AddResource,
+    EditResource,
+    RemoveResource,
+    ReconnectPortal,
+    RestartClient,
+    SetInternetResourceState,
+    DeauthorizeWhileGatewayIsPartitioned,
+    RevokeGatewayAuthorization,
+    ExpirePeerAuthorizations,
+    RevokePeerAuthorization,
+    UpdateDnsRecords,
+    SendPacket,
+    SendPacketOnExistingFlow,
+    SendTcpData,
+    SendDnsQueries,
+    UpdateDevicePoolMembers,
+    ExhaustRelayPorts,
+    FreeRelayPorts,
+    CrashClient,
+    CrashGateway,
+    SpuriousPublicKeyChanged,
+}
+
+/// The transitions that open no connection.
+///
+/// A node whose allocations all failed cannot open any connection until it gets a relay back,
+/// which the model does not predict. While every relay is exhausted or recovering, or a
+/// node may have no relay left, only these are legal.
+const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 9] = [
+    TransitionKind::RoamClient,
+    TransitionKind::DeployNewRelays,
+    TransitionKind::PartitionRelaysFromPortal,
+    TransitionKind::RebootRelaysWhilePartitioned,
+    TransitionKind::RestartClient,
+    TransitionKind::FreeRelayPorts,
+    TransitionKind::Idle,
+    TransitionKind::CrashClient,
+    TransitionKind::CrashGateway,
+];
+
+#[derive(Clone, Copy)]
+enum ExistingFlow<'a> {
+    Udp(FlowId),
+    Icmp(FlowId, Seq),
+    /// Sending on an expired flow starts a new one with the same identity.
+    ExpiredUdp(&'a UdpFlow),
+    ExpiredIcmp(&'a IcmpFlow),
+}
+
+pub(super) fn generate(
+    g: &mut TunnelGenerator,
+    state: &TunnelModel,
+    portal: &FakePortal,
+    now: Instant,
+) -> Transition {
+    let addable_resources = state.resources_unknown_to_all_clients(portal);
+    let editable_resources = state.editable_resources_on_any_client(portal);
+    let removable_resources = state.all_resource_ids();
+    let deauthorizable_resources = state.deauthorizable_resource_ids(portal);
+    let revocable_resources = state.revocable_resource_ids(portal);
+    let expirable_peers = state.expirable_peer_authorizations();
+    let revocable_peers = expirable_peers
+        .iter()
+        .filter(|(_, _, pools)| pools.len() > 1)
+        .cloned()
+        .collect::<Vec<_>>();
+    let client_ids = state.all_client_ids();
+    let dns_record_domains = state.dns_resource_domains();
+    let key_change_recipients = key_change_recipients(state);
+    let packet_targets = packets::targets(state, portal);
+    let revoked_peer_targets = packets::revoked_peer_targets(state);
+    if !revoked_peer_targets.is_empty() {
+        let target = revoked_peer_targets[g.choose_index(revoked_peer_targets.len())].clone();
+        return packets::generate(g, target);
+    }
+    let existing_flows = iter::empty()
+        .chain(state.udp_flows(now).into_iter().map(ExistingFlow::Udp))
+        .chain(
+            state
+                .icmp_flows(now)
+                .into_iter()
+                .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
+        )
+        .chain(
+            state
+                .expired_udp_flows(now)
+                .into_iter()
+                .map(ExistingFlow::ExpiredUdp),
+        )
+        .chain(
+            state
+                .expired_icmp_flows(now)
+                .into_iter()
+                .map(ExistingFlow::ExpiredIcmp),
+        )
+        .collect::<Vec<_>>();
+    // A connect through a Gateway that does not deliver to its name's network leaves no
+    // connection to write to.
+    let tcp_flows = state
+        .tcp_flows
+        .iter()
+        .filter(|(_, flow)| {
+            let (Remote::Gateway(gateway), Destination::DomainName { name, .. }) =
+                (flow.route.remote(), &flow.dst)
+            else {
+                return true;
+            };
+            let routes = &state.gateways[&gateway].inner().routes;
+
+            state
+                .global_dns_records
+                .domain_ips_iter(name)
+                .any(|ip| routes.delivers(ip))
+        })
+        .map(|(id, _)| *id)
+        .collect::<Vec<_>>();
+    let dns_query_targets = dns_queries::targets(state, portal);
+    let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
+    let accepting_relays = state
+        .relays
+        .keys()
+        .filter(|relay| !state.exhausted_relays.contains(relay))
+        .copied()
+        .collect::<Vec<_>>();
+    let exhausted_relays = state.exhausted_relays.iter().copied().collect::<Vec<_>>();
+    let healthy_relays = accepting_relays
+        .iter()
+        .filter(|relay| !state.recovering_relays.contains_key(relay))
+        .count();
+    // TODO: Remove the classic branch with classic ICE.
+    // A Frostlink connection without a relay for longer than a WireGuard handshake attempt
+    // expires, which the model does not predict. Frostlink flows therefore keep a healthy relay.
+    let can_exhaust_relay = if portal.frostlink() {
+        healthy_relays > 1
+    } else {
+        !accepting_relays.is_empty()
+    };
+
+    // Build the legal action list. Data-plane actions stay more frequent because
+    // they drive most of the tunnel state machine; the fuzzer chooses the concrete
+    // destination, protocol and fields from subsequent bytes.
+    use TransitionKind as K;
+
+    let legal = [
+        Some((K::UpdateSystemDnsServers, 1)),
+        Some((K::UpdateUpstreamDo53Servers, 1)),
+        Some((K::UpdateUpstreamDoHServers, 1)),
+        Some((K::UpdateUpstreamSearchDomain, 1)),
+        Some((K::RoamClient, 1)),
+        Some((K::DeployNewRelays, 1)),
+        Some((K::PartitionRelaysFromPortal, 1)),
+        Some((K::RebootRelaysWhilePartitioned, 1)),
+        Some((K::Idle, 1)),
+        (!addable_resources.is_empty()).then_some((K::AddResource, 5)),
+        (!editable_resources.is_empty()).then_some((K::EditResource, 7)),
+        (!removable_resources.is_empty()).then_some((K::RemoveResource, 1)),
+        (!deauthorizable_resources.is_empty())
+            .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
+        (!revocable_resources.is_empty()).then_some((K::RevokeGatewayAuthorization, 2)),
+        (!expirable_peers.is_empty()).then_some((K::ExpirePeerAuthorizations, 2)),
+        (!revocable_peers.is_empty()).then_some((K::RevokePeerAuthorization, 2)),
+        (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
+        (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
+        (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
+        (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
+        (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
+        (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
+        (!tcp_flows.is_empty()).then_some((K::SendTcpData, 10)),
+        (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
+        (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
+        can_exhaust_relay.then_some((K::ExhaustRelayPorts, 1)),
+        (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
+        (!client_ids.is_empty()).then_some((K::CrashClient, 1)),
+        // Classic ICE ignores `public_key_changed`, so its connections would only fail on
+        // WireGuard's handshake timeout.
+        (portal.frostlink() && !state.gateways.is_empty()).then_some((K::CrashGateway, 1)),
+        (!key_change_recipients.is_empty()).then_some((K::SpuriousPublicKeyChanged, 1)),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|(kind, _)| {
+        (healthy_relays > 0 && !state.node_may_lack_relays)
+            || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind)
+    })
+    .collect::<SmallVec<[_; 24]>>();
+
+    // Weighted pick over the legal list.
+    let kind = weighted_choose(g, &legal);
+
+    // Generate only the chosen arm's payload from the following bytes.
+    match kind {
+        K::UpdateSystemDnsServers => Transition::UpdateSystemDnsServers {
+            servers: arb_system_dns_servers(g),
+        },
+        K::UpdateUpstreamDo53Servers => {
+            Transition::UpdateUpstreamDo53Servers(arb_compatible_upstream_do53_servers(g, state))
+        }
+        K::UpdateUpstreamDoHServers => {
+            Transition::UpdateUpstreamDoHServers(arb_upstream_doh_servers(g))
+        }
+        K::UpdateUpstreamSearchDomain => {
+            let domains = portal.dns_resources();
+            let candidates = domains
+                .filter_map(|r| {
+                    let (_, s) = r.address.split_once('.')?;
+                    DomainName::vec_from_str(s).ok()
+                })
+                .collect::<Vec<_>>();
+            let chosen = if candidates.is_empty() || !g.flip(50) {
+                None
+            } else {
+                let idx = g.choose_index(candidates.len());
+                Some(candidates[idx].clone())
+            };
+            Transition::UpdateUpstreamSearchDomain(chosen)
+        }
+        K::RoamClient => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            let (ip4, ip6) = arb_socket_ip_stack(g);
+            let nat_ips = state.network.nat_ips().collect::<Vec<_>>();
+            let nat_ip4 = nat_ips[g.choose_index(nat_ips.len())];
+            // Mirror `tunnel_transition::roam_client`: both windows in 0..3000ms.
+            let dead_window = Duration::from_millis(g.count(0, 2999) as u64);
+            let portal_window = Duration::from_millis(g.count(0, 2999) as u64);
+            Transition::RoamClient {
+                client_id,
+                ip4,
+                ip6,
+                nat_ip4,
+                dead_window,
+                portal_window,
+            }
+        }
+        K::DeployNewRelays => {
+            // A Frostlink connection survives relay deployment changes. Keeping one deployed
+            // relay out of `connected` exercises refreshing an unmentioned live allocation.
+            let retained = if portal.frostlink() && state.relays.len() >= 2 {
+                let index = g.choose_index(state.relays.len());
+                let (relay_id, relay) = state.relays.iter().nth(index).unwrap();
+
+                Some((*relay_id, relay.clone()))
+            } else {
+                None
+            };
+
+            let relays = iter::empty().chain(retained).chain(arb_relays(g)).collect();
+
+            Transition::DeployNewRelays(relays)
+        }
+        K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
+        K::RebootRelaysWhilePartitioned => {
+            // Reboot the *existing* relays with fresh credentials (same ids).
+            let relays = state
+                .relays
+                .keys()
+                .copied()
+                .map(|id| {
+                    let seed = g.u64();
+                    let latency = g.latency(50);
+                    let host = Host::new(seed, latency, 3478);
+                    let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
+                    (id, host)
+                })
+                .collect::<BTreeMap<_, _>>();
+            Transition::RebootRelaysWhilePartitioned(relays)
+        }
+        K::Idle => Transition::Idle {
+            duration: Duration::from_secs(5 * g.count(1, 72) as u64),
+        },
+        K::AddResource => {
+            let resource = addable_resources[g.choose_index(addable_resources.len())].clone();
+            Transition::AddResource(resource)
+        }
+        K::EditResource => {
+            let resource = editable_resources[g.choose_index(editable_resources.len())].clone();
+            Transition::EditResource(arb_resource_edit(g, state, portal, resource))
+        }
+        K::RemoveResource => {
+            let id = removable_resources[g.choose_index(removable_resources.len())];
+            Transition::RemoveResource(id)
+        }
+        K::DeauthorizeWhileGatewayIsPartitioned => {
+            let id = deauthorizable_resources[g.choose_index(deauthorizable_resources.len())];
+            Transition::DeauthorizeWhileGatewayIsPartitioned(id)
+        }
+        K::ExpirePeerAuthorizations => {
+            let (client, peer, pools) =
+                expirable_peers[g.choose_index(expirable_peers.len())].clone();
+            Transition::ExpirePeerAuthorizations {
+                client,
+                peer,
+                pools,
+            }
+        }
+        K::RevokePeerAuthorization => {
+            let (client, peer, pools) = &revocable_peers[g.choose_index(revocable_peers.len())];
+            let pool = *pools.iter().nth(g.choose_index(pools.len())).unwrap();
+            Transition::RevokePeerAuthorization {
+                client: *client,
+                peer: *peer,
+                pool,
+            }
+        }
+        K::RevokeGatewayAuthorization => {
+            let id = revocable_resources[g.choose_index(revocable_resources.len())];
+            Transition::RevokeGatewayAuthorization(id)
+        }
+        K::ReconnectPortal => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            Transition::ReconnectPortal { client_id }
+        }
+        K::RestartClient => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            let key = g.fresh_private_key();
+            Transition::RestartClient { client_id, key }
+        }
+        K::CrashClient => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            let key = g.fresh_private_key();
+            Transition::CrashClient { client_id, key }
+        }
+        K::CrashGateway => {
+            let gateway_ids = state.gateways.keys().copied().collect::<Vec<_>>();
+            let gateway_id = gateway_ids[g.choose_index(gateway_ids.len())];
+            let key = g.fresh_private_key();
+            let clients = state.gateways[&gateway_id].inner().authorized_clients();
+
+            Transition::CrashGateway {
+                gateway_id,
+                key,
+                clients,
+            }
+        }
+        K::SpuriousPublicKeyChanged => {
+            let (recipient, remote) =
+                key_change_recipients[g.choose_index(key_change_recipients.len())];
+            let key = g.fresh_private_key();
+
+            Transition::SpuriousPublicKeyChanged {
+                recipient,
+                remote,
+                key,
+            }
+        }
+        K::SetInternetResourceState => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            let active = g.bool();
+            Transition::SetInternetResourceState { client_id, active }
+        }
+        K::UpdateDnsRecords => {
+            let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
+            let subnet = g.local_subnet(&domain);
+            let mut records = arb_dns_record_set(g, subnet);
+            // Like at the start, a TCP-serving domain never resolves to an address that no
+            // Gateway delivers to.
+            if state.tcp_services.contains_key(&domain) {
+                for _ in records.extract_if(.., |record| {
+                    record_ip(record).is_some_and(|ip| {
+                        !state
+                            .gateways
+                            .values()
+                            .any(|gateway| gateway.inner().routes.delivers(ip))
+                    })
+                }) {}
+            }
+            Transition::UpdateDnsRecords { domain, records }
+        }
+        K::SendPacket => {
+            let target = packet_targets[g.choose_index(packet_targets.len())].clone();
+            packets::generate(g, target)
+        }
+        K::SendPacketOnExistingFlow => {
+            let flow = existing_flows[g.choose_index(existing_flows.len())];
+            let probe_id = g.fresh_probe_id();
+
+            match flow {
+                ExistingFlow::Udp(flow_id) => {
+                    Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id }
+                }
+                ExistingFlow::Icmp(flow_id, seq) => Transition::SendIcmpPacketOnExistingFlow {
+                    flow_id,
+                    seq,
+                    probe_id,
+                },
+                ExistingFlow::ExpiredUdp(flow) => Transition::SendUdpPacketOnNewFlow {
+                    flow_id: g.fresh_flow_id(),
+                    client_id: flow.client_id,
+                    src: flow.src,
+                    dst: flow.dst.clone(),
+                    sport: flow.sport,
+                    dport: flow.dport,
+                    probe_id,
+                },
+                ExistingFlow::ExpiredIcmp(flow) => Transition::SendIcmpPacketOnNewFlow {
+                    flow_id: g.fresh_flow_id(),
+                    client_id: flow.client_id,
+                    src: flow.src,
+                    dst: flow.dst.clone(),
+                    seq: flow.next_seq,
+                    identifier: flow.identifier,
+                    probe_id,
+                },
+            }
+        }
+        K::SendTcpData => Transition::SendTcpData {
+            flow_id: tcp_flows[g.choose_index(tcp_flows.len())],
+            len: g.u16_in(1..=16 * 1024),
+            seed: g.u64(),
+            probe_id: g.fresh_probe_id(),
+        },
+        K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),
+        K::UpdateDevicePoolMembers => {
+            let pool_id = listed_device_pools[g.choose_index(listed_device_pools.len())];
+            let members = packets::arb_pool_members(g, state);
+            let revoked = portal.peer_authorizations_revoked_by(pool_id, &members);
+
+            Transition::UpdateDevicePoolMembers {
+                pool_id,
+                members,
+                revoked,
+            }
+        }
+        K::ExhaustRelayPorts => {
+            Transition::ExhaustRelayPorts(accepting_relays[g.choose_index(accepting_relays.len())])
+        }
+        K::FreeRelayPorts => {
+            Transition::FreeRelayPorts(exhausted_relays[g.choose_index(exhausted_relays.len())])
+        }
+    }
+}
+
+fn arb_resource_edit(
+    g: &mut TunnelGenerator,
+    state: &TunnelModel,
+    portal: &FakePortal,
+    old: Resource,
+) -> ResourceEdit {
+    if g.flip(25) {
+        let new = arb_resource_with_different_type(g, portal, &state.domain_tree, &old);
+
+        return ResourceEdit { old, new };
+    }
+
+    let mut new = old.clone();
+
+    // Each arm names every field of its resource and edits it through that binding, so a
+    // new field fails to compile until it has an edit here or is ignored explicitly.
+    match &mut new {
+        Resource::Dns(DnsResource {
+            id: _,
+            address,
+            name,
+            address_description,
+            sites,
+            ip_stack,
+            filters,
+        }) => {
+            let edits: [Option<Box<dyn FnOnce(&mut TunnelGenerator) + '_>>; 6] = [
+                Some(Box::new(|g| {
+                    *address = arb_different_dns_resource_address(g, address, state)
+                })),
+                Some(Box::new(|g| *name = arb_different_name(g, name))),
+                Some(Box::new(|g| {
+                    *address_description = arb_different_address_description(g, address_description)
+                })),
+                has_alternative_site(sites, portal)
+                    .then_some(Box::new(|g| *sites = arb_different_site(g, sites, portal))),
+                Some(Box::new(|g| {
+                    *ip_stack = arb_different_ip_stack_kind(g, *ip_stack)
+                })),
+                Some(Box::new(|g| *filters = arb_different_filters(g, filters))),
+            ];
+            let mut edits = edits.into_iter().flatten().collect::<SmallVec<[_; 6]>>();
+
+            edits.swap_remove(g.choose_index(edits.len()))(g);
+        }
+        Resource::Cidr(CidrResource {
+            id: _,
+            address,
+            name,
+            address_description,
+            sites,
+            filters,
+        }) => {
+            let edits: [Option<Box<dyn FnOnce(&mut TunnelGenerator) + '_>>; 5] = [
+                Some(Box::new(|g| {
+                    *address = arb_different_cidr_resource_address(g, *address)
+                })),
+                Some(Box::new(|g| *name = arb_different_name(g, name))),
+                Some(Box::new(|g| {
+                    *address_description = arb_different_address_description(g, address_description)
+                })),
+                has_alternative_site(sites, portal)
+                    .then_some(Box::new(|g| *sites = arb_different_site(g, sites, portal))),
+                Some(Box::new(|g| *filters = arb_different_filters(g, filters))),
+            ];
+            let mut edits = edits.into_iter().flatten().collect::<SmallVec<[_; 5]>>();
+
+            edits.swap_remove(g.choose_index(edits.len()))(g);
+        }
+        Resource::DevicePool(DevicePoolResource {
+            id: _,
+            name,
+            filters,
+        }) => {
+            let mut edits =
+                SmallVec::<[Box<dyn FnOnce(&mut TunnelGenerator) + '_>; 2]>::from_buf([
+                    Box::new(|g| *name = arb_different_name(g, name)),
+                    Box::new(|g| *filters = arb_different_filters(g, filters)),
+                ]);
+
+            edits.swap_remove(g.choose_index(edits.len()))(g);
+        }
+        Resource::Internet(_) => {
+            unreachable!("the Portal API does not allow editing the Internet Resource")
+        }
+    }
+
+    ResourceEdit { old, new }
+}
+
+fn has_alternative_site(current: &[Site], portal: &FakePortal) -> bool {
+    portal
+        .regular_sites()
+        .iter()
+        .any(|site| current.len() != 1 || current.first() != Some(site))
+}
+
+fn arb_different_site(g: &mut TunnelGenerator, current: &[Site], portal: &FakePortal) -> Vec<Site> {
+    let sites = portal
+        .regular_sites()
+        .iter()
+        .filter(|site| current.len() != 1 || current.first() != Some(*site))
+        .collect::<SmallVec<[_; 3]>>();
+    let site = sites[g.choose_index(sites.len())];
+
+    vec![site.clone()]
+}
+
+fn arb_different_name(g: &mut TunnelGenerator, current: &str) -> String {
+    let name = g.lower_ascii(4, 10);
+
+    if name != current {
+        return name;
+    }
+
+    format!("{name}-changed")
+}
+
+fn arb_resource_with_different_type(
+    g: &mut TunnelGenerator,
+    portal: &FakePortal,
+    domain_tree: &[DomainName],
+    resource: &Resource,
+) -> Resource {
+    #[derive(Clone, Copy)]
+    enum ResourceType {
+        Cidr,
+        Dns,
+        DevicePool,
+    }
+
+    let resource_type = match resource {
+        Resource::Cidr(_) => [ResourceType::Dns, ResourceType::DevicePool][g.choose_index(2)],
+        Resource::Dns(_) => [ResourceType::Cidr, ResourceType::DevicePool][g.choose_index(2)],
+        Resource::DevicePool(_) => [ResourceType::Cidr, ResourceType::Dns][g.choose_index(2)],
+        Resource::Internet(_) => {
+            unreachable!("only user-editable resource types can replace one another")
+        }
+    };
+
+    let site = resource
+        .sites()
+        .first()
+        .cloned()
+        .unwrap_or_else(|| pick_site(g, portal.regular_sites()).clone());
+    let id = resource.id();
+    let name = resource.name().to_owned();
+    let filters = resource.filters().to_vec();
+
+    match resource_type {
+        ResourceType::Cidr => Resource::Cidr(CidrResource {
+            id,
+            address: arb_cidr_resource_address(g),
+            name,
+            address_description: arb_address_description(g),
+            sites: vec![site],
+            filters,
+        }),
+        ResourceType::Dns => Resource::Dns(DnsResource {
+            id,
+            address: arb_dns_resource_address(g, domain_tree),
+            name,
+            address_description: arb_address_description(g),
+            sites: vec![site],
+            ip_stack: arb_ip_stack_kind(g),
+            filters,
+        }),
+        ResourceType::DevicePool => Resource::DevicePool(DevicePoolResource { id, name, filters }),
+    }
+}
+
+/// Reproduces `Union::new_weighted`: partition `int_in_range` over the summed
+/// weight. Identical bytes always pick the same arm.
+fn weighted_choose(g: &mut TunnelGenerator, opts: &[(TransitionKind, u32)]) -> TransitionKind {
+    let total = opts.iter().map(|(_, weight)| *weight).sum::<u32>();
+    assert!(total > 0, "there is always at least one legal transition");
+
+    let pick = g.u32_in(0..=total - 1);
+
+    opts.iter()
+        .scan(0, |end, (kind, weight)| {
+            *end += *weight;
+            Some((*kind, *end))
+        })
+        .find_map(|(kind, end)| (pick < end).then_some(kind))
+        .expect("the selected transition must be within the total weight")
+}
+
+/// The `(recipient, remote)` pairs of nodes that may connect to each other.
+fn key_change_recipients(state: &TunnelModel) -> Vec<(ClientOrGatewayId, ClientOrGatewayId)> {
+    let clients = state.clients.keys().copied().map(ClientOrGatewayId::Client);
+    let gateways = state
+        .gateways
+        .keys()
+        .copied()
+        .map(ClientOrGatewayId::Gateway);
+
+    clients
+        .clone()
+        .cartesian_product(clients.chain(gateways.clone()))
+        .filter(|(recipient, remote)| recipient != remote)
+        .flat_map(|(client, remote)| match remote {
+            ClientOrGatewayId::Client(_) => vec![(client, remote)],
+            ClientOrGatewayId::Gateway(_) => vec![(client, remote), (remote, client)],
+        })
+        .collect()
+}

@@ -257,6 +257,68 @@ defmodule Portal.Google.SyncTest do
       assert actor.email == "new@example.com"
     end
 
+    test "writes the directory photo URL to directory_picture and leaves picture alone" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      actor = Portal.ActorFixtures.actor_fixture(account: account, email: "user@example.com")
+
+      identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          directory: base_directory,
+          issuer: Sync.issuer(),
+          idp_id: "user1",
+          email: "user@example.com",
+          picture: "https://lh3.googleusercontent.com/a/sign-in-photo"
+        )
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.request_path == "/token"
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups")
+        Req.Test.json(conn, %{"groups" => [%{"id" => "group1", "name" => "DevOps", "email" => "devops@example.com"}]})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/orgunits")
+        Req.Test.json(conn, %{
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/users")
+
+        Req.Test.json(conn, %{
+          "users" => [
+            active_google_user(%{
+              "id" => "user1",
+              "primaryEmail" => "user@example.com",
+              "thumbnailPhotoUrl" => "https://www.google.com/s2/photos/private/thumbnail"
+            })
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+        Req.Test.json(conn, %{"members" => [%{"id" => "user1", "type" => "USER", "email" => "user@example.com"}]})
+      end)
+
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
+
+      identity = Repo.get_by!(Portal.ExternalIdentity, account_id: account.id, id: identity.id)
+      assert identity.picture == "https://lh3.googleusercontent.com/a/sign-in-photo"
+      assert identity.directory_picture == "https://www.google.com/s2/photos/private/thumbnail"
+    end
+
     test "performs successful sync with groups, org units, and user identity sync" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
@@ -2641,7 +2703,7 @@ defmodule Portal.Google.SyncTest do
           given_name: nil,
           family_name: nil,
           preferred_username: nil,
-          picture: nil
+          directory_picture: nil
         }
       ]
 
@@ -2703,7 +2765,7 @@ defmodule Portal.Google.SyncTest do
                    given_name: "Recreated",
                    family_name: "User",
                    preferred_username: "recreated@example.com",
-                   picture: nil
+                   directory_picture: nil
                  }
                ])
 
@@ -2745,7 +2807,7 @@ defmodule Portal.Google.SyncTest do
                    given_name: "OIDC",
                    family_name: "User",
                    preferred_username: "oidc@example.com",
-                   picture: nil
+                   directory_picture: nil
                  }
                ])
 
@@ -2786,7 +2848,7 @@ defmodule Portal.Google.SyncTest do
                    given_name: "Old",
                    family_name: "User",
                    preferred_username: "renamed@example.com",
-                   picture: nil
+                   directory_picture: nil
                  },
                  %{
                    idp_id: "new-subject-id",
@@ -2795,7 +2857,7 @@ defmodule Portal.Google.SyncTest do
                    given_name: "New",
                    family_name: "User",
                    preferred_username: "swap@example.com",
-                   picture: nil
+                   directory_picture: nil
                  }
                ])
     end

@@ -10,6 +10,9 @@ defmodule Portal.Ocsp.SyncTest do
 
   alias Portal.Ocsp.Sync
   alias Portal.Crypto.X509
+  alias Portal.StreamingServer
+
+  @mib 1_048_576
 
   setup do
     account = account_fixture()
@@ -261,6 +264,20 @@ defmodule Portal.Ocsp.SyncTest do
       endpoint = Repo.one!(Portal.RevocationEndpoint)
       assert is_nil(endpoint.ocsp_errored_at)
       assert endpoint.crl_errored_at == started
+    end
+
+    test "stops reading an answer that passes the size limit", %{account: account, pki: pki} do
+      test_pid = self()
+      url = StreamingServer.start(&StreamingServer.send_chunks(&1, test_pid, @mib, 64))
+      Portal.Config.put_env_override(Sync, req_opts: [retry: false, allow_private_ips: true])
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf(pki, :rsa))
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der, ocsp_urls: [url])
+
+      failure(endpoint)
+
+      assert Repo.one!(Portal.RevocationEndpoint).ocsp_error == ":ocsp_response_too_large"
+      assert_receive {:bytes_sent, sent}, 5_000
+      assert sent < 16 * @mib
     end
 
     test "does nothing once the responder was turned off", %{account: account, pki: pki} do

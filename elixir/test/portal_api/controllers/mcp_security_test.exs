@@ -27,14 +27,14 @@ defmodule PortalAPI.MCPSecurityTest do
     end
 
     for token <- tokens do
-      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
     end
 
     [first, second] = tokens
     result = call_tool(conn, "delete_actor_client_token", %{"actor_id" => target.id, "id" => first.id})
     assert %{"result" => %{"isError" => false}} = json_response(result, 200)
-    refute Repo.get_by(Portal.ClientToken, account_id: account.id, id: first.id)
-    assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: second.id)
+    refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: first.id)
+    assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: second.id)
   end
 
   test "empty gateway token ID cannot revoke a whole site", %{conn: conn, account: account, actor: actor} do

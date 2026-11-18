@@ -51,6 +51,16 @@ defmodule PortalAPI.RedirectToRestApiUrlTest do
       assert call(conn) == conn
     end
 
+    test "redirects when the flow logs API URL is unset" do
+      Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
+      Portal.Config.put_env_override(:flow_logs_api_url, nil)
+
+      result = call(conn(:get, "https://api.firezone.dev/clients"))
+
+      assert result.halted
+      assert result.status == 308
+    end
+
     test "permanent-redirects requests on any other host preserving path and query" do
       Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
 

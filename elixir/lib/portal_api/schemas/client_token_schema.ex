@@ -6,14 +6,18 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.ClientToken,
+             for: Portal.DeviceToken,
              internal: [
                :account_id,
                :auth_provider_id,
                :auth_provider_name,
                :auth_provider_type,
+               :device_id,
                :last_used_device,
-               :online?
+               :online?,
+               :rotated_at,
+               :rotated_sibling_id,
+               :site_id
              ]}
     OpenApiSpex.schema(%{
       title: "ClientToken",
@@ -81,14 +85,18 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias PortalAPI.Schemas.ClientToken
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.ClientToken,
+             for: Portal.DeviceToken,
              internal: [
                :account_id,
                :auth_provider_id,
                :auth_provider_name,
                :auth_provider_type,
+               :device_id,
                :last_used_device,
-               :online?
+               :online?,
+               :rotated_at,
+               :rotated_sibling_id,
+               :site_id
              ]}
     OpenApiSpex.schema(%{
       title: "ClientTokenWithSecret",
@@ -138,7 +146,7 @@ defmodule PortalAPI.Schemas.ClientToken do
 
     # Only a token just created carries the secret fragment the encoded token is
     # built from, which is why this is a separate schema from the read one.
-    def map(%Portal.ClientToken{} = token, _map) do
+    def map(%Portal.DeviceToken{} = token, _map) do
       %{token: Portal.Authentication.encode_fragment!(token)}
     end
   end
