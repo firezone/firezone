@@ -224,7 +224,7 @@ Refs:
 - [ ] Given the client was signed in when it stopped, when you start it again, then the GUI returns to the signed-in state and shows the actor name
 - [ ] Given the client is signed out, when you sign in, sign out, then sign in again, then the second sign-in works
 
-The signed-in tray menu also offers an "Admin Portal..." item (which can be hidden by MDM policy).
+The signed-in tray menu also offers removing a resource from the favorites and an "Admin Portal..." item (which can be hidden by MDM policy).
 
 ## Settings
 

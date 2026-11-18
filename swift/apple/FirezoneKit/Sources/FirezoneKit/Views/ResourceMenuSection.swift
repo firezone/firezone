@@ -30,7 +30,7 @@
     }
   }
 
-  /// Submenu containing resource details and actions
+  /// Submenu containing resource details, site info, and actions
   struct ResourceDetailsSubmenu: View {
     let resource: Resource
     @EnvironmentObject var store: Store
@@ -49,31 +49,83 @@
             store.configuration.internetResourceEnabled.toggle()
           }
         } else {
-          if let description = resource.addressDescription, !description.isEmpty {
-            if let url = resource.descriptionURL {
+          // Show description, or address if there is none - clickable if it's a valid URL
+          if let displayAddress = resource.addressDescription.flatMap({ $0.isEmpty ? nil : $0 })
+            ?? resource.address
+          {
+            if let url = URL(string: displayAddress), url.scheme != nil {
               Link(destination: url) {
-                Text(description)
+                Text(displayAddress)
                   .foregroundColor(.blue)
                   .underline()
               }
             } else {
-              Button(description) {
-                Clipboard.copy(description)
+              Button(displayAddress) {
+                Clipboard.copy(displayAddress)
               }
             }
           }
+
+          Divider()
+
+          Text("Resource")
+            .foregroundStyle(.secondary)
 
           if let address = resource.address {
             Button(address) {
               Clipboard.copy(address)
             }
+
+            Button("Copy address") {
+              Clipboard.copy(address)
+            }
           }
+
+          Button(favoriteToggleTitle) {
+            toggleFavorite()
+          }
+        }
+
+        // Site information (if available)
+        if let site = resource.sites.first {
+          Divider()
+
+          Text("Site")
+            .foregroundStyle(.secondary)
+
+          Button(site.name) {
+            Clipboard.copy(site.name)
+          }
+
+          Button {
+            Clipboard.copy(resource.status.toSiteStatus())
+          } label: {
+            HStack {
+              if let icon = resource.status.statusIcon {
+                Image(nsImage: icon)
+              }
+              Text(resource.status.toSiteStatus())
+            }
+          }
+          .help(resource.status.toSiteStatusTooltip())
         }
       }
     }
 
     var internetResourceToggleTitle: String {
       store.configuration.internetResourceEnabled ? "Disable this resource" : "Enable this resource"
+    }
+
+    var favoriteToggleTitle: String {
+      store.favorites.contains(resource.id) ? "Remove from favorites" : "Add to favorites"
+    }
+
+    func toggleFavorite() {
+      if store.favorites.contains(resource.id) {
+        store.favorites.remove(resource.id)
+      } else {
+        store.favorites.add(resource.id)
+      }
     }
   }
 

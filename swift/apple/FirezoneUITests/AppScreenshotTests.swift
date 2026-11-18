@@ -222,15 +222,14 @@
 
     /// The menu bar menu with a favorite hovered, so its submenu is open beside it.
     func testMenuWithResource() throws {
-      try captureMenu(hovering: "GitLab", showing: "gitlab.example.com", as: "menu")
+      try captureMenu(hovering: "GitLab", showing: "Copy address", as: "menu")
     }
 
     /// The menu bar menu with a favorite device pool hovered, so its connected devices
     /// are listed beside it.
     func testMenuWithDevicePool() throws {
       try captureMenu(
-        hovering: "Lab hardware", showing: "bench-controller-01.firezone.network",
-        as: "menu-device-pool")
+        hovering: "Lab hardware", showing: "bench-controller-01", as: "menu-device-pool")
     }
 
     /// Photographs the menu with the row titled `title` hovered, together with the

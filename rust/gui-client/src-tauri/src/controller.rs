@@ -688,7 +688,8 @@ impl<I: GuiIntegration> Controller<I> {
             SetFavorite {
                 resource,
                 favorite: false,
-            } => {
+            }
+            | SystemTrayMenu(system_tray::Event::RemoveFavorite(resource)) => {
                 self.general_settings.favorite_resources.remove(&resource);
                 self.refresh_favorite_resources().await?;
             }

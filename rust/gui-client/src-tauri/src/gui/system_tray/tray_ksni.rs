@@ -1,4 +1,11 @@
 //! Linux tray backend built on `ksni` (StatusNotifierItem + DBusMenu).
+//!
+//! ksni speaks the tray D-Bus protocols directly, so it can attach per-item
+//! `icon-data` (a PNG) — letting GNOME (with the AppIndicator extension) and
+//! KDE render the colored Site-status dots, which Tauri's `libappindicator`
+//! path could not. Stock icon themes only ship monochrome *symbolic* status
+//! icons, so rather than a themed `icon-name` we embed our own PNGs — the same
+//! green/red/grey assets the Windows tray uses.
 
 use std::sync::Arc;
 use std::task::Poll;
@@ -6,13 +13,21 @@ use std::task::Poll;
 use anyhow::Result;
 use ksni::{
     Icon as KsniIcon,
-    menu::{MenuItem, StandardItem, SubMenu},
+    menu::{CheckmarkItem, MenuItem, StandardItem, SubMenu},
 };
 use tauri::AppHandle;
 use tokio::runtime;
 use tokio::sync::mpsc;
 
-use super::{AppState, Entry, Event, Icon, Item, Menu, TOOLTIP, compose_icon, icon_from_state};
+use super::{
+    AppState, Entry, Event, Icon, Item, Menu, MenuItemIcon, TOOLTIP, compose_icon, icon_from_state,
+};
+
+// Status dots embedded as `icon-data`, shared with the Windows tray. Stock
+// icon themes don't ship colored status icons, so we ship our own.
+const STATUS_ONLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-online.png");
+const STATUS_OFFLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-offline.png");
+const STATUS_UNKNOWN_ICON: &[u8] = include_bytes!("../../../icons/menu/status-unknown.png");
 
 type OnEvent = Arc<dyn Fn(&AppHandle, Event) + Send + Sync>;
 
@@ -223,11 +238,34 @@ fn build_item(item: &Item) -> MenuItem<FzTray> {
         }
     });
 
-    StandardItem {
-        label,
-        enabled,
-        activate,
-        ..Default::default()
+    if let Some(checked) = item.checked {
+        CheckmarkItem {
+            label,
+            enabled,
+            checked,
+            activate,
+            ..Default::default()
+        }
+        .into()
+    } else {
+        StandardItem {
+            label,
+            enabled,
+            icon_data: icon_data(item.icon),
+            activate,
+            ..Default::default()
+        }
+        .into()
     }
-    .into()
+}
+
+/// Returns the PNG bytes for a menu-item status dot, for ksni's `icon-data`.
+fn icon_data(icon: Option<MenuItemIcon>) -> Vec<u8> {
+    let png: &[u8] = match icon {
+        Some(MenuItemIcon::Green) => STATUS_ONLINE_ICON,
+        Some(MenuItemIcon::Red) => STATUS_OFFLINE_ICON,
+        Some(MenuItemIcon::Grey) => STATUS_UNKNOWN_ICON,
+        None => return Vec::new(),
+    };
+    png.to_vec()
 }

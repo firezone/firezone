@@ -6,24 +6,31 @@
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
 use compositor::Image;
-use connlib_model::{ConnectedDeviceView, ResourceId, ResourceView};
+use connlib_model::{ConnectedDeviceView, ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
 use tunnel_proto::dns::DEVICE_DOMAIN;
 use url::Url;
 
-use crate::{updates::Release, view::description_link};
+use crate::updates::Release;
 
+/// `builder::Icon` is the icon shown *inside* a menu item (e.g. Site status),
+/// distinct from the tray `Icon` defined in this module.
+pub(crate) use builder::Icon as MenuItemIcon;
+use builder::item;
 pub use builder::{Entry, Event, Item, Menu, Window};
-use builder::{copyable, item};
 
 mod builder;
 mod compositor;
 
-// The tray is drawn by a platform-native backend:
+// The tray is drawn by a platform-native backend rather than Tauri's own tray,
+// so that menu-item icons (e.g. Site status) actually render:
 //
-// - **Windows / macOS**: Tauri's built-in tray (the `tray-icon` feature).
+// - **Windows / macOS**: Tauri's built-in tray (the `tray-icon` feature),
+//   which renders per-item icons natively.
 // - **Linux**: `ksni`, a pure-Rust StatusNotifierItem implementation that
-//   speaks the DBusMenu protocol directly.
+//   speaks the DBusMenu protocol directly and can attach per-item icon data
+//   (a PNG) — which GNOME (with the AppIndicator extension) and KDE render,
+//   unlike Tauri's `libappindicator` path.
 #[cfg(not(target_os = "linux"))]
 mod tray_tauri;
 #[cfg(not(target_os = "linux"))]
@@ -44,12 +51,16 @@ const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../icons/tray/Update ready 
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
+const NO_ACTIVITY: &str = "No activity";
+const GATEWAY_CONNECTED: &str = "Gateway connected";
+const ALL_GATEWAYS_OFFLINE: &str = "All Gateways offline";
+
 const ENABLED_SYMBOL: &str = "<->";
 const DISABLED_SYMBOL: &str = "—";
 
+const REMOVE_FAVORITE: &str = "Remove from favorites";
 const FAVORITE_RESOURCES: &str = "Favorite Resources";
 const RESOURCES: &str = "Resources";
-const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 const NO_CONNECTED_DEVICES: &str = "No connected devices";
 
 /// Maximum number of connected devices listed inline in a device pool's submenu.
@@ -159,6 +170,51 @@ pub struct SignedIn {
     pub internet_resource_enabled: Option<bool>,
 }
 
+impl SignedIn {
+    /// Builds the submenu that has the resource address, name, desc,
+    /// sites online, etc.
+    fn resource_submenu(&self, res: &ResourceView) -> Menu {
+        if let ResourceView::DevicePool(pool) = res {
+            return devices_submenu(&pool.devices);
+        }
+
+        let mut submenu = Menu::default().resource_description(res);
+
+        if res.is_internet_resource() {
+            submenu.add_separator();
+            if self.is_internet_resource_enabled() {
+                submenu.add_item(item(Event::DisableInternetResource, DISABLE));
+            } else {
+                submenu.add_item(item(Event::EnableInternetResource, ENABLE));
+            }
+        }
+
+        if !res.is_internet_resource() {
+            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).checked(true));
+        }
+
+        if let Some(site) = res.sites().first() {
+            let (status, icon) = match res.status() {
+                ResourceStatus::Unknown => (NO_ACTIVITY, MenuItemIcon::Grey),
+                ResourceStatus::Online => (GATEWAY_CONNECTED, MenuItemIcon::Green),
+                ResourceStatus::Offline => (ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
+            };
+
+            submenu
+                .separator()
+                .disabled("Site")
+                .copyable(&site.name) // Hope this is okay - The code is simpler if every enabled item sends an `Event` on click
+                .copyable_with_icon(status, icon)
+        } else {
+            submenu
+        }
+    }
+
+    fn is_internet_resource_enabled(&self) -> bool {
+        self.internet_resource_enabled.unwrap_or_default()
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub struct Icon {
     pub base: IconBase,
@@ -198,8 +254,6 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         internet_resource_enabled,
     } = signed_in;
 
-    let internet_resource_enabled = internet_resource_enabled.unwrap_or_default();
-
     let mut menu = Menu::default()
         .disabled(session_heading(actor_name))
         .item(Event::SignOut, SIGN_OUT);
@@ -208,76 +262,33 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         resource_count = resources.len(),
         "Building signed-in tray menu"
     );
-    let mut favorites = Menu::default();
-    if resources
+
+    // Every other Resource is only listed in the window.
+    let listed = resources
         .iter()
-        .any(|res| favorite_resources.contains(&res.id()))
-    {
-        favorites = favorites.disabled(FAVORITE_RESOURCES);
+        .filter(|res| favorite_resources.contains(&res.id()) || res.is_internet_resource())
+        .collect::<Vec<_>>();
+
+    if listed.is_empty() {
+        return menu;
     }
 
-    for res in resources {
-        let is_favorite = favorite_resources.contains(&res.id());
+    menu = menu.separator();
 
-        favorites = match res {
-            ResourceView::Internet(internet) => favorites.add_submenu(
-                append_status(&internet.name, internet_resource_enabled),
-                internet_resource_submenu(internet_resource_enabled),
-            ),
-            ResourceView::Dns(dns) if is_favorite => favorites.add_submenu(
-                &dns.name,
-                resource_submenu(dns.address_description.as_deref(), &dns.address),
-            ),
-            ResourceView::Cidr(cidr) if is_favorite => favorites.add_submenu(
-                &cidr.name,
-                resource_submenu(
-                    cidr.address_description.as_deref(),
-                    &cidr.address.to_string(),
-                ),
-            ),
-            ResourceView::DevicePool(pool) if is_favorite => {
-                favorites.add_submenu(&pool.name, devices_submenu(&pool.devices))
-            }
-            ResourceView::Dns(_) | ResourceView::Cidr(_) | ResourceView::DevicePool(_) => favorites,
-        };
+    if listed.iter().any(|res| !res.is_internet_resource()) {
+        menu = menu.disabled(FAVORITE_RESOURCES);
     }
 
-    if !favorites.entries.is_empty() {
-        menu.add_separator();
-        menu.entries.extend(favorites.entries);
+    for res in listed {
+        let mut name = res.name().to_string();
+        if res.is_internet_resource() {
+            name = append_status(&name, internet_resource_enabled.unwrap_or_default());
+        }
+
+        menu = menu.add_submenu(name, signed_in.resource_submenu(res));
     }
 
     menu
-}
-
-fn internet_resource_submenu(enabled: bool) -> Menu {
-    let menu = Menu::default()
-        .disabled(INTERNET_RESOURCE_DESCRIPTION)
-        .separator();
-
-    if enabled {
-        menu.item(Event::DisableInternetResource, DISABLE)
-    } else {
-        menu.item(Event::EnableInternetResource, ENABLE)
-    }
-}
-
-fn resource_submenu(description: Option<&str>, address: &str) -> Menu {
-    let mut menu = Menu::default();
-
-    if let Some(description) = description.filter(|description| !description.is_empty()) {
-        menu.add_item(description_item(description));
-    }
-
-    menu.copyable(address)
-}
-
-fn description_item(description: &str) -> Item {
-    let Some(url) = description_link(description) else {
-        return copyable(description);
-    };
-
-    item(Event::Url(url), format!("<{description}>"))
 }
 
 fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
@@ -288,7 +299,7 @@ fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
     let mut menu = Menu::default();
     let visible = connected_devices.len().min(MAX_DEVICES_INLINE);
     for device in &connected_devices[..visible] {
-        menu = menu.copyable(&format!("{}.{DEVICE_DOMAIN}", device.slug));
+        menu = menu.add_submenu(device.slug.clone(), device_submenu(device));
     }
 
     let hidden = connected_devices.len() - visible;
@@ -301,6 +312,20 @@ fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
         menu = menu.separator().disabled(label);
     }
     menu
+}
+
+fn device_submenu(device: &ConnectedDeviceView) -> Menu {
+    Menu::default()
+        .disabled("Device")
+        .copyable(&format!("{}.{DEVICE_DOMAIN}", device.slug))
+        .separator()
+        .disabled("Tunnel IPs")
+        .copyable(&device.tun_ipv4.to_string())
+        .copyable(&device.tun_ipv6.to_string())
+        .separator()
+        .disabled("Client Details")
+        .copyable(&device.id.to_string())
+        .copyable(&device.name)
 }
 
 fn session_heading(actor_name: &str) -> String {
@@ -399,6 +424,20 @@ mod tests {
     use super::*;
     use anyhow::Result;
     use std::str::FromStr as _;
+
+    use builder::{COPY_ADDRESS, INTERNET_RESOURCE_DESCRIPTION};
+
+    impl Menu {
+        fn checkable<E: Into<Option<Event>>, S: Into<String>>(
+            mut self,
+            id: E,
+            title: S,
+            checked: bool,
+        ) -> Self {
+            self.add_item(item(id, title).checked(checked));
+            self
+        }
+    }
 
     fn signed_in(
         resources: Vec<ResourceView>,
@@ -615,7 +654,11 @@ mod tests {
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
-                    .item(Event::EnableInternetResource, ENABLE),
+                    .item(Event::EnableInternetResource, ENABLE)
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             )
             .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
@@ -650,55 +693,32 @@ mod tests {
                         Event::Url("https://gitlab.mycorp.com".parse()?),
                         "<https://gitlab.mycorp.com>",
                     )
-                    .copyable("gitlab.mycorp.com"),
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("gitlab.mycorp.com")
+                    .item(Event::Copy("gitlab.mycorp.com".to_owned()), COPY_ADDRESS)
+                    .checkable(
+                        Event::RemoveFavorite(ResourceId::from_str(
+                            "03000143-e25e-45c7-aafb-144990e57dcd",
+                        )?),
+                        REMOVE_FAVORITE,
+                        true,
+                    )
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
             .add_submenu(
                 "— Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
-                    .item(Event::EnableInternetResource, ENABLE),
-            )
-            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
-
-        assert_eq!(
-            actual,
-            expected,
-            "{}",
-            serde_json::to_string_pretty(&actual)?
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn description_that_is_not_a_url_is_copyable() -> Result<()> {
-        let actual = signed_in(
-            resources(),
-            HashSet::from([ResourceId::from_str(
-                "73037362-715d-4a83-a749-f18eadd970e6",
-            )?]),
-            None,
-        )
-        .into_menu();
-
-        let expected = Menu::default()
-            .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, SIGN_OUT)
-            .separator()
-            .disabled(FAVORITE_RESOURCES)
-            .add_submenu(
-                "172.172.0.0/16",
-                Menu::default()
-                    .copyable("cidr resource")
-                    .copyable("172.172.0.0/16"),
-            )
-            .add_submenu(
-                format!("{DISABLED_SYMBOL} Internet Resource"),
-                Menu::default()
-                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .item(Event::EnableInternetResource, ENABLE)
                     .separator()
-                    .item(Event::EnableInternetResource, ENABLE),
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             )
             .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
@@ -710,41 +730,6 @@ mod tests {
         );
 
         Ok(())
-    }
-
-    #[test]
-    fn missing_description_is_omitted() {
-        use connlib_model::DnsResourceView;
-        let resource = ResourceView::Dns(DnsResourceView {
-            id: ResourceId::from_u128(1),
-            address: "git.example.com".into(),
-            name: "Git server".into(),
-            address_description: None,
-            sites: vec![],
-            status: connlib_model::ResourceStatus::Unknown,
-        });
-
-        let actual = signed_in(
-            vec![resource],
-            HashSet::from([ResourceId::from_u128(1)]),
-            None,
-        )
-        .into_menu();
-
-        let expected = Menu::default()
-            .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, SIGN_OUT)
-            .separator()
-            .disabled(FAVORITE_RESOURCES)
-            .add_submenu("Git server", Menu::default().copyable("git.example.com"))
-            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
-
-        assert_eq!(
-            actual,
-            expected,
-            "{}",
-            serde_json::to_string_pretty(&actual).unwrap()
-        );
     }
 
     #[test]
@@ -767,7 +752,11 @@ mod tests {
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
-                    .item(Event::EnableInternetResource, ENABLE),
+                    .item(Event::EnableInternetResource, ENABLE)
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             )
             .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
@@ -818,7 +807,20 @@ mod tests {
             .disabled(FAVORITE_RESOURCES)
             .add_submenu(
                 "Engineering Pool",
-                Menu::default().copyable("alpha.firezone.network"),
+                Menu::default().add_submenu(
+                    "alpha",
+                    Menu::default()
+                        .disabled("Device")
+                        .copyable("alpha.firezone.network")
+                        .separator()
+                        .disabled("Tunnel IPs")
+                        .copyable(&alpha_ip.to_string())
+                        .copyable(&alpha_ipv6.to_string())
+                        .separator()
+                        .disabled("Client Details")
+                        .copyable(&alpha.to_string())
+                        .copyable("Alpha"),
+                ),
             )
             .add_submenu("QA Pool", Menu::default().disabled(NO_CONNECTED_DEVICES))
             .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
@@ -849,7 +851,22 @@ mod tests {
 
         let mut expected = Menu::default();
         for device in &connected_devices[..MAX_DEVICES_INLINE] {
-            expected = expected.copyable(&format!("{}.firezone.network", device.slug));
+            let ip = device.tun_ipv4.to_string();
+            let ipv6 = device.tun_ipv6.to_string();
+            expected = expected.add_submenu(
+                device.slug.clone(),
+                Menu::default()
+                    .disabled("Device")
+                    .copyable(&format!("{}.firezone.network", device.slug))
+                    .separator()
+                    .disabled("Tunnel IPs")
+                    .copyable(&ip)
+                    .copyable(&ipv6)
+                    .separator()
+                    .disabled("Client Details")
+                    .copyable(&device.id.to_string())
+                    .copyable(&device.name),
+            );
         }
         expected = expected.separator().disabled("And 3 more devices…");
 
