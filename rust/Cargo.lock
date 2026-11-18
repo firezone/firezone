@@ -7583,6 +7583,7 @@ dependencies = [
  "anyhow-ext",
  "bufferpool",
  "derive_more",
+ "futures",
  "ip-packet",
  "libc",
  "memchr",
