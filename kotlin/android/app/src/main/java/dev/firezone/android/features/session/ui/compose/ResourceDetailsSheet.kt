@@ -95,7 +95,7 @@ private fun NonInternetResourceDetails(
 
         resource.addressDescription?.takeIf { it.isNotEmpty() }?.let { description ->
             val descriptionUri = remember(description) { description.toUri() }
-            val isUrl = descriptionUri.scheme != null
+            val isUrl = descriptionUri.scheme?.lowercase() in listOf("http", "https")
 
             DetailSection(label = "Description") {
                 Text(

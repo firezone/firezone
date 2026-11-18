@@ -49,11 +49,11 @@
             store.configuration.internetResourceEnabled.toggle()
           }
         } else {
-          // Show description, or address if there is none - clickable if it's a valid URL
+          // Show description, or address if there is none - clickable if it's a web URL
           if let displayAddress = resource.addressDescription.flatMap({ $0.isEmpty ? nil : $0 })
             ?? resource.address
           {
-            if let url = URL(string: displayAddress), url.scheme != nil {
+            if let url = resource.descriptionURL {
               Link(destination: url) {
                 Text(displayAddress)
                   .foregroundColor(.blue)
