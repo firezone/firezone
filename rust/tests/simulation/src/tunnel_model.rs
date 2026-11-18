@@ -262,21 +262,18 @@ impl TunnelModel {
                 let flow_route = verdict.flow_route();
                 self.record_probe(portal, *probe_id, *client_id, request, now, verdict);
 
-                match flow_route {
-                    Some(route) => {
-                        let flow = IcmpFlow {
-                            client_id: *client_id,
-                            src: *src,
-                            dst: dst.clone(),
-                            identifier: *identifier,
-                            next_seq: Seq(seq.0.wrapping_add(1)),
-                            route,
-                            last_round_trip: now,
-                        };
-                        let previous = self.icmp_flows.insert(*flow_id, flow);
-                        assert!(previous.is_none(), "ICMP flow IDs must be unique");
-                    }
-                    None => {}
+                if let Some(route) = flow_route {
+                    let flow = IcmpFlow {
+                        client_id: *client_id,
+                        src: *src,
+                        dst: dst.clone(),
+                        identifier: *identifier,
+                        next_seq: Seq(seq.0.wrapping_add(1)),
+                        route,
+                        last_round_trip: now,
+                    };
+                    let previous = self.icmp_flows.insert(*flow_id, flow);
+                    assert!(previous.is_none(), "ICMP flow IDs must be unique");
                 }
             }
             Transition::SendIcmpPacketOnExistingFlow {
@@ -353,21 +350,18 @@ impl TunnelModel {
                 let flow_route = verdict.flow_route();
                 self.record_probe(portal, *probe_id, *client_id, request, now, verdict);
 
-                match flow_route {
-                    Some(route) => {
-                        let flow = UdpFlow {
-                            client_id: *client_id,
-                            src: *src,
-                            dst: dst.clone(),
-                            sport: *sport,
-                            dport: *dport,
-                            route,
-                            last_round_trip: now,
-                        };
-                        let previous = self.udp_flows.insert(*flow_id, flow);
-                        assert!(previous.is_none(), "UDP flow IDs must be unique");
-                    }
-                    None => {}
+                if let Some(route) = flow_route {
+                    let flow = UdpFlow {
+                        client_id: *client_id,
+                        src: *src,
+                        dst: dst.clone(),
+                        sport: *sport,
+                        dport: *dport,
+                        route,
+                        last_round_trip: now,
+                    };
+                    let previous = self.udp_flows.insert(*flow_id, flow);
+                    assert!(previous.is_none(), "UDP flow IDs must be unique");
                 }
             }
             Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
