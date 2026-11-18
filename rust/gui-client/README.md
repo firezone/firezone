@@ -7,8 +7,7 @@ This crate houses a GUI client for Linux and Windows.
 To compile natively for x86_64 Linux:
 
 1. [Install rustup](https://rustup.rs/)
-1. Install [pnpm](https://pnpm.io/installation)
-1. `sudo apt-get install build-essential curl file pkg-config libgtk-3-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev wget`
+1. `sudo apt-get install build-essential curl file pkg-config libdbus-1-dev libegl-dev libfontconfig-dev libfreetype-dev libgl-dev libgles-dev libssl-dev libwayland-dev wget`
 1. The `firezone-client` group, which the installer creates in production. The GUI checks
    for membership at startup and the Tunnel service's socket is group-readable only:
 
@@ -31,9 +30,9 @@ To compile natively for x86_64 Windows, install the following (winget commands s
    console does not process ANSI escapes and mangles the Tunnel service's logs.
 1. An editor of your choice (see [Recommended IDE Setup](#recommended-ide-setup))
 
-`node` and `pnpm` are pinned in [`rust/.tool-versions`](../.tool-versions) and provided
-by mise — you don't install them separately. After installing mise, activate it in
-PowerShell 7 and install the toolchain from `rust/`:
+The tools the build needs are pinned in [`rust/mise.toml`](../mise.toml) and provided
+by mise. After installing mise, activate it in PowerShell 7 and install the toolchain
+from `rust/`:
 
 ```powershell
 # Activate mise for the current session
@@ -47,22 +46,18 @@ Add-Content $PROFILE 'mise activate pwsh | Out-String | Invoke-Expression'
 # Tab completions
 mise completion powershell | Add-Content $PROFILE
 
-# Install the pinned tools (node, pnpm, cargo-tauri, etc.)
+# Install the pinned tools
 mise install
 ```
 
 ### Recommended IDE Setup
 
-(From Tauri's default README)
-
 - [VS Code](https://code.visualstudio.com/)
-- [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)
 - [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 
 ## Building
 
-`mise run build` builds the frontend, the release binaries and the installer
-packages. See [`mise-tasks/build.sh`](./mise-tasks/build.sh) for what happens
+`mise run build` builds the release binaries and the installer packages. See [`mise-tasks/build.sh`](./mise-tasks/build.sh) for what happens
 under the hood.
 
 ```bash
@@ -125,18 +120,14 @@ PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh 
 
    ```powershell
    mise run dev
-   # equivalent to: cargo tauri dev -- -- --skip-peer-verification
-
-   # You can call debug subcommands on the exe this way too, e.g.
-   cargo tauri dev -- -- debug hostname
+   # equivalent to: cargo run -p firezone-gui-client --bin firezone-gui-client -- --skip-peer-verification
 
    # The exe is up in the workspace
-   stat ../target/debug/Firezone.exe
+   stat ../target/debug/firezone-gui-client.exe
    ```
 
-   `tauri dev` starts the Vite dev server itself (via `beforeDevCommand`) and points the
-   webview at it (`devUrl`), so you get hot-reload and client-side routing works. No
-   separate frontend build is needed for dev.
+   The window is drawn with [Freya](https://freyaui.dev). `mise run screenshots` renders
+   every screen to [`screenshots/`](./screenshots) without a display.
 
 The app's config and logs will be stored at
 `C:\Users\$USER\AppData\Local\dev.firezone.client`.
@@ -157,10 +148,6 @@ that are only available to CI. Use the GitHub CI pipeline to build a signed rele
 ## Platform support
 
 Ubuntu 22.04 and newer is supported.
-
-Tauri says it should work on Windows 10, Version 1803 and up. Older versions may
-work if you
-[manually install WebView2](https://tauri.app/v1/guides/getting-started/prerequisites#2-webview2)
 
 `x86_64` architecture is supported for Windows. `aarch64` and `x86_64` are supported for Linux.
 

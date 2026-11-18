@@ -116,7 +116,7 @@ jobs:
           # The data plane (client/gateway/relay/http-test-server images) and the
           # integration/compatibility tests that exercise them are built from the
           # headless client, gateway and relay. The platform client shims
-          # (rust/gui-client for Tauri, rust/client-ffi for the Swift/Kotlin FFI)
+          # (rust/gui-client for the GUI client, rust/client-ffi for the Swift/Kotlin FFI)
           # are leaf crates that nothing in the data plane depends on, so a change
           # confined to them only needs the workspace `rust` job above plus the
           # tauri / kotlin / swift jobs. Run the data-plane chain only for rust

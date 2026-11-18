@@ -12,13 +12,15 @@ if [[ "$OSTYPE" == msys || "$OSTYPE" == cygwin ]]; then
     export PATH="/usr/bin:$PATH"
 fi
 
-pnpm install --frozen-lockfile
-pnpm exec vite build
-
-# `tauri/custom-protocol` embeds the frontend built above. Without it, the app
-# loads the Vite dev server instead.
-cargo build --release -p firezone-gui-client --features tauri/custom-protocol
+cargo build --release -p firezone-gui-client
 cargo build --release -p firezone-cli
+
+# The About page shows the commit the GUI was built from.
+case "$OSTYPE" in
+msys* | cygwin*) gui=$release/firezone-gui-client.exe ;;
+*) gui=$release/firezone-gui-client ;;
+esac
+../mise-tasks/patch-git-sha "$gui" "$(git rev-parse HEAD)"
 
 case "$OSTYPE" in
 linux*)

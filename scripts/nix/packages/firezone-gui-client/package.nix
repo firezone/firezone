@@ -2,26 +2,43 @@
   lib,
   stdenv,
   fzLib,
-  firezone-gui-client-frontend,
+  fetchurl,
   installShellFiles,
   pkg-config,
-  wrapGAppsHook3,
+  makeWrapper,
   copyDesktopItems,
   makeDesktopItem,
   dbus,
-  gdk-pixbuf,
-  glib,
-  gobject-introspection,
-  gtk3,
-  libayatana-appindicator,
-  libsoup_3,
+  fontconfig,
+  freetype,
+  libGL,
+  libX11,
+  libXcursor,
+  libXi,
+  libXrender,
+  libxcb,
+  libxkbcommon,
   openssl,
-  webkitgtk_4_1,
+  vulkan-loader,
+  wayland,
   zenity,
   kdePackages,
 }:
 
 let
+  # Freya's Skia bindings download a prebuilt Skia, which the sandbox cannot.
+  # The version and the features in the name follow `freya-skia-bindings` in
+  # `rust/Cargo.lock`.
+  skiaBinaries = fetchurl {
+    url = "https://github.com/marc2332/rust-skia/releases/download/0.105.0-beta.1/skia-binaries-74941313f00897060d95-${stdenv.hostPlatform.rust.rustcTarget}-egl-ganesh-gl-jpegd-jpege-svg-textlayout-vulkan-wayland-webpd-webpe-x11.tar.gz";
+    hash =
+      {
+        x86_64-linux = "sha256-VkjJ21MRNCYmDWQH+U6mIO91UzHP+IAIJT/QzPMeW50=";
+        aarch64-linux = "sha256-fWzUtRTjttagpHZcu+/XCDmY819ZmsBE4PWnu2I/Ct4=";
+      }
+      .${stdenv.hostPlatform.system};
+  };
+
   # Shared with the dependency-only build so the two cannot drift: cargo
   # reuses artifacts only for an identical invocation.
   common = {
@@ -31,8 +48,7 @@ let
     # unset; buildAndTestSubdir picks the package to build.
     buildAndTestSubdir = "gui-client/src-tauri";
 
-    # Embeds the frontend instead of loading it from the Vite dev server.
-    buildFeatures = [ "tauri/custom-protocol" ];
+    env.SKIA_BINARIES_URL = "file://${skiaBinaries}";
 
     # The workspace pulls Apple-specific crates into the test graph.
     doCheck = false;
@@ -41,14 +57,11 @@ let
 
     buildInputs = [
       dbus
-      gdk-pixbuf
-      glib
-      gobject-introspection
-      gtk3
-      libayatana-appindicator
-      libsoup_3
+      fontconfig
+      freetype
+      libGL
       openssl
-      webkitgtk_4_1
+      wayland
     ];
   };
 in
@@ -61,42 +74,28 @@ fzLib.buildRustPackage (
 
     nativeBuildInputs = common.nativeBuildInputs ++ [
       installShellFiles
-      wrapGAppsHook3
+      makeWrapper
       copyDesktopItems
     ];
 
-    env = {
+    env = common.env // {
       # The tunnel daemon only accepts IPC connections from this exact
       # executable path (see gui-client/src-tauri/src/ipc/unix/peer_check).
-      # wrapGAppsHook3 turns bin/firezone-client-gui into a shell wrapper, so
+      # `wrapProgram` turns bin/firezone-client-gui into a shell wrapper, so
       # /proc/<pid>/exe of the running GUI resolves to the `.…-wrapped` ELF.
       FIREZONE_GUI_PEER_EXE = "${placeholder "out"}/bin/.firezone-client-gui-wrapped";
 
       # The GUI only accepts CLI connections from this exact executable path.
-      # `dontWrapGApps` below leaves bin/firezone unwrapped, so the CLI's
-      # /proc/<pid>/exe is the installed ELF itself.
+      # Only the GUI is wrapped below, so the CLI's /proc/<pid>/exe is the
+      # installed ELF itself.
       FIREZONE_CLI_PEER_EXE = "${placeholder "out"}/bin/firezone";
     };
-
-    postPatch = ''
-      # frontendDist in tauri.conf.json points at ../dist; the checked-in
-      # directory only holds a .gitkeep.
-      rm -rf gui-client/dist
-      ln -s ${firezone-gui-client-frontend} gui-client/dist
-    '';
 
     # The `firezone` CLI is a workspace member of its own, so the build of
     # buildAndTestSubdir never compiles it.
     preBuild = ''
       cargo build --release --offline -j $NIX_BUILD_CORES -p firezone-cli
     '';
-
-    # wrapGAppsHook3 wraps every executable in $out/bin, which would stamp the
-    # GUI-only --add-flags (notably --no-deep-links) onto the bundled
-    # firezone-client-tunnel daemon, crashing it on startup with an
-    # "unexpected argument '--no-deep-links'" error. Disable the blanket
-    # wrapping and wrap only the GUI binary ourselves in postFixup.
-    dontWrapGApps = true;
 
     postInstall = ''
       # register-sparse only does anything on Windows.
@@ -124,10 +123,37 @@ fzLib.buildRustPackage (
         --fish $completions/firezone.fish
     '';
 
-    # dontWrapGApps disables the automatic wrapping, so wrap only the GUI
-    # binary here. gappsWrapperArgs is populated in preFixup below.
+    # Wraps only the GUI: the GUI-only flags would crash the bundled
+    # firezone-client-tunnel daemon on startup.
+    #
+    # `--no-deep-links` suppresses runtime deep-link self-registration. On
+    # startup the GUI otherwise writes a per-user handler pointing at the
+    # unwrapped .firezone-client-gui-wrapped ELF, which overrides the packaged
+    # wrapper-based handler and drops the wrapper environment on cold-start
+    # callbacks. The flag gates only registration, not callback handling, so
+    # browser sign-in still works.
     postFixup = ''
-      wrapProgram $out/bin/firezone-client-gui "''${gappsWrapperArgs[@]}"
+      wrapProgram $out/bin/firezone-client-gui \
+        --prefix PATH : ${
+          lib.makeBinPath [
+            zenity
+            kdePackages.kdialog
+          ]
+        } \
+        --prefix LD_LIBRARY_PATH : ${
+          # winit and the Vulkan renderer load these at run time.
+          lib.makeLibraryPath [
+            libX11
+            libXcursor
+            libXi
+            libXrender
+            libxcb
+            libxkbcommon
+            vulkan-loader
+            wayland
+          ]
+        } \
+        --add-flags "--no-deep-links"
     '';
 
     desktopItems = [
@@ -150,26 +176,6 @@ fzLib.buildRustPackage (
         mimeTypes = [ "x-scheme-handler/firezone-fd0020211111" ];
       })
     ];
-
-    preFixup = ''
-      gappsWrapperArgs+=(
-        --prefix PATH : ${
-          lib.makeBinPath [
-            zenity
-            kdePackages.kdialog
-          ]
-        }
-        --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ libayatana-appindicator ]}
-        # Suppress runtime deep-link self-registration. On startup the GUI
-        # otherwise writes a per-user handler pointing at the unwrapped
-        # .firezone-client-gui-wrapped ELF, which overrides the packaged
-        # wrapper-based handler and drops the wrapper environment on
-        # cold-start callbacks. The packaged desktop item is the only
-        # handler we want; this flag gates only registration, not callback
-        # handling, so browser sign-in still works.
-        --add-flags "--no-deep-links"
-      )
-    '';
 
     meta = fzLib.meta // {
       description = "GUI client for the Firezone zero-trust access platform";

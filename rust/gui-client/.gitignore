@@ -1,14 +1,7 @@
 # Logs
 logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-dist-ssr
-node_modules
 rpmbuild
 *.local
 
@@ -21,19 +14,3 @@ rpmbuild
 *.njsproj
 *.sln
 *.sw?
-
-# CSS output from the Tailwind compiler
-src/output.css
-
-# JS output from the TypeScript compiler
-src/**/*.js
-
-# Vite output
-dist
-!dist/.gitkeep
-
-# Some new generated files in Tauri v2
-src-tauri/gen
-
-# Screenshots Vitest attaches to a failing test's results
-.vitest-attachments

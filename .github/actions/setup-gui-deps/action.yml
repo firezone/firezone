@@ -1,0 +1,49 @@
+name: "Setup GUI dependencies"
+description: "Sets up the system libraries for building and testing the GUI client"
+inputs:
+  runtime:
+    description: "Whether to also set up runtime dependencies"
+    required: false
+    default: "false"
+runs:
+  using: "composite"
+  steps:
+    - name: Cache apt packages
+      if: ${{ runner.os == 'Linux' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: apt-cache
+      with:
+        path: ~/apt-cache
+        key: ${{ runner.os }}-apt-gui-${{ hashFiles('.github/actions/setup-gui-deps/action.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-apt-gui-
+
+    - name: Restore cached apt packages
+      # `cache-hit` is only true on an exact key match, so this also runs for the
+      # `restore-keys` fallback, where the `.deb`s are restored but the key differs.
+      if: ${{ runner.os == 'Linux' }}
+      run: |
+        sudo cp ~/apt-cache/*.deb /var/cache/apt/archives/ 2>/dev/null || true
+      shell: bash
+
+    - name: Install GUI build deps
+      if: ${{ runner.os == 'Linux' }}
+      # `gnome-keyring` is only needed to launch the GUI, but installing it
+      # here keeps the non-GUI jobs on a single apt transaction.
+      uses: ./.github/actions/apt-install
+      with:
+        packages: build-essential curl file libdbus-1-dev libegl-dev libfontconfig-dev libfreetype-dev libgl-dev libgles-dev libssl-dev libwayland-dev wget gnome-keyring
+
+    - name: Install GUI runtime deps
+      if: ${{ runner.os == 'Linux' && inputs.runtime == 'true' }}
+      uses: ./.github/actions/apt-install
+      with:
+        packages: at-spi2-core libgl1-mesa-dri libxkbcommon-x11-0 xvfb
+        update: "false"
+
+    - name: Save apt packages to cache
+      if: ${{ runner.os == 'Linux' && steps.apt-cache.outputs.cache-hit != 'true' }}
+      run: |
+        mkdir -p ~/apt-cache
+        sudo cp /var/cache/apt/archives/*.deb ~/apt-cache/ 2>/dev/null || true
+      shell: bash
