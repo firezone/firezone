@@ -512,6 +512,10 @@ defmodule PortalAPI.Gateway.Socket do
       end
     end
 
+    # Keep this lookup scoped to the token's site. Gateways flagged
+    # `firezone_id_exempt` are mostly cloned VMs that share a firezone_id across
+    # sites and each need their own row. Widening the lookup, or merging those
+    # rows, gives both clones one row and the second one is refused.
     defp find_gateway(site, firezone_id, subject) do
       from(d in Device,
         join: sd in SiteDevice,
