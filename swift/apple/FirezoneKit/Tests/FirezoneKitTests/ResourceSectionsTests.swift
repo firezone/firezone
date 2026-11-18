@@ -77,17 +77,17 @@ struct ResourceSectionsTests {
 
   // MARK: - Description
 
-  @Test("A description that is a URL with a scheme is a link")
-  func descriptionWithSchemeIsLink() {
+  @Test("A description that is a web URL is a link")
+  func webDescriptionIsLink() {
     let linked = resource("git", description: "https://gitlab.example.com")
 
     #expect(linked.descriptionURL == URL(string: "https://gitlab.example.com"))
   }
 
   @Test(
-    "A description without a scheme, or none at all, is not a link",
-    arguments: ["Wiki", nil] as [String?])
-  func descriptionWithoutSchemeIsNotLink(description: String?) {
+    "A description that is not a web URL, or none at all, is not a link",
+    arguments: ["Wiki", "ssh://git.example.com", nil] as [String?])
+  func otherDescriptionIsNotLink(description: String?) {
     #expect(resource("git", description: description).descriptionURL == nil)
   }
 

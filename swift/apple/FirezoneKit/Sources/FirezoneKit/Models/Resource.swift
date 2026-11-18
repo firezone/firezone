@@ -70,11 +70,12 @@ public struct Resource: Codable, Identifiable, Hashable, Sendable {
     self.type == ResourceType.devicePool
   }
 
-  /// The description as a link, when it is a URL with a scheme.
+  /// The description as a link, when it is an `http` or `https` URL.
   var descriptionURL: URL? {
     guard let addressDescription,
       let url = URL(string: addressDescription),
-      url.scheme != nil
+      let scheme = url.scheme?.lowercased(),
+      ["http", "https"].contains(scheme)
     else { return nil }
 
     return url
