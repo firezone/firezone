@@ -111,6 +111,10 @@ ignore = [
     # `basic-toml` only parses askama's config at build time, via `uniffi_bindgen`.
     "RUSTSEC-2026-0374",
 
+    # `chrono` and `humantime` are unmaintained; we are migrating away from both.
+    "RUSTSEC-2026-0542",
+    "RUSTSEC-2026-0543",
+
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
