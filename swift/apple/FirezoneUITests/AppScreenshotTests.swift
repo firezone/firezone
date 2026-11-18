@@ -39,22 +39,18 @@
       "x509-expired",
     ]
 
-    /// The Resources the window is photographed showing, in the order they are selected. Each
-    /// brings a label the screen before it does not carry: the footer explaining its status,
-    /// or a field only a connected device has.
+    /// What the Resources window says under each connection status.
+    private static let connectedNote = "You're connected to a healthy Gateway in this Site."
+    private static let offlineNote = "No healthy Gateways are online in this Site."
+    private static let noActivityNote =
+      "No connection has been attempted yet. Access the Resource to connect."
+
+    /// The Resources the window is photographed showing, in the order they are selected,
+    /// each with a label the screen before it does not carry.
     private static let resourceScreens = [
-      (
-        resource: "GitLab", name: "dns",
-        showing: "You're connected to a healthy Gateway in this Site."
-      ),
-      (
-        resource: "Lab test bench", name: "offline",
-        showing: "No healthy Gateways are online in this Site."
-      ),
-      (
-        resource: "Internet Resource", name: "internet",
-        showing: "No connection has been attempted yet. Access the Resource to connect."
-      ),
+      (resource: "GitLab", name: "dns", showing: connectedNote),
+      (resource: "Lab test bench", name: "offline", showing: offlineNote),
+      (resource: "Internet Resource", name: "internet", showing: noActivityNote),
       (resource: "Lab hardware", name: "device-pool", showing: "Client ID"),
     ]
 
@@ -219,9 +215,7 @@
           window.staticTexts["Lab test bench"].firstMatch.waitForNonExistence(timeout: 10))
 
         // Selecting a result also takes the blinking insertion point out of the field.
-        try selectResource(
-          "Production VPC", showing: "You're connected to a healthy Gateway in this Site.",
-          in: window)
+        try selectResource("Production VPC", showing: Self.connectedNote, in: window)
         capture(window, as: "resources-search", in: appearance)
       }
     }

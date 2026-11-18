@@ -60,8 +60,7 @@ struct ResourceSectionsTests {
 
   @Test(
     "Search finds a Resource by name, address, description or Site name, ignoring case",
-    arguments: ["gitlab", "CODE.example", "merge requests", "production", "  Cloud "]
-  )
+    arguments: ["gitlab", "CODE.example", "merge requests", "production", "  Cloud "])
   func searchMatches(query: String) {
     #expect(gitLab.matches(search: query))
   }
@@ -85,7 +84,9 @@ struct ResourceSectionsTests {
     #expect(linked.descriptionURL == URL(string: "https://gitlab.example.com"))
   }
 
-  @Test("A description without a scheme, or none at all, is not a link", arguments: ["Wiki", nil])
+  @Test(
+    "A description without a scheme, or none at all, is not a link",
+    arguments: ["Wiki", nil] as [String?])
   func descriptionWithoutSchemeIsNotLink(description: String?) {
     #expect(resource("git", description: description).descriptionURL == nil)
   }
