@@ -335,9 +335,11 @@ Navigation: Resources, Groups, Policies | Sites, Devices | Actors, Service
 Accounts | Logs | Settings. Settings is unchanged.
 
 **Devices** lists every device. Columns: device (name, slug), users (actors
-seen; the token's service account for infrastructure), serves (site chips),
-status, platform and version, trust (attested, verified), last seen. Filters
-for "serves a site" and "has users".
+seen; the token's service account for infrastructure), "Routes for" (site
+chips), status, platform and version, trust (attested, verified), last seen.
+Filters for "routes for a site" and "has users". The label is "Routes for",
+not "Serves": the verb matches the `route_resources` capability, and a bare
+"Routes" would read as a list of prefixes.
 
 **Add device** replaces "Deploy gateway" and lives on both Devices and a Site:
 
@@ -347,11 +349,12 @@ for "serves a site" and "has users".
    sign in". The first mints a device-bound token; the second creates nothing
    and shows the sign-in instructions, since user devices create their row on
    first connect.
-3. Serve sites: optional multi-select, pre-filled when started from a site.
+3. Routes for: optional site multi-select, pre-filled when started from a
+   site.
 4. The token and copy-paste commands, as the deploy tabs show today.
 
-**Device detail**: name and slug, token (rotate, revoke), users, sites served
-(edit), pools containing it, sessions, active authorizations in both
+**Device detail**: name and slug, token (rotate, revoke), users, "Routes
+traffic for" with its sites (edit), pools containing it, sessions, active authorizations in both
 directions, posture, verify.
 
 **Sites**: list with device and resource counts and online devices. Site
@@ -360,7 +363,7 @@ Site tokens (list and revoke; most gateways connect with one). The Internet
 Site row disappears in the last phase and the Internet resource gets a normal
 site selector.
 
-**Resources**: unchanged except the site field reads "Served by". Device pool
+**Resources**: unchanged except the site field reads "Routed through". Device pool
 member pickers accept any device.
 
 **Service accounts**: tokens tab shows device-bound tokens with the device
@@ -669,9 +672,9 @@ serial)`; drop the actor-scoped indexes. Depends 2.15. The Gateway part
 - **2.18 Code: evaluator accepts any device.** `Policies.Evaluator`,
   `Condition`, `Postures.Evaluator` drop the `type: :client` guards; the
   session actor is passed explicitly. Depends 2.17.
-- **2.19 UI: Devices page lists every device** with "Serves" from
-  `site_devices` and the two filters. Depends 2.10.
-- **2.20 UI: device detail** with sites-served editor, users, pools, token
+- **2.19 UI: Devices page lists every device** with "Routes for"
+  from `site_devices` and the two filters. Depends 2.10.
+- **2.20 UI: device detail** with the "Routes traffic for" sites editor, users, pools, token
   rotate. Depends 2.12, 1.14.
 - **2.21 UI: Add device wizard** replaces Deploy gateway on Sites and Devices,
   calling `provision_device`, deploy tabs reused, sites multi-select writes
