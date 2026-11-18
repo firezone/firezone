@@ -288,6 +288,7 @@ extension DeviceTrustValidationError {
     Window("Resources", id: ResourcesView.windowID) {
       ResourcesView()
         .environmentObject(store)
+        .listedInAppSwitcher()
     }
     .defaultSize(width: 820, height: 560)
   }
@@ -296,6 +297,7 @@ extension DeviceTrustValidationError {
   func settingsScene(store: Store) -> some Scene {
     Settings {
       SettingsView(store: store)
+        .listedInAppSwitcher()
     }
   }
 #endif
