@@ -1905,6 +1905,86 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert gateway_public_key == connected.public_key
     end
 
+    test "installs an :authorize request and replies :authorized once the gateway confirms", %{
+      account: account,
+      actor: actor,
+      group: group,
+      client: client,
+      subject: subject,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      %{assigns: %{gateway: connected}} = :sys.get_state(socket.channel_pid)
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          gateway: gateway,
+          group: group
+        )
+
+      ref = make_ref()
+
+      ice_credentials = %{
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {:authorize, {self(), ref},
+         %{
+           initiator: %{
+             id: client.id,
+             name: client.name,
+             slug: client.slug,
+             public_key: client.public_key,
+             ipv4: client.ipv4,
+             ipv6: client.ipv6,
+             user_agent: @test_user_agent
+           },
+           subject: PortalAPI.Gateway.Views.Subject.render(subject),
+           resource: to_cache(resource),
+           policy_authorization_id: policy_authorization.id,
+           expires_at: DateTime.add(DateTime.utc_now(), 30, :second),
+           preshared_key: "PSK",
+           ice_credentials: ice_credentials,
+           responder_token: "TOKEN",
+           initiator_iceless_capable: false
+         }}
+      )
+
+      assert_push "authorize_flow", %{
+        ref: signed_ref,
+        client: %{id: client_id, preshared_key: "PSK"},
+        gateway_ice_credentials: %{username: "C", password: "D"},
+        client_ice_credentials: %{username: "A", password: "B"},
+        flow_logs_ingest_token: "TOKEN"
+      }
+
+      assert client_id == client.id
+
+      push_ref = push(socket, "flow_authorized", %{"ref" => signed_ref})
+      assert_reply push_ref, :ok
+
+      assert_receive {:authorized, ^ref, reply}
+      assert reply.receiver_id == gateway.id
+      assert reply.resource_id == resource.id
+      assert reply.site_id == site.id
+      assert reply.public_key == connected.public_key
+      assert reply.preshared_key == "PSK"
+      assert reply.ice_credentials == ice_credentials
+      refute reply.use_iceless
+    end
+
     test "ignores DOWN messages from unrelated processes", %{
       gateway: gateway,
       site: site,
