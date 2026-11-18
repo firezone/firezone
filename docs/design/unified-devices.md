@@ -432,15 +432,51 @@ every site a device routes for, or both clones resolve to one row and the
 legacy socket refuses the second (first-wins). The same rule is a comment on
 `find_gateway` in `PortalAPI.Gateway.Socket`.
 
-Steps still open, in order, each one deploy:
+First, every portal change that users do not see, so that most of the code
+has changed and settled before anything visible ships. In order, one PR per
+deploy:
 
-- Admin UI: 1.12, 2.19, 2.21 (Linux deploy tabs only until phase 5b), then
-  2.20 with 1.14, then 2.23.
-- Critical path to `/device/v1`: 3.0, 0.7, 4.1 to 4.12; 3.8 once the phase 3
-  binaries are close. Phase 4 is what 5.9 waits on.
-- Cleanups later phases need: 2.17 (changeset part), 2.18, 2.13.
-- Rust, in parallel with the above: 0.4, 0.5, the phase 3 drafts, then 5.1
-  and 5.2, which need nothing from the portal.
+1. One builder for the secrets a receiver gets (preshared key, ICE
+   credentials, flow-log tokens), shared by the Gateway path and the
+   client-to-client path (0.7).
+2. One shared channel core, moved one area at a time: relay selection and
+   relay presence, ICE candidates, caches, the receiver side, the initiator
+   side, and handling of changes (4.1 to 4.10).
+3. Policy checks that accept any device (2.18) and device validation by the
+   fields present instead of `type` (2.17, changeset part).
+4. One function that creates a device and its token (1.12).
+5. Code that reads a device's sites as a list, while each device still has
+   exactly one (2.10).
+6. The `/device/v1` endpoint next to the old ones (4.11, 4.12). Nothing
+   connects to it until a new binary ships.
+7. Version check by range (3.0), last, with a test that the old and new
+   rules agree for every legacy version pair.
+
+**Deploy boundaries.** None of these needs a migration. The boundary that
+matters is the mixed cluster: during a rolling deploy, old and new portal
+nodes run together, and channel processes on one node send messages to
+channel processes on the other. So:
+
+- Moving code without changing what crosses between processes is one
+  deploy. This covers 1, 3 and 4, and every part of 2 that keeps its
+  messages.
+- Changing a message between channel processes (the `Portal.PG.deliver`
+  tuples such as `:create_authorization`, `:allow_access`,
+  `:request_connection`, `:client_device_access_authorized`, the ICE
+  candidate tuples, `:revoke_pair_access`, `:disconnect`) takes three
+  deploys: receivers accept the old and the new shape, then senders switch,
+  then the old shape goes. Any part of 2 that unifies the Gateway and
+  client-to-client messages follows this.
+- Changing presence meta follows the same rule, because every node reads
+  every other node's meta. For 5: write `site_ids` next to `site_id`, then
+  read `site_ids` with a fallback to `[site_id]`, then stop writing
+  `site_id`. For 7: write the range, then read it with a fallback to the
+  range derived from the version, then drop the fallback for `/device/v1`
+  devices.
+
+After that, the visible steps: 1.12's callers in the UI, 2.19, 2.21 (Linux
+deploy tabs only until phase 5b), 2.20 with 1.14, 2.23, 2.13. Rust in
+parallel: 0.4, 0.5, the phase 3 drafts, then 5.1 and 5.2.
 
 ### Phase 0: prep, no behaviour change
 
