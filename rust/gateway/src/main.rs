@@ -233,12 +233,6 @@ async fn try_main(cli: Cli) -> Result<()> {
 
                 opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
             }
-            (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                SdkMeterProvider::builder()
-                    .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                    .with_resource(resource)
-                    .build(),
-            ),
             (MetricsExporter::OtelCollector, Some(endpoint)) => {
                 opentelemetry::global::set_meter_provider(
                     SdkMeterProvider::builder()
@@ -494,7 +488,6 @@ impl fmt::Display for LogFormat {
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum MetricsExporter {
-    Stdout,
     OtelCollector,
     Sentry,
 }
