@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
+pub const COPY_ADDRESS: &str = "Copy address";
 
 /// A menu that can either be assigned to the system tray directly or used as a submenu in another menu.
 ///
@@ -161,10 +162,12 @@ impl Menu {
     }
 
     fn resource_body(self, resource: &ResourceView) -> Self {
+        let address = resource.pastable();
+
         self.separator()
             .disabled("Resource")
-            .copyable(resource.name())
-            .copyable(resource.pastable().as_ref())
+            .copyable(&address)
+            .item(Event::Copy(address.into_owned()), COPY_ADDRESS)
     }
 
     pub(crate) fn resource_description(mut self, resource: &ResourceView) -> Self {
