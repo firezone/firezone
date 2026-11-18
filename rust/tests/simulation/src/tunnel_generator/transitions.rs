@@ -366,7 +366,7 @@ pub(super) fn generate(
             let gateway_ids = state.gateways.keys().copied().collect::<Vec<_>>();
             let gateway_id = gateway_ids[g.choose_index(gateway_ids.len())];
             let key = g.fresh_private_key();
-            let clients = state.gateways[&gateway_id].inner().authorized_clients();
+            let clients = portal.clients_authorized_through(gateway_id);
 
             Transition::CrashGateway {
                 gateway_id,

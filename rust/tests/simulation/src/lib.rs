@@ -94,7 +94,7 @@ pub mod tunnel {
             model.invalidate(&transition, &portal);
             tunnel.invalidate(&model);
 
-            portal.apply(&transition);
+            portal.apply(&transition, &model);
             model = model.apply(&transition, &portal, clock.now());
             tunnel = tunnel.apply(transition, &model, &mut portal);
             check_invariants(&model, &tunnel, &portal);
