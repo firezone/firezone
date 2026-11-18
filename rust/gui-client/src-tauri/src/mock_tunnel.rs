@@ -9,7 +9,7 @@
 
 use crate::{
     service::{ClientMsg, ServerMsg},
-    settings::{AdvancedSettings, MdmSettings},
+    settings::{AdvancedSettings, GeneralSettings, MdmSettings},
 };
 use anyhow::Result;
 use client_ipc as ipc;
@@ -40,6 +40,26 @@ pub fn enable() {
 
 pub(crate) fn enabled() -> bool {
     ENABLED.load(Ordering::Relaxed)
+}
+
+/// Marks some of the mock resources as favorites in mock mode, unless the settings already name favorites.
+///
+/// The tray menu only lists favorites, so without any it would have nothing to show.
+pub(crate) fn seed_favorites(settings: GeneralSettings) -> GeneralSettings {
+    if !enabled() || !settings.favorite_resources.is_empty() {
+        return settings;
+    }
+
+    GeneralSettings {
+        favorite_resources: [
+            "0854dca1-2c5b-468a-be85-0eec2f02a211", // Engineering wiki
+            "be575d17-b0b3-40c9-ac34-e1ec3064d75a", // Office network
+            "bc643791-3b90-4d41-9cac-753af623f274", // Lab hardware
+        ]
+        .map(parse)
+        .into(),
+        ..settings
+    }
 }
 
 /// Build the client end of an in-memory IPC channel and spawn the mock Tunnel service on the

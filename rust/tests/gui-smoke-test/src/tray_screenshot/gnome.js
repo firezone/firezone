@@ -92,7 +92,7 @@ global.firezoneScreenshot = {
     if (this.reading) return;
     this.reading = true;
     client
-      .GetLayoutAsync(0, -1, ["label", "icon-data"])
+      .GetLayoutAsync(0, -1, ["label"])
       .then(([revision, root]) => {
         const describe = ([id, properties, children]) => ({
           id,
@@ -100,7 +100,6 @@ global.firezoneScreenshot = {
             /_([^_])/,
             "$1"
           ),
-          icon: Boolean(properties["icon-data"]),
           children: children.map((child) => describe(child.deep_unpack())),
         });
         this.layout = describe(root);
@@ -162,7 +161,6 @@ global.firezoneScreenshot = {
       menu?._getMenuItems().map((item) => ({
         id: item._dbusItem?.getId(),
         label: item.label?.text ?? "",
-        icon: Boolean(item._icon?.gicon),
         children: this.describeMenu(item.menu),
       })) ?? []
     );

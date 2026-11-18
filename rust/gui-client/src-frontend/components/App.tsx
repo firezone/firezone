@@ -8,6 +8,7 @@ import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
 import Overview from "./OverviewPage";
 import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
+import ResourcesPage from "./ResourcesPage";
 import Titlebar from "./Titlebar";
 import {
   commands,
@@ -16,12 +17,14 @@ import {
   FileCount,
   GeneralSettingsViewModel,
   LogFilterViewModel,
+  ResourceViewModel,
   SessionViewModel,
   X509Certificate,
 } from "../generated/bindings";
 
 export default function App() {
   const [session, setSession] = useState<SessionViewModel | null>(null);
+  const [resources, setResources] = useState<ResourceViewModel[] | null>(null);
   const [logCount, setLogCount] = useState<FileCount | null>(null);
   const [generalSettings, setGeneralSettings] =
     useState<GeneralSettingsViewModel | null>(null);
@@ -39,6 +42,10 @@ export default function App() {
       events.sessionChanged.listen((event) => {
         console.log("session_changed", { session: event.payload });
         setSession(event.payload);
+      }),
+      events.resourcesChanged.listen((event) => {
+        console.log("resources_changed", { resources: event.payload });
+        setResources(event.payload);
       }),
       events.generalSettingsChanged.listen((event) => {
         console.log("general_settings_changed", { settings: event.payload });
@@ -85,6 +92,7 @@ export default function App() {
     <div className="app-shell">
       <Routes>
         <Route path="/overview" element={<Titlebar title="Firezone" />} />
+        <Route path="/resources" element={<Titlebar title="Resources" />} />
         <Route
           path="/general-settings"
           element={<Titlebar title="Settings" />}
@@ -119,6 +127,11 @@ export default function App() {
               <li>
                 <ReactRouterSidebarItem icon="home" href="/overview">
                   Overview
+                </ReactRouterSidebarItem>
+              </li>
+              <li>
+                <ReactRouterSidebarItem icon="server" href="/resources">
+                  Resources
                 </ReactRouterSidebarItem>
               </li>
               <li>
@@ -179,6 +192,21 @@ export default function App() {
                   session={session}
                   signIn={commands.signIn}
                   signOut={commands.signOut}
+                />
+              }
+            />
+            <Route
+              path="/resources"
+              element={
+                <ResourcesPage
+                  session={session}
+                  resources={resources}
+                  signIn={commands.signIn}
+                  setFavorite={commands.setFavorite}
+                  setInternetResourceEnabled={
+                    commands.setInternetResourceEnabled
+                  }
+                  copy={commands.copyToClipboard}
                 />
               }
             />

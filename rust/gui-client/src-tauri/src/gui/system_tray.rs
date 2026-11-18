@@ -6,31 +6,24 @@
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
 use compositor::Image;
-use connlib_model::{ConnectedDeviceView, ResourceId, ResourceStatus, ResourceView};
+use connlib_model::{ConnectedDeviceView, ResourceId, ResourceView};
 use std::collections::HashSet;
 use tunnel_proto::dns::DEVICE_DOMAIN;
 use url::Url;
 
-use crate::updates::Release;
+use crate::{updates::Release, view::description_link};
 
-/// `builder::Icon` is the icon shown *inside* a menu item (e.g. Site status),
-/// distinct from the tray `Icon` defined in this module.
-pub(crate) use builder::Icon as MenuItemIcon;
-use builder::item;
 pub use builder::{Entry, Event, Item, Menu, Window};
+use builder::{copyable, item};
 
 mod builder;
 mod compositor;
 
-// The tray is drawn by a platform-native backend rather than Tauri's own tray,
-// so that menu-item icons (e.g. Site status) actually render:
+// The tray is drawn by a platform-native backend:
 //
-// - **Windows / macOS**: Tauri's built-in tray (the `tray-icon` feature),
-//   which renders per-item icons natively.
+// - **Windows / macOS**: Tauri's built-in tray (the `tray-icon` feature).
 // - **Linux**: `ksni`, a pure-Rust StatusNotifierItem implementation that
-//   speaks the DBusMenu protocol directly and can attach per-item icon data
-//   (a PNG) — which GNOME (with the AppIndicator extension) and KDE render,
-//   unlike Tauri's `libappindicator` path.
+//   speaks the DBusMenu protocol directly.
 #[cfg(not(target_os = "linux"))]
 mod tray_tauri;
 #[cfg(not(target_os = "linux"))]
@@ -51,18 +44,12 @@ const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../icons/tray/Update ready 
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
-const NO_ACTIVITY: &str = "No activity";
-const GATEWAY_CONNECTED: &str = "Gateway connected";
-const ALL_GATEWAYS_OFFLINE: &str = "All Gateways offline";
-
 const ENABLED_SYMBOL: &str = "<->";
 const DISABLED_SYMBOL: &str = "—";
 
-const ADD_FAVORITE: &str = "Add to favorites";
-const REMOVE_FAVORITE: &str = "Remove from favorites";
 const FAVORITE_RESOURCES: &str = "Favorite Resources";
 const RESOURCES: &str = "Resources";
-const OTHER_RESOURCES: &str = "Other Resources";
+const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 const NO_CONNECTED_DEVICES: &str = "No connected devices";
 
 /// Maximum number of connected devices listed inline in a device pool's submenu.
@@ -128,14 +115,14 @@ impl Default for AppState {
 
 impl AppState {
     pub fn into_menu(self) -> Menu {
-        let quit_text = match &self.connlib {
+        let bottom_section = match &self.connlib {
             ConnlibState::Loading
             | ConnlibState::Quitting
             | ConnlibState::SignedOut
             | ConnlibState::WaitingForBrowser
             | ConnlibState::WaitingForPortal
-            | ConnlibState::WaitingForTunnel => QUIT_TEXT_SIGNED_OUT,
-            ConnlibState::SignedIn(_) => DISCONNECT_AND_QUIT,
+            | ConnlibState::WaitingForTunnel => BottomSection::SignedOut,
+            ConnlibState::SignedIn(_) => BottomSection::SignedIn,
         };
         let menu = match self.connlib {
             ConnlibState::Loading => Menu::default().disabled("Loading..."),
@@ -148,7 +135,7 @@ impl AppState {
         };
         menu.add_bottom_section(
             self.release,
-            quit_text,
+            bottom_section,
             !self.hide_admin_portal_menu_item,
             self.support_url,
         )
@@ -170,63 +157,6 @@ pub struct SignedIn {
     pub favorite_resources: HashSet<ResourceId>,
     pub resources: Vec<ResourceView>,
     pub internet_resource_enabled: Option<bool>,
-}
-
-impl SignedIn {
-    fn is_favorite(&self, resource: &ResourceId) -> bool {
-        self.favorite_resources.contains(resource)
-    }
-
-    fn add_favorite_toggle(&self, submenu: &mut Menu, resource: ResourceId) {
-        if self.is_favorite(&resource) {
-            submenu.add_item(item(Event::RemoveFavorite(resource), REMOVE_FAVORITE).checked(true));
-        } else {
-            submenu.add_item(item(Event::AddFavorite(resource), ADD_FAVORITE).checked(false));
-        }
-    }
-
-    /// Builds the submenu that has the resource address, name, desc,
-    /// sites online, etc.
-    fn resource_submenu(&self, res: &ResourceView) -> Menu {
-        if let ResourceView::DevicePool(pool) = res {
-            return devices_submenu(&pool.devices);
-        }
-
-        let mut submenu = Menu::default().resource_description(res);
-
-        if res.is_internet_resource() {
-            submenu.add_separator();
-            if self.is_internet_resource_enabled() {
-                submenu.add_item(item(Event::DisableInternetResource, DISABLE));
-            } else {
-                submenu.add_item(item(Event::EnableInternetResource, ENABLE));
-            }
-        }
-
-        if !res.is_internet_resource() {
-            self.add_favorite_toggle(&mut submenu, res.id());
-        }
-
-        if let Some(site) = res.sites().first() {
-            let (status, icon) = match res.status() {
-                ResourceStatus::Unknown => (NO_ACTIVITY, MenuItemIcon::Grey),
-                ResourceStatus::Online => (GATEWAY_CONNECTED, MenuItemIcon::Green),
-                ResourceStatus::Offline => (ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
-            };
-
-            submenu
-                .separator()
-                .disabled("Site")
-                .copyable(&site.name) // Hope this is okay - The code is simpler if every enabled item sends an `Event` on click
-                .copyable_with_icon(status, icon)
-        } else {
-            submenu
-        }
-    }
-
-    fn is_internet_resource_enabled(&self) -> bool {
-        self.internet_resource_enabled.unwrap_or_default()
-    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -268,62 +198,87 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         internet_resource_enabled,
     } = signed_in;
 
-    let has_any_favorites = resources
-        .iter()
-        .any(|res| favorite_resources.contains(&res.id()));
+    let internet_resource_enabled = internet_resource_enabled.unwrap_or_default();
 
     let mut menu = Menu::default()
         .disabled(session_heading(actor_name))
-        .item(Event::SignOut, SIGN_OUT)
-        .separator();
+        .item(Event::SignOut, SIGN_OUT);
 
     tracing::debug!(
         resource_count = resources.len(),
         "Building signed-in tray menu"
     );
-    if has_any_favorites {
-        menu = menu.disabled(FAVORITE_RESOURCES);
-        // The user has some favorites and they're in the list, so only show those
-        // Always show Resources in the original order
-        for res in resources
-            .iter()
-            .filter(|res| favorite_resources.contains(&res.id()) || res.is_internet_resource())
-        {
-            let mut name = res.name().to_string();
-            if res.is_internet_resource() {
-                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
-            }
-
-            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
-        }
-    } else {
-        // No favorites, show every Resource normally, just like before
-        // the favoriting feature was created
-        // Always show Resources in the original order
-        menu = menu.disabled(RESOURCES);
-        for res in resources {
-            let mut name = res.name().to_string();
-            if res.is_internet_resource() {
-                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
-            }
-
-            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
-        }
+    let mut favorites = Menu::default();
+    if resources
+        .iter()
+        .any(|res| favorite_resources.contains(&res.id()))
+    {
+        favorites = favorites.disabled(FAVORITE_RESOURCES);
     }
 
-    if has_any_favorites {
-        let mut submenu = Menu::default();
-        // Always show Resources in the original order
-        for res in resources
-            .iter()
-            .filter(|res| !favorite_resources.contains(&res.id()) && !res.is_internet_resource())
-        {
-            submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
-        }
-        menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
+    for res in resources {
+        let is_favorite = favorite_resources.contains(&res.id());
+
+        favorites = match res {
+            ResourceView::Internet(internet) => favorites.add_submenu(
+                append_status(&internet.name, internet_resource_enabled),
+                internet_resource_submenu(internet_resource_enabled),
+            ),
+            ResourceView::Dns(dns) if is_favorite => favorites.add_submenu(
+                &dns.name,
+                resource_submenu(&dns.name, dns.address_description.as_deref(), &dns.address),
+            ),
+            ResourceView::Cidr(cidr) if is_favorite => favorites.add_submenu(
+                &cidr.name,
+                resource_submenu(
+                    &cidr.name,
+                    cidr.address_description.as_deref(),
+                    &cidr.address.to_string(),
+                ),
+            ),
+            ResourceView::DevicePool(pool) if is_favorite => {
+                favorites.add_submenu(&pool.name, devices_submenu(&pool.devices))
+            }
+            ResourceView::Dns(_) | ResourceView::Cidr(_) | ResourceView::DevicePool(_) => favorites,
+        };
+    }
+
+    if !favorites.entries.is_empty() {
+        menu.add_separator();
+        menu.entries.extend(favorites.entries);
     }
 
     menu
+}
+
+fn internet_resource_submenu(enabled: bool) -> Menu {
+    let menu = Menu::default()
+        .disabled(INTERNET_RESOURCE_DESCRIPTION)
+        .separator();
+
+    if enabled {
+        menu.item(Event::DisableInternetResource, DISABLE)
+    } else {
+        menu.item(Event::EnableInternetResource, ENABLE)
+    }
+}
+
+fn resource_submenu(name: &str, description: Option<&str>, address: &str) -> Menu {
+    let mut menu = Menu::default().copyable(name);
+
+    if let Some(description) = description.filter(|description| !description.is_empty()) {
+        menu.add_item(description_item(description));
+    }
+
+    menu.copyable(address)
+}
+
+fn description_item(description: &str) -> Item {
+    let Some(url) = description_link(description) else {
+        return copyable(description);
+    };
+
+    item(Event::Url(url), format!("<{description}>"))
 }
 
 fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
@@ -334,7 +289,7 @@ fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
     let mut menu = Menu::default();
     let visible = connected_devices.len().min(MAX_DEVICES_INLINE);
     for device in &connected_devices[..visible] {
-        menu = menu.add_submenu(device.slug.clone(), device_submenu(device));
+        menu = menu.copyable(&format!("{}.{DEVICE_DOMAIN}", device.slug));
     }
 
     let hidden = connected_devices.len() - visible;
@@ -347,20 +302,6 @@ fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
         menu = menu.separator().disabled(label);
     }
     menu
-}
-
-fn device_submenu(device: &ConnectedDeviceView) -> Menu {
-    Menu::default()
-        .disabled("Device")
-        .copyable(&format!("{}.{DEVICE_DOMAIN}", device.slug))
-        .separator()
-        .disabled("Tunnel IPs")
-        .copyable(&device.tun_ipv4.to_string())
-        .copyable(&device.tun_ipv6.to_string())
-        .separator()
-        .disabled("Client Details")
-        .copyable(&device.id.to_string())
-        .copyable(&device.name)
 }
 
 fn session_heading(actor_name: &str) -> String {
@@ -387,12 +328,19 @@ fn append_status(name: &str, enabled: bool) -> String {
     format!("{symbol} {name}")
 }
 
+/// Which session the bottom section of the menu is for.
+#[derive(Clone, Copy)]
+pub(crate) enum BottomSection {
+    SignedIn,
+    SignedOut,
+}
+
 impl Menu {
     /// Appends things that always show, like About, Settings, Help, Quit, etc.
     pub(crate) fn add_bottom_section(
         mut self,
         release: Option<Release>,
-        quit_text: &str,
+        section: BottomSection,
         show_admin_portal_url: bool,
         support_url: Option<Url>,
     ) -> Self {
@@ -403,6 +351,15 @@ impl Menu {
                 format!("Download Firezone {}...", release.version),
             )
         }
+
+        let quit_text = match section {
+            BottomSection::SignedIn => {
+                self = self.item(Event::ShowWindow(Window::Resources), RESOURCES);
+
+                DISCONNECT_AND_QUIT
+            }
+            BottomSection::SignedOut => QUIT_TEXT_SIGNED_OUT,
+        };
 
         let mut item = self.item(Event::ShowWindow(Window::About), "About Firezone");
 
@@ -443,20 +400,6 @@ mod tests {
     use super::*;
     use anyhow::Result;
     use std::str::FromStr as _;
-
-    use builder::INTERNET_RESOURCE_DESCRIPTION;
-
-    impl Menu {
-        fn checkable<E: Into<Option<Event>>, S: Into<String>>(
-            mut self,
-            id: E,
-            title: S,
-            checked: bool,
-        ) -> Self {
-            self.add_item(item(id, title).checked(checked));
-            self
-        }
-    }
 
     fn signed_in(
         resources: Vec<ResourceView>,
@@ -590,14 +533,55 @@ mod tests {
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled(RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .item(Event::ShowWindow(Window::Resources), RESOURCES)
+            .item(Event::ShowWindow(Window::About), "About Firezone")
+            .item(Event::AdminPortal, "Admin Portal...")
+            .add_submenu(
+                "Help",
+                Menu::default()
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/kb")),
+                        "Documentation...",
+                    )
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/support")),
+                        "Support...",
+                    ),
+            )
+            .item(Event::ShowWindow(Window::Settings), "Settings")
+            .separator()
+            .item(Event::Quit, DISCONNECT_AND_QUIT);
 
         assert_eq!(
             actual,
             expected,
             "{}",
             serde_json::to_string_pretty(&actual).unwrap()
+        );
+    }
+
+    #[test]
+    fn new_release_is_offered_above_resources() {
+        let release = Release {
+            download_url: "https://www.firezone.dev/dl".parse().unwrap(),
+            version: "1.6.0".parse().unwrap(),
+        };
+
+        let actual = AppState {
+            release: Some(release.clone()),
+            ..signed_in(vec![], HashSet::default(), None)
+        }
+        .into_menu();
+
+        assert_eq!(
+            actual.entries[3..5],
+            [
+                Entry::Item(item(
+                    Event::Url(release.download_url),
+                    "Download Firezone 1.6.0..."
+                )),
+                Entry::Item(item(Event::ShowWindow(Window::Resources), RESOURCES)),
+            ]
         );
     }
 
@@ -609,9 +593,7 @@ mod tests {
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
-            .separator()
-            .disabled(RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -629,62 +611,14 @@ mod tests {
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled(RESOURCES)
-            .add_submenu(
-                "172.172.0.0/16",
-                Menu::default()
-                    .copyable("cidr resource")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("172.172.0.0/16")
-                    .copyable("172.172.0.0/16")
-                    .checkable(
-                        Event::AddFavorite(
-                            ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6").unwrap(),
-                        ),
-                        ADD_FAVORITE,
-                        false,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
-            )
-            .add_submenu(
-                "MyCorp GitLab",
-                Menu::default()
-                    .item(
-                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
-                        "<https://gitlab.mycorp.com>",
-                    )
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("MyCorp GitLab")
-                    .copyable("gitlab.mycorp.com")
-                    .checkable(
-                        Event::AddFavorite(
-                            ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd").unwrap(),
-                        ),
-                        ADD_FAVORITE,
-                        false,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
-            )
             .add_submenu(
                 "— Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
-                    .item(Event::EnableInternetResource, ENABLE)
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
+                    .item(Event::EnableInternetResource, ENABLE),
             )
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -713,62 +647,21 @@ mod tests {
             .add_submenu(
                 "MyCorp GitLab",
                 Menu::default()
+                    .copyable("MyCorp GitLab")
                     .item(
                         Event::Url("https://gitlab.mycorp.com".parse()?),
                         "<https://gitlab.mycorp.com>",
                     )
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("MyCorp GitLab")
-                    .copyable("gitlab.mycorp.com")
-                    .checkable(
-                        Event::RemoveFavorite(ResourceId::from_str(
-                            "03000143-e25e-45c7-aafb-144990e57dcd",
-                        )?),
-                        REMOVE_FAVORITE,
-                        true,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
+                    .copyable("gitlab.mycorp.com"),
             )
             .add_submenu(
                 "— Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
-                    .item(Event::EnableInternetResource, ENABLE)
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
+                    .item(Event::EnableInternetResource, ENABLE),
             )
-            .separator()
-            .add_submenu(
-                OTHER_RESOURCES,
-                Menu::default().add_submenu(
-                    "172.172.0.0/16",
-                    Menu::default()
-                        .copyable("cidr resource")
-                        .separator()
-                        .disabled("Resource")
-                        .copyable("172.172.0.0/16")
-                        .copyable("172.172.0.0/16")
-                        .checkable(
-                            Event::AddFavorite(ResourceId::from_str(
-                                "73037362-715d-4a83-a749-f18eadd970e6",
-                            )?),
-                            ADD_FAVORITE,
-                            false,
-                        )
-                        .separator()
-                        .disabled("Site")
-                        .copyable("test")
-                        .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
-                ),
-            )
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -778,6 +671,88 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn description_that_is_not_a_url_is_copyable() -> Result<()> {
+        let actual = signed_in(
+            resources(),
+            HashSet::from([ResourceId::from_str(
+                "73037362-715d-4a83-a749-f18eadd970e6",
+            )?]),
+            None,
+        )
+        .into_menu();
+
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(FAVORITE_RESOURCES)
+            .add_submenu(
+                "172.172.0.0/16",
+                Menu::default()
+                    .copyable("172.172.0.0/16")
+                    .copyable("cidr resource")
+                    .copyable("172.172.0.0/16"),
+            )
+            .add_submenu(
+                format!("{DISABLED_SYMBOL} Internet Resource"),
+                Menu::default()
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .item(Event::EnableInternetResource, ENABLE),
+            )
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual)?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn missing_description_is_omitted() {
+        use connlib_model::DnsResourceView;
+        let resource = ResourceView::Dns(DnsResourceView {
+            id: ResourceId::from_u128(1),
+            address: "git.example.com".into(),
+            name: "Git server".into(),
+            address_description: None,
+            sites: vec![],
+            status: connlib_model::ResourceStatus::Unknown,
+        });
+
+        let actual = signed_in(
+            vec![resource],
+            HashSet::from([ResourceId::from_u128(1)]),
+            None,
+        )
+        .into_menu();
+
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(FAVORITE_RESOURCES)
+            .add_submenu(
+                "Git server",
+                Menu::default()
+                    .copyable("Git server")
+                    .copyable("git.example.com"),
+            )
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap()
+        );
     }
 
     #[test]
@@ -795,62 +770,14 @@ mod tests {
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled(RESOURCES)
-            .add_submenu(
-                "172.172.0.0/16",
-                Menu::default()
-                    .copyable("cidr resource")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("172.172.0.0/16")
-                    .copyable("172.172.0.0/16")
-                    .checkable(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "73037362-715d-4a83-a749-f18eadd970e6",
-                        )?),
-                        ADD_FAVORITE,
-                        false,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
-            )
-            .add_submenu(
-                "MyCorp GitLab",
-                Menu::default()
-                    .item(
-                        Event::Url("https://gitlab.mycorp.com".parse()?),
-                        "<https://gitlab.mycorp.com>",
-                    )
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("MyCorp GitLab")
-                    .copyable("gitlab.mycorp.com")
-                    .checkable(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "03000143-e25e-45c7-aafb-144990e57dcd",
-                        )?),
-                        ADD_FAVORITE,
-                        false,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
-            )
             .add_submenu(
                 "— Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
-                    .item(Event::EnableInternetResource, ENABLE)
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
+                    .item(Event::EnableInternetResource, ENABLE),
             )
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -888,32 +815,21 @@ mod tests {
             }),
         ];
 
-        let actual = signed_in(resources, HashSet::default(), None).into_menu();
+        let favorites = HashSet::from([ResourceId::from_u128(1), ResourceId::from_u128(2)]);
+
+        let actual = signed_in(resources, favorites, None).into_menu();
 
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled(RESOURCES)
+            .disabled(FAVORITE_RESOURCES)
             .add_submenu(
                 "Engineering Pool",
-                Menu::default().add_submenu(
-                    "alpha",
-                    Menu::default()
-                        .disabled("Device")
-                        .copyable("alpha.firezone.network")
-                        .separator()
-                        .disabled("Tunnel IPs")
-                        .copyable(&alpha_ip.to_string())
-                        .copyable(&alpha_ipv6.to_string())
-                        .separator()
-                        .disabled("Client Details")
-                        .copyable(&alpha.to_string())
-                        .copyable("Alpha"),
-                ),
+                Menu::default().copyable("alpha.firezone.network"),
             )
             .add_submenu("QA Pool", Menu::default().disabled(NO_CONNECTED_DEVICES))
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -941,22 +857,7 @@ mod tests {
 
         let mut expected = Menu::default();
         for device in &connected_devices[..MAX_DEVICES_INLINE] {
-            let ip = device.tun_ipv4.to_string();
-            let ipv6 = device.tun_ipv6.to_string();
-            expected = expected.add_submenu(
-                device.slug.clone(),
-                Menu::default()
-                    .disabled("Device")
-                    .copyable(&format!("{}.firezone.network", device.slug))
-                    .separator()
-                    .disabled("Tunnel IPs")
-                    .copyable(&ip)
-                    .copyable(&ipv6)
-                    .separator()
-                    .disabled("Client Details")
-                    .copyable(&device.id.to_string())
-                    .copyable(&device.name),
-            );
+            expected = expected.copyable(&format!("{}.firezone.network", device.slug));
         }
         expected = expected.separator().disabled("And 3 more devices…");
 

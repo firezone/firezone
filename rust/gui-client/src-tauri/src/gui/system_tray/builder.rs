@@ -1,10 +1,7 @@
 //! An abstraction over Tauri's system tray menu structs, that implements `PartialEq` for unit testing
 
-use connlib_model::{ResourceId, ResourceView};
 use serde::{Deserialize, Serialize};
 use url::Url;
-
-pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 
 /// A menu that can either be assigned to the system tray directly or used as a submenu in another menu.
 ///
@@ -33,45 +30,22 @@ pub struct Item {
     pub event: Option<Event>,
     /// The text displayed to the user
     pub title: String,
-    /// `None` means not checkable, `Some` is the checked state
-    pub checked: Option<bool>,
-    /// An optional icon shown to the left of the title.
-    ///
-    /// Mirrors the status icons the macOS client shows in its tray menu.
-    pub icon: Option<Icon>,
-}
-
-/// A colored dot shown next to a menu item.
-///
-/// Named by color rather than meaning so it can be reused. Currently it
-/// mirrors the native status images the macOS client uses for Site status in
-/// its tray menu (`NSImage.statusAvailableName` and friends); Tauri has no
-/// cross-platform "native" status icons, so we ship our own equivalents.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
-pub enum Icon {
-    Green,
-    Red,
-    Grey,
 }
 
 /// Events that the menu can send to the app
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Event {
-    /// Marks this Resource as favorite
-    AddFavorite(ResourceId),
     /// Opens the admin portal in the default web browser
     AdminPortal,
     /// Cancels any ongoing sign-in flow
     CancelSignIn,
     /// Copies this string to the desktop clipboard
     Copy(String),
-    /// Marks this Resource as non-favorite
-    RemoveFavorite(ResourceId),
     /// Starts the sign-in flow
     SignIn,
     /// Signs the user out, without quitting the app
     SignOut,
-    /// Opens the About or Settings window
+    /// Shows the window on the given page
     ShowWindow(Window),
     /// Opens an arbitrary URL in the default web browser
     ///
@@ -89,23 +63,8 @@ pub enum Event {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Window {
     About,
+    Resources,
     Settings,
-}
-
-fn resource_header(res: &ResourceView) -> Item {
-    let Some(address_description) = res.address_description() else {
-        return copyable(&res.pastable());
-    };
-
-    if address_description.is_empty() {
-        return copyable(&res.pastable());
-    }
-
-    let Ok(url) = Url::parse(address_description) else {
-        return copyable(address_description);
-    };
-
-    item(Event::Url(url), format!("<{address_description}>"))
 }
 
 impl Menu {
@@ -131,13 +90,6 @@ impl Menu {
         self
     }
 
-    /// Appends a menu item that copies its title when clicked and shows `icon`
-    /// to the left of the text.
-    pub(crate) fn copyable_with_icon(mut self, s: &str, icon: Icon) -> Self {
-        self.add_item(copyable(s).icon(icon));
-        self
-    }
-
     /// Appends a disabled item with no accelerator or event
     pub(crate) fn disabled<S: Into<String>>(mut self, title: S) -> Self {
         self.add_item(item(None, title).disabled());
@@ -155,41 +107,11 @@ impl Menu {
         self.add_separator();
         self
     }
-
-    fn internet_resource(self) -> Self {
-        self.disabled(INTERNET_RESOURCE_DESCRIPTION)
-    }
-
-    fn resource_body(self, resource: &ResourceView) -> Self {
-        self.separator()
-            .disabled("Resource")
-            .copyable(resource.name())
-            .copyable(resource.pastable().as_ref())
-    }
-
-    pub(crate) fn resource_description(mut self, resource: &ResourceView) -> Self {
-        if resource.is_internet_resource() {
-            self.internet_resource()
-        } else {
-            self.add_item(resource_header(resource));
-            self.resource_body(resource)
-        }
-    }
 }
 
 impl Item {
     fn disabled(mut self) -> Self {
         self.event = None;
-        self
-    }
-
-    pub(crate) fn checked(mut self, b: bool) -> Self {
-        self.checked = Some(b);
-        self
-    }
-
-    pub(crate) fn icon(mut self, icon: Icon) -> Self {
-        self.icon = Some(icon);
         self
     }
 }
@@ -204,7 +126,5 @@ pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(event: E, title: S) 
     Item {
         event: event.into(),
         title: title.into(),
-        checked: None,
-        icon: None,
     }
 }

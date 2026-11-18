@@ -8,10 +8,13 @@ import { afterEach, beforeEach, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import App from "./components/App";
 import {
+  ConnectionStatus,
+  Description,
   events,
   FileCount,
   GeneralSettingsViewModel,
   LogFilterViewModel,
+  ResourceViewModel,
   SessionViewModel,
   X509Certificate,
   X509DetailField,
@@ -29,8 +32,10 @@ const COLOR_SCHEMES = ["light", "dark"] as const;
 // leaves a field out to render what the user sees before that event arrives.
 interface Screen {
   route: string;
-  click?: string;
+  // The buttons to click, in order.
+  click?: string[];
   session?: SessionViewModel;
+  resources?: ResourceViewModel[];
   generalSettings?: GeneralSettingsViewModel;
   logFilter?: LogFilterViewModel;
   /// The certificate the keystore holds, when the device trust tab is available.
@@ -66,6 +71,114 @@ const logFilter: LogFilterViewModel = {
   log_filter: "info",
   log_filter_is_managed: false,
 };
+
+const signedIn: SessionViewModel = {
+  SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
+};
+
+function resource(
+  type: "Dns" | "Cidr",
+  name: string,
+  address: string,
+  site: string,
+  status: ConnectionStatus,
+  { description = null as Description | null, is_favorite = false } = {}
+): ResourceViewModel {
+  const connection = { site, status };
+
+  return {
+    id: name,
+    name,
+    kind: { type, address, description, is_favorite, connection },
+  };
+}
+
+function devicePool(
+  name: string,
+  is_favorite: boolean,
+  devices: string[]
+): ResourceViewModel {
+  return {
+    id: name,
+    name,
+    kind: {
+      type: "DevicePool",
+      is_favorite,
+      devices: devices.map((name, index) => ({
+        hostname: `${name}.firezone.network`,
+        tunnel_ipv4: `100.64.19.${86 + index}`,
+        tunnel_ipv6: `fd00:2021:1111::3c${index + 1}`,
+        client_name: name,
+        client_id: `a21c9663-4d0e-4f4a-a8fa-48790b1e5ce${index}`,
+      })),
+    },
+  };
+}
+
+const SYDNEY = "Sydney Office";
+const PRODUCTION = "Production Cloud";
+
+// The Resources the mock Tunnel service serves (`mock_tunnel.rs`), plus one that stresses
+// the layout.
+const resources: ResourceViewModel[] = [
+  {
+    id: "Internet Resource",
+    name: "Internet Resource",
+    kind: {
+      type: "Internet",
+      is_enabled: true,
+      connection: { site: "Internet", status: "Online" },
+    },
+  },
+  resource("Dns", "Engineering wiki", "wiki.example.com", SYDNEY, "Online", {
+    description: {
+      text: "https://wiki.example.com",
+      url: "https://wiki.example.com/",
+    },
+    is_favorite: true,
+  }),
+  resource("Dns", "Git server", "git.example.com", PRODUCTION, "Unknown"),
+  resource(
+    "Dns",
+    "Internal services",
+    "*.svc.example.com",
+    PRODUCTION,
+    "Unknown"
+  ),
+  resource(
+    "Dns",
+    "Customer data warehouse (read replica, EU West)",
+    "warehouse-replica.eu-west-1.analytics.internal.example.com",
+    PRODUCTION,
+    "Online",
+    {
+      description: {
+        text: "Read-only. Ask the data team for credentials.",
+        url: null,
+      },
+    }
+  ),
+  resource("Cidr", "Office network", "192.0.2.0/24", SYDNEY, "Online", {
+    is_favorite: true,
+  }),
+  resource("Cidr", "Production VPC", "198.51.100.0/24", PRODUCTION, "Unknown"),
+  resource(
+    "Cidr",
+    "Lab test bench",
+    "203.0.113.0/24",
+    "Hardware Lab",
+    "Offline"
+  ),
+  devicePool("Build farm", false, ["build-runner-02", "build-runner-03"]),
+  devicePool("Lab hardware", true, [
+    "bench-controller-01",
+    "lab-probe-01",
+    "lab-probe-02",
+    "sensor-hub-01",
+    "vision-rig-01",
+  ]),
+  devicePool("Shared storage", false, []),
+];
 
 // The subject common name Firezone's MDM integrations provision, from
 // `x509_keystore::SUBJECT_COMMON_NAME`.
@@ -145,11 +258,40 @@ const windowsCertificate: Certificate = {
 const screens: Record<string, Screen> = {
   "overview-signed-out": { route: "/overview", session: "SignedOut" },
   "overview-loading": { route: "/overview", session: "Loading" },
-  "overview-signed-in": {
-    route: "/overview",
-    session: {
-      SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
-    },
+  "overview-signed-in": { route: "/overview", session: signedIn },
+  "resources-signed-out": { route: "/resources", session: "SignedOut" },
+  "resources-empty": { route: "/resources", session: signedIn, resources: [] },
+  resources: { route: "/resources", session: signedIn, resources },
+  "resources-dns": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    click: ["Engineering wiki"],
+  },
+  "resources-offline": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    click: ["Lab test bench"],
+  },
+  "resources-internet": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    click: ["Internet Resource"],
+  },
+  "resources-device-pool": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    click: ["Lab hardware", "bench-controller-01.firezone.network"],
+  },
+  "resources-search": {
+    route: "/resources",
+    session: signedIn,
+    resources,
+    input: { label: "Search Resources", value: "production" },
+    click: ["Customer data warehouse"],
   },
   "general-settings": { route: "/general-settings", generalSettings },
   "general-settings-custom": {
@@ -211,12 +353,12 @@ const screens: Record<string, Screen> = {
     route: "/diagnostics",
     logCount: { bytes: 3_400_000, files: 17 },
     logFilter,
-    click: "Clear Logs",
+    click: ["Clear Logs"],
   },
   "settings-reset-confirmation": {
     route: "/general-settings",
     generalSettings,
-    click: "Reset to Defaults",
+    click: ["Reset to Defaults"],
   },
   "diagnostics-managed": {
     route: "/diagnostics",
@@ -299,6 +441,8 @@ for (const [name, screen] of Object.entries(screens)) {
 
       await act(async () => {
         if (screen.session) await events.sessionChanged.emit(screen.session);
+        if (screen.resources)
+          await events.resourcesChanged.emit(screen.resources);
         if (screen.generalSettings)
           await events.generalSettingsChanged.emit(screen.generalSettings);
         if (screen.logFilter)
@@ -325,8 +469,8 @@ for (const [name, screen] of Object.entries(screens)) {
         await settle();
       }
 
-      if (screen.click) {
-        const button = page.getByRole("button", { name: screen.click });
+      for (const name of screen.click ?? []) {
+        const button = page.getByRole("button", { name });
         await act(async () => {
           await button.click();
         });

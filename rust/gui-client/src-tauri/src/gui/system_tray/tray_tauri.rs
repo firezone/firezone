@@ -1,27 +1,15 @@
 //! Windows / macOS tray backend using Tauri's built-in tray.
-//!
-//! Tauri renders per-item icons natively here (Win32 bitmaps / `NSImage`), so
-//! the Site-status dots show up next to the menu text. Linux can't use this
-//! path — its tray is exported over DBusMenu via `libappindicator`, which
-//! drops the icon — so it uses the `tray_ksni` backend instead.
 
 use anyhow::{Context as _, Result};
 use tauri::{AppHandle, Manager as _, menu::ContextMenu as _};
 
 use super::{
-    AppState, Entry, Event, Icon, Image, Item, Menu, MenuItemIcon, TOOLTIP, compose_icon,
-    compositor, icon_from_state,
+    AppState, Entry, Event, Icon, Image, Item, Menu, TOOLTIP, compose_icon, icon_from_state,
 };
 
 type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
 type TauriMenu = tauri::menu::Menu<tauri::Wry>;
 type TauriSubmenu = tauri::menu::Submenu<tauri::Wry>;
-
-// Status dots shown next to Site status items, mirroring the native status
-// images the macOS client uses (`NSImage.statusAvailableName` and friends).
-const STATUS_ONLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-online.png");
-const STATUS_OFFLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-offline.png");
-const STATUS_UNKNOWN_ICON: &[u8] = include_bytes!("../../../icons/menu/status-unknown.png");
 
 pub(crate) struct Tray {
     app: AppHandle,
@@ -41,17 +29,6 @@ fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
 
 fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
     tauri::image::Image::new_owned(val.rgba, val.width, val.height)
-}
-
-fn menu_item_icon(icon: MenuItemIcon) -> tauri::image::Image<'static> {
-    let png = match icon {
-        MenuItemIcon::Green => STATUS_ONLINE_ICON,
-        MenuItemIcon::Red => STATUS_OFFLINE_ICON,
-        MenuItemIcon::Grey => STATUS_UNKNOWN_ICON,
-    };
-    let decoded =
-        compositor::compose([png]).expect("PNG decoding should always succeed for baked-in PNGs");
-    image_to_tauri_icon(decoded)
 }
 
 impl Tray {
@@ -256,44 +233,12 @@ fn build_entry(app: &AppHandle, entry: &Entry) -> Result<Box<IsMenuItem>> {
 }
 
 fn build_item(app: &AppHandle, item: &Item) -> Result<Box<IsMenuItem>> {
-    let item: Box<IsMenuItem> = if let Some(checked) = item.checked {
-        let mut tauri_item = tauri::menu::CheckMenuItemBuilder::new(&item.title).checked(checked);
-        if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event)?);
-        } else {
-            tauri_item = tauri_item.enabled(false);
-        }
-        Box::new(tauri_item.build(app)?)
-    } else if let Some(icon) = item.icon {
-        let mut tauri_item =
-            tauri::menu::IconMenuItemBuilder::new(&item.title).icon(menu_item_icon(icon));
-        if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event)?);
-        } else {
-            tauri_item = tauri_item.enabled(false);
-        }
-        Box::new(tauri_item.build(app)?)
+    let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
+    if let Some(event) = &item.event {
+        tauri_item = tauri_item.id(serde_json::to_string(event)?);
     } else {
-        let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
-        if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event)?);
-        } else {
-            tauri_item = tauri_item.enabled(false);
-        }
-        Box::new(tauri_item.build(app)?)
-    };
-    Ok(item)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn menu_item_icons_decode() {
-        for icon in [MenuItemIcon::Green, MenuItemIcon::Red, MenuItemIcon::Grey] {
-            let image = menu_item_icon(icon);
-            assert!(image.width() > 0 && image.height() > 0);
-        }
+        tauri_item = tauri_item.enabled(false);
     }
+
+    Ok(Box::new(tauri_item.build(app)?))
 }
