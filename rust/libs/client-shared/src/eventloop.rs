@@ -512,6 +512,19 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
+            Ok(ClientEvent::PublicKeyRotated) => {
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(());
+                };
+
+                tunnel.state_mut().set_portal_connected(false);
+                self.portal_cmd_tx
+                    .send(PortalCommand::Connect(PublicKeyParam(
+                        tunnel.public_key().to_bytes(),
+                    )))
+                    .await
+                    .context("Failed to connect phoenix-channel")?;
+            }
             Err(error) => self.handle_tunnel_error(error)?,
         }
 

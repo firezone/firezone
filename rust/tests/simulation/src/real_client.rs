@@ -833,7 +833,8 @@ impl RealClient {
             | ClientEvent::RequestAccess { .. }
             | ClientEvent::DeviceDomainQueried { .. }
             | ClientEvent::DeviceDomainBrowsed { .. }
-            | ClientEvent::NoRelays { .. }) => Some(event),
+            | ClientEvent::NoRelays { .. }
+            | ClientEvent::PublicKeyRotated) => Some(event),
         }
     }
 }

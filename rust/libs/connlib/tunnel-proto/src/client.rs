@@ -2472,7 +2472,14 @@ impl ClientState {
     }
 
     pub fn reset(&mut self, now: Instant, reason: &str) {
-        self.reset_node(snownet::StaticKey::Rotate, now, reason);
+        tracing::info!("Resetting network state ({reason})");
+
+        self.node.reset(snownet::StaticKey::Rotate, now);
+        self.drain_node_events(now);
+
+        // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
+        // Failed queries get translated into `SERVFAIL` responses to the client.
+        self.tcp_dns_client.reset();
     }
 
     /// Whether we need to move to a new port because another device behind our NAT uses our public socket.
@@ -2480,25 +2487,21 @@ impl ClientState {
         self.socket_taken
     }
 
-    /// Resets after our sockets moved to a new port, keeping our key.
+    /// Resets after our sockets moved to a new port.
+    ///
+    /// Unlike Gateways, we rotate our key: a Gateway that reused its ICE connection to us would keep sending to our old port.
     pub fn reset_on_new_port(&mut self, now: Instant) {
         self.socket_taken = false;
-        self.reset_node(
-            snownet::StaticKey::Keep,
-            now,
-            "socket is taken by another device",
-        );
-    }
 
-    fn reset_node(&mut self, key: snownet::StaticKey, now: Instant, reason: &str) {
-        tracing::info!("Resetting network state ({reason})");
+        let old_key = self.node.public_key();
+        self.reset(now, "socket is taken by another device");
 
-        self.node.reset(key, now);
-        self.drain_node_events(now);
+        if self.node.public_key() == old_key {
+            return;
+        }
 
-        // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
-        // Failed queries get translated into `SERVFAIL` responses to the client.
-        self.tcp_dns_client.reset();
+        self.buffered_events
+            .push_back(ClientEvent::PublicKeyRotated);
     }
 
     pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {

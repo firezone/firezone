@@ -102,6 +102,8 @@ pub enum ClientEvent {
     NoRelays {
         excluded_relay_ids: Vec<RelayId>,
     },
+    /// Moving to a new port rotated our public key, which the portal needs to learn.
+    PublicKeyRotated,
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
