@@ -3,6 +3,7 @@ defmodule Portal.DeviceFixtures do
   Test helpers for creating client and gateway devices and related data.
   """
 
+  import Ecto.Query, only: [from: 2]
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.SiteFixtures
@@ -159,9 +160,7 @@ defmodule Portal.DeviceFixtures do
       ])
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, account.id)
-      |> Ecto.Changeset.put_change(:actor_id, actor.id)
       |> Ecto.Changeset.put_assoc(:account, account)
-      |> Ecto.Changeset.put_assoc(:actor, actor)
       |> Portal.Device.changeset()
       |> Portal.Repo.insert()
 
@@ -186,7 +185,20 @@ defmodule Portal.DeviceFixtures do
       |> maybe_sync_device_ipv4(ipv4)
       |> maybe_sync_device_ipv6(ipv6)
 
-    Portal.Repo.preload(device, :actor)
+    # Every client has the actor it was created by in device_actors, as the
+    # backfill left production.
+    Portal.Repo.insert!(
+      %Portal.DeviceActor{
+        account_id: account.id,
+        device_id: device.id,
+        actor_id: actor.id,
+        first_seen_at: device.inserted_at,
+        last_seen_at: device.inserted_at
+      },
+      on_conflict: :nothing
+    )
+
+    %{device | actor_id: actor.id, actor: actor}
   end
 
   @doc """
@@ -218,7 +230,6 @@ defmodule Portal.DeviceFixtures do
       for n <- 1..count do
         %{
           account_id: account.id,
-          actor_id: actor.id,
           type: :client,
           name: "Bulk device #{n}",
           firezone_id: "bulk-device-#{n}",
@@ -233,6 +244,13 @@ defmodule Portal.DeviceFixtures do
     {^count, devices} =
       Portal.Repo.insert_all(Portal.Device, rows, returning: [:account_id, :id, :slug])
 
+    Portal.Repo.insert_all(
+      Portal.DeviceActor,
+      for device <- devices do
+        %{account_id: account.id, device_id: device.id, actor_id: actor.id, first_seen_at: now, last_seen_at: now}
+      end
+    )
+
     devices
   end
 
@@ -240,6 +258,11 @@ defmodule Portal.DeviceFixtures do
   Records when the device was last seen, as a connect does.
   """
   def record_last_seen(device, last_seen_at) do
+    Portal.Repo.update_all(
+      from(da in Portal.DeviceActor, where: da.account_id == ^device.account_id and da.device_id == ^device.id),
+      set: [last_seen_at: last_seen_at]
+    )
+
     device
     |> Ecto.Changeset.change(last_seen_at: last_seen_at)
     |> Portal.Repo.update!()
@@ -398,7 +421,7 @@ defmodule Portal.DeviceFixtures do
           :last_seen_at
         ]
       )
-      |> Ecto.Changeset.put_change(:gateway_token_id, token.id)
+      |> Ecto.Changeset.change(token_id: token.id)
       |> Portal.Repo.update!()
 
     Portal.Repo.preload(gateway, :site)
@@ -424,7 +447,7 @@ defmodule Portal.DeviceFixtures do
 
     case Map.get(attrs, :token) do
       nil -> client
-      token -> client |> Ecto.Changeset.change(client_token_id: token.id) |> Portal.Repo.update!()
+      token -> client |> Ecto.Changeset.change(token_id: token.id) |> Portal.Repo.update!()
     end
   end
 

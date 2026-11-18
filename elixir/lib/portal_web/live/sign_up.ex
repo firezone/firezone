@@ -143,6 +143,10 @@ defmodule PortalWeb.SignUp do
     {:noreply, push_navigate(socket, to: ~p"/sign_up")}
   end
 
+  def handle_params(_params, _uri, %{assigns: %{live_action: :pending}} = socket) do
+    {:noreply, assign(socket, step: :pending_review)}
+  end
+
   def handle_params(_params, _uri, %{assigns: %{live_action: action}} = socket)
       when action in [:google, :github] do
     provider = Atom.to_string(action)
@@ -275,6 +279,7 @@ defmodule PortalWeb.SignUp do
       provider={@idp_identity && @idp_identity.provider}
     />
     <.email_sent :if={@step == :email_sent} />
+    <.pending_review :if={@step == :pending_review} />
     <.sign_up_error :if={@step == :error} error_message={@error_message} />
     """
   end
@@ -976,6 +981,24 @@ defmodule PortalWeb.SignUp do
     """
   end
 
+  defp pending_review(assigns) do
+    ~H"""
+    <.step_header
+      title="Thanks for signing up"
+      subtitle="Your account is being created. We are checking a few things first."
+    >
+      <:icon><Core.icon name="ri-time-line" class="w-5 h-5 text-brand" /></:icon>
+    </.step_header>
+
+    <div class="rounded border border-border bg-raised p-4 mb-6">
+      <p class="text-sm text-body leading-relaxed">
+        This can take up to 24 hours. We will email you when your account is ready.
+        You can close this page.
+      </p>
+    </div>
+    """
+  end
+
   defp different_browser(assigns) do
     ~H"""
     <.step_header
@@ -1479,6 +1502,10 @@ defmodule PortalWeb.SignUp do
         {:error, "This sign-up link is invalid or has expired."}
     end
   end
+
+  @doc "Whether the email already owns an account."
+  @spec owner_email_registered?(String.t()) :: boolean()
+  def owner_email_registered?(email), do: Database.find_accounts_by_owner_email(email) != []
 
   @doc """
   Creates the account for a verified email sign-up, unless the email already owns one.

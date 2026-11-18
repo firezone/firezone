@@ -757,9 +757,9 @@ defmodule PortalAPI.ActorControllerTest do
       assert json_response(conn, 200)
 
       refute Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
-      refute Repo.get_by(Portal.ClientToken, id: client_token.id, account_id: account.id)
+      refute Repo.get_by(Portal.DeviceToken, id: client_token.id, account_id: account.id)
       assert Repo.get_by(Portal.PortalSession, id: other_portal_session.id, account_id: account.id)
-      assert Repo.get_by(Portal.ClientToken, id: other_client_token.id, account_id: account.id)
+      assert Repo.get_by(Portal.DeviceToken, id: other_client_token.id, account_id: account.id)
     end
 
     test "keeps portal sessions and client tokens when email is unchanged", %{
@@ -780,7 +780,7 @@ defmodule PortalAPI.ActorControllerTest do
       assert json_response(conn, 200)
 
       assert Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
-      assert Repo.get_by(Portal.ClientToken, id: client_token.id, account_id: account.id)
+      assert Repo.get_by(Portal.DeviceToken, id: client_token.id, account_id: account.id)
     end
 
     test "does not clear identities when email is unchanged", %{

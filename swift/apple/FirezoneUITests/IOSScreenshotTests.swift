@@ -218,13 +218,31 @@
         deliver(app, as: scenario, in: appearance)
       }
     }
+
+    /// The Developer tab, which only an unlocked app shows, photographed in light only.
+    func testDeveloperSettings() throws {
+      let appearance = try currentAppearance()
+      try XCTSkipIf(appearance != .light, "the Developer tab is photographed in light only")
+
+      let app = launchApp(scenario: "connected", unlockingDeveloperSettings: true)
+      defer { app.terminate() }
+
+      try openSettings(in: app, on: "settings-developer")
+      try selectTab("Developer", showing: "Reset connlib", in: app)
+      deliver(app, as: "settings-developer", in: appearance)
+    }
   }
 
   @MainActor
   extension XCTestCase {
-    func launchApp(scenario: String) -> XCUIApplication {
+    func launchApp(scenario: String, unlockingDeveloperSettings: Bool = false) -> XCUIApplication {
       let app = XCUIApplication()
       app.launchArguments = ["--mock-tunnel", "--mock-scenario", scenario]
+      if unlockingDeveloperSettings {
+        // The argument domain holds the unlock for this launch only, where a written
+        // default would put the tab on every screen photographed after it.
+        app.launchArguments += ["-isDeveloperSettingsUnlocked", "YES"]
+      }
       app.launch()
 
       return app

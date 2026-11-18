@@ -9,6 +9,65 @@ defmodule Portal.Billing.EventHandlerTest do
   import ExUnit.CaptureLog
   import Portal.AccountFixtures
 
+  describe "handle_event/1 for invoice.finalized" do
+    test "retries the event when the YC deal cap check fails" do
+      Req.Test.stub(Portal.Billing.Stripe.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(400)
+        |> Req.Test.json(%{"error" => %{"message" => "boom"}})
+      end)
+
+      event =
+        Stripe.build_event("invoice.finalized", %{
+          "object" => "invoice",
+          "id" => "in_1",
+          "customer" => "cus_#{Stripe.random_id()}",
+          "total_discount_amounts" => [%{"amount" => 100, "discount" => "di_1"}]
+        })
+
+      capture_log(fn ->
+        assert {:error, {400, _}} = EventHandler.handle_event(event)
+      end)
+
+      refute Portal.Billing.Stripe.ProcessedEvents.event_processed?(event["id"])
+    end
+
+    test "records the event once the YC deal cap check passes" do
+      event =
+        Stripe.build_event("invoice.finalized", %{
+          "object" => "invoice",
+          "id" => "in_1",
+          "customer" => "cus_#{Stripe.random_id()}",
+          "total_discount_amounts" => []
+        })
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+      assert Portal.Billing.Stripe.ProcessedEvents.event_processed?(event["id"])
+    end
+
+    test "processes invoices finalized in the same second" do
+      customer_id = "cus_#{Stripe.random_id()}"
+      created_at = DateTime.to_unix(DateTime.utc_now())
+
+      for invoice_id <- ["in_1", "in_2"] do
+        event =
+          Stripe.build_event(
+            "invoice.finalized",
+            %{
+              "object" => "invoice",
+              "id" => invoice_id,
+              "customer" => customer_id,
+              "total_discount_amounts" => []
+            },
+            created_at
+          )
+
+        assert {:ok, _event} = EventHandler.handle_event(event)
+        assert Portal.Billing.Stripe.ProcessedEvents.event_processed?(event["id"])
+      end
+    end
+  end
+
   describe "Database.create_x509_provider/1" do
     test "rolls back the parent when the child insert fails" do
       account = account_fixture()
@@ -633,6 +692,27 @@ defmodule Portal.Billing.EventHandlerTest do
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
       assert updated.limits.relay_throughput_mbps == nil
+    end
+
+    test "sets the flow-log limits from metadata", %{account: account, customer: customer} do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 1, %{
+          "flow_log_responder_refill_rate" => "5000",
+          "flow_log_responder_capacity" => "5000000"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.flow_log_responder_refill_rate == 5000
+      assert updated.limits.flow_log_responder_capacity == 5_000_000
     end
 
     test "sets the monthly active users limit from Business seats", %{

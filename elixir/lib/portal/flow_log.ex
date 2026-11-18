@@ -153,8 +153,8 @@ defmodule Portal.FlowLog do
     field :authorized_at, :utc_datetime_usec
     field :authorization_expires_at, :utc_datetime_usec
 
-    # For device-to-device flows the receiving client has an owner of its own
-    # that these do not record.
+    # For device-to-device flows these do not record the receiving device's
+    # actor.
     field :initiator_actor_id, :binary_id
     field :initiator_actor_email, :string
     field :initiator_actor_name, :string

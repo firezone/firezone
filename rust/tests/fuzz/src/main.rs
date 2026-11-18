@@ -8,6 +8,8 @@ use arbitrary::{Arbitrary, Unstructured};
 use clap::{Parser, ValueEnum};
 
 mod clock;
+#[cfg(fuzzing)]
+mod ijon;
 mod targets;
 
 static START_TIME: LazyLock<Instant> = LazyLock::new(clock::start_time);
@@ -21,13 +23,13 @@ fn main() -> Result<()> {
     let target: fn(&[u8]) = match cli.target {
         Target::IpPacket => |data| with_input(data, targets::ip_packet::test),
         Target::RelayProto => |data| with_input(data, targets::relay_proto::test),
-        Target::TunnelProto => targets::tunnel_proto::test,
+        Target::Tunnel => |data| simulation::tunnel::run(data, *START_TIME),
         Target::X509Claims => |data| with_input(data, targets::x509_claims::test),
     };
     if cli.replay.is_empty() {
         cfg_select! {
             fuzzing => {
-                fuzz::feedback::prepare_runtime();
+                ijon::prepare_runtime();
                 afl::fuzz(true, target);
 
                 return Ok(());
@@ -55,6 +57,7 @@ fn main() -> Result<()> {
         "Replayed {iterations} inputs in {elapsed:.6}s ({:.2} iterations/sec)",
         iterations as f64 / elapsed
     );
+    println!("Randomness fingerprint: {:016x}", seeded_rng::fingerprint());
 
     Ok(())
 }
@@ -91,7 +94,7 @@ struct Cli {
 enum Target {
     IpPacket,
     RelayProto,
-    TunnelProto,
+    Tunnel,
     X509Claims,
 }
 
@@ -136,9 +139,9 @@ mod tests {
 
     #[test]
     fn target_without_replay_selects_fuzzing() {
-        let cli = Cli::try_parse_from(["fuzz", "tunnel-proto"]).unwrap();
+        let cli = Cli::try_parse_from(["fuzz", "tunnel"]).unwrap();
 
-        assert_eq!(cli.target, Target::TunnelProto);
+        assert_eq!(cli.target, Target::Tunnel);
         assert!(cli.replay.is_empty());
         assert_eq!(cli.repeat, 1);
     }

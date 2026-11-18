@@ -65,7 +65,6 @@ defmodule Portal.Account do
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site
 
-    has_many :client_tokens, Portal.ClientToken
     has_many :one_time_passcodes, Portal.OneTimePasscode
 
     has_many :google_directories, Portal.Google.Directory
@@ -290,12 +289,13 @@ defmodule Portal.Account.Metadata do
   @primary_key false
   embedded_schema do
     field :marketing_attribution, :map
+    field :region_transfer, :map
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    |> cast(attrs, [:marketing_attribution])
+    |> cast(attrs, [:marketing_attribution, :region_transfer])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
   end
 end

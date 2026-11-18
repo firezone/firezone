@@ -17,6 +17,7 @@ defmodule Portal.OAuth do
   import Ecto.Changeset
 
   alias Portal.Authentication
+  alias Portal.Authentication.Credential
   alias Portal.Authentication.Subject
   alias Portal.OAuth.ClientMetadata
   alias Portal.Scope
@@ -73,10 +74,7 @@ defmodule Portal.OAuth do
   end
 
   @doc """
-  The cached client for `client_id`, or nil.
-
-  Never fetches the metadata document, so it is safe on a page that renders
-  before the request has been validated.
+  The cached client for `client_id`, or nil. Never fetches the metadata document.
   """
   def cached_client(client_id) when is_binary(client_id),
     do: Database.fetch_cached_client(client_id)
@@ -85,11 +83,13 @@ defmodule Portal.OAuth do
 
   @doc """
   Resolves the client and redirect URI. Errors here **must not** be redirected.
+
+  The client is cached only with `store: true`. See `ClientMetadata.fetch/2`.
   """
-  def validate_client(params) do
+  def validate_client(params, opts \\ []) do
     with {:ok, client_id} <- fetch_param(params, "client_id"),
          {:ok, redirect_uri} <- fetch_param(params, "redirect_uri"),
-         {:ok, client} <- fetch_client(client_id),
+         {:ok, client} <- ClientMetadata.fetch(client_id, opts),
          :ok <- ClientMetadata.validate_redirect_uri(client, redirect_uri) do
       {:ok, client, redirect_uri}
     else
@@ -153,9 +153,9 @@ defmodule Portal.OAuth do
   @doc """
   Exchanges an authorization code for tokens.
 
-  After the request names this resource, the code row is deleted before its
-  secret and bindings are checked, so a code replayed in parallel finds
-  nothing even if the first exchange later fails.
+  After the client is authenticated, the code row is deleted only if it was
+  issued to that client, and before its secret and bindings are checked, so a
+  code replayed in parallel finds nothing even if the first exchange later fails.
   """
   def exchange(params, expected_resource) do
     with :ok <- validate_resource(params, expected_resource),
@@ -165,10 +165,10 @@ defmodule Portal.OAuth do
          {:ok, {nonce, account_id, id, fragment}} <-
            decode(encoded, "mcp_code"),
          :ok <- Portal.OAuth.ClientAuthentication.authenticate(params, client_id),
-         {:ok, code} <- Database.take_authorization_code(account_id, id),
+         {:ok, code} <- Database.take_authorization_code(account_id, id, client_id),
          :ok <- Authentication.verify_fragment(code.secret_hash, code.secret_salt, nonce, fragment),
          :ok <- validate_code_freshness(code),
-         :ok <- validate_code_binding(code, params, client_id, expected_resource),
+         :ok <- validate_code_binding(code, params, expected_resource),
          :ok <- validate_verifier(code, verifier) do
       issue(code, expected_resource)
     else
@@ -193,8 +193,8 @@ defmodule Portal.OAuth do
          {:ok, {nonce, account_id, id, fragment}} <- decode(encoded, "mcp_refresh"),
          :ok <- Portal.OAuth.ClientAuthentication.authenticate(params, client_id),
          {:ok, token} <- Database.fetch_refreshable_token(account_id, id),
-         :ok <- verify_refresh_secret(token, nonce, fragment),
          :ok <- validate_token_client(token, client_id),
+         :ok <- verify_refresh_secret(token, nonce, fragment),
          :ok <- validate_audience(token, expected_resource) do
       rotate(token)
     else
@@ -242,8 +242,6 @@ defmodule Portal.OAuth do
       :error -> {0, nil}
     end
   end
-
-  defp fetch_client(client_id), do: ClientMetadata.fetch(client_id)
 
   defp validate_response_type(%{"response_type" => "code"}), do: :ok
 
@@ -361,6 +359,7 @@ defmodule Portal.OAuth do
     |> cast(
       %{
         actor_id: grant.actor_id,
+        auth_provider_id: Credential.auth_provider_id(subject.credential),
         oauth_client_id: request.client.id,
         oauth_grant_id: grant.id,
         secret_salt: salt,
@@ -372,8 +371,8 @@ defmodule Portal.OAuth do
         scopes: request.scopes,
         expires_at: DateTime.add(DateTime.utc_now(), @code_ttl_seconds, :second)
       },
-      ~w[actor_id oauth_client_id oauth_grant_id secret_salt secret_hash code_challenge
-         code_challenge_method redirect_uri resource scopes expires_at]a
+      ~w[actor_id auth_provider_id oauth_client_id oauth_grant_id secret_salt secret_hash
+         code_challenge code_challenge_method redirect_uri resource scopes expires_at]a
     )
     |> Database.insert_code(subject)
   end
@@ -386,9 +385,8 @@ defmodule Portal.OAuth do
     end
   end
 
-  defp validate_code_binding(code, params, client_id, expected_resource) do
+  defp validate_code_binding(code, params, expected_resource) do
     cond do
-      code.oauth_client.client_id != client_id -> {:error, :client_mismatch}
       code.redirect_uri != params["redirect_uri"] -> {:error, :redirect_uri_mismatch}
       code.resource != expected_resource -> {:error, :resource_mismatch}
       true -> :ok
@@ -491,6 +489,7 @@ defmodule Portal.OAuth do
       %{
         account_id: code.account_id,
         actor_id: code.actor_id,
+        auth_provider_id: code.auth_provider_id,
         oauth_grant_id: code.oauth_grant_id,
         secret_salt: access_salt,
         secret_hash: access_hash,
@@ -501,8 +500,8 @@ defmodule Portal.OAuth do
         expires_at: DateTime.add(now, @access_ttl_seconds, :second),
         refresh_expires_at: DateTime.add(now, @refresh_ttl_seconds, :second)
       },
-      ~w[account_id actor_id oauth_grant_id secret_salt secret_hash refresh_secret_salt
-         refresh_secret_hash scopes resource expires_at refresh_expires_at]a
+      ~w[account_id actor_id auth_provider_id oauth_grant_id secret_salt secret_hash
+         refresh_secret_salt refresh_secret_hash scopes resource expires_at refresh_expires_at]a
     )
     |> Database.insert_token()
     |> case do
@@ -647,16 +646,19 @@ defmodule Portal.OAuth do
 
     # Deleting and returning in one statement makes the code single use even
     # when two exchanges race: only one delete can match the row.
-    def take_authorization_code(account_id, id) do
+    def take_authorization_code(account_id, id, client_id) do
+      client_ids = from(clients in Portal.OAuthClient, where: clients.client_id == ^client_id, select: clients.id)
+
       from(codes in OAuthAuthorizationCode,
         where: codes.account_id == ^account_id,
         where: codes.id == ^id,
+        where: codes.oauth_client_id in subquery(client_ids),
         select: codes
       )
       |> Safe.unscoped()
       |> Safe.delete_all()
       |> case do
-        {1, [code]} -> {:ok, %{code | oauth_client: fetch_client(code.oauth_client_id)}}
+        {1, [code]} -> {:ok, code}
         _other -> {:error, :unknown_code}
       end
     end
@@ -682,10 +684,11 @@ defmodule Portal.OAuth do
       end
     end
 
-    # Held to the same actor and account checks as using an access token, so a
-    # refresh cannot keep extending access the token itself would be refused.
+    # Held to the same actor, account and provider checks as using an access
+    # token, so a refresh cannot keep extending access the token would be refused.
     def fetch_refreshable_token(account_id, id) do
       now = DateTime.utc_now()
+      enabled_provider_ids = Authentication.enabled_auth_provider_ids_query()
 
       from(tokens in OAuthToken,
         join: account in assoc(tokens, :account),
@@ -697,6 +700,7 @@ defmodule Portal.OAuth do
         where: account.is_disabled == false,
         where: actor.is_disabled == false,
         where: actor.type == :account_admin_user,
+        where: tokens.auth_provider_id in subquery(enabled_provider_ids),
         preload: [oauth_grant: :oauth_client]
       )
       |> Safe.unscoped()
@@ -747,12 +751,6 @@ defmodule Portal.OAuth do
       )
       |> Safe.scoped(subject)
       |> Safe.delete_all()
-    end
-
-    defp fetch_client(id) do
-      from(clients in Portal.OAuthClient, where: clients.id == ^id)
-      |> Safe.unscoped()
-      |> Safe.one()
     end
   end
 end

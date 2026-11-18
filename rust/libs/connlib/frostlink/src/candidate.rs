@@ -50,6 +50,11 @@ impl Candidate {
         }
     }
 
+    pub const fn with_local_preference(mut self, local_preference: u16) -> Self {
+        self.priority = (self.priority & !(0xffff << 8)) | ((local_preference as u32) << 8);
+        self
+    }
+
     pub const fn address(&self) -> Address {
         self.address
     }

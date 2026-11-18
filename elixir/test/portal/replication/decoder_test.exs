@@ -512,6 +512,41 @@ defmodule Portal.Replication.DecoderTest do
       assert Decoder.decode_value({~s({"a":1}), column}) == {"config", %{"a" => 1}}
     end
 
+    test "decodes a text array with quoted, escaped and null elements" do
+      column = %{type: "_varchar", name: "tags"}
+      value = ~S|{"a b","c\"d","e\\f",NULL,"","NULL","{x}","a,b",plain}|
+
+      assert Decoder.decode_value({value, column}) ==
+               {"tags", ["a b", ~S|c"d|, ~S|e\f|, nil, "", "NULL", "{x}", "a,b", "plain"]}
+    end
+
+    test "decodes an empty array" do
+      column = %{type: "_uuid", name: "tenant_ids"}
+
+      assert Decoder.decode_value({"{}", column}) == {"tenant_ids", []}
+    end
+
+    test "decodes a jsonb array with quoted and escaped elements" do
+      column = %{type: "_jsonb", name: "conditions"}
+      value = ~S|{"{\"k\": \"v,\\\"q\\\" }\"}","[1, 2]",NULL}|
+
+      assert Decoder.decode_value({value, column}) ==
+               {"conditions", [%{"k" => ~S|v,"q" }|}, [1, 2], nil]}
+    end
+
+    test "passes a malformed array through as-is" do
+      column = %{type: "_text", name: "scopes"}
+
+      assert Decoder.decode_value({~S|{"a",|, column}) == {"scopes", ~S|{"a",|}
+      assert Decoder.decode_value({"{a", column}) == {"scopes", "{a"}
+    end
+
+    test "leaves an unchanged-toast array untouched" do
+      column = %{type: "_jsonb", name: "conditions"}
+
+      assert Decoder.decode_value({:unchanged_toast, column}) == {"conditions", :unchanged_toast}
+    end
+
     test "decodes bool t/f into booleans" do
       column = %{type: "bool", name: "flow_log_uploads_enabled"}
 

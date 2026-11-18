@@ -192,6 +192,31 @@ defmodule Portal.DevicesTest do
     end
   end
 
+  describe "put_latest_actor/2" do
+    test "puts the actor who connected most recently, or nil when nobody has" do
+      account = account_fixture()
+      first = actor_fixture(account: account)
+      latest = actor_fixture(account: account)
+      device = client_fixture(account: account, actor: first)
+      gateway = gateway_fixture(account: account)
+
+      Repo.insert!(%Portal.DeviceActor{
+        account_id: account.id,
+        device_id: device.id,
+        actor_id: latest.id,
+        first_seen_at: DateTime.utc_now(),
+        last_seen_at: DateTime.add(DateTime.utc_now(), 1, :minute)
+      })
+
+      subject = admin_subject_fixture(account: account)
+
+      assert [%Device{actor_id: actor_id, actor: %Portal.Actor{id: actor_id}}, %Device{actor_id: nil, actor: nil}] =
+               Devices.put_latest_actor([device, gateway], subject)
+
+      assert actor_id == latest.id
+    end
+  end
+
   describe "owner_name/1" do
     test "is the name of people and nothing for service accounts" do
       assert Devices.owner_name(%Portal.Actor{type: :account_user, name: "Jamil"}) == "Jamil"

@@ -13,3 +13,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 zeroize = { workspace = true }
+
+[lints]
+workspace = true

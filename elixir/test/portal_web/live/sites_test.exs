@@ -613,6 +613,33 @@ defmodule PortalWeb.SitesTest do
       assert is_nil(Repo.get_by(Device, account_id: account.id, id: gateway.id))
     end
 
+    test "does not change a gateway of a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_gateway = gateway_fixture(account: account, site: site_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "rename_gateway", %{"id" => other_gateway.id})
+      html = render_submit(lv, "save_gateway_name", %{"name" => "renamed"})
+      assert html =~ "Failed to rename gateway."
+
+      html = render_click(lv, "confirm_rotate_gateway_token", %{"id" => other_gateway.id})
+      assert html =~ "Failed to rotate token."
+
+      html = render_click(lv, "confirm_delete_gateway", %{"id" => other_gateway.id})
+      assert html =~ "Failed to delete gateway."
+
+      gateway = Repo.get_by!(Device, account_id: account.id, id: other_gateway.id)
+      assert gateway.name == other_gateway.name
+    end
+
     test "cancel delete gateway dismisses the inline confirmation", %{
       conn: conn,
       account: account,
@@ -1428,6 +1455,27 @@ defmodule PortalWeb.SitesTest do
       refute Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
     end
 
+    test "does not revoke a token that is not one of the site's tokens", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_site_token = gateway_token_fixture(account: account)
+      client_token = client_token_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}?tab=tokens")
+
+      for token <- [other_site_token, client_token] do
+        html = render_click(lv, "confirm_revoke_gateway_token", %{"id" => token.id})
+        assert html =~ "Failed to revoke token."
+        assert Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
+      end
+    end
+
     test "cancel revoke single token dismisses the inline confirmation", %{
       conn: conn,
       account: account,
@@ -1811,6 +1859,62 @@ defmodule PortalWeb.SitesTest do
       assert site_row(lv, site) =~ "Healthy"
       assert lv |> element("#site-panel") |> render() =~ "Healthy"
     end
+  end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"confirm_rotate_gateway_token", %{"id" => :gateway_id}},
+          {"confirm_delete_gateway", %{"id" => :gateway_id}},
+          {"confirm_revoke_gateway_token", %{"id" => :token_id}},
+          {"revoke_all_gateway_tokens", %{}},
+          {"show_all_gateways", %{}},
+          {"show_online_gateways", %{}},
+          {"deploy_gateway", %{}},
+          {"resource_change", %{"resource" => %{"address" => "late.example.com"}}},
+          {"resource_submit", %{"resource" => %{"address" => "late.example.com", "type" => "dns"}}},
+          {"delete_site", %{}},
+          {"open_site_edit_form", %{}},
+          {"cancel_site_edit_form", %{}},
+          {"change_site_edit_form", %{"site" => %{"name" => "Late"}}},
+          {"submit_site_edit_form", %{"site" => %{"name" => "Late"}}},
+          {"new_site_submit", %{"site" => %{"name" => "Late"}}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        site = site_fixture(account: account)
+        gateway = gateway_fixture(account: account, site: site, token: :single_owner)
+        token = gateway_token_fixture(account: account, site: site)
+        ids = %{gateway_id: gateway.id, token_id: token.id}
+        before = site_snapshot(account)
+
+        {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/sites/#{site.id}")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/sites")
+
+        params = Map.new(unquote(Macro.escape(params)), fn {k, v} -> {k, Map.get(ids, v, v)} end)
+        render_click(lv, unquote(event), params)
+
+        assert render(lv) =~ site.name
+        refute has_element?(lv, "#site-panel > div")
+        assert site_snapshot(account) == before
+      end
+    end
+  end
+
+  defp site_snapshot(account) do
+    %{
+      sites: Repo.all(from(s in Site, where: s.account_id == ^account.id, select: s.name, order_by: s.name)),
+      devices: Repo.all(from(d in Device, where: d.account_id == ^account.id, select: d.id, order_by: d.id)),
+      tokens:
+        Repo.all(
+          from(t in DeviceToken,
+            where: t.account_id == ^account.id,
+            select: {t.id, t.rotated_at},
+            order_by: t.id
+          )
+        ),
+      resources: Repo.aggregate(from(r in Resource, where: r.account_id == ^account.id), :count)
+    }
   end
 
   defp site_row(lv, site) do

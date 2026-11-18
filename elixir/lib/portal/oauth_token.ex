@@ -22,6 +22,7 @@ defmodule Portal.OAuthToken do
 
     belongs_to :actor, Portal.Actor
     belongs_to :oauth_grant, Portal.OAuthGrant
+    belongs_to :auth_provider, Portal.AuthProvider
 
     field :secret_hash, :string, redact: true
     field :secret_salt, :string, redact: true
@@ -50,10 +51,11 @@ defmodule Portal.OAuthToken do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required(~w[secret_hash secret_salt scopes resource expires_at]a)
+    |> validate_required(~w[auth_provider_id secret_hash secret_salt scopes resource expires_at]a)
     |> Portal.Scope.validate(:scopes)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
     |> assoc_constraint(:oauth_grant)
+    |> assoc_constraint(:auth_provider)
   end
 end

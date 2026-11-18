@@ -11,15 +11,31 @@ services:
         ipv6_address: 10:20:0::100
 
   download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
-    build:
-      target: ${DOCKER_BUILD_TARGET:-debug}
-      context: rust
-      dockerfile: Dockerfile
-      args:
-        PACKAGE: http-test-server
-    image: ${HTTP_TEST_SERVER_IMAGE:-ghcr.io/firezone/debug/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
-    environment:
-      PORT: 80
+    image: python:3.14.10-alpine3.24
+    command:
+      - python3
+      - -c
+      - |
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from urllib.parse import parse_qs, urlsplit
+
+        ZEROS = bytes(64 * 1024)
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                url = urlsplit(self.path)
+                if url.path != "/bytes":
+                    self.send_error(404)
+                    return
+
+                num = int(parse_qs(url.query)["num"][0])
+                self.send_response(200)
+                self.send_header("Content-Length", str(num))
+                self.end_headers()
+                while num > 0:
+                    num -= self.wfile.write(ZEROS[:num])
+
+        ThreadingHTTPServer(("0.0.0.0", 80), Handler).serve_forever()
     networks:
       dns_resources:
         ipv4_address: 172.21.0.101

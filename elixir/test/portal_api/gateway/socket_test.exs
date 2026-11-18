@@ -7,6 +7,7 @@ defmodule PortalAPI.Gateway.SocketTest do
   import Portal.DeviceFixtures
   import Portal.TokenFixtures
   import Portal.SubjectFixtures
+  import Portal.PolicyAuthorizationFixtures
   alias PortalAPI.Gateway.Socket
 
   @connlib_version "1.3.0"
@@ -239,7 +240,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       connected_gateway = socket.assigns.gateway
       assert is_reference(socket.assigns.session_ref)
-      assert connected_gateway.gateway_token_id == token.id
+      assert connected_gateway.token_id == token.id
       assert connected_gateway.last_seen_remote_ip_location_region == "Ukraine"
       assert connected_gateway.last_seen_remote_ip_location_city == "Kyiv"
       assert connected_gateway.last_seen_remote_ip_location_lat == 50.4333
@@ -347,7 +348,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       # is ignored for identification
       assert socket.assigns.gateway.id == gateway.id
       assert socket.assigns.site.id == site.id
-      assert socket.assigns.gateway.gateway_token_id == token.id
+      assert socket.assigns.gateway.token_id == token.id
     end
 
     test "takes a single-owner gateway's site from its assignment" do
@@ -478,7 +479,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.gateway.id == holder.id
     end
 
-    test "single-owner connect takes a firezone_id a gateway in another site holds" do
+    test "single-owner connect keeps its firezone_id when a gateway in another site holds the reported one" do
       account = account_fixture()
       other_gateway = gateway_fixture(account: account)
       gateway = gateway_fixture(account: account)
@@ -488,7 +489,45 @@ defmodule PortalAPI.Gateway.SocketTest do
         connect_attrs(token: encode_gateway_token(token), external_id: other_gateway.firezone_id)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
-      assert socket.assigns.gateway.firezone_id == other_gateway.firezone_id
+      assert socket.assigns.gateway.id == gateway.id
+      assert Repo.get_by!(Portal.Device, id: gateway.id).firezone_id == gateway.firezone_id
+    end
+
+    test "site-token connect moves an offline gateway from another site" do
+      account = account_fixture()
+      old_site = site_fixture(account: account)
+      new_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: old_site)
+      authorization = policy_authorization_fixture(account: account, gateway: gateway, site: old_site)
+      token = gateway_token_fixture(account: account, site: new_site)
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: gateway.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == gateway.id
+      assert socket.assigns.site.id == new_site.id
+
+      assert [%Portal.SiteDevice{site_id: site_id}] =
+               Repo.all(from(sd in Portal.SiteDevice, where: sd.device_id == ^gateway.id))
+
+      assert site_id == new_site.id
+      refute Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
+    end
+
+    test "site-token connect refuses an online gateway in another site" do
+      account = account_fixture()
+      old_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: old_site)
+      token = gateway_token_fixture(account: account, site: site_fixture(account: account))
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: gateway.firezone_id)
+
+      :ok = Portal.PG.join(gateway.id)
+
+      assert {:error, :conflict} = connect(Socket, attrs, connect_info: build_connect_info())
+
+      assert [%Portal.SiteDevice{site_id: site_id}] =
+               Repo.all(from(sd in Portal.SiteDevice, where: sd.device_id == ^gateway.id))
+
+      assert site_id == old_site.id
     end
 
     test "site-token connect picks the oldest gateway when two in the site share a firezone_id" do
@@ -496,6 +535,11 @@ defmodule PortalAPI.Gateway.SocketTest do
       site = site_fixture(account: account)
       oldest = gateway_fixture(account: account, site: site)
       newest = gateway_fixture(account: account, site: site)
+
+      Repo.update_all(
+        from(d in "devices", where: d.id == type(^newest.id, Ecto.UUID)),
+        set: [firezone_id_exempt: true]
+      )
 
       newest
       |> Ecto.Changeset.change(

@@ -724,10 +724,7 @@ mod tests {
             now,
         );
         // Simulate a successful response so the relay is eligible for sampling.
-        allocations
-            .get_mut_by_id(&rid)
-            .unwrap()
-            .set_rtt(Duration::from_millis(20));
+        allocations.receive_binding_response(&rid, Duration::from_millis(20), now);
     }
 
     fn handle_timeout(connections: &mut Connections<u32, u32>, now: Instant) {

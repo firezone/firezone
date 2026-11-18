@@ -141,7 +141,8 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  Deletes a disabled account at once and queues the cancellation of its Stripe subscriptions.
+  Deletes a disabled account at once and queues the cancellation of its Stripe subscriptions
+  and the delete of its profile photos.
   """
   def delete_disabled_account(id) do
     {:ok, _account} = Database.delete_disabled_account(id)
@@ -671,7 +672,8 @@ defmodule Portal.Ops do
           |> Safe.one!()
 
         with {:ok, account} <- account |> Safe.unscoped() |> Safe.delete(),
-             {:ok, _job} <- maybe_insert_delete_subscription_job(account) do
+             {:ok, _job} <- maybe_insert_delete_subscription_job(account),
+             {:ok, _job} <- Portal.Avatars.DeleteAccount.insert(account.id) do
           {:ok, account}
         end
       end)

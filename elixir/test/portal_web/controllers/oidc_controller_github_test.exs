@@ -1,5 +1,6 @@
 defmodule PortalWeb.OIDCControllerGitHubTest do
   use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -169,6 +170,30 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
       assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
       refute_received {:email, _email}
+    end
+
+    test "queues the GitHub avatar as the profile photo", ctx do
+      Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
+      actor = admin_actor_fixture(account: ctx.account, email: "octocat@example.com")
+
+      {:ok, identity} =
+        PortalWeb.SignUp.Database.create_external_identity(ctx.account, actor, %{
+          provider: "github",
+          issuer: "https://github.com/login/oauth",
+          idp_id: "583231",
+          profile_attrs: %{"email" => actor.email, "name" => "The Octocat"}
+        })
+
+      Mocks.GitHub.stub()
+
+      conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert_enqueued(
+        worker: Portal.Avatars.Picture,
+        args: %{identity_id: identity.id, picture: "https://avatars.githubusercontent.com/u/583231"}
+      )
     end
 
     test "keeps signing in as the linked actor when several addresses match", ctx do

@@ -47,7 +47,7 @@ defmodule Portal.TokenFixtures do
     actor = Map.get(attrs, :actor) || actor_fixture(account: account)
 
     changeset =
-      %Portal.ClientToken{}
+      %Portal.DeviceToken{}
       |> Ecto.Changeset.cast(attrs, [
         :secret_nonce,
         :secret_fragment,
