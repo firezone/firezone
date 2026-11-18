@@ -4,12 +4,12 @@
 
 mod assertions;
 mod buffered_transmits;
-mod clock;
 mod dns_records;
 mod dns_server_resource;
 mod echo;
 mod fake_portal;
 mod feedback;
+mod flux_capacitor;
 mod model_client;
 mod model_gateway;
 mod network;
@@ -57,8 +57,8 @@ pub mod tunnel {
 
     use super::{
         assertions::{PanicOnErrorEvents, check_invariants},
-        clock::Clock,
         feedback,
+        flux_capacitor::FluxCapacitor,
         real_tunnel_system::RealTunnelSystem,
         tunnel_generator::TunnelGenerator,
     };
@@ -71,14 +71,14 @@ pub mod tunnel {
     pub fn run(data: &[u8], now: Instant) {
         let _guard = init_subscriber();
 
-        let clock = Clock::new(now, Timestamp::UNIX_EPOCH);
+        let flux_capacitor = FluxCapacitor::new(now, Timestamp::UNIX_EPOCH);
         let mut generator = TunnelGenerator::new(data);
         let domain_tree = generator.domain_tree();
         let mut portal = generator.portal(&domain_tree);
         let mut model = generator.model(&portal, domain_tree);
         let mut feedback_recorder = feedback::Recorder::default();
 
-        let mut tunnel = RealTunnelSystem::init_test(&model, &mut portal, clock.clone());
+        let mut tunnel = RealTunnelSystem::init_test(&model, &mut portal, flux_capacitor.clone());
         check_invariants(&model, &tunnel, &portal);
 
         for applied in 0..MAX_TRANSITIONS {
@@ -86,16 +86,16 @@ pub mod tunnel {
                 break;
             }
 
-            let transition = generator.transition(&model, &portal, clock.now());
+            let transition = generator.transition(&model, &portal, flux_capacitor.now());
 
             tracing::debug!("Applying transition {applied}: {transition:?}");
-            feedback_recorder.observe(&transition, &model, clock.now());
+            feedback_recorder.observe(&transition, &model, flux_capacitor.now());
 
             model.invalidate(&transition, &portal);
             tunnel.invalidate(&model);
 
             portal.apply(&transition, &model);
-            model = model.apply(&transition, &portal, clock.now());
+            model = model.apply(&transition, &portal, flux_capacitor.now());
             tunnel = tunnel.apply(transition, &model, &mut portal);
             check_invariants(&model, &tunnel, &portal);
             feedback_recorder.record(&model, &tunnel, &portal);

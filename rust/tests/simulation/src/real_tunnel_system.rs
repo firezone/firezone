@@ -7,7 +7,7 @@ use super::real_gateway::RealGateway;
 use super::real_relay::RealRelay;
 use super::tunnel_model::TunnelModel;
 use super::tunnel_transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
-use crate::clock::Clock;
+use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::tunnel_transition::Transition;
@@ -35,7 +35,7 @@ use tunnel_proto::{ClientEvent, GatewayEvent, messages::Interface};
 ///
 /// The fuzzer manipulates this using [`Transition`]s and we assert it against [`TunnelModel`].
 pub struct RealTunnelSystem {
-    clock: Clock,
+    flux_capacitor: FluxCapacitor,
 
     pub(crate) clients: BTreeMap<ClientId, Host<RealClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RealGateway>>,
@@ -78,7 +78,11 @@ struct ResolvedTcpFlow {
 
 impl RealTunnelSystem {
     // Initialize the real system from our model.
-    pub fn init_test(model: &TunnelModel, portal: &mut FakePortal, clock: Clock) -> Self {
+    pub fn init_test(
+        model: &TunnelModel,
+        portal: &mut FakePortal,
+        flux_capacitor: FluxCapacitor,
+    ) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut clients = model
             .clients
@@ -90,8 +94,8 @@ impl RealTunnelSystem {
                             portal.upstream_do53().to_vec(),
                             portal.upstream_doh().to_vec(),
                             portal.search_domain(),
-                            clock.now(),
-                            clock.now(),
+                            flux_capacitor.now(),
+                            flux_capacitor.now(),
                         )
                     },
                     debug_span!("client", cid = %client_id),
@@ -109,8 +113,8 @@ impl RealTunnelSystem {
                         model_gateway.init(
                             *gid,
                             model.tcp_services.clone(),
-                            clock.now(),
-                            clock.now(),
+                            flux_capacitor.now(),
+                            flux_capacitor.now(),
                         )
                     },
                     debug_span!("gateway", %gid),
@@ -125,7 +129,7 @@ impl RealTunnelSystem {
             .iter()
             .map(|(rid, relay)| {
                 let relay = relay.map(
-                    |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, clock.now()),
+                    |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, flux_capacitor.now()),
                     debug_span!("relay", %rid),
                 );
 
@@ -135,10 +139,12 @@ impl RealTunnelSystem {
 
         // Configure client and gateway with the relays.
         for client in clients.values_mut() {
-            client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), clock.now()));
+            client
+                .exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         }
         for gateway in gateways.values_mut() {
-            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), clock.now()));
+            gateway
+                .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         }
 
         let upstream_do53_servers = portal
@@ -154,7 +160,7 @@ impl RealTunnelSystem {
         }
 
         let mut this = Self {
-            clock,
+            flux_capacitor,
             network: model.network.clone(),
             client_portal_offline_until: None,
             clients,
@@ -173,7 +179,7 @@ impl RealTunnelSystem {
     }
 
     pub(crate) fn now(&self) -> Instant {
-        self.clock.now()
+        self.flux_capacitor.now()
     }
 
     pub(crate) fn probe_observations(&self) -> impl Iterator<Item = &ProbeObservation> {
@@ -258,8 +264,8 @@ impl RealTunnelSystem {
         portal: &mut FakePortal,
     ) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
-        let now = self.clock.now();
-        let utc_now = self.clock.now();
+        let now = self.flux_capacitor.now();
+        let utc_now = self.flux_capacitor.now();
         let mut application_probe = None;
 
         // Act: Apply the transition
@@ -627,14 +633,14 @@ impl RealTunnelSystem {
 
                 let dead_until = now + dead_window;
                 self.advance_to(model, portal, &mut buffered_transmits, dead_until);
-                self.clock.skip_to(dead_until);
+                self.flux_capacitor.skip_to(dead_until);
 
                 // 2. The new link comes up: assign the new IPs, re-register the
                 //    client and reset the frostlink agent so it re-gathers candidates.
                 //    The sockets now pass traffic, but the client has not
                 //    reconnected to the portal yet, so any portal-bound message is
                 //    dropped until the portal window elapses.
-                let now = self.clock.now::<Instant>();
+                let now = self.flux_capacitor.now::<Instant>();
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
                 let added = self.network.add_host(client_id, client, nat_ip4);
@@ -647,12 +653,12 @@ impl RealTunnelSystem {
                 let portal_until = now + portal_window;
                 self.client_portal_offline_until = Some((client_id, portal_until));
                 self.advance_to(model, portal, &mut buffered_transmits, portal_until);
-                self.clock.skip_to(portal_until);
+                self.flux_capacitor.skip_to(portal_until);
                 self.client_portal_offline_until = None;
 
                 // 3. Reconnect to the portal: in prod, we reconnect and receive a
                 //    new `init` message.
-                let now = self.clock.now::<Instant>();
+                let now = self.flux_capacitor.now::<Instant>();
                 let model_client = &model.clients[&client_id];
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
@@ -691,11 +697,11 @@ impl RealTunnelSystem {
                 // Jumping straight between deadlines instead of ticking stops
                 // reaching relay allocation expiry and candidate invalidation.
                 const TICK: Duration = Duration::from_secs(5);
-                let cut_off = self.clock.now::<Instant>() + duration;
+                let cut_off = self.flux_capacitor.now::<Instant>() + duration;
 
-                while self.clock.now::<Instant>() < cut_off {
-                    let remaining = cut_off - self.clock.now::<Instant>();
-                    self.clock.tick(remaining.min(TICK));
+                while self.flux_capacitor.now::<Instant>() < cut_off {
+                    let remaining = cut_off - self.flux_capacitor.now::<Instant>();
+                    self.flux_capacitor.tick(remaining.min(TICK));
                     self.advance(model, portal, &mut buffered_transmits);
                 }
             }
@@ -715,7 +721,7 @@ impl RealTunnelSystem {
                 // 2. Advance state to ensure this is reflected.
                 self.advance(model, portal, &mut buffered_transmits);
 
-                let now = self.clock.now();
+                let now = self.flux_capacitor.now();
 
                 // 3. Reconnect all relays.
                 for client in self.clients.values_mut() {
@@ -922,7 +928,7 @@ impl RealTunnelSystem {
         buffered_transmits: &mut BufferedTransmits,
         restart: impl FnOnce(&mut RealClient, bool) -> Vec<Transmit>,
     ) {
-        let now = self.clock.now();
+        let now = self.flux_capacitor.now();
         let client = self.clients.get_mut(&client_id).unwrap();
         let model_client = &model.clients[&client_id];
 
@@ -1053,7 +1059,7 @@ impl RealTunnelSystem {
         portal: &mut FakePortal,
         buffered_transmits: &mut BufferedTransmits,
     ) {
-        let cut_off = self.clock.now::<Instant>() + Duration::from_secs(20);
+        let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(20);
         self.advance_to(model, portal, buffered_transmits, cut_off);
     }
 
@@ -1067,9 +1073,9 @@ impl RealTunnelSystem {
     ) {
         let global_dns_records = &model.global_dns_records;
 
-        while self.clock.now::<Instant>() < cut_off {
-            let now = self.clock.now();
-            let now_utc = self.clock.now::<SystemTime>();
+        while self.flux_capacitor.now::<Instant>() < cut_off {
+            let now = self.flux_capacitor.now();
+            let now_utc = self.flux_capacitor.now::<SystemTime>();
 
             while let Some(transmit) = buffered_transmits.pop(now) {
                 self.dispatch_transmit(transmit, now);
@@ -1127,9 +1133,9 @@ impl RealTunnelSystem {
             }
 
             if !buffered_transmits.is_empty() {
-                self.clock.small_tick(); // Small tick to get to the next transmit.
+                self.flux_capacitor.small_tick(); // Small tick to get to the next transmit.
             } else if let Some(deadline) = self.poll_timeout().filter(|t| *t <= cut_off) {
-                self.clock.advance_until(deadline);
+                self.flux_capacitor.advance_until(deadline);
             } else {
                 break;
             }
@@ -1190,7 +1196,7 @@ impl RealTunnelSystem {
         model: &TunnelModel,
         portal: &mut FakePortal,
     ) {
-        let now = self.clock.now();
+        let now = self.flux_capacitor.now();
 
         // Simulate a client that has not yet reconnected to the portal after a
         // roam: drop the messages it sends to the portal.
@@ -1470,7 +1476,7 @@ impl RealTunnelSystem {
     }
 
     fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<u64>>, now: Instant) {
-        let now_utc = self.clock.now::<SystemTime>();
+        let now_utc = self.flux_capacitor.now::<SystemTime>();
         let disconnected = self
             .relays
             .keys()
@@ -1519,7 +1525,7 @@ impl RealTunnelSystem {
         new_relays: BTreeMap<RelayId, Host<u64>>,
         now: Instant,
     ) {
-        let now_utc = self.clock.now::<SystemTime>();
+        let now_utc = self.flux_capacitor.now::<SystemTime>();
 
         for relay in self.relays.values() {
             self.network.remove_host(relay);
