@@ -7,7 +7,7 @@ export const STATUS_TEXT: Record<
 > = {
   Online: {
     label: "Connected",
-    explanation: "You are connected to a healthy Gateway in this Site.",
+    explanation: "Using a healthy Gateway in this Site.",
   },
   Unknown: {
     label: "No activity",
