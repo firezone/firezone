@@ -1007,18 +1007,19 @@ impl TunnelModel {
         protocol: Protocol,
         established: bool,
     ) -> Verdict {
-        let client = self.clients[&origin].inner();
         let resolutions = match dst {
             Destination::DomainName { .. } => {
                 let resolver = self.gateways[&gateway].inner();
                 let records = &self.global_dns_records;
 
-                client.dns_resource_resolutions_on_connect(resource, |domain| {
-                    resolver
-                        .resolve(domain, records)
-                        .map(|record| record.rtype())
-                        .collect()
-                })
+                self.clients[&origin]
+                    .inner()
+                    .dns_resource_resolutions_on_connect(resource, |domain| {
+                        resolver
+                            .resolve(domain, records)
+                            .map(|record| record.rtype())
+                            .collect()
+                    })
             }
             Destination::IpAddr(_) => BTreeMap::new(),
         };
@@ -1047,7 +1048,10 @@ impl TunnelModel {
             });
         let outcome = outcomes.next().expect("the Gateway to answer");
         let alternative = outcomes.next();
-        let revoked = (client.connected_resources().contains(&resource)
+        let revoked = (self.clients[&origin]
+            .inner()
+            .gateway_for_resource(resource)
+            .is_some()
             && portal.is_revoked_on_gateway(origin, resource))
         .then_some(resource);
 
@@ -1257,7 +1261,8 @@ impl TunnelModel {
             Remote::Client(_) => self
                 .can_drop_during_rekey(origin, remote, sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
-            // A Gateway that closed the connection over the revocation gets a new one.
+            // The probe travels on a new connection if the Gateway closed the old one over
+            // the revocation.
             Remote::Gateway(_) if revoked.is_some() => Some(KnownLoss::WireGuardRekey),
             Remote::Gateway(_) => self
                 .can_drop_during_rekey(origin, remote, sent_at)
@@ -1423,7 +1428,7 @@ impl Verdict {
         }
     }
 
-    /// The route of the flow the packet opens, which takes a round trip that is certain.
+    /// The route of the flow the packet opens, which takes a certain round trip.
     fn flow_route(&self) -> Option<Route> {
         match (self.outcome, self.alternative, self.revoked) {
             (ExpectedOutcome::RoundTripCompleted(route, _), None, None) => Some(route),
