@@ -25,7 +25,10 @@ const wiki: ResourceViewModel = {
   kind: {
     type: "Dns",
     address: "wiki.example.com",
-    description: "https://handbook.example.com",
+    description: {
+      text: "https://handbook.example.com",
+      url: "https://handbook.example.com/",
+    },
     is_favorite: false,
     connection: { site: "Sydney Office", status: "Online" },
   },
@@ -37,7 +40,7 @@ const vpc: ResourceViewModel = {
   kind: {
     type: "Cidr",
     address: "198.51.100.0/24",
-    description: "Ask the platform team",
+    description: { text: "Ask the platform team", url: null },
     is_favorite: true,
     connection: { site: "Production Cloud", status: "Unknown" },
   },
@@ -152,7 +155,7 @@ test("the address is copied on request", async () => {
   expect(copy).toHaveBeenCalledExactlyOnceWith("wiki.example.com");
 });
 
-test("a description that is a URL opens in the browser", async () => {
+test("a description that links somewhere opens it in the browser", async () => {
   render();
 
   await userEvent.click(page.getByRole("button", { name: "Engineering wiki" }));
@@ -161,11 +164,11 @@ test("a description that is a URL opens in the browser", async () => {
   );
 
   expect(mocks.openUrl).toHaveBeenCalledExactlyOnceWith(
-    "https://handbook.example.com"
+    "https://handbook.example.com/"
   );
 });
 
-test("a description that is not a URL is plain text", async () => {
+test("a description without a link is plain text", async () => {
   render();
 
   await userEvent.click(page.getByRole("button", { name: "Production VPC" }));

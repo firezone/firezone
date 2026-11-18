@@ -174,6 +174,14 @@ export type ConnectionStatus = "Unknown" | "Online" | "Offline"
  * The control plane a client signs in to: a Firezone Cloud deployment, or [`ControlPlane::Custom`] for any other URLs.
  */
 export type ControlPlane = "CloudUs" | "CloudEu" | "Custom"
+/**
+ * What an admin wrote to describe the address of a Resource.
+ */
+export type Description = { text: string;
+/**
+ * Where the description leads, [`None`] if it is not a link.
+ */
+url: string | null }
 export type DeveloperSettingsChanged = DeveloperSettingsViewModel
 export type DeveloperSettingsViewModel = { unlocked: boolean; force_relayed_connections: boolean }
 export type Error = string
@@ -195,7 +203,7 @@ signed_in_with: SignInSettingsViewModel | null }
 export type LogFilterChanged = LogFilterViewModel
 export type LogFilterViewModel = { log_filter: string; log_filter_is_managed: boolean }
 export type LogsRecounted = FileCount
-export type ResourceKind = { type: "Dns"; address: string; description: string | null; is_favorite: boolean; connection: Connection } | { type: "Cidr"; address: string; description: string | null; is_favorite: boolean; connection: Connection } | { type: "Internet"; is_enabled: boolean; connection: Connection } | { type: "DevicePool"; is_favorite: boolean; devices: ConnectedDevice[] }
+export type ResourceKind = { type: "Dns"; address: string; description: Description | null; is_favorite: boolean; connection: Connection } | { type: "Cidr"; address: string; description: Description | null; is_favorite: boolean; connection: Connection } | { type: "Internet"; is_enabled: boolean; connection: Connection } | { type: "DevicePool"; is_favorite: boolean; devices: ConnectedDevice[] }
 export type ResourceViewModel = { id: string; name: string; kind: ResourceKind }
 /**
  * The Resources of the session, [`None`] while not signed in.

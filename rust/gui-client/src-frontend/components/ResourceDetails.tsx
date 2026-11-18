@@ -3,6 +3,7 @@ import React, { useEffect, useId, useState } from "react";
 import {
   ConnectedDevice,
   Connection,
+  Description,
   ResourceKind,
   ResourceViewModel,
   Result,
@@ -11,10 +12,10 @@ import { STATUS_TEXT, StatusDot } from "./ConnectionStatus";
 import { ManagedToggleSwitch } from "./ManagedInput";
 import RemixIcon from "./RemixIcon";
 
-const KIND_TEXT: Record<ResourceKind["type"], string> = {
+// The Internet Resource is missing because its name already says what it is.
+const KIND_TEXT: Record<Exclude<ResourceKind["type"], "Internet">, string> = {
   Dns: "DNS Resource",
   Cidr: "CIDR Resource",
-  Internet: "Internet",
   DevicePool: "Device pool",
 };
 
@@ -46,7 +47,9 @@ export default function ResourceDetails({
           <h2 className="break-words text-base font-semibold tracking-tight text-heading">
             {name}
           </h2>
-          <p className="mt-0.5 text-xs text-subtle">{KIND_TEXT[kind.type]}</p>
+          {kind.type !== "Internet" && (
+            <p className="mt-0.5 text-xs text-subtle">{KIND_TEXT[kind.type]}</p>
+          )}
         </div>
         {kind.type !== "Internet" && (
           <FavoriteButton
@@ -68,7 +71,7 @@ export default function ResourceDetails({
             </Field>
             {kind.description !== null && (
               <Field label="Description">
-                <Description text={kind.description} />
+                <DescriptionValue description={kind.description} />
               </Field>
             )}
           </>
@@ -132,12 +135,12 @@ function ConnectionSection({ connection }: { connection: Connection }) {
         <Field label="Site">{connection.site}</Field>
       )}
       <Field label="Status">
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 font-medium">
             <StatusDot status={connection.status} />
             {label}
           </p>
-          <p className="mt-1 text-balance text-xs text-body">{explanation}</p>
+          <p className="mt-1 text-xs text-body">{explanation}</p>
         </div>
       </Field>
     </Section>
@@ -250,8 +253,10 @@ function Field({ label, inputId, children }: FieldProps) {
   );
 }
 
-function Description({ text }: { text: string }) {
-  if (!isWebUrl(text)) {
+function DescriptionValue({ description }: { description: Description }) {
+  const { text, url } = description;
+
+  if (url === null) {
     return <span className="wrap-anywhere">{text}</span>;
   }
 
@@ -259,7 +264,7 @@ function Description({ text }: { text: string }) {
     <button
       className="wrap-anywhere text-left text-brand hover:text-brand-dark hover:underline"
       onClick={() =>
-        openUrl(text).catch((error) =>
+        openUrl(url).catch((error) =>
           console.error("Failed to open Resource description", error)
         )
       }
@@ -270,16 +275,6 @@ function Description({ text }: { text: string }) {
       <RemixIcon className="ml-1 h-3.5 w-3.5" name="external-link" />
     </button>
   );
-}
-
-function isWebUrl(text: string): boolean {
-  try {
-    const { protocol } = new URL(text);
-
-    return protocol === "http:" || protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 interface CopyButtonProps {

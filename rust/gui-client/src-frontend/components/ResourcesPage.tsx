@@ -133,7 +133,7 @@ function matches({ name, kind }: ResourceViewModel, query: string): boolean {
   const searched = [name];
 
   if (kind.type === "Dns" || kind.type === "Cidr") {
-    searched.push(kind.address, kind.description ?? "");
+    searched.push(kind.address, kind.description?.text ?? "");
   }
   if (kind.type !== "DevicePool") {
     searched.push(kind.connection.site ?? "");

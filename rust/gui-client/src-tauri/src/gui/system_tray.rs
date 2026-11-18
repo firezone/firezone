@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use tunnel_proto::dns::DEVICE_DOMAIN;
 use url::Url;
 
-use crate::updates::Release;
+use crate::{updates::Release, view::description_link};
 
 pub use builder::{Entry, Event, Item, Menu, Window};
 use builder::{copyable, item};
@@ -115,14 +115,14 @@ impl Default for AppState {
 
 impl AppState {
     pub fn into_menu(self) -> Menu {
-        let quit_text = match &self.connlib {
+        let bottom_section = match &self.connlib {
             ConnlibState::Loading
             | ConnlibState::Quitting
             | ConnlibState::SignedOut
             | ConnlibState::WaitingForBrowser
             | ConnlibState::WaitingForPortal
-            | ConnlibState::WaitingForTunnel => QUIT_TEXT_SIGNED_OUT,
-            ConnlibState::SignedIn(_) => DISCONNECT_AND_QUIT,
+            | ConnlibState::WaitingForTunnel => BottomSection::SignedOut,
+            ConnlibState::SignedIn(_) => BottomSection::SignedIn,
         };
         let menu = match self.connlib {
             ConnlibState::Loading => Menu::default().disabled("Loading..."),
@@ -135,7 +135,7 @@ impl AppState {
         };
         menu.add_bottom_section(
             self.release,
-            quit_text,
+            bottom_section,
             !self.hide_admin_portal_menu_item,
             self.support_url,
         )
@@ -202,33 +202,33 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
 
     let mut menu = Menu::default()
         .disabled(session_heading(actor_name))
-        .item(Event::SignOut, SIGN_OUT)
-        .separator();
+        .item(Event::SignOut, SIGN_OUT);
 
     tracing::debug!(
         resource_count = resources.len(),
         "Building signed-in tray menu"
     );
+    let mut favorites = Menu::default();
     if resources
         .iter()
         .any(|res| favorite_resources.contains(&res.id()))
     {
-        menu = menu.disabled(FAVORITE_RESOURCES);
+        favorites = favorites.disabled(FAVORITE_RESOURCES);
     }
 
     for res in resources {
         let is_favorite = favorite_resources.contains(&res.id());
 
-        menu = match res {
-            ResourceView::Internet(internet) => menu.add_submenu(
+        favorites = match res {
+            ResourceView::Internet(internet) => favorites.add_submenu(
                 append_status(&internet.name, internet_resource_enabled),
                 internet_resource_submenu(internet_resource_enabled),
             ),
-            ResourceView::Dns(dns) if is_favorite => menu.add_submenu(
+            ResourceView::Dns(dns) if is_favorite => favorites.add_submenu(
                 &dns.name,
                 resource_submenu(&dns.name, dns.address_description.as_deref(), &dns.address),
             ),
-            ResourceView::Cidr(cidr) if is_favorite => menu.add_submenu(
+            ResourceView::Cidr(cidr) if is_favorite => favorites.add_submenu(
                 &cidr.name,
                 resource_submenu(
                     &cidr.name,
@@ -237,13 +237,18 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
                 ),
             ),
             ResourceView::DevicePool(pool) if is_favorite => {
-                menu.add_submenu(&pool.name, devices_submenu(&pool.devices))
+                favorites.add_submenu(&pool.name, devices_submenu(&pool.devices))
             }
-            ResourceView::Dns(_) | ResourceView::Cidr(_) | ResourceView::DevicePool(_) => menu,
+            ResourceView::Dns(_) | ResourceView::Cidr(_) | ResourceView::DevicePool(_) => favorites,
         };
     }
 
-    menu.item(Event::ShowWindow(Window::Resources), RESOURCES)
+    if !favorites.entries.is_empty() {
+        menu.add_separator();
+        menu.entries.extend(favorites.entries);
+    }
+
+    menu
 }
 
 fn internet_resource_submenu(enabled: bool) -> Menu {
@@ -269,7 +274,7 @@ fn resource_submenu(name: &str, description: Option<&str>, address: &str) -> Men
 }
 
 fn description_item(description: &str) -> Item {
-    let Ok(url) = Url::parse(description) else {
+    let Some(url) = description_link(description) else {
         return copyable(description);
     };
 
@@ -323,12 +328,19 @@ fn append_status(name: &str, enabled: bool) -> String {
     format!("{symbol} {name}")
 }
 
+/// Which session the bottom section of the menu is for.
+#[derive(Clone, Copy)]
+pub(crate) enum BottomSection {
+    SignedIn,
+    SignedOut,
+}
+
 impl Menu {
     /// Appends things that always show, like About, Settings, Help, Quit, etc.
     pub(crate) fn add_bottom_section(
         mut self,
         release: Option<Release>,
-        quit_text: &str,
+        section: BottomSection,
         show_admin_portal_url: bool,
         support_url: Option<Url>,
     ) -> Self {
@@ -339,6 +351,15 @@ impl Menu {
                 format!("Download Firezone {}...", release.version),
             )
         }
+
+        let quit_text = match section {
+            BottomSection::SignedIn => {
+                self = self.item(Event::ShowWindow(Window::Resources), RESOURCES);
+
+                DISCONNECT_AND_QUIT
+            }
+            BottomSection::SignedOut => QUIT_TEXT_SIGNED_OUT,
+        };
 
         let mut item = self.item(Event::ShowWindow(Window::About), "About Firezone");
 
@@ -513,13 +534,54 @@ mod tests {
             .item(Event::SignOut, SIGN_OUT)
             .separator()
             .item(Event::ShowWindow(Window::Resources), RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .item(Event::ShowWindow(Window::About), "About Firezone")
+            .item(Event::AdminPortal, "Admin Portal...")
+            .add_submenu(
+                "Help",
+                Menu::default()
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/kb")),
+                        "Documentation...",
+                    )
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/support")),
+                        "Support...",
+                    ),
+            )
+            .item(Event::ShowWindow(Window::Settings), "Settings")
+            .separator()
+            .item(Event::Quit, DISCONNECT_AND_QUIT);
 
         assert_eq!(
             actual,
             expected,
             "{}",
             serde_json::to_string_pretty(&actual).unwrap()
+        );
+    }
+
+    #[test]
+    fn new_release_is_offered_above_resources() {
+        let release = Release {
+            download_url: "https://www.firezone.dev/dl".parse().unwrap(),
+            version: "1.6.0".parse().unwrap(),
+        };
+
+        let actual = AppState {
+            release: Some(release.clone()),
+            ..signed_in(vec![], HashSet::default(), None)
+        }
+        .into_menu();
+
+        assert_eq!(
+            actual.entries[3..5],
+            [
+                Entry::Item(item(
+                    Event::Url(release.download_url),
+                    "Download Firezone 1.6.0..."
+                )),
+                Entry::Item(item(Event::ShowWindow(Window::Resources), RESOURCES)),
+            ]
         );
     }
 
@@ -531,9 +593,7 @@ mod tests {
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
-            .separator()
-            .item(Event::ShowWindow(Window::Resources), RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -558,8 +618,7 @@ mod tests {
                     .separator()
                     .item(Event::EnableInternetResource, ENABLE),
             )
-            .item(Event::ShowWindow(Window::Resources), RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -602,8 +661,7 @@ mod tests {
                     .separator()
                     .item(Event::EnableInternetResource, ENABLE),
             )
-            .item(Event::ShowWindow(Window::Resources), RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -645,8 +703,7 @@ mod tests {
                     .separator()
                     .item(Event::EnableInternetResource, ENABLE),
             )
-            .item(Event::ShowWindow(Window::Resources), RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -688,8 +745,7 @@ mod tests {
                     .copyable("Git server")
                     .copyable("git.example.com"),
             )
-            .item(Event::ShowWindow(Window::Resources), RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -721,8 +777,7 @@ mod tests {
                     .separator()
                     .item(Event::EnableInternetResource, ENABLE),
             )
-            .item(Event::ShowWindow(Window::Resources), RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -774,8 +829,7 @@ mod tests {
                 Menu::default().copyable("alpha.firezone.network"),
             )
             .add_submenu("QA Pool", Menu::default().disabled(NO_CONNECTED_DEVICES))
-            .item(Event::ShowWindow(Window::Resources), RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, BottomSection::SignedIn, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,

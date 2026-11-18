@@ -267,13 +267,13 @@ pub struct ResourceViewModel {
 pub enum ResourceKind {
     Dns {
         address: String,
-        description: Option<String>,
+        description: Option<Description>,
         is_favorite: bool,
         connection: Connection,
     },
     Cidr {
         address: String,
-        description: Option<String>,
+        description: Option<Description>,
         is_favorite: bool,
         connection: Connection,
     },
@@ -285,6 +285,14 @@ pub enum ResourceKind {
         is_favorite: bool,
         devices: Vec<ConnectedDevice>,
     },
+}
+
+/// What an admin wrote to describe the address of a Resource.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+pub struct Description {
+    pub text: String,
+    /// Where the description leads, [`None`] if it is not a link.
+    pub url: Option<Url>,
 }
 
 /// The connection to the Site that serves a Resource.
@@ -322,7 +330,10 @@ impl ResourceViewModel {
         let description = resource
             .address_description()
             .filter(|description| !description.is_empty())
-            .map(str::to_owned);
+            .map(|description| Description {
+                text: description.to_owned(),
+                url: description_link(description),
+            });
         let connection = Connection {
             site: resource.sites().first().map(|site| site.name.clone()),
             status: ConnectionStatus::from(resource.status()),
@@ -357,6 +368,15 @@ impl ResourceViewModel {
             kind,
         }
     }
+}
+
+/// Returns the URL that a Resource's description links to.
+///
+/// Only web addresses are links: other text can parse as a URL too, e.g. `note: ask IT`.
+pub(crate) fn description_link(description: &str) -> Option<Url> {
+    let url = Url::parse(description).ok()?;
+
+    matches!(url.scheme(), "http" | "https").then_some(url)
 }
 
 impl From<ResourceStatus> for ConnectionStatus {
@@ -710,6 +730,22 @@ mod tests {
             std::fs::read_to_string(bindings_path()).unwrap(),
             "the committed bindings.ts is stale: run `cargo run -p firezone-gui-client --example export-bindings`"
         );
+    }
+
+    #[test]
+    fn a_web_address_is_a_description_link() {
+        let link = description_link("https://wiki.example.com/handbook");
+
+        assert_eq!(
+            link,
+            Some(Url::parse("https://wiki.example.com/handbook").unwrap())
+        );
+    }
+
+    #[test]
+    fn text_that_parses_as_another_url_is_not_a_description_link() {
+        assert_eq!(description_link("note: ask IT"), None);
+        assert_eq!(description_link("ssh://git.example.com"), None);
     }
 
     #[test]

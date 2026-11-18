@@ -9,6 +9,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import App from "./components/App";
 import {
   ConnectionStatus,
+  Description,
   events,
   FileCount,
   GeneralSettingsViewModel,
@@ -81,7 +82,7 @@ function resource(
   address: string,
   site: string,
   status: ConnectionStatus,
-  { description = null as string | null, is_favorite = false } = {}
+  { description = null as Description | null, is_favorite = false } = {}
 ): ResourceViewModel {
   const connection = { site, status };
 
@@ -130,7 +131,10 @@ const resources: ResourceViewModel[] = [
     },
   },
   resource("Dns", "Engineering wiki", "wiki.example.com", SYDNEY, "Online", {
-    description: "https://wiki.example.com",
+    description: {
+      text: "https://wiki.example.com",
+      url: "https://wiki.example.com/",
+    },
     is_favorite: true,
   }),
   resource("Dns", "Git server", "git.example.com", PRODUCTION, "Unknown"),
@@ -147,7 +151,12 @@ const resources: ResourceViewModel[] = [
     "warehouse-replica.eu-west-1.analytics.internal.example.com",
     PRODUCTION,
     "Online",
-    { description: "Read-only. Ask the data team for credentials." }
+    {
+      description: {
+        text: "Read-only. Ask the data team for credentials.",
+        url: null,
+      },
+    }
   ),
   resource("Cidr", "Office network", "192.0.2.0/24", SYDNEY, "Online", {
     is_favorite: true,
