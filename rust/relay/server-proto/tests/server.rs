@@ -491,6 +491,129 @@ fn userspace_datapath_drops_traffic_above_throughput_limit() {
     assert!(relay.send_channel_data(channel, &payload).is_some());
 }
 
+#[test]
+fn unknown_peer_binding_is_pending() {
+    let mut wireguard = [0u8; 32];
+    wireguard[0] = 4;
+    let (mut relay, port) = TestRelay::with_enforced_known_peers();
+
+    let response = relay.channel_bind(peer().into_socket());
+
+    assert_eq!(response.class(), MessageClass::SuccessResponse);
+    assert_eq!(relay.next_command(), None);
+    assert_eq!(relay.server.num_active_channels(), 0);
+    assert_eq!(relay.send_channel_data(channel(), &wireguard), None);
+    assert_eq!(
+        relay
+            .server
+            .handle_peer_traffic(&wireguard, peer(), port, relay.now),
+        None
+    );
+}
+
+#[test]
+fn pending_binding_activates_once_peer_is_known() {
+    let mut wireguard = [0u8; 32];
+    wireguard[0] = 4;
+    let (mut relay, port) = TestRelay::with_enforced_known_peers();
+    relay.channel_bind(peer().into_socket());
+
+    relay
+        .server
+        .add_known_peers(relay.account, [peer().into_socket().ip()], relay.now);
+
+    assert_eq!(
+        relay.next_command(),
+        Some(Command::CreateChannelBinding {
+            client: relay.client,
+            channel_number: channel(),
+            peer: peer(),
+            allocation_port: port,
+            throughput_limit: None,
+        })
+    );
+    assert_eq!(relay.server.num_active_channels(), 1);
+    assert_eq!(
+        relay.send_channel_data(channel(), &wireguard),
+        Some((port, peer()))
+    );
+    assert_eq!(
+        relay
+            .server
+            .handle_peer_traffic(&wireguard, peer(), port, relay.now),
+        Some((relay.client, channel()))
+    );
+}
+
+#[test]
+fn peer_known_for_other_account_stays_pending() {
+    let other_account = auth::AccountId::from(Uuid::from_u128(1));
+    let (mut relay, _) = TestRelay::with_enforced_known_peers();
+    relay.server.add_account(other_account, None);
+    relay.channel_bind(peer().into_socket());
+
+    relay
+        .server
+        .add_known_peers(other_account, [peer().into_socket().ip()], relay.now);
+
+    assert_eq!(relay.next_command(), None);
+    assert_eq!(relay.server.num_active_channels(), 0);
+}
+
+#[test]
+fn pending_binding_expires() {
+    let pending_channel_lifetime = Duration::from_secs(15);
+    let (mut relay, _) = TestRelay::with_enforced_known_peers();
+    relay.channel_bind(peer().into_socket());
+
+    assert_eq!(
+        relay.server.poll_timeout(),
+        Some(relay.now + pending_channel_lifetime)
+    );
+    relay.now += pending_channel_lifetime;
+    relay.server.handle_timeout(relay.now);
+    relay
+        .server
+        .add_known_peers(relay.account, [peer().into_socket().ip()], relay.now);
+
+    assert_eq!(relay.next_command(), None);
+    assert_eq!(relay.server.num_active_channels(), 0);
+}
+
+#[test]
+fn known_peer_binds() {
+    let (mut relay, port) = TestRelay::with_enforced_known_peers();
+    relay
+        .server
+        .add_known_peers(relay.account, [peer().into_socket().ip()], relay.now);
+
+    let response = relay.channel_bind(peer().into_socket());
+
+    assert_eq!(response.class(), MessageClass::SuccessResponse);
+    assert_eq!(
+        relay.next_command(),
+        Some(Command::CreateChannelBinding {
+            client: relay.client,
+            channel_number: channel(),
+            peer: peer(),
+            allocation_port: port,
+            throughput_limit: None,
+        })
+    );
+    assert_eq!(relay.server.num_active_channels(), 1);
+}
+
+#[test]
+fn unknown_peer_binds_while_not_enforcing() {
+    let (mut relay, _) = TestRelay::with_enforced_known_peers();
+    relay.server.set_enforce_known_peers(false);
+
+    let response = relay.channel_bind(peer().into_socket());
+
+    assert_eq!(response.class(), MessageClass::SuccessResponse);
+    assert_eq!(relay.server.num_active_channels(), 1);
+}
+
 const RELAY_IP: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
 const UDP_TRANSPORT: u8 = 17;
 
@@ -545,6 +668,19 @@ impl TestRelay {
         for _ in std::iter::from_fn(|| relay.next_command()) {}
 
         relay
+    }
+
+    /// Allocates on a relay that defers channel bindings to unknown peers and returns the allocation's port.
+    fn with_enforced_known_peers() -> (Self, AllocationPort) {
+        let mut relay = Self::new();
+        relay.server.set_enforce_known_peers(true);
+
+        relay.allocate();
+        let Some(Command::CreateAllocation { port, .. }) = relay.next_command() else {
+            panic!("the relay creates an allocation for an authenticated request");
+        };
+
+        (relay, port)
     }
 
     fn allocate(&mut self) -> Message<Attribute> {
@@ -691,6 +827,14 @@ fn username(account: auth::AccountId, expiry: u64, device: &str) -> Username {
         auth::hash_account_id(&account)
     ))
     .unwrap()
+}
+
+fn peer() -> PeerSocket {
+    PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)))
+}
+
+fn channel() -> ChannelNumber {
+    ChannelNumber::new(ChannelNumber::MIN).unwrap()
 }
 
 fn socket(index: u16) -> ClientSocket {
