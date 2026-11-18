@@ -111,7 +111,6 @@ bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
 caps = "0.5.6"
-chrono = { version = "0.4.45", default-features = false }
 clap = "4.6.1"
 clap_complete = "4.6.9"
 client-ipc = { path = "gui-client/src-ipc" }
@@ -158,7 +157,6 @@ hmac = "0.13.0"
 http = "1.4.1"
 http-body-util = "0.1.3"
 http-client = { path = "libs/http-client" }
-humantime = "2.3.0"
 hyper = "1.10.1"
 hyper-util = "0.1.20"
 incremental-inet-checksum = { path = "libs/incremental-inet-checksum" }
@@ -168,6 +166,7 @@ ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
 is = "0.11.0"
 itertools = "0.15.0"
+jiff = { version = "0.2.24", default-features = false }
 jsonschema = { version = "0.59.0", default-features = false }
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }

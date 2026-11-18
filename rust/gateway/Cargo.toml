@@ -40,7 +40,6 @@ futures-bounded = { workspace = true }
 git-sha = { workspace = true }
 hex = { workspace = true }
 hickory-resolver = { workspace = true }
-humantime = { workspace = true }
 ip-packet = { workspace = true }
 logging = { workspace = true }
 mimalloc = { workspace = true }

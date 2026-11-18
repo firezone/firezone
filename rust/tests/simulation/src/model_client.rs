@@ -17,12 +17,12 @@ use tunnel_proto::{
     messages::{Filter, Interface, UpstreamDo53, UpstreamDoH, client::FailReason},
 };
 
-use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView, Site, SiteId};
 use dns_types::{DomainName, RecordType, ResponseCode};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
 use itertools::Itertools as _;
+use jiff::Timestamp;
 use std::{
     cmp::{Ordering, Reverse},
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -170,17 +170,14 @@ impl ModelClient {
         upstream_doh: Vec<UpstreamDoH>,
         search_domain: Option<DomainName>,
         now: Instant,
-        utc_now: DateTime<Utc>,
+        utc_now: Timestamp,
     ) -> RealClient {
         let mut client_state = ClientState::new(
             self.key.0,
             Default::default(),
             self.internet_resource_active,
             now,
-            utc_now
-                .signed_duration_since(DateTime::UNIX_EPOCH)
-                .to_std()
-                .unwrap(),
+            Duration::try_from(utc_now.as_duration()).unwrap(),
         ); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
