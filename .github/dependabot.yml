@@ -5,17 +5,6 @@
 
 version: 2
 
-multi-ecosystem-groups:
-  tauri:
-    target-branch: main
-    schedule:
-      interval: weekly
-    # Multi-ecosystem groups don't inherit Dependabot's conventional-commit
-    # auto-detection, so set the prefix explicitly to match our other updates.
-    commit-message:
-      prefix: build
-      include: scope
-
 updates:
   # Keep version update jobs on the active codebase while the legacy branch exists.
   - package-ecosystem: mix
@@ -118,6 +107,10 @@ updates:
         patterns:
           - is
           - str0m-proto
+      freya:
+        patterns:
+          - freya
+          - freya-*
       rust-crypto:
         patterns:
           - aead
@@ -232,48 +225,6 @@ updates:
           - "*"
   - package-ecosystem: npm
     target-branch: main
-    directory: rust/gui-client/
-    schedule:
-      interval: weekly
-    cooldown:
-      semver-patch-days: 2
-      semver-minor-days: 7
-      semver-major-days: 14
-      default-days: 7
-    open-pull-requests-limit: 100
-    groups:
-      security-all:
-        applies-to: security-updates
-        patterns:
-          - "*"
-      tailwind:
-        patterns:
-          - tailwindcss
-          - "@tailwindcss/*"
-      sentry:
-        patterns:
-          - "@sentry/*"
-      eslint:
-        patterns:
-          - "eslint"
-          - "@eslint/*"
-      vitest:
-        patterns:
-          - "vitest"
-          - "@vitest/*"
-      flowbite:
-        patterns:
-          - "flowbite"
-          - "flowbite-react"
-      react:
-        patterns:
-          - "react"
-          - "react-dom"
-          - "react-router"
-          - "@types/react"
-          - "@types/react-dom"
-  - package-ecosystem: npm
-    target-branch: main
     directory: elixir/assets/
     schedule:
       interval: weekly
@@ -310,20 +261,3 @@ updates:
         patterns:
           - "alpine"
           - "hexpm/elixir"
-
-  # Tauri group
-  - package-ecosystem: npm
-    directory: rust/gui-client/
-    schedule:
-      interval: weekly
-    multi-ecosystem-group: tauri
-    patterns:
-      - "@tauri-apps/*"
-  - package-ecosystem: cargo
-    directory: rust/
-    schedule:
-      interval: weekly
-    multi-ecosystem-group: tauri
-    patterns:
-      - tauri
-      - tauri-*

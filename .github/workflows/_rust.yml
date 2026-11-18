@@ -32,7 +32,7 @@ jobs:
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - uses: ./.github/actions/setup-tauri-v2
+      - uses: ./.github/actions/setup-gui-deps
         timeout-minutes: 15
       - uses: ./.github/actions/setup-mise
         with:
@@ -72,7 +72,7 @@ jobs:
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - uses: ./.github/actions/setup-tauri-v2
+      - uses: ./.github/actions/setup-gui-deps
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
@@ -91,7 +91,8 @@ jobs:
           packages: softhsm2 p11-kit
       - name: "cargo test"
         shell: bash
-        run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
+        # `--no-cfg-coverage`: `tiny-xlib`, which Freya pulls in, enables a nightly feature under `cfg(coverage)`.
+        run: cargo llvm-cov --no-cfg-coverage --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
@@ -346,9 +347,9 @@ jobs:
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - uses: ./.github/actions/setup-tauri-v2
+      - uses: ./.github/actions/setup-gui-deps
         # `linux-group.sh` builds `firezone-client-tunnel`, which is a bin of the
-        # `firezone-gui-client` package and therefore compiles `tauri`. The other
+        # `firezone-gui-client` package and therefore compiles Freya. The other
         # tests build `firezone-headless-client`, which has no such dependency.
         if: matrix.test == 'linux-group.sh'
         timeout-minutes: 15

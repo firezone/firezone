@@ -14,8 +14,7 @@ fn main() -> Result<()> {
     // `<msix>` identity claim hang on startup, and the helper has no
     // use for identity).
     //
-    // Non-release profiles (dev, profiling, …) keep tauri-build's
-    // default manifest (Common-Controls v6 only, no `<msix>` claim):
+    // Non-release profiles (dev, profiling, …) embed no manifest:
     // a non-release binary run from `target\<profile>` typically has
     // no registered sparse package on the dev box, and an embedded
     // MSIX identity claim makes the kernel fail `CreateProcess` with
@@ -30,18 +29,12 @@ fn main() -> Result<()> {
     // un-packaged from `target\profiling`) does not embed the
     // manifest. Only an actual `--profile release` build does.
     println!("cargo:rerun-if-env-changed=PROFILE");
-    let is_release = std::env::var("PROFILE").as_deref() == Ok("release");
-
-    let attr = if is_release {
-        let win = tauri_build::WindowsAttributes::new_without_app_manifest();
-        tauri_build::Attributes::new().windows_attributes(win)
-    } else {
-        tauri_build::Attributes::new()
-    };
-    tauri_build::try_build(attr)?;
 
     #[cfg(target_os = "windows")]
-    if is_release {
+    embed_icon_and_version()?;
+
+    #[cfg(target_os = "windows")]
+    if std::env::var("PROFILE").as_deref() == Ok("release") {
         embed_resource::compile_for(
             "win_files/Firezone.exe.manifest.rc",
             ["firezone-gui-client"],
@@ -65,6 +58,50 @@ fn main() -> Result<()> {
     }
 
     write_wix_package_identity(PACKAGE_FAMILY_NAME)?;
+
+    Ok(())
+}
+
+/// Gives every binary the app icon and the version the MSI compares on upgrades.
+#[cfg(target_os = "windows")]
+fn embed_icon_and_version() -> Result<()> {
+    let version = std::env::var("CARGO_PKG_VERSION")?;
+    let numeric = version.replace('.', ",");
+    let icon = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?).join("icons/icon.ico");
+    let rc = PathBuf::from(std::env::var("OUT_DIR")?).join("resources.rc");
+
+    fs::write(
+        &rc,
+        format!(
+            r#"1 ICON "{icon}"
+1 VERSIONINFO
+FILEVERSION {numeric},0
+PRODUCTVERSION {numeric},0
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName", "Firezone"
+      VALUE "FileDescription", "Firezone"
+      VALUE "FileVersion", "{version}"
+      VALUE "ProductName", "Firezone"
+      VALUE "ProductVersion", "{version}"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
+"#,
+            icon = icon.display().to_string().replace('\\', "\\\\"),
+        ),
+    )
+    .context("write resource script")?;
+
+    embed_resource::compile(&rc, embed_resource::NONE).manifest_required()?;
+    println!("cargo:rerun-if-changed=icons/icon.ico");
 
     Ok(())
 }

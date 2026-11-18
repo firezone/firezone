@@ -5,8 +5,7 @@
 //! notification dots and other stuff over the logo, without maintaining
 //! multiple nearly-identical graphics assets.
 //!
-//! Using the HTML5 canvas in Tauri would make us depend on it too much,
-//! and the math for compositing RGBA images in a mostly-gamma-correct way
+//! The math for compositing RGBA images in a mostly-gamma-correct way
 //! is simple enough to just replicate it here.
 
 use std::io::Cursor;

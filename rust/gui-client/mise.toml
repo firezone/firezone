@@ -13,20 +13,16 @@
 [tasks.dev]
 description = "Run the GUI client in dev against a dev Tunnel service"
 raw = true
-run = "cargo tauri dev -- -- --skip-peer-verification"
+run = "cargo run -p firezone-gui-client --bin firezone-gui-client -- --skip-peer-verification"
 
 [tasks.dev-mock]
 description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock-tunnel) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
 raw = true
-run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
+run = "cargo run -p firezone-gui-client --bin firezone-gui-client -- --skip-portal-auth --mock-tunnel"
 
 [tasks.screenshots]
 description = "Render every GUI client screen to a PNG in `rust/gui-client/screenshots`"
-run = [
-    "pnpm install",
-    "pnpm exec playwright install chromium",
-    "pnpm exec vitest run",
-]
+run = "cargo test -p firezone-gui-client --lib ui::tests::screenshots"
 
 # Build and run are separate commands so that only the service is elevated:
 # `sudo cargo` would leave root-owned artifacts in `target/`, and `sudo mise`

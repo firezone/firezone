@@ -2,7 +2,7 @@
 //!
 //! ksni speaks the tray D-Bus protocols directly, so it can attach per-item
 //! `icon-data` (a PNG) — letting GNOME (with the AppIndicator extension) and
-//! KDE render the colored Site-status dots, which Tauri's `libappindicator`
+//! KDE render the colored Site-status dots, which `libappindicator`
 //! path could not. Stock icon themes only ship monochrome *symbolic* status
 //! icons, so rather than a themed `icon-name` we embed our own PNGs — the same
 //! green/red/grey assets the Windows tray uses.
@@ -15,7 +15,6 @@ use ksni::{
     Icon as KsniIcon,
     menu::{CheckmarkItem, MenuItem, StandardItem, SubMenu},
 };
-use tauri::AppHandle;
 use tokio::runtime;
 use tokio::sync::mpsc;
 
@@ -29,7 +28,7 @@ const STATUS_ONLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-onl
 const STATUS_OFFLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-offline.png");
 const STATUS_UNKNOWN_ICON: &[u8] = include_bytes!("../../../icons/menu/status-unknown.png");
 
-type OnEvent = Arc<dyn Fn(&AppHandle, Event) + Send + Sync>;
+type OnEvent = Arc<dyn Fn(Event) + Send + Sync>;
 
 pub(crate) struct Tray {
     menu_tx: mpsc::UnboundedSender<Menu>,
@@ -39,20 +38,14 @@ pub(crate) struct Tray {
 }
 
 impl Tray {
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "The Tauri backend's `new` is fallible; the signatures must match"
-    )]
     pub(crate) fn new(
-        rt: runtime::Handle,
-        app: AppHandle,
-        on_event: impl Fn(&AppHandle, Event) + Send + Sync + 'static,
-    ) -> Result<Self> {
+        rt: &runtime::Handle,
+        on_event: impl Fn(Event) + Send + Sync + 'static,
+    ) -> Self {
         let (menu_tx, menu_rx) = mpsc::unbounded_channel();
         let (icon_tx, icon_rx) = mpsc::unbounded_channel();
 
         let tray = FzTray {
-            app,
             on_event: Arc::new(on_event),
             menu: Menu::default(),
             icon: Icon::default(),
@@ -78,12 +71,12 @@ impl Tray {
             .await;
         });
 
-        Ok(Self {
+        Self {
             menu_tx,
             icon_tx,
             last_icon: Icon::default(),
             last_menu: None,
-        })
+        }
     }
 
     pub(crate) fn update(&mut self, state: AppState) {
@@ -167,7 +160,6 @@ impl Eventloop {
 }
 
 struct FzTray {
-    app: AppHandle,
     on_event: OnEvent,
     menu: Menu,
     icon: Icon,
@@ -234,7 +226,7 @@ fn build_item(item: &Item) -> MenuItem<FzTray> {
     let activate = Box::new(move |tray: &mut FzTray| {
         if let Some(event) = event.clone() {
             let on_event = Arc::clone(&tray.on_event);
-            on_event(&tray.app, event);
+            on_event(event);
         }
     });
 

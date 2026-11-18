@@ -3,7 +3,6 @@
 pub use ::logging::*;
 
 use anyhow::{Context as _, Result, bail};
-use serde::Serialize;
 use std::{
     fs,
     io::{self, ErrorKind::NotFound},
@@ -226,7 +225,7 @@ fn system_layer() -> Result<tracing_subscriber::layer::Identity> {
     Ok(tracing_subscriber::layer::Identity::new())
 }
 
-#[derive(Clone, Default, Serialize, specta::Type)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct FileCount {
     pub bytes: u64,
     pub files: u64,
