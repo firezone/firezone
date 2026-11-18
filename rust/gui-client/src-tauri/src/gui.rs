@@ -65,14 +65,6 @@ impl Managed {
             .await
             .with_context(|| format!("Failed to send `{msg_name}`"))
     }
-
-    pub fn blocking_send_request(&self, msg: ControllerRequest) -> Result<()> {
-        let msg_name = msg.to_string();
-
-        self.req_tx
-            .blocking_send(msg)
-            .with_context(|| format!("Failed to send `{msg_name}`"))
-    }
 }
 
 pub(crate) struct TauriIntegration {
@@ -157,7 +149,8 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
-        tauri_plugin_opener::open_url(url, Option::<&str>::None)?;
+        open::that_detached(url.as_ref())
+            .with_context(|| format!("Failed to open `{}`", url.as_ref()))?;
 
         Ok(())
     }
@@ -331,8 +324,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         if !config.no_deep_links {
             // The single-instance check is done, so register our exe
             // to handle deep links
-            let exe =
-                tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
+            let exe = std::env::current_exe().context("Can't find our own exe path")?;
             deep_link::register(exe).context("Failed to register deep link handler")?;
         }
 
@@ -433,7 +425,6 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
 
             Ok(())
         })
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .build(tauri::generate_context!())
         .context("Failed to build Tauri app instance")?

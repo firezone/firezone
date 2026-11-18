@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn exe_path() -> Result<()> {
         // e.g. `\\\\?\\C:\\cygwin64\\home\\User\\projects\\firezone\\rust\\target\\debug\\deps\\firezone_windows_client-5f44800b2dafef90.exe`
-        let path = tauri_utils::platform::current_exe()?.display().to_string();
+        let path = std::env::current_exe()?.display().to_string();
         assert!(path.contains("target"));
         assert!(!path.contains('\"'), "`{path}`");
         Ok(())

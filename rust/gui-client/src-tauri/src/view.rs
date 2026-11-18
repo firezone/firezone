@@ -1,9 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use anyhow::{Context as _, Result};
-use logging::err_with_src;
 use serde::Serialize;
-use tauri_plugin_dialog::DialogExt as _;
 
 use crate::{
     controller::ControllerRequest,
@@ -259,11 +257,30 @@ pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), Error>
 
 #[tauri::command]
 #[specta::specta]
-pub async fn export_logs(
-    app: tauri::AppHandle,
-    managed: tauri::State<'_, Managed>,
-) -> Result<(), Error> {
-    show_export_dialog(&app, managed.inner().clone())?;
+pub async fn export_logs(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
+    let now = chrono::Local::now();
+    let datetime_string = now.format("%Y_%m_%d-%H-%M");
+    let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
+    let filename = stem.with_extension("zip");
+    let filename = filename
+        .to_str()
+        .context("zip filename isn't valid Unicode")?;
+
+    let Some(file) = rfd::AsyncFileDialog::new()
+        .add_filter("Zip", &["zip"])
+        .set_file_name(filename)
+        .save_file()
+        .await
+    else {
+        return Ok(());
+    };
+
+    managed
+        .send_request(ControllerRequest::ExportLogs {
+            path: file.path().to_owned(),
+            stem,
+        })
+        .await?;
 
     Ok(())
 }
@@ -318,42 +335,6 @@ pub async fn reset_client_settings(managed: tauri::State<'_, Managed>) -> Result
         .send_request(ControllerRequest::ResetClientSettings)
         .await?;
 
-    Ok(())
-}
-
-/// Pops up the "Save File" dialog
-fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<(), Error> {
-    let now = chrono::Local::now();
-    let datetime_string = now.format("%Y_%m_%d-%H-%M");
-    let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
-    let filename = stem.with_extension("zip");
-    let filename = filename
-        .to_str()
-        .context("zip filename isn't valid Unicode")?;
-
-    tauri_plugin_dialog::FileDialogBuilder::new(app.dialog().clone())
-        .add_filter("Zip", &["zip"])
-        .set_file_name(filename)
-        .save_file(move |file_path| {
-            let Some(file_path) = file_path else {
-                return;
-            };
-
-            let path = match file_path.clone().into_path() {
-                Ok(path) => path,
-                Err(e) => {
-                    tracing::warn!(%file_path, "Invalid file path: {}", err_with_src(&e));
-                    return;
-                }
-            };
-
-            // blocking_send here because we're in a sync callback within Tauri somewhere
-            if let Err(e) =
-                managed.blocking_send_request(ControllerRequest::ExportLogs { path, stem })
-            {
-                tracing::warn!("{e:#}");
-            }
-        });
     Ok(())
 }
 

@@ -93,6 +93,7 @@ keyring-core = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
+open = { workspace = true }
 opentelemetry = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
@@ -100,6 +101,7 @@ phoenix-channel = { workspace = true }
 png = { workspace = true } # `png` is mostly free since we already need it for Tauri
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["stream", "rustls-no-provider"] }
+rfd = { workspace = true }
 rustls = { workspace = true, features = ["ring"] }
 sadness-generator = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
@@ -113,11 +115,9 @@ specta-typescript = { workspace = true }
 strum = { workspace = true }
 subtle = { workspace = true }
 tauri = { workspace = true, features = ["image-png"] }
-tauri-plugin-dialog = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-runtime = { workspace = true }
 tauri-specta = { workspace = true }
-tauri-utils = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
