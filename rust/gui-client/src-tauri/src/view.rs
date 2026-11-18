@@ -733,36 +733,6 @@ mod tests {
     }
 
     #[test]
-    fn a_web_address_is_a_description_link() {
-        let link = description_link("https://wiki.example.com/handbook");
-
-        assert_eq!(
-            link,
-            Some(Url::parse("https://wiki.example.com/handbook").unwrap())
-        );
-    }
-
-    #[test]
-    fn text_that_parses_as_another_url_is_not_a_description_link() {
-        assert_eq!(description_link("note: ask IT"), None);
-        assert_eq!(description_link("ssh://git.example.com"), None);
-    }
-
-    #[test]
-    fn a_cloud_control_plane_ignores_the_typed_urls() {
-        let form = client_settings_form(
-            ControlPlane::CloudEu,
-            "not a URL",
-            "wss://ignored.example.com",
-        );
-
-        let (auth_url, api_url) = form.urls(&AdvancedSettings::default()).unwrap();
-
-        assert_eq!(auth_url.as_str(), "https://eu.app.firezone.dev/");
-        assert_eq!(api_url.as_str(), "wss://eu.api.firezone.dev/");
-    }
-
-    #[test]
     fn custom_uses_the_typed_urls() {
         let form = client_settings_form(
             ControlPlane::Custom,

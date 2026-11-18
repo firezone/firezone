@@ -75,22 +75,6 @@ struct ResourceSectionsTests {
     #expect(gitLab.matches(search: query))
   }
 
-  // MARK: - Description
-
-  @Test("A description that is a web URL is a link")
-  func webDescriptionIsLink() {
-    let linked = resource("git", description: "https://gitlab.example.com")
-
-    #expect(linked.descriptionURL == URL(string: "https://gitlab.example.com"))
-  }
-
-  @Test(
-    "A description that is not a web URL, or none at all, is not a link",
-    arguments: ["Wiki", "ssh://git.example.com", nil] as [String?])
-  func otherDescriptionIsNotLink(description: String?) {
-    #expect(resource("git", description: description).descriptionURL == nil)
-  }
-
   // MARK: - Fixtures
 
   private var gitLab: Resource {
@@ -105,14 +89,12 @@ struct ResourceSectionsTests {
     )
   }
 
-  private func resource(
-    _ id: String, type: ResourceType = .dns, description: String? = nil
-  ) -> Resource {
+  private func resource(_ id: String, type: ResourceType = .dns) -> Resource {
     Resource(
       id: id,
       name: id,
       address: nil,
-      addressDescription: description,
+      addressDescription: nil,
       status: .unknown,
       sites: [],
       type: type

@@ -4,6 +4,8 @@ use connlib_model::{ResourceId, ResourceView};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::view::description_link;
+
 pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 pub const COPY_ADDRESS: &str = "Copy address";
 
@@ -101,11 +103,9 @@ fn resource_header(res: &ResourceView) -> Item {
         return copyable(&res.pastable());
     }
 
-    match Url::parse(address_description) {
-        Ok(url) if matches!(url.scheme(), "http" | "https") => {
-            item(Event::Url(url), format!("<{address_description}>"))
-        }
-        Ok(_) | Err(_) => copyable(address_description),
+    match description_link(address_description) {
+        Some(url) => item(Event::Url(url), format!("<{address_description}>")),
+        None => copyable(address_description),
     }
 }
 
