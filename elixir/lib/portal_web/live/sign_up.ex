@@ -12,7 +12,6 @@ defmodule PortalWeb.SignUp do
   @idp_sign_up_max_age 900
   @idp_sign_up_providers ~w[google github]
   @email_domain_error "This email domain is not allowed at this time."
-  @survey_order ~w[referral_source motivation use_case role switching]a
 
   # ── Full registration schema ──────────────────────────────────────────────────
 
@@ -122,7 +121,7 @@ defmodule PortalWeb.SignUp do
             query_params: %{},
             website_attribution: website_attribution,
             sign_up_browser_id: sign_up_browser_id,
-            survey_order: survey_order(sign_up_browser_id),
+            survey_seed: sign_up_browser_id || :crypto.strong_rand_bytes(16),
             user_agent: user_agent,
             real_ip: real_ip
           )
@@ -271,7 +270,7 @@ defmodule PortalWeb.SignUp do
       :if={@step == :fill_form}
       form={@form}
       turnstile_error={@turnstile_error}
-      survey_order={@survey_order}
+      survey_seed={@survey_seed}
     />
     <.idp_sign_up_form
       :if={@step == :idp_form}
@@ -279,7 +278,7 @@ defmodule PortalWeb.SignUp do
       email={@idp_identity.email}
       provider={@idp_identity.provider}
       trigger_submit={@trigger_submit}
-      survey_order={@survey_order}
+      survey_seed={@survey_seed}
     />
     <.existing_accounts
       :if={@step == :existing_accounts}
@@ -339,7 +338,7 @@ defmodule PortalWeb.SignUp do
         <Form.input field={actor[:type]} type="hidden" />
       </.inputs_for>
 
-      <.survey_fields form={@form} order={@survey_order} />
+      <.survey_fields form={@form} seed={@survey_seed} />
 
       <div class="absolute -left-[10000px] top-auto w-px h-px overflow-hidden" aria-hidden="true">
         <Form.input
@@ -433,7 +432,7 @@ defmodule PortalWeb.SignUp do
   attr :email, :string, required: true
   attr :provider, :string, required: true, values: @idp_sign_up_providers
   attr :trigger_submit, :boolean, default: false
-  attr :survey_order, :list, required: true
+  attr :survey_seed, :string, required: true
 
   defp idp_sign_up_form(assigns) do
     ~H"""
@@ -495,7 +494,7 @@ defmodule PortalWeb.SignUp do
         />
       </.inputs_for>
 
-      <.survey_fields form={@form} order={@survey_order} />
+      <.survey_fields form={@form} seed={@survey_seed} />
 
       <button
         type="submit"
@@ -578,105 +577,78 @@ defmodule PortalWeb.SignUp do
     {"Other", "other"}
   ]
 
-  @survey_questions %{
-    referral_source: %{
-      other_field: :referral_source_other,
-      label: "How did you hear about Firezone?",
-      options: @referral_source_options,
-      other_label: "Where did you hear about us?",
-      other_placeholder: "Tell us in a few words"
-    },
-    motivation: %{
-      other_field: :motivation_other,
-      label: "Why are you trying Firezone?",
-      options: @motivation_options,
-      other_label: "What are you hoping to get?",
-      other_placeholder: "Tell us in a few words"
-    },
-    use_case: %{
-      other_field: :use_case_other,
-      label: "What are you planning to use Firezone for?",
-      options: @use_case_options,
-      other_label: "What will you use it for?",
-      other_placeholder: "Tell us in a few words"
-    },
-    role: %{
-      other_field: :role_other,
-      label: "What best describes your role?",
-      options: @role_options,
-      other_label: "What is your role?",
-      other_placeholder: "E.g. Product Manager"
-    }
-  }
-
   attr :form, :any, required: true
-  attr :order, :list, required: true
+  attr :seed, :string, required: true
 
   defp survey_fields(assigns) do
-    assigns = assign(assigns, other_max_length: Portal.SignUpSurvey.other_max_length())
-
-    ~H"""
-    <.inputs_for :let={survey} field={@form[:sign_up_survey]}>
-      <.survey_item
-        :for={question <- @order}
-        question={question}
-        survey={survey}
-        other_max_length={@other_max_length}
-      />
-    </.inputs_for>
-    """
-  end
-
-  attr :question, :atom, required: true
-  attr :survey, Phoenix.HTML.Form, required: true
-  attr :other_max_length, :integer, required: true
-
-  defp survey_item(%{question: :switching} = assigns) do
-    assigns = assign(assigns, previous_solution_options: @previous_solution_options)
-
-    ~H"""
-    <Form.input
-      field={@survey[:switching]}
-      type="select"
-      beside_errors
-      label="Are you replacing another VPN or ZTNA tool?"
-      prompt="Select one"
-      options={[{"Yes", "true"}, {"No", "false"}]}
-      required
-    />
-    <.survey_question
-      :if={@survey[:switching].value in [true, "true"]}
-      field={@survey[:previous_solution]}
-      other_field={@survey[:previous_solution_other]}
-      label="Which one?"
-      options={@previous_solution_options}
-      other_label="Which tool?"
-      other_placeholder="E.g. Example VPN"
-      other_max_length={@other_max_length}
-    />
-    """
-  end
-
-  defp survey_item(%{question: question, survey: survey} = assigns) do
-    config = Map.fetch!(@survey_questions, question)
-
     assigns =
       assign(assigns,
-        field: survey[question],
-        other_field: survey[config.other_field],
-        config: config
+        referral_source_options: shuffle_options(@referral_source_options, assigns.seed),
+        motivation_options: shuffle_options(@motivation_options, assigns.seed),
+        use_case_options: shuffle_options(@use_case_options, assigns.seed),
+        role_options: shuffle_options(@role_options, assigns.seed),
+        previous_solution_options: shuffle_options(@previous_solution_options, assigns.seed),
+        other_max_length: Portal.SignUpSurvey.other_max_length()
       )
 
     ~H"""
-    <.survey_question
-      field={@field}
-      other_field={@other_field}
-      label={@config.label}
-      options={@config.options}
-      other_label={@config.other_label}
-      other_placeholder={@config.other_placeholder}
-      other_max_length={@other_max_length}
-    />
+    <.inputs_for :let={survey} field={@form[:sign_up_survey]}>
+      <.survey_question
+        field={survey[:referral_source]}
+        other_field={survey[:referral_source_other]}
+        label="How did you hear about Firezone?"
+        options={@referral_source_options}
+        other_label="Where did you hear about us?"
+        other_placeholder="Tell us in a few words"
+        other_max_length={@other_max_length}
+      />
+      <.survey_question
+        field={survey[:motivation]}
+        other_field={survey[:motivation_other]}
+        label="Why are you trying Firezone?"
+        options={@motivation_options}
+        other_label="What are you hoping to get?"
+        other_placeholder="Tell us in a few words"
+        other_max_length={@other_max_length}
+      />
+      <.survey_question
+        field={survey[:use_case]}
+        other_field={survey[:use_case_other]}
+        label="What are you planning to use Firezone for?"
+        options={@use_case_options}
+        other_label="What will you use it for?"
+        other_placeholder="Tell us in a few words"
+        other_max_length={@other_max_length}
+      />
+      <.survey_question
+        field={survey[:role]}
+        other_field={survey[:role_other]}
+        label="What best describes your role?"
+        options={@role_options}
+        other_label="What is your role?"
+        other_placeholder="E.g. Product Manager"
+        other_max_length={@other_max_length}
+      />
+      <Form.input
+        field={survey[:switching]}
+        type="select"
+        beside_errors
+        label="Are you replacing another VPN or ZTNA tool?"
+        prompt="Select one"
+        options={[{"Yes", "true"}, {"No", "false"}]}
+        required
+      />
+      <.survey_question
+        :if={survey[:switching].value in [true, "true"]}
+        field={survey[:previous_solution]}
+        other_field={survey[:previous_solution_other]}
+        label="Which one?"
+        options={@previous_solution_options}
+        other_label="Which tool?"
+        other_placeholder="E.g. Example VPN"
+        other_max_length={@other_max_length}
+      />
+    </.inputs_for>
     """
   end
 
@@ -1337,10 +1309,10 @@ defmodule PortalWeb.SignUp do
   defp survey_attrs(%Portal.SignUpSurvey{} = survey), do: Map.from_struct(survey)
 
   # Seeded by the browser id so the disconnected and connected renders agree.
-  defp survey_order(nil), do: Enum.shuffle(@survey_order)
-
-  defp survey_order(browser_id),
-    do: Enum.sort_by(@survey_order, &:erlang.phash2({browser_id, &1}))
+  defp shuffle_options(options, seed) do
+    {other, rest} = Enum.split_with(options, &match?({_label, "other"}, &1))
+    Enum.sort_by(rest, fn {_label, value} -> :erlang.phash2({seed, value}) end) ++ other
+  end
 
   defp log_honeypot_hit(attrs, user_agent, real_ip) do
     Logger.warning("Sign-up honeypot triggered",
