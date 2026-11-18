@@ -14,7 +14,7 @@ use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
     collections::HashSet,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username};
@@ -64,6 +64,7 @@ impl RealRelay {
             49152..=65535,
         );
         server.set_accounts([(relay_server_proto::auth::AccountId::from(Uuid::nil()), None)]);
+        server.set_enforce_known_peers(true);
 
         Self {
             server,
@@ -71,6 +72,14 @@ impl RealRelay {
             out_of_capacity: false,
             created_at,
         }
+    }
+
+    pub(crate) fn add_known_peers(&mut self, ips: impl IntoIterator<Item = IpAddr>, now: Instant) {
+        self.server.add_known_peers(
+            relay_server_proto::auth::AccountId::from(Uuid::nil()),
+            ips,
+            now,
+        );
     }
 
     fn explode(
