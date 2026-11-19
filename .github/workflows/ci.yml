@@ -428,7 +428,6 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      # Build debug/ on PRs and merge group, no prefix for production release images
       flavour: debug
 
   gateway:
@@ -442,7 +441,6 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      # Build debug/ on PRs and merge group, no prefix for production release images
       flavour: debug
 
   relay:
@@ -456,7 +454,6 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      # Build debug/ on PRs and merge group, no prefix for production release images
       flavour: debug
 
   loadtest:
