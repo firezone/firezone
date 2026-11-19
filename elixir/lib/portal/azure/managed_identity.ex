@@ -1,14 +1,16 @@
 defmodule Portal.Azure.ManagedIdentity do
   @moduledoc """
   Fetches Microsoft Entra access tokens for the VM's user-assigned managed
-  identity from the Azure Instance Metadata Service (IMDS).
+  identities from the Azure Instance Metadata Service (IMDS). The configured
+  `client_id` is the default identity; pass another client ID to use another
+  identity attached to the VM.
 
   Azure Database for PostgreSQL accepts an Entra access token as the connection
   password, which is how database connections are authenticated when
   DATABASE_ENTRA_AUTH is enabled. Other Entra integrations use managed-identity
   tokens as workload identity federation assertions. `Portal.TokenCache`
-  serializes IMDS requests and caches tokens by resource until shortly before
-  they expire.
+  serializes IMDS requests and caches tokens by resource and identity until
+  shortly before they expire.
   """
 
   @database_resource "https://ossrdbms-aad.database.windows.net"
@@ -16,10 +18,11 @@ defmodule Portal.Azure.ManagedIdentity do
 
   @doc """
   `DBConnection` `:configure` hook that replaces the connection password with a
-  fresh Entra access token before every connect attempt.
+  fresh Entra access token before every connect attempt. Pass a client ID to
+  connect as another identity than the default one.
   """
-  def put_database_token(connection_opts) do
-    Keyword.put(connection_opts, :password, database_access_token!())
+  def put_database_token(connection_opts, client_id \\ nil) do
+    Keyword.put(connection_opts, :password, database_access_token!(client_id))
   end
 
   @doc """
@@ -29,8 +32,8 @@ defmodule Portal.Azure.ManagedIdentity do
   Falls back to fetching directly when the token cache is not running, e.g.
   for release migrations, which connect without starting the supervision tree.
   """
-  def database_access_token! do
-    access_token!(@database_resource)
+  def database_access_token!(client_id \\ nil) do
+    access_token!(@database_resource, client_id)
   end
 
   @doc """
@@ -42,17 +45,18 @@ defmodule Portal.Azure.ManagedIdentity do
   to fetching directly when the token cache is not running. Raises on an IMDS
   error.
   """
-  def access_token!(resource) when is_binary(resource) do
+  def access_token!(resource, client_id \\ nil) when is_binary(resource) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
     token_cache = Keyword.get(config, :token_cache, @token_cache)
+    client_id = client_id || config[:client_id]
 
-    case Portal.TokenCache.fetch(token_cache, resource, fn -> fetch_token(resource, config) end) do
+    case Portal.TokenCache.fetch(token_cache, {resource, client_id}, fn -> fetch_token(resource, client_id, config) end) do
       {:ok, token} -> token
       {:error, exception} -> raise exception
     end
   end
 
-  defp fetch_token(resource, config) do
+  defp fetch_token(resource, client_id, config) do
     req_opts =
       (config[:req_opts] || [])
       |> Keyword.put(:allow_private_ips, true)
@@ -60,7 +64,7 @@ defmodule Portal.Azure.ManagedIdentity do
       |> Keyword.put(:params, [
         "api-version": "2018-02-01",
         resource: resource,
-        client_id: config[:client_id]
+        client_id: client_id
       ])
 
     response =

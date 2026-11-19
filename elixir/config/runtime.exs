@@ -115,14 +115,33 @@ if config_env() == :prod do
            {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
          ] ++ direct_pool_base_opts
 
-  # The private ops dashboard's own database on the same server
+  # The private ops dashboard's own database on the same server, with its own user
+  ops_database_password_opts =
+    cond do
+      env_var_to_config!(:database_entra_auth) ->
+        [
+          {:configure,
+           {Portal.Azure.ManagedIdentity, :put_database_token, [env_var_to_config(:ops_azure_client_id)]}}
+        ]
+
+      env_var_to_config(:ops_database_password) ->
+        [{:password, env_var_to_config!(:ops_database_password)}]
+
+      true ->
+        []
+    end
+
   config :portal,
          PortalOps.Repo,
-         Keyword.merge(direct_pool_base_opts,
+         direct_pool_base_opts
+         |> Keyword.drop([:configure, :password])
+         |> Keyword.merge(
            database: env_var_to_config!(:ops_database_name),
+           username: env_var_to_config!(:ops_database_user),
            pool_size: 2,
            parameters: Keyword.merge(database_parameters, application_name: "ops")
          )
+         |> Kernel.++(ops_database_password_opts)
 
   config :portal, Portal.ChangeLogs.Consumer,
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
