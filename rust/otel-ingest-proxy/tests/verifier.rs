@@ -26,7 +26,6 @@ fn golden_token_is_valid() {
             device_type: DeviceType::Client,
             device_version: Some("1.5.0".to_owned()),
             metrics: vec!["connlib.*".to_owned()],
-            iat: 1_700_000_000,
             exp: 4_102_444_800,
         }
     );

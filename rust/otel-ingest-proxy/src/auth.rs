@@ -26,7 +26,6 @@ pub struct Claims {
     pub device_version: Option<String>,
     /// The patterns of the metric names the device may export.
     pub metrics: Vec<String>,
-    pub iat: u64,
     pub exp: u64,
 }
 

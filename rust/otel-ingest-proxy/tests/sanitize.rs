@@ -119,7 +119,6 @@ fn claims(metrics: &[&str]) -> Claims {
         device_type: DeviceType::Client,
         device_version: Some("1.5.0".to_owned()),
         metrics: metrics.iter().map(|m| m.to_string()).collect(),
-        iat: 0,
         exp: 0,
     }
 }
