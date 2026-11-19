@@ -2,6 +2,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   use PortalAPI, :channel
   alias Portal.Authentication.Credential
   alias PortalAPI.Client.Views
+  alias PortalAPI.Channel.Authorizations
   alias PortalAPI.Channel.Durability
   alias PortalAPI.Channel.Relays
 
@@ -366,7 +367,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   # via the same eviction path used for CDC deletes.
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
     socket = Durability.cancel_authorization(socket, policy_authorization.id)
-    revoke_policy_authorization(socket, policy_authorization)
+    Authorizations.revoke(socket, policy_authorization)
   end
 
   # Sent to the initiator when its policy_authorization failed to persist, so no CDC delete comes.
@@ -397,7 +398,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
 
       socket = Durability.cancel_authorization(socket, pa.id)
-      revoke_policy_authorization(socket, pa)
+      Authorizations.revoke(socket, pa)
     else
       {:noreply, socket}
     end
@@ -2347,7 +2348,7 @@ Relays.render(relays, relay_owner(socket)),
          %{assigns: %{client: %{id: client_id}}} = socket
        ) do
     socket = Durability.cancel_authorization(socket, policy_authorization.id)
-    revoke_policy_authorization(socket, policy_authorization)
+    Authorizations.revoke(socket, policy_authorization)
   end
 
   # On the v3 protocol the initiating side keeps the pool as its route to the peer, so
@@ -2502,42 +2503,6 @@ Relays.render(relays, relay_owner(socket)),
   defp close_transport(socket) do
     send(socket.transport_pid, :socket_drain)
     {:stop, :shutdown, socket}
-  end
-
-  # Shared eviction path for the CDC delete handler, the direct `:reject_access`
-  # from `Portal.Queue`'s on_failed callback, and the authz durability timeout.
-  # Drop the cached authorization and, if it was still active, push
-  # `reject_access` so connlib tears down the inbound peer connection. The peer
-  # recovers by tripping ICMP "destination prohibited" and requesting a fresh
-  # flow. Deletes of already-expired authorizations (the
-  # `DeleteExpiredPolicyAuthorizations` reaper) are dropped silently — connlib
-  # has already expired them locally.
-  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{
-         id: id,
-         initiating_device_id: initiating_client_id,
-         resource_id: resource_id
-       }) do
-    case Cache.Authorizations.delete(
-           socket.assigns.authorizations_cache,
-           id,
-           initiating_client_id,
-           resource_id
-         ) do
-      {:ok, expires_at_unix, authorizations_cache} ->
-        now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
-
-        if expires_at_unix > now_unix do
-          push(socket, "reject_access", %{
-            client_id: initiating_client_id,
-            resource_id: resource_id
-          })
-        end
-
-        {:noreply, assign(socket, authorizations_cache: authorizations_cache)}
-
-      :error ->
-        {:noreply, socket}
-    end
   end
 
   defp push_device_access_denied(_socket, nil), do: :ok
