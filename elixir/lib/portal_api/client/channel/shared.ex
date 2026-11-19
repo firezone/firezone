@@ -249,39 +249,24 @@ defmodule PortalAPI.Client.Channel.Shared do
          gateway_ipv6, preshared_key, ice_credentials, use_iceless, request_ref},
         socket
       ) do
-    resource_id = Ecto.UUID.load!(rid_bytes)
+    release_gateway_authorization(socket, Ecto.UUID.load!(rid_bytes), request_ref, %{
+      site_id: site_id,
+      receiver_id: gateway_id,
+      public_key: gateway_public_key,
+      ipv4: gateway_ipv4,
+      ipv6: gateway_ipv6,
+      preshared_key: preshared_key,
+      ice_credentials: ice_credentials,
+      use_iceless: use_iceless
+    })
+  end
 
-    case Map.get(socket.assigns.pending_authorizations, resource_id) do
-      {^request_ref, timer_ref, initiator_token, address, ^gateway_id} ->
-        Process.cancel_timer(timer_ref)
-
-        reply_payload =
-          %{
-            resource_id: resource_id,
-            preshared_key: preshared_key,
-            client_ice_credentials: ice_credentials.initiator,
-            gateway_id: gateway_id,
-            gateway_public_key: gateway_public_key,
-            gateway_ipv4: gateway_ipv4,
-            gateway_ipv6: gateway_ipv6,
-            gateway_ice_credentials: ice_credentials.receiver,
-            use_iceless: use_iceless,
-            flow_logs_ingest_token: initiator_token
-          }
-          |> put_site_id(site_id, socket.assigns.client)
-          |> Map.merge(address_fields(address))
-
-        push(socket, authorization_created_event(socket), reply_payload)
-
-        {:noreply,
-         assign(
-           socket,
-           :pending_authorizations,
-           Map.delete(socket.assigns.pending_authorizations, resource_id)
-         )}
-
-      _other ->
-        {:noreply, socket}
+  # The one reply every receiver will send, in place of `:connect` and `:device_access_acked`.
+  def handle_info({:authorized, ref, reply}, socket) do
+    if Map.has_key?(socket.assigns.pending_authorizations, ref) do
+      release_device_access(socket, ref, reply.use_iceless, reply.name, reply.slug)
+    else
+      release_gateway_authorization(socket, reply.resource_id, ref, reply)
     end
   end
 
@@ -326,84 +311,64 @@ defmodule PortalAPI.Client.Channel.Shared do
   # peers' capabilities), so we apply it as-is rather than reading the flag a
   # second time — a second read could race a mid-flow toggle and disagree.
   def handle_info({:device_access_acked, ref, use_iceless, client_name, client_slug}, socket) do
-    case Map.pop(socket.assigns.pending_authorizations, ref) do
-      {nil, _} ->
-        {:noreply, socket}
-
-      {%{timer_ref: timer_ref, initiator_payload: initiator_payload} = pending, remaining} ->
-        Process.cancel_timer(timer_ref)
-
-        initiator_payload =
-          initiator_payload
-          |> Map.put(:use_iceless, use_iceless)
-          |> Map.put(:client_name, client_name)
-          |> Map.put(:client_slug, client_slug)
-
-        push(socket, "client_device_access_authorized", initiator_payload)
-
-        {:noreply,
-         socket
-         |> assign(:pending_authorizations, remaining)
-         |> put_outbound_authorization(pending)}
-    end
+    release_device_access(socket, ref, use_iceless, client_name, client_slug)
   end
 
   def handle_info({:client_device_access_authorized, {ack_to, ref}, payload}, socket) do
-    {policy_authorization_id, payload} = Map.pop(payload, :policy_authorization_id)
-    {authorization_expires_at, payload} = Map.pop(payload, :authorization_expires_at)
-    {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
-    {initiator_iceless_capable, payload} = Map.pop(payload, :initiator_iceless_capable, false)
-
-    iceless_feature_enabled = Portal.Account.iceless_enabled?(socket.assigns.subject.account)
-    initiator_capable = initiator_iceless_capable == true
-    receiver_capable = socket.assigns.iceless_capable == true
-
-    use_iceless = iceless_feature_enabled and initiator_capable and receiver_capable
-
-    Portal.Telemetry.authorization_granted(:client,
-      iceless_feature_enabled: iceless_feature_enabled,
-      initiator_iceless_capable: initiator_capable,
-      receiver_iceless_capable: receiver_capable
-    )
-
-    payload = Map.put(payload, :use_iceless, use_iceless)
-
-    authorizations_cache =
-      maybe_put_authorization(
-        socket.assigns.authorizations_cache,
-        payload[:client_id],
-        payload[:resource],
-        policy_authorization_id,
-        authorization_expires_at
+    accept_device_access(socket, payload, fn use_iceless ->
+      send(
+        ack_to,
+        {:device_access_acked, ref, use_iceless, socket.assigns.client.name,
+         socket.assigns.client.slug}
       )
+    end)
+  end
 
-    payload =
-      if match?(%DateTime{}, authorization_expires_at) do
-        Map.put(payload, :expires_at, DateTime.to_unix(authorization_expires_at, :second))
-      else
-        payload
-      end
+  # The one request every initiator will send, in place of `:client_device_access_authorized`.
+  # The resource is rendered for this client's own protocol version.
+  def handle_info({:authorize, {initiator_pid, ref}, request}, socket) do
+    initiator = request.initiator
+    client = socket.assigns.client
 
-    push(socket, "client_device_access_authorized", payload)
+    payload = %{
+      client_id: initiator.id,
+      client_name: initiator.name,
+      client_slug: initiator.slug,
+      client_public_key: initiator.public_key,
+      client_ipv4: initiator.ipv4,
+      client_ipv6: initiator.ipv6,
+      preshared_key: request.preshared_key,
+      local_ice_credentials: request.ice_credentials.receiver,
+      remote_ice_credentials: request.ice_credentials.initiator,
+      ice_role: :controlled,
+      resource: Views.Resource.render(request.resource, client, protocol_version(socket)),
+      subject: request.subject,
+      policy_authorization_id: request.policy_authorization_id,
+      authorization_expires_at: request.expires_at,
+      policy_authorization: request[:policy_authorization],
+      initiator_iceless_capable: request.initiator_iceless_capable,
+      flow_logs_ingest_token: request.responder_token
+    }
 
-    # Ack back to the initiator's channel that the authorization is on this
-    # target's websocket. The initiator is released only after this, so the
-    # initiator's ICE candidates (which traverse the same socket) can never
-    # overtake the authorization at the target's data plane. We send the
-    # resolved `use_iceless` (not our capability) so the initiator applies the
-    # same decision without reading the flag again.
-    send(
-      ack_to,
-      {:device_access_acked, ref, use_iceless, socket.assigns.client.name,
-       socket.assigns.client.slug}
-    )
-
-    socket =
-      socket
-      |> assign(authorizations_cache: authorizations_cache)
-      |> Durability.arm_authorization(policy_authorization)
-
-    {:noreply, socket}
+    accept_device_access(socket, payload, fn use_iceless ->
+      send(
+        initiator_pid,
+        {:authorized, ref,
+         %{
+           receiver_id: client.id,
+           resource_id: Ecto.UUID.load!(request.resource.id),
+           site_id: nil,
+           name: client.name,
+           slug: client.slug,
+           public_key: client.public_key,
+           ipv4: client.ipv4,
+           ipv6: client.ipv6,
+           preshared_key: request.preshared_key,
+           ice_credentials: request.ice_credentials,
+           use_iceless: use_iceless
+         }}
+      )
+    end)
   end
 
   def handle_info({:public_key_changed, type, device_id, public_key}, socket) do
@@ -3083,6 +3048,120 @@ Relays.render(relays, relay_owner(socket)),
       version: client.last_seen_version
     }
     |> Map.merge(attested_attrs)
+  end
+
+  defp release_gateway_authorization(socket, resource_id, request_ref, gateway) do
+    gateway_id = gateway.receiver_id
+
+    case Map.get(socket.assigns.pending_authorizations, resource_id) do
+      {^request_ref, timer_ref, initiator_token, address, ^gateway_id} ->
+        Process.cancel_timer(timer_ref)
+
+        reply_payload =
+          %{
+            resource_id: resource_id,
+            preshared_key: gateway.preshared_key,
+            client_ice_credentials: gateway.ice_credentials.initiator,
+            gateway_id: gateway_id,
+            gateway_public_key: gateway.public_key,
+            gateway_ipv4: gateway.ipv4,
+            gateway_ipv6: gateway.ipv6,
+            gateway_ice_credentials: gateway.ice_credentials.receiver,
+            use_iceless: gateway.use_iceless,
+            flow_logs_ingest_token: initiator_token
+          }
+          |> put_site_id(gateway.site_id, socket.assigns.client)
+          |> Map.merge(address_fields(address))
+
+        push(socket, authorization_created_event(socket), reply_payload)
+
+        {:noreply,
+         assign(
+           socket,
+           :pending_authorizations,
+           Map.delete(socket.assigns.pending_authorizations, resource_id)
+         )}
+
+      _other ->
+        {:noreply, socket}
+    end
+  end
+
+  defp release_device_access(socket, ref, use_iceless, client_name, client_slug) do
+    case Map.pop(socket.assigns.pending_authorizations, ref) do
+      {nil, _} ->
+        {:noreply, socket}
+
+      {%{timer_ref: timer_ref, initiator_payload: initiator_payload} = pending, remaining} ->
+        Process.cancel_timer(timer_ref)
+
+        initiator_payload =
+          initiator_payload
+          |> Map.put(:use_iceless, use_iceless)
+          |> Map.put(:client_name, client_name)
+          |> Map.put(:client_slug, client_slug)
+
+        push(socket, "client_device_access_authorized", initiator_payload)
+
+        {:noreply,
+         socket
+         |> assign(:pending_authorizations, remaining)
+         |> put_outbound_authorization(pending)}
+    end
+  end
+
+  defp accept_device_access(socket, payload, ack) do
+    {policy_authorization_id, payload} = Map.pop(payload, :policy_authorization_id)
+    {authorization_expires_at, payload} = Map.pop(payload, :authorization_expires_at)
+    {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
+    {initiator_iceless_capable, payload} = Map.pop(payload, :initiator_iceless_capable, false)
+
+    iceless_feature_enabled = Portal.Account.iceless_enabled?(socket.assigns.subject.account)
+    initiator_capable = initiator_iceless_capable == true
+    receiver_capable = socket.assigns.iceless_capable == true
+
+    use_iceless = iceless_feature_enabled and initiator_capable and receiver_capable
+
+    Portal.Telemetry.authorization_granted(:client,
+      iceless_feature_enabled: iceless_feature_enabled,
+      initiator_iceless_capable: initiator_capable,
+      receiver_iceless_capable: receiver_capable
+    )
+
+    payload = Map.put(payload, :use_iceless, use_iceless)
+
+    authorizations_cache =
+      maybe_put_authorization(
+        socket.assigns.authorizations_cache,
+        payload[:client_id],
+        payload[:resource],
+        policy_authorization_id,
+        authorization_expires_at
+      )
+
+    payload =
+      if match?(%DateTime{}, authorization_expires_at) do
+        Map.put(payload, :expires_at, DateTime.to_unix(authorization_expires_at, :second))
+      else
+        payload
+      end
+
+    push(socket, "client_device_access_authorized", payload)
+
+    # Ack back to the initiator's channel that the authorization is on this
+    # target's websocket. The initiator is released only after this, so the
+    # initiator's ICE candidates (which traverse the same socket) can never
+    # overtake the authorization at the target's data plane. We send the
+    # resolved `use_iceless` (not our capability) so the initiator applies the
+    # same decision without reading the flag again.
+    ack.(use_iceless)
+
+    socket =
+      socket
+      |> assign(authorizations_cache: authorizations_cache)
+      |> Durability.arm_authorization(policy_authorization)
+
+    {:noreply, socket}
   end
 
   defp abnormal_exit?(:normal), do: false

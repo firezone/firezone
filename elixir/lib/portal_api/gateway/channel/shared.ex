@@ -247,68 +247,54 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   def handle_info({:create_authorization, {channel_pid, socket_ref}, payload}, socket) do
-    %{
-      client: client,
-      subject: subject,
-      resource: resource,
-      policy_authorization_id: policy_authorization_id,
-      authorization_expires_at: authorization_expires_at,
-      ice_credentials: ice_credentials,
-      preshared_key: preshared_key
-    } = payload
-
     initiator_iceless_capable = Map.get(payload, :initiator_iceless_capable, false)
-    flow_logs_ingest_token = Map.get(payload, :flow_logs_ingest_token)
-    request_ref = Map.get(payload, :request_ref)
+    use_iceless = use_iceless?(socket, initiator_iceless_capable)
 
-    rid_bytes = Ecto.UUID.dump!(resource.id)
+    ref_tuple =
+      {channel_pid, socket_ref, Ecto.UUID.dump!(payload.resource.id), payload.preshared_key,
+       payload.ice_credentials, use_iceless, Map.get(payload, :request_ref)}
 
-    use_iceless =
-      socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
-        Account.iceless_enabled?(socket.assigns.account)
-
-    record_authorization_granted(socket, initiator_iceless_capable)
-
-    ref =
-      encode_ref(socket, {
-        channel_pid,
-        socket_ref,
-        rid_bytes,
-        preshared_key,
-        ice_credentials,
-        use_iceless,
-        request_ref
-      })
-
-    event = socket.assigns.channel_protocol.create_authorization_event()
-
-    push(socket, event, %{
-      ref: ref,
-      resource: resource,
-      gateway_ice_credentials: ice_credentials.receiver,
-      client: client,
-      client_ice_credentials: ice_credentials.initiator,
-      expires_at: DateTime.to_unix(authorization_expires_at, :second),
-      subject: subject,
+    push_authorization(socket, ref_tuple, %{
+      client: payload.client,
+      subject: payload.subject,
+      resource: payload.resource,
+      policy_authorization_id: payload.policy_authorization_id,
+      expires_at: payload.authorization_expires_at,
+      ice_credentials: payload.ice_credentials,
       use_iceless: use_iceless,
-      flow_logs_ingest_token: flow_logs_ingest_token
+      initiator_iceless_capable: initiator_iceless_capable,
+      flow_logs_ingest_token: Map.get(payload, :flow_logs_ingest_token),
+      policy_authorization: payload[:policy_authorization]
     })
+  end
 
-    cache =
-      socket.assigns.cache
-      |> Cache.Authorizations.put(
-        policy_authorization_id,
-        client.id,
-        resource.id,
-        authorization_expires_at
-      )
+  # The one request every initiator will send, in place of `:create_authorization`.
+  def handle_info({:authorize, {channel_pid, ref}, request}, socket) do
+    initiator = request.initiator
+    use_iceless = use_iceless?(socket, request.initiator_iceless_capable)
 
-    socket =
-      socket
-      |> assign(cache: cache)
-      |> Durability.arm_authorization(payload[:policy_authorization])
+    ref_tuple =
+      {:authorize, channel_pid, ref, request.resource.id, request.preshared_key,
+       request.ice_credentials, use_iceless}
 
-    {:noreply, socket}
+    push_authorization(socket, ref_tuple, %{
+      client:
+        Views.Client.render(
+          struct(Device, initiator),
+          initiator.public_key,
+          request.preshared_key,
+          initiator.user_agent
+        ),
+      subject: request.subject,
+      resource: Views.Resource.render(request.resource),
+      policy_authorization_id: request.policy_authorization_id,
+      expires_at: request.expires_at,
+      ice_credentials: request.ice_credentials,
+      use_iceless: use_iceless,
+      initiator_iceless_capable: request.initiator_iceless_capable,
+      flow_logs_ingest_token: request.responder_token,
+      policy_authorization: request[:policy_authorization]
+    })
   end
 
   # DEPRECATED IN 1.4
@@ -567,6 +553,30 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_in("authorization_created", %{"ref" => signed_ref}, socket) do
     case decode_ref(socket, signed_ref) do
       {:ok,
+       {:authorize, channel_pid, ref, rid_bytes, preshared_key, ice_credentials, use_iceless}} ->
+        gateway = socket.assigns.gateway
+
+        send(
+          channel_pid,
+          {:authorized, ref,
+           %{
+             receiver_id: gateway.id,
+             resource_id: Ecto.UUID.load!(rid_bytes),
+             site_id: socket.assigns.site.id,
+             name: gateway.name,
+             slug: gateway.slug,
+             public_key: gateway.public_key,
+             ipv4: gateway.ipv4,
+             ipv6: gateway.ipv6,
+             preshared_key: preshared_key,
+             ice_credentials: ice_credentials,
+             use_iceless: use_iceless
+           }}
+        )
+
+        {:reply, :ok, socket}
+
+      {:ok,
        {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_iceless,
         request_ref}} ->
         send(
@@ -658,6 +668,45 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     Logger.error("Unknown gateway message", message: message, payload: payload)
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
+  end
+
+  defp push_authorization(socket, ref_tuple, authorization) do
+    record_authorization_granted(socket, authorization.initiator_iceless_capable)
+
+    event = socket.assigns.channel_protocol.create_authorization_event()
+
+    push(socket, event, %{
+      ref: encode_ref(socket, ref_tuple),
+      resource: authorization.resource,
+      gateway_ice_credentials: authorization.ice_credentials.receiver,
+      client: authorization.client,
+      client_ice_credentials: authorization.ice_credentials.initiator,
+      expires_at: DateTime.to_unix(authorization.expires_at, :second),
+      subject: authorization.subject,
+      use_iceless: authorization.use_iceless,
+      flow_logs_ingest_token: authorization.flow_logs_ingest_token
+    })
+
+    cache =
+      Cache.Authorizations.put(
+        socket.assigns.cache,
+        authorization.policy_authorization_id,
+        authorization.client.id,
+        authorization.resource.id,
+        authorization.expires_at
+      )
+
+    socket =
+      socket
+      |> assign(cache: cache)
+      |> Durability.arm_authorization(authorization.policy_authorization)
+
+    {:noreply, socket}
+  end
+
+  defp use_iceless?(socket, initiator_iceless_capable) do
+    socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
+      Account.iceless_enabled?(socket.assigns.account)
   end
 
   # `initiator_iceless_capable` is always false on the deprecated 1.4 paths:

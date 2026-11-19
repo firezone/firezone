@@ -4669,6 +4669,69 @@ defmodule PortalAPI.Client.ChannelTest do
       refute String.starts_with?(public_only_hash, client_ice_username <> client_ice_password)
     end
 
+    test "pushes flow_created on an :authorized reply from the gateway", %{
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      subject: subject,
+      global_relay: global_relay
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+
+      for struct <- [resource, policy, membership] do
+        send(socket.channel_pid, %Changes.Change{
+          lsn: System.unique_integer([:positive, :monotonic]),
+          op: :insert,
+          struct: struct
+        })
+      end
+
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
+
+      send(
+        socket.channel_pid,
+        {:authorized, payload.request_ref,
+         %{
+           receiver_id: gateway.id,
+           resource_id: resource.id,
+           site_id: gateway.site.id,
+           name: gateway.name,
+           slug: gateway.slug,
+           public_key: gateway.public_key,
+           ipv4: gateway.ipv4,
+           ipv6: gateway.ipv6,
+           preshared_key: payload.preshared_key,
+           ice_credentials: payload.ice_credentials,
+           use_iceless: false
+         }}
+      )
+
+      resource_id = resource.id
+      gateway_id = gateway.id
+      gateway_public_key = gateway.public_key
+      preshared_key = payload.preshared_key
+
+      assert_push "flow_created", %{
+        resource_id: ^resource_id,
+        gateway_id: ^gateway_id,
+        gateway_public_key: ^gateway_public_key,
+        preshared_key: ^preshared_key
+      }
+    end
+
     test "ingest tokens carry uploads_enabled=true when the policy opts in", %{
       account: account,
       group: group,
@@ -7763,6 +7826,131 @@ defmodule PortalAPI.Client.ChannelTest do
         client_slug: ^target_client_slug,
         ice_role: :controlling
       }
+    end
+
+    test "releases the initiator on an :authorized reply from the target", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
+      target_client_id = target_client.id
+
+      session_meta = %{
+        ipv4: target_client.ipv4.address,
+        ipv6: target_client.ipv6.address,
+        name: target_client.name,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16",
+        group_ids: []
+      }
+
+      :ok = Presence.Devices.connect(target_client, target_subject.credential.id, session_meta)
+      :ok = PG.register(target_client_id)
+
+      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => target_ip})
+
+      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
+      refute_push "client_device_access_authorized", _, 100
+
+      target_client_name = target_client.name
+      target_client_slug = target_client.slug
+
+      send(
+        ack_to,
+        {:authorized, ref,
+         %{
+           receiver_id: target_client_id,
+           resource_id: pool_resource.id,
+           site_id: nil,
+           name: target_client_name,
+           slug: target_client_slug,
+           public_key: session_meta.public_key,
+           ipv4: target_client.ipv4,
+           ipv6: target_client.ipv6,
+           preshared_key: "PSK",
+           ice_credentials: %{},
+           use_iceless: false
+         }}
+      )
+
+      assert_push "client_device_access_authorized", %{
+        client_id: ^target_client_id,
+        client_name: ^target_client_name,
+        client_slug: ^target_client_slug,
+        ice_role: :controlling,
+        use_iceless: false
+      }
+    end
+
+    test "pushes an :authorize request to the target and replies :authorized at once", %{
+      client: client,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
+      target_socket = join_channel(target_client, target_subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      ref = make_ref()
+      client_id = client.id
+      target_client_id = target_client.id
+      pool_resource_id = pool_resource.id
+
+      ice_credentials = %{
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
+      }
+
+      send(
+        target_socket.channel_pid,
+        {:authorize, {self(), ref},
+         %{
+           initiator: %{
+             id: client.id,
+             name: client.name,
+             slug: client.slug,
+             public_key: client.public_key,
+             ipv4: client.ipv4,
+             ipv6: client.ipv6,
+             user_agent: "Mac OS/14 apple-client/1.5.16"
+           },
+           subject: %{},
+           resource: Portal.Cache.Cacheable.to_cache(pool_resource),
+           policy_authorization_id: Ecto.UUID.generate(),
+           expires_at: DateTime.add(DateTime.utc_now(), 30, :second),
+           preshared_key: "PSK",
+           ice_credentials: ice_credentials,
+           responder_token: "TOKEN",
+           initiator_iceless_capable: false
+         }}
+      )
+
+      assert_push "client_device_access_authorized", %{
+        client_id: ^client_id,
+        preshared_key: "PSK",
+        local_ice_credentials: %{username: "C"},
+        remote_ice_credentials: %{username: "A"},
+        ice_role: :controlled,
+        resource: %{id: ^pool_resource_id},
+        flow_logs_ingest_token: "TOKEN",
+        use_iceless: false
+      }
+
+      assert_receive {:authorized, ^ref, reply}
+      assert reply.receiver_id == target_client_id
+      assert reply.resource_id == pool_resource_id
+      assert reply.name == target_client.name
+      assert reply.slug == target_client.slug
+      refute reply.use_iceless
     end
 
     test "forwards the initiator's ICE candidates to the target only after the ack", %{
