@@ -161,7 +161,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   ####################################
 
   def handle_info(%Change{} = change, socket) do
-    Session.apply_change(socket, change, &handle_change/2)
+    Session.apply_change(socket, socket.assigns.gateway, change, &handle_change/2)
   end
 
   ####################################
@@ -612,14 +612,6 @@ Relays.render(relays, relay_owner(socket)),
   # ACCOUNTS
 
   # A disabled account arrives as a delete.
-  defp handle_change(%Change{op: :delete, old_struct: %Portal.Account{}}, socket) do
-    handle_info(:disconnect, socket)
-  end
-
-  defp handle_change(%Change{op: :update, struct: %Portal.Account{is_disabled: true}}, socket) do
-    handle_info(:disconnect, socket)
-  end
-
   # Resend init when config changes so that new slug may be applied
   defp handle_change(
          %Change{
@@ -638,23 +630,6 @@ Relays.render(relays, relay_owner(socket)),
     end
 
     {:noreply, socket}
-  end
-
-  # POLICY_AUTHORIZATIONS
-
-  defp handle_change(
-         %Change{
-           op: :delete,
-           old_struct:
-             %Portal.PolicyAuthorization{receiving_device_id: gateway_id} =
-               policy_authorization
-         },
-         %{
-           assigns: %{gateway: %{id: gateway_id}}
-         } = socket
-       ) do
-    socket = Durability.cancel_authorization(socket, policy_authorization.id)
-    Authorizations.revoke(socket, policy_authorization)
   end
 
   # GATEWAYS
@@ -680,18 +655,6 @@ Relays.render(relays, relay_owner(socket)),
       end
 
     {:noreply, socket}
-  end
-
-  defp handle_change(
-         %Change{
-           op: :delete,
-           old_struct: %Device{id: gateway_id}
-         },
-         %{
-           assigns: %{gateway: %{id: gateway_id}}
-         } = socket
-       ) do
-    Session.close_transport(socket)
   end
 
   # RESOURCES

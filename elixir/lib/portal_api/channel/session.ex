@@ -7,7 +7,8 @@ defmodule PortalAPI.Channel.Session do
   import Phoenix.Channel, only: [push: 3]
   import Phoenix.Socket, only: [assign: 3]
 
-  alias Portal.{Changes.Change, PG, Presence}
+  alias Portal.{Account, Changes.Change, Device, PG, PolicyAuthorization, Presence}
+  alias PortalAPI.Channel.{Authorizations, Durability}
 
   require Logger
 
@@ -47,13 +48,22 @@ defmodule PortalAPI.Channel.Session do
     {:stop, :shutdown, socket}
   end
 
-  @doc "Applies a change once: a change at or below the last applied LSN is a replay."
-  @spec apply_change(Phoenix.Socket.t(), Change.t(), (Change.t(), Phoenix.Socket.t() -> result)) ::
-          result
+  @doc """
+  Applies a change once: a change at or below the last applied LSN is a replay. Changes that
+  every device handles the same way are handled here, and all others by `handle_change`.
+  """
+  @spec apply_change(
+          Phoenix.Socket.t(),
+          Device.t(),
+          Change.t(),
+          (Change.t(), Phoenix.Socket.t() -> result)
+        ) :: result
         when result: {:noreply, Phoenix.Socket.t()} | {:stop, term(), Phoenix.Socket.t()}
-  def apply_change(socket, %Change{lsn: lsn} = change, handle_change) do
+  def apply_change(socket, %Device{} = device, %Change{lsn: lsn} = change, handle_change) do
     if lsn > Map.get(socket.assigns, :last_lsn, 0) do
-      case handle_change.(change, socket) do
+      result = device_change(change, device, socket) || handle_change.(change, socket)
+
+      case result do
         {:noreply, socket} -> {:noreply, assign(socket, :last_lsn, lsn)}
         result -> result
       end
@@ -126,6 +136,32 @@ defmodule PortalAPI.Channel.Session do
       true -> nil
     end
   end
+
+  # Disabling an account is broadcast as its deletion. X.509 credentials have no token row for
+  # the account hook to delete, so the channel cuts itself.
+  defp device_change(%Change{op: :delete, old_struct: %Account{id: id}}, %Device{account_id: id}, socket),
+    do: disconnect(socket)
+
+  # Fail closed if a disable is ever broadcast as an update.
+  defp device_change(%Change{op: :update, struct: %Account{is_disabled: true}}, _device, socket),
+    do: disconnect(socket)
+
+  # A deleted device does not always lose its tokens, for example a headless one, so it must
+  # reconnect.
+  defp device_change(%Change{op: :delete, old_struct: %Device{id: id}}, %Device{id: id}, socket),
+    do: close_transport(socket)
+
+  defp device_change(
+         %Change{op: :delete, old_struct: %PolicyAuthorization{receiving_device_id: id} = pa},
+         %Device{id: id},
+         socket
+       ) do
+    socket
+    |> Durability.cancel_authorization(pa.id)
+    |> Authorizations.revoke(pa)
+  end
+
+  defp device_change(%Change{}, _device, _socket), do: nil
 
   defp abnormal_exit?(:normal), do: false
   defp abnormal_exit?(:shutdown), do: false
