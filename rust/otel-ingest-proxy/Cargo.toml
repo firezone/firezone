@@ -15,7 +15,6 @@ git-sha = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["server", "http1"] }
 hyper-util = { workspace = true, features = ["server", "http1", "tokio", "service", "server-graceful"] }
-jsonwebtoken = { workspace = true, features = ["use_pem", "rust_crypto"] }
 logging = { workspace = true }
 mimalloc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
@@ -26,9 +25,11 @@ otel-metric-patterns = { workspace = true }
 parking_lot = { workspace = true }
 prost = { workspace = true, features = ["std"] }
 reqwest = { workspace = true, features = ["rustls-no-provider"] }
+ring = { workspace = true }
 rustls = { workspace = true }
 rustls-pki-types = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "net", "time"] }
 tokio-rustls = { workspace = true }
 tower = { workspace = true, features = ["limit"] }
@@ -41,7 +42,6 @@ mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynam
 
 [dev-dependencies]
 axum = { workspace = true, features = ["http1", "tokio"] }
-serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "sync"] }
 tower = { workspace = true, features = ["util"] }
 
