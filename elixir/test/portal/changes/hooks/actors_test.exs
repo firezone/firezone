@@ -6,6 +6,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
   import Portal.TokenFixtures
   import Portal.PortalSessionFixtures
   import Portal.OAuthFixtures
+  import Portal.PolicyAuthorizationFixtures
   alias Portal.Changes.Change
   alias Portal.Actor
   alias Portal.PubSub
@@ -86,6 +87,49 @@ defmodule Portal.Changes.Hooks.ActorsTest do
       assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
       refute Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
       assert_receive %Change{op: :update, lsn: 0}
+    end
+
+    test "deletes the policy authorizations of a disabled actor and keeps its tokens" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      other_actor = actor_fixture(account: account)
+      authorization = policy_authorization_fixture(account: account, actor: actor)
+      other_authorization = policy_authorization_fixture(account: account, actor: other_actor)
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "type" => actor.type,
+        "is_disabled" => false
+      }
+
+      assert :ok == on_update(0, old_data, %{old_data | "is_disabled" => true})
+
+      refute Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: authorization.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: authorization.token_id)
+
+      assert Repo.get_by(Portal.PolicyAuthorization,
+               account_id: account.id,
+               id: other_authorization.id
+             )
+    end
+
+    test "keeps policy authorizations when an enabled actor is otherwise updated" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      authorization = policy_authorization_fixture(account: account, actor: actor)
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "name" => actor.name,
+        "type" => actor.type,
+        "is_disabled" => false
+      }
+
+      assert :ok == on_update(0, old_data, %{old_data | "name" => "Renamed"})
+
+      assert Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: authorization.id)
     end
 
     test "deletes OAuth grants and their tokens when actor is disabled" do
