@@ -13,6 +13,10 @@ defmodule PortalAPI.Channel.Durability do
   """
   import Phoenix.Socket, only: [assign: 3]
 
+  alias PortalAPI.Channel.Authorizations
+
+  require Logger
+
   @timeout :timer.seconds(15)
 
   @spec arm_session(Phoenix.Socket.t()) :: Phoenix.Socket.t()
@@ -34,10 +38,20 @@ defmodule PortalAPI.Channel.Durability do
     end
   end
 
-  @doc "Whether a session timeout is for the session still waiting on its flush."
-  @spec session_lost?(Phoenix.Socket.t(), reference()) :: boolean()
-  def session_lost?(socket, session_ref) do
-    match?({^session_ref, _timer_ref}, socket.assigns[:session_durability])
+  @doc """
+  Disconnects when the session timer fires for the session still waiting on its flush. There
+  is no "token_expired" push, because that makes the device drop its state: it must only
+  reconnect.
+  """
+  @spec session_timeout(Phoenix.Socket.t(), reference()) ::
+          {:noreply, Phoenix.Socket.t()} | {:stop, :shutdown, Phoenix.Socket.t()}
+  def session_timeout(socket, session_ref) do
+    if match?({^session_ref, _timer_ref}, socket.assigns[:session_durability]) do
+      Logger.warning("Session #{inspect(session_ref)} was not confirmed durable; disconnecting")
+      {:stop, :shutdown, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   @spec arm_authorization(Phoenix.Socket.t(), Portal.PolicyAuthorization.t() | nil) ::
@@ -71,10 +85,21 @@ defmodule PortalAPI.Channel.Durability do
     end
   end
 
-  @doc "Whether an authorization timeout is for the timer still armed for it."
-  @spec authorization_lost?(Phoenix.Socket.t(), Portal.PolicyAuthorization.t(), reference()) ::
-          boolean()
-  def authorization_lost?(socket, %Portal.PolicyAuthorization{} = pa, generation) do
-    match?({^generation, _ref}, Map.get(socket.assigns[:authz_durability] || %{}, pa.id))
+  @doc """
+  Revokes when the authorization timer fires for the timer still armed for it: neither a
+  confirm nor a reject arrived in time. A timeout of a cancelled or replaced timer is ignored.
+  """
+  @spec authorization_timeout(Phoenix.Socket.t(), Portal.PolicyAuthorization.t(), reference()) ::
+          {:noreply, Phoenix.Socket.t()}
+  def authorization_timeout(socket, %Portal.PolicyAuthorization{} = pa, generation) do
+    if match?({^generation, _ref}, Map.get(socket.assigns[:authz_durability] || %{}, pa.id)) do
+      Logger.warning("Authorization #{inspect(pa.id)} was not confirmed durable; revoking")
+
+      socket
+      |> cancel_authorization(pa.id)
+      |> Authorizations.revoke(pa)
+    else
+      {:noreply, socket}
+    end
   end
 end
