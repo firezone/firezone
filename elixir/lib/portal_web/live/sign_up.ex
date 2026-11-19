@@ -121,6 +121,7 @@ defmodule PortalWeb.SignUp do
             query_params: %{},
             website_attribution: website_attribution,
             sign_up_browser_id: sign_up_browser_id,
+            survey_seed: sign_up_browser_id || :crypto.strong_rand_bytes(16),
             user_agent: user_agent,
             real_ip: real_ip
           )
@@ -265,13 +266,19 @@ defmodule PortalWeb.SignUp do
       query_params={@query_params}
       website_attribution={@website_attribution}
     />
-    <.sign_up_form :if={@step == :fill_form} form={@form} turnstile_error={@turnstile_error} />
+    <.sign_up_form
+      :if={@step == :fill_form}
+      form={@form}
+      turnstile_error={@turnstile_error}
+      survey_seed={@survey_seed}
+    />
     <.idp_sign_up_form
       :if={@step == :idp_form}
       form={@form}
       email={@idp_identity.email}
       provider={@idp_identity.provider}
       trigger_submit={@trigger_submit}
+      survey_seed={@survey_seed}
     />
     <.existing_accounts
       :if={@step == :existing_accounts}
@@ -331,7 +338,7 @@ defmodule PortalWeb.SignUp do
         <Form.input field={actor[:type]} type="hidden" />
       </.inputs_for>
 
-      <.survey_fields form={@form} />
+      <.survey_fields form={@form} seed={@survey_seed} />
 
       <div class="absolute -left-[10000px] top-auto w-px h-px overflow-hidden" aria-hidden="true">
         <Form.input
@@ -425,6 +432,7 @@ defmodule PortalWeb.SignUp do
   attr :email, :string, required: true
   attr :provider, :string, required: true, values: @idp_sign_up_providers
   attr :trigger_submit, :boolean, default: false
+  attr :survey_seed, :string, required: true
 
   defp idp_sign_up_form(assigns) do
     ~H"""
@@ -486,7 +494,7 @@ defmodule PortalWeb.SignUp do
         />
       </.inputs_for>
 
-      <.survey_fields form={@form} />
+      <.survey_fields form={@form} seed={@survey_seed} />
 
       <button
         type="submit"
@@ -570,15 +578,16 @@ defmodule PortalWeb.SignUp do
   ]
 
   attr :form, :any, required: true
+  attr :seed, :string, required: true
 
   defp survey_fields(assigns) do
     assigns =
       assign(assigns,
-        referral_source_options: @referral_source_options,
-        motivation_options: @motivation_options,
-        use_case_options: @use_case_options,
-        role_options: @role_options,
-        previous_solution_options: @previous_solution_options,
+        referral_source_options: shuffle_options(@referral_source_options, assigns.seed),
+        motivation_options: shuffle_options(@motivation_options, assigns.seed),
+        use_case_options: shuffle_options(@use_case_options, assigns.seed),
+        role_options: shuffle_options(@role_options, assigns.seed),
+        previous_solution_options: shuffle_options(@previous_solution_options, assigns.seed),
         other_max_length: Portal.SignUpSurvey.other_max_length()
       )
 
@@ -1298,6 +1307,12 @@ defmodule PortalWeb.SignUp do
   defp reset_turnstile(socket), do: Turnstile.reset(socket)
 
   defp survey_attrs(%Portal.SignUpSurvey{} = survey), do: Map.from_struct(survey)
+
+  # Seeded by the browser id so the disconnected and connected renders agree.
+  defp shuffle_options(options, seed) do
+    {other, rest} = Enum.split_with(options, &match?({_label, "other"}, &1))
+    Enum.sort_by(rest, fn {_label, value} -> :erlang.phash2({seed, value}) end) ++ other
+  end
 
   defp log_honeypot_hit(attrs, user_agent, real_ip) do
     Logger.warning("Sign-up honeypot triggered",
