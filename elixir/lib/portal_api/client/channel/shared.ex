@@ -2,6 +2,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   use PortalAPI, :channel
   alias Portal.Authentication.Credential
   alias PortalAPI.Client.Views
+  alias PortalAPI.Channel.Durability
   alias PortalAPI.Channel.Relays
 
   alias Portal.{
@@ -38,8 +39,6 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # The interval at which the inbound policy_authorizations cache is pruned.
   @prune_authorizations_cache_every :timer.minutes(1)
-
-  @session_durability_timeout :timer.seconds(15)
 
   # A device lookup that the asking client may not have answers after this long, whether or
   # not anything is behind the name or address. Devices it may reach answer straight away.
@@ -402,7 +401,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     socket =
       socket
       |> assign(authorizations_cache: authorizations_cache)
-      |> maybe_arm_authz_durability_timer(policy_authorization)
+      |> Durability.arm_authorization(policy_authorization)
 
     {:noreply, socket}
   end
@@ -441,7 +440,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   # reject_access handler: drop the cached authorization and push `reject_access`
   # via the same eviction path used for CDC deletes.
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
-    socket = cancel_authz_durability_timer(socket, policy_authorization.id)
+    socket = Durability.cancel_authorization(socket, policy_authorization.id)
     revoke_policy_authorization(socket, policy_authorization)
   end
 
@@ -453,11 +452,11 @@ defmodule PortalAPI.Client.Channel.Shared do
   # Queue confirms a c2c policy_authorization was durably persisted; cancel
   # the authz durability timer so the timer doesn't fire and revoke.
   def handle_info({:confirm_authz_durability, authz_id}, socket) do
-    {:noreply, cancel_authz_durability_timer(socket, authz_id)}
+    {:noreply, Durability.cancel_authorization(socket, authz_id)}
   end
 
   def handle_info({:confirm_session_durability, session_ref}, socket) do
-    {:noreply, cancel_session_durability_timer(socket, session_ref)}
+    {:noreply, Durability.cancel_session(socket, session_ref)}
   end
 
   # Authz durability timer fired — no confirm/reject arrived in time. Fail-closed.
@@ -467,33 +466,29 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation},
         socket
       ) do
-    case Map.get(socket.assigns[:authz_durability] || %{}, pa.id) do
-      {^generation, _ref} ->
-        Logger.warning(
-          "Authz durability timeout firing for c2c authz #{inspect(pa.id)} — queue never confirmed durability"
-        )
+    if Durability.authorization_lost?(socket, pa, generation) do
+      Logger.warning(
+        "Authz durability timeout firing for c2c authz #{inspect(pa.id)} — queue never confirmed durability"
+      )
 
-        socket = cancel_authz_durability_timer(socket, pa.id)
-        revoke_policy_authorization(socket, pa)
-
-      _ ->
-        {:noreply, socket}
+      socket = Durability.cancel_authorization(socket, pa.id)
+      revoke_policy_authorization(socket, pa)
+    else
+      {:noreply, socket}
     end
   end
 
   def handle_info({:session_durability_timeout, session_ref}, socket) do
-    case socket.assigns[:session_durability] do
-      {^session_ref, _timer_ref} ->
-        Logger.warning(
-          "Client session #{inspect(session_ref)} was not confirmed durable; disconnecting"
-        )
+    if Durability.session_lost?(socket, session_ref) do
+      Logger.warning(
+        "Client session #{inspect(session_ref)} was not confirmed durable; disconnecting"
+      )
 
-        # Avoid sending "token_expired" since that will tear down connlib
-        # state in the client. Instead, the client must reconnect.
-        {:stop, :shutdown, socket}
-
-      _ ->
-        {:noreply, socket}
+      # Avoid sending "token_expired" since that will tear down connlib
+      # state in the client. Instead, the client must reconnect.
+      {:stop, :shutdown, socket}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -2451,7 +2446,7 @@ Relays.render(relays, relay_owner(socket)),
          },
          %{assigns: %{client: %{id: client_id}}} = socket
        ) do
-    socket = cancel_authz_durability_timer(socket, policy_authorization.id)
+    socket = Durability.cancel_authorization(socket, policy_authorization.id)
     revoke_policy_authorization(socket, policy_authorization)
   end
 
@@ -2642,72 +2637,6 @@ Relays.render(relays, relay_owner(socket)),
 
       :error ->
         {:noreply, socket}
-    end
-  end
-
-  # Authz durability timer for fail-closed cleanup when the originating queue
-  # loses state. See gateway channel's equivalent helpers for full rationale,
-  # including the rationale for the generation token in `authz_durability`.
-  @authz_durability_timeout :timer.seconds(15)
-
-  defp arm_session_durability_timer(socket) do
-    session_ref = socket.assigns.session_ref
-
-    timer_ref =
-      Process.send_after(
-        self(),
-        {:session_durability_timeout, session_ref},
-        @session_durability_timeout
-      )
-
-    # Fail-safe: if the session queue never confirms the DB flush, the
-    # channel disconnects so the client reconnects and retries the upsert.
-    assign(socket, session_durability: {session_ref, timer_ref})
-  end
-
-  defp cancel_session_durability_timer(socket, session_ref) do
-    case socket.assigns[:session_durability] do
-      {^session_ref, timer_ref} ->
-        Process.cancel_timer(timer_ref)
-        assign(socket, session_durability: nil)
-
-      _ ->
-        socket
-    end
-  end
-
-  defp maybe_arm_authz_durability_timer(socket, nil), do: socket
-
-  defp maybe_arm_authz_durability_timer(socket, %Portal.PolicyAuthorization{} = pa) do
-    generation = make_ref()
-
-    timer_ref =
-      Process.send_after(
-        self(),
-        {:authz_durability_timeout, pa, generation},
-        @authz_durability_timeout
-      )
-
-    pending = socket.assigns[:authz_durability] || %{}
-
-    case Map.get(pending, pa.id) do
-      nil -> :ok
-      {_old_generation, old_ref} -> Process.cancel_timer(old_ref)
-    end
-
-    assign(socket, authz_durability: Map.put(pending, pa.id, {generation, timer_ref}))
-  end
-
-  defp cancel_authz_durability_timer(socket, authz_id) do
-    pending = socket.assigns[:authz_durability] || %{}
-
-    case Map.pop(pending, authz_id) do
-      {nil, _} ->
-        socket
-
-      {{_generation, timer_ref}, rest} ->
-        Process.cancel_timer(timer_ref)
-        assign(socket, authz_durability: rest)
     end
   end
 
@@ -3041,7 +2970,7 @@ Relays.render(relays, relay_owner(socket)),
       }
     )
 
-    {:noreply, arm_session_durability_timer(socket)}
+    {:noreply, Durability.arm_session(socket)}
   end
 
   # A token deletion or certificate revocation sent while the scope was down
