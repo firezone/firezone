@@ -32,7 +32,7 @@ defmodule Portal.Presence do
         ipv6: device.ipv6 && device.ipv6.address,
         public_key: device.public_key,
         psk_base: device.psk_base,
-        site_id: loaded_site_id(device),
+        site_ids: loaded_site_ids(device),
         version: device.last_seen_version,
         user_agent: device.last_seen_user_agent,
         remote_ip: device.last_seen_remote_ip,
@@ -41,7 +41,6 @@ defmodule Portal.Presence do
         attested?: device.attested?
       }
       |> Map.merge(extra)
-      |> then(&Map.put_new(&1, :site_ids, List.wrap(&1.site_id)))
     end
 
     def connect(%Device{} = device, token_id, session_meta \\ %{}) do
@@ -107,7 +106,7 @@ defmodule Portal.Presence do
       |> __MODULE__.Account.list()
       |> Enum.reduce(%{}, fn
         {_id, %{metas: [%{type: :gateway} = meta | _]}}, acc ->
-          Enum.reduce(site_ids(meta), acc, &Map.update(&2, &1, 1, fn count -> count + 1 end))
+          Enum.reduce(meta.site_ids, acc, &Map.update(&2, &1, 1, fn count -> count + 1 end))
 
         _client, acc ->
           acc
@@ -121,7 +120,7 @@ defmodule Portal.Presence do
       |> __MODULE__.Account.list()
       |> Enum.reduce(%{}, fn
         {id, %{metas: [%{type: :gateway} = meta | _]}}, acc ->
-          Enum.reduce(site_ids(meta), acc, &Map.update(&2, &1, MapSet.new([id]), fn ids -> MapSet.put(ids, id) end))
+          Enum.reduce(meta.site_ids, acc, &Map.update(&2, &1, MapSet.new([id]), fn ids -> MapSet.put(ids, id) end))
 
         _client, acc ->
           acc
@@ -152,7 +151,7 @@ defmodule Portal.Presence do
     def fetch_gateway(account_id, gateway_id, site_id) do
       with false <- is_nil(site_id),
            %{metas: [%{type: :gateway} = meta | _]} <- __MODULE__.Account.get(account_id, gateway_id),
-           true <- site_id in site_ids(meta) do
+           true <- site_id in meta.site_ids do
         {:ok, from_meta(gateway_id, account_id, meta)}
       else
         _offline_or_not_a_gateway_in_site -> {:error, :offline}
@@ -162,7 +161,7 @@ defmodule Portal.Presence do
     @doc "The gateways connected to `site_id`."
     def connected_gateways_in_site(account_id, site_id) do
       for {id, %{metas: [%{type: :gateway} = meta | _]}} <- __MODULE__.Account.list(account_id),
-          site_id in site_ids(meta),
+          site_id in meta.site_ids,
           do: from_meta(id, account_id, meta)
     end
 
@@ -181,13 +180,9 @@ defmodule Portal.Presence do
       }
     end
 
-    defp loaded_site_id(%Device{site: %Portal.Site{id: id}}), do: id
-    defp loaded_site_id(%Device{site_device: %Portal.SiteDevice{site_id: id}}), do: id
-    defp loaded_site_id(_device), do: nil
-
-    # Nodes on the previous release publish only `site_id`.
-    defp site_ids(%{site_ids: site_ids}) when is_list(site_ids), do: site_ids
-    defp site_ids(meta), do: List.wrap(Map.get(meta, :site_id))
+    defp loaded_site_ids(%Device{site: %Portal.Site{id: id}}), do: [id]
+    defp loaded_site_ids(%Device{site_device: %Portal.SiteDevice{site_id: id}}), do: [id]
+    defp loaded_site_ids(_device), do: []
 
     defp normalize_ip(%Postgrex.INET{} = inet), do: inet
     defp normalize_ip(tuple) when is_tuple(tuple), do: %Postgrex.INET{address: tuple}

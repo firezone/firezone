@@ -49,7 +49,7 @@ site = Portal.Repo.get_by!(Portal.Site, account_id: account_id, name: \"$site_na
 online = Portal.Presence.Devices.Account.list(account_id)
 
 [gateway_id | _] =
-  for {id, %{metas: [%{type: :gateway, site_id: site_id} | _]}} <- online, site_id == site.id, do: id
+  for {id, %{metas: [%{type: :gateway, site_ids: site_ids} | _]}} <- online, site.id in site_ids, do: id
 
 [client_id | _] = for {id, %{metas: [%{type: :client} | _]}} <- online, do: id
 resource = Portal.Repo.get_by!(Portal.Resource, account_id: account_id, name: \"$resource_name\")

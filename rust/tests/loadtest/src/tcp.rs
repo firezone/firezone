@@ -460,10 +460,10 @@ pub struct TcpServerConfig {
 /// Listens for connections and echoes back any received data.
 /// Runs indefinitely until interrupted.
 async fn run_server(config: TcpServerConfig) -> Result<!> {
-    use std::net::Ipv4Addr;
+    use std::net::Ipv6Addr;
     use tokio::net::TcpListener;
 
-    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, config.port)).await?;
+    let listener = TcpListener::bind((Ipv6Addr::UNSPECIFIED, config.port)).await?;
     tracing::info!(port = config.port, "TCP echo server listening");
 
     loop {
