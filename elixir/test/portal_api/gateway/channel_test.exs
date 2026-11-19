@@ -3349,6 +3349,38 @@ assert site_ids == [site.id]
       refute_push "invalidate_ice_candidates", _payload
     end
 
+    test "pushes candidates sent with the sender type", %{
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+      put_authorized_client(socket, client.id)
+
+      for tag <- [:ice_candidates, :invalidate_ice_candidates] do
+        send(socket.channel_pid, {tag, %{id: client.id, type: :client}, ["foo"]})
+
+        event = Atom.to_string(tag)
+        assert_push ^event, payload
+        assert payload == %{candidates: ["foo"], client_id: client.id}
+      end
+    end
+
+    test "does not push candidates sent with the sender type from a client without an authorization",
+         %{client: client, gateway: gateway, site: site, token: token} do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      for tag <- [:ice_candidates, :invalidate_ice_candidates] do
+        send(socket.channel_pid, {tag, %{id: client.id, type: :client}, ["foo"]})
+      end
+
+      refute_push "ice_candidates", _payload
+      refute_push "invalidate_ice_candidates", _payload
+    end
+
     test "pushes request_connection message", %{
       client: client,
       account: account,

@@ -193,33 +193,21 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, socket}
   end
 
-  # The legacy tags still arrive from portal nodes on the previous release during a deploy.
+  # Every peer kind will send `{tag, %{id, type}, candidates}`. The tags without a sender type
+  # still arrive until all portal nodes send it.
+  def handle_info({tag, %{type: :client, id: client_id}, candidates}, socket)
+      when tag in [:ice_candidates, :invalidate_ice_candidates] do
+    push_client_candidates(socket, Atom.to_string(tag), client_id, candidates)
+  end
+
   def handle_info({tag, client_id, candidates}, socket)
       when tag in [:ice_candidates_from_client, :ice_candidates] do
-    if Cache.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
-      push(socket, "ice_candidates", %{
-        client_id: client_id,
-        candidates: candidates
-      })
-    else
-      Telemetry.ice_candidates_dropped(:client, :unauthorized, candidate_count(candidates))
-    end
-
-    {:noreply, socket}
+    push_client_candidates(socket, "ice_candidates", client_id, candidates)
   end
 
   def handle_info({tag, client_id, candidates}, socket)
       when tag in [:invalidate_ice_candidates_from_client, :invalidate_ice_candidates] do
-    if Cache.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
-      push(socket, "invalidate_ice_candidates", %{
-        client_id: client_id,
-        candidates: candidates
-      })
-    else
-      Telemetry.ice_candidates_dropped(:client, :unauthorized, candidate_count(candidates))
-    end
-
-    {:noreply, socket}
+    push_client_candidates(socket, "invalidate_ice_candidates", client_id, candidates)
   end
 
   # The initiator is told only once the gateway echoes the ref, after it has the authorization.
@@ -796,6 +784,16 @@ Relays.render(relays, relay_owner(socket)),
     else
       Telemetry.ice_candidates_dropped(:gateway, :unauthorized, length(candidates))
     end
+  end
+
+  defp push_client_candidates(socket, event, client_id, candidates) do
+    if Cache.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
+      push(socket, event, %{client_id: client_id, candidates: candidates})
+    else
+      Telemetry.ice_candidates_dropped(:client, :unauthorized, candidate_count(candidates))
+    end
+
+    {:noreply, socket}
   end
 
   defp candidate_count(candidates) when is_list(candidates), do: length(candidates)

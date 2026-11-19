@@ -3719,6 +3719,39 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 candidates sent with the sender type" do
+    test "pushes candidates from a gateway", %{client: client, gateway: gateway, subject: subject} do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      for tag <- [:ice_candidates, :invalidate_ice_candidates] do
+        send(socket.channel_pid, {tag, %{id: gateway.id, type: :gateway}, ["cand1"]})
+
+        event = Atom.to_string(tag)
+        assert_push ^event, payload
+        assert payload == %{gateway_id: gateway.id, candidates: ["cand1"]}
+      end
+    end
+
+    test "pushes candidates from a client", %{client: client, subject: subject} do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      source_client_id = Ecto.UUID.generate()
+
+      send(socket.channel_pid, {:ice_candidates, %{id: source_client_id, type: :client}, ["cand1"]})
+      assert_push "client_ice_candidates", payload
+      assert payload == %{client_id: source_client_id, candidates: ["cand1"]}
+
+      send(
+        socket.channel_pid,
+        {:invalidate_ice_candidates, %{id: source_client_id, type: :client}, ["cand1"]}
+      )
+
+      assert_push "invalidate_client_ice_candidates", payload
+      assert payload == %{client_id: source_client_id, candidates: ["cand1"]}
+    end
+  end
+
   describe "handle_info/2 :client_ice_candidates" do
     test "pushes client_ice_candidates to the socket", %{
       client: client,
