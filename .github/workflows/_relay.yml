@@ -54,6 +54,7 @@ jobs:
       sha: ${{ inputs.sha }}
       profile: ${{ (inputs.flavour == 'release' || inputs.flavour == 'perf') && 'release' || 'debug' }}
       stage: ${{ inputs.flavour == 'release' && 'release' || 'debug' }}
+      arches: '["x86_64","aarch64"]'
 
   image:
     needs: binary
@@ -79,7 +80,7 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        arch: [x86_64, aarch64, armv7]
+        arch: ${{ fromJSON(needs.binary.outputs.arches) }}
     env:
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
     steps:
