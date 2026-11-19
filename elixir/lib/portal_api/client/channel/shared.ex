@@ -266,45 +266,41 @@ defmodule PortalAPI.Client.Channel.Shared do
     initiator = request.initiator
     client = socket.assigns.client
 
-    payload = %{
-      client_id: initiator.id,
-      client_name: initiator.name,
-      client_slug: initiator.slug,
-      client_public_key: initiator.public_key,
-      client_ipv4: initiator.ipv4,
-      client_ipv6: initiator.ipv6,
-      preshared_key: request.preshared_key,
-      local_ice_credentials: request.ice_credentials.receiver,
-      remote_ice_credentials: request.ice_credentials.initiator,
-      ice_role: :controlled,
-      resource: Views.Resource.render(request.resource, client, protocol_version(socket)),
-      subject: request.subject,
-      policy_authorization_id: request.policy_authorization_id,
-      authorization_expires_at: request.expires_at,
-      policy_authorization: request[:policy_authorization],
-      initiator_iceless_capable: request.initiator_iceless_capable,
-      flow_logs_ingest_token: request.responder_token
-    }
+    {use_iceless, socket} =
+      Authorizations.accept(socket, client, socket.assigns.subject.account, request)
 
-    accept_device_access(socket, payload, fn use_iceless ->
-      send(
-        initiator_pid,
-        {:authorized, ref,
-         %{
-           receiver_id: client.id,
-           resource_id: Ecto.UUID.load!(request.resource.id),
-           site_id: nil,
-           name: client.name,
-           slug: client.slug,
-           public_key: client.public_key,
-           ipv4: client.ipv4,
-           ipv6: client.ipv6,
-           preshared_key: request.preshared_key,
-           ice_credentials: request.ice_credentials,
-           use_iceless: use_iceless
-         }}
-      )
-    end)
+    payload =
+      %{
+        client_id: initiator.id,
+        client_name: initiator.name,
+        client_slug: initiator.slug,
+        client_public_key: initiator.public_key,
+        client_ipv4: initiator.ipv4,
+        client_ipv6: initiator.ipv6,
+        preshared_key: request.preshared_key,
+        local_ice_credentials: request.ice_credentials.receiver,
+        remote_ice_credentials: request.ice_credentials.initiator,
+        ice_role: :controlled,
+        resource: Views.Resource.render(request.resource, client, protocol_version(socket)),
+        subject: request.subject,
+        flow_logs_ingest_token: request.responder_token,
+        use_iceless: use_iceless
+      }
+      |> maybe_put_expires_at(request.expires_at)
+
+    push(socket, "client_device_access_authorized", payload)
+
+    # The initiator is told only after the push, so its ICE candidates, which come over this
+    # socket too, cannot reach this client before the authorization.
+    Authorizations.reply(initiator_pid, ref, client, %{
+      resource_id: Ecto.UUID.load!(request.resource.id),
+      site_id: nil,
+      preshared_key: request.preshared_key,
+      ice_credentials: request.ice_credentials,
+      use_iceless: use_iceless
+    })
+
+    {:noreply, socket}
   end
 
   def handle_info({:public_key_changed, type, device_id, public_key}, socket) do
@@ -2449,19 +2445,10 @@ Relays.render(relays, relay_owner(socket)),
     :ok
   end
 
-  defp maybe_put_authorization(
-         cache,
-         client_id,
-         %{id: resource_id},
-         pa_id,
-         %DateTime{} = expires_at
-       )
-       when not is_nil(client_id) and not is_nil(pa_id) do
-    Cache.Authorizations.put(cache, pa_id, client_id, resource_id, expires_at)
-  end
+  defp maybe_put_expires_at(payload, %DateTime{} = expires_at),
+    do: Map.put(payload, :expires_at, DateTime.to_unix(expires_at, :second))
 
-  defp maybe_put_authorization(cache, _client_id, _resource, _pa_id, _expires_at),
-    do: cache
+  defp maybe_put_expires_at(payload, _expires_at), do: payload
 
   defp maybe_push_resource_filters_updated(_socket, _resource, filters, filters), do: :ok
 
@@ -2903,60 +2890,6 @@ Relays.render(relays, relay_owner(socket)),
          |> assign(:pending_authorizations, remaining)
          |> put_outbound_authorization(pending)}
     end
-  end
-
-  defp accept_device_access(socket, payload, ack) do
-    {policy_authorization_id, payload} = Map.pop(payload, :policy_authorization_id)
-    {authorization_expires_at, payload} = Map.pop(payload, :authorization_expires_at)
-    {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
-    {initiator_iceless_capable, payload} = Map.pop(payload, :initiator_iceless_capable, false)
-
-    iceless_feature_enabled = Portal.Account.iceless_enabled?(socket.assigns.subject.account)
-    initiator_capable = initiator_iceless_capable == true
-    receiver_capable = socket.assigns.iceless_capable == true
-
-    use_iceless = iceless_feature_enabled and initiator_capable and receiver_capable
-
-    Portal.Telemetry.authorization_granted(:client,
-      iceless_feature_enabled: iceless_feature_enabled,
-      initiator_iceless_capable: initiator_capable,
-      receiver_iceless_capable: receiver_capable
-    )
-
-    payload = Map.put(payload, :use_iceless, use_iceless)
-
-    authorizations_cache =
-      maybe_put_authorization(
-        socket.assigns.authorizations_cache,
-        payload[:client_id],
-        payload[:resource],
-        policy_authorization_id,
-        authorization_expires_at
-      )
-
-    payload =
-      if match?(%DateTime{}, authorization_expires_at) do
-        Map.put(payload, :expires_at, DateTime.to_unix(authorization_expires_at, :second))
-      else
-        payload
-      end
-
-    push(socket, "client_device_access_authorized", payload)
-
-    # Ack back to the initiator's channel that the authorization is on this
-    # target's websocket. The initiator is released only after this, so the
-    # initiator's ICE candidates (which traverse the same socket) can never
-    # overtake the authorization at the target's data plane. We send the
-    # resolved `use_iceless` (not our capability) so the initiator applies the
-    # same decision without reading the flag again.
-    ack.(use_iceless)
-
-    socket =
-      socket
-      |> assign(authorizations_cache: authorizations_cache)
-      |> Durability.arm_authorization(policy_authorization)
-
-    {:noreply, socket}
   end
 
   # The receiving gateway checks its authorization cache before it forwards the candidates.
