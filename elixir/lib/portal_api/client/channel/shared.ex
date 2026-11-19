@@ -1268,12 +1268,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         policy_authorization_id = Ecto.UUID.generate()
         request_ref = make_ref()
 
-        %{
-          preshared_key: preshared_key,
-          ice_credentials: ice_credentials,
-          initiator_token: initiator_token,
-          responder_token: responder_token
-        } =
+        secrets =
           connection_secrets(
             socket,
             gateway,
@@ -1285,27 +1280,8 @@ defmodule PortalAPI.Client.Channel.Shared do
           )
 
         message =
-          {:create_authorization, {self(), socket_ref(socket)},
-           %{
-             client:
-               PortalAPI.Gateway.Views.Client.render(
-                 socket.assigns.client,
-                 socket.assigns.client.public_key,
-                 preshared_key,
-                 socket.assigns.subject.context.user_agent
-               ),
-             # Kept for older gateways that do not report flow logs to the portal.
-             # These do not parse the attribution fields from the ingest token.
-             subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
-             resource: PortalAPI.Gateway.Views.Resource.render(resource),
-             policy_authorization_id: policy_authorization_id,
-             authorization_expires_at: expires_at,
-             ice_credentials: ice_credentials,
-             preshared_key: preshared_key,
-             initiator_iceless_capable: socket.assigns.iceless_capable,
-             flow_logs_ingest_token: responder_token,
-             request_ref: request_ref
-           }}
+          {:authorize, {self(), request_ref},
+           authorize_request(socket, resource, policy_authorization_id, expires_at, secrets)}
 
         attrs =
           policy_authorization_attrs(
@@ -1336,7 +1312,7 @@ defmodule PortalAPI.Client.Channel.Shared do
                resource_id,
                request_ref,
                gateway.id,
-               initiator_token,
+               secrets.initiator_token,
                address
              )}
 
@@ -1718,14 +1694,14 @@ defmodule PortalAPI.Client.Channel.Shared do
     # `ref` correlates the target channel's ack back to this request. The
     # initiator is NOT released on `Queue.enqueue/3` returning `:ok` — it is
     # released only once the target's channel acks that it has pushed the
-    # authorization onto the target's websocket (`{:device_access_acked, ref, _, _, _}`).
+    # authorization onto the target's websocket (`{:authorized, ref, _}`).
     # Until then the initiator must not start ICE, because its candidates
     # travel the same socket as the authorization and would otherwise race
     # ahead of it at the target's data plane.
     ref = make_ref()
 
     {receiver_message, initiator_payload} =
-      build_client_device_access_authorized_messages(
+      build_device_access_messages(
         target_client_id,
         target_meta,
         resource,
@@ -1787,10 +1763,10 @@ defmodule PortalAPI.Client.Channel.Shared do
   # Returns `{receiver_message, initiator_payload}`. The receiver_message goes
   # to the target client via PG (delivered inside the Queue's dispatch
   # callback so it shares a sender pid with any later `:reject_access`). It
-  # carries `{ack_to, ref}` so the target's channel can ack back once it has
-  # pushed the authorization onto the target's websocket; the initiator_payload
-  # is released to the originating client only after that ack arrives.
-  defp build_client_device_access_authorized_messages(
+  # carries `{self(), ref}` so the target's channel can reply `:authorized` once
+  # it has pushed the authorization onto the target's websocket; the
+  # initiator_payload is released to the originating client only after that.
+  defp build_device_access_messages(
          target_client_id,
          target_meta,
          resource,
@@ -1800,21 +1776,13 @@ defmodule PortalAPI.Client.Channel.Shared do
          ref,
          socket
        ) do
-    client = socket.assigns.client
-    client_public_key = socket.assigns.client.public_key
-
     target_client = %Portal.Device{
       id: target_client_id,
       psk_base: target_meta.psk_base,
       type: :client
     }
 
-    %{
-      preshared_key: preshared_key,
-      ice_credentials: ice_credentials,
-      initiator_token: initiator_token,
-      responder_token: responder_token
-    } =
+    secrets =
       connection_secrets(
         socket,
         target_client,
@@ -1825,35 +1793,9 @@ defmodule PortalAPI.Client.Channel.Shared do
         expires_at
       )
 
-    # Mirror the gateway's create-authorization payload on the receiver side: the
-    # receiving client gets the full resource view (filters, type, name,
-    # devices) plus the subject (actor) view, in addition to peer/ICE fields.
-    # We render with the initiator's session here — the receiver only reads the
-    # id and filters out of it, so this is safe across version skew.
-    rendered_resource = Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
-
-    rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
-
     receiver_message =
-      {:client_device_access_authorized, {self(), ref},
-       %{
-         client_id: client.id,
-         client_name: client.name,
-         client_slug: client.slug,
-         client_public_key: client_public_key,
-         client_ipv4: client.ipv4,
-         client_ipv6: client.ipv6,
-         preshared_key: preshared_key,
-         local_ice_credentials: ice_credentials.receiver,
-         remote_ice_credentials: ice_credentials.initiator,
-         ice_role: :controlled,
-         resource: rendered_resource,
-         subject: rendered_subject,
-         policy_authorization_id: policy_authorization_id,
-         authorization_expires_at: expires_at,
-         initiator_iceless_capable: socket.assigns.iceless_capable,
-         flow_logs_ingest_token: responder_token
-       }}
+      {:authorize, {self(), ref},
+       authorize_request(socket, resource, policy_authorization_id, expires_at, secrets)}
 
     initiator_payload = %{
       client_id: target_client_id,
@@ -1861,14 +1803,47 @@ defmodule PortalAPI.Client.Channel.Shared do
       client_public_key: target_meta.public_key,
       client_ipv4: %Postgrex.INET{address: target_meta.ipv4},
       client_ipv6: %Postgrex.INET{address: target_meta.ipv6},
-      preshared_key: preshared_key,
-      local_ice_credentials: ice_credentials.initiator,
-      remote_ice_credentials: ice_credentials.receiver,
+      preshared_key: secrets.preshared_key,
+      local_ice_credentials: secrets.ice_credentials.initiator,
+      remote_ice_credentials: secrets.ice_credentials.receiver,
       ice_role: :controlling,
-      flow_logs_ingest_token: initiator_token
+      flow_logs_ingest_token: secrets.initiator_token
     }
 
     {receiver_message, initiator_payload}
+  end
+
+  # Each receiver renders the initiator and resource for its own protocol.
+  defp authorize_request(socket, resource, policy_authorization_id, expires_at, secrets) do
+    client = socket.assigns.client
+
+    %{
+      initiator:
+        client
+        |> Map.take([
+          :id,
+          :name,
+          :slug,
+          :public_key,
+          :ipv4,
+          :ipv6,
+          :device_serial,
+          :device_uuid,
+          :firebase_installation_id,
+          :identifier_for_vendor
+        ])
+        |> Map.put(:user_agent, socket.assigns.subject.context.user_agent),
+      # Kept for older gateways that do not report flow logs to the portal.
+      # These do not parse the attribution fields from the ingest token.
+      subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
+      resource: resource,
+      policy_authorization_id: policy_authorization_id,
+      expires_at: expires_at,
+      preshared_key: secrets.preshared_key,
+      ice_credentials: secrets.ice_credentials,
+      responder_token: secrets.responder_token,
+      initiator_iceless_capable: socket.assigns.iceless_capable
+    }
   end
 
   defp relay_owner(socket) do

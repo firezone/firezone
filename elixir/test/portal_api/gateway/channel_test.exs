@@ -326,10 +326,10 @@ defmodule PortalAPI.Gateway.ChannelTest do
       join_channel(unloaded, site, token)
       assert_push "init", _init_payload
 
-      assert %{metas: [%{site_id: site_id}]} =
+      assert %{metas: [%{site_ids: site_ids}]} =
                Map.fetch!(Portal.Presence.Devices.Account.list(account.id), gateway.id)
 
-      assert site_id == site.id
+assert site_ids == [site.id]
       assert {:ok, _gateway} = Portal.Presence.Devices.fetch_gateway(account.id, gateway.id, site.id)
     end
 

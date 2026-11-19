@@ -1029,7 +1029,7 @@ Relays.render(relays, relay_owner(socket)),
 
         :ok =
           Presence.Devices.connect(gateway, socket.assigns.token_id, %{
-            site_id: socket.assigns.site.id
+            site_ids: [socket.assigns.site.id]
           })
 
         for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
