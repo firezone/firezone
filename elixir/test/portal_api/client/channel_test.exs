@@ -9595,7 +9595,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
-    test "handle_info({:client_device_access_authorized, ...}) puts entry in cache and pushes resource view",
+    test "an :authorize request puts the entry in the cache and pushes the resource view",
          %{
            target_client: target_client,
            target_subject: target_subject,
@@ -9609,7 +9609,7 @@ defmodule PortalAPI.Client.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
       cacheable_resource = Portal.Cache.Cacheable.to_cache(pool_resource)
-      rendered_resource = PortalAPI.Client.Views.Resource.render(cacheable_resource, nil, 2)
+      ref = make_ref()
 
       rendered_subject = %{
         auth_provider_id: Ecto.UUID.generate(),
@@ -9619,26 +9619,35 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       send(socket.channel_pid, {
-        :client_device_access_authorized,
-        {self(), make_ref()},
+        :authorize,
+        {self(), ref},
         %{
-          client_id: initiating_client.id,
-          client_public_key: "pk",
-          client_ipv4: initiating_client.ipv4,
-          client_ipv6: initiating_client.ipv6,
+          initiator: %{
+            id: initiating_client.id,
+            name: initiating_client.name,
+            slug: initiating_client.slug,
+            public_key: "pk",
+            ipv4: initiating_client.ipv4,
+            ipv6: initiating_client.ipv6
+          },
           preshared_key: "psk",
-          local_ice_credentials: %{username: "u", password: "p"},
-          remote_ice_credentials: %{username: "u", password: "p"},
-          ice_role: :controlled,
-          resource: rendered_resource,
+          ice_credentials: %{
+            initiator: %{username: "u", password: "p"},
+            receiver: %{username: "u", password: "p"}
+          },
+          resource: cacheable_resource,
           subject: rendered_subject,
           policy_authorization_id: policy_authorization_id,
-          authorization_expires_at: expires_at
+          expires_at: expires_at,
+          initiator_iceless_capable: false,
+          responder_token: nil
         }
       })
 
       assert_push "client_device_access_authorized", payload
-      assert payload.resource == rendered_resource
+      assert payload.resource.id == pool_resource.id
+      assert_receive {:authorized, ^ref, %{receiver_id: receiver_id}}
+      assert receiver_id == target_client.id
       assert payload.subject == rendered_subject
       assert payload.expires_at == DateTime.to_unix(expires_at, :second)
       refute Map.has_key?(payload, :policy_authorization_id)
@@ -9647,44 +9656,6 @@ defmodule PortalAPI.Client.ChannelTest do
       state = :sys.get_state(socket.channel_pid)
 
       assert Portal.Cache.Authorizations.has_resource?(
-               state.assigns.authorizations_cache,
-               pool_resource.id
-             )
-    end
-
-    test "handle_info({:client_device_access_authorized, ...}) without policy_authorization fields skips cache update",
-         %{
-           target_client: target_client,
-           target_subject: target_subject,
-           client: initiating_client,
-           pool_resource: pool_resource
-         } do
-      socket = join_channel(target_client, target_subject)
-      assert_push "init", _
-
-      send(socket.channel_pid, {
-        :client_device_access_authorized,
-        {self(), make_ref()},
-        %{
-          client_id: initiating_client.id,
-          client_public_key: "pk",
-          client_ipv4: initiating_client.ipv4,
-          client_ipv6: initiating_client.ipv6,
-          preshared_key: "psk",
-          local_ice_credentials: %{username: "u", password: "p"},
-          remote_ice_credentials: %{username: "u", password: "p"},
-          ice_role: :controlled,
-          resource: nil,
-          policy_authorization_id: nil,
-          authorization_expires_at: nil
-        }
-      })
-
-      assert_push "client_device_access_authorized", _
-
-      state = :sys.get_state(socket.channel_pid)
-
-      refute Portal.Cache.Authorizations.has_resource?(
                state.assigns.authorizations_cache,
                pool_resource.id
              )
@@ -9771,25 +9742,30 @@ defmodule PortalAPI.Client.ChannelTest do
       expired_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
       pa_id = Ecto.UUID.generate()
 
-      cacheable_resource = Portal.Cache.Cacheable.to_cache(pool_resource)
-      rendered_resource = PortalAPI.Client.Views.Resource.render(cacheable_resource, nil, 2)
-
       # Seed an entry that is already expired into the in-memory cache
       send(socket.channel_pid, {
-        :client_device_access_authorized,
+        :authorize,
         {self(), make_ref()},
         %{
-          client_id: initiating_client.id,
-          client_public_key: "pk",
-          client_ipv4: initiating_client.ipv4,
-          client_ipv6: initiating_client.ipv6,
+          initiator: %{
+            id: initiating_client.id,
+            name: initiating_client.name,
+            slug: initiating_client.slug,
+            public_key: "pk",
+            ipv4: initiating_client.ipv4,
+            ipv6: initiating_client.ipv6
+          },
           preshared_key: "psk",
-          local_ice_credentials: %{username: "u", password: "p"},
-          remote_ice_credentials: %{username: "u", password: "p"},
-          ice_role: :controlled,
-          resource: rendered_resource,
+          ice_credentials: %{
+            initiator: %{username: "u", password: "p"},
+            receiver: %{username: "u", password: "p"}
+          },
+          resource: Portal.Cache.Cacheable.to_cache(pool_resource),
+          subject: nil,
           policy_authorization_id: pa_id,
-          authorization_expires_at: expired_at
+          expires_at: expired_at,
+          initiator_iceless_capable: false,
+          responder_token: nil
         }
       })
 

@@ -246,29 +246,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, socket}
   end
 
-  def handle_info({:create_authorization, {channel_pid, socket_ref}, payload}, socket) do
-    initiator_iceless_capable = Map.get(payload, :initiator_iceless_capable, false)
-    use_iceless = use_iceless?(socket, initiator_iceless_capable)
-
-    ref_tuple =
-      {channel_pid, socket_ref, Ecto.UUID.dump!(payload.resource.id), payload.preshared_key,
-       payload.ice_credentials, use_iceless, Map.get(payload, :request_ref)}
-
-    push_authorization(socket, ref_tuple, %{
-      client: payload.client,
-      subject: payload.subject,
-      resource: payload.resource,
-      policy_authorization_id: payload.policy_authorization_id,
-      expires_at: payload.authorization_expires_at,
-      ice_credentials: payload.ice_credentials,
-      use_iceless: use_iceless,
-      initiator_iceless_capable: initiator_iceless_capable,
-      flow_logs_ingest_token: Map.get(payload, :flow_logs_ingest_token),
-      policy_authorization: payload[:policy_authorization]
-    })
-  end
-
-  # The one request every initiator will send, in place of `:create_authorization`.
   def handle_info({:authorize, {channel_pid, ref}, request}, socket) do
     initiator = request.initiator
     use_iceless = use_iceless?(socket, request.initiator_iceless_capable)
@@ -399,7 +376,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   # Direct revocation from `Portal.Queue`'s on_failed path — a policy
   # authorization that we already announced via `:allow_access` /
-  # `:create_authorization` failed to persist. We reuse the same eviction path the
+  # `:authorize` failed to persist. We reuse the same eviction path the
   # CDC delete handler uses: drop the cached authorization and push
   # `reject_access` so connlib tears down the flow.
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
@@ -572,29 +549,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
              ice_credentials: ice_credentials,
              use_iceless: use_iceless
            }}
-        )
-
-        {:reply, :ok, socket}
-
-      {:ok,
-       {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_iceless,
-        request_ref}} ->
-        send(
-          channel_pid,
-          {
-            :connect,
-            socket_ref,
-            resource_id,
-            socket.assigns.site.id,
-            socket.assigns.gateway.id,
-            socket.assigns.gateway.public_key,
-            socket.assigns.gateway.ipv4,
-            socket.assigns.gateway.ipv6,
-            preshared_key,
-            ice_credentials,
-            use_iceless,
-            request_ref
-          }
         )
 
         {:reply, :ok, socket}
