@@ -210,6 +210,11 @@ defmodule PortalAPI.MCP.ToolsTest do
              fetch(tools, "get_posture_device").variants["sentinelone"]
 
     assert names["id"] == "sentinelone_agent"
+
+    assert {%Tool{path_template: "/defender_devices/{defender_device}"}, names} =
+             fetch(tools, "get_posture_device").variants["defender"]
+
+    assert names["id"] == "defender_device"
   end
 
   test "posture provider writes are flagged as device trust changes", %{tools: tools} do
