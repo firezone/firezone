@@ -1,5 +1,3 @@
-mod server;
-
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -7,7 +5,7 @@ use anyhow::{Context as _, Result};
 use base64::Engine as _;
 use bin_shared::http_health_check;
 use clap::Parser;
-use firezone_otel_ingest_proxy::{Ingest, Verifier};
+use firezone_otel_ingest_proxy::{CertResolver, Ingest, Verifier, router, serve};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -15,8 +13,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing_subscriber::layer::Identity;
 use url::Url;
-
-use crate::server::CertResolver;
 
 const LISTEN_ADDR: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 443);
 const TLS_RELOAD_INTERVAL: Duration = Duration::from_secs(60);
@@ -105,7 +101,7 @@ async fn try_main(args: Args) -> Result<()> {
 
     tracing::info!(addr = %LISTEN_ADDR, "Listening for OTLP metrics");
 
-    server::serve(listener, tls, firezone_otel_ingest_proxy::router(ingest)).await?;
+    serve(listener, tls, router(ingest)).await?;
 
     Ok(())
 }
