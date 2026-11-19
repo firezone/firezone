@@ -191,6 +191,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
+      assert client.actor_id == token.actor_id
 
       assert is_reference(socket.assigns.session_ref)
       assert client.public_key == attrs["public_key"]
@@ -201,6 +202,19 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.last_seen_remote_ip_location_lat == 50.4333
       assert client.last_seen_remote_ip_location_lon == 30.5167
       assert client.last_seen_version == "1.3.0"
+    end
+
+    test "records the connecting actor on a new client before the session flush" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(ip: @client_remote_ip, token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      client = Map.fetch!(socket.assigns, :client)
+
+      assert Repo.get_by!(Portal.DeviceActor, device_id: client.id).actor_id == token.actor_id
     end
 
     test "creates a new client for service account identity" do
@@ -587,7 +601,7 @@ defmodule PortalAPI.Client.SocketTest do
       client = socket.assigns.client
 
       assert is_reference(socket.assigns.session_ref)
-      assert client.client_token_id == token.id
+      assert client.token_id == token.id
       assert client.last_seen_user_agent == connect_info.user_agent
       assert client.last_seen_remote_ip == @client_remote_ip
       assert client.last_seen_remote_ip_location_region == "Ukraine"
@@ -628,11 +642,25 @@ defmodule PortalAPI.Client.SocketTest do
   describe "connect/3 device attestation" do
     setup :setup_device_trust
 
-    test "attests the device from the presented certificate", %{pki: pki, token: token} do
+    test "attests the device from the presented certificate", %{
+      account: account,
+      pki: pki,
+      token: token,
+      trust_anchor: trust_anchor
+    } do
+      trust_anchor_fixture(account: account)
       connect_info = attested_connect_info(pki, token)
 
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
       assert socket.assigns.client.attested?
+
+      {:ok, leaf} = Portal.Crypto.X509.decode_der_certificate(connect_info.peer_data.ssl_cert, :otp)
+      not_after = Portal.Crypto.X509.not_after(leaf)
+      assert socket.assigns.client.attested_until == %{not_after | microsecond: {0, 6}}
+
+      assert socket.assigns.trust_anchor_certificate_ids ==
+               Enum.map(trust_anchor.certificates, & &1.id)
+
       assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert socket.assigns.client.last_attested_cert_fingerprint
 
@@ -650,7 +678,8 @@ defmodule PortalAPI.Client.SocketTest do
     test "authenticates from X.509 identity claims without a client token", %{
       account: account,
       actor: actor,
-      pki: pki
+      pki: pki,
+      trust_anchor: trust_anchor
     } do
       provider = x509_provider_fixture(account: account, is_disabled: false)
 
@@ -666,7 +695,10 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
       assert socket.assigns.subject.expires_at.microsecond == {0, 6}
       assert socket.assigns.client.attested?
-      assert is_nil(socket.assigns.client.client_token_id)
+      assert is_nil(socket.assigns.client.token_id)
+
+      assert socket.assigns.trust_anchor_certificate_ids ==
+               Enum.map(trust_anchor.certificates, & &1.id)
     end
 
     test "authenticates a service account from an X.509 actor ID claim", %{
@@ -688,7 +720,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
       assert socket.assigns.client.attested?
-      assert is_nil(socket.assigns.client.client_token_id)
+      assert is_nil(socket.assigns.client.token_id)
     end
 
     test "prefers an X.509 actor ID claim over an email claim", %{
@@ -1314,6 +1346,20 @@ defmodule PortalAPI.Client.SocketTest do
           "name" => "Same Client",
           "firezone_id" => "fz-same"
         })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.id == existing.id
+    end
+
+    test "an unattested connect resolves another actor's device with the same firezone_id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing = client_fixture(account: account, actor: actor_fixture(account: account), firezone_id: "fz-shared")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Shared", "firezone_id" => "fz-shared"})
 
       assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
       assert client.id == existing.id
@@ -1958,6 +2004,7 @@ defmodule PortalAPI.Client.SocketTest do
         proof.last_attested_cert_issuer,
         proof.last_attested_cert_serial,
         Map.get(proof.identifiers, :last_attested_mdm_device_id),
+        [],
         subject
       )
 
@@ -1996,12 +2043,18 @@ defmodule PortalAPI.Client.SocketTest do
     account = account_fixture()
     enable_feature(:x509_auth)
     pki = pki()
-    trust_anchor_fixture(account: account, certs: [pki.ca_der])
+    trust_anchor = trust_anchor_fixture(account: account, certs: [pki.ca_der])
 
     actor = actor_fixture(account: account)
     token = client_token_fixture(account: account, actor: actor)
 
-    %{account: account, actor: actor, pki: pki, token: encode_token(token)}
+    %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: encode_token(token),
+      trust_anchor: trust_anchor
+    }
   end
 
   defp assert_invalid_x509_identity(certificate, token \\ nil) do

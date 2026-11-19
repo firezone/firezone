@@ -60,7 +60,7 @@ fn completions_dir() -> PathBuf {
 
     Path::new(&out_dir)
         .ancestors()
-        .nth(3)
-        .expect("`OUT_DIR` is `<target>/<profile>/build/<crate>-<hash>/out`")
+        .nth(4)
+        .expect("`OUT_DIR` is `<target>/<profile>/build/<crate>/<hash>/out`")
         .join("completions")
 }

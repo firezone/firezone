@@ -1,4 +1,4 @@
-use crate::{ConnectedAs, PHOENIX_TOPIC};
+use crate::{ConnectedAs, PHOENIX_TOPIC, SessionConfig};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -27,6 +27,7 @@ use tunnel::messages::client::{
     InitClient, Peer, PublicKeyChanged, ResourceAuthorization, ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
+use tunnel::unroutable_packet::RoutingError;
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
@@ -87,6 +88,7 @@ pub enum Command {
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
     SetAdditionalHostCandidates(Vec<IpAddr>),
+    SetForceRelayedConnections(bool),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -166,11 +168,7 @@ impl Eventloop {
     pub(crate) fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        is_internet_resource_active: bool,
-        dns_servers: Vec<IpAddr>,
-        additional_host_candidates: Vec<IpAddr>,
-        flow_logs_dir: Option<std::path::PathBuf>,
-        local_flow_logs: bool,
+        config: SessionConfig,
         metrics_exporter: otel_metrics_export::Exporter,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
@@ -179,6 +177,14 @@ impl Eventloop {
         connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Result<Self> {
+        let SessionConfig {
+            listen_port,
+            is_internet_resource_active,
+            dns_servers,
+            additional_host_candidates,
+            flow_logs_dir,
+            local_flow_logs,
+        } = config;
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
         let mut clock = Clock::new();
@@ -186,6 +192,7 @@ impl Eventloop {
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
+            listen_port,
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
@@ -348,6 +355,15 @@ impl Eventloop {
                 };
 
                 tunnel.set_additional_host_candidates(ips, now);
+            }
+            Command::SetForceRelayedConnections(enabled) => {
+                let Some(tunnel) = self.tunnel.as_ref() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tracing::info!(enabled, "Setting force relayed connections");
+
+                tunnel.set_force_relayed_connections(enabled);
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -528,6 +544,13 @@ impl Eventloop {
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
                 || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
+            {
+                return Err(e);
+            }
+
+            if e.any_downcast_ref::<tunnel::UnroutablePacket>()
+                .is_some_and(|e| e.reason() == RoutingError::RoutingLoop)
+                && telemetry::feature_flags::fail_on_routing_loop()
             {
                 return Err(e);
             }

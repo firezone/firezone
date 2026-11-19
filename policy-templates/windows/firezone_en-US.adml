@@ -11,11 +11,15 @@
       <string id="accountSlug">Account Slug</string>
       <string id="hideAdminPortalMenuItem">Hide admin portal link</string>
       <string id="connectOnStart">Connect on start</string>
+      <string id="startOnLogin">Start on login</string>
       <string id="checkForUpdates">Automatically check for updates</string>
       <string id="supportURL">Support URL</string>
 
       <string id="SUPPORTED_FZ_GUI_1_5_0">
         Firezone GUI Client 1.5.0 or later
+      </string>
+      <string id="SUPPORTED_FZ_GUI_1_5_21">
+        Firezone GUI Client 1.5.21 or later
       </string>
 
       <string id="authURL_explain">
@@ -35,6 +39,9 @@
       </string>
       <string id="connectOnStart_explain">
         Try to connect to Firezone using the saved token and configuration when the client application starts. If the authentication token is expired, the client will start in a disconnected state. By default, the Client connects if it has a token saved in the keychain.
+      </string>
+      <string id="startOnLogin_explain">
+        Start the Firezone Client when the user signs in to Windows. Setting this policy overrides the user's setting. Requires the Firezone Client to have been run by that user at least once to take effect. To start it before then, use the Windows "Run these programs at user logon" policy. By default, the Client does not start on login.
       </string>
       <string id="checkForUpdates_explain">
         Configures whether the Firezone Client will automatically check for updates of new versions. By default, the Client will check for and notify the user of new versions.

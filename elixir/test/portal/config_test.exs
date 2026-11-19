@@ -241,26 +241,6 @@ defmodule Portal.ConfigTest do
       end
     end
 
-    test "accepts an HTTP or HTTPS OTLP collector endpoint" do
-      assert env_var_to_config!(Portal.Config.Definitions, :otlp_endpoint, %{}) == nil
-
-      for endpoint <- ["http://10.0.0.1:4318", "https://otlp.example.com"] do
-        assert env_var_to_config!(Portal.Config.Definitions, :otlp_endpoint, %{
-                 "OTLP_ENDPOINT" => endpoint
-               }) == endpoint
-      end
-    end
-
-    test "rejects an OTLP collector endpoint that is not an HTTP(S) URL" do
-      for endpoint <- ["10.0.0.1:4318", "ftp://otlp.example.com", "garbage"] do
-        assert_raise RuntimeError, ~r/OTLP_ENDPOINT/, fn ->
-          env_var_to_config!(Portal.Config.Definitions, :otlp_endpoint, %{
-            "OTLP_ENDPOINT" => endpoint
-          })
-        end
-      end
-    end
-
     test "returns the configured OTLP metrics endpoint" do
       endpoint = "https://otlp.example.com/v1/metrics"
 
@@ -313,6 +293,20 @@ defmodule Portal.ConfigTest do
       assert env_var_to_config!(Portal.Config.Definitions, :otel_exporter_otlp_headers, %{
                "OTEL_EXPORTER_OTLP_HEADERS" => " api-key = a%2Cb%3Dc , x-tenant=1"
              }) == [{"api-key", "a,b=c"}, {"x-tenant", "1"}]
+    end
+
+    test "parses the sign-up review approvers" do
+      assert env_var_to_config!(Portal.Config.Definitions, :sign_up_review_approvers, %{}) == []
+
+      assert env_var_to_config!(Portal.Config.Definitions, :sign_up_review_approvers, %{
+               "SIGN_UP_REVIEW_APPROVERS" => "alice@example.com,bob@example.com"
+             }) == ["alice@example.com", "bob@example.com"]
+
+      assert_raise RuntimeError, ~r/SIGN_UP_REVIEW_APPROVERS/, fn ->
+        env_var_to_config!(Portal.Config.Definitions, :sign_up_review_approvers, %{
+          "SIGN_UP_REVIEW_APPROVERS" => "alice@example.com,not-an-email"
+        })
+      end
     end
 
     test "rejects malformed OTLP headers without leaking their values" do
@@ -451,6 +445,49 @@ defmodule Portal.ConfigTest do
 
       assert env_var_to_config!(Test, :enum, %{"ENUM" => "Elixir.Portal.ConfigTest.Test"}) ==
                Portal.ConfigTest.Test
+    end
+  end
+
+  describe "source/0" do
+    test "returns the environment variables with the environment adapter" do
+      assert Portal.Config.source() == System.get_env()
+    end
+
+    test "requires the store endpoint with the azure adapter" do
+      put_system_env_override(:config_adapter, "azure")
+      put_system_env_override(:azure_app_configuration_endpoint, nil)
+
+      assert_raise RuntimeError,
+                   "AZURE_APP_CONFIGURATION_ENDPOINT must be set when CONFIG_ADAPTER is azure",
+                   fn -> Portal.Config.source() end
+    end
+  end
+
+  describe "load_azure_settings!/2" do
+    @tag :tmp_dir
+    test "boots from the cache when the store cannot be read", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "settings.json")
+      cached = %{"LOG_LEVEL" => %{value: "info", mode: :boot}}
+      Portal.Config.Azure.write_cache!(path, cached)
+
+      assert ExUnit.CaptureIO.capture_io(:stderr, fn ->
+               assert Portal.Config.load_azure_settings!(fn -> raise "HTTP 503" end, path) ==
+                        cached
+             end) =~ "App Configuration unavailable"
+    end
+
+    @tag :tmp_dir
+    test "fails when the store cannot be read and there is no cache", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "settings.json")
+
+      assert_raise RuntimeError, "HTTP 503", fn ->
+        Portal.Config.load_azure_settings!(fn -> raise "HTTP 503" end, path)
+      end
+    end
+
+    test "uses the store when it can be read" do
+      settings = %{"LOG_LEVEL" => %{value: "debug", mode: :boot}}
+      assert Portal.Config.load_azure_settings!(fn -> settings end, nil) == settings
     end
   end
 

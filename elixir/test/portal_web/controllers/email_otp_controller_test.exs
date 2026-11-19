@@ -13,11 +13,11 @@ defmodule PortalWeb.EmailOTPControllerTest do
     {:ok, account: account, provider: provider}
   end
 
-  defp get_cookie_state(conn) do
+  defp get_cookie(conn) do
     conn
     |> then(&Plug.Test.recycle_cookies(build_conn(), &1))
     |> Map.put(:secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
-    |> PortalWeb.Cookie.EmailOTP.fetch_state()
+    |> PortalWeb.Cookie.EmailOTP.fetch()
   end
 
   describe "sign_in/2" do
@@ -79,9 +79,9 @@ defmodule PortalWeb.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should be set with email and dummy passcode_id (no oracle)
-      state = get_cookie_state(conn)
-      assert state["email"] == nonexistent_email
-      assert state["one_time_passcode_id"] != nil
+      cookie = get_cookie(conn)
+      assert cookie.email == nonexistent_email
+      assert {:ok, _} = Ecto.UUID.cast(cookie.passcode_id)
     end
 
     test "sets cookie with real passcode_id when email exists", %{
@@ -106,9 +106,9 @@ defmodule PortalWeb.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Verify the cookie contains the email and a real passcode_id
-      state = get_cookie_state(conn)
-      assert state["email"] == actor.email
-      assert state["one_time_passcode_id"] != nil
+      cookie = get_cookie(conn)
+      assert cookie.email == actor.email
+      assert {:ok, _} = Ecto.UUID.cast(cookie.passcode_id)
 
       # Email should have been sent
       assert_received {:email, email}
@@ -136,9 +136,9 @@ defmodule PortalWeb.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should be set with real passcode_id
-      state = get_cookie_state(conn)
-      assert state["email"] == actor.email
-      assert state["one_time_passcode_id"] != nil
+      cookie = get_cookie(conn)
+      assert cookie.email == actor.email
+      assert {:ok, _} = Ecto.UUID.cast(cookie.passcode_id)
 
       # Email should have been sent
       assert_received {:email, email}
@@ -206,6 +206,90 @@ defmodule PortalWeb.EmailOTPControllerTest do
       refute_received {:email, _}
     end
 
+    test "rate limits all letter case and whitespace forms of an address together", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      on_exit(fn ->
+        Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, actor.email})
+      end)
+
+      [local, domain] = String.split(actor.email, "@")
+
+      for email <- [actor.email, String.upcase(actor.email), local <> "@" <> String.upcase(domain)] do
+        conn =
+          post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+            "email" => %{"email" => email}
+          })
+
+        assert flash(conn, :error) == nil
+        assert_received {:email, sent}
+        assert sent.to == [{"", actor.email}]
+      end
+
+      for email <- [String.capitalize(actor.email), " #{actor.email} "] do
+        conn =
+          post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+            "email" => %{"email" => email}
+          })
+
+        assert flash(conn, :error) ==
+                 "You're attempting to do that too quickly. Wait a few minutes and try again."
+      end
+
+      refute_received {:email, _}
+    end
+
+    test "clears the rate limit for every letter case form after a sign in", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      on_exit(fn ->
+        Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, actor.email})
+      end)
+
+      sign_in_path = ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
+      upcased_email = String.upcase(actor.email)
+
+      for _ <- 1..2 do
+        post(conn, sign_in_path, %{"email" => %{"email" => actor.email}})
+        assert_received {:email, _}
+      end
+
+      conn = post(conn, sign_in_path, %{"email" => %{"email" => upcased_email}})
+      assert_received {:email, email}
+      code = extract_code_from_email(email)
+
+      verified_conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{"secret" => code})
+
+      assert redirected_to(verified_conn) =~ "/sites"
+
+      for _ <- 1..3 do
+        conn = post(build_conn(), sign_in_path, %{"email" => %{"email" => actor.email}})
+        assert flash(conn, :error) == nil
+        assert_received {:email, _}
+      end
+    end
+
     # Note: This scenario shouldn't be possible in practice because a DB constraint
     # prevents api_client actors from having emails, but we test for defense in depth.
     test "does not send email for api_client actor type", %{
@@ -226,9 +310,9 @@ defmodule PortalWeb.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should still be set with dummy passcode_id (no oracle)
-      state = get_cookie_state(conn)
-      assert state["email"] == email
-      assert state["one_time_passcode_id"] != nil
+      cookie = get_cookie(conn)
+      assert cookie.email == email
+      assert {:ok, _} = Ecto.UUID.cast(cookie.passcode_id)
 
       # No email should have been sent
       refute_received {:email, _}
@@ -254,9 +338,9 @@ defmodule PortalWeb.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should still be set with dummy passcode_id (no oracle)
-      state = get_cookie_state(conn)
-      assert state["email"] == email
-      assert state["one_time_passcode_id"] != nil
+      cookie = get_cookie(conn)
+      assert cookie.email == email
+      assert {:ok, _} = Ecto.UUID.cast(cookie.passcode_id)
 
       # No email should have been sent
       refute_received {:email, _}
@@ -284,9 +368,9 @@ defmodule PortalWeb.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should still be set with dummy passcode_id (no oracle)
-      state = get_cookie_state(conn)
-      assert state["email"] == actor.email
-      assert state["one_time_passcode_id"] != nil
+      cookie = get_cookie(conn)
+      assert cookie.email == actor.email
+      assert {:ok, _} = Ecto.UUID.cast(cookie.passcode_id)
 
       # No email should have been sent
       refute_received {:email, _}
@@ -516,8 +600,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert redirected_to(conn) =~ "/sites"
 
       # The cookie should have been deleted after successful verification
-      state = get_cookie_state(conn)
-      assert state == %{}
+      assert get_cookie(conn) == nil
     end
 
     test "rejects portal sign-in when provider context is clients_only", %{
@@ -703,8 +786,43 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert redirected_to(conn) =~ "/sites"
 
       # Cookie should be cleared after successful verification
-      state = get_cookie_state(conn)
-      assert state == %{}
+      assert get_cookie(conn) == nil
+    end
+
+    test "accepts a code after another sign in is started for the same email", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      on_exit(fn ->
+        Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, actor.email})
+      end)
+
+      sign_in_path = ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
+
+      conn = post(conn, sign_in_path, %{"email" => %{"email" => actor.email}})
+      assert_received {:email, email}
+      code = extract_code_from_email(email)
+
+      other_conn = post(build_conn(), sign_in_path, %{"email" => %{"email" => actor.email}})
+      assert redirected_to(other_conn) =~ sign_in_path
+      assert_received {:email, _}
+
+      conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
+          "secret" => code
+        })
+
+      assert redirected_to(conn) =~ "/sites"
     end
 
     test "successfully authenticates account_user in client context", %{
@@ -748,8 +866,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert conn.resp_body =~ "client_redirect"
 
       # Email OTP cookie should be cleared
-      state = get_cookie_state(conn)
-      assert state == %{}
+      assert get_cookie(conn) == nil
     end
 
     test "successfully authenticates admin user in gui-client context", %{
@@ -793,8 +910,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert conn.resp_body =~ "client_redirect"
 
       # Email OTP cookie should be cleared
-      state = get_cookie_state(conn)
-      assert state == %{}
+      assert get_cookie(conn) == nil
     end
 
     test "successfully authenticates admin user in headless-client context", %{
@@ -839,8 +955,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert conn.resp_body =~ "FIREZONE_API_URL=ws://localhost:13001/"
 
       # Email OTP cookie should be cleared
-      state = get_cookie_state(conn)
-      assert state == %{}
+      assert get_cookie(conn) == nil
     end
 
     test "successfully authenticates account_user in headless-client context", %{
@@ -882,8 +997,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert conn.resp_body =~ "Copy to clipboard"
 
       # Email OTP cookie should be cleared
-      state = get_cookie_state(conn)
-      assert state == %{}
+      assert get_cookie(conn) == nil
     end
 
     test "rejects account_user in browser context (portal requires admin)", %{
@@ -1223,7 +1337,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
     conn
     |> then(&Plug.Test.recycle_cookies(build_conn(), &1))
     |> Map.put(:secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
-    |> Plug.Conn.fetch_cookies(signed: ["email_otp"])
+    |> Plug.Conn.fetch_cookies(encrypted: ["email_otp"])
   end
 
   # Helper to extract the OTP code from the email

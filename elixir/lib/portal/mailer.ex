@@ -11,6 +11,8 @@ defmodule Portal.Mailer do
   # dropped from every recipient field before delivery.
   @blocked_suffixes ["@firezone.invalid"]
 
+  @resend_batch_limit 100
+
   def deliver_with_rate_limit(email, config \\ []) do
     {key, config} = Keyword.pop(config, :rate_limit_key, {email.to, email.subject})
 
@@ -91,7 +93,7 @@ defmodule Portal.Mailer do
         email = put_adapter_client_options(email, opts)
         metadata = %{metadata | email: email}
 
-        {deliver_with_telemetry(email, opts, metadata), email}
+        {deliver_email(email, opts, metadata), email}
       else
         Logger.info("Skipping email because all recipients are undeliverable or suppressed",
           email_subject: inspect(email.subject)
@@ -130,6 +132,45 @@ defmodule Portal.Mailer do
       _ -> req_opts
     end
   end
+
+  # Resend requires a `to` address, so a bcc-only email goes out as one email per recipient.
+  defp deliver_email(%Email{to: []} = email, opts, metadata) do
+    if opts[:adapter] == Swoosh.Adapters.Resend do
+      deliver_individually(email, opts)
+    else
+      deliver_with_telemetry(email, opts, metadata)
+    end
+  end
+
+  defp deliver_email(email, opts, metadata), do: deliver_with_telemetry(email, opts, metadata)
+
+  defp deliver_individually(%Email{} = email, opts) do
+    (email.cc ++ email.bcc)
+    |> Enum.map(&%{email | to: [&1], cc: [], bcc: []})
+    |> Enum.chunk_every(@resend_batch_limit)
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {emails, index}, {:ok, acc} ->
+      emails = Enum.map(emails, &put_batch_idempotency_key(&1, index))
+
+      case Mailer.deliver_many(emails, opts) do
+        {:ok, results} ->
+          results =
+            Enum.zip_with(emails, results, &Map.put(&2, :recipients, email_addresses(&1)))
+
+          {:cont, {:ok, acc ++ results}}
+
+        {:error, _reason} = error ->
+          {:halt, error}
+      end
+    end)
+  end
+
+  defp put_batch_idempotency_key(%Email{} = email, 0), do: email
+
+  defp put_batch_idempotency_key(%Email{provider_options: %{idempotency_key: key}} = email, index),
+    do: Email.put_provider_option(email, :idempotency_key, "#{key}-#{index}")
+
+  defp put_batch_idempotency_key(%Email{} = email, _index), do: email
 
   defp deliver_with_telemetry(email, opts, metadata) do
     :telemetry.span([:swoosh, :deliver], metadata, fn ->

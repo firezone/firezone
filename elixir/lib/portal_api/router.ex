@@ -114,21 +114,6 @@ defmodule PortalAPI.Router do
     post "/flow_logs", FlowLogController, :create
   end
 
-  # Rate limiting by source IP precedes token verification, and by account
-  # follows it. The controller reads the body itself.
-  pipeline :otlp_metrics do
-    plug :require_otlp_metrics_forwarding
-    plug PortalAPI.Plugs.MetricsRateLimit, by: :ip
-    plug PortalAPI.Plugs.MetricsAuth
-    plug PortalAPI.Plugs.MetricsRateLimit, by: :account
-  end
-
-  scope "/v1", PortalAPI do
-    pipe_through :otlp_metrics
-
-    post "/metrics", OTLPMetricsController, :create
-  end
-
   # URL versioning was tried (a /v1 prefix scope duplicating every route
   # below) and rolled back before ever shipping as the documented surface -
   # see git history if reviving it. Versioning strategy is deliberately
@@ -247,13 +232,9 @@ defmodule PortalAPI.Router do
     scope "/stripe", Stripe do
       post "/webhooks", WebhookController, :handle_webhook
     end
-  end
 
-  def require_otlp_metrics_forwarding(%Plug.Conn{} = conn, _opts) do
-    if Portal.Config.get_env(:portal, :otlp_metrics_endpoint) do
-      conn
-    else
-      PortalAPI.ProblemDetails.send(conn, 404, "Not Found")
+    scope "/yc", YC do
+      post "/webhooks", WebhookController, :handle_webhook
     end
   end
 
@@ -271,11 +252,14 @@ defmodule PortalAPI.Router do
 
   # Ingestion has its own configured hostname and is not part of the REST API.
   def redirect_to_rest_api_url(%Plug.Conn{path_info: ["ingestion" | _]} = conn, _opts), do: conn
-  def redirect_to_rest_api_url(%Plug.Conn{path_info: ["v1", "metrics"]} = conn, _opts), do: conn
 
   def redirect_to_rest_api_url(%Plug.Conn{} = conn, _opts) do
     rest_api_url = Portal.Config.get_env(:portal, :rest_api_url)
-    flow_api_host = URI.parse(Portal.Config.get_env(:portal, :flow_logs_api_url)).host
+    flow_api_host =
+      case Portal.Config.get_env(:portal, :flow_logs_api_url) do
+        nil -> nil
+        url -> URI.parse(url).host
+      end
 
     if rest_api_url && conn.host != flow_api_host do
       redirect_to_canonical_host(conn, URI.parse(rest_api_url))

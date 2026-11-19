@@ -41,6 +41,11 @@ const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); 
 /// with 0700/0600 permissions.
 const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
 
+/// The UDP port Gateways listen on. It is fixed so that admins can forward it.
+const LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
+const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
+const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
+
 /// Exit code that tells systemd this failure needs an operator, so restarting cannot fix it.
 ///
 /// `EX_CONFIG` from `sysexits.h`; `firezone-gateway.service` lists it in `RestartPreventExitStatus`.
@@ -173,6 +178,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
+        git_sha = git_sha::git_sha(),
         system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         "`gateway` started logging"
     );
@@ -185,18 +191,8 @@ async fn try_main(cli: Cli) -> Result<()> {
         );
     }
 
-    if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
-        let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
-        let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
-
-        match std::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()) {
-            Ok(()) => tracing::info!("Set `core.rmem_max` to {recv_buf_size}",),
-            Err(e) => tracing::info!("Failed to increase `core.rmem_max`: {e}"),
-        };
-        match std::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()) {
-            Ok(()) => tracing::info!("Set `core.wmem_max` to {send_buf_size}",),
-            Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
-        };
+    if cli.no_inc_buf {
+        tracing::info!("`FIREZONE_NO_INC_BUF` is unused");
     }
 
     #[cfg(target_os = "linux")]
@@ -265,8 +261,8 @@ async fn try_main(cli: Cli) -> Result<()> {
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
 
     let max_partition_time = cli
+        .partition
         .max_partition_time
-        .map(|d| d.into())
         .unwrap_or(DEFAULT_MAX_PARTITION_TIME);
 
     let portal = PhoenixChannel::disconnected(
@@ -292,6 +288,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         let mut tunnel = GatewayTunnel::new(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
+            LISTEN_PORT,
             nameservers,
             clock.now(),
         )
@@ -449,14 +446,12 @@ struct Cli {
     )]
     additional_host_candidates: Vec<IpAddr>,
 
-    /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
-    #[arg(long, env = "FIREZONE_NO_INC_BUF", default_value_t = false)]
+    /// Deprecated: unused.
+    #[arg(long, env = "FIREZONE_NO_INC_BUF", hide = true)]
     no_inc_buf: bool,
 
-    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
-    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
-    #[arg(short, long, env = "FIREZONE_MAX_PARTITION_TIME")]
-    max_partition_time: Option<humantime::Duration>,
+    #[command(flatten)]
+    partition: bin_shared::max_partition_time::MaxPartitionTimeArgs,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -477,10 +472,6 @@ impl fmt::Display for LogFormat {
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
-    }
-
-    fn is_inc_buf_allowed(&self) -> bool {
-        !self.no_inc_buf
     }
 }
 

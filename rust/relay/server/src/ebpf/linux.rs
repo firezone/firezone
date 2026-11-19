@@ -559,7 +559,7 @@ where
     // Get the number of CPUs and create a value for each CPU
     let num_cpus =
         aya::util::nr_cpus().map_err(|(_, e)| anyhow::anyhow!("Failed to get CPU count: {}", e))?;
-    let values = vec![value; num_cpus];
+    let values = vec![value; usize::try_from(num_cpus.get())?];
 
     per_cpu_map
         .set(0, PerCpuValues::try_from(values)?, 0)

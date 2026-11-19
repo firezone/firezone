@@ -4,7 +4,8 @@ defmodule Portal.OAuth.ClientMetadata do
 
   MCP clients identify themselves with an HTTPS URL that serves a JSON document
   describing them, so there is no registration step and no client secret. The
-  document is fetched on demand, checked, and cached.
+  document is fetched on demand and checked. It is cached only when the caller
+  asks for it with `store: true`, which only the signed-in consent screen does.
 
   The URL comes from whoever started the authorization request, so the fetch is
   treated as hostile: `Portal.Req.SSRFProtection` is attached explicitly to
@@ -14,6 +15,7 @@ defmodule Portal.OAuth.ClientMetadata do
   """
 
   alias Portal.OAuthClient
+  alias Portal.Req.Bounded
   alias __MODULE__.Database
 
   require Logger
@@ -29,7 +31,9 @@ defmodule Portal.OAuth.ClientMetadata do
   # img tag it is not worth storing and serving back.
   @icon_types ~w[image/png image/jpeg image/gif image/webp image/x-icon image/vnd.microsoft.icon]
 
-  @receive_timeout :timer.seconds(5)
+  @timeout :timer.seconds(5)
+  # Shared by the logo and the favicon attempt.
+  @icon_timeout :timer.seconds(5)
   # Client ID Metadata Documents are deliberately small. Keeping the draft's
   # recommended 5 KiB limit also prevents a pre-authentication egress endpoint
   # from becoming a cheap memory-amplification primitive.
@@ -39,14 +43,17 @@ defmodule Portal.OAuth.ClientMetadata do
   @max_cache :timer.hours(24)
 
   @doc """
-  Returns the client for `client_id`, fetching and caching the document when
-  the cached copy is missing or stale.
+  Returns the client for `client_id`, fetching the document when the cached
+  copy is missing or stale.
+
+  A fetched document is only returned, not stored, unless `store: true` is
+  given. Then it is cached and the returned client has an id.
   """
-  def fetch(client_id) do
+  def fetch(client_id, opts \\ []) do
     with :ok <- validate_client_id(client_id) do
       case Database.fetch_fresh_client(client_id) do
         {:ok, client} -> {:ok, client}
-        :error -> fetch_and_cache(client_id)
+        :error -> fetch_and_cache(client_id, Keyword.get(opts, :store, false))
       end
     end
   end
@@ -111,11 +118,13 @@ defmodule Portal.OAuth.ClientMetadata do
     end)
   end
 
-  defp fetch_and_cache(client_id) do
+  defp fetch_and_cache(client_id, store?) do
     with {:ok, response} <- get(client_id),
          {:ok, document} <- decode(response.body),
          :ok <- validate_document(document, client_id) do
-      upsert(document, client_id, cache_until(response), fetch_icon(document), origin(client_id))
+      document
+      |> changeset(client_id, cache_until(response), fetch_icon(document), origin(client_id))
+      |> save(store?)
     else
       {:error, reason} = error ->
         Logger.info("OAuth client metadata fetch failed",
@@ -128,48 +137,20 @@ defmodule Portal.OAuth.ClientMetadata do
   end
 
   defp get(client_id, max_bytes \\ @max_body_bytes) do
-    deadline = System.monotonic_time(:millisecond) + @receive_timeout
-
-    protected_get(
-      client_id,
+    client_id
+    |> protected_get(
       headers: [{"accept", "application/json"}],
-      receive_timeout: @receive_timeout,
-      request_timeout: @receive_timeout,
-      max_retries: 0,
-      raw: true,
-      redirect: false,
-      into: &collect(&1, &2, max_bytes, deadline)
+      max_body_bytes: max_bytes,
+      timeout: @timeout,
+      redirect: false
     )
     |> case do
       {:ok, %Req.Response{status: 200} = response} -> {:ok, response}
       {:ok, %Req.Response{status: status}} -> {:error, {:unexpected_status, status}}
+      {:error, %Bounded.BodyTooLargeError{}} -> {:error, :document_too_large}
       {:error, reason} -> {:error, reason}
     end
   end
-
-  # Halting mid-body keeps an oversized or endless document from being read into
-  # memory, which a plain byte check after the fact would not.
-  defp collect(event, {request, response} = state, max_bytes, deadline) do
-    if System.monotonic_time(:millisecond) < deadline do
-      collect(event, state, max_bytes)
-    else
-      {:halt, {request, %{response | body: :timed_out}}}
-    end
-  end
-
-  defp collect({:data, data}, {request, response}, max_bytes) do
-    body = (response.body || "") <> data
-
-    if byte_size(body) > max_bytes do
-      {:halt, {request, %{response | body: :too_large}}}
-    else
-      {:cont, {request, %{response | body: body}}}
-    end
-  end
-
-  defp decode(:timed_out), do: {:error, :request_timeout}
-
-  defp decode(:too_large), do: {:error, :document_too_large}
 
   # Configured test adapters can return decoded maps directly. Real responses
   # are fetched raw and parsed only after the streaming byte limit is applied.
@@ -284,9 +265,11 @@ defmodule Portal.OAuth.ClientMetadata do
   # it just shows its initial instead. Tried in the order a client would expect
   # it to be honoured.
   defp fetch_icon(document) do
+    deadline = System.monotonic_time(:millisecond) + @icon_timeout
+
     [document["logo_uri"], favicon_uri(document["client_uri"])]
     |> Enum.reject(&is_nil/1)
-    |> Enum.find_value(&get_icon/1)
+    |> Enum.find_value(&get_icon(&1, deadline))
   end
 
   defp favicon_uri(nil), do: nil
@@ -301,21 +284,14 @@ defmodule Portal.OAuth.ClientMetadata do
     end
   end
 
-  defp get_icon(uri) do
+  defp get_icon(uri, deadline) do
     with %URI{scheme: "https"} <- URI.parse(uri),
-         {:ok, %Req.Response{status: 200, body: body} = response} when is_binary(body) <-
-           protected_get(
-             uri,
-             [
-               receive_timeout: @receive_timeout,
-               max_retries: 0,
-               redirect: true,
-               into: &collect(&1, &2, @max_icon_bytes)
-             ]
-           ),
+         timeout when timeout > 0 <- deadline - System.monotonic_time(:millisecond),
+         {:ok, %Req.Response{status: 200, body: body} = response}
+         when is_binary(body) and body != "" <-
+           protected_get(uri, max_body_bytes: @max_icon_bytes, timeout: timeout),
          type when is_binary(type) <- content_type(response),
-         true <- type in @icon_types,
-         true <- byte_size(body) in 1..@max_icon_bytes do
+         true <- type in @icon_types do
       {body, type}
     else
       _other -> nil
@@ -332,7 +308,7 @@ defmodule Portal.OAuth.ClientMetadata do
     end
   end
 
-  defp upsert(document, client_id, metadata_expires_at, icon, origin) do
+  defp changeset(document, client_id, metadata_expires_at, icon, origin) do
     {ips, region, city} = origin
     {:ok, method} = authentication_method(document)
 
@@ -358,8 +334,11 @@ defmodule Portal.OAuth.ClientMetadata do
          redirect_uris resolved_ips resolved_ip_location_region
          resolved_ip_location_city metadata_expires_at]a
     )
-    |> Database.upsert_client()
+    |> OAuthClient.changeset()
   end
+
+  defp save(changeset, true), do: Database.upsert_client(changeset)
+  defp save(changeset, false), do: Ecto.Changeset.apply_action(changeset, :insert)
 
   # Where the document was actually served from. Recorded for the consent
   # screen: the name and logo are whatever the client wrote about itself, so
@@ -399,13 +378,10 @@ defmodule Portal.OAuth.ClientMetadata do
   defp protected_get(uri, opts) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
-    request =
-      (config[:req_opts] || [])
-      |> Req.new()
-      |> Portal.Req.SSRFProtection.attach(config[:ssrf_protection_opts] || [])
-      |> Req.merge(url: uri, allow_private_ips: false)
-
-    Req.get(request, opts)
+    (config[:req_opts] || [])
+    |> Req.new()
+    |> Portal.Req.SSRFProtection.attach(config[:ssrf_protection_opts] || [])
+    |> Bounded.request([url: uri, allow_private_ips: false, max_retries: 0, raw: true] ++ opts)
   end
 
   defp cache_until(%Req.Response{} = response) do

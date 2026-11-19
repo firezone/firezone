@@ -7,7 +7,7 @@ defmodule PortalWeb.ServiceAccounts do
   alias Portal.Actor
   alias Portal.Authentication
   alias Portal.Changes.Change
-  alias Portal.ClientToken
+  alias Portal.DeviceToken
   alias Portal.Presence
   alias Portal.PubSub
   alias Phoenix.LiveView.AsyncResult
@@ -15,6 +15,10 @@ defmodule PortalWeb.ServiceAccounts do
   import Ecto.Changeset
 
   require Logger
+
+  @form_events ~w[validate save create_service_account]
+
+  @selected_actor_events ~w[open_actor_edit_form cancel_actor_edit_form save create_token delete_token]
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
@@ -43,6 +47,7 @@ defmodule PortalWeb.ServiceAccounts do
         ],
         loader: &load_actors/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -525,10 +530,15 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   def handle_event("delete_token", %{"id" => token_id}, socket) do
-    token = Database.get_client_token_by_id(token_id, socket.assigns.subject)
+    token =
+      Database.get_client_token_by_id(
+        token_id,
+        socket.assigns.selected_actor.id,
+        socket.assigns.subject
+      )
 
     if token do
-      case Database.delete(token, socket.assigns.subject) do
+      case Database.delete_client_token(token, socket.assigns.subject) do
         {:ok, _} ->
           tokens =
             Database.get_client_tokens_for_actor(
@@ -618,7 +628,7 @@ defmodule PortalWeb.ServiceAccounts do
           Non-human accounts used for automated access to resources.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/service-accounts" />
+          <Navigation.docs_action show_label size="md" path="/deploy/service-accounts" />
         </:action>
         <:action>
           <Form.button style="primary" icon="ri-add-line" phx-click="open_new_actor_panel">
@@ -658,7 +668,7 @@ defmodule PortalWeb.ServiceAccounts do
         >
           <:col :let={actor} field={{:actors, :name}} label="name">
             <div class="flex items-center gap-2.5">
-              <ActorComponents.actor_type_icon_with_badge actor={actor} />
+              <ActorComponents.actor_avatar account={@account} actor={actor} />
               <div>
                 <div class="font-medium text-heading group-hover:text-brand transition-colors">
                   {actor.name}
@@ -710,6 +720,10 @@ defmodule PortalWeb.ServiceAccounts do
     </div>
     """
   end
+
+  defp stale_event?(event, %{actor_form: %{form: nil}}) when event in @form_events, do: true
+  defp stale_event?(event, %{selected_actor: nil}) when event in @selected_actor_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp base_actor_assigns do
     [
@@ -870,7 +884,7 @@ defmodule PortalWeb.ServiceAccounts do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.Actor
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Device
     alias Portal.Presence
     alias Portal.Safe
@@ -959,7 +973,6 @@ defmodule PortalWeb.ServiceAccounts do
         |> where([actors: a], a.id in ^actor_ids)
         |> Safe.scoped(subject)
         |> Safe.all()
-        |> Enum.map(&%{&1 | identity_count: 0})
 
       actors_by_id = Map.new(actors, &{&1.id, &1})
 
@@ -985,7 +998,7 @@ defmodule PortalWeb.ServiceAccounts do
 
     def get_client_tokens_for_actor(actor_id, subject) do
       tokens =
-        from(c in ClientToken, as: :client_tokens)
+        from(c in DeviceToken, as: :client_tokens)
         |> where([client_tokens: c], c.actor_id == ^actor_id)
         |> order_by([client_tokens: c], desc: c.inserted_at)
         |> Safe.scoped(subject)
@@ -1001,24 +1014,33 @@ defmodule PortalWeb.ServiceAccounts do
 
       devices_by_token_id =
         from(d in Device,
-          where: d.client_token_id in ^token_ids,
-          distinct: d.client_token_id,
-          order_by: [asc: d.client_token_id, desc: d.last_seen_at]
+          where: d.token_id in ^token_ids,
+          distinct: d.token_id,
+          order_by: [asc: d.token_id, desc: d.last_seen_at]
         )
         |> Safe.scoped(subject)
         |> Safe.all()
-        |> Map.new(&{&1.client_token_id, &1})
+        |> Map.new(&{&1.token_id, &1})
 
       Enum.map(tokens, fn token ->
         %{token | last_used_device: Map.get(devices_by_token_id, token.id)}
       end)
     end
 
-    def get_client_token_by_id(token_id, subject) do
-      from(c in ClientToken, as: :client_tokens)
-      |> where([client_tokens: c], c.id == ^token_id)
+    def get_client_token_by_id(token_id, actor_id, subject) do
+      from(c in DeviceToken, as: :client_tokens)
+      |> where([client_tokens: c], c.id == ^token_id and c.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.one()
+    end
+
+    def delete_client_token(token, subject) do
+      from(t in DeviceToken, where: t.account_id == ^token.account_id and t.id == ^token.id)
+      |> Portal.Authentication.delete_client_tokens(subject)
+      |> case do
+        {:error, :unauthorized} = error -> error
+        {_count, _} -> {:ok, token}
+      end
     end
 
     def get_groups_for_actor(actor_id, subject) do

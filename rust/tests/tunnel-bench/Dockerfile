@@ -8,6 +8,5 @@ COPY tunnel-bench /usr/local/bin/
 
 WORKDIR /tmp
 
-# The Bare Metal VM brings up no network interfaces, and its socket buffer limits are too small
-# for the event loop to keep up without dropping packets.
-ENTRYPOINT ["sh", "-c", "ip link set lo up && echo 16777216 > /proc/sys/net/core/rmem_max && echo 16777216 > /proc/sys/net/core/wmem_max && TUNNEL_BENCH_JSON=/tmp/tunnel-bench.json exec tunnel-bench --bench"]
+# The Bare Metal VM brings up no network interfaces.
+ENTRYPOINT ["sh", "-c", "ip link set lo up && TUNNEL_BENCH_JSON=/tmp/tunnel-bench.json exec tunnel-bench --bench"]

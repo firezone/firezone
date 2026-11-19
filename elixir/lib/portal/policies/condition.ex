@@ -105,8 +105,8 @@ defmodule Portal.Policies.Condition do
         changeset
         |> validate_required(:operator)
         |> validate_inclusion(:operator, valid_operators_for_property(:client_verified))
-        |> validate_length(:values, min: 1, max: 1)
-        |> validate_list(:values, :boolean)
+        |> validate_required(:values)
+        |> validate_change(:values, &validate_true/2)
 
       {_data_or_changes, nil} ->
         changeset
@@ -127,4 +127,7 @@ defmodule Portal.Policies.Condition do
       end
     end)
   end
+
+  defp validate_true(:values, ["true"]), do: []
+  defp validate_true(:values, _values), do: [values: ~s(must be ["true"])]
 end

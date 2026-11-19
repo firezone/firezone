@@ -1,7 +1,7 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.{Banner, Billing, EmailSuppression, Mailer, MetricsToken, SlugRegistry}
-  alias Portal.Workers.DeleteAccount
+  alias Portal.{Banner, Billing, EmailSuppression, Mailer, SlugRegistry}
+  alias Portal.Workers.{DeleteAccount, SyncStripeCustomer}
   alias Portal.Ops.AuthProviderNotices
 
   @max_bcc_per_message 50
@@ -141,7 +141,8 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  Deletes a disabled account at once and queues the cancellation of its Stripe subscriptions.
+  Deletes a disabled account at once and queues the cancellation of its Stripe subscriptions
+  and the delete of its profile photos.
   """
   def delete_disabled_account(id) do
     {:ok, _account} = Database.delete_disabled_account(id)
@@ -175,6 +176,46 @@ defmodule Portal.Ops do
           :aborted
       end
     end
+  end
+
+  @stripe_syncs_per_second 10
+
+  @doc """
+  Queues a Stripe sync for every account with a Stripe customer, so each
+  customer gets the account ID, name and slug of its account. The jobs are
+  spread out to stay under the Stripe rate limit. Run it once per region.
+  Running it again only sends the same values again.
+  """
+  def sync_stripe_customers do
+    if Billing.enabled?() do
+      account_ids = Database.stripe_customer_account_ids()
+
+      IO.puts(
+        "About to queue a Stripe sync for #{length(account_ids)} account(s) in region #{SlugRegistry.region()}. Continue? [y/N]"
+      )
+
+      case IO.gets("") do
+        answer when answer in ["y\n", "Y\n"] ->
+          count = queue_stripe_syncs(account_ids)
+
+          IO.puts("Queued #{count} Stripe sync job(s).")
+          {:ok, count}
+
+        _ ->
+          IO.puts("Aborted.")
+          :aborted
+      end
+    else
+      IO.puts("Billing is disabled, so there are no Stripe customers to sync.")
+      {:error, :billing_disabled}
+    end
+  end
+
+  @doc """
+  Changes the slug of an account. The old slug keeps pointing to the account.
+  """
+  def set_account_slug(account_id, slug) do
+    Database.set_account_slug(account_id, slug |> String.trim() |> String.downcase())
   end
 
   @doc """
@@ -213,51 +254,60 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  Signs OTLP metrics tokens with a new key on every connected node, then
-  has each Client and Gateway channel push a fresh `metrics_config`. Tokens
-  signed with the old key stop verifying at once.
-
-  Returns `{:error, nodes}` naming the nodes that kept the old key.
+  Sets the metrics the Clients and Gateways of every account on `plan` export to
+  those matching `patterns`, in which `*` matches any run of characters (`["*"]`
+  for all). `plan` is a `Portal.Billing.plan_type/1` value. Channels push the new
+  `metrics_config` on their next token refresh.
   """
-  def rotate_metrics_token_key do
-    salt = Database.insert_metrics_token_signing_salt()
-    :ok = MetricsToken.activate_signing_salt(salt)
-    remote_nodes = Node.list()
-
-    remote_nodes
-    |> :erpc.multicall(MetricsToken, :activate_signing_salt, [salt], 5_000)
-    |> Enum.zip(remote_nodes)
-    |> Enum.reject(&match?({{:ok, :ok}, _node}, &1))
-    |> case do
-      [] -> :ok
-      failed -> {:error, Enum.map(failed, fn {_result, node} -> node end)}
+  def set_plan_metrics(plan, patterns) when is_atom(plan) or is_binary(plan) do
+    with {:ok, metrics} <- Database.upsert_plan_metrics(%{plan: to_string(plan), patterns: patterns}) do
+      {:ok, metrics.patterns}
     end
   end
 
   @doc """
-  Sets which metrics the account's Clients and Gateways export: `nil` for none,
-  or a non-empty list of metric name patterns in which `*` matches any run of
-  characters (`["*"]` for all). Their channels push the new `metrics_config`
-  once the change arrives through replication.
+  Sets the metrics the account's Clients and Gateways export on top of those of
+  its plan to those matching `patterns`. Their channels push the new
+  `metrics_config` once the change arrives through replication.
   """
-  def set_metrics_export(account_id, nil), do: update_metrics_export(account_id, nil)
-
-  def set_metrics_export(account_id, [_ | _] = patterns) do
-    true = Enum.all?(patterns, &is_binary/1)
-    update_metrics_export(account_id, patterns)
-  end
-
-  defp update_metrics_export(account_id, patterns) do
-    {1, _} = Database.update_account(account_id, metrics_export: patterns)
-    :ok
+  def set_account_metrics(account_id, patterns) do
+    with {:ok, metrics} <-
+           Database.upsert_account_metrics(%{account_id: account_id, patterns: patterns}) do
+      {:ok, metrics.patterns}
+    end
   end
 
   @doc """
-  Sets how often the account's Clients and Gateways export metrics.
+  Removes the patterns set with `set_plan_metrics/2`.
   """
-  def set_metrics_export_interval(account_id, secs) when is_integer(secs) and secs > 0 do
-    {1, _} = Database.update_account(account_id, metrics_export_interval_secs: secs)
-    :ok
+  def remove_plan_metrics(plan) when is_atom(plan) or is_binary(plan),
+    do: Database.delete_metrics(Portal.PlanMetrics, :plan, to_string(plan))
+
+  @doc """
+  Removes the patterns set with `set_account_metrics/2`.
+  """
+  def remove_account_metrics(account_id),
+    do: Database.delete_metrics(Portal.AccountMetrics, :account_id, account_id)
+
+  @doc """
+  The patterns set with `set_plan_metrics/2`, or `nil`.
+  """
+  def get_plan_metrics(plan) when is_atom(plan) or is_binary(plan),
+    do: Database.get_patterns(Portal.PlanMetrics, :plan, to_string(plan))
+
+  @doc """
+  The patterns set with `set_account_metrics/2`, or `nil`.
+  """
+  def get_account_metrics(account_id),
+    do: Database.get_patterns(Portal.AccountMetrics, :account_id, account_id)
+
+  @doc """
+  The metric name patterns the account's Clients and Gateways export.
+  """
+  def effective_metrics(account_id) do
+    account_id
+    |> Database.fetch_account!()
+    |> Portal.AccountMetrics.effective_patterns()
   end
 
   @doc"""
@@ -621,6 +671,16 @@ defmodule Portal.Ops do
     [scheduled_at: scheduled_at]
   end
 
+  defp queue_stripe_syncs(account_ids) do
+    account_ids
+    |> Enum.with_index()
+    |> Enum.map(fn {account_id, index} ->
+      SyncStripeCustomer.new(%{account_id: account_id}, schedule_in: div(index, @stripe_syncs_per_second))
+    end)
+    |> Oban.insert_all()
+    |> length()
+  end
+
   defp claim_slugs(slugs) do
     slugs
     |> Enum.reduce_while({:ok, 0}, fn %{slug: slug, account_id: account_id}, {:ok, count} ->
@@ -669,10 +729,21 @@ defmodule Portal.Ops do
           |> Safe.one!()
 
         with {:ok, account} <- account |> Safe.unscoped() |> Safe.delete(),
-             {:ok, _job} <- maybe_insert_delete_subscription_job(account) do
+             {:ok, _job} <- maybe_insert_delete_subscription_job(account),
+             {:ok, _job} <- Portal.Avatars.DeleteAccount.insert(account.id) do
           {:ok, account}
         end
       end)
+    end
+
+    def set_account_slug(account_id, slug) do
+      from(a in Account, where: a.id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.one!()
+      |> Ecto.Changeset.cast(%{slug: slug}, [:slug])
+      |> Ecto.Changeset.validate_required(:slug)
+      |> Safe.unscoped()
+      |> Safe.update()
     end
 
     def insert(banner) do
@@ -822,6 +893,15 @@ defmodule Portal.Ops do
       |> Safe.all()
     end
 
+    def stripe_customer_account_ids do
+      from(a in Account,
+        where: not is_nil(fragment("?->'stripe'->>'customer_id'", a.metadata)),
+        select: a.id
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
     def accounts_missing_deletion_jobs do
       delete_jobs_query =
         [worker: Portal.Workers.DeleteAccount, state: Oban.Job.unique_states(:incomplete)]
@@ -864,20 +944,40 @@ defmodule Portal.Ops do
       |> Safe.update_all([])
     end
 
-    def insert_metrics_token_signing_salt do
-      salt = :crypto.strong_rand_bytes(32)
-
-      {1, _} =
-        Safe.unscoped()
-        |> Safe.insert_all("metrics_token_signing_salts", [%{salt: salt}])
-
-      salt
+    def upsert_plan_metrics(attrs) do
+      %Portal.PlanMetrics{}
+      |> Ecto.Changeset.cast(attrs, [:plan, :patterns])
+      |> Safe.unscoped()
+      |> Safe.insert(on_conflict: {:replace, [:patterns, :updated_at]}, conflict_target: :plan)
     end
 
-    def update_account(account_id, changes) do
+    def upsert_account_metrics(attrs) do
+      %Portal.AccountMetrics{}
+      |> Ecto.Changeset.cast(attrs, [:account_id, :patterns])
+      |> Safe.unscoped()
+      |> Safe.insert(
+        on_conflict: {:replace, [:patterns, :updated_at]},
+        conflict_target: :account_id
+      )
+    end
+
+    def delete_metrics(schema, key, value) do
+      case from(m in schema, where: field(m, ^key) == ^value) |> Safe.unscoped() |> Safe.delete_all() do
+        {1, _} -> :ok
+        {0, _} -> {:error, :not_found}
+      end
+    end
+
+    def get_patterns(schema, key, value) do
+      from(m in schema, where: field(m, ^key) == ^value, select: m.patterns)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def fetch_account!(account_id) do
       from(a in Account, where: a.id == ^account_id)
       |> Safe.unscoped()
-      |> Safe.update_all(set: changes)
+      |> Safe.one!()
     end
 
     defp maybe_filter_account_ids(query, :all) do

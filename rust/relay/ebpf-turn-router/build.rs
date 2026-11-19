@@ -13,7 +13,12 @@
 fn main() {
     use which::which;
     let bpf_linker = which("bpf-linker").expect("bpf-linker not found in $PATH");
-    println!("cargo:rerun-if-changed={}", bpf_linker.to_str().unwrap());
+    println!(
+        "cargo:rerun-if-changed={}",
+        bpf_linker
+            .to_str()
+            .expect("bpf-linker path should be valid UTF-8")
+    );
 }
 
 #[cfg(not(target_os = "linux"))]

@@ -52,6 +52,10 @@ pub fn wintun_tcp_coalescing() -> bool {
     FEATURE_FLAGS.wintun_tcp_coalescing()
 }
 
+pub fn fail_on_routing_loop() -> bool {
+    FEATURE_FLAGS.fail_on_routing_loop()
+}
+
 /// The current value of every feature flag, by name.
 pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -60,6 +64,7 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         drop_llmnr_nxdomain_responses,
         stream_logs,
         wintun_tcp_coalescing,
+        fail_on_routing_loop,
     } = &*FEATURE_FLAGS;
 
     [
@@ -75,6 +80,10 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         (
             "wintun_tcp_coalescing",
             wintun_tcp_coalescing.load(Ordering::Relaxed),
+        ),
+        (
+            "fail_on_routing_loop",
+            fail_on_routing_loop.load(Ordering::Relaxed),
         ),
     ]
 }
@@ -192,6 +201,8 @@ struct FeatureFlagsResponse {
     stream_logs: bool,
     #[serde(default)]
     wintun_tcp_coalescing: bool,
+    #[serde(default)]
+    fail_on_routing_loop: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -207,6 +218,7 @@ struct FeatureFlags {
     drop_llmnr_nxdomain_responses: AtomicBool,
     stream_logs: RwLock<LogFilter>,
     wintun_tcp_coalescing: AtomicBool,
+    fail_on_routing_loop: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -223,6 +235,7 @@ impl FeatureFlags {
             drop_llmnr_nxdomain_responses,
             stream_logs,
             wintun_tcp_coalescing,
+            fail_on_routing_loop,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -232,6 +245,8 @@ impl FeatureFlags {
             .store(drop_llmnr_nxdomain_responses, Ordering::Relaxed);
         self.wintun_tcp_coalescing
             .store(wintun_tcp_coalescing, Ordering::Relaxed);
+        self.fail_on_routing_loop
+            .store(fail_on_routing_loop, Ordering::Relaxed);
 
         let log_filter = if stream_logs {
             LogFilter::parse(payloads.stream_logs)
@@ -258,6 +273,10 @@ impl FeatureFlags {
     fn wintun_tcp_coalescing(&self) -> bool {
         self.wintun_tcp_coalescing.load(Ordering::Relaxed)
     }
+
+    fn fail_on_routing_loop(&self) -> bool {
+        self.fail_on_routing_loop.load(Ordering::Relaxed)
+    }
 }
 
 fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
@@ -272,6 +291,7 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
         ),
         stream_logs: env_or("FZFF_stream_logs", flags.stream_logs),
         wintun_tcp_coalescing: env_or("FZFF_WINTUN_TCP_COALESCING", flags.wintun_tcp_coalescing),
+        fail_on_routing_loop: env_or("FZFF_FAIL_ON_ROUTING_LOOP", flags.fail_on_routing_loop),
     }
 }
 

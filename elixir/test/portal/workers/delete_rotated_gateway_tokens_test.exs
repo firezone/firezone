@@ -5,19 +5,19 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokensTest do
   import Portal.DeviceFixtures
   import Portal.TokenFixtures
 
-  alias Portal.GatewayToken
+  alias Portal.DeviceToken
   alias Portal.Workers.DeleteRotatedGatewayTokens
 
   describe "perform/1" do
     test "deletes rotated tokens past the grace period" do
       gateway = gateway_fixture()
-      grace_hours = GatewayToken.rotation_grace_hours()
+      grace_hours = DeviceToken.rotation_grace_hours()
       rotated_at = DateTime.add(DateTime.utc_now(), -(grace_hours + 1), :hour)
       token = gateway_token_fixture(gateway: gateway, rotated_at: rotated_at)
 
       assert :ok = perform_job(DeleteRotatedGatewayTokens, %{})
 
-      refute Repo.get_by(GatewayToken, account_id: token.account_id, id: token.id)
+      refute Repo.get_by(DeviceToken, account_id: token.account_id, id: token.id)
     end
 
     test "keeps rotated tokens within the grace period" do
@@ -26,7 +26,7 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokensTest do
 
       assert :ok = perform_job(DeleteRotatedGatewayTokens, %{})
 
-      assert Repo.get_by(GatewayToken, account_id: token.account_id, id: token.id)
+      assert Repo.get_by(DeviceToken, account_id: token.account_id, id: token.id)
     end
 
     test "keeps active tokens" do
@@ -35,7 +35,7 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokensTest do
 
       assert :ok = perform_job(DeleteRotatedGatewayTokens, %{})
 
-      assert Repo.get_by(GatewayToken, account_id: token.account_id, id: token.id)
+      assert Repo.get_by(DeviceToken, account_id: token.account_id, id: token.id)
     end
 
     test "keeps multi-owner site tokens" do
@@ -43,27 +43,26 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokensTest do
 
       assert :ok = perform_job(DeleteRotatedGatewayTokens, %{})
 
-      assert Repo.get_by(GatewayToken, account_id: token.account_id, id: token.id)
+      assert Repo.get_by(DeviceToken, account_id: token.account_id, id: token.id)
     end
 
     test "keeps multi-owner site tokens even with a stale rotated_at" do
-      grace_hours = GatewayToken.rotation_grace_hours()
+      grace_hours = DeviceToken.rotation_grace_hours()
       rotated_at = DateTime.add(DateTime.utc_now(), -(grace_hours + 1), :hour)
 
       # No code path sets rotated_at on site tokens today; the reaper only
       # ever deletes single-owner tokens regardless
       token =
         gateway_token_fixture()
-        |> Ecto.Changeset.change(rotated_at: rotated_at)
-        |> Repo.update!()
+        |> stamp_gateway_token(rotated_at)
 
       assert :ok = perform_job(DeleteRotatedGatewayTokens, %{})
 
-      assert Repo.get_by(GatewayToken, account_id: token.account_id, id: token.id)
+      assert Repo.get_by(DeviceToken, account_id: token.account_id, id: token.id)
     end
 
     test "deletes expired rotated tokens across accounts" do
-      grace_hours = GatewayToken.rotation_grace_hours()
+      grace_hours = DeviceToken.rotation_grace_hours()
       rotated_at = DateTime.add(DateTime.utc_now(), -(grace_hours + 1), :hour)
 
       tokens =
@@ -74,7 +73,7 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokensTest do
       assert :ok = perform_job(DeleteRotatedGatewayTokens, %{})
 
       for token <- tokens do
-        refute Repo.get_by(GatewayToken, account_id: token.account_id, id: token.id)
+        refute Repo.get_by(DeviceToken, account_id: token.account_id, id: token.id)
       end
     end
   end

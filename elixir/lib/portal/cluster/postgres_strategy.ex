@@ -2,22 +2,19 @@ defmodule Portal.Cluster.PostgresStrategy do
   @moduledoc """
   A libcluster strategy that uses PostgreSQL LISTEN/NOTIFY for node discovery.
 
-  Inspired by [libcluster_postgres](https://github.com/supabase/libcluster_postgres),
-  this strategy adds proper node disconnect handling and graceful shutdown support.
-
-  ## Features
-
-  - Heartbeat-based discovery via PostgreSQL NOTIFY
-  - Automatic disconnect after missed heartbeats
-  - Graceful shutdown broadcasts goodbye for immediate disconnect
-  - Cloud-agnostic: works anywhere you have PostgreSQL
+  Inspired by [libcluster_postgres](https://github.com/supabase/libcluster_postgres).
+  Every node announces itself with a heartbeat NOTIFY, and every node connects to
+  the nodes it hears from. The strategy never disconnects nodes: Erlang distribution
+  drops a node when its VM exits, or after `net_ticktime` when it dies without
+  closing its connections. Disconnecting a node that is still running, such as one
+  draining during a deploy, makes `global` warn about overlapping partitions.
 
   ## Configuration
 
   Environment variables:
 
       ERLANG_CLUSTER_ADAPTER=Elixir.Portal.Cluster.PostgresStrategy
-      ERLANG_CLUSTER_ADAPTER_CONFIG='{"repo":"Portal.Repo","channel_name":"cluster","heartbeat_interval":5000,"missed_heartbeats":3,"node_count":12}'
+      ERLANG_CLUSTER_ADAPTER_CONFIG='{"repo":"Portal.Repo","channel_name":"cluster","heartbeat_interval":5000,"node_count":12}'
 
   Or via Elixir config:
 
@@ -29,7 +26,6 @@ defmodule Portal.Cluster.PostgresStrategy do
               repo: Portal.Repo,
               channel_name: "cluster",
               heartbeat_interval: 5_000,
-              missed_heartbeats: 3,
               node_count: 3
             ]
           ]
@@ -40,8 +36,8 @@ defmodule Portal.Cluster.PostgresStrategy do
   - `:repo` - (required) Ecto Repo module for database config
   - `:channel_name` - PostgreSQL channel name. Defaults to "cluster"
   - `:heartbeat_interval` - Heartbeat interval in ms. Defaults to 5000
-  - `:missed_heartbeats` - Missed heartbeats before disconnect. Defaults to 3
-  - `:node_count` - Expected node count for threshold-based error logging
+  - `:node_count` - Expected node count. An error is logged when fewer nodes stay
+    connected for three heartbeats
 
   ## Rolling Deploys
 
@@ -72,7 +68,7 @@ defmodule Portal.Cluster.PostgresStrategy do
 
   @default_channel_name "cluster"
   @default_heartbeat_interval 5_000
-  @default_missed_heartbeats 3
+  @threshold_heartbeats 3
 
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
@@ -80,22 +76,14 @@ defmodule Portal.Cluster.PostgresStrategy do
   def init([state]) do
     Process.flag(:trap_exit, true)
 
-    repo = Keyword.fetch!(state.config, :repo)
-    channel_name = Keyword.get(state.config, :channel_name, @default_channel_name)
-
-    heartbeat_interval =
-      Keyword.get(state.config, :heartbeat_interval, @default_heartbeat_interval)
-
-    missed_heartbeats = Keyword.get(state.config, :missed_heartbeats, @default_missed_heartbeats)
-
     state =
       state
-      |> Map.put(:repo, repo)
-      |> Map.put(:channel_name, channel_name)
-      |> Map.put(:heartbeat_interval, heartbeat_interval)
-      |> Map.put(:missed_heartbeats, missed_heartbeats)
-      |> Map.put(:node_timestamps, %{})
-      |> Map.put(:connected_nodes, [])
+      |> Map.put(:repo, Keyword.fetch!(state.config, :repo))
+      |> Map.put(:channel_name, Keyword.get(state.config, :channel_name, @default_channel_name))
+      |> Map.put(
+        :heartbeat_interval,
+        Keyword.get(state.config, :heartbeat_interval, @default_heartbeat_interval)
+      )
       |> Map.put(:below_threshold?, false)
       |> Map.put(:listener_pid, nil)
       |> Map.put(:notify_conn, nil)
@@ -123,20 +111,19 @@ defmodule Portal.Cluster.PostgresStrategy do
   end
 
   def handle_info(:heartbeat, state) do
-    broadcast_heartbeat(state)
-    state = check_stale_nodes(state)
+    notify(state, "heartbeat:#{node()}")
 
-    :telemetry.execute([:portal, :cluster], %{
-      discovered_nodes_count: map_size(state.node_timestamps)
-    })
+    nodes = list_nodes(state)
+    :telemetry.execute([:portal, :cluster], %{discovered_nodes_count: length(nodes)})
 
     Process.send_after(self(), :heartbeat, state.heartbeat_interval)
-    {:noreply, state}
+    {:noreply, check_node_count(state, nodes)}
   end
 
-  def handle_info({:notification, _pid, _ref, channel, payload}, state)
+  def handle_info({:notification, _pid, _ref, channel, "heartbeat:" <> node_name}, state)
       when channel == state.channel_name do
-    {:noreply, handle_notification(payload, state)}
+    connect_node(state, node_name)
+    {:noreply, state}
   end
 
   def handle_info({:DOWN, _ref, :process, pid, reason}, %{listener_pid: pid} = state) do
@@ -153,12 +140,6 @@ defmodule Portal.Cluster.PostgresStrategy do
 
   def handle_info(_msg, state) do
     {:noreply, state}
-  end
-
-  @impl GenServer
-  def terminate(_reason, state) do
-    broadcast_goodbye(state)
-    :ok
   end
 
   defp start_connections(state) do
@@ -193,9 +174,6 @@ defmodule Portal.Cluster.PostgresStrategy do
     |> Keyword.put_new(:port, 5432)
   end
 
-  defp broadcast_heartbeat(state), do: notify(state, "heartbeat:#{node()}")
-  defp broadcast_goodbye(state), do: notify(state, "goodbye:#{node()}")
-
   defp notify(%{notify_conn: nil}, _payload), do: :ok
 
   defp notify(%{notify_conn: conn, channel_name: channel}, payload) do
@@ -211,160 +189,57 @@ defmodule Portal.Cluster.PostgresStrategy do
   end
 
   # sobelow_skip ["DOS.StringToAtom"]
-  defp handle_notification("heartbeat:" <> node_name, state) do
+  defp connect_node(state, node_name) do
     node = String.to_atom(node_name)
-    if node == node(), do: state, else: handle_heartbeat(node, state)
-  end
 
-  # sobelow_skip ["DOS.StringToAtom"]
-  defp handle_notification("goodbye:" <> node_name, state) do
-    node = String.to_atom(node_name)
-    if node == node(), do: state, else: handle_goodbye(node, state)
-  end
-
-  defp handle_notification(_payload, state), do: state
-
-  defp handle_heartbeat(node, state) do
-    now = System.monotonic_time(:millisecond)
-    state = %{state | node_timestamps: Map.put(state.node_timestamps, node, now)}
-
-    case Cluster.Strategy.connect_nodes(state.topology, state.connect, state.list_nodes, [node]) do
-      :ok ->
-        state = %{state | connected_nodes: Enum.uniq([node | state.connected_nodes])}
-        maybe_log_threshold_recovery(state)
-
-      {:error, bad_nodes} ->
-        problem_nodes = Enum.map(bad_nodes, &elem(&1, 0))
-
-        Logger.info("Error connecting to nodes",
-          connected_nodes: state.connected_nodes,
-          problem_nodes: problem_nodes
-        )
-
-        maybe_log_threshold_error(state, problem_nodes)
+    if node != node() do
+      Cluster.Strategy.connect_nodes(state.topology, state.connect, state.list_nodes, [node])
     end
   end
 
-  defp handle_goodbye(node, state) do
-    was_connected = node in state.connected_nodes
+  defp list_nodes(%{list_nodes: {module, function, args}}), do: apply(module, function, args)
 
-    state = %{
-      state
-      | node_timestamps: Map.delete(state.node_timestamps, node),
-        connected_nodes: List.delete(state.connected_nodes, node)
-    }
-
-    if was_connected do
-      Logger.info("Received goodbye from node, disconnecting", node: node)
-
-      Cluster.Strategy.disconnect_nodes(state.topology, state.disconnect, state.list_nodes, [node])
-
-      maybe_log_threshold_error(state, [node])
-    else
-      state
-    end
-  end
-
-  defp check_stale_nodes(state) do
-    now = System.monotonic_time(:millisecond)
-    stale_threshold = state.heartbeat_interval * state.missed_heartbeats
-
-    {stale_nodes, active_timestamps} =
-      Enum.reduce(state.node_timestamps, {[], %{}}, fn {node, last_seen}, {stale, active} ->
-        if now - last_seen > stale_threshold do
-          {[node | stale], active}
-        else
-          {stale, Map.put(active, node, last_seen)}
-        end
-      end)
-
-    if stale_nodes == [] do
-      %{state | node_timestamps: active_timestamps}
-    else
-      # Only disconnect nodes that are actually connected
-      nodes_to_disconnect = Enum.filter(stale_nodes, &(&1 in state.connected_nodes))
-
-      if nodes_to_disconnect != [] do
-        Logger.info("Disconnecting stale nodes", nodes: nodes_to_disconnect)
-
-        Cluster.Strategy.disconnect_nodes(
-          state.topology,
-          state.disconnect,
-          state.list_nodes,
-          nodes_to_disconnect
-        )
-      end
-
-      state = %{
-        state
-        | node_timestamps: active_timestamps,
-          connected_nodes: state.connected_nodes -- stale_nodes
-      }
-
-      maybe_log_threshold_error(state, stale_nodes)
-    end
-  end
-
-  # Only log after sustained threshold violation to avoid transient alerts during
-  # deploys. When a node departs (goodbye or stale), the count may briefly dip below
-  # the threshold before the replacement node's heartbeats are processed.
+  # Only log after a sustained shortfall, so the brief dip while a deploy replaces
+  # nodes stays quiet.
   #
   # below_threshold? states:
   #   false               — at or above threshold
   #   {:pending, mono_ms} — first dropped below threshold at this time, waiting
-  #   true                — sustained violation confirmed, error already logged
-  defp maybe_log_threshold_error(state, problem_nodes) do
-    if enough_nodes_connected?(state) do
-      %{state | below_threshold?: false}
-    else
-      now = System.monotonic_time(:millisecond)
-      sustained_period = state.heartbeat_interval * state.missed_heartbeats
-
-      case state.below_threshold? do
-        false ->
-          %{state | below_threshold?: {:pending, now}}
-
-        {:pending, since} when now - since >= sustained_period ->
-          Logger.error("Connected nodes count is below threshold",
-            connected_nodes: state.connected_nodes,
-            problem_nodes: problem_nodes,
-            config: state.config
-          )
-
-          %{state | below_threshold?: true}
-
-        {:pending, _} ->
-          state
-
-        true ->
-          state
-      end
+  #   true                — sustained shortfall confirmed, error already logged
+  defp check_node_count(state, nodes) do
+    case Keyword.fetch(state.config, :node_count) do
+      {:ok, expected} when length(nodes) + 1 < expected -> below_threshold(state, nodes)
+      _ -> above_threshold(state, nodes)
     end
   end
 
-  defp maybe_log_threshold_recovery(state) do
-    if enough_nodes_connected?(state) do
-      if state.below_threshold? == true do
-        Logger.info("Connected nodes count is back above threshold",
-          connected_nodes: state.connected_nodes,
-          config: state.config
-        )
-      end
+  defp below_threshold(%{below_threshold?: false} = state, _nodes) do
+    %{state | below_threshold?: {:pending, System.monotonic_time(:millisecond)}}
+  end
 
-      %{state | below_threshold?: false}
+  defp below_threshold(%{below_threshold?: {:pending, since}} = state, nodes) do
+    if System.monotonic_time(:millisecond) - since >= state.heartbeat_interval * @threshold_heartbeats do
+      Logger.error("Connected nodes count is below threshold",
+        connected_nodes: nodes,
+        config: state.config
+      )
+
+      %{state | below_threshold?: true}
     else
       state
     end
   end
 
-  defp enough_nodes_connected?(state) do
-    case Keyword.fetch(state.config, :node_count) do
-      {:ok, expected_node_count} ->
-        connected_node_count = [node() | state.connected_nodes] |> Enum.uniq() |> length()
-        connected_node_count >= expected_node_count
+  defp below_threshold(state, _nodes), do: state
 
-      :error ->
-        true
-    end
+  defp above_threshold(%{below_threshold?: true} = state, nodes) do
+    Logger.info("Connected nodes count is back above threshold",
+      connected_nodes: nodes,
+      config: state.config
+    )
+
+    %{state | below_threshold?: false}
   end
+
+  defp above_threshold(state, _nodes), do: %{state | below_threshold?: false}
 end

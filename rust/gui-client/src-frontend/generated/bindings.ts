@@ -71,6 +71,30 @@ async updateState() : Promise<Result<null, Error>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async resetConnlib() : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reset_connlib") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setDeveloperSettingsUnlocked(unlocked: boolean) : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_developer_settings_unlocked", { unlocked }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setForceRelayedConnections(enabled: boolean) : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_force_relayed_connections", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -78,12 +102,14 @@ async updateState() : Promise<Result<null, Error>> {
 
 
 export const events = __makeEvents__<{
+developerSettingsChanged: DeveloperSettingsChanged,
 generalSettingsChanged: GeneralSettingsChanged,
 logFilterChanged: LogFilterChanged,
 logsRecounted: LogsRecounted,
 sessionChanged: SessionChanged,
 x509CertificateChanged: X509CertificateChanged
 }>({
+developerSettingsChanged: "developer-settings-changed",
 generalSettingsChanged: "general-settings-changed",
 logFilterChanged: "log-filter-changed",
 logsRecounted: "logs-recounted",
@@ -110,10 +136,12 @@ api_url?: string | null }
  * The control plane a client signs in to: a Firezone Cloud deployment, or [`ControlPlane::Custom`] for any other URLs.
  */
 export type ControlPlane = "CloudUs" | "CloudEu" | "Custom"
+export type DeveloperSettingsChanged = DeveloperSettingsViewModel
+export type DeveloperSettingsViewModel = { unlocked: boolean; force_relayed_connections: boolean }
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel
-export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; control_plane: ControlPlane; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
+export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; start_on_login_is_managed: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; control_plane: ControlPlane; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
 /**
  * What the auth URL field shows when [`ControlPlane::Custom`] is picked: the last saved custom URL, or else `auth_url`.
  */

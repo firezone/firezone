@@ -75,6 +75,9 @@ pub enum ClientMsg {
     /// Only a failure to persist them is reported, as [`ServerMsg::AdvancedSettingsApplied`].
     SetAdditionalHostCandidates(Vec<IpAddr>),
     SetInternetResourceState(bool),
+    ManualReset,
+    /// Applies to the running session and every session started while it is on.
+    SetForceRelayedConnections(bool),
     StartTelemetry {
         release: String,
     },
@@ -258,6 +261,7 @@ struct Handler<'a> {
     advanced_settings: AdvancedSettings,
     mdm_settings: MdmSettings,
     session: Session,
+    force_relayed_connections: bool,
     telemetry_release: Option<String>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
@@ -534,6 +538,7 @@ impl<'a> Handler<'a> {
             advanced_settings,
             mdm_settings,
             session: Session::None,
+            force_relayed_connections: false,
             telemetry_release: None,
             tun_device,
             dns_notifier,
@@ -849,6 +854,14 @@ impl<'a> Handler<'a> {
 
                 connlib.set_internet_resource_state(state);
             }
+            ClientMsg::ManualReset => self.reset_session("requested by user").await,
+            ClientMsg::SetForceRelayedConnections(enabled) => {
+                self.force_relayed_connections = enabled;
+
+                if let Some(connlib) = self.session.as_connlib() {
+                    connlib.set_force_relayed_connections(enabled);
+                }
+            }
             ClientMsg::StartTelemetry { release } => {
                 // This is a bit hacky.
                 // It would be cleaner to pass it down from the `Cli` struct.
@@ -976,18 +989,27 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
+        let listen_port =
+            client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+        let config = client_shared::SessionConfig::new(listen_port)
+            .with_internet_resource_active(is_internet_resource_active)
+            .with_dns_servers(dns)
+            .with_additional_host_candidates(
+                self.advanced_settings.additional_host_candidates.clone(),
+            )
+            .with_flow_logs_dir(known_dirs::flow_logs());
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            is_internet_resource_active,
-            dns,
-            self.advanced_settings.additional_host_candidates.clone(),
-            known_dirs::flow_logs(),
-            false,
+            config,
             metrics_exporter,
         )
         .context("Failed to start connlib")?;
+
+        if self.force_relayed_connections {
+            connlib.set_force_relayed_connections(true);
+        }
 
         analytics::new_session(device_id.id, api_url.to_string());
 

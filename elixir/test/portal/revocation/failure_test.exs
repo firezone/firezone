@@ -4,79 +4,75 @@ defmodule Portal.Revocation.FailureTest do
   alias Portal.Revocation.Failure
 
   defp endpoint(attrs \\ %{}) do
-    struct(
-      %Portal.RevocationEndpoint{errored_at: nil, crl_error: nil, ocsp_error: nil},
-      attrs
-    )
+    struct(%Portal.RevocationEndpoint{}, attrs)
   end
 
-  describe "error_fields/3" do
+  describe "error_fields/4" do
     test "an unreachable address stops the fetching at once" do
       now = DateTime.utc_now()
 
-      fields = Failure.error_fields(endpoint(), {:blocked_address, "resolves to 127.0.0.1"}, now)
+      fields =
+        Failure.error_fields(endpoint(), :crl, {:blocked_address, "resolves to 127.0.0.1"}, now)
 
-      assert fields[:is_disabled] == true
-      assert fields[:disabled_reason] == Failure.disabled_reason()
-      assert fields[:errored_at] == now
+      assert fields == [crl_errored_at: now, crl_is_disabled: true]
     end
 
     test "an address we cannot speak to stops the fetching at once" do
-      fields = Failure.error_fields(endpoint(), :unsupported_url_scheme, DateTime.utc_now())
+      fields = Failure.error_fields(endpoint(), :ocsp, :unsupported_url_scheme, DateTime.utc_now())
 
-      assert fields[:is_disabled] == true
+      assert fields[:ocsp_is_disabled] == true
     end
 
     test "a timeout only starts the clock" do
       now = DateTime.utc_now()
 
-      fields = Failure.error_fields(endpoint(), "timeout", now)
+      fields = Failure.error_fields(endpoint(), :crl, "timeout", now)
 
-      assert fields[:errored_at] == now
-      refute Keyword.has_key?(fields, :is_disabled)
+      assert fields == [crl_errored_at: now]
     end
 
     test "a timeout keeps the clock it started rather than restarting it" do
       started = DateTime.add(DateTime.utc_now(), -3, :hour)
 
       fields =
-        Failure.error_fields(endpoint(%{errored_at: started}), "timeout", DateTime.utc_now())
+        Failure.error_fields(
+          endpoint(%{ocsp_errored_at: started}),
+          :ocsp,
+          "timeout",
+          DateTime.utc_now()
+        )
 
-      assert fields[:errored_at] == started
-      refute Keyword.has_key?(fields, :is_disabled)
+      assert fields == [ocsp_errored_at: started]
     end
 
     test "a day of continuous failure stops the fetching" do
       started = DateTime.add(DateTime.utc_now(), -24, :hour)
 
       fields =
-        Failure.error_fields(endpoint(%{errored_at: started}), "timeout", DateTime.utc_now())
+        Failure.error_fields(
+          endpoint(%{crl_errored_at: started}),
+          :crl,
+          "timeout",
+          DateTime.utc_now()
+        )
 
-      assert fields[:is_disabled] == true
-      assert fields[:errored_at] == started
+      assert fields == [crl_errored_at: started, crl_is_disabled: true]
+    end
+
+    test "the other mechanism's clock does not count toward this one" do
+      started = DateTime.add(DateTime.utc_now(), -48, :hour)
+      now = DateTime.utc_now()
+
+      fields = Failure.error_fields(endpoint(%{crl_errored_at: started}), :ocsp, "timeout", now)
+
+      assert fields == [ocsp_errored_at: now]
     end
   end
 
-  describe "success_fields/2" do
-    test "clears the streak when both mechanisms are healthy" do
-      fields = Failure.success_fields(endpoint(), :crl)
-
-      assert fields[:errored_at] == nil
-    end
-
-    test "a working responder does not reset the clock on a broken list" do
-      assert Failure.success_fields(endpoint(%{crl_error: "timeout"}), :ocsp) == []
-    end
-
-    test "a working list does not reset the clock on a broken responder" do
-      assert Failure.success_fields(endpoint(%{ocsp_error: "timeout"}), :crl) == []
-    end
-
-    test "nothing here ever re-enables an endpoint" do
-      fields = Failure.success_fields(endpoint(%{is_disabled: true}), :crl)
-
-      refute Keyword.has_key?(fields, :is_disabled)
-      refute Keyword.has_key?(fields, :disabled_reason)
+  describe "success_fields/1" do
+    test "clears only the streak of the mechanism that succeeded" do
+      assert Failure.success_fields(:crl) == [crl_errored_at: nil]
+      assert Failure.success_fields(:ocsp) == [ocsp_errored_at: nil]
     end
   end
 end

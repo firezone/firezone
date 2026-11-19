@@ -64,7 +64,10 @@ defmodule PortalWeb.Settings.Authentication do
       :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :portal_sessions)
     end
 
-    {:ok, init_if_connected(socket)}
+    {:ok,
+     socket
+     |> init_if_connected()
+     |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)}
   end
 
   # New Auth Provider
@@ -282,7 +285,10 @@ defmodule PortalWeb.Settings.Authentication do
          "You cannot delete the provider you are currently signed in with."
        )}
     else
-      case Database.delete_provider!(provider, socket.assigns.subject) do
+      case provider && Database.delete_provider!(provider, socket.assigns.subject) do
+        nil ->
+          {:noreply, socket}
+
         {:ok, _provider} ->
           {:noreply,
            socket
@@ -298,47 +304,9 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   def handle_event("toggle_provider", %{"id" => id}, socket) do
-    provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
-    new_disabled_state = not provider.is_disabled
-
-    can_disable =
-      id != Credential.auth_provider_id(socket.assigns.subject.credential) or
-        not new_disabled_state
-
-    changeset =
-      if can_disable do
-        provider
-        |> change(is_disabled: new_disabled_state)
-        |> validate_not_disabling_default_provider()
-      else
-        provider
-        |> change(is_disabled: new_disabled_state)
-        |> add_error(
-          :is_disabled,
-          "You cannot disable the provider you are currently signed in with."
-        )
-      end
-
-    case Database.update_provider(changeset, socket.assigns.subject) do
-      {:ok, _provider} ->
-        action = if new_disabled_state, do: "disabled", else: "enabled"
-
-        {:noreply,
-         socket
-         |> init()
-         |> put_flash(:success, "Authentication provider #{action} successfully.")}
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        Logger.info("Failed to toggle authentication provider",
-          errors: inspect(changeset.errors),
-          changes: inspect(changeset.changes)
-        )
-
-        {:noreply, put_flash(socket, :error, extract_disable_error(changeset))}
-
-      {:error, reason} ->
-        Logger.info("Failed to toggle authentication provider", reason: inspect(reason))
-        {:noreply, put_flash(socket, :error, "Failed to update authentication provider.")}
+    case Enum.find(socket.assigns.providers, &(&1.id == id)) do
+      nil -> {:noreply, socket}
+      provider -> toggle_provider(provider, socket)
     end
   end
 
@@ -387,7 +355,10 @@ defmodule PortalWeb.Settings.Authentication do
   def handle_event("revoke_sessions", %{"id" => id}, socket) do
     provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
 
-    case Database.revoke_sessions_for_provider(provider, socket.assigns.subject) do
+    case provider && Database.revoke_sessions_for_provider(provider, socket.assigns.subject) do
+      nil ->
+        {:noreply, socket}
+
       {:ok, _} ->
         {:noreply,
          socket
@@ -408,11 +379,11 @@ defmodule PortalWeb.Settings.Authentication do
     assign_default_provider(provider_id, socket)
   end
 
-  def handle_info(%Portal.Changes.Change{struct: %Portal.ClientToken{}}, socket) do
+  def handle_info(%Portal.Changes.Change{struct: %Portal.DeviceToken{}}, socket) do
     {:noreply, refresh_session_counts(socket)}
   end
 
-  def handle_info(%Portal.Changes.Change{old_struct: %Portal.ClientToken{}}, socket) do
+  def handle_info(%Portal.Changes.Change{old_struct: %Portal.DeviceToken{}}, socket) do
     {:noreply, refresh_session_counts(socket)}
   end
 
@@ -809,7 +780,7 @@ defmodule PortalWeb.Settings.Authentication do
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <Navigation.docs_action path="/authenticate" />
+            <Navigation.docs_action show_label path="/authenticate" />
             <Navigation.link
               patch={~p"/#{@account}/settings/authentication/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
@@ -1323,8 +1294,8 @@ defmodule PortalWeb.Settings.Authentication do
                     <Core.icon
                       name={
                         if @provider.is_disabled,
-                          do: "ri-checkbox-circle-line",
-                          else: "ri-close-circle-line"
+                          do: "ri-play-circle-line",
+                          else: "ri-pause-circle-line"
                       }
                       class="w-3.5 h-3.5 shrink-0"
                     />
@@ -1373,7 +1344,8 @@ defmodule PortalWeb.Settings.Authentication do
   defp provider_action_allowed?(type), do: type not in ["email_otp", "userpass", "x509"]
 
   defp provider_has_sessions?(provider) do
-    provider.client_tokens_count > 0 or provider.portal_sessions_count > 0
+    provider.client_tokens_count > 0 or provider.portal_sessions_count > 0 or
+      provider.oauth_tokens_count > 0
   end
 
   defp provider_pending_state(provider, %{id: id, action: action}) when id == provider.id,
@@ -2292,6 +2264,53 @@ defmodule PortalWeb.Settings.Authentication do
     "#{days}d"
   end
 
+  defp toggle_provider(provider, socket) do
+    new_disabled_state = not provider.is_disabled
+
+    can_disable =
+      provider.id != Credential.auth_provider_id(socket.assigns.subject.credential) or
+        not new_disabled_state
+
+    changeset =
+      if can_disable do
+        provider
+        |> change(is_disabled: new_disabled_state)
+        |> validate_not_disabling_default_provider()
+      else
+        provider
+        |> change(is_disabled: new_disabled_state)
+        |> add_error(
+          :is_disabled,
+          "You cannot disable the provider you are currently signed in with."
+        )
+      end
+
+    case Database.update_provider(changeset, socket.assigns.subject) do
+      {:ok, _provider} ->
+        action = if new_disabled_state, do: "disabled", else: "enabled"
+
+        {:noreply,
+         socket
+         |> init()
+         |> put_flash(:success, "Authentication provider #{action} successfully.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        Logger.info("Failed to toggle authentication provider",
+          errors: inspect(changeset.errors),
+          changes: inspect(changeset.changes)
+        )
+
+        {:noreply, put_flash(socket, :error, extract_disable_error(changeset))}
+
+      {:error, reason} ->
+        Logger.info("Failed to toggle authentication provider", reason: inspect(reason))
+        {:noreply, put_flash(socket, :error, "Failed to update authentication provider.")}
+    end
+  end
+
+  defp stale_event?("submit_provider", %{live_action: action}) when action not in [:new, :edit], do: true
+  defp stale_event?(_event, _assigns), do: false
+
   defmodule Database do
     alias Portal.{AuthProvider, EmailOTP, X509, Userpass, OIDC, Entra, Google, GitHub, Okta, Safe}
     import Ecto.Query
@@ -2416,7 +2435,7 @@ defmodule PortalWeb.Settings.Authentication do
       provider_ids = Enum.map(providers, & &1.id)
 
       client_tokens_counts =
-        from(ct in Portal.ClientToken,
+        from(ct in Portal.DeviceToken,
           where: ct.auth_provider_id in ^provider_ids,
           group_by: ct.auth_provider_id,
           select: {ct.auth_provider_id, count(ct.id)}
@@ -2435,29 +2454,46 @@ defmodule PortalWeb.Settings.Authentication do
         |> Safe.all()
         |> Map.new()
 
+      oauth_tokens_counts =
+        from(t in Portal.OAuthToken,
+          where: t.auth_provider_id in ^provider_ids,
+          group_by: t.auth_provider_id,
+          select: {t.auth_provider_id, count(t.id)}
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Map.new()
+
       Enum.map(providers, fn provider ->
         provider
         |> Map.put(:client_tokens_count, Map.get(client_tokens_counts, provider.id, 0))
         |> Map.put(:portal_sessions_count, Map.get(portal_sessions_counts, provider.id, 0))
+        |> Map.put(:oauth_tokens_count, Map.get(oauth_tokens_counts, provider.id, 0))
       end)
     end
 
     # Already handled by cascade delete
-    def revoke_sessions_for_provider(nil, _subject), do: {:ok, 0}
-
     def revoke_sessions_for_provider(provider, subject) do
       Safe.transact(fn ->
         {client_tokens_deleted, _} =
-          from(ct in Portal.ClientToken, where: ct.auth_provider_id == ^provider.id)
-          |> Safe.scoped(subject)
-          |> Safe.delete_all()
+          from(ct in Portal.DeviceToken, where: ct.auth_provider_id == ^provider.id)
+          |> Portal.Authentication.delete_client_tokens(subject)
 
         {portal_sessions_deleted, _} =
           from(ps in Portal.PortalSession, where: ps.auth_provider_id == ^provider.id)
           |> Safe.scoped(subject)
           |> Safe.delete_all()
 
-        {:ok, client_tokens_deleted + portal_sessions_deleted}
+        from(c in Portal.OAuthAuthorizationCode, where: c.auth_provider_id == ^provider.id)
+        |> Safe.scoped(subject)
+        |> Safe.delete_all()
+
+        {oauth_tokens_deleted, _} =
+          from(t in Portal.OAuthToken, where: t.auth_provider_id == ^provider.id)
+          |> Safe.scoped(subject)
+          |> Safe.delete_all()
+
+        {:ok, client_tokens_deleted + portal_sessions_deleted + oauth_tokens_deleted}
       end)
     end
   end

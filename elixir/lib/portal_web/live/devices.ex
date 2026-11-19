@@ -8,6 +8,12 @@ defmodule PortalWeb.Devices do
   alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
+  @edit_form_events ~w[change_device_edit_form submit_device_edit_form cancel_device_edit_form]
+
+  @selected_device_events ~w[
+    change_policy_authorizations_page open_device_edit_form verify_device unverify_device delete_device
+  ]
+
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
 
@@ -47,6 +53,7 @@ defmodule PortalWeb.Devices do
         ],
         loader: &load_devices/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -139,7 +146,7 @@ defmodule PortalWeb.Devices do
           End-user devices and servers that access your protected Resources.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/clients" />
+          <Navigation.docs_action show_label size="md" path="/deploy/clients" />
         </:action>
         <:stats>
           <.async_result :let={count} assign={@devices_count}>
@@ -274,6 +281,10 @@ defmodule PortalWeb.Devices do
       confirm_unverify_device: assigns.device_confirm.unverify?
     }
   end
+
+  defp stale_event?(event, %{device_panel: %{edit_form: nil}}) when event in @edit_form_events, do: true
+  defp stale_event?(event, %{selected_device: nil}) when event in @selected_device_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp base_device_assigns do
     [
@@ -637,10 +648,10 @@ defmodule PortalWeb.Devices do
       |> Enum.reject(&is_nil/1)
     end
 
-    defp maybe_preload_devices(devices, preload, _subject) do
+    defp maybe_preload_devices(devices, preload, subject) do
       Enum.reduce(preload, devices, fn
         :actor, devices ->
-          Safe.preload(devices, :actor)
+          Portal.Devices.put_latest_actor(devices, subject)
 
         :online?, devices ->
           Devices.preload_presence(devices)
@@ -709,13 +720,12 @@ defmodule PortalWeb.Devices do
         from(c in Device, as: :devices)
         |> where([devices: d], d.type == :client)
         |> where([devices: d], d.id == ^id)
-        |> preload([:actor])
         |> Safe.scoped(subject)
         |> Safe.one()
 
       case device do
         %Device{type: :client} ->
-          Devices.preload_presence([device]) |> List.first()
+          [device] |> Portal.Devices.put_latest_actor(subject) |> Devices.preload_presence() |> List.first()
 
         _ ->
           nil
@@ -787,23 +797,21 @@ defmodule PortalWeb.Devices do
     end
 
     def filter_by_search_fts(queryable, search_term) do
-      queryable =
-        if has_named_binding?(queryable, :actors) do
-          queryable
-        else
-          join(queryable, :inner, [devices: d], a in assoc(d, :actor),
-            on: a.account_id == d.account_id,
-            as: :actors
-          )
-        end
-
       {queryable,
        dynamic(
-         [devices: devices, actors: actors],
-         fulltext_search(actors.name, ^search_term) or
-           fulltext_search(devices.name, ^search_term) or
+         [devices: devices],
+         fulltext_search(devices.name, ^search_term) or
            fulltext_search(devices.slug, ^search_term) or
-           fulltext_search(actors.email, ^search_term)
+           exists(
+             from(da in Portal.DeviceActor,
+               join: a in Portal.Actor,
+               on: a.account_id == da.account_id and a.id == da.actor_id,
+               where:
+                 da.account_id == parent_as(:devices).account_id and
+                   da.device_id == parent_as(:devices).id and
+                   (fulltext_search(a.name, ^search_term) or fulltext_search(a.email, ^search_term))
+             )
+           )
        )}
     end
 

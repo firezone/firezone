@@ -15,6 +15,7 @@ defmodule Portal.Account do
     field :key, :string
 
     has_many :slugs, Portal.AccountSlug
+    has_one :metrics, Portal.AccountMetrics
 
     field :legal_name, :string
 
@@ -28,10 +29,6 @@ defmodule Portal.Account do
     embeds_one :config, Portal.Accounts.Config, on_replace: :update
 
     embeds_one :metadata, Portal.Account.Metadata, on_replace: :update
-
-    # Set by Firezone staff via `Portal.Ops`. Metric name patterns, `nil` meaning off.
-    field :metrics_export, {:array, :string}, redact: true
-    field :metrics_export_interval_secs, :integer, default: 60, redact: true
 
     # We mention all schemas here to leverage Ecto compile-time reference checks,
     # because later we will have to shard data by account_id.
@@ -69,8 +66,6 @@ defmodule Portal.Account do
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site
 
-    has_many :client_tokens, Portal.ClientToken
-    has_many :gateway_tokens, Portal.GatewayToken
     has_many :one_time_passcodes, Portal.OneTimePasscode
 
     has_many :google_directories, Portal.Google.Directory
@@ -121,6 +116,9 @@ defmodule Portal.Account do
     |> validate_length(:name, min: 3, message: "too short")
     |> validate_length(:name, max: 64, message: "too long")
     |> validate_length(:slug, min: 3, max: 100)
+    |> validate_format(:slug, Portal.AccountSlug.format(),
+      message: "may only contain lowercase letters, numbers, and underscores"
+    )
     |> validate_length(:key, is: 6)
     |> validate_key_format()
     |> validate_length(:legal_name, min: 1, max: 255)
@@ -292,12 +290,13 @@ defmodule Portal.Account.Metadata do
   @primary_key false
   embedded_schema do
     field :marketing_attribution, :map
+    field :region_transfer, :map
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    |> cast(attrs, [:marketing_attribution])
+    |> cast(attrs, [:marketing_attribution, :region_transfer])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
   end
 end

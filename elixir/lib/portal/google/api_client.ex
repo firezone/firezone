@@ -570,6 +570,28 @@ defmodule Portal.Google.APIClient do
   end
 
   @doc """
+  Streams the id and photo version of every user in the customer account.
+  Returns a stream that yields pages of users.
+  """
+  def stream_user_photo_etags(access_token) do
+    query =
+      URI.encode_query(%{
+        "customer" => "my_customer",
+        "maxResults" => "500",
+        "fields" => "nextPageToken,users(id,thumbnailPhotoUrl,thumbnailPhotoEtag)"
+      })
+
+    stream_pages("/admin/directory/v1/users", query, access_token, "users")
+  end
+
+  @doc """
+  Gets a user's profile photo. Google stores it at 96x96.
+  """
+  def get_user_photo(access_token, user_key) do
+    get("/admin/directory/v1/users/#{URI.encode(user_key)}/photos/thumbnail", access_token)
+  end
+
+  @doc """
   Streams groups from the Google Workspace directory.
   Returns a stream that yields pages of groups.
 

@@ -181,6 +181,57 @@ defmodule Portal.OpsTest do
     end
   end
 
+  describe "sync_stripe_customers/0" do
+    import ExUnit.CaptureIO
+
+    test "does nothing when billing is disabled" do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+
+      output = capture_io(fn -> assert {:error, :billing_disabled} = sync_stripe_customers() end)
+
+      assert output =~ "Billing is disabled"
+    end
+
+    test "aborts without confirmation" do
+      account = account_fixture()
+
+      output = capture_io("n\n", fn -> assert :aborted = sync_stripe_customers() end)
+
+      assert output =~ "Aborted."
+      assert jobs_for_worker_and_arg("Portal.Workers.SyncStripeCustomer", "account_id", account.id) == []
+    end
+
+    test "queues a sync for every account with a Stripe customer" do
+      account = account_fixture(metadata: %{stripe: %{customer_id: "cus_ops_sync"}})
+      no_customer = account_fixture()
+
+      output = capture_io("y\n", fn -> assert {:ok, 1} = sync_stripe_customers() end)
+
+      assert output =~ "Queued 1 Stripe sync job(s)."
+      assert [_job] = jobs_for_worker_and_arg("Portal.Workers.SyncStripeCustomer", "account_id", account.id)
+      assert jobs_for_worker_and_arg("Portal.Workers.SyncStripeCustomer", "account_id", no_customer.id) == []
+    end
+  end
+
+  describe "set_account_slug/2" do
+    test "changes the slug and keeps the old one" do
+      account = account_fixture()
+      old_slug = account.slug
+
+      assert {:ok, %{slug: "new_slug"}} = set_account_slug(account.id, " New_Slug ")
+
+      slugs = Portal.Repo.all_by(Portal.AccountSlug, account_id: account.id) |> Enum.map(& &1.slug)
+      assert Enum.sort(slugs) == Enum.sort([old_slug, "new_slug"])
+    end
+
+    test "rejects a slug that does not match the format" do
+      account = account_fixture()
+
+      assert {:error, changeset} = set_account_slug(account.id, "new-slug")
+      assert %{slug: ["may only contain lowercase letters, numbers, and underscores"]} = errors_on(changeset)
+    end
+  end
+
   describe "backfill_slug_registry/0" do
     import ExUnit.CaptureIO
 
@@ -193,7 +244,7 @@ defmodule Portal.OpsTest do
     end
 
     test "aborts without confirmation" do
-      account_fixture(slug: "keep-local")
+      account_fixture(slug: "keep_local")
       use_azure_registry(:us)
       test_pid = self()
 
@@ -210,8 +261,8 @@ defmodule Portal.OpsTest do
     end
 
     test "claims every local slug in the registry" do
-      account = account_fixture(slug: "backfill-me")
-      update_account(account, slug: "backfill-me-too")
+      account = account_fixture(slug: "backfill_me")
+      update_account(account, slug: "backfill_me_too")
       use_azure_registry(:us)
       test_pid = self()
 
@@ -330,26 +381,100 @@ defmodule Portal.OpsTest do
     end
   end
 
-  describe "set_metrics_export/2" do
-    test "stores the metrics export setting, off by default" do
-      account = account_fixture()
-      assert fetch_account!(account.id).metrics_export == nil
+  describe "metrics" do
+    test "set_plan_metrics/2 sets the patterns of a plan" do
+      assert {:ok, ["a", "b*"]} = set_plan_metrics(:team, ["a", "b*"])
+      assert get_plan_metrics(:team) == ["a", "b*"]
+      assert get_plan_metrics("team") == ["a", "b*"]
 
-      assert :ok = set_metrics_export(account.id, ["a", "b"])
-      assert fetch_account!(account.id).metrics_export == ["a", "b"]
-
-      assert :ok = set_metrics_export(account.id, nil)
-      assert fetch_account!(account.id).metrics_export == nil
+      assert {:ok, ["c"]} = set_plan_metrics("team", ["c"])
+      assert get_plan_metrics(:team) == ["c"]
+      assert get_plan_metrics(:starter) == nil
     end
 
-    test "sets the export interval, 60s by default" do
-      account = account_fixture()
-      assert fetch_account!(account.id).metrics_export_interval_secs == 60
+    test "set_plan_metrics/2 rejects unknown plans and invalid patterns" do
+      assert {:error, changeset} = set_plan_metrics(:gold, ["a"])
+      assert errors_on(changeset) == %{plan: ["is invalid"]}
 
-      assert :ok = set_metrics_export_interval(account.id, 15)
-      assert fetch_account!(account.id).metrics_export_interval_secs == 15
+      assert {:error, changeset} = set_plan_metrics(:team, [])
+      assert errors_on(changeset) == %{patterns: ["should have at least 1 item(s)"]}
+
+      assert {:error, changeset} = set_plan_metrics(:team, [""])
+      assert errors_on(changeset) == %{patterns: ["should have at least 1 item(s)"]}
+
+      assert {:error, changeset} = set_plan_metrics(:team, ["a", 1])
+      assert errors_on(changeset) == %{patterns: ["is invalid"]}
+
+      assert get_plan_metrics(:team) == nil
     end
 
+    test "set_account_metrics/2 sets the patterns of an account" do
+      account = account_fixture()
+
+      assert {:ok, ["a"]} = set_account_metrics(account.id, ["a"])
+      assert get_account_metrics(account.id) == ["a"]
+
+      assert {:ok, ["b", "c"]} = set_account_metrics(account.id, ["b", "c"])
+      assert get_account_metrics(account.id) == ["b", "c"]
+      assert get_account_metrics(account_fixture().id) == nil
+
+      assert {:error, changeset} = set_account_metrics(account.id, [])
+      assert errors_on(changeset) == %{patterns: ["should have at least 1 item(s)"]}
+
+      assert {:error, changeset} = set_account_metrics(Ecto.UUID.generate(), ["a"])
+      assert errors_on(changeset) == %{account: ["does not exist"]}
+    end
+
+    test "remove_plan_metrics/1 and remove_account_metrics/1 remove the patterns" do
+      account = account_fixture()
+      {:ok, _patterns} = set_plan_metrics(:team, ["a"])
+      {:ok, _patterns} = set_account_metrics(account.id, ["a"])
+
+      assert :ok = remove_plan_metrics(:team)
+      assert :ok = remove_account_metrics(account.id)
+      assert get_plan_metrics(:team) == nil
+      assert get_account_metrics(account.id) == nil
+
+      assert {:error, :not_found} = remove_plan_metrics(:team)
+      assert {:error, :not_found} = remove_account_metrics(account.id)
+    end
+
+    test "effective_metrics/1 is empty without any patterns" do
+      assert effective_metrics(team_account_fixture().id) == []
+    end
+
+    test "effective_metrics/1 includes the patterns of the account's plan" do
+      account = team_account_fixture()
+      {:ok, _patterns} = set_plan_metrics(:team, ["b", "a"])
+      {:ok, _patterns} = set_plan_metrics(:starter, ["c"])
+
+      assert effective_metrics(account.id) == ["a", "b"]
+    end
+
+    test "effective_metrics/1 includes the account's own patterns" do
+      account = team_account_fixture()
+      {:ok, _patterns} = set_account_metrics(account.id, ["a"])
+      {:ok, _patterns} = set_account_metrics(account_fixture().id, ["c"])
+
+      assert effective_metrics(account.id) == ["a"]
+    end
+
+    test "effective_metrics/1 is the sorted union of both lists without duplicates" do
+      account = team_account_fixture()
+      {:ok, _patterns} = set_plan_metrics(:team, ["c", "a", "d"])
+      {:ok, _patterns} = set_account_metrics(account.id, ["d", "b", "a"])
+
+      assert effective_metrics(account.id) == ["a", "b", "c", "d"]
+    end
+
+    test "an account's patterns are deleted with it" do
+      account = account_fixture()
+      {:ok, _patterns} = set_account_metrics(account.id, ["a"])
+
+      Repo.delete!(account)
+
+      assert Repo.aggregate(Portal.AccountMetrics, :count) == 0
+    end
   end
 
   describe "set_banner/1" do

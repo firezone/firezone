@@ -7,6 +7,9 @@ defmodule PortalAPI.Relay.ChannelTest do
   import Portal.RelayFixtures
   import Portal.TokenFixtures
 
+  alias Portal.Changes.Consumer
+  alias Portal.Replication.Decoder.Messages.Begin
+
   setup do
     Portal.Config.put_env_override(
       :portal,
@@ -225,6 +228,27 @@ defmodule PortalAPI.Relay.ChannelTest do
       :ok = on_delete(2, %{"id" => account_id})
 
       assert_push "account_removed", %{account_id: ^account_id}
+    end
+
+    test "applies a transaction that committed after a later-written one" do
+      assert_push "init", %{}
+      join_capable_relay()
+      assert_push "init", %{account_ids: _account_ids}
+      added_id = "00000000-0000-0000-0000-000000000006"
+      removed_id = "00000000-0000-0000-0000-000000000007"
+
+      state =
+        %{}
+        |> Consumer.init_state()
+        |> Consumer.on_begin(%Begin{final_lsn: {1, 300}})
+        |> Consumer.on_write(200, :insert, "accounts", nil, %{"id" => added_id, "is_disabled" => false})
+
+      state
+      |> Consumer.on_begin(%Begin{final_lsn: {1, 400}})
+      |> Consumer.on_write(100, :delete, "accounts", %{"id" => removed_id}, nil)
+
+      assert_push "account_added", %{account_id: ^added_id}
+      assert_push "account_removed", %{account_id: ^removed_id}
     end
 
     test "kills existing connection when new relay connects with same id" do

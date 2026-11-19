@@ -17,6 +17,12 @@ defmodule PortalWeb.SignUpController do
     browser_id = PortalWeb.Cookie.SignUpBrowser.fetch(conn)
 
     with {:ok, registration_claims} <- PortalWeb.SignUp.verify_sign_up_token(token, browser_id),
+         :ok <-
+           PortalWeb.SignUpReview.check(
+             registration_claims,
+             conn.assigns[:user_agent],
+             conn.remote_ip
+           ),
          {:ok, result} <-
            PortalWeb.SignUp.complete_email_sign_up(
              registration_claims,
@@ -25,6 +31,9 @@ defmodule PortalWeb.SignUpController do
            ) do
       sign_in(conn, result.account, result.provider, result.actor)
     else
+      :pending_review ->
+        redirect(conn, to: ~p"/sign_up/pending")
+
       {:error, {:account_exists, accounts}} ->
         redirect(conn, to: ~p"/#{List.last(accounts)}/sign_in")
 

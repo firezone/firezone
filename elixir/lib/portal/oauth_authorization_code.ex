@@ -22,6 +22,7 @@ defmodule Portal.OAuthAuthorizationCode do
     belongs_to :actor, Portal.Actor
     belongs_to :oauth_client, Portal.OAuthClient
     belongs_to :oauth_grant, Portal.OAuthGrant
+    belongs_to :auth_provider, Portal.AuthProvider
 
     field :secret_hash, :string, redact: true
     field :secret_salt, :string, redact: true
@@ -42,7 +43,8 @@ defmodule Portal.OAuthAuthorizationCode do
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required(
-      ~w[secret_hash secret_salt code_challenge code_challenge_method redirect_uri resource scopes expires_at]a
+      ~w[auth_provider_id secret_hash secret_salt code_challenge code_challenge_method
+         redirect_uri resource scopes expires_at]a
     )
     |> validate_inclusion(:code_challenge_method, ["S256"])
     |> validate_length(:code_challenge, is: 43)
@@ -52,5 +54,6 @@ defmodule Portal.OAuthAuthorizationCode do
     |> assoc_constraint(:actor)
     |> assoc_constraint(:oauth_client)
     |> assoc_constraint(:oauth_grant)
+    |> assoc_constraint(:auth_provider)
   end
 end

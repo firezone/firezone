@@ -484,6 +484,12 @@ impl Session {
 
         self.inner.reset(reason)
     }
+
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        tracing::debug!(enabled, "Received set_force_relayed_connections command");
+
+        self.inner.set_force_relayed_connections(enabled);
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -697,15 +703,16 @@ fn connect(
     let metrics_exporter = otel_metrics_export::Exporter::spawn(tcp_socket_factory.clone())
         .context("Failed to spawn metrics exporter")?;
 
+    let listen_port = client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+    let config = client_shared::SessionConfig::new(listen_port)
+        .with_internet_resource_active(is_internet_resource_active)
+        .with_additional_host_candidates(additional_host_candidates)
+        .with_flow_logs_dir(flow_logs_dir);
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
         portal,
-        is_internet_resource_active,
-        Vec::default(),
-        additional_host_candidates,
-        flow_logs_dir,
-        false,
+        config,
         metrics_exporter,
     )
     .context("Failed to start connlib")?;
