@@ -6,7 +6,13 @@ defmodule PortalAPI.Schemas.Actor do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.Actor, internal: [:account_id, :identity_count, :preferences]}
+             for: Portal.Actor, internal: [
+               :account_id,
+               :avatar_etag,
+               :avatar_identity_id,
+               :identity_issuers,
+               :preferences
+             ]}
     OpenApiSpex.schema(%{
       title: "Actor",
       description: "Actor",

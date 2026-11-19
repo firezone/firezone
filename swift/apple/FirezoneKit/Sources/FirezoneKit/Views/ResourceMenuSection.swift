@@ -49,9 +49,11 @@
             store.configuration.internetResourceEnabled.toggle()
           }
         } else {
-          // Show address - clickable if it's a valid URL
-          if let displayAddress = resource.addressDescription ?? resource.address {
-            if let url = URL(string: displayAddress), url.scheme != nil {
+          // Show description, or address if there is none - clickable if it's a web URL
+          if let displayAddress = resource.addressDescription.flatMap({ $0.isEmpty ? nil : $0 })
+            ?? resource.address
+          {
+            if let url = resource.descriptionURL {
               Link(destination: url) {
                 Text(displayAddress)
                   .foregroundColor(.blue)
@@ -69,11 +71,11 @@
           Text("Resource")
             .foregroundStyle(.secondary)
 
-          Button(resource.name) {
-            Clipboard.copy(resource.name)
-          }
-
           if let address = resource.address {
+            Button(address) {
+              Clipboard.copy(address)
+            }
+
             Button("Copy address") {
               Clipboard.copy(address)
             }

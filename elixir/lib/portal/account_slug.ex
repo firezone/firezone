@@ -24,6 +24,19 @@ defmodule Portal.AccountSlug do
     Enum.uniq([slug, String.replace(slug, "_", "-"), String.replace(slug, "-", "_")])
   end
 
+  @doc "The format every new slug must have."
+  @spec format() :: Regex.t()
+  def format, do: ~r/^[a-z0-9]+(_[a-z0-9]+)*$/
+
+  @doc """
+  Whether a URL segment could name an account: an account ID, or a slug in
+  any case, also with hyphens for its twin.
+  """
+  @spec possible?(String.t()) :: boolean()
+  def possible?(value) do
+    byte_size(value) <= 100 and String.match?(value, ~r/^[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*$/)
+  end
+
   @doc "The one spelling the shared registry stores for a slug and its twins."
   @spec canonical(String.t()) :: String.t()
   def canonical(slug) do

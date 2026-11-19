@@ -21,9 +21,11 @@ defmodule Portal.Req.SSRFProtection do
   disable the plugin with `HTTP_CLIENT_SSRF_PROTECTION_ENABLED=false`.
   """
 
-  @default_pool_max_idle_time :timer.minutes(1)
+  @pool_max_idle_time :timer.minutes(1)
+  @pool_window div(@pool_max_idle_time, 2)
   @original_adapter_key :portal_ssrf_protection_original_adapter
   @resolver_key :portal_ssrf_protection_resolver
+  @clock_key :portal_ssrf_protection_clock
 
   defmodule UnsafeURLError do
     defexception [:host, :reason]
@@ -57,6 +59,12 @@ defmodule Portal.Req.SSRFProtection do
     request =
       case Keyword.fetch(options, :resolver) do
         {:ok, resolver} -> Req.Request.put_private(request, @resolver_key, resolver)
+        :error -> request
+      end
+
+    request =
+      case Keyword.fetch(options, :clock) do
+        {:ok, clock} -> Req.Request.put_private(request, @clock_key, clock)
         :error -> request
       end
 
@@ -180,23 +188,43 @@ defmodule Portal.Req.SSRFProtection do
     end
   end
 
-  defp call_adapter(adapter, request) when is_atom(adapter), do: adapter.run(request)
-  defp call_adapter(adapter, request) when is_function(adapter, 1), do: adapter.(request)
+  # A Finch pool that shuts down for idleness while a request is checking out
+  # a connection exits the caller (sneako/finch#393), either with the pool's
+  # shutdown reason or with :noproc if the pool is already gone. Surfacing it
+  # as a transport error lets Req's retry step handle it instead.
+  defp call_adapter(adapter, request) do
+    run_adapter(adapter, request)
+  catch
+    :exit, {reason, {NimblePool, :checkout, _pools}}
+    when reason in [:noproc, {:shutdown, :idle_timeout}] ->
+      {request, %Req.TransportError{reason: :closed}}
+  end
+
+  defp run_adapter(adapter, request) when is_atom(adapter), do: adapter.run(request)
+  defp run_adapter(adapter, request) when is_function(adapter, 1), do: adapter.(request)
 
   # Req creates a named Finch instance for each distinct set of connection
   # options. Since the TLS hostname is user-controlled here, doing that would
   # create atoms dynamically. A tagged pool on Req's existing Finch instance
   # pins the checked IP without creating atoms.
+  #
+  # A pool can stop for idleness between `Finch.start_pool/3` and the checkout.
+  # Finch then starts a pool with Req.Finch's defaults: no :hostname, so TLS
+  # checks the IP, and no idle timeout, so it stays. A tag is only used for a
+  # window shorter than the idle timeout, so its pool cannot stop while in use.
   defp use_pinned_finch_pool(%Req.Request{} = request, original_host) do
+    clock = Req.Request.get_private(request, @clock_key, &System.monotonic_time/1)
+    window = div(clock.(:millisecond), @pool_window)
+
     pool_options =
       request.options
       |> Req.Finch.pool_options()
       |> Keyword.update(:conn_opts, [hostname: original_host], fn conn_opts ->
         Keyword.put(conn_opts, :hostname, original_host)
       end)
-      |> Keyword.put_new(:pool_max_idle_time, @default_pool_max_idle_time)
+      |> Keyword.put(:pool_max_idle_time, @pool_max_idle_time)
 
-    tag = {__MODULE__, original_host, request.options[:connect_options] || []}
+    tag = {__MODULE__, original_host, request.options[:connect_options] || [], window}
 
     pool = %Finch.Pool{
       scheme: String.to_existing_atom(request.url.scheme),

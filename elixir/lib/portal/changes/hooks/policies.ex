@@ -36,7 +36,11 @@ defmodule Portal.Changes.Hooks.Policies do
   end
 
   # Group was reconnected - process as insert
-  def on_update(lsn, %{"group_id" => nil} = _old_data, %{"group_id" => group_id} = data)
+  def on_update(
+        lsn,
+        %{"group_id" => nil} = _old_data,
+        %{"group_id" => group_id, "is_disabled" => false} = data
+      )
       when not is_nil(group_id) do
     on_insert(lsn, data)
   end

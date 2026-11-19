@@ -75,21 +75,21 @@ defmodule Portal.AccountTest do
           send_resp(conn, 204, "")
       end)
 
-      account = account_fixture(slug: "claimed-first")
+      account = account_fixture(slug: "claimed_first")
 
       assert_received {:claimed, %{"RowKey" => "claimed_first", "AccountId" => account_id, "Region" => "us"}}
       assert account_id == account.id
-      assert [%Portal.AccountSlug{slug: "claimed-first"}] = slug_rows(account)
+      assert [%Portal.AccountSlug{slug: "claimed_first"}] = slug_rows(account)
     end
 
     test "refuses a slug another region holds" do
       stub_registry(fn
         %{method: "POST"} = conn -> send_resp(conn, 409, "")
-        %{method: "GET"} = conn -> Req.Test.json(conn, entity("eu-owned", Ecto.UUID.generate(), "eu"))
+        %{method: "GET"} = conn -> Req.Test.json(conn, entity("eu_owned", Ecto.UUID.generate(), "eu"))
       end)
 
       assert_raise Ecto.InvalidChangesetError, ~r/has already been taken/, fn ->
-        account_fixture(slug: "eu-owned")
+        account_fixture(slug: "eu_owned")
       end
 
       assert Repo.aggregate(Portal.AccountSlug, :count) == 0
@@ -112,12 +112,12 @@ defmodule Portal.AccountTest do
           send_resp(conn, 204, "")
       end)
 
-      account = account_fixture(slug: "first-slug")
-      account = update_account(account, slug: "second-slug")
+      account = account_fixture(slug: "first_slug")
+      account = update_account(account, slug: "second_slug")
 
       assert_received {:claimed, "first_slug"}
       assert_received {:claimed, "second_slug"}
-      assert Enum.map(slug_rows(account), & &1.slug) == ["first-slug", "second-slug"]
+      assert Enum.map(slug_rows(account), & &1.slug) == ["first_slug", "second_slug"]
     end
   end
 
@@ -177,7 +177,7 @@ defmodule Portal.AccountTest do
     end
 
     test "rejects the underscore twin of a hyphenated slug" do
-      account_fixture(slug: "acme-corp")
+      account_fixture() |> put_legacy_slug("acme-corp")
 
       changeset =
         account_fixture()
@@ -189,7 +189,7 @@ defmodule Portal.AccountTest do
     end
 
     test "lets the owner of a hyphenated slug take the underscore twin" do
-      account = account_fixture(slug: "acme-corp")
+      account = account_fixture() |> put_legacy_slug("acme-corp")
 
       changeset =
         account
@@ -197,19 +197,27 @@ defmodule Portal.AccountTest do
         |> Account.changeset()
 
       assert {:ok, %{slug: "acme_corp"} = account} = Repo.update(changeset)
-      assert [%{slug: "acme-corp"}, %{slug: "acme_corp"}] = slug_rows(account)
+      assert "acme-corp" in Enum.map(slug_rows(account), & &1.slug)
+      assert "acme_corp" in Enum.map(slug_rows(account), & &1.slug)
     end
 
     test "treats slugs case-insensitively" do
-      other = account_fixture()
+      account_fixture() |> put_legacy_slug("ACME_CORP")
 
       changeset =
         account_fixture()
-        |> cast(%{slug: String.upcase(other.slug)}, [:slug])
+        |> cast(%{slug: "acme_corp"}, [:slug])
         |> Account.changeset()
 
       assert {:error, changeset} = Repo.update(changeset)
       assert %{slug: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    test "rejects a slug that does not match the format" do
+      for slug <- ["acme-corp", "Acme", "acme__corp", "_acme", "acme corp"] do
+        changeset = build_changeset(%{slug: slug})
+        assert %{slug: ["may only contain lowercase letters, numbers, and underscores"]} = errors_on(changeset)
+      end
     end
 
     test "removes the registry rows with the account" do

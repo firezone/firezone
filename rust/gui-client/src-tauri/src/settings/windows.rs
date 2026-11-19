@@ -11,6 +11,7 @@ pub fn load_mdm_settings() -> Result<MdmSettings> {
         account_slug: registry_values.accountSlug,
         hide_admin_portal_menu_item: registry_values.hideAdminPortalMenuItem,
         connect_on_start: registry_values.connectOnStart,
+        start_on_login: registry_values.startOnLogin,
         check_for_updates: registry_values.checkForUpdates,
         support_url: registry_values.supportURL.and_then(|url| url.parse().ok()),
     })
@@ -27,6 +28,7 @@ struct MdmRegistryValues {
     accountSlug: Option<String>,
     hideAdminPortalMenuItem: Option<bool>,
     connectOnStart: Option<bool>,
+    startOnLogin: Option<bool>,
     checkForUpdates: Option<bool>,
     supportURL: Option<String>,
 }

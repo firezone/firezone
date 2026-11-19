@@ -28,7 +28,7 @@ struct ApiReleasesResponse {
 ///
 /// The last version we notified about is only kept in memory, so the user
 /// is reminded about a pending update once per GUI session.
-pub async fn checker_task(ctlr_tx: mpsc::Sender<Option<Release>>, debug_mode: bool) -> Result<()> {
+pub async fn checker_task(ctlr_tx: mpsc::Sender<Option<Release>>, debug_mode: bool) -> Result<!> {
     delete_legacy_version_file().await;
 
     let (current_version, interval_in_seconds) = if debug_mode {

@@ -13,9 +13,37 @@ defmodule Portal.Billing.EventHandler do
   @subscription_events ["created", "resumed"]
   # Self-serve plans. Moving between them is not a new enrollment.
   @enrollment_plans [:team, :business]
+  @region_transfer_reason "Region transfer in progress"
 
   def handle_event(%{"object" => "event"} = event) do
     process_event_with_lock(event)
+  end
+
+  @doc """
+  Applies the subscription that a region transfer created to the account,
+  without waiting for its webhook. The account stays disabled.
+  """
+  def sync_region_transfer_subscription(account_id, subscription) do
+    with_current_account(subscription["customer"], fn
+      %Portal.Account{id: ^account_id, is_disabled: true, disabled_reason: @region_transfer_reason} ->
+        with {:ok, attrs} <- build_subscription_update_attrs(subscription),
+             {:ok, account} <- Database.update_account_by_id(account_id, attrs) do
+          Billing.evaluate_account_limits(account)
+        end
+
+      _account ->
+        {:error, :not_in_transfer}
+    end)
+  end
+
+  @doc """
+  Runs `fun` with the current account of a Stripe customer, under the same
+  lock that the events of that customer take.
+  """
+  def with_current_account(customer_id, fun) do
+    Database.with_customer_lock(customer_id, fn ->
+      fun.(Database.account_by_customer_id(customer_id))
+    end)
   end
 
   defp process_event_with_lock(event) do
@@ -102,6 +130,12 @@ defmodule Portal.Billing.EventHandler do
     {:skip, :no_customer_id}
   end
 
+  # Each finalized invoice is its own event rather than a newer state of the
+  # same object, and invoices can finalize in the same second.
+  defp check_chronological_order(_customer_id, _event_created, "invoice.finalized", _event_id) do
+    :ok
+  end
+
   defp check_chronological_order(customer_id, event_created, event_type, event_id) do
     case ProcessedEvents.get_latest_for_stripe_customer(customer_id, event_type) do
       nil ->
@@ -143,7 +177,7 @@ defmodule Portal.Billing.EventHandler do
         handle_customer_created(event_data)
 
       "customer.updated" ->
-        handle_customer_updated(event_data)
+        handle_customer_updated(event_data, get_in(event, ["data", "previous_attributes"]) || %{})
 
       "customer.subscription.deleted" ->
         handle_subscription_deleted(event_data)
@@ -157,6 +191,9 @@ defmodule Portal.Billing.EventHandler do
 
       "customer.subscription." <> sub_event when sub_event in @subscription_events ->
         handle_subscription_active(event_data)
+
+      "invoice.finalized" ->
+        Billing.YCDeal.enforce_cap(event_data)
 
       _ ->
         handle_unknown_event(event_type, event_data)
@@ -195,7 +232,7 @@ defmodule Portal.Billing.EventHandler do
     create_account_from_stripe_customer(customer_data)
   end
 
-  defp handle_customer_updated(customer_data) do
+  defp handle_customer_updated(customer_data, previous_attributes) do
     %{
       "id" => customer_id,
       "name" => customer_name,
@@ -206,8 +243,8 @@ defmodule Portal.Billing.EventHandler do
     attrs = build_customer_update_attrs(customer_metadata, customer_name, customer_email)
 
     case update_account_by_stripe_customer_id(customer_id, attrs) do
-      {:ok, _account} ->
-        :ok
+      {:ok, account} ->
+        maybe_update_slug(account, customer_metadata, previous_attributes)
 
       {:error, :customer_not_provisioned} ->
         create_account_from_stripe_customer(customer_data)
@@ -224,6 +261,30 @@ defmodule Portal.Billing.EventHandler do
         {:error, reason}
     end
   end
+
+  # Only a slug edited in Stripe is applied, so an unrelated customer update
+  # never overwrites a slug the portal changed since. A slug that cannot be
+  # applied is logged instead of failing the event, so Stripe stops redelivering it.
+  defp maybe_update_slug(account, %{"account_slug" => slug}, %{"metadata" => previous})
+       when is_binary(slug) and is_map(previous) and is_map_key(previous, "account_slug") do
+    slug = slug |> String.trim() |> Portal.AccountSlug.canonical()
+
+    case Database.update_account_by_id(account.id, %{slug: slug}) do
+      {:ok, _account} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Cannot set the account slug from Stripe",
+          account_id: account.id,
+          slug: slug,
+          reason: inspect(reason)
+        )
+
+        :ok
+    end
+  end
+
+  defp maybe_update_slug(_account, _metadata, _previous_attributes), do: :ok
 
   def handle_customer_deleted(customer_data) do
     %{"id" => customer_id} = customer_data
@@ -301,7 +362,6 @@ defmodule Portal.Billing.EventHandler do
       legal_name: customer_name,
       metadata: %{stripe: %{billing_email: customer_email}}
     }
-    |> put_if_not_nil(:slug, customer_metadata["account_slug"])
   end
 
   defp build_subscription_update_attrs(subscription_data) do
@@ -323,7 +383,8 @@ defmodule Portal.Billing.EventHandler do
          {:ok, add_ons} <- fetch_add_ons(add_on_items) do
       %{"name" => product_name, "metadata" => product_metadata} = product_info
 
-      subscription_trialing? = not is_nil(trial_end) and status in ["trialing", "paused"]
+      subscription_trialing? =
+        not is_nil(trial_end) and status in ["trialing", "paused"]
 
       stripe_metadata = %{
         "subscription_id" => subscription_id,
@@ -492,8 +553,8 @@ defmodule Portal.Billing.EventHandler do
 
   defp generate_account_slug(metadata) do
     cond do
-      not is_nil(metadata["account_slug"]) ->
-        metadata["account_slug"]
+      slug = metadata["account_slug"] ->
+        slug |> String.trim() |> Portal.AccountSlug.canonical()
 
       company_website = metadata["company_website"] ->
         extract_slug_from_uri(company_website)
@@ -512,14 +573,14 @@ defmodule Portal.Billing.EventHandler do
         |> String.split(".")
         |> List.delete_at(-1)
         |> Enum.join("_")
-        |> String.replace("-", "_")
+        |> Portal.AccountSlug.canonical()
 
       uri.path ->
         uri.path
         |> String.split(".")
         |> List.delete_at(-1)
         |> Enum.join("_")
-        |> String.replace("-", "_")
+        |> Portal.AccountSlug.canonical()
 
       true ->
         generate_unique_slug()
@@ -624,8 +685,7 @@ defmodule Portal.Billing.EventHandler do
 
     %Portal.Site{
       account_id: account.id,
-      managed_by: :account,
-      gateway_tokens: []
+      managed_by: :account
     }
     |> cast(attrs, [:name])
     |> validate_required([:name])
@@ -775,9 +835,6 @@ defmodule Portal.Billing.EventHandler do
   defp cast_limit("unlimited"), do: nil
   defp cast_limit(binary) when is_binary(binary), do: String.to_integer(binary)
 
-  defp put_if_not_nil(map, _key, nil), do: map
-  defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
-
   # The slug registry records the account ID at claim time, so a key retry
   # keeps the same ID.
   defp create_account_changeset(attrs) do
@@ -911,6 +968,14 @@ defmodule Portal.Billing.EventHandler do
       |> Safe.one()
       |> case do
         %Account{} = account ->
+          # Only RegionTransfer.enable/2 ends a region transfer. The webhooks
+          # of the new subscription in the destination and of the canceled one
+          # in the source must not.
+          attrs =
+            if account.is_disabled and account.disabled_reason == "Region transfer in progress",
+              do: Map.drop(attrs, [:is_disabled, :disabled_reason]),
+              else: attrs
+
           account
           |> cast(attrs, [:name, :legal_name, :slug, :is_disabled, :disabled_reason])
           |> cast_embed(:limits)

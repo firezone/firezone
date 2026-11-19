@@ -292,7 +292,7 @@ config :phoenix_live_reload, :dirs, [File.cwd!()]
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
+    "img-src 'self' data: https://www.firezone.dev https://firezone.statuspage.io",
     "style-src 'self'",
     "script-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
     "object-src 'none'",
@@ -301,7 +301,7 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   ],
   live_reload_frame_csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
+    "img-src 'self' data: https://www.firezone.dev https://firezone.statuspage.io",
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/",
     "connect-src 'self' ws: wss:",

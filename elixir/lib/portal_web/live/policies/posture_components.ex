@@ -328,6 +328,9 @@ defmodule PortalWeb.Policies.PostureComponents do
             </span>
             <span>{title}</span>
           </div>
+          <p class="text-xs text-subtle">
+            Skipped only when an MDM or EDR record puts the device on another platform.
+          </p>
         </dd>
       </div>
     </dl>

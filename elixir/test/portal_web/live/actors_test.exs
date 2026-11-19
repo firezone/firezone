@@ -469,6 +469,51 @@ defmodule PortalWeb.ActorsTest do
       refute Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
     end
 
+    test "does not revoke an identity of a different actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      identity = identity_fixture(account: account, actor: actor_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "delete_identity", %{"id" => identity.id})
+
+      assert html =~ "Identity not found"
+      assert Portal.Repo.get_by(Portal.ExternalIdentity, account_id: account.id, id: identity.id)
+    end
+
+    test "does not revoke a portal session of a different actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      auth_provider = userpass_provider_fixture(account: account).auth_provider
+
+      session =
+        portal_session_fixture(
+          account: account,
+          actor: actor_fixture(account: account),
+          auth_provider: auth_provider
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=portal_sessions")
+
+      html = render_click(lv, "delete_session", %{"id" => session.id})
+
+      assert html =~ "Session not found"
+      assert Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
+    end
+
     test "shows client session details in the client sessions tab", %{
       conn: conn,
       account: account,
@@ -594,6 +639,8 @@ defmodule PortalWeb.ActorsTest do
 
       html = render_click(lv, "confirm_disable_actor")
       assert html =~ "Disable this actor?"
+      assert html =~ "Disabling this actor will immediately disconnect all its Clients."
+      assert html =~ "Its sessions and tokens are paused, not revoked."
 
       html = render_click(lv, "cancel_disable_actor")
       refute html =~ "Disable this actor?"
@@ -735,6 +782,25 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "No tokens."
     end
 
+    test "does not delete a token of another actor", %{conn: conn, account: account, actor: actor} do
+      service_account = service_account_fixture(account: account)
+      gateway_token = gateway_token_fixture(account: account)
+
+      other_token =
+        client_token_fixture(account: account, actor: service_account_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{service_account}")
+
+      render_click(lv, "delete_token", %{"id" => gateway_token.id})
+      render_click(lv, "delete_token", %{"id" => other_token.id})
+
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: other_token.id)
+    end
+
     test "sends welcome email", %{conn: conn, account: account, actor: actor} do
       other_actor = actor_with_email_fixture(account: account)
 
@@ -799,7 +865,7 @@ defmodule PortalWeb.ActorsTest do
 
       assert html =~ "Tokens can only be created for service accounts"
       refute html =~ "Token Created"
-      refute Portal.Repo.get_by(Portal.ClientToken, actor_id: user.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, actor_id: user.id)
     end
 
     test "redirects to actor list when actor does not exist", %{
@@ -813,6 +879,22 @@ defmodule PortalWeb.ActorsTest do
                conn
                |> authorize_conn(actor)
                |> live(~p"/#{account}/actors/#{fake_id}")
+
+      assert path == ~p"/#{account}/actors"
+      assert flash["error"] == "Actor not found"
+    end
+
+    test "redirects to actor list for the legacy Gateway actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      legacy = legacy_gateway_actor_fixture(account: account)
+
+      assert {:error, {:live_redirect, %{to: path, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/actors/#{legacy}")
 
       assert path == ~p"/#{account}/actors"
       assert flash["error"] == "Actor not found"
@@ -1199,6 +1281,41 @@ defmodule PortalWeb.ActorsTest do
 
       assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id, account_id: account.id).email ==
                "changed-#{other_actor.email}"
+    end
+
+    test "deletes portal sessions and client tokens when email change is confirmed", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_with_email_fixture(account: account)
+      auth_provider = userpass_provider_fixture(account: account).auth_provider
+
+      portal_session =
+        portal_session_fixture(account: account, actor: other_actor, auth_provider: auth_provider)
+
+      client_token = client_token_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: other_actor.name,
+          email: "changed-#{other_actor.email}",
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      render_click(lv, "confirm_email_change")
+
+      refute Portal.Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, id: client_token.id, account_id: account.id)
     end
 
     test "re-runs role validation on confirmation (rejects if state changed mid-flow)", %{
@@ -1601,7 +1718,7 @@ defmodule PortalWeb.ActorsTest do
       refute html =~ other_actor.name
     end
 
-    test "deletes actor with client devices without crashing", %{
+    test "deletes an actor and keeps their client devices", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1617,7 +1734,105 @@ defmodule PortalWeb.ActorsTest do
       render_click(lv, "delete", %{"id" => other_actor.id})
 
       assert is_nil(Portal.Repo.get_by(Portal.Actor, account_id: account.id, id: other_actor.id))
-      assert is_nil(Portal.Repo.get_by(Portal.Device, account_id: account.id, id: client.id))
+      assert %Portal.Device{actor_id: nil} = Portal.Repo.get_by(Portal.Device, account_id: account.id, id: client.id)
+    end
+  end
+
+  describe "avatars" do
+    setup %{account: account} do
+      Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
+      %{directory: Portal.EntraDirectoryFixtures.entra_directory_fixture(account: account)}
+    end
+
+    test "shows the icon when photos are off", %{conn: conn, account: account, actor: actor, directory: directory} do
+      Portal.Config.put_env_override(:avatars_container_url, nil)
+      user = actor_fixture(account: account, type: :account_user)
+      directory_identity_fixture(directory: directory, actor: user, avatar_etag: "etag-1")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      refute has_element?(lv, "#actor-#{user.id} img[src*='/avatars/']")
+    end
+
+    test "shows the directory photo of a user", %{conn: conn, account: account, actor: actor, directory: directory} do
+      user = actor_fixture(account: account, type: :account_user)
+      identity = directory_identity_fixture(directory: directory, actor: user, avatar_etag: "etag-1")
+      src = ~p"/#{account}/avatars/#{identity.id}?#{[v: Portal.Avatars.version("etag-1")]}"
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      assert has_element?(lv, "#actor-#{user.id} img[src='#{src}']")
+      refute has_element?(lv, "#actor-#{user.id} [title='Admin']")
+    end
+
+    test "prefers a directory photo over a newer sign-in photo", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      directory: directory
+    } do
+      user = actor_fixture(account: account, type: :account_user)
+
+      synced =
+        directory_identity_fixture(directory: directory, actor: user, avatar_source: :directory, avatar_etag: "graph")
+
+      identity_fixture(account: account, actor: user, avatar_source: :picture, avatar_etag: "sha")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      assert has_element?(lv, "#actor-#{user.id} img[src^='/#{account.slug}/avatars/#{synced.id}?v=']")
+    end
+
+    test "shows the user icon and a shield on an admin without a photo", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      assert has_element?(lv, "#actor-#{actor.id} [title='Admin'].bg-purple-800")
+      refute has_element?(lv, "#actor-#{actor.id} .font-mono", actor.id)
+      assert has_element?(lv, "#actor-#{actor.id} .ri-user-line")
+      refute has_element?(lv, "#actor-#{actor.id} .ri-shield-check-line")
+      refute has_element?(lv, "#actor-#{actor.id} img[src*='/avatars/']")
+    end
+
+    test "shows one logo per identity provider next to the name", %{conn: conn, account: account, actor: actor, directory: directory} do
+      user = actor_fixture(account: account, type: :account_user)
+      directory_identity_fixture(directory: directory, actor: user)
+      google = Portal.GoogleDirectoryFixtures.google_directory_fixture(account: account)
+      directory_identity_fixture(directory: google, actor: user)
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      assert has_element?(lv, "#actor-#{user.id} img[alt='Microsoft Entra']")
+      assert has_element?(lv, "#actor-#{user.id} img[alt='Google']")
+    end
+
+    test "shows the photo in the detail panel", %{conn: conn, account: account, actor: actor, directory: directory} do
+      user = actor_fixture(account: account, type: :account_user)
+      identity = directory_identity_fixture(directory: directory, actor: user, avatar_etag: "etag-1")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{user}")
+
+      assert has_element?(lv, "#actor-panel .size-24 img[src^='/#{account.slug}/avatars/#{identity.id}?v=']")
+    end
+
+    test "shows each identity with its own photo and name", %{conn: conn, account: account, actor: actor, directory: directory} do
+      user = actor_fixture(account: account, type: :account_user)
+
+      named =
+        directory_identity_fixture(directory: directory, actor: user, name: "Ada Lovelace", avatar_etag: "etag-1")
+
+      unnamed =
+        identity_fixture(account: account, actor: user, name: nil, given_name: "Grace", family_name: "Hopper")
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{user}?tab=identities")
+
+      html = lv |> element("#actor-panel") |> render()
+
+      assert has_element?(lv, "#actor-panel li img[src^='/#{account.slug}/avatars/#{named.id}?v=']")
+      refute has_element?(lv, "#actor-panel li img[src*='/avatars/#{unnamed.id}']")
+      assert html =~ "Ada Lovelace"
+      assert html =~ "Grace Hopper"
+      assert has_element?(lv, "#actor-panel details dd", named.issuer)
     end
   end
 
@@ -1822,6 +2037,51 @@ defmodule PortalWeb.ActorsTest do
       html = render(lv)
       assert html =~ "Johnny Renamed"
       refute html =~ other.name
+    end
+  end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"open_actor_edit_form", %{}},
+          {"cancel_actor_edit_form", %{}},
+          {"validate", %{"actor" => %{"name" => "Late"}}},
+          {"save", %{"actor" => %{"name" => "Late"}}},
+          {"create_user", %{"actor" => %{"name" => "Late", "email" => "late@example.com", "type" => "account_user"}}},
+          {"create_service_account", %{"actor" => %{"name" => "Late"}, "token_expiration" => ""}},
+          {"delete_token", %{"id" => :token_id}},
+          {"delete_session", %{"id" => :session_id}},
+          {"delete_identity", %{"id" => :identity_id}},
+          {"send_welcome_email", %{"id" => :other_actor_id}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        other_actor = actor_fixture(account: account)
+        auth_provider = userpass_provider_fixture(account: account).auth_provider
+        session = portal_session_fixture(account: account, actor: other_actor, auth_provider: auth_provider)
+        identity = identity_fixture(account: account, actor: other_actor)
+        token = client_token_fixture(account: account, actor: other_actor)
+
+        ids = %{
+          other_actor_id: other_actor.id,
+          session_id: session.id,
+          identity_id: identity.id,
+          token_id: token.id
+        }
+
+        {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{other_actor}")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/actors")
+
+        params = Map.new(unquote(Macro.escape(params)), fn {k, v} -> {k, Map.get(ids, v, v)} end)
+        render_click(lv, unquote(event), params)
+
+        assert render(lv) =~ other_actor.name
+        assert Portal.Repo.get_by(Actor, account_id: account.id, id: other_actor.id).name == other_actor.name
+        refute Portal.Repo.get_by(Actor, account_id: account.id, name: "Late")
+        assert Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
+        assert Portal.Repo.get_by(Portal.ExternalIdentity, account_id: account.id, id: identity.id)
+        assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+      end
     end
   end
 end

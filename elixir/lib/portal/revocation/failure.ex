@@ -1,11 +1,12 @@
 defmodule Portal.Revocation.Failure do
   @moduledoc """
-  Decides when a revocation endpoint has failed enough to stop fetching from.
+  Decides when a revocation mechanism has failed enough to stop using it.
 
-  Shared by the list and the responder because what an admin is told is whether
-  revocation works for this CA, not which of the two mechanisms broke. The two
-  therefore share one streak clock, and a run of failures ends only once both
-  are healthy.
+  The list and the responder each keep their own failure clock and their own
+  off switch. Each one is what the other falls back on: a connect asks the
+  responder when the list is off or stale, so a list fault that also stopped the
+  responder would leave revoked certificates working. A responder fault that
+  stopped the list would do the same.
 
   Permanent faults disable at once. The addresses come out of a certificate
   rather than from configuration, so an address that is unroutable or of a
@@ -16,50 +17,42 @@ defmodule Portal.Revocation.Failure do
   and disabling on the first timeout would turn a short outage into one that
   lasts until someone notices.
 
-  Nothing here re-enables an endpoint. A disabled endpoint never fetches, so it
-  can never observe its own recovery. Editing and saving the trust anchor the
+  Nothing here re-enables a mechanism. A disabled one never fetches, so it can
+  never observe its own recovery. Editing and saving the trust anchor the
   issuer belongs to is what clears it, which is also how a log sink comes back.
   """
 
-  @disabled_reason "Fetch error"
   @transient_grace_hours 24
 
   @type mechanism :: :crl | :ocsp
 
-  @spec disabled_reason() :: String.t()
-  def disabled_reason, do: @disabled_reason
-
   @doc """
   Columns to merge into the update recording a failed fetch.
   """
-  @spec error_fields(Portal.RevocationEndpoint.t(), term(), DateTime.t()) :: keyword()
-  def error_fields(endpoint, reason, now) do
-    errored_at = endpoint.errored_at || now
+  @spec error_fields(Portal.RevocationEndpoint.t(), mechanism(), term(), DateTime.t()) ::
+          keyword()
+  def error_fields(endpoint, mechanism, reason, now) do
+    {errored_field, disabled_field} = fields(mechanism)
+    errored_at = Map.fetch!(endpoint, errored_field) || now
 
     if permanent?(reason) or DateTime.diff(now, errored_at, :hour) >= @transient_grace_hours do
-      [errored_at: errored_at, is_disabled: true, disabled_reason: @disabled_reason]
+      [{errored_field, errored_at}, {disabled_field, true}]
     else
-      [errored_at: errored_at]
+      [{errored_field, errored_at}]
     end
   end
 
   @doc """
   Columns to merge into the update recording a successful fetch.
-
-  Empty while the other mechanism is still failing, so a working responder does
-  not keep resetting the clock on a list that has been broken for days.
   """
-  @spec success_fields(Portal.RevocationEndpoint.t(), mechanism()) :: keyword()
-  def success_fields(endpoint, mechanism) do
-    if is_nil(other_error(endpoint, mechanism)) do
-      [errored_at: nil]
-    else
-      []
-    end
+  @spec success_fields(mechanism()) :: keyword()
+  def success_fields(mechanism) do
+    {errored_field, _disabled_field} = fields(mechanism)
+    [{errored_field, nil}]
   end
 
-  defp other_error(endpoint, :crl), do: endpoint.ocsp_error
-  defp other_error(endpoint, :ocsp), do: endpoint.crl_error
+  defp fields(:crl), do: {:crl_errored_at, :crl_is_disabled}
+  defp fields(:ocsp), do: {:ocsp_errored_at, :ocsp_is_disabled}
 
   defp permanent?({:blocked_address, _message}), do: true
   defp permanent?(:unsupported_url_scheme), do: true

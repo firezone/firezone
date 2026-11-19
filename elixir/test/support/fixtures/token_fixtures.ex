@@ -3,6 +3,7 @@ defmodule Portal.TokenFixtures do
   Test helpers for creating tokens and related data.
   """
 
+  import Ecto.Query, only: [from: 2]
   import Ecto.Changeset
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -46,7 +47,7 @@ defmodule Portal.TokenFixtures do
     actor = Map.get(attrs, :actor) || actor_fixture(account: account)
 
     changeset =
-      %Portal.ClientToken{}
+      %Portal.DeviceToken{}
       |> Ecto.Changeset.cast(attrs, [
         :secret_nonce,
         :secret_fragment,
@@ -80,7 +81,7 @@ defmodule Portal.TokenFixtures do
   end
 
   @doc """
-  Generate a gateway token using Portal.GatewayToken schema.
+  Generate a gateway token, owned by the account's legacy Gateway actor.
 
   Pass `gateway: device` to build a single-owner token bound to that gateway
   instead of a multi-owner site token.
@@ -103,8 +104,33 @@ defmodule Portal.TokenFixtures do
         |> Map.put(:device_id, gateway.id)
     end
     |> infrastructure_token_secrets()
-    |> then(&struct!(Portal.GatewayToken, &1))
+    |> then(&Map.put(&1, :actor_id, legacy_gateway_actor_id(&1.account_id)))
+    |> then(&struct!(Portal.DeviceToken, &1))
     |> Portal.Repo.insert!()
+  end
+
+  @doc """
+  Sets `rotated_at` on a gateway token, as a rotation does.
+  """
+  def stamp_gateway_token(%Portal.DeviceToken{} = token, rotated_at) do
+    token
+    |> change(rotated_at: rotated_at)
+    |> Portal.Repo.update!()
+  end
+
+  @doc """
+  Returns the account's legacy Gateway actor id, creating the actor if needed.
+  """
+  def legacy_gateway_actor_id(account_id) do
+    from(a in Portal.Actor,
+      where: a.account_id == ^account_id and a.type == :legacy_gateway,
+      select: a.id
+    )
+    |> Portal.Repo.one()
+    |> case do
+      nil -> Portal.ActorFixtures.legacy_gateway_actor_fixture(account: %{id: account_id}).id
+      id -> id
+    end
   end
 
   def valid_api_token_attrs do

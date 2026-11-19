@@ -8,7 +8,7 @@ defmodule Portal.Devices do
 
   alias Portal.Authentication
   alias Portal.Device
-  alias Portal.GatewayToken
+  alias Portal.DeviceToken
   alias Portal.Site
   alias __MODULE__.Database
 
@@ -25,6 +25,18 @@ defmodule Portal.Devices do
   @spec next_free_slug(Ecto.UUID.t(), String.t(), String.t() | nil) :: String.t()
   defdelegate next_free_slug(account_id, name, owner_name), to: Database
 
+  @doc """
+  The `site_devices` row that puts a new Gateway in `site`, for `put_assoc/3`
+  on the Gateway's insert. The changeset turns a Site deleted in the meantime
+  into an error rather than a raise.
+  """
+  @spec site_device_changeset(Site.t()) :: Ecto.Changeset.t()
+  def site_device_changeset(%Site{} = site) do
+    %Portal.SiteDevice{account_id: site.account_id, site_id: site.id}
+    |> Ecto.Changeset.change()
+    |> Portal.SiteDevice.changeset()
+  end
+
   @doc "The name that prefixes a device slug: the owner's for people, nothing for service accounts."
   @spec owner_name(Portal.Actor.t() | nil) :: String.t() | nil
   def owner_name(%Portal.Actor{type: type, name: name})
@@ -34,18 +46,31 @@ defmodule Portal.Devices do
   def owner_name(_actor), do: nil
 
   @doc """
+  Inserts a Gateway without a token.
+
+  The Gateway cannot connect until a token is minted for it, which is a
+  separate grant: callers that may manage Gateways are not necessarily allowed
+  to hand out the credential that lets one join a Site.
+  """
+  @spec create_gateway(Site.t(), String.t() | nil, Authentication.Subject.t()) ::
+          {:ok, Device.t()} | {:error, term()}
+  def create_gateway(%Site{} = site, name, %Authentication.Subject{} = subject) do
+    Database.insert_gateway(site, name, subject)
+  end
+
+  @doc """
   Inserts a Gateway and mints its single-owner token.
 
   Both writes happen in one transaction. They are separately authorized -
   `Safe.permit/3` lets an `account_user` insert a Device (clients create
-  their own row on first connect) but not a GatewayToken - so without the
+  their own row on first connect) but not a DeviceToken - so without the
   transaction a caller who can do the first and not the second gets a 401
   back while a tokenless Gateway stays behind in their account. The same
   applies to any other failure of the token insert, not just an
   authorization one.
   """
   @spec provision_gateway(Site.t(), String.t() | nil, Authentication.Subject.t()) ::
-          {:ok, Device.t(), GatewayToken.t(), binary()} | {:error, term()}
+          {:ok, Device.t(), DeviceToken.t(), binary()} | {:error, term()}
   def provision_gateway(%Site{} = site, name, %Authentication.Subject{} = subject) do
     with :ok <- Portal.Devices.RegistrationRateLimit.check(subject.account) do
       do_provision_gateway(site, name, subject)
@@ -65,9 +90,44 @@ defmodule Portal.Devices do
     end
   end
 
+  @doc """
+  Puts the actor who connected each device most recently, from
+  `device_actors`, in its `actor` and `actor_id`. A device nobody has
+  connected from gets `nil`.
+  """
+  @spec put_latest_actor([Device.t()], Authentication.Subject.t()) :: [Device.t()]
+  def put_latest_actor(devices, %Authentication.Subject{} = subject) when is_list(devices) do
+    actors = devices |> Enum.map(& &1.id) |> Database.latest_actors(subject)
+
+    Enum.map(devices, fn device ->
+      actor = Map.get(actors, device.id)
+      %{device | actor: actor, actor_id: actor && actor.id}
+    end)
+  end
+
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
+
+    def latest_actors([], _subject), do: %{}
+
+    def latest_actors(device_ids, subject) do
+      from(da in Portal.DeviceActor, as: :device_actors)
+      |> where([device_actors: da], da.device_id in ^device_ids)
+      |> join(:inner, [device_actors: da], a in Portal.Actor,
+        on: a.account_id == da.account_id and a.id == da.actor_id,
+        as: :actor
+      )
+      |> distinct([device_actors: da], da.device_id)
+      |> order_by([device_actors: da], asc: da.device_id, desc: da.last_seen_at)
+      |> select([device_actors: da, actor: a], {da.device_id, a})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> %{}
+        rows -> Map.new(rows)
+      end
+    end
 
     # Repo.transact/1 rolls the transaction back when fun returns
     # {:error, _}, which is what makes provision_gateway/3 all-or-nothing.
@@ -89,8 +149,8 @@ defmodule Portal.Devices do
       %Device{}
       |> Ecto.Changeset.cast(%{name: name}, [:name])
       |> Ecto.Changeset.put_change(:type, :gateway)
-      |> Ecto.Changeset.put_change(:site_id, site.id)
       |> put_free_slug(subject.account.id, nil)
+      |> Ecto.Changeset.put_assoc(:site_device, Portal.Devices.site_device_changeset(site))
       |> Safe.scoped(subject)
       |> Safe.insert()
     end

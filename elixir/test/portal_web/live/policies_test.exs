@@ -2324,4 +2324,61 @@ defmodule PortalWeb.PoliciesTest do
       refute html =~ other_group.name
     end
   end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"disable_policy", %{}},
+          {"enable_policy", %{}},
+          {"delete_policy", %{}},
+          {"change_policy_form", %{"policy" => %{"description" => "Late"}}},
+          {"submit_policy_form", %{"policy" => %{"description" => "Late"}}},
+          {"save_policy_breaking_change", %{}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        group = group_fixture(account: account)
+        resource = resource_fixture(account: account)
+        policy = policy_fixture(account: account, group: group, resource: resource)
+
+        {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/policies")
+
+        render_click(lv, unquote(event), unquote(Macro.escape(params)))
+
+        assert render(lv) =~ group.name
+        stored = Repo.get_by(Policy, account_id: account.id, id: policy.id)
+        assert stored.description == policy.description
+        assert stored.is_disabled == policy.is_disabled
+      end
+    end
+
+    test "ignores a resource change", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+      internet_resource = internet_resource_fixture(account: account)
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/policies")
+
+      send(lv.pid, {:panel_change_resource, internet_resource})
+
+      assert render(lv) =~ group.name
+    end
+
+    test "ignores a form submit after the form closed", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/policies/#{policy.id}")
+
+      render_click(lv, "submit_policy_form", %{"policy" => %{"description" => "Late"}})
+
+      assert Repo.get_by(Policy, account_id: account.id, id: policy.id).description == policy.description
+    end
+  end
 end

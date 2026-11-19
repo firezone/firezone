@@ -359,13 +359,18 @@ impl IpPacket {
             (_, other) => Transport::Other(other),
         };
 
-        Ok(Self {
+        let packet = Self {
             buf,
             len: u16::try_from(len)?,
             ip_header_length: u16::try_from(ip_header_length)?,
             transport,
             version,
-        })
+        };
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        let packet = packet.without_ipv4_options();
+
+        Ok(packet)
     }
 
     pub fn version(&self) -> IpVersion {
@@ -1081,6 +1086,39 @@ impl IpPacket {
         self
     }
 
+    /// Returns the packet without IPv4 options; IPv6 packets are returned as they are.
+    ///
+    /// Some Linux kernels mishandle IPv4 options on TCP handshakes (CVE-2026-98432).
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[inline]
+    fn without_ipv4_options(mut self) -> Self {
+        // `0x45` is IPv4 with the minimum header length, i.e. without options.
+        if matches!(self.version, IpVersion::V4) && self.buf[0] != 0x45 {
+            self.strip_ipv4_options();
+        }
+
+        self
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[cold]
+    fn strip_ipv4_options(&mut self) {
+        let header_len = self.ip_header_length();
+        let len = self.len();
+        let new_len = len - (header_len - Ipv4HeaderSlice::MIN_LEN);
+
+        // The transport checksums do not cover IPv4 options, so they stay valid.
+        self.buf
+            .copy_within(header_len..len, Ipv4HeaderSlice::MIN_LEN);
+        self.buf[0] = 0x45;
+        self.buf[2..4].copy_from_slice(&(new_len as u16).to_be_bytes());
+
+        self.len = new_len as u16;
+        self.ip_header_length = Ipv4HeaderSlice::MIN_LEN as u16;
+
+        self.set_ipv4_checksum();
+    }
+
     #[inline]
     pub fn ecn(&self) -> Ecn {
         // Read the bits straight from the header: this is called for every packet and
@@ -1391,6 +1429,56 @@ mod tests {
 
             assert_eq!(padded.packet(), packet.packet());
         }
+    }
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    fn ipv4_options_are_stripped_on_parse() {
+        use ingot::ip::Ipv4;
+        use ingot::tcp::Tcp;
+        use ingot::types::Emit as _;
+
+        let options = [0x94, 0x04, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00];
+        let payload = b"foobar";
+        let tcp = Tcp {
+            source: 1234,
+            destination: 443,
+            data_offset: 5,
+            flags: TcpFlags::SYN,
+            ..Default::default()
+        };
+        let header_len = Ipv4HeaderSlice::MIN_LEN + options.len();
+        let total_len = header_len + tcp.packet_length() + payload.len();
+        let ipv4 = Ipv4 {
+            ihl: (header_len / 4) as u8,
+            total_len: total_len as u16,
+            hop_limit: 64,
+            protocol: IpProtocol::TCP,
+            source: Ipv4Addr::new(10, 0, 0, 1).into(),
+            destination: Ipv4Addr::new(10, 0, 0, 2).into(),
+            options: options.to_vec(),
+            ..Default::default()
+        };
+        let mut buf = packet_buffer();
+        let rest = ipv4.emit_prefix(&mut buf[..total_len]).unwrap();
+        let rest = tcp.emit_prefix(rest).unwrap();
+        rest.copy_from_slice(payload);
+
+        let packet = IpPacket::new(buf, total_len).unwrap();
+
+        let header = packet.ipv4_header().unwrap();
+        assert!(header.options().is_empty());
+        assert_eq!(usize::from(header.total_len()), total_len - options.len());
+        assert_eq!(packet.packet().len(), total_len - options.len());
+        assert_eq!(header.source(), Ipv4Addr::new(10, 0, 0, 1));
+        assert_eq!(header.destination(), Ipv4Addr::new(10, 0, 0, 2));
+        assert_eq!(
+            packet.calculate_ipv4_header_checksum().unwrap(),
+            header.checksum()
+        );
+        let tcp = packet.as_tcp().unwrap();
+        assert!(tcp.syn());
+        assert_eq!(tcp.payload(), payload);
     }
 
     #[test]

@@ -97,6 +97,11 @@ defmodule PortalAPI.GatewayController do
     it via `POST /sites/{site_id}/gateways/{gateway_id}/token/rotate` once \
     the Gateway has connected, or delete and re-provision it.
 
+    Returning the token requires the `gateway_tokens:write` scope in \
+    addition to `gateways:write`. Set `issue_token` to `false` to create \
+    the Gateway without a token, which needs only `gateways:write`; mint \
+    its token later via `POST /sites/{site_id}/gateways/{gateway_id}/token`.
+
     `name` is optional; a random name is generated when omitted. `ipv4` \
     and `ipv6` are the Gateway's tunnel addresses, allocated from the \
     account's pool when the Gateway row is created - they are always \
@@ -138,8 +143,15 @@ defmodule PortalAPI.GatewayController do
         _other -> nil
       end
 
-    with {:ok, site} <- Database.fetch_site(site_id, subject),
-         {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do
+    issue_token? =
+      case params do
+        %{"issue_token" => false} -> false
+        _other -> true
+      end
+
+    with :ok <- permit_token_issuance(issue_token?, subject),
+         {:ok, site} <- Database.fetch_site(site_id, subject),
+         {:ok, gateway, encoded_token} <- create_gateway(site, name, issue_token?, subject) do
       gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
 
       conn
@@ -152,6 +164,37 @@ defmodule PortalAPI.GatewayController do
       )
     else
       error -> Error.handle(conn, error)
+    end
+  end
+
+  # The scope plug has already checked gateways:write. Returning the new
+  # Gateway's token hands out the credential that lets it join the Site, so it
+  # also needs gateway_tokens:write, the same as minting one through
+  # GatewayTokenController.
+  defp permit_token_issuance(false, _subject), do: :ok
+
+  defp permit_token_issuance(true, subject) do
+    case Portal.Scope.permit(:gateway_tokens, :post, subject) do
+      :ok ->
+        :ok
+
+      {:error, {:unauthorized, required_scope: required}} ->
+        {:error, :forbidden,
+         reason:
+           "This request requires the #{required} scope. " <>
+             "Set issue_token to false to create the Gateway without a token."}
+    end
+  end
+
+  defp create_gateway(site, name, true, subject) do
+    with {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do
+      {:ok, gateway, encoded_token}
+    end
+  end
+
+  defp create_gateway(site, name, false, subject) do
+    with {:ok, gateway} <- Database.create_gateway(site, name, subject) do
+      {:ok, gateway, nil}
     end
   end
 
@@ -251,6 +294,7 @@ defmodule PortalAPI.GatewayController do
     alias Portal.Site
     alias Portal.Device
     alias Portal.Presence
+    alias Portal.SiteDevice
 
     def fetch_site(id, subject) do
       result =
@@ -268,23 +312,36 @@ defmodule PortalAPI.GatewayController do
       Devices.provision_gateway(site, name, subject)
     end
 
+    def create_gateway(site, name, subject) do
+      Devices.create_gateway(site, name, subject)
+    end
+
     def list_gateways(subject, opts \\ []) do
       from(d in Device, as: :gateways)
       |> where([gateways: d], d.type == :gateway)
+      |> with_site()
       |> with_token_rotation()
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
+    defp with_site(queryable) do
+      queryable
+      |> join(:inner, [gateways: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+    end
+
     # Surfaces the rotation state of the token the gateway last connected
     # with, so a caller can tell a pending rotation from a completed one.
-    # Left join because gateway_token_id is null until the gateway's first
+    # Left join because token_id is null until the gateway's first
     # connect, and select_merge because rotated_at lives on the token
     # rather than the device.
     defp with_token_rotation(queryable) do
       queryable
-      |> join(:left, [gateways: d], t in Portal.GatewayToken,
-        on: t.id == d.gateway_token_id and t.account_id == d.account_id,
+      |> join(:left, [gateways: d], t in Portal.DeviceToken,
+        on: t.id == d.token_id and t.account_id == d.account_id,
         as: :gateway_token
       )
       |> select_merge([gateway_token: t], %{gateway_token_rotated_at: t.rotated_at})
@@ -333,7 +390,7 @@ defmodule PortalAPI.GatewayController do
     end
 
     defp filter_by_site_id(queryable, site_id) do
-      dynamic = dynamic([gateways: d], d.site_id == ^site_id)
+      dynamic = dynamic([site_device: sd], sd.site_id == ^site_id)
       {queryable, dynamic}
     end
 
@@ -355,7 +412,9 @@ defmodule PortalAPI.GatewayController do
     def fetch_gateway(site_id, id, subject) do
       result =
         from(d in Device, as: :gateways)
-        |> where([gateways: d], d.id == ^id and d.type == :gateway and d.site_id == ^site_id)
+        |> where([gateways: d], d.id == ^id and d.type == :gateway)
+        |> with_site()
+        |> where([site_device: sd], sd.site_id == ^site_id)
         |> with_token_rotation()
         |> Safe.scoped(subject)
         |> Safe.one()

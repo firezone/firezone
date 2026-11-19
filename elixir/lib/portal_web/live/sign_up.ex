@@ -121,6 +121,7 @@ defmodule PortalWeb.SignUp do
             query_params: %{},
             website_attribution: website_attribution,
             sign_up_browser_id: sign_up_browser_id,
+            survey_seed: sign_up_browser_id || :crypto.strong_rand_bytes(16),
             user_agent: user_agent,
             real_ip: real_ip
           )
@@ -141,6 +142,10 @@ defmodule PortalWeb.SignUp do
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :verify}} = socket) do
     {:noreply, push_navigate(socket, to: ~p"/sign_up")}
+  end
+
+  def handle_params(_params, _uri, %{assigns: %{live_action: :pending}} = socket) do
+    {:noreply, assign(socket, step: :pending_review)}
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: action}} = socket)
@@ -261,13 +266,19 @@ defmodule PortalWeb.SignUp do
       query_params={@query_params}
       website_attribution={@website_attribution}
     />
-    <.sign_up_form :if={@step == :fill_form} form={@form} turnstile_error={@turnstile_error} />
+    <.sign_up_form
+      :if={@step == :fill_form}
+      form={@form}
+      turnstile_error={@turnstile_error}
+      survey_seed={@survey_seed}
+    />
     <.idp_sign_up_form
       :if={@step == :idp_form}
       form={@form}
       email={@idp_identity.email}
       provider={@idp_identity.provider}
       trigger_submit={@trigger_submit}
+      survey_seed={@survey_seed}
     />
     <.existing_accounts
       :if={@step == :existing_accounts}
@@ -275,6 +286,7 @@ defmodule PortalWeb.SignUp do
       provider={@idp_identity && @idp_identity.provider}
     />
     <.email_sent :if={@step == :email_sent} />
+    <.pending_review :if={@step == :pending_review} />
     <.sign_up_error :if={@step == :error} error_message={@error_message} />
     """
   end
@@ -326,7 +338,7 @@ defmodule PortalWeb.SignUp do
         <Form.input field={actor[:type]} type="hidden" />
       </.inputs_for>
 
-      <.survey_fields form={@form} />
+      <.survey_fields form={@form} seed={@survey_seed} />
 
       <div class="absolute -left-[10000px] top-auto w-px h-px overflow-hidden" aria-hidden="true">
         <Form.input
@@ -420,6 +432,7 @@ defmodule PortalWeb.SignUp do
   attr :email, :string, required: true
   attr :provider, :string, required: true, values: @idp_sign_up_providers
   attr :trigger_submit, :boolean, default: false
+  attr :survey_seed, :string, required: true
 
   defp idp_sign_up_form(assigns) do
     ~H"""
@@ -481,7 +494,7 @@ defmodule PortalWeb.SignUp do
         />
       </.inputs_for>
 
-      <.survey_fields form={@form} />
+      <.survey_fields form={@form} seed={@survey_seed} />
 
       <button
         type="submit"
@@ -565,15 +578,16 @@ defmodule PortalWeb.SignUp do
   ]
 
   attr :form, :any, required: true
+  attr :seed, :string, required: true
 
   defp survey_fields(assigns) do
     assigns =
       assign(assigns,
-        referral_source_options: @referral_source_options,
-        motivation_options: @motivation_options,
-        use_case_options: @use_case_options,
-        role_options: @role_options,
-        previous_solution_options: @previous_solution_options,
+        referral_source_options: shuffle_options(@referral_source_options, assigns.seed),
+        motivation_options: shuffle_options(@motivation_options, assigns.seed),
+        use_case_options: shuffle_options(@use_case_options, assigns.seed),
+        role_options: shuffle_options(@role_options, assigns.seed),
+        previous_solution_options: shuffle_options(@previous_solution_options, assigns.seed),
         other_max_length: Portal.SignUpSurvey.other_max_length()
       )
 
@@ -976,6 +990,24 @@ defmodule PortalWeb.SignUp do
     """
   end
 
+  defp pending_review(assigns) do
+    ~H"""
+    <.step_header
+      title="Thanks for signing up"
+      subtitle="Your account is being created. We are checking a few things first."
+    >
+      <:icon><Core.icon name="ri-time-line" class="w-5 h-5 text-brand" /></:icon>
+    </.step_header>
+
+    <div class="rounded border border-border bg-raised p-4 mb-6">
+      <p class="text-sm text-body leading-relaxed">
+        This can take up to 24 hours. We will email you when your account is ready.
+        You can close this page.
+      </p>
+    </div>
+    """
+  end
+
   defp different_browser(assigns) do
     ~H"""
     <.step_header
@@ -1276,6 +1308,12 @@ defmodule PortalWeb.SignUp do
 
   defp survey_attrs(%Portal.SignUpSurvey{} = survey), do: Map.from_struct(survey)
 
+  # Seeded by the browser id so the disconnected and connected renders agree.
+  defp shuffle_options(options, seed) do
+    {other, rest} = Enum.split_with(options, &match?({_label, "other"}, &1))
+    Enum.sort_by(rest, fn {_label, value} -> :erlang.phash2({seed, value}) end) ++ other
+  end
+
   defp log_honeypot_hit(attrs, user_agent, real_ip) do
     Logger.warning("Sign-up honeypot triggered",
       email: normalize_log_value(Map.get(attrs, "email")),
@@ -1480,6 +1518,10 @@ defmodule PortalWeb.SignUp do
     end
   end
 
+  @doc "Whether the email already owns an account."
+  @spec owner_email_registered?(String.t()) :: boolean()
+  def owner_email_registered?(email), do: Database.find_accounts_by_owner_email(email) != []
+
   @doc """
   Creates the account for a verified email sign-up, unless the email already owns one.
   """
@@ -1617,8 +1659,7 @@ defmodule PortalWeb.SignUp do
 
     %Portal.Site{
       account_id: account.id,
-      managed_by: :account,
-      gateway_tokens: []
+      managed_by: :account
     }
     |> cast(attrs, [:name])
     |> validate_required([:name])
@@ -1630,8 +1671,7 @@ defmodule PortalWeb.SignUp do
 
     %Portal.Site{
       account_id: account.id,
-      managed_by: :system,
-      gateway_tokens: []
+      managed_by: :system
     }
     |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
     |> validate_required([:name, :managed_by])

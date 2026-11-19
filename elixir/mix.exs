@@ -17,7 +17,8 @@ defmodule Portal.MixProject do
       app: :portal,
       version: version(),
       elixir: "~> 1.15",
-      elixirc_paths: elixirc_paths(Mix.env()),
+      elixirc_paths: elixirc_paths(Mix.env()) ++ ops_paths("lib"),
+      test_paths: ["test"] ++ ops_paths("test"),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       test_ignore_filters: [~r"^test/fixtures/"],
@@ -55,6 +56,17 @@ defmodule Portal.MixProject do
   defp elixirc_paths(:test), do: ["lib", "portal_dev", "test/support", ".credo"]
   defp elixirc_paths(:dev), do: ["lib", "portal_dev", ".credo"]
   defp elixirc_paths(_), do: ["lib"]
+
+  # The private ops dashboard (firezone/portal-ops) is compiled in when it is checked
+  # out at ops/, as in CI and the portal-ops image. Without it the portal runs without
+  # the ops endpoint.
+  defp ops_paths(dir) do
+    if File.dir?(Path.join("ops", dir)) do
+      [Path.join("ops", dir)]
+    else
+      []
+    end
+  end
 
   defp listeners do
     System.get_env()

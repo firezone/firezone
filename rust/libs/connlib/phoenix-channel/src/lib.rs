@@ -351,12 +351,10 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
     }
 
     // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
-    if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
-        let now = chrono::Utc::now();
-        let retry_at = date.to_utc();
+    if let Ok(retry_at) = jiff::fmt::rfc2822::DateTimeParser::new().parse_timestamp(value) {
         let duration = retry_at
-            .signed_duration_since(now)
-            .to_std()
+            .duration_since(jiff::Timestamp::now())
+            .try_into()
             .unwrap_or(Duration::ZERO);
 
         return Some(duration);
@@ -1484,8 +1482,10 @@ mod tests {
     #[test]
     fn parse_retry_after_http_date_in_future() {
         // Create a date 60 seconds in the future
-        let future_date = chrono::Utc::now() + chrono::Duration::seconds(60);
-        let date_str = future_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+        let future_date = jiff::Timestamp::now() + jiff::SignedDuration::from_secs(60);
+        let date_str = future_date
+            .strftime("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
 
         let result = parse_retry_after_value(&date_str);
         assert!(result.is_some(), "should parse future HTTP date");
@@ -1501,8 +1501,8 @@ mod tests {
     #[test]
     fn parse_retry_after_http_date_in_past() {
         // Create a date 60 seconds in the past
-        let past_date = chrono::Utc::now() - chrono::Duration::seconds(60);
-        let date_str = past_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+        let past_date = jiff::Timestamp::now() - jiff::SignedDuration::from_secs(60);
+        let date_str = past_date.strftime("%a, %d %b %Y %H:%M:%S GMT").to_string();
 
         let result = parse_retry_after_value(&date_str);
         assert_eq!(result, Some(Duration::ZERO), "past date should return zero");

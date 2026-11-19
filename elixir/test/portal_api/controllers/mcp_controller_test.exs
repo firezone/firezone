@@ -233,6 +233,37 @@ defmodule PortalAPI.MCPControllerTest do
       assert json_response(conn, 401)
     end
 
+    test "rejects a token while its auth provider is disabled", %{conn: conn, actor: actor} do
+      {token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(account: actor.account, actor: actor)
+
+      Portal.EmailOTP.AuthProvider
+      |> Portal.Repo.get_by!(account_id: actor.account_id, id: token.auth_provider_id)
+      |> Ecto.Changeset.change(is_disabled: true)
+      |> Portal.Repo.update!()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
+    test "rejects a token with no auth provider", %{conn: conn, actor: actor} do
+      {token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(account: actor.account, actor: actor)
+
+      token |> Ecto.Changeset.change(auth_provider_id: nil) |> Portal.Repo.update!()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
     test "answers GET with 405", %{conn: conn, actor: actor} do
       conn = conn |> authorize_mcp_conn(actor) |> get("/mcp")
 
@@ -711,6 +742,33 @@ defmodule PortalAPI.MCPControllerTest do
         assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} = response
         assert text =~ "non-empty list"
       end
+    end
+
+    test "create_site_gateway returns a token only with the gateway_tokens:write scope", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      site = site_fixture(account: account)
+
+      response =
+        conn
+        |> authorize_mcp_conn(actor, ["gateways:write"])
+        |> call_tool("create_site_gateway", %{"site_id" => site.id})
+        |> json_response(200)
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} = response
+      assert text =~ "gateway_tokens:write"
+
+      response =
+        conn
+        |> recycle()
+        |> authorize_mcp_conn(actor, ["gateways:write"])
+        |> call_tool("create_site_gateway", %{"site_id" => site.id, "issue_token" => false})
+        |> json_response(200)
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = response
+      refute Map.has_key?(data, "token")
     end
 
     test "treats fields as unknown on a tool that does not offer it", %{conn: conn, actor: actor} do

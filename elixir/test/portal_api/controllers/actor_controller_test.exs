@@ -6,6 +6,7 @@ defmodule PortalAPI.ActorControllerTest do
   import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.AuthProviderFixtures
   import Portal.DeviceFixtures
   import Portal.IdentityFixtures
   import Portal.OAuthFixtures
@@ -731,6 +732,57 @@ defmodule PortalAPI.ActorControllerTest do
       refute Repo.get_by(ExternalIdentity, id: identity2.id, account_id: account.id)
     end
 
+    test "deletes portal sessions and client tokens when email is changed", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      auth_provider = userpass_provider_fixture(account: account).auth_provider
+      target = actor_with_email_fixture(account: account)
+      portal_session = portal_session_fixture(account: account, actor: target, auth_provider: auth_provider)
+      client_token = client_token_fixture(account: account, actor: target)
+      other_actor = actor_with_email_fixture(account: account)
+
+      other_portal_session =
+        portal_session_fixture(account: account, actor: other_actor, auth_provider: auth_provider)
+
+      other_client_token = client_token_fixture(account: account, actor: other_actor)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{target.id}", actor: %{"email" => "rotated-#{target.email}"})
+
+      assert json_response(conn, 200)
+
+      refute Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
+      refute Repo.get_by(Portal.DeviceToken, id: client_token.id, account_id: account.id)
+      assert Repo.get_by(Portal.PortalSession, id: other_portal_session.id, account_id: account.id)
+      assert Repo.get_by(Portal.DeviceToken, id: other_client_token.id, account_id: account.id)
+    end
+
+    test "keeps portal sessions and client tokens when email is unchanged", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      target = actor_with_email_fixture(account: account)
+      portal_session = portal_session_fixture(account: account, actor: target)
+      client_token = client_token_fixture(account: account, actor: target)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{target.id}", actor: %{"name" => "Renamed", "email" => target.email})
+
+      assert json_response(conn, 200)
+
+      assert Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
+      assert Repo.get_by(Portal.DeviceToken, id: client_token.id, account_id: account.id)
+    end
+
     test "does not clear identities when email is unchanged", %{
       conn: conn,
       account: account,
@@ -1010,5 +1062,42 @@ defmodule PortalAPI.ActorControllerTest do
     |> put_req_header("content-type", "application/json")
     |> get("/actors/#{actor.id}")
     |> json_response(200)
+  end
+
+  describe "legacy Gateway actor" do
+    setup %{account: account, actor: api_actor} do
+      %{legacy: legacy_gateway_actor_fixture(account: account), api_actor: api_actor}
+    end
+
+    test "is not listed", %{conn: conn, legacy: legacy, api_actor: api_actor} do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors")
+
+      refute legacy.id in Enum.map(json_response(conn, 200)["data"], & &1["id"])
+    end
+
+    test "cannot be shown, updated or deleted", %{conn: conn, legacy: legacy, api_actor: api_actor} do
+      conn = conn |> authorize_conn(api_actor) |> put_req_header("content-type", "application/json")
+
+      assert json_response(get(conn, "/actors/#{legacy.id}"), 404)
+      assert json_response(put(conn, "/actors/#{legacy.id}", actor: %{name: "Renamed"}), 404)
+      assert json_response(delete(conn, "/actors/#{legacy.id}"), 404)
+
+      assert %Actor{name: "Legacy Gateway", is_disabled: false} = Repo.get_by(Actor, id: legacy.id)
+    end
+
+    test "cannot be created", %{conn: conn, account: account, api_actor: api_actor} do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: %{name: "Gateways", type: "legacy_gateway"})
+
+      assert json_response(conn, 422)
+      refute Repo.exists?(from(a in Actor, where: a.account_id == ^account.id and a.type == :legacy_gateway and a.name == "Gateways"))
+    end
   end
 end

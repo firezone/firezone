@@ -11,10 +11,12 @@ defmodule Portal.Crl.SyncTest do
 
   alias Portal.Crl.Sync
   alias Portal.Crypto.X509
+  alias Portal.StreamingServer
 
   @crl_url "http://crl.example.test/ca.crl"
   @mirror_url "http://mirror.example.test/ca.crl"
   @delta_url "http://crl.example.test/delta.crl"
+  @mib 1_048_576
 
   setup do
     account = account_fixture()
@@ -517,6 +519,15 @@ defmodule Portal.Crl.SyncTest do
       assert Repo.all(Portal.CrlRevocation) == []
     end
 
+    test "does nothing once the list was turned off", %{account: account, pki: pki} do
+      endpoint =
+        revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der, crl_is_disabled: true)
+
+      Req.Test.stub(Sync, fn _conn -> flunk("a turned-off list must not be fetched") end)
+
+      assert perform(endpoint) == {:ok, :disabled}
+    end
+
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do
       endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Repo.delete_all(Portal.RevocationEndpoint)
@@ -540,9 +551,25 @@ defmodule Portal.Crl.SyncTest do
       failure(endpoint)
 
       endpoint = Repo.one!(Portal.RevocationEndpoint)
-      assert endpoint.is_disabled
-      assert endpoint.disabled_reason == Portal.Revocation.Failure.disabled_reason()
-      assert endpoint.errored_at
+      assert endpoint.crl_is_disabled
+      assert endpoint.crl_errored_at
+    end
+
+    test "a list that stops leaves the responder running", %{account: account, pki: pki} do
+      endpoint =
+        revocation_endpoint_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          crl_urls: ["ldap://crl.example.test/ca"],
+          ocsp_urls: ["http://ocsp.example.test"]
+        )
+
+      failure(endpoint)
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert endpoint.crl_is_disabled
+      refute endpoint.ocsp_is_disabled
+      assert is_nil(endpoint.ocsp_errored_at)
     end
 
     test "a timeout only starts the clock", %{account: account, pki: pki} do
@@ -552,8 +579,8 @@ defmodule Portal.Crl.SyncTest do
       failure(endpoint)
 
       endpoint = Repo.one!(Portal.RevocationEndpoint)
-      refute endpoint.is_disabled
-      assert endpoint.errored_at
+      refute endpoint.crl_is_disabled
+      assert endpoint.crl_errored_at
     end
 
     test "a day of timeouts stops the fetching", %{account: account, pki: pki} do
@@ -563,13 +590,13 @@ defmodule Portal.Crl.SyncTest do
       failure(endpoint)
 
       started = DateTime.add(DateTime.utc_now(), -25, :hour)
-      Repo.update_all(Portal.RevocationEndpoint, set: [errored_at: started])
+      Repo.update_all(Portal.RevocationEndpoint, set: [crl_errored_at: started])
 
       failure(endpoint)
 
       endpoint = Repo.one!(Portal.RevocationEndpoint)
-      assert endpoint.is_disabled
-      assert endpoint.errored_at == started
+      assert endpoint.crl_is_disabled
+      assert endpoint.crl_errored_at == started
     end
 
     test "a list that comes back clears the streak", %{account: account, pki: pki} do
@@ -581,13 +608,32 @@ defmodule Portal.Crl.SyncTest do
       assert perform(endpoint) == {:ok, :refreshed}
 
       endpoint = Repo.one!(Portal.RevocationEndpoint)
-      assert is_nil(endpoint.errored_at)
+      assert is_nil(endpoint.crl_errored_at)
       assert is_nil(endpoint.crl_error)
+    end
+
+    test "stops reading a list that passes the size limit", %{account: account, pki: pki} do
+      test_pid = self()
+      url = StreamingServer.start(&StreamingServer.send_chunks(&1, test_pid, @mib, 64))
+      Portal.Config.put_env_override(Sync, req_opts: [retry: false, allow_private_ips: true])
+
+      endpoint =
+        revocation_endpoint_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          crl_urls: [url <> "/ca.crl"]
+        )
+
+      failure(endpoint)
+
+      assert Repo.one!(Portal.RevocationEndpoint).crl_error == ":crl_too_large"
+      assert_receive {:bytes_sent, sent}, 5_000
+      assert sent < 16 * @mib
     end
 
     test "a disabled endpoint is never scheduled again", %{account: account, pki: pki} do
       revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
-      Repo.update_all(Portal.RevocationEndpoint, set: [is_disabled: true])
+      Repo.update_all(Portal.RevocationEndpoint, set: [crl_is_disabled: true])
 
       assert {:ok, :scheduled} = Portal.Crl.Scheduler.perform(%Oban.Job{args: %{}})
 

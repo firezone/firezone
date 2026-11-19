@@ -46,6 +46,20 @@ defmodule Portal.Telemetry do
       events: [
         [:portal, :authorization, :granted]
       ]
+    },
+    ice_candidates: %{
+      handler_id: "portal-ice-candidate-metrics",
+      events: [
+        [:portal, :ice_candidates, :received],
+        [:portal, :ice_candidates, :dropped]
+      ]
+    },
+    flow_logs: %{
+      handler_id: "portal-flow-log-metrics",
+      events: [
+        [:portal, :flow_logs, :upload_denied],
+        [:portal, :flow_logs, :upload_unauthorized]
+      ]
     }
   }
 
@@ -335,6 +349,65 @@ defmodule Portal.Telemetry do
     })
   end
 
+  @doc """
+  Records the number of ICE candidates in one signaling message from a `sender`.
+  """
+  @spec ice_candidates_received(:client | :gateway, non_neg_integer()) :: :ok
+  def ice_candidates_received(sender, count) when sender in [:client, :gateway] do
+    :telemetry.execute([:portal, :ice_candidates, :received], %{count: count}, %{sender: sender})
+  end
+
+  @doc """
+  Records ICE candidates from a `sender` that the portal did not forward.
+
+  `reason` is `:invalid` (not a string), `:oversized` (string too long), `:over_limit`
+  (too many in one message) or `:unauthorized` (no authorization between the peers).
+  """
+  @spec ice_candidates_dropped(
+          :client | :gateway,
+          :invalid | :oversized | :over_limit | :unauthorized,
+          non_neg_integer()
+        ) :: :ok
+  def ice_candidates_dropped(_sender, _reason, 0), do: :ok
+
+  def ice_candidates_dropped(sender, reason, count)
+      when sender in [:client, :gateway] and
+             reason in [:invalid, :oversized, :over_limit, :unauthorized] do
+    :telemetry.execute([:portal, :ice_candidates, :dropped], %{count: count}, %{
+      sender: sender,
+      reason: reason
+    })
+  end
+
+  @doc """
+  Records a flow-log upload the portal refused because its source IP was out of
+  requests (`:ip`), or the reporting device (`:device`) or its account
+  (`:account`) was out of rows. The IP limit runs before the token is read, so
+  its role is `:unknown`.
+  """
+  @spec flow_log_upload_denied(:ip, :unknown) :: :ok
+  @spec flow_log_upload_denied(:device | :account, :initiator | :responder) :: :ok
+  def flow_log_upload_denied(bucket, role)
+      when (bucket == :ip and role == :unknown) or
+             (bucket in [:device, :account] and role in [:initiator, :responder]) do
+    :telemetry.execute([:portal, :flow_logs, :upload_denied], %{count: 1}, %{
+      bucket: bucket,
+      role: role
+    })
+  end
+
+  @doc """
+  Records a flow-log upload the portal refused with a 401, by why its ingest
+  token was rejected.
+  """
+  @spec flow_log_upload_unauthorized(
+          :missing | :malformed | :unknown_account | :invalid | :expired | :uploads_disabled
+        ) :: :ok
+  def flow_log_upload_unauthorized(reason)
+      when reason in [:missing, :malformed, :unknown_account, :invalid, :expired, :uploads_disabled] do
+    :telemetry.execute([:portal, :flow_logs, :upload_unauthorized], %{count: 1}, %{reason: reason})
+  end
+
   defp register_otel_instruments do
     meter = :opentelemetry_experimental.get_meter()
     node_attrs = %{"node_name" => System.get_env("NODE_NAME", to_string(node()))}
@@ -588,6 +661,33 @@ defmodule Portal.Telemetry do
       }
     )
 
+    :otel_meter.create_histogram(
+      meter,
+      :"portal.ice_candidates.per_message",
+      %{description: "ICE candidates in one signaling message, by sender", unit: :"1"}
+    )
+
+    :otel_meter.create_counter(
+      meter,
+      :"portal.ice_candidates.dropped",
+      %{description: "ICE candidates the portal did not forward, by sender and reason", unit: :"1"}
+    )
+
+    :otel_meter.create_counter(
+      meter,
+      :"portal.flow_logs.uploads_denied",
+      %{
+        description: "Flow-log uploads refused by a rate limit, by bucket (ip, device, account) and reporter role",
+        unit: :"1"
+      }
+    )
+
+    :otel_meter.create_counter(
+      meter,
+      :"portal.flow_logs.uploads_unauthorized",
+      %{description: "Flow-log uploads refused with a 401, by reason", unit: :"1"}
+    )
+
     :ok
   rescue
     error ->
@@ -818,6 +918,84 @@ defmodule Portal.Telemetry do
     :ok
   end
 
+  @doc false
+  def handle_ice_candidates_metric(
+        [:portal, :ice_candidates, :received],
+        %{count: count},
+        %{sender: sender},
+        config
+      ) do
+    :otel_histogram.record(
+      :otel_ctx.get_current(),
+      :opentelemetry_experimental.get_meter(),
+      :"portal.ice_candidates.per_message",
+      count,
+      %{"ice_candidates.sender" => to_string(sender), "node_name" => config.node_name}
+    )
+
+    :ok
+  end
+
+  def handle_ice_candidates_metric(
+        [:portal, :ice_candidates, :dropped],
+        %{count: count},
+        %{sender: sender, reason: reason},
+        config
+      ) do
+    :otel_counter.add(
+      :otel_ctx.get_current(),
+      :opentelemetry_experimental.get_meter(),
+      :"portal.ice_candidates.dropped",
+      count,
+      %{
+        "ice_candidates.sender" => to_string(sender),
+        "ice_candidates.drop_reason" => to_string(reason),
+        "node_name" => config.node_name
+      }
+    )
+
+    :ok
+  end
+
+  @doc false
+  def handle_flow_log_metric(
+        [:portal, :flow_logs, :upload_denied],
+        %{count: count},
+        %{bucket: bucket, role: role},
+        config
+      ) do
+    :otel_counter.add(
+      :otel_ctx.get_current(),
+      :opentelemetry_experimental.get_meter(),
+      :"portal.flow_logs.uploads_denied",
+      count,
+      %{
+        "flow_logs.bucket" => to_string(bucket),
+        "flow_logs.role" => to_string(role),
+        "node_name" => config.node_name
+      }
+    )
+
+    :ok
+  end
+
+  def handle_flow_log_metric(
+        [:portal, :flow_logs, :upload_unauthorized],
+        %{count: count},
+        %{reason: reason},
+        config
+      ) do
+    :otel_counter.add(
+      :otel_ctx.get_current(),
+      :opentelemetry_experimental.get_meter(),
+      :"portal.flow_logs.uploads_unauthorized",
+      count,
+      %{"flow_logs.reason" => to_string(reason), "node_name" => config.node_name}
+    )
+
+    :ok
+  end
+
   @spec enable_metrics(atom()) :: :ok | {:error, :already_enabled} | {:error, :unknown_group}
   def enable_metrics(group) do
     case Map.fetch(@metric_groups, group) do
@@ -869,6 +1047,8 @@ defmodule Portal.Telemetry do
   defp metric_group_handler(:liveview_events), do: &__MODULE__.handle_liveview_event_metric/4
   defp metric_group_handler(:channels), do: &__MODULE__.handle_channel_metric/4
   defp metric_group_handler(:authorizations), do: &__MODULE__.handle_authorization_metric/4
+  defp metric_group_handler(:ice_candidates), do: &__MODULE__.handle_ice_candidates_metric/4
+  defp metric_group_handler(:flow_logs), do: &__MODULE__.handle_flow_log_metric/4
 
   @doc false
   @spec endpoint_name(Plug.Conn.t()) :: String.t()

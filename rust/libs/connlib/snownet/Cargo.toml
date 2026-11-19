@@ -8,23 +8,20 @@ license = { workspace = true }
 anyhow = { workspace = true }
 bnum = { workspace = true }
 bufferpool = { workspace = true }
-bytecodec = { workspace = true }
-bytes = { workspace = true }
 deadline-map = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 fast-random-state = { workspace = true }
 frostlink = { workspace = true }
 hex = { workspace = true }
-hex-display = { workspace = true }
 ip-packet = { workspace = true }
 is = { workspace = true }
 itertools = { workspace = true }
-logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 prefetch = { workspace = true }
 rand = { workspace = true }
+relay-client-proto = { workspace = true }
 ringbuffer = { workspace = true }
 sanstun = { workspace = true }
 smallvec = { workspace = true }
@@ -33,9 +30,6 @@ stun_codec = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 zeroize = { workspace = true }
-
-[dev-dependencies]
-test-case = { workspace = true }
 
 [lints]
 workspace = true

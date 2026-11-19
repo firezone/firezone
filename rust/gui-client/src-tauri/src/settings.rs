@@ -42,6 +42,7 @@ pub struct MdmSettings {
     pub account_slug: Option<String>,
     pub hide_admin_portal_menu_item: Option<bool>,
     pub connect_on_start: Option<bool>,
+    pub start_on_login: Option<bool>,
     pub check_for_updates: Option<bool>,
     pub support_url: Option<Url>,
 }
@@ -118,10 +119,26 @@ fn start_minimized_default() -> bool {
     true
 }
 
+/// The hidden developer settings page, unlocked from the About page.
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+pub struct DeveloperSettings {
+    pub unlocked: bool,
+    /// Not persisted, so it is off whenever the GUI starts.
+    #[serde(skip)]
+    pub force_relayed_connections: bool,
+}
+
+#[derive(Clone, Copy, Serialize, specta::Type)]
+pub struct DeveloperSettingsViewModel {
+    pub unlocked: bool,
+    pub force_relayed_connections: bool,
+}
+
 #[derive(Clone, Serialize, specta::Type)]
 pub struct GeneralSettingsViewModel {
     pub start_minimized: bool,
     pub start_on_login: bool,
+    pub start_on_login_is_managed: bool,
     pub connect_on_start: bool,
     pub connect_on_start_is_managed: bool,
     pub account_slug: String,
@@ -177,10 +194,14 @@ impl GeneralSettingsViewModel {
             .to_string();
 
         Self {
+            start_on_login_is_managed: mdm_settings.start_on_login.is_some(),
             connect_on_start_is_managed: mdm_settings.connect_on_start.is_some(),
             account_slug_is_managed: mdm_settings.account_slug.is_some(),
             start_minimized: general_settings.start_minimized,
-            start_on_login: general_settings.start_on_login.is_some_and(|v| v),
+            start_on_login: mdm_settings
+                .start_on_login
+                .or(general_settings.start_on_login)
+                .is_some_and(|v| v),
             connect_on_start: mdm_settings
                 .connect_on_start
                 .or(general_settings.connect_on_start)
@@ -314,6 +335,12 @@ pub fn general_settings_path() -> Result<PathBuf> {
         .join("general_settings.json"))
 }
 
+fn developer_settings_path() -> Result<PathBuf> {
+    Ok(known_dirs::settings()
+        .context("`known_dirs::settings` failed")?
+        .join("developer_settings.json"))
+}
+
 /// Saves the advanced settings to disk
 ///
 /// Owned exclusively by the privileged Tunnel service. The file lives in
@@ -351,6 +378,18 @@ pub async fn save_general(settings: &GeneralSettings) -> Result<()> {
     Ok(())
 }
 
+pub async fn save_developer(settings: DeveloperSettings) -> Result<()> {
+    let path = developer_settings_path()?;
+    let dir = path
+        .parent()
+        .context("settings path should have a parent")?;
+
+    tokio::fs::create_dir_all(dir).await?;
+    tokio::fs::write(&path, serde_json::to_string(&settings)?).await?;
+
+    Ok(())
+}
+
 /// Return advanced settings if they're stored on disk
 ///
 /// Uses std::fs, so stick it in `spawn_blocking` for async contexts
@@ -368,6 +407,13 @@ pub fn load_general_settings() -> Result<GeneralSettings> {
     let path = general_settings_path()?;
     let text = std::fs::read_to_string(path)?;
     let settings = serde_json::from_str(&text)?;
+    Ok(settings)
+}
+
+pub fn load_developer_settings() -> Result<DeveloperSettings> {
+    let text = std::fs::read_to_string(developer_settings_path()?)?;
+    let settings = serde_json::from_str(&text)?;
+
     Ok(settings)
 }
 
@@ -535,6 +581,28 @@ mod tests {
         );
 
         assert_eq!(view_model.control_plane, ControlPlane::Custom);
+    }
+
+    #[test]
+    fn managed_start_on_login_overrides_saved_setting() {
+        let mdm_settings = MdmSettings {
+            start_on_login: Some(false),
+            ..Default::default()
+        };
+        let general_settings = GeneralSettings {
+            start_on_login: Some(true),
+            ..Default::default()
+        };
+
+        let view_model = GeneralSettingsViewModel::new(
+            mdm_settings,
+            general_settings,
+            AdvancedSettings::default(),
+            None,
+        );
+
+        assert!(!view_model.start_on_login);
+        assert!(view_model.start_on_login_is_managed);
     }
 
     #[test]

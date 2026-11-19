@@ -11,7 +11,7 @@
 	<string name="reset_to_defaults">Reset to defaults</string>
 	<string name="reset_to_defaults_confirm_title">Reset settings to defaults?</string>
 	<string name="reset_to_defaults_confirm">Reset</string>
-	<string name="sign_in_change_note">Sign out and sign in again after changing the account slug or control plane.</string>
+	<string name="sign_in_change_note">Changes to account slug and control plane only take effect on the next sign-in.</string>
 	<!-- General Settings -->
 	<string name="settings_section_sign_in">Sign-in</string>
 	<string name="settings_section_startup">Startup</string>
@@ -41,6 +41,10 @@
 	<string name="clear_logs_confirm_title">Clear log files?</string>
 	<string name="clear_logs_confirm_message">This deletes all log files on this device.</string>
 	<string name="clear_logs_confirm">Clear</string>
+	<string name="developer_settings_title">Developer</string>
+	<string name="reset_connlib">Reset connlib</string>
+	<string name="force_relayed_connections">Force relayed connections</string>
+	<string name="hide_developer_settings">Hide developer settings</string>
 
 	<!-- Device Trust Certificate -->
 	<string name="device_trust_certificate_title">Client certificate</string>

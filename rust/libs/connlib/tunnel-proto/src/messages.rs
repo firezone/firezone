@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
-use chrono::{DateTime, Utc, serde::ts_seconds};
 use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DoHUrl, DomainName};
 use ip_network::IpNetwork;
@@ -272,8 +271,8 @@ pub enum Relay {
 pub struct Turn {
     pub id: RelayId,
     //// Expire time of the username/password in unix millisecond timestamp UTC
-    #[serde(with = "ts_seconds")]
-    pub expires_at: DateTime<Utc>,
+    #[serde(with = "jiff::fmt::serde::timestamp::second::required")]
+    pub expires_at: jiff::Timestamp,
     /// Address of the relay
     pub addr: SocketAddr,
     /// Username for the relay
@@ -461,6 +460,20 @@ mod tests {
         let error = serde_json::from_str::<Filter>(msg).unwrap_err();
 
         assert!(error.to_string().contains("starts after it ends"));
+    }
+
+    #[test]
+    fn turn_expires_at_deserializes_from_unix_seconds() {
+        let json = r#"{ "type": "turn", "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8", "username": "user", "password": "pass", "addr": "172.28.0.101:3478", "expires_at": 1719367575 }"#;
+
+        let Relay::Turn(turn) = serde_json::from_str::<Relay>(json).unwrap() else {
+            panic!("expected TURN relay");
+        };
+
+        assert_eq!(
+            turn.expires_at,
+            "2024-06-26T02:06:15Z".parse::<jiff::Timestamp>().unwrap()
+        );
     }
 
     #[test]

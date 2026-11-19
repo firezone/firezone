@@ -3,7 +3,9 @@ defmodule Portal.Health do
   Health check plug that handles readiness probes.
 
   - `/readyz` - Readiness check, returns 200 when endpoints are ready,
-                503 when draining, database unavailable or starting
+                503 when draining, database unavailable or starting.
+                The body's `ApplicationHealthState` is `Healthy` or `Unhealthy`
+                to match, for the Azure Application Health extension.
 
   Used as a plug in Phoenix endpoints (passes through non-health routes):
 
@@ -26,23 +28,24 @@ defmodule Portal.Health do
 
   def call(conn, _opts), do: conn
 
-  # sobelow_skip ["XSS.SendResp"]
   defp send_readyz_response(conn) do
-    version = Application.spec(:portal, :vsn) |> to_string()
-
     cond do
-      draining?() ->
-        send_resp(conn, 503, JSON.encode!(%{status: :draining, version: version}))
-
-      not endpoints_ready?() ->
-        send_resp(conn, 503, JSON.encode!(%{status: :starting, version: version}))
-
-      not repos_ready?() ->
-        send_resp(conn, 503, JSON.encode!(%{status: :database_unavailable, version: version}))
-
-      true ->
-        send_resp(conn, 200, JSON.encode!(%{status: :ready, version: version}))
+      draining?() -> send_readyz(conn, 503, :draining)
+      not endpoints_ready?() -> send_readyz(conn, 503, :starting)
+      not repos_ready?() -> send_readyz(conn, 503, :database_unavailable)
+      true -> send_readyz(conn, 200, :ready)
     end
+  end
+
+  # sobelow_skip ["XSS.SendResp"]
+  defp send_readyz(conn, status_code, status) do
+    body = %{
+      status: status,
+      version: Application.spec(:portal, :vsn) |> to_string(),
+      ApplicationHealthState: if(status_code == 200, do: "Healthy", else: "Unhealthy")
+    }
+
+    send_resp(conn, status_code, JSON.encode!(body))
   end
 
   defp draining? do
@@ -87,7 +90,8 @@ defmodule Portal.Health do
     api_endpoint = Keyword.fetch!(config, :api_endpoint)
     ops_endpoint = Keyword.fetch!(config, :ops_endpoint)
 
+    # The ops endpoint only exists in builds that include the private ops dashboard.
     Process.whereis(web_endpoint) != nil and Process.whereis(api_endpoint) != nil and
-      Process.whereis(ops_endpoint) != nil
+      (Process.whereis(ops_endpoint) != nil or not Code.ensure_loaded?(ops_endpoint))
   end
 end

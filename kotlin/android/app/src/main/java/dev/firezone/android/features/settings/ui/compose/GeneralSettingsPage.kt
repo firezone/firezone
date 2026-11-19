@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -21,6 +19,7 @@ import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.features.settings.ui.isValidApiUrl
 import dev.firezone.android.features.settings.ui.isValidAuthUrl
+import dev.firezone.android.ui.FirezoneIcons
 import kotlinx.collections.immutable.toImmutableList
 
 @Composable
@@ -88,10 +87,9 @@ fun GeneralSettingsPage(
                 }
             }
             if (signInChangeNote != null && config.signInSettings() != signedInWith) {
-                Text(
-                    signInChangeNote,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                IconNote(
+                    icon = FirezoneIcons.Info,
+                    text = signInChangeNote,
                     modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp),
                 )
             }

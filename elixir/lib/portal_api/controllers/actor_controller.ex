@@ -155,7 +155,9 @@ defmodule PortalAPI.ActorController do
 
     - Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.
     - End all active sessions for this Actor, both in the admin portal and on
-      connected Client devices. The user will be signed out immediately.
+      connected Client devices, no matter how the Actor signed in (identity
+      provider, email OTP, or username and password). The user will be signed
+      out immediately.
 
     The Actor will need to sign in again through their identity provider, which
     re-links it under the new email.
@@ -294,7 +296,7 @@ defmodule PortalAPI.ActorController do
     import Ecto.Query
     alias Portal.Actor
     alias Portal.APIToken
-    alias Portal.Device
+    alias Portal.DeviceToken
     alias Portal.ExternalIdentity
     alias Portal.OAuthToken
     alias Portal.PortalSession
@@ -425,18 +427,19 @@ defmodule PortalAPI.ActorController do
       actor_id = changeset.data.id
 
       with {:ok, actor} <- update_actor_changeset(changeset, subject),
-           {_count, _} <- clear_identities_for_actor(actor_id, subject) do
+           {count, _} when is_integer(count) <- clear_identities_for_actor(actor_id, subject),
+           {count, _} when is_integer(count) <- clear_portal_sessions_for_actor(actor_id, subject),
+           {count, _} when is_integer(count) <- clear_client_tokens_for_actor(actor_id, subject) do
         {:ok, actor}
       end
     end
 
     defp select_last_seen_at(queryable) do
       client_seen_at =
-        from(d in Device,
-          where: d.account_id == parent_as(:actors).account_id,
-          where: d.actor_id == parent_as(:actors).id,
-          where: d.type == :client,
-          select: max(d.last_seen_at)
+        from(da in Portal.DeviceActor,
+          where: da.account_id == parent_as(:actors).account_id,
+          where: da.actor_id == parent_as(:actors).id,
+          select: max(da.last_seen_at)
         )
 
       portal_signed_in_at =
@@ -479,6 +482,17 @@ defmodule PortalAPI.ActorController do
       from(i in ExternalIdentity, where: i.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
+    end
+
+    defp clear_portal_sessions_for_actor(actor_id, subject) do
+      from(s in PortalSession, where: s.actor_id == ^actor_id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+    end
+
+    defp clear_client_tokens_for_actor(actor_id, subject) do
+      from(t in DeviceToken, where: t.actor_id == ^actor_id)
+      |> Portal.Authentication.delete_client_tokens(subject)
     end
   end
 end
