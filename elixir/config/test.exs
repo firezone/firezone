@@ -361,6 +361,10 @@ config :portal, Portal.Google.AuthProvider,
     plug: {Req.Test, PortalWeb.OIDC}
   ]
 
+config :portal, PortalOps.Google,
+  client_id: "test-ops-client",
+  client_secret: "test-ops-secret"
+
 config :portal, Portal.GitHub.AuthProvider,
   client_id: "test_github_client_id",
   client_secret: "test_github_client_secret",
