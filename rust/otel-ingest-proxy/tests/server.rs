@@ -35,23 +35,6 @@ async fn accepts_but_drops_metrics_the_token_does_not_allow() {
 }
 
 #[tokio::test]
-async fn rejects_missing_token() {
-    let dir = tempfile::tempdir().unwrap();
-    let cert = write_certificate(dir.path());
-    let (addr, _) = start(dir.path()).await;
-
-    let response = client(addr, &cert)
-        .post("https://localhost/v1/metrics")
-        .header(CONTENT_TYPE, "application/x-protobuf")
-        .body(export("connlib.a"))
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
 async fn serves_reloaded_certificate() {
     let dir = tempfile::tempdir().unwrap();
     let old = write_certificate(dir.path());

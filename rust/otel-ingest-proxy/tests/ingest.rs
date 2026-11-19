@@ -18,18 +18,6 @@ use tower::ServiceExt as _;
 use url::Url;
 
 #[tokio::test]
-async fn accepts_but_drops_metrics_the_token_does_not_allow() {
-    let app = app();
-
-    let response = app
-        .oneshot(export(&token(&["connlib.*"]), &["tunnel.b"]))
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-}
-
-#[tokio::test]
 async fn rejects_invalid_token() {
     let app = app();
 
