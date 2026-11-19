@@ -485,15 +485,15 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_metrics_config_message_without_token() {
-        let json = r#"{"event":"metrics_config","ref":null,"topic":"client","payload":{"endpoint":"https://otlp.firezone.dev/v1/metrics","export_interval_secs":60,"token":null,"patterns":[]}}"#;
+    fn can_deserialize_metrics_config_message_without_endpoint_and_token() {
+        let json = r#"{"event":"metrics_config","ref":null,"topic":"client","payload":{"endpoint":null,"token":null,"export_interval_secs":60,"patterns":[]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
         let IngressMessages::MetricsConfig(config) = message else {
             panic!("expected MetricsConfig");
         };
-        assert_eq!(config.endpoint, "https://otlp.firezone.dev/v1/metrics");
+        assert!(config.endpoint.is_none());
         assert!(config.token.is_none());
         assert!(config.patterns.is_empty());
     }

@@ -43,18 +43,19 @@ impl Exporter {
         Ok(Self { config })
     }
 
-    /// Applies the portal's metrics config; a `None` token stops exporting.
+    /// Applies the portal's metrics config; a `None` endpoint or token stops exporting.
     ///
     /// Only metrics whose name matches one of `patterns` are exported.
     pub fn configure(
         &self,
-        endpoint: &str,
+        endpoint: Option<&str>,
         export_interval_secs: u64,
         token: Option<SecretString>,
         patterns: Vec<String>,
     ) {
-        let config = match token
-            .map(|token| Config::new(endpoint, export_interval_secs, token, patterns))
+        let config = match endpoint
+            .zip(token)
+            .map(|(endpoint, token)| Config::new(endpoint, export_interval_secs, token, patterns))
             .transpose()
         {
             Ok(config) => config,
