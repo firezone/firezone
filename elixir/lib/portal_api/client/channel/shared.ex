@@ -180,6 +180,22 @@ defmodule PortalAPI.Client.Channel.Shared do
   ##### Forwarding replies from the gateway to the client #####
   #############################################################
 
+  # Every peer kind will send `{tag, %{id, type}, candidates}`. The tags without a sender type
+  # still arrive until all portal nodes send it.
+  def handle_info({tag, %{type: :gateway, id: gateway_id}, candidates}, socket)
+      when tag in [:ice_candidates, :invalidate_ice_candidates] do
+    push(socket, Atom.to_string(tag), %{gateway_id: gateway_id, candidates: candidates})
+    {:noreply, socket}
+  end
+
+  def handle_info({:ice_candidates, %{type: :client, id: client_id}, candidates}, socket) do
+    handle_info({:client_ice_candidates, client_id, candidates}, socket)
+  end
+
+  def handle_info({:invalidate_ice_candidates, %{type: :client, id: client_id}, candidates}, socket) do
+    handle_info({:invalidate_client_ice_candidates, client_id, candidates}, socket)
+  end
+
   # This the list of ICE candidates gathered by the gateway and relayed to the client
   def handle_info({:ice_candidates, gateway_id, candidates}, socket) do
     push(socket, "ice_candidates", %{
