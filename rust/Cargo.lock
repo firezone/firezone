@@ -2840,6 +2840,8 @@ dependencies = [
  "rustls-pki-types",
  "serde",
  "serde_json",
+ "socket-factory",
+ "telemetry",
  "tokio",
  "tokio-rustls",
  "tower",
