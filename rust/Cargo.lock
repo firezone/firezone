@@ -2816,7 +2816,6 @@ name = "firezone-relay"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "async-trait",
  "axum",
  "aya",
  "aya-build",
@@ -2832,20 +2831,17 @@ dependencies = [
  "mimalloc",
  "mio",
  "opentelemetry",
- "opentelemetry-http",
- "opentelemetry-otlp",
  "opentelemetry_sdk",
  "otel-attributes",
+ "otel-azure-export",
  "otel-instruments",
  "phoenix-channel",
  "rand 0.10.3",
  "relay-server-proto",
- "reqwest",
  "rustls",
  "secrecy",
  "serde",
  "serde_json",
- "serde_with",
  "socket-factory",
  "socket2",
  "stun_codec",
@@ -5764,6 +5760,23 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio-tungstenite",
  "uuid",
+]
+
+[[package]]
+name = "otel-azure-export"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "async-trait",
+ "opentelemetry-http",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tracing",
+ "url",
 ]
 
 [[package]]

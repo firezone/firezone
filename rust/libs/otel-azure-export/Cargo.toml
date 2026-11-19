@@ -1,0 +1,21 @@
+[package]
+name = "otel-azure-export"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+opentelemetry-http = { workspace = true, features = ["reqwest-blocking"] }
+opentelemetry-otlp = { workspace = true, features = ["metrics"] }
+opentelemetry_sdk = { workspace = true, features = ["metrics"] }
+reqwest = { workspace = true, features = ["blocking", "query", "rustls-no-provider"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+
+[lints]
+workspace = true

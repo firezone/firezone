@@ -1,3 +1,5 @@
+//! Exports OpenTelemetry metrics over OTLP/HTTP, authenticated with the host's Azure managed identity.
+
 use anyhow::{Context as _, Result, bail};
 use opentelemetry_http::{Bytes, HttpClient, HttpError, Request, Response};
 use opentelemetry_otlp::{Protocol, WithExportConfig as _, WithHttpConfig as _};
@@ -12,15 +14,9 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 use url::Url;
 
-#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OtlpAuth {
-    AzureManagedIdentity,
-}
-
 pub fn with_exporter(
     builder: MeterProviderBuilder,
     endpoint: &Url,
-    auth: Option<OtlpAuth>,
 ) -> Result<MeterProviderBuilder> {
     if endpoint.scheme() != "https"
         || !endpoint.username().is_empty()
@@ -30,7 +26,7 @@ pub fn with_exporter(
         bail!("OTLP metrics endpoint must be an HTTPS URL without credentials or a fragment");
     }
 
-    let client = ExportHttpClient::new(endpoint, auth)?;
+    let client = ExportHttpClient::new(endpoint)?;
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
         .with_endpoint(endpoint.as_str())
@@ -44,7 +40,7 @@ pub fn with_exporter(
         .with_periodic_exporter(exporter)
         .with_view(exponential_histograms);
 
-    tracing::trace!(target: "relay", "Successfully initialized OTLP metrics exporter");
+    tracing::trace!("Successfully initialized OTLP metrics exporter");
 
     Ok(builder)
 }
@@ -67,7 +63,6 @@ fn exponential_histograms(instrument: &Instrument) -> Option<Stream> {
 struct ExportHttpClient {
     endpoint: Url,
     client: reqwest::blocking::Client,
-    auth: Option<OtlpAuth>,
     token: Mutex<Option<Token>>,
 }
 
@@ -75,7 +70,6 @@ impl fmt::Debug for ExportHttpClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ExportHttpClient")
             .field("endpoint", &self.endpoint)
-            .field("auth", &self.auth)
             .finish_non_exhaustive()
     }
 }
@@ -87,17 +81,12 @@ impl HttpClient for ExportHttpClient {
             return Err("OTLP metrics export destination changed".into());
         }
 
-        match self.auth {
-            Some(OtlpAuth::AzureManagedIdentity) => {
-                let authorization = self.authorization()?;
-                request.headers_mut().insert(AUTHORIZATION, authorization);
-            }
-            None => {}
-        }
+        let authorization = self.authorization()?;
+        request.headers_mut().insert(AUTHORIZATION, authorization);
 
         let response = self.client.send_bytes(request).await?;
 
-        if self.auth.is_some() && response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             let mut token = self.token.lock().map_err(|_| "Azure token lock poisoned")?;
             *token = None;
         }
@@ -107,7 +96,7 @@ impl HttpClient for ExportHttpClient {
 }
 
 impl ExportHttpClient {
-    fn new(endpoint: &Url, auth: Option<OtlpAuth>) -> Result<Self> {
+    fn new(endpoint: &Url) -> Result<Self> {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(5))
             .no_proxy()
@@ -118,7 +107,6 @@ impl ExportHttpClient {
         Ok(Self {
             endpoint: endpoint.clone(),
             client,
-            auth,
             token: Mutex::new(None),
         })
     }
@@ -177,55 +165,4 @@ struct TokenResponse {
     access_token: String,
     #[serde_as(as = "serde_with::TimestampSeconds<String>")]
     expires_on: SystemTime,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Write as _;
-    use std::net::TcpListener;
-
-    #[test]
-    fn without_auth_forwards_request_headers_and_fetches_no_token() {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let endpoint = Url::parse(&format!(
-            "http://{}/v1/metrics",
-            listener.local_addr().unwrap()
-        ))
-        .unwrap();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let head = read_request_head(&mut stream);
-            stream
-                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
-                .unwrap();
-
-            head
-        });
-        let client = ExportHttpClient::new(&endpoint, None).unwrap();
-        let request = Request::post(endpoint.as_str())
-            .header("x-api-key", "secret")
-            .body(Bytes::new())
-            .unwrap();
-
-        let response = futures::executor::block_on(client.send_bytes(request)).unwrap();
-
-        let head = server.join().unwrap().to_ascii_lowercase();
-        assert_eq!(response.status(), 200);
-        assert!(head.contains("x-api-key: secret\r\n"));
-        assert!(!head.contains("authorization:"));
-    }
-
-    fn read_request_head(stream: &mut std::net::TcpStream) -> String {
-        let mut head = Vec::new();
-        let mut byte = [0];
-
-        while !head.ends_with(b"\r\n\r\n") {
-            stream.read_exact(&mut byte).unwrap();
-            head.push(byte[0]);
-        }
-
-        String::from_utf8(head).unwrap()
-    }
 }
