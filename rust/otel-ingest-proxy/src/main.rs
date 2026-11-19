@@ -13,7 +13,6 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio_rustls::TlsAcceptor;
 use tracing_subscriber::layer::Identity;
 use url::Url;
 
@@ -33,8 +32,8 @@ struct Args {
     tls_key_path: PathBuf,
 
     /// Base64-encoded PEM of the portal's Ed25519 public key, used to verify device tokens.
-    #[arg(long, env)]
-    jwt_public_key: String,
+    #[arg(long = "jwt-public-key", env = "JWT_PUBLIC_KEY", value_name = "BASE64_PEM", value_parser = parse_verifier)]
+    verifier: Verifier,
 
     /// Full OTLP/HTTP metrics URL to forward device metrics and export the proxy's own metrics to, used verbatim.
     #[arg(long, env)]
@@ -87,20 +86,10 @@ async fn try_main(args: Args) -> Result<()> {
 
     setup_meter_provider(&args.otlp_metrics_endpoint)?;
 
-    let cert_resolver = Arc::new(CertResolver::load(
-        args.tls_cert_path.clone(),
-        args.tls_key_path.clone(),
-    )?);
-    let tls = TlsAcceptor::from(Arc::new(cert_resolver.clone().server_config()));
+    let cert_resolver = CertResolver::load(args.tls_cert_path, args.tls_key_path)?;
+    let tls = cert_resolver.acceptor();
 
-    let jwt_public_key = base64::engine::general_purpose::STANDARD
-        .decode(args.jwt_public_key.trim())
-        .context("JWT public key is not valid base64")?;
-
-    let ingest = Arc::new(Ingest::new(
-        Verifier::from_ed_pem(&jwt_public_key)?,
-        &args.otlp_metrics_endpoint,
-    )?);
+    let ingest = Arc::new(Ingest::new(args.verifier, &args.otlp_metrics_endpoint)?);
 
     tokio::spawn(reload_certificate(cert_resolver));
     tokio::spawn(evict_idle_rate_limits(ingest.clone()));
@@ -119,6 +108,14 @@ async fn try_main(args: Args) -> Result<()> {
     server::serve(listener, tls, firezone_otel_ingest_proxy::router(ingest)).await?;
 
     Ok(())
+}
+
+fn parse_verifier(base64_pem: &str) -> Result<Verifier> {
+    let pem = base64::engine::general_purpose::STANDARD
+        .decode(base64_pem.trim())
+        .context("Not valid base64")?;
+
+    Verifier::from_ed_pem(&pem)
 }
 
 fn setup_meter_provider(endpoint: &Url) -> Result<()> {

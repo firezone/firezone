@@ -51,6 +51,7 @@ struct Header {
 }
 
 /// Verifies the EdDSA JWTs the portal signs with its Ed25519 key.
+#[derive(Debug, Clone)]
 pub struct Verifier {
     key: UnparsedPublicKey<Vec<u8>>,
 }

@@ -36,14 +36,14 @@ pub struct CertResolver {
 }
 
 impl CertResolver {
-    pub fn load(cert_path: PathBuf, key_path: PathBuf) -> Result<Self> {
+    pub fn load(cert_path: PathBuf, key_path: PathBuf) -> Result<Arc<Self>> {
         let current = load_certified_key(&cert_path, &key_path)?;
 
-        Ok(Self {
+        Ok(Arc::new(Self {
             cert_path,
             key_path,
             current: RwLock::new(Arc::new(current)),
-        })
+        }))
     }
 
     /// Loads the certificate and key again.
@@ -64,13 +64,13 @@ impl CertResolver {
         Ok(())
     }
 
-    pub fn server_config(self: Arc<Self>) -> ServerConfig {
+    pub fn acceptor(self: &Arc<Self>) -> TlsAcceptor {
         let mut config = ServerConfig::builder()
             .with_no_client_auth()
-            .with_cert_resolver(self);
+            .with_cert_resolver(self.clone());
         config.alpn_protocols = vec![b"http/1.1".to_vec()];
 
-        config
+        TlsAcceptor::from(Arc::new(config))
     }
 }
 
