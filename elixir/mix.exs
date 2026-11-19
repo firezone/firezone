@@ -69,15 +69,15 @@ defmodule Portal.MixProject do
   end
 
   # PortalOps.Repo only runs with the ops dashboard, which keeps its migrations in
-  # ops/priv/migrations. Mix runs a task once per alias, so it is re-enabled for
-  # Portal.Repo, which comes last to get the command line arguments.
+  # ops/priv/migrations. Mix runs a task once per alias, so it is re-enabled after
+  # Portal.Repo, which comes first to get the command line arguments.
   defp ops_migrate do
     if ops_paths("priv/migrations") == [] do
       []
     else
       [
-        "ecto.migrate -r PortalOps.Repo --migrations-path ops/priv/migrations",
-        fn _args -> Mix.Task.reenable("ecto.migrate") end
+        fn _args -> Mix.Task.reenable("ecto.migrate") end,
+        "ecto.migrate -r PortalOps.Repo --migrations-path ops/priv/migrations"
       ]
     end
   end
@@ -205,10 +205,9 @@ defmodule Portal.MixProject do
     [
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.migrate":
-        ops_migrate() ++
-          [
-            "ecto.migrate -r Portal.Repo --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
-          ],
+        [
+          "ecto.migrate -r Portal.Repo --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
+        ] ++ ops_migrate(),
       "ecto.rollback": [
         "ecto.rollback -r Portal.Repo --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
       ],
