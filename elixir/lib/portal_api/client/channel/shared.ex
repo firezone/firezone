@@ -1308,31 +1308,19 @@ defmodule PortalAPI.Client.Channel.Shared do
         policy_authorization_id = Ecto.UUID.generate()
         request_ref = make_ref()
 
-        preshared_key =
-          generate_preshared_key(
-            socket.assigns.client,
-            socket.assigns.client.public_key,
+        %{
+          preshared_key: preshared_key,
+          ice_credentials: ice_credentials,
+          initiator_token: initiator_token,
+          responder_token: responder_token
+        } =
+          connection_secrets(
+            socket,
             gateway,
-            gateway_public_key
-          )
-
-        ice_credentials =
-          generate_ice_credentials(
-            socket.assigns.client.public_key,
-            socket.assigns.client,
-            gateway,
-            gateway_public_key
-          )
-
-        {initiator_token, responder_token} =
-          mint_ingest_tokens(
-            socket.assigns.subject,
-            {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+            gateway_public_key,
+            resource,
             policy_authorization_id,
             policy_id,
-            flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
-            socket.assigns.client,
-            gateway.id,
             expires_at
           )
 
@@ -1861,20 +1849,20 @@ defmodule PortalAPI.Client.Channel.Shared do
       type: :client
     }
 
-    preshared_key =
-      Portal.Crypto.psk(
-        client,
-        client_public_key,
+    %{
+      preshared_key: preshared_key,
+      ice_credentials: ice_credentials,
+      initiator_token: initiator_token,
+      responder_token: responder_token
+    } =
+      connection_secrets(
+        socket,
         target_client,
-        target_meta.public_key
-      )
-
-    ice_credentials =
-      generate_ice_credentials(
-        client_public_key,
-        client,
-        target_client,
-        target_meta.public_key
+        target_meta.public_key,
+        resource,
+        policy_authorization_id,
+        policy_id,
+        expires_at
       )
 
     # Mirror the gateway's create-authorization payload on the receiver side: the
@@ -1885,18 +1873,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     rendered_resource = Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
-
-    {initiator_token, responder_token} =
-      mint_ingest_tokens(
-        socket.assigns.subject,
-        {Ecto.UUID.load!(resource.id), resource.name, resource.address},
-        policy_authorization_id,
-        policy_id,
-        flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
-        client,
-        target_client_id,
-        expires_at
-      )
 
     receiver_message =
       {:client_device_access_authorized, {self(), ref},
@@ -2067,8 +2043,37 @@ Relays.render(relays, relay_owner(socket)),
     }
   end
 
-  defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do
-    Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)
+  # Gateways and receiving clients get the same secrets for a connection.
+  defp connection_secrets(
+         socket,
+         receiver,
+         receiver_public_key,
+         resource,
+         policy_authorization_id,
+         policy_id,
+         expires_at
+       ) do
+    initiator = socket.assigns.client
+
+    {initiator_token, responder_token} =
+      mint_ingest_tokens(
+        socket.assigns.subject,
+        {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+        policy_authorization_id,
+        policy_id,
+        flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
+        initiator,
+        receiver.id,
+        expires_at
+      )
+
+    %{
+      preshared_key: Portal.Crypto.psk(initiator, initiator.public_key, receiver, receiver_public_key),
+      ice_credentials:
+        generate_ice_credentials(initiator.public_key, initiator, receiver, receiver_public_key),
+      initiator_token: initiator_token,
+      responder_token: responder_token
+    }
   end
 
   # ICE credentials must stay the same for all connections between an initiator and a receiver as long
