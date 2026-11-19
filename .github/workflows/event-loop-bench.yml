@@ -48,7 +48,7 @@ jobs:
       # Runs each benchmark once, so a broken one fails here instead of on Bencher.
       - name: Test bench
         run: cargo bench -p tunnel-bench --bench throughput -- --test
-      - uses: bencherdev/bencher@7de3c69a85380826613050826b4bce062be2f07d # v0.6.16
+      - uses: bencherdev/bencher@b2484bc6734c8e6da4fad141bd13527a11da3988 # v0.6.17
         if: env.BENCHER == 'true'
       - name: Push image to the Bencher registry
         if: env.BENCHER == 'true'
