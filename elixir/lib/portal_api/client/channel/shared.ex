@@ -179,9 +179,9 @@ defmodule PortalAPI.Client.Channel.Shared do
      assign(
        socket,
        authorizations_cache:
-         Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache),
+         Cache.Authorizations.prune(socket.assigns.authorizations_cache),
        outbound_authorizations_cache:
-         Cache.Client.Authorizations.prune(socket.assigns.outbound_authorizations_cache)
+         Cache.Authorizations.prune(socket.assigns.outbound_authorizations_cache)
      )}
   end
 
@@ -2622,7 +2622,7 @@ Relays.render(relays, relay_owner(socket)),
          initiating_device_id: initiating_client_id,
          resource_id: resource_id
        }) do
-    case Cache.Client.Authorizations.delete(
+    case Cache.Authorizations.delete(
            socket.assigns.authorizations_cache,
            id,
            initiating_client_id,
@@ -2731,7 +2731,7 @@ Relays.render(relays, relay_owner(socket)),
          %DateTime{} = expires_at
        )
        when not is_nil(client_id) and not is_nil(pa_id) do
-    Cache.Client.Authorizations.put(cache, pa_id, client_id, resource_id, expires_at)
+    Cache.Authorizations.put(cache, pa_id, client_id, resource_id, expires_at)
   end
 
   defp maybe_put_authorization(cache, _client_id, _resource, _pa_id, _expires_at),
@@ -2740,7 +2740,7 @@ Relays.render(relays, relay_owner(socket)),
   defp maybe_push_resource_filters_updated(_socket, _resource, filters, filters), do: :ok
 
   defp maybe_push_resource_filters_updated(socket, resource, _old_filters, _filters) do
-    if Cache.Client.Authorizations.has_resource?(socket.assigns.authorizations_cache, resource.id) do
+    if Cache.Authorizations.has_resource?(socket.assigns.authorizations_cache, resource.id) do
       cacheable = Cache.Cacheable.to_cache(resource)
       push(socket, "resource_filters_updated", Views.Resource.render_authorization(cacheable))
     end
@@ -3194,8 +3194,8 @@ Relays.render(relays, relay_owner(socket)),
   end
 
   defp client_peer?(socket, client_id) do
-    Cache.Client.Authorizations.has_client?(socket.assigns.outbound_authorizations_cache, client_id) or
-      Cache.Client.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id)
+    Cache.Authorizations.has_client?(socket.assigns.outbound_authorizations_cache, client_id) or
+      Cache.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id)
   end
 
   defp put_outbound_authorization(socket, %{
@@ -3205,7 +3205,7 @@ Relays.render(relays, relay_owner(socket)),
          expires_at: %DateTime{} = expires_at
        }) do
     cache =
-      Cache.Client.Authorizations.put(
+      Cache.Authorizations.put(
         socket.assigns.outbound_authorizations_cache,
         policy_authorization_id,
         target_client_id,
@@ -3219,7 +3219,7 @@ Relays.render(relays, relay_owner(socket)),
   defp put_outbound_authorization(socket, _pending), do: socket
 
   defp delete_outbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
-    case Cache.Client.Authorizations.delete(
+    case Cache.Authorizations.delete(
            socket.assigns.outbound_authorizations_cache,
            pa.id,
            pa.receiving_device_id,

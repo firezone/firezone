@@ -541,7 +541,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Authorizations.put(
             state.assigns.cache,
             pa_id,
             client.id,
@@ -740,7 +740,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Authorizations.put(
             state.assigns.cache,
             pa_id,
             client.id,
@@ -796,13 +796,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
           state.assigns.cache
-          |> Cache.Gateway.put(
+          |> Cache.Authorizations.put(
             old_pa_id,
             client.id,
             resource.id,
             expires_at
           )
-          |> Cache.Gateway.put(
+          |> Cache.Authorizations.put(
             current_pa_id,
             client.id,
             resource.id,
@@ -848,7 +848,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Authorizations.put(
             state.assigns.cache,
             pa_id,
             client.id,
@@ -1035,7 +1035,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Authorizations.put(
             state.assigns.cache,
             pa.id,
             client.id,
@@ -1082,7 +1082,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Authorizations.put(
             state.assigns.cache,
             pa.id,
             client.id,
@@ -1146,7 +1146,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Authorizations.put(
             state.assigns.cache,
             pa.id,
             client.id,
@@ -1456,7 +1456,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
       :sys.replace_state(socket.channel_pid, fn state ->
-        cache = Cache.Gateway.put(state.assigns.cache, pa_id, client.id, resource.id, expires_at)
+        cache = Cache.Authorizations.put(state.assigns.cache, pa_id, client.id, resource.id, expires_at)
         put_in(state.assigns.cache, cache)
       end)
 
@@ -5173,7 +5173,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
   defp put_authorized_client(socket, client_id) do
     :sys.replace_state(socket.channel_pid, fn state ->
       cache =
-        Cache.Gateway.put(
+        Cache.Authorizations.put(
           state.assigns.cache,
           Ecto.UUID.generate(),
           client_id,

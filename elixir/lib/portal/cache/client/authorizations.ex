@@ -1,36 +1,14 @@
 defmodule Portal.Cache.Client.Authorizations do
   @moduledoc """
-    This cache is used in the client channel processes to maintain a materialized view of inbound
-    policy_authorizations — entries where the channel's client is the `receiving_device_id` of a
-    policy_authorization. It mirrors `Portal.Cache.Gateway` for client-to-client device pool flows.
-
-    Like the data plane, it keeps a single authorization per `(initiating_client, resource)` pair
-    (last-one-wins) and tracks the currently-authorized `policy_authorization_id` so a delete only
-    pushes `reject_access` when it targets the authorization currently granting access. A delete for
-    a superseded authorization is ignored.
-
-    The client channel keeps a second, outbound instance for the client-to-client authorizations
-    it holds as the `initiating_device_id`. There the key holds the receiving client.
-
-    Data structure:
-
-      %{{client_id:uuidv4:16, resource_id:uuidv4:16} =>
-          {policy_authorization_id:uuidv4:16, expires_at:integer:8}}
+    Loads a client's authorizations into two `Portal.Cache.Authorizations` caches when its channel
+    joins: inbound, where the client is the receiving device, and outbound, where it is the
+    initiating device and the receiving device is another client.
   """
 
   alias Portal.{Cache, Device}
   alias __MODULE__.Database
-  import Ecto.UUID, only: [dump!: 1, load!: 1]
 
   require OpenTelemetry.Tracer
-
-  @type client_resource_key ::
-          {client_id :: Cache.Cacheable.uuid_binary(),
-           resource_id :: Cache.Cacheable.uuid_binary()}
-  @type entry ::
-          {policy_authorization_id :: Cache.Cacheable.uuid_binary(),
-           expires_at_unix :: non_neg_integer()}
-  @type t :: %{client_resource_key() => entry()}
 
   @doc """
     Fetches the client's policy_authorizations with one query and returns two caches: inbound,
@@ -39,7 +17,8 @@ defmodule Portal.Cache.Client.Authorizations do
     authorization exists for a pair, the longest-expiring one is kept to minimize unnecessary
     access churn.
   """
-  @spec hydrate(Device.t()) :: {inbound :: t(), outbound :: t()}
+  @spec hydrate(Device.t()) ::
+          {inbound :: Cache.Authorizations.t(), outbound :: Cache.Authorizations.t()}
   def hydrate(client) do
     OpenTelemetry.Tracer.with_span "Portal.Cache.Client.Authorizations.hydrate",
       attributes: %{
@@ -51,14 +30,14 @@ defmodule Portal.Cache.Client.Authorizations do
                                     {inbound, outbound} ->
         inbound =
           if receiving_id == client.id do
-            put_hydrated(inbound, id, initiating_id, resource_id, expires_at)
+            Cache.Authorizations.put_longest(inbound, id, initiating_id, resource_id, expires_at)
           else
             inbound
           end
 
         outbound =
           if initiating_id == client.id do
-            put_hydrated(outbound, id, receiving_id, resource_id, expires_at)
+            Cache.Authorizations.put_longest(outbound, id, receiving_id, resource_id, expires_at)
           else
             outbound
           end
@@ -67,113 +46,6 @@ defmodule Portal.Cache.Client.Authorizations do
       end)
     end
   end
-
-  @doc """
-    Removes expired authorizations from the cache.
-  """
-  @spec prune(t()) :: t()
-  def prune(cache) do
-    now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
-
-    for {key, {_pa_id, expires_at_unix} = entry} <- cache,
-        expires_at_unix >= now_unix,
-        into: %{} do
-      {key, entry}
-    end
-  end
-
-  @doc """
-    Record the authorization currently granting inbound access for a `(initiating_client, resource)`
-    pair. Last-one-wins: a newer authorization for the same pair supersedes the previous one.
-  """
-  @spec put(t(), Ecto.UUID.t(), Ecto.UUID.t(), Ecto.UUID.t(), DateTime.t()) :: t()
-  def put(
-        %{} = cache,
-        policy_authorization_id,
-        client_id,
-        resource_id,
-        %DateTime{} = expires_at
-      ) do
-    Map.put(
-      cache,
-      {dump_uuid(client_id), dump_uuid(resource_id)},
-      {dump_uuid(policy_authorization_id), DateTime.to_unix(expires_at, :second)}
-    )
-  end
-
-  @doc """
-    Remove a deleted policy_authorization from the cache. Only acts when the deleted row is the one
-    currently cached for its `(initiating_client, resource)` pair; a delete for a superseded
-    authorization is a no-op. Returns the cached expiration so the caller can decide whether to push
-    `reject_access`.
-  """
-  @spec delete(t(), Ecto.UUID.t(), Ecto.UUID.t(), Ecto.UUID.t()) ::
-          {:ok, non_neg_integer(), t()} | :error
-  def delete(%{} = cache, policy_authorization_id, client_id, resource_id) do
-    key = {dump_uuid(client_id), dump_uuid(resource_id)}
-    pa_id_bytes = dump_uuid(policy_authorization_id)
-
-    case Map.get(cache, key) do
-      {^pa_id_bytes, expires_at_unix} ->
-        {:ok, expires_at_unix, Map.delete(cache, key)}
-
-      _ ->
-        :error
-    end
-  end
-
-  @doc """
-    Check if the cache has an entry for the given resource_id.
-  """
-  @spec has_resource?(t(), Ecto.UUID.t()) :: boolean()
-  def has_resource?(%{} = cache, resource_id) do
-    rid_bytes = dump_uuid(resource_id)
-
-    Enum.any?(cache, fn {{_cid, rid}, _entry} -> rid == rid_bytes end)
-  end
-
-  @doc """
-    Check if the cache has an authorization for the given client_id.
-  """
-  @spec has_client?(t(), String.t()) :: boolean()
-  def has_client?(%{} = cache, client_id) when is_binary(client_id) do
-    case Ecto.UUID.dump(client_id) do
-      {:ok, cid_bytes} -> Enum.any?(cache, fn {{cid, _rid}, _entry} -> cid == cid_bytes end)
-      :error -> false
-    end
-  end
-
-  def has_client?(%{}, _client_id), do: false
-
-  @doc """
-    Return a list of all `{client_id, resource_id}` pairs matching the given resource ID.
-  """
-  @spec all_pairs_for_resource(t(), Ecto.UUID.t()) :: [{Ecto.UUID.t(), Ecto.UUID.t()}]
-  def all_pairs_for_resource(%{} = cache, resource_id) do
-    rid_bytes = dump_uuid(resource_id)
-
-    for {{cid, rid}, _entry} <- cache, rid == rid_bytes do
-      {load!(cid), load!(rid)}
-    end
-  end
-
-  defp put_hydrated(acc, id, client_id, resource_id, expires_at) do
-    key = {dump!(client_id), dump!(resource_id)}
-    expires_at_unix = DateTime.to_unix(expires_at, :second)
-
-    case acc do
-      %{^key => {_pa_id, prev_expires_at}} when prev_expires_at >= expires_at_unix ->
-        acc
-
-      _ ->
-        Map.put(acc, key, {dump!(id), expires_at_unix})
-    end
-  end
-
-  # Accepts either a UUID string or an already-dumped 16-byte binary, so callers
-  # can pass rendered (string id) or `Cache.Cacheable` (binary id) resources.
-  defp dump_uuid(<<_::128>> = bytes), do: bytes
-  defp dump_uuid(uuid) when is_binary(uuid), do: dump!(uuid)
 
   defmodule Database do
     alias Portal.Safe
