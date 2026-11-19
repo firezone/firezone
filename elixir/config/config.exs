@@ -27,7 +27,16 @@ end
 ##### Portal ##################
 ###############################
 
-config :portal, ecto_repos: [Portal.Repo]
+# The private ops dashboard (firezone/portal-ops) has its own database when it is
+# checked out at ops/ with migrations, see `ops_paths/1` in mix.exs.
+ops_repos =
+  if File.dir?(Path.expand("../ops/priv/migrations", __DIR__)) do
+    [PortalOps.Repo]
+  else
+    []
+  end
+
+config :portal, ecto_repos: [Portal.Repo] ++ ops_repos
 config :portal, generators: [binary_id: true]
 
 config :req,
@@ -62,6 +71,20 @@ config :portal, Portal.Repo,
   migration_lock: :pg_advisory_lock,
   start_apps_before_migration: [:ssl, :logger_json, :req],
   parameters: [application_name: "portal"]
+
+# The private ops dashboard's own database. Its migrations are in the dashboard's
+# repo; the portal-ops image puts them in priv/ops_repo/migrations.
+config :portal, PortalOps.Repo,
+  hostname: "localhost",
+  username: "postgres",
+  password: "postgres",
+  database: "firezone_dev_ops",
+  priv: "priv/ops_repo",
+  show_sensitive_data_on_connection_error: true,
+  pool_size: 2,
+  migration_timestamps: [type: :timestamptz],
+  migration_lock: :pg_advisory_lock,
+  parameters: [application_name: "ops"]
 
 # Isolated connection pools (web/api/job/poller)
 for {repo, app_name} <- [

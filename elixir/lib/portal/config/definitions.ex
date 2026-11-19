@@ -491,6 +491,29 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_name, :string, default: "firezone")
 
   @doc """
+  Name of the PostgreSQL database of the private ops dashboard, on the same server.
+  It is only used where the dashboard is compiled in.
+  """
+  defconfig(:ops_database_name, :string, default: "firezone_ops")
+
+  @doc """
+  User for the ops database. It has no access to the portal's database, and the
+  portal's user has none to the ops database.
+  """
+  defconfig(:ops_database_user, :string, default: "postgres", sensitive: true)
+
+  @doc """
+  Password for the ops database user, when DATABASE_ENTRA_AUTH is disabled.
+  """
+  defconfig(:ops_database_password, :string, default: nil, sensitive: true)
+
+  @doc """
+  Client ID of the Azure user-assigned managed identity of the ops database user,
+  used when DATABASE_ENTRA_AUTH is enabled. It must be attached to the VM.
+  """
+  defconfig(:ops_azure_client_id, :string, default: nil)
+
+  @doc """
   User that will be used to access the PostgreSQL database.
   """
   defconfig(:database_user, :string, default: "postgres", sensitive: true)
