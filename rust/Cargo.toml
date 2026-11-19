@@ -55,6 +55,7 @@ members = [
     "libs/known-dirs",
     "libs/logging",
     "libs/otel-attributes",
+    "libs/otel-metric-patterns",
     "libs/prefetch",
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
