@@ -12,7 +12,7 @@ permissions:
 jobs:
   # Builds images that match what's default in docker-compose.yml for
   # local development.
-  client-dev-images:
+  headless-client-dev-images:
     uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
@@ -46,7 +46,7 @@ jobs:
       flavour: dev
 
   # Builds debug images for compatibility tests in case the merge_group was skipped.
-  client-test-images:
+  headless-client-test-images:
     uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
@@ -80,7 +80,7 @@ jobs:
       flavour: debug
 
   # Build data-plane prod images for staging and production environments.
-  client-prod-images:
+  headless-client-prod-images:
     uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
@@ -114,7 +114,7 @@ jobs:
       flavour: release
 
   # Build data-plane perf images for perf-tests
-  client-perf-images:
+  headless-client-perf-images:
     uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
@@ -178,7 +178,7 @@ jobs:
   notify:
     needs:
       [
-        client-prod-images,
+        headless-client-prod-images,
         gateway-prod-images,
         relay-prod-images,
         control-plane-images,
@@ -209,7 +209,7 @@ jobs:
   perf-tests:
     needs:
       [
-        client-perf-images,
+        headless-client-perf-images,
         gateway-perf-images,
         relay-perf-images,
         control-plane-images,

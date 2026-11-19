@@ -174,7 +174,7 @@ jobs:
         tauri,
         codeql,
         control-plane,
-        client,
+        headless-client,
         gateway,
         relay,
         integration-tests,
@@ -417,7 +417,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
 
-  client:
+  headless-client:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
     uses: ./.github/workflows/_headless-client.yml
@@ -467,7 +467,7 @@ jobs:
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
-    needs: [control-plane, client, gateway, relay]
+    needs: [control-plane, headless-client, gateway, relay]
     secrets: inherit
     permissions:
       contents: read
@@ -477,7 +477,7 @@ jobs:
       id: integration
       api_fuzz: true
       gateway_image: ${{ needs.gateway.outputs.gateway_image }}
-      client_image: ${{ needs.client.outputs.client_image }}
+      client_image: ${{ needs.headless-client.outputs.client_image }}
       relay_image: ${{ needs.relay.outputs.relay_image }}
 
   compatibility-tests:
@@ -485,7 +485,7 @@ jobs:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         client:
-          - image: ${{ needs.client.outputs.client_image }}
+          - image: ${{ needs.headless-client.outputs.client_image }}
             tag: ${{ github.sha }}
             ci-name: sha
           - image: "ghcr.io/firezone/client"
@@ -504,7 +504,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     name: compatibility-tests-client(${{ matrix.client.ci-name }})-gateway(${{ matrix.gateway.ci-name }})
     uses: ./.github/workflows/_integration_tests.yml
-    needs: [control-plane, client, gateway, relay]
+    needs: [control-plane, headless-client, gateway, relay]
     secrets: inherit
     permissions:
       contents: read

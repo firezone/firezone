@@ -9,7 +9,7 @@ permissions:
 # Mirrors the perf-test job graph of `cd.yml` so that manual runs test the
 # dispatched ref with images built from that same ref.
 jobs:
-  client-perf-images:
+  headless-client-perf-images:
     uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
@@ -53,7 +53,7 @@ jobs:
   perf-tests:
     needs:
       [
-        client-perf-images,
+        headless-client-perf-images,
         gateway-perf-images,
         relay-perf-images,
         control-plane-images,
