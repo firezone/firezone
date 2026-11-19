@@ -883,7 +883,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    deliver_to_gateways(socket, [gateway_id], :ice_candidates_from_client, candidates)
+    deliver_to_gateways(socket, [gateway_id], :ice_candidates, candidates)
   end
 
   def handle_in(
@@ -891,7 +891,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    deliver_to_gateways(socket, [gateway_id], :invalidate_ice_candidates_from_client, candidates)
+    deliver_to_gateways(socket, [gateway_id], :invalidate_ice_candidates, candidates)
   end
 
   def handle_in(
@@ -899,7 +899,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    deliver_to_client(socket, target_client_id, :client_ice_candidates, candidates)
+    deliver_to_client(socket, target_client_id, :ice_candidates, candidates)
     {:noreply, socket}
   end
 
@@ -911,7 +911,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     case deliver_to_client(
            socket,
            target_client_id,
-           :invalidate_client_ice_candidates,
+           :invalidate_ice_candidates,
            candidates
          ) do
       :ok ->
@@ -933,7 +933,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    deliver_to_gateways(socket, gateway_ids, :ice_candidates_from_client, candidates)
+    deliver_to_gateways(socket, gateway_ids, :ice_candidates, candidates)
   end
 
   def handle_in(
@@ -941,7 +941,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    deliver_to_gateways(socket, gateway_ids, :invalidate_ice_candidates_from_client, candidates)
+    deliver_to_gateways(socket, gateway_ids, :invalidate_ice_candidates, candidates)
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
@@ -2861,7 +2861,7 @@ Relays.render(relays, relay_owner(socket)),
 
     if candidates != [] do
       for gateway_id <- Enum.uniq(gateway_ids), is_binary(gateway_id) do
-        PG.deliver(gateway_id, {tag, socket.assigns.client.id, candidates})
+        PG.deliver(gateway_id, {tag, %{type: :client, id: socket.assigns.client.id}, candidates})
       end
     end
 
@@ -2883,7 +2883,7 @@ Relays.render(relays, relay_owner(socket)),
         :ok
 
       true ->
-        PG.deliver(target_client_id, {tag, socket.assigns.client.id, candidates})
+        PG.deliver(target_client_id, {tag, %{type: :client, id: socket.assigns.client.id}, candidates})
     end
   end
 

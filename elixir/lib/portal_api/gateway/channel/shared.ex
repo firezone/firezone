@@ -780,7 +780,7 @@ Relays.render(relays, relay_owner(socket)),
 
   defp deliver_to_client(socket, client_id, tag, candidates) do
     if Cache.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
-      PG.deliver(client_id, {tag, socket.assigns.gateway.id, candidates})
+      PG.deliver(client_id, {tag, %{type: :gateway, id: socket.assigns.gateway.id}, candidates})
     else
       Telemetry.ice_candidates_dropped(:gateway, :unauthorized, length(candidates))
     end
