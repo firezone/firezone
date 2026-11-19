@@ -43,6 +43,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # Keyless signing of deployment manifests
+      security-events: write # trivy SARIF upload from setup-mise
     defaults:
       run:
         working-directory: rust
