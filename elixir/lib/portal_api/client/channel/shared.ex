@@ -243,25 +243,8 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
-  # A reply counts only for the pending request and the gateway it was sent to.
-  def handle_info(
-        {:connect, _socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials, use_iceless, request_ref},
-        socket
-      ) do
-    release_gateway_authorization(socket, Ecto.UUID.load!(rid_bytes), request_ref, %{
-      site_id: site_id,
-      receiver_id: gateway_id,
-      public_key: gateway_public_key,
-      ipv4: gateway_ipv4,
-      ipv6: gateway_ipv6,
-      preshared_key: preshared_key,
-      ice_credentials: ice_credentials,
-      use_iceless: use_iceless
-    })
-  end
-
-  # The one reply every receiver will send, in place of `:connect` and `:device_access_acked`.
+  # A gateway replies once it confirms; a client replies at once. A gateway reply counts only
+  # for the pending request and the gateway it was sent to.
   def handle_info({:authorized, ref, reply}, socket) do
     if Map.has_key?(socket.assigns.pending_authorizations, ref) do
       release_device_access(socket, ref, reply.use_iceless, reply.name, reply.slug)
@@ -302,29 +285,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
-  # Client-to-client: the target's channel confirmed it pushed the
-  # authorization onto the target's websocket. Only now is it safe to release
-  # the initiator, because the target's data plane is guaranteed to receive
-  # (and process) the authorization before any relayed ICE candidate, which
-  # travels the same socket behind it. See `deliver_pool_target_authorized/8`.
-  # The target already resolved `use_iceless` (reading the flag once, with both
-  # peers' capabilities), so we apply it as-is rather than reading the flag a
-  # second time — a second read could race a mid-flow toggle and disagree.
-  def handle_info({:device_access_acked, ref, use_iceless, client_name, client_slug}, socket) do
-    release_device_access(socket, ref, use_iceless, client_name, client_slug)
-  end
-
-  def handle_info({:client_device_access_authorized, {ack_to, ref}, payload}, socket) do
-    accept_device_access(socket, payload, fn use_iceless ->
-      send(
-        ack_to,
-        {:device_access_acked, ref, use_iceless, socket.assigns.client.name,
-         socket.assigns.client.slug}
-      )
-    end)
-  end
-
-  # The one request every initiator will send, in place of `:client_device_access_authorized`.
   # The resource is rendered for this client's own protocol version.
   def handle_info({:authorize, {initiator_pid, ref}, request}, socket) do
     initiator = request.initiator
@@ -2780,8 +2740,8 @@ Relays.render(relays, relay_owner(socket)),
   #      authorization and push `reject_access`.
   #
   # All peer-bound messages carry a `{channel_pid, ref}` reply tuple:
-  # `{tag, {channel_pid, ref}, payload}` (used by :allow_access,
-  # :create_authorization, :request_connection, and :client_device_access_authorized).
+  # `{tag, {channel_pid, ref}, payload}` (used by :allow_access, :authorize and
+  # :request_connection).
   defp attach_policy_authorization({tag, ref_tuple, payload}, %Portal.PolicyAuthorization{} = pa)
        when is_tuple(ref_tuple) do
     {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}

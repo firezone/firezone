@@ -119,7 +119,23 @@ defmodule PortalAPI.Gateway.ChannelTest do
     )
   end
 
-  defp send_create_authorization(socket, client, subject, resource, policy_authorization_id) do
+  defp initiator(client, public_key, user_agent) do
+    client
+    |> Map.take([
+      :id,
+      :name,
+      :slug,
+      :ipv4,
+      :ipv6,
+      :device_serial,
+      :device_uuid,
+      :firebase_installation_id,
+      :identifier_for_vendor
+    ])
+    |> Map.merge(%{public_key: public_key, user_agent: user_agent})
+  end
+
+  defp send_authorize(socket, client, subject, resource, policy_authorization_id) do
     expires_at = DateTime.add(DateTime.utc_now(), 30, :second)
     preshared_key = "PSK"
     public_key = Portal.DeviceFixtures.generate_public_key()
@@ -131,22 +147,17 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
     send(
       socket.channel_pid,
-      {:create_authorization, {self(), make_ref()},
+      {:authorize, {self(), make_ref()},
        %{
-         client:
-           PortalAPI.Gateway.Views.Client.render(
-             client,
-             public_key,
-             preshared_key,
-             @test_user_agent
-           ),
+         initiator: initiator(client, public_key, @test_user_agent),
          subject: PortalAPI.Gateway.Views.Subject.render(subject),
-         resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-         resource_id: to_cache(resource).id,
+         resource: to_cache(resource),
          policy_authorization_id: policy_authorization_id,
-         authorization_expires_at: expires_at,
+         expires_at: expires_at,
          ice_credentials: ice_credentials,
-         preshared_key: preshared_key
+         preshared_key: preshared_key,
+         initiator_iceless_capable: false,
+         responder_token: nil
        }}
     )
 
@@ -951,23 +962,18 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {self(), make_ref()},
+        {:authorize, {self(), make_ref()},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: pa.id,
-           authorization_expires_at: pa.expires_at,
+           expires_at: pa.expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           policy_authorization: pa
+           policy_authorization: pa,
+           initiator_iceless_capable: false,
+           responder_token: nil
          }}
       )
 
@@ -1530,22 +1536,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: expired_policy_authorization.id,
-           authorization_expires_at: expired_expiration,
+           expires_at: expired_expiration,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           initiator_iceless_capable: false,
+           responder_token: nil
          }}
       )
 
@@ -1623,22 +1624,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: expired_policy_authorization.id,
-           authorization_expires_at: expired_expiration,
+           expires_at: expired_expiration,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           initiator_iceless_capable: false,
+           responder_token: nil
          }}
       )
 
@@ -1646,22 +1642,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(other_resource)),
-           resource_id: to_cache(other_resource).id,
+           resource: to_cache(other_resource),
            policy_authorization_id: unexpired_policy_authorization.id,
-           authorization_expires_at: unexpired_expiration,
+           expires_at: unexpired_expiration,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           initiator_iceless_capable: false,
+           responder_token: nil
          }}
       )
 
@@ -1875,20 +1866,15 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               Portal.DeviceFixtures.generate_public_key(),
-               "PSK",
-               @test_user_agent
-             ),
+           initiator: initiator(client, Portal.DeviceFixtures.generate_public_key(), @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: DateTime.add(DateTime.utc_now(), 30, :second),
+           initiator_iceless_capable: false,
+           responder_token: nil,
+           expires_at: DateTime.add(DateTime.utc_now(), 30, :second),
            ice_credentials: %{
              initiator: %{username: "A", password: "B"},
              receiver: %{username: "C", password: "D"}
@@ -1901,7 +1887,7 @@ assert site_ids == [site.id]
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, _, _, _, gateway_public_key, _, _, _, _, _, _}
+      assert_receive {:authorized, ^socket_ref, %{public_key: gateway_public_key}}
       assert gateway_public_key == connected.public_key
     end
 
@@ -3603,7 +3589,7 @@ assert site_ids == [site.id]
         preshared_key: preshared_key,
         public_key: public_key,
         ice_credentials: ice_credentials
-      } = send_create_authorization(socket, client, subject, resource, policy_authorization.id)
+      } = send_authorize(socket, client, subject, resource, policy_authorization.id)
 
       assert_push "authorize_flow", payload
 
@@ -3665,7 +3651,7 @@ assert site_ids == [site.id]
           group: group
         )
 
-      send_create_authorization(socket, client, subject, resource, policy_authorization.id)
+      send_authorize(socket, client, subject, resource, policy_authorization.id)
 
       assert_push "create_authorization", %{ref: ref}
       assert is_binary(ref)
@@ -3710,22 +3696,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: expires_at,
+           expires_at: expires_at,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           initiator_iceless_capable: false,
+           responder_token: nil
          }}
       )
 
@@ -3963,8 +3944,7 @@ assert site_ids == [site.id]
       gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4
       gateway_ipv6 = gateway.ipv6
-      rid_bytes = Ecto.UUID.dump!(resource.id)
-      request_ref = make_ref()
+      resource_id = resource.id
 
       ice_credentials = %{
         initiator: %{username: "A", password: "B"},
@@ -3973,23 +3953,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: expires_at,
+           expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           request_ref: request_ref
+           initiator_iceless_capable: false,
+           responder_token: nil
          }}
       )
 
@@ -3998,20 +3972,17 @@ assert site_ids == [site.id]
 
       assert_reply push_ref, :ok
 
-      assert_receive {
-        :connect,
-        ^socket_ref,
-        ^rid_bytes,
-        ^site_id,
-        ^gateway_id,
-        ^gateway_public_key,
-        ^gateway_ipv4,
-        ^gateway_ipv6,
-        ^preshared_key,
-        ^ice_credentials,
-        _use_iceless,
-        ^request_ref
-      }
+      assert_receive {:authorized, ^socket_ref,
+                      %{
+                        receiver_id: ^gateway_id,
+                        resource_id: ^resource_id,
+                        site_id: ^site_id,
+                        public_key: ^gateway_public_key,
+                        ipv4: ^gateway_ipv4,
+                        ipv6: ^gateway_ipv6,
+                        preshared_key: ^preshared_key,
+                        ice_credentials: ^ice_credentials
+                      }}
     end
 
     test "create_authorization intersects gateway and client snownet capabilities", %{
@@ -4056,23 +4027,17 @@ assert site_ids == [site.id]
       # Both sides advertise iceless → negotiated set is iceless: true.
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: expires_at,
+           expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: true
+           initiator_iceless_capable: true,
+           responder_token: nil
          }}
       )
 
@@ -4084,7 +4049,7 @@ assert site_ids == [site.id]
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, use_iceless, _}
+      assert_receive {:authorized, ^socket_ref, %{use_iceless: use_iceless}}
       assert use_iceless == true
     end
 
@@ -4127,23 +4092,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: expires_at,
+           expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: false
+           initiator_iceless_capable: false,
+           responder_token: nil
          }}
       )
 
@@ -4192,22 +4151,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: expires_at,
+           expires_at: expires_at,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           initiator_iceless_capable: false,
+           responder_token: nil
          }}
       )
 
@@ -4258,23 +4212,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: expires_at,
+           expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: true
+           initiator_iceless_capable: true,
+           responder_token: nil
          }}
       )
 
@@ -4337,23 +4285,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {self(), make_ref()},
+        {:authorize, {self(), make_ref()},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: expires_at,
+           expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: true
+           initiator_iceless_capable: true,
+           responder_token: nil
          }}
       )
 
@@ -4421,23 +4363,17 @@ assert site_ids == [site.id]
 
       send(
         socket.channel_pid,
-        {:create_authorization, {channel_pid, socket_ref},
+        {:authorize, {channel_pid, socket_ref},
          %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
+           initiator: initiator(client, public_key, @test_user_agent),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: expires_at,
+           expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: true
+           initiator_iceless_capable: true,
+           responder_token: nil
          }}
       )
 
@@ -4475,7 +4411,7 @@ assert site_ids == [site.id]
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
-      send_create_authorization(socket, client, subject, resource, Ecto.UUID.generate())
+      send_authorize(socket, client, subject, resource, Ecto.UUID.generate())
       assert_push "authorize_flow", %{ref: ref}
 
       other_gateway = fetch_device!(gateway_fixture(account: account, site: site))
@@ -4485,11 +4421,11 @@ assert site_ids == [site.id]
 
       push_ref = push(other_socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :error, %{reason: :invalid_ref}
-      refute_received {:connect, _, _, _, _, _, _, _, _, _, _, _}
+      refute_received {:authorized, _, _}
 
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
-      assert_receive {:connect, _, _, _, gateway_id, _, _, _, _, _, _, _}
+      assert_receive {:authorized, _, %{receiver_id: gateway_id}}
       assert gateway_id == gateway.id
     end
 
@@ -4504,7 +4440,7 @@ assert site_ids == [site.id]
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
-      send_create_authorization(socket, client, subject, resource, Ecto.UUID.generate())
+      send_authorize(socket, client, subject, resource, Ecto.UUID.generate())
       assert_push "authorize_flow", %{ref: ref}
 
       key_base = PortalAPI.Endpoint.config(:secret_key_base)
@@ -4515,7 +4451,7 @@ assert site_ids == [site.id]
 
       push_ref = push(socket, "flow_authorized", %{"ref" => old_ref})
       assert_reply push_ref, :error, %{reason: :invalid_ref}
-      refute_received {:connect, _, _, _, _, _, _, _, _, _, _, _}
+      refute_received {:authorized, _, _}
     end
 
     test "authorization_created accepts the renamed acknowledgement", %{
