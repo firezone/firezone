@@ -16,8 +16,6 @@ use bytes::Bytes;
 use futures::future::{Either, select};
 use http::{StatusCode, header};
 use http_client::{HttpClient, TlsConfig};
-use rustls::RootCertStore;
-use rustls_pki_types::{CertificateDer, pem::PemObject as _};
 use secrecy::{ExposeSecret as _, SecretString};
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio::sync::watch;
@@ -293,7 +291,7 @@ impl Connection {
             host,
             port,
             addresses,
-            debug_ca()?.unwrap_or_else(TlsConfig::webpki_roots),
+            tls_config()?,
             self.socket_factory.clone(),
         )
         .await
@@ -304,12 +302,15 @@ impl Connection {
     }
 }
 
-/// Debug builds trust only the CA in `FIREZONE_METRICS_CA` if it is set, so a metrics endpoint
-/// with a self-signed certificate can be tested.
-fn debug_ca() -> Result<Option<TlsConfig>> {
-    let Some(path) = std::env::var_os("FIREZONE_METRICS_CA").filter(|_| cfg!(debug_assertions))
-    else {
-        return Ok(None);
+/// Trusts only the CA in `FIREZONE_METRICS_CA` if it is set, so a metrics endpoint with a
+/// self-signed certificate can be tested.
+#[cfg(debug_assertions)]
+fn tls_config() -> Result<TlsConfig> {
+    use rustls::RootCertStore;
+    use rustls_pki_types::{CertificateDer, pem::PemObject as _};
+
+    let Some(path) = std::env::var_os("FIREZONE_METRICS_CA") else {
+        return Ok(TlsConfig::webpki_roots());
     };
 
     let mut roots = RootCertStore::empty();
@@ -319,7 +320,16 @@ fn debug_ca() -> Result<Option<TlsConfig>> {
             .context("Invalid metrics CA")?;
     }
 
-    Ok(Some(TlsConfig::new(roots)))
+    Ok(TlsConfig::new(roots))
+}
+
+#[cfg(not(debug_assertions))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Debug builds can fail to load a CA"
+)]
+fn tls_config() -> Result<TlsConfig> {
+    Ok(TlsConfig::webpki_roots())
 }
 
 #[cfg(test)]
