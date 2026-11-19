@@ -40,6 +40,10 @@ struct Args {
     #[arg(long, env)]
     otlp_metrics_endpoint: Url,
 
+    /// Enables Sentry crash-reporting under this environment.
+    #[arg(long, env, value_parser = ["production", "staging"])]
+    telemetry_env: Option<String>,
+
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
 }
@@ -56,13 +60,25 @@ fn main() -> ExitCode {
         .build()
         .expect("Failed to build tokio runtime");
 
-    match runtime.block_on(try_main(args)) {
+    if let Some(env) = &args.telemetry_env {
+        let release = git_sha::git_sha().expect(
+            "otel-ingest-proxy binary was not patched with a release SHA before enabling telemetry",
+        );
+        telemetry::configure(Arc::new(socket_factory::tcp));
+        telemetry::start(env, release, telemetry::OTEL_INGEST_PROXY_DSN);
+    }
+
+    let code = match runtime.block_on(try_main(args)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("{e:#}");
             ExitCode::FAILURE
         }
-    }
+    };
+
+    telemetry::stop();
+
+    code
 }
 
 async fn try_main(args: Args) -> Result<()> {

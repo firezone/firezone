@@ -29,6 +29,8 @@ rustls = { workspace = true }
 rustls-pki-types = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+socket-factory = { workspace = true }
+telemetry = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "net", "time"] }
 tokio-rustls = { workspace = true }
 tower = { workspace = true, features = ["limit"] }
