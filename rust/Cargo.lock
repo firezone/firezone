@@ -2835,6 +2835,8 @@ dependencies = [
  "otel-metric-patterns",
  "parking_lot",
  "prost",
+ "rcgen",
+ "reqwest",
  "ring",
  "rustls",
  "rustls-pki-types",
@@ -2842,6 +2844,7 @@ dependencies = [
  "serde_json",
  "socket-factory",
  "telemetry",
+ "tempfile",
  "tokio",
  "tokio-rustls",
  "tower",
@@ -5931,6 +5934,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 
 [[package]]
+name = "pem"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
+dependencies = [
+ "base64 0.23.1",
+ "serde_core",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6481,6 +6494,7 @@ version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
+ "pem",
  "ring",
  "rustls-pki-types",
  "time",

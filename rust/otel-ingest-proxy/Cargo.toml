@@ -43,6 +43,9 @@ mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynam
 
 [dev-dependencies]
 divan = { workspace = true }
+rcgen = { workspace = true, features = ["pem"] }
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
 tower = { workspace = true, features = ["util"] }
 
