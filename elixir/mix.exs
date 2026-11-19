@@ -116,7 +116,6 @@ defmodule Portal.MixProject do
       {:plug_crypto, "~> 2.0"},
       {:jose, "~> 1.11"},
       {:argon2_elixir, "~> 4.0"},
-      {:wax_, "~> 0.7"},
 
       # Background jobs
       {:oban, "~> 2.22"},
