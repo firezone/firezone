@@ -3271,85 +3271,7 @@ assert site_ids == [site.id]
       assert relays1 == relays2
     end
 
-    test "pushes ice_candidates message", %{
-      client: client,
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
-      socket = join_channel(gateway, site, token)
-      assert_push "init", _init_payload
-      put_authorized_client(socket, client.id)
-
-      candidates = ["foo", "bar"]
-
-      for tag <- [:ice_candidates_from_client, :ice_candidates] do
-        send(socket.channel_pid, {tag, client.id, candidates})
-
-        assert_push "ice_candidates", payload
-
-        assert payload == %{
-                 candidates: candidates,
-                 client_id: client.id
-               }
-      end
-    end
-
-    test "does not push ice_candidates from a client without an authorization", %{
-      client: client,
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
-      socket = join_channel(gateway, site, token)
-      assert_push "init", _init_payload
-
-      send(socket.channel_pid, {:ice_candidates_from_client, client.id, ["foo"]})
-      send(socket.channel_pid, {:ice_candidates_from_client, "not-a-uuid", ["foo"]})
-
-      refute_push "ice_candidates", _payload
-    end
-
-    test "pushes invalidate_ice_candidates message", %{
-      client: client,
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
-      socket = join_channel(gateway, site, token)
-      assert_push "init", _init_payload
-      put_authorized_client(socket, client.id)
-
-      candidates = ["foo", "bar"]
-
-      for tag <- [:invalidate_ice_candidates_from_client, :invalidate_ice_candidates] do
-        send(socket.channel_pid, {tag, client.id, candidates})
-
-        assert_push "invalidate_ice_candidates", payload
-
-        assert payload == %{
-                 candidates: candidates,
-                 client_id: client.id
-               }
-      end
-    end
-
-    test "does not push invalidate_ice_candidates from a client without an authorization", %{
-      client: client,
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
-      socket = join_channel(gateway, site, token)
-      assert_push "init", _init_payload
-
-      send(socket.channel_pid, {:invalidate_ice_candidates_from_client, client.id, ["foo"]})
-      send(socket.channel_pid, {:invalidate_ice_candidates_from_client, "not-a-uuid", ["foo"]})
-
-      refute_push "invalidate_ice_candidates", _payload
-    end
-
-    test "pushes candidates sent with the sender type", %{
+    test "pushes ice candidates from an authorized client", %{
       client: client,
       gateway: gateway,
       site: site,
@@ -3368,7 +3290,7 @@ assert site_ids == [site.id]
       end
     end
 
-    test "does not push candidates sent with the sender type from a client without an authorization",
+    test "does not push ice candidates from a client without an authorization",
          %{client: client, gateway: gateway, site: site, token: token} do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload

@@ -3578,30 +3578,6 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
-  describe "handle_info/2 ice_candidates" do
-    test "pushes ice_candidates message", %{
-      client: client,
-      gateway: gateway,
-      subject: subject
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _init_payload
-      candidates = ["foo", "bar"]
-
-      send(
-        socket.channel_pid,
-        {:ice_candidates, gateway.id, candidates}
-      )
-
-      assert_push "ice_candidates", payload
-
-      assert payload == %{
-               candidates: candidates,
-               gateway_id: gateway.id
-             }
-    end
-  end
-
   describe "public_key_changed" do
     test "tells the peers of a client that joins with a new key", %{
       account: account,
@@ -3695,31 +3671,7 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
-  describe "handle_info/2 invalidate_ice_candidates" do
-    test "pushes invalidate_ice_candidates message", %{
-      client: client,
-      gateway: gateway,
-      subject: subject
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _init_payload
-      candidates = ["foo", "bar"]
-
-      send(
-        socket.channel_pid,
-        {:invalidate_ice_candidates, gateway.id, candidates}
-      )
-
-      assert_push "invalidate_ice_candidates", payload
-
-      assert payload == %{
-               candidates: candidates,
-               gateway_id: gateway.id
-             }
-    end
-  end
-
-  describe "handle_info/2 candidates sent with the sender type" do
+  describe "handle_info/2 ice candidates" do
     test "pushes candidates from a gateway", %{client: client, gateway: gateway, subject: subject} do
       socket = join_channel(client, subject)
       assert_push "init", _
@@ -3749,42 +3701,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "invalidate_client_ice_candidates", payload
       assert payload == %{client_id: source_client_id, candidates: ["cand1"]}
-    end
-  end
-
-  describe "handle_info/2 :client_ice_candidates" do
-    test "pushes client_ice_candidates to the socket", %{
-      client: client,
-      subject: subject
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-      candidates = ["cand1", "cand2"]
-      source_client_id = Ecto.UUID.generate()
-
-      send(socket.channel_pid, {:client_ice_candidates, source_client_id, candidates})
-      :sys.get_state(socket.channel_pid)
-
-      assert_push "client_ice_candidates", payload
-      assert payload == %{client_id: source_client_id, candidates: candidates}
-    end
-  end
-
-  describe "handle_info/2 :invalidate_client_ice_candidates" do
-    test "pushes invalidate_client_ice_candidates to the socket", %{
-      client: client,
-      subject: subject
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-      candidates = ["cand1", "cand2"]
-      source_client_id = Ecto.UUID.generate()
-
-      send(socket.channel_pid, {:invalidate_client_ice_candidates, source_client_id, candidates})
-      :sys.get_state(socket.channel_pid)
-
-      assert_push "invalidate_client_ice_candidates", payload
-      assert payload == %{client_id: source_client_id, candidates: candidates}
     end
   end
 
