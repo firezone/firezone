@@ -1,5 +1,7 @@
 //! Exports OpenTelemetry metrics over OTLP/HTTP, authenticated with the host's Azure managed identity.
 
+mod client;
+
 use anyhow::{Context as _, Result, bail};
 use opentelemetry_http::{Bytes, HttpClient, HttpError, Request, Response};
 use opentelemetry_otlp::{Protocol, WithExportConfig as _, WithHttpConfig as _};
@@ -14,17 +16,20 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 use url::Url;
 
+pub use client::Client;
+
+const TOKEN_URL: &str = "http://169.254.169.254/metadata/identity/oauth2/token";
+const TOKEN_QUERY: [(&str, &str); 2] = [
+    ("api-version", "2018-02-01"),
+    ("resource", "https://monitor.azure.com/"),
+];
+const MAX_TOKEN_RESPONSE_BYTES: usize = 64 * 1024;
+
 pub fn with_exporter(
     builder: MeterProviderBuilder,
     endpoint: &Url,
 ) -> Result<MeterProviderBuilder> {
-    if endpoint.scheme() != "https"
-        || !endpoint.username().is_empty()
-        || endpoint.password().is_some()
-        || endpoint.fragment().is_some()
-    {
-        bail!("OTLP metrics endpoint must be an HTTPS URL without credentials or a fragment");
-    }
+    check_endpoint(endpoint)?;
 
     let client = ExportHttpClient::new(endpoint)?;
     let exporter = opentelemetry_otlp::MetricExporter::builder()
@@ -43,6 +48,18 @@ pub fn with_exporter(
     tracing::trace!("Successfully initialized OTLP metrics exporter");
 
     Ok(builder)
+}
+
+fn check_endpoint(endpoint: &Url) -> Result<()> {
+    if endpoint.scheme() != "https"
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.fragment().is_some()
+    {
+        bail!("OTLP metrics endpoint must be an HTTPS URL without credentials or a fragment");
+    }
+
+    Ok(())
 }
 
 fn exponential_histograms(instrument: &Instrument) -> Option<Stream> {
@@ -116,39 +133,27 @@ impl ExportHttpClient {
             .token
             .lock()
             .map_err(|_| anyhow::anyhow!("Azure token lock poisoned"))?;
-        let now = SystemTime::now();
 
-        if let Some(token) = token.as_ref()
-            && token.expires_at > now + Duration::from_secs(60)
-        {
-            return Ok(token.authorization.clone());
+        if let Some(authorization) = token.as_ref().and_then(Token::fresh_authorization) {
+            return Ok(authorization);
         }
 
         let response = self
             .client
-            .get("http://169.254.169.254/metadata/identity/oauth2/token")
-            .query(&[
-                ("api-version", "2018-02-01"),
-                ("resource", "https://monitor.azure.com/"),
-            ])
+            .get(TOKEN_URL)
+            .query(&TOKEN_QUERY)
             .header("Metadata", "true")
             .send()
             .context("Failed to request Azure managed identity token")?
             .error_for_status()
             .context("Azure managed identity token request failed")?;
-        let response = serde_json::from_reader::<_, TokenResponse>(response.take(64 * 1024))
-            .context("Invalid Azure managed identity token response")?;
-        if response.expires_on <= SystemTime::now() {
-            bail!("Azure managed identity returned an expired token");
-        }
-
-        let mut authorization =
-            HeaderValue::from_str(&format!("Bearer {}", response.access_token))?;
-        authorization.set_sensitive(true);
-        *token = Some(Token {
-            authorization: authorization.clone(),
-            expires_at: response.expires_on,
-        });
+        let response = serde_json::from_reader::<_, TokenResponse>(
+            response.take(MAX_TOKEN_RESPONSE_BYTES as u64),
+        )
+        .context("Invalid Azure managed identity token response")?;
+        let new_token = Token::new(response)?;
+        let authorization = new_token.authorization.clone();
+        *token = Some(new_token);
 
         Ok(authorization)
     }
@@ -157,6 +162,28 @@ impl ExportHttpClient {
 struct Token {
     authorization: HeaderValue,
     expires_at: SystemTime,
+}
+
+impl Token {
+    fn new(response: TokenResponse) -> Result<Self> {
+        if response.expires_on <= SystemTime::now() {
+            bail!("Azure managed identity returned an expired token");
+        }
+
+        let mut authorization =
+            HeaderValue::from_str(&format!("Bearer {}", response.access_token))?;
+        authorization.set_sensitive(true);
+
+        Ok(Self {
+            authorization,
+            expires_at: response.expires_on,
+        })
+    }
+
+    fn fresh_authorization(&self) -> Option<HeaderValue> {
+        (self.expires_at > SystemTime::now() + Duration::from_secs(60))
+            .then(|| self.authorization.clone())
+    }
 }
 
 #[serde_with::serde_as]
