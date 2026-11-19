@@ -186,7 +186,8 @@ defmodule PortalAPI.Router do
     resources "/defender_posture_providers", DefenderPostureProviderController,
       only: [:index, :show, :update, :delete]
 
-    resources "/defender_devices", DefenderDeviceController, only: [:index, :show]
+    resources "/defender_devices", DefenderDeviceController, only: [:index]
+    get "/defender_devices/:defender_device", DefenderDeviceController, :show
 
     resources "/santa_posture_providers", SantaPostureProviderController,
       only: [:index, :show, :update, :delete]

@@ -82,7 +82,8 @@ defmodule Portal.Config.Azure do
         {key, %{"value" => value, "mode" => Atom.to_string(mode)}}
       end))
 
-    tmp_path = path <> ".tmp"
+    # The old and new container share this file during a deploy
+    tmp_path = "#{path}.#{Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)}.tmp"
     File.write!(tmp_path, "")
     File.chmod!(tmp_path, 0o600)
     File.write!(tmp_path, json)

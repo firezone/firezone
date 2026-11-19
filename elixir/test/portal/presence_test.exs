@@ -34,26 +34,9 @@ defmodule Portal.PresenceTest do
       gateway = gateway_fixture(account: account, site: site)
       unloaded = Repo.get_by!(Portal.Device, account_id: account.id, id: gateway.id)
 
-      :ok = Presence.Devices.connect(unloaded, Ecto.UUID.generate(), %{site_id: site.id})
+      :ok = Presence.Devices.connect(unloaded, Ecto.UUID.generate(), %{site_ids: [site.id]})
 
       assert [_gateway] = Presence.Devices.connected_gateways_in_site(account.id, site.id)
-    end
-
-    test "places a gateway published by a node that writes only site_id" do
-      account = account_fixture()
-      site = site_fixture(account: account)
-      gateway = gateway_fixture(account: account, site: site)
-
-      meta =
-        gateway
-        |> Presence.Devices.session_meta(%{site_id: site.id})
-        |> Map.delete(:site_ids)
-
-      {:ok, _} = Portal.Presence.track(self(), Presence.Devices.Account.topic(account.id), gateway.id, meta)
-
-      assert [_gateway] = Presence.Devices.connected_gateways_in_site(account.id, site.id)
-      assert {:ok, _gateway} = Presence.Devices.fetch_gateway(account.id, gateway.id, site.id)
-      assert Presence.Devices.online_gateway_counts(account.id) == %{site.id => 1}
     end
 
     test "places a gateway by its loaded site assignment" do

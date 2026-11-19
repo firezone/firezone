@@ -168,7 +168,20 @@ defmodule Portal.Config.AzureTest do
     assert Azure.write_cache!(path, settings) == :ok
     assert Azure.read_cache(path) == {:ok, settings}
     assert Bitwise.band(File.stat!(path).mode, 0o777) == 0o600
-    refute File.exists?(path <> ".tmp")
+    assert File.ls!(tmp_dir) == ["settings.json"]
+  end
+
+  @tag :tmp_dir
+  test "concurrent writers do not clobber each other's temp file", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "settings.json")
+    settings = %{"LOG_LEVEL" => %{value: "info", mode: :boot}}
+
+    1..20
+    |> Task.async_stream(fn _ -> Azure.write_cache!(path, settings) end, max_concurrency: 20)
+    |> Enum.each(&assert(&1 == {:ok, :ok}))
+
+    assert Azure.read_cache(path) == {:ok, settings}
+    assert File.ls!(tmp_dir) == ["settings.json"]
   end
 
   @tag :tmp_dir
