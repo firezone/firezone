@@ -1,5 +1,6 @@
-//! Micro-benchmarks for sanitizing the OTLP metrics a device exports.
+//! Micro-benchmarks for decoding, sanitizing and encoding the OTLP metrics a device exports.
 
+use axum::body::Bytes;
 use firezone_otel_ingest_proxy::{Claims, DeviceType, sanitize};
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::common::v1::{AnyValue, InstrumentationScope, KeyValue, any_value};
@@ -9,9 +10,21 @@ use opentelemetry_proto::tonic::metrics::v1::{
     metric::Data, number_data_point,
 };
 use opentelemetry_proto::tonic::resource::v1::Resource;
+use prost::Message as _;
+
+#[global_allocator]
+static ALLOC: divan::AllocProfiler = divan::AllocProfiler::system();
 
 fn main() {
     divan::main()
+}
+
+/// Decodes a request with the given number of metrics.
+#[divan::bench(args = [8, 32, 64])]
+fn decode_request(bencher: divan::Bencher, metrics: usize) {
+    let body = Bytes::from(request(metrics).encode_to_vec());
+
+    bencher.bench(|| ExportMetricsServiceRequest::decode(divan::black_box(body.clone())));
 }
 
 /// Sanitizes a request with the given number of metrics, of which the token allows half.
@@ -23,6 +36,14 @@ fn sanitize_request(bencher: divan::Bencher, metrics: usize) {
     bencher
         .with_inputs(|| request.clone())
         .bench_values(|request| sanitize(request, divan::black_box(&claims)));
+}
+
+/// Encodes the sanitized request with the given number of metrics.
+#[divan::bench(args = [8, 32, 64])]
+fn encode_request(bencher: divan::Bencher, metrics: usize) {
+    let request = sanitize(request(metrics), &claims()).expect("token allows half the metrics");
+
+    bencher.bench(|| divan::black_box(&request).encode_to_vec());
 }
 
 fn request(metrics: usize) -> ExportMetricsServiceRequest {

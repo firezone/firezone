@@ -45,7 +45,7 @@ tokio = { workspace = true, features = ["macros"] }
 tower = { workspace = true, features = ["util"] }
 
 [[bench]]
-name = "sanitize"
+name = "pipeline"
 harness = false
 
 [lints]
