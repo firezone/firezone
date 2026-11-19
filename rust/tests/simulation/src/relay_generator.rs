@@ -57,32 +57,34 @@ impl<'a> RelayGenerator<'a> {
             latency: Duration::ZERO,
         };
 
-        RelayModel::from_parts(relay, client, foreign, peer)
+        RelayModel {
+            relay,
+            client,
+            foreign,
+            peer,
+        }
     }
 
     pub(crate) fn transition(&mut self) -> (Transition, Interference) {
         const ADVANCE_SECS: [u64; 8] = [5, 30, 120, 360, 660, 960, 1860, 3660];
         const PARTITION_SECS: [u64; 4] = [2, 9, 40, 720];
 
-        let transition = match self.int(15) {
+        let transition = match self.int(12) {
             0..=4 => Transition::Advance {
                 duration: Duration::from_secs(ADVANCE_SECS[self.int(7)]),
             },
-            5 => Transition::RotateCredentials,
-            6..=7 => Transition::Refresh,
-            8 => Transition::Roam {
+            5..=6 => Transition::Refresh,
+            7 => Transition::Roam {
                 stack: match (self.bool(), self.bool()) {
                     (true, false) => IpStack::Ipv4Only,
                     (false, true) => IpStack::Ipv6Only,
                     (true, true) | (false, false) => IpStack::Dual,
                 },
             },
-            9 => Transition::RebootRelay,
-            10 => Transition::Partition {
+            8 => Transition::RebootRelay,
+            9 => Transition::Partition {
                 duration: Duration::from_secs(PARTITION_SECS[self.int(3)]),
             },
-            11 => Transition::PortalOutage,
-            12 => Transition::PortalRecovers,
             _ => Transition::Inject {
                 target: match self.int(2) {
                     0 => Target::RelayFromForeign(self.crafting()),

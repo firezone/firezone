@@ -1,5 +1,5 @@
-//! The relay simulation's model: what connlib expects of a relay client, an allocation that
-//! relays data and heals itself.
+//! The relay simulation's model: when the client's `Allocation` must relay data, and what may
+//! interrupt it.
 //!
 //! The model answers two questions per transition, see [`RelayModel::must_relay`] and
 //! [`RelayModel::apply`]. It describes how the client behaves today, flaws included, so that
@@ -14,15 +14,6 @@ use connlib_model::IpStack;
 
 use crate::relay_transition::Transition;
 
-/// What happened while a transition ran.
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct Observed {
-    /// The network lost one of the control datagrams.
-    pub(crate) lost_datagram: bool,
-    /// The client saw a forged answer to a `BINDING` request.
-    pub(crate) forged_binding: bool,
-}
-
 #[derive(Debug)]
 pub(crate) struct RelayModel {
     pub(crate) relay: ModelHost,
@@ -31,10 +22,6 @@ pub(crate) struct RelayModel {
     pub(crate) foreign: ModelHost,
     /// Where the client relays data to.
     pub(crate) peer: ModelHost,
-
-    portal_reachable: bool,
-    /// Whether the client may have lost the relay while the portal could not hand it back.
-    stranded: bool,
 }
 
 /// A host with an address of each family, of which it uses those in `stack`.
@@ -49,81 +36,27 @@ pub(crate) struct ModelHost {
 }
 
 impl RelayModel {
-    pub(crate) fn from_parts(
-        relay: ModelHost,
-        client: ModelHost,
-        foreign: ModelHost,
-        peer: ModelHost,
-    ) -> Self {
-        Self {
-            relay,
-            client,
-            foreign,
-            peer,
-            portal_reachable: true,
-            stranded: false,
-        }
-    }
-
-    /// Whether relaying must work once a transition has settled.
-    ///
-    /// With the portal around, the client always recovers: it is handed the relay again, with
-    /// fresh credentials. Without it, the client depends on what it already holds.
+    /// Whether relaying must work once a transition has settled: whenever the client and the
+    /// relay share an address family.
     pub(crate) fn must_relay(&self) -> bool {
-        self.relay_reachable() && (self.portal_reachable || !self.stranded)
+        (self.client.stack.supports_ipv4() && self.relay.stack.supports_ipv4())
+            || (self.client.stack.supports_ipv6() && self.relay.stack.supports_ipv6())
     }
 
     /// Applies a transition, returning whether it was allowed to interrupt relaying.
-    pub(crate) fn apply(&mut self, transition: &Transition, observed: Observed) -> bool {
-        let may_interrupt = match transition {
-            // An allocation cannot take new credentials, so they replace it.
-            Transition::RotateCredentials => true,
-            Transition::Roam { .. } | Transition::RebootRelay | Transition::Partition { .. } => {
+    pub(crate) fn apply(&mut self, transition: &Transition, lost_datagram: bool) -> bool {
+        match transition {
+            Transition::Roam { stack } => {
+                self.client.stack = *stack;
+
                 true
             }
-            // The client gives up on the relay if a single datagram of this check is lost.
-            Transition::Refresh => observed.lost_datagram,
-            Transition::Advance { .. }
-            | Transition::PortalOutage
-            | Transition::PortalRecovers
-            | Transition::Inject { .. } => false,
-        };
-        let may_interrupt = may_interrupt || self.stranded;
-
-        match transition {
-            Transition::Roam { stack } => self.client.stack = *stack,
-            Transition::PortalOutage => self.portal_reachable = false,
-            Transition::PortalRecovers => {
-                self.portal_reachable = true;
-                self.stranded = false;
-            }
-            Transition::Advance { .. }
-            | Transition::RotateCredentials
-            | Transition::Refresh
-            | Transition::RebootRelay
-            | Transition::Partition { .. }
-            | Transition::Inject { .. } => {}
+            Transition::RebootRelay | Transition::Partition { .. } => true,
+            // `Allocation::refresh` does not retransmit, so a single lost datagram invalidates the
+            // allocation.
+            Transition::Refresh => lost_datagram,
+            Transition::Advance { .. } | Transition::Inject { .. } => false,
         }
-
-        // The client gives up on a relay that does not answer. `BINDING` is not authenticated,
-        // so a forged answer keeps the client from ever seeing the real one.
-        let relay_was_silent = matches!(transition, Transition::Partition { .. })
-            || !self.relay_reachable()
-            || observed.forged_binding;
-        // A rebooted relay does not accept the client's credentials.
-        let relay_forgot_client = matches!(transition, Transition::RebootRelay);
-
-        if (relay_was_silent || relay_forgot_client) && !self.portal_reachable {
-            self.stranded = true;
-        }
-
-        may_interrupt
-    }
-
-    /// Whether the client and the relay share an address family.
-    fn relay_reachable(&self) -> bool {
-        (self.client.stack.supports_ipv4() && self.relay.stack.supports_ipv4())
-            || (self.client.stack.supports_ipv6() && self.relay.stack.supports_ipv6())
     }
 }
 

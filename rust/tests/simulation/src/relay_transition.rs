@@ -2,42 +2,23 @@ use std::time::Duration;
 
 use connlib_model::IpStack;
 
-/// What can happen to the client, the relay, the portal and the network between them.
+/// What can happen to the client, the relay and the network between them.
 ///
 /// Every transition runs until the client and the relay have settled.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Transition {
     /// Time passes on a working network.
-    Advance {
-        duration: Duration,
-    },
-    /// The portal issues fresh credentials.
-    ///
-    /// An `Allocation` cannot take new credentials, so they replace the allocation.
-    RotateCredentials,
-    /// The portal sends a relay update that does not mention the relay, which makes the client
-    /// check whether the relay still holds its allocation.
+    Advance { duration: Duration },
+    /// The client calls `Allocation::refresh`.
     Refresh,
-    /// The client moves to new sockets and starts over.
-    Roam {
-        stack: IpStack,
-    },
+    /// The client moves to new sockets and calls `Allocation::restart`.
+    Roam { stack: IpStack },
     /// The relay restarts: it forgets everything and generates a new secret.
-    ///
-    /// To the portal, that is a new relay with new credentials.
     RebootRelay,
     /// No datagram makes it between the client and the relay for a while.
-    Partition {
-        duration: Duration,
-    },
-    /// The portal can no longer reach the client.
-    PortalOutage,
-    PortalRecovers,
+    Partition { duration: Duration },
     /// A datagram that neither the client nor the relay sent.
-    Inject {
-        target: Target,
-        flips: BitFlips,
-    },
+    Inject { target: Target, flips: BitFlips },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

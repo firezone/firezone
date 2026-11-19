@@ -1,5 +1,4 @@
-//! The relay simulation's real system: a relay client and a relay, with a portal that hands the
-//! client the relay and its credentials.
+//! The relay simulation's real system: a relay client and a relay.
 //!
 //! [`Allocation`] and the relay's `Server` are both sans-IO. They sit on the network of the
 //! tunnel simulation: each is a [`Host`], and their datagrams travel through
@@ -22,31 +21,29 @@ use jiff::Timestamp;
 use relay_client_proto::{Allocation, Event, channel_data};
 use relay_server_proto::ChannelData;
 use snownet::Transmit;
-use stun_codec::rfc5389::{
-    attributes::{Realm, Username},
-    methods::BINDING,
-};
+use stun_codec::rfc5389::attributes::{Realm, Username};
 
 use crate::{
     buffered_transmits::BufferedTransmits,
     clock::Clock,
     network::{ExecMutScope, Host, PollTimeout},
     real_relay::RealRelay,
-    relay_model::{ModelHost, Observed, RelayModel},
+    relay_model::{ModelHost, RelayModel},
     relay_transition::{BitFlips, Crafting, Interference, Target, Template, Transition},
     stun,
 };
 
-/// When the credentials expire that the portal issues, as for gateways: 2038-01-01T00:00:00Z,
-/// which the simulation never reaches.
+/// When the client's credentials expire: 2038-01-01T00:00:00Z, which the simulation never
+/// reaches.
 const CREDENTIALS_EXPIRE_AT: Duration = Duration::from_secs(2_145_916_800);
 
 /// A client retransmits a request within this time, so a timer this close belongs to an
 /// exchange that is still going on.
 const RETRANSMISSION: Duration = Duration::from_secs(4);
 
-/// How often the portal hands the relay back to a client that keeps giving up on it.
-const MAX_HANDOVERS: usize = 3;
+/// How many new allocations the client gets in a row: each of them gives up while the client and
+/// the relay share no address family.
+const MAX_ALLOCATIONS: usize = 3;
 
 /// More time than the client needs to give up on a relay that often.
 const MAX_SETTLE: Duration = Duration::from_secs(60);
@@ -62,19 +59,16 @@ const WIREGUARD_KEEPALIVE: [u8; 32] = {
     message
 };
 
-/// The client, the relay, the portal and the network between them.
+/// The client, the relay and the network between them.
 pub(crate) struct RealRelaySystem {
     clock: Clock,
     transmits: BufferedTransmits,
 
     relay: Host<RealRelay>,
-    /// How often the relay rebooted. Every boot has a secret of its own, so it is a different
-    /// relay to the portal.
+    /// How often the relay rebooted. Every boot has a secret of its own.
     relay_boots: u64,
-
-    portal_reachable: bool,
-    /// The relay boot that the portal last issued the client credentials for.
-    credentials_boot: Option<u64>,
+    /// The relay boot that the client's allocation has credentials for.
+    allocation_boot: u64,
 
     client: Host<RealAllocation>,
 
@@ -84,14 +78,14 @@ pub(crate) struct RealRelaySystem {
     /// What the network still does to the current transition's control datagrams.
     interference: Interference,
 
-    /// What happened during the current transition.
-    pub(crate) observed: Observed,
+    /// Whether the network lost a control datagram during the current transition.
+    pub(crate) lost_datagram: bool,
 }
 
-/// The relay client: an [`Allocation`] driven the way `snownet` drives it.
+/// The relay client: an [`Allocation`], with what it announced and received.
 #[derive(Default)]
 struct RealAllocation {
-    /// Absent while the client has given up on the relay and the portal did not hand it back.
+    /// Absent once the allocation gave up, until the client gets a new one.
     allocation: Option<Allocation>,
     /// How many allocations the client started; each gets a seed of its own.
     seeds: u64,
@@ -103,7 +97,7 @@ struct RealAllocation {
 }
 
 impl RealRelaySystem {
-    /// Builds the hosts of `model` and lets the portal hand the client the relay.
+    /// Builds the hosts of `model` and gives the client an allocation.
     pub(crate) fn new(model: &RelayModel, start: Instant) -> Self {
         let clock = Clock::new(start, Timestamp::UNIX_EPOCH);
 
@@ -112,13 +106,12 @@ impl RealRelaySystem {
             clock,
             transmits: BufferedTransmits::default(),
             relay_boots: 0,
-            portal_reachable: true,
-            credentials_boot: None,
+            allocation_boot: 0,
             client: host(RealAllocation::default(), &model.client, model.client.stack),
             at_peers: Vec::new(),
             last_from_client: None,
             interference: Interference::default(),
-            observed: Observed::default(),
+            lost_datagram: false,
         };
         system.settle(model);
 
@@ -133,26 +126,17 @@ impl RealRelaySystem {
     ) {
         let now = self.clock.now::<Instant>();
         self.interference = interference;
-        self.observed = Observed::default();
+        self.lost_datagram = false;
         self.client.exec_mut(|c| c.relay_addresses_changed = false);
         let mut from_client = None;
 
         match transition {
             Transition::Advance { duration } => self.advance(model, *duration),
-            Transition::RotateCredentials => {
-                if self.portal_reachable && self.client.inner().allocation.is_some() {
-                    self.connect();
+            Transition::Refresh => self.client.exec_mut(|c| {
+                if let Some(allocation) = &mut c.allocation {
+                    allocation.refresh(now);
                 }
-            }
-            Transition::Refresh => {
-                if self.portal_reachable {
-                    self.client.exec_mut(|c| {
-                        if let Some(allocation) = &mut c.allocation {
-                            allocation.refresh(now);
-                        }
-                    });
-                }
-            }
+            }),
             Transition::Roam { stack } => {
                 let (ip4, ip6) = model.client.interfaces(*stack);
 
@@ -170,8 +154,6 @@ impl RealRelaySystem {
                 self.client
                     .update_interface(self.client.ip4, self.client.ip6);
             }
-            Transition::PortalOutage => self.portal_reachable = false,
-            Transition::PortalRecovers => self.portal_reachable = true,
             Transition::Inject { target, flips } => match target {
                 Target::RelayFromForeign(crafting) => {
                     self.inject_to_relay(model, false, *crafting, flips);
@@ -281,8 +263,8 @@ impl RealRelaySystem {
         true
     }
 
-    /// The portal hands the client the relay with fresh credentials; the client starts over.
-    fn connect(&mut self) {
+    /// Gives the client a new allocation, with credentials for the running relay.
+    fn allocate(&mut self) {
         let now = self.clock.now();
 
         let relay = self.relay.inner();
@@ -305,7 +287,7 @@ impl RealRelaySystem {
             c.allocation = Some(allocation);
             c.forget_relay_addresses();
         });
-        self.credentials_boot = Some(self.relay_boots);
+        self.allocation_boot = self.relay_boots;
     }
 
     /// Sends the relay a datagram made from the bit flips, returning what it sent.
@@ -356,13 +338,14 @@ impl RealRelaySystem {
             .receive(datagram(Some(src), dst, &flips.mask), self.clock.now());
     }
 
-    /// Lets the client and the relay finish what they are doing, and the portal react to it.
+    /// Lets the client and the relay finish what they are doing, and gives the client a new
+    /// allocation whenever it has none for the running relay.
     ///
     /// Time only passes for the network and for retransmissions; refreshes and keep-alives wait
     /// for `advance`.
     fn settle(&mut self, model: &RelayModel) {
         let deadline = self.clock.now::<Instant>() + MAX_SETTLE;
-        let mut handovers = 0;
+        let mut allocations = 0;
 
         loop {
             self.run(model, |now| {
@@ -371,14 +354,14 @@ impl RealRelaySystem {
                 now + RETRANSMISSION
             });
 
-            let lacks_relay = self.client.inner().allocation.is_none()
-                || self.credentials_boot != Some(self.relay_boots);
-            if !lacks_relay || !self.portal_reachable || handovers == MAX_HANDOVERS {
+            let lacks_allocation = self.client.inner().allocation.is_none()
+                || self.allocation_boot != self.relay_boots;
+            if !lacks_allocation || allocations == MAX_ALLOCATIONS {
                 return;
             }
 
-            handovers += 1;
-            self.connect();
+            allocations += 1;
+            self.allocate();
         }
     }
 
@@ -444,7 +427,7 @@ impl RealRelaySystem {
                 self.last_from_client = Some(transmit.clone());
 
                 if mem::take(&mut self.interference.lose_to_relay) {
-                    self.observed.lost_datagram = true;
+                    self.lost_datagram = true;
                     return;
                 }
             }
@@ -466,14 +449,11 @@ impl RealRelaySystem {
 
         if is_control {
             if mem::take(&mut self.interference.lose_to_client) {
-                self.observed.lost_datagram = true;
+                self.lost_datagram = true;
                 return;
             }
 
             if let Some(flips) = self.interference.forge_to_client.take() {
-                self.observed.forged_binding |= relay_client_proto::decode(&transmit.payload)
-                    .is_ok_and(|message| message.is_ok_and(|m| m.method() == BINDING));
-
                 let forged = datagram(Some(src), dst, &flips.apply_to(&transmit.payload));
                 self.client.exec_mut(|c| c.handle_input(forged, now));
             }
@@ -519,8 +499,7 @@ impl RealAllocation {
         }
     }
 
-    /// Runs the allocation the way `snownet` does: handle timeouts, drain events, free it once
-    /// it gave up.
+    /// Handles the allocation's timeouts and events, and frees it once it gave up.
     fn handle_timeout(&mut self, now: Instant) -> Vec<Transmit> {
         let Some(allocation) = &mut self.allocation else {
             return Vec::new();

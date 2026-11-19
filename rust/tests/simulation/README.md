@@ -15,4 +15,4 @@ Built with the `ijon` feature for AFL++ discovery, it records [IJON feedback](ht
 
 ## `relay`
 
-`run_relay` simulates a relay client, a relay and the portal that hands the client the relay and its credentials, with the client checked against a model.
+`run_relay` simulates a relay client and a relay, with the client checked against a model.

@@ -107,7 +107,7 @@ pub fn run_tunnel(data: &[u8], now: Instant) {
 
 /// Runs the relay simulation that `data` describes, with its clock starting at `now`.
 ///
-/// Simulates a relay client, a relay and the portal and checks the client against a model.
+/// Simulates a relay client and a relay and checks the client against a model.
 /// Panics if the client or the relay violates it.
 pub fn run_relay(data: &[u8], now: Instant) {
     let _guard = init_subscriber();
@@ -128,7 +128,7 @@ pub fn run_relay(data: &[u8], now: Instant) {
         tracing::debug!("Applying transition {applied}: {transition:?} with {interference:?}");
 
         system.apply(&model, &transition, interference);
-        let may_interrupt = model.apply(&transition, system.observed);
+        let may_interrupt = model.apply(&transition, system.lost_datagram);
         system.check(&model, may_interrupt);
     }
 }
