@@ -1,6 +1,7 @@
 defmodule PortalAPI.Gateway.Channel.Shared do
   use PortalAPI, :channel
   alias PortalAPI.Gateway.Views
+  alias PortalAPI.Channel.Authorizations
   alias PortalAPI.Channel.Durability
   alias PortalAPI.Channel.Relays
   alias __MODULE__.Database
@@ -40,7 +41,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   ## Not expected to be hit in production
 
   Every natural production code path that ends in `reject_access` on the
-  gateway's data plane goes through `revoke_policy_authorization/2` first,
+  gateway's data plane goes through `PortalAPI.Channel.Authorizations.revoke/2` first,
   which evicts the cached authorization by id and pushes reject:
 
     * CDC delete of a `policy_authorization` row — the row was really deleted.
@@ -114,7 +115,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     socket =
       assign(socket,
-        cache: Cache.Gateway.hydrate(socket.assigns.gateway),
+        authorizations_cache: Cache.Gateway.hydrate(socket.assigns.gateway),
         iceless_capable: false
       )
 
@@ -164,7 +165,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   def handle_info(:prune_cache, socket) do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
-    {:noreply, assign(socket, cache: Cache.Authorizations.prune(socket.assigns.cache))}
+    {:noreply, assign(socket, authorizations_cache: Cache.Authorizations.prune(socket.assigns.authorizations_cache))}
   end
 
   ####################################
@@ -220,7 +221,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   # The legacy tags still arrive from portal nodes on the previous release during a deploy.
   def handle_info({tag, client_id, candidates}, socket)
       when tag in [:ice_candidates_from_client, :ice_candidates] do
-    if Cache.Authorizations.has_client?(socket.assigns.cache, client_id) do
+    if Cache.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
       push(socket, "ice_candidates", %{
         client_id: client_id,
         candidates: candidates
@@ -234,7 +235,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   def handle_info({tag, client_id, candidates}, socket)
       when tag in [:invalidate_ice_candidates_from_client, :invalidate_ice_candidates] do
-    if Cache.Authorizations.has_client?(socket.assigns.cache, client_id) do
+    if Cache.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
       push(socket, "invalidate_ice_candidates", %{
         client_id: client_id,
         candidates: candidates
@@ -310,7 +311,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         record_authorization_granted(socket, false)
 
         cache =
-          socket.assigns.cache
+          socket.assigns.authorizations_cache
           |> Cache.Authorizations.put(
             policy_authorization_id,
             client_id,
@@ -320,7 +321,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
         socket =
           socket
-          |> assign(cache: cache)
+          |> assign(authorizations_cache: cache)
           |> Durability.arm_authorization(attrs[:policy_authorization])
 
         {:noreply, socket}
@@ -357,7 +358,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         record_authorization_granted(socket, false)
 
         cache =
-          socket.assigns.cache
+          socket.assigns.authorizations_cache
           |> Cache.Authorizations.put(
             policy_authorization_id,
             client.id,
@@ -367,7 +368,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
         socket =
           socket
-          |> assign(cache: cache)
+          |> assign(authorizations_cache: cache)
           |> Durability.arm_authorization(attrs[:policy_authorization])
 
         {:noreply, socket}
@@ -381,7 +382,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   # `reject_access` so connlib tears down the flow.
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
     socket = Durability.cancel_authorization(socket, policy_authorization.id)
-    revoke_policy_authorization(socket, policy_authorization)
+    Authorizations.revoke(socket, policy_authorization)
   end
 
   # Queue confirms a policy_authorization was durably persisted — cancel the
@@ -417,7 +418,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       )
 
       socket = Durability.cancel_authorization(socket, pa.id)
-      revoke_policy_authorization(socket, pa)
+      Authorizations.revoke(socket, pa)
     else
       {:noreply, socket}
     end
@@ -446,7 +447,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     # Cancel any pending authz durability timer for the cached authz of this pair
     # so it doesn't fire later, find the cache empty, and log a spurious warning.
     socket =
-      case Map.get(socket.assigns.cache, key) do
+      case Map.get(socket.assigns.authorizations_cache, key) do
         {pa_id_bytes, _exp} ->
           Durability.cancel_authorization(socket, Ecto.UUID.load!(pa_id_bytes))
 
@@ -454,8 +455,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           socket
       end
 
-    cache = Map.delete(socket.assigns.cache, key)
-    {:noreply, assign(socket, cache: cache)}
+    cache = Map.delete(socket.assigns.authorizations_cache, key)
+    {:noreply, assign(socket, authorizations_cache: cache)}
   end
 
   def handle_info(:disconnect, socket) do
@@ -643,7 +644,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     cache =
       Cache.Authorizations.put(
-        socket.assigns.cache,
+        socket.assigns.authorizations_cache,
         authorization.policy_authorization_id,
         authorization.client.id,
         authorization.resource.id,
@@ -652,7 +653,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     socket =
       socket
-      |> assign(cache: cache)
+      |> assign(authorizations_cache: cache)
       |> Durability.arm_authorization(authorization.policy_authorization)
 
     {:noreply, socket}
@@ -712,7 +713,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp init(socket, account, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
-      authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
+      authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
       relays:
@@ -798,7 +799,7 @@ Relays.render(relays, relay_owner(socket)),
          } = socket
        ) do
     socket = Durability.cancel_authorization(socket, policy_authorization.id)
-    revoke_policy_authorization(socket, policy_authorization)
+    Authorizations.revoke(socket, policy_authorization)
   end
 
   # GATEWAYS
@@ -858,7 +859,9 @@ Relays.render(relays, relay_owner(socket)),
        when old_address != address or
               old_ip_stack != ip_stack or
               old_type != type do
-    for {client_id, resource_id} <- Cache.Authorizations.all_pairs_for_resource(socket.assigns.cache, id) do
+    pairs = Cache.Authorizations.all_pairs_for_resource(socket.assigns.authorizations_cache, id)
+
+    for {client_id, resource_id} <- pairs do
       # Send reject_access to the gateway to reset state. Clients will need to reauthorize the resource.
       push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
     end
@@ -892,33 +895,6 @@ Relays.render(relays, relay_owner(socket)),
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
-
-  # Shared eviction path for the CDC delete handler, the direct `:reject_access`
-  # from `Portal.Queue`'s on_failed callback, and the authz durability timeout.
-  # We look the authorization up by id and, if it was still active, push
-  # `reject_access`; the client recovers by tripping ICMP "destination
-  # prohibited" and requesting a fresh authorization. Deletes of already-expired
-  # authorizations (the `DeleteExpiredPolicyAuthorizations` reaper) are dropped
-  # silently — connlib has already expired them locally.
-  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{
-         id: id,
-         initiating_device_id: client_id,
-         resource_id: resource_id
-       }) do
-    case Cache.Authorizations.delete(socket.assigns.cache, id, client_id, resource_id) do
-      {:ok, expires_at_unix, cache} ->
-        now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
-
-        if expires_at_unix > now_unix do
-          push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
-        end
-
-        {:noreply, assign(socket, cache: cache)}
-
-      :error ->
-        {:noreply, socket}
-    end
-  end
 
   defp register(socket) do
     current_pid = socket.assigns[:pg_scope_pid]
@@ -1043,7 +1019,7 @@ Relays.render(relays, relay_owner(socket)),
   defp deliver_to_clients(socket, _client_ids, _tag, _candidates), do: {:noreply, socket}
 
   defp deliver_to_client(socket, client_id, tag, candidates) do
-    if Cache.Authorizations.has_client?(socket.assigns.cache, client_id) do
+    if Cache.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
       PG.deliver(client_id, {tag, socket.assigns.gateway.id, candidates})
     else
       Telemetry.ice_candidates_dropped(:gateway, :unauthorized, length(candidates))
