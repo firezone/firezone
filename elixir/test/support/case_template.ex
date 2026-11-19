@@ -19,6 +19,11 @@ defmodule Portal.CaseTemplate do
           Ecto.Adapters.SQL.Sandbox.mode(Portal.Repo, {:shared, self()})
         end
 
+        # Opt-in, so the rest of the suite holds no ops database connections.
+        if tags[:ops_repo] do
+          :ok = Ecto.Adapters.SQL.Sandbox.checkout(Portal.Ops.Repo)
+        end
+
         :ok
       end
     end

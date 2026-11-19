@@ -491,6 +491,12 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_name, :string, default: "firezone")
 
   @doc """
+  Name of the PostgreSQL database of the private ops dashboard, on the same server.
+  It is only used where the dashboard is compiled in.
+  """
+  defconfig(:ops_database_name, :string, default: "firezone_ops")
+
+  @doc """
   User that will be used to access the PostgreSQL database.
   """
   defconfig(:database_user, :string, default: "postgres", sensitive: true)

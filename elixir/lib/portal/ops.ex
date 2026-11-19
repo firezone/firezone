@@ -268,6 +268,32 @@ defmodule Portal.Ops do
     Database.delete_all(Banner)
   end
 
+  @doc """
+  Lets `email` sign in to the ops dashboard with Google. On the first sign-in the
+  admin must add a passkey, and every later sign-in needs one. Returns the existing
+  admin when the email is already provisioned.
+
+  ## Examples
+
+      iex> provision_admin("jamil@firezone.dev")
+      {:ok, %Portal.Ops.Admin{email: "jamil@firezone.dev"}}
+
+  """
+  def provision_admin(email) when is_binary(email) do
+    Database.provision_admin(email)
+  end
+
+  @doc """
+  Removes an ops admin and their passkeys. Their dashboard session ends on the next
+  request.
+  """
+  def deprovision_admin(email) when is_binary(email) do
+    case Database.deprovision_admin(email) do
+      {1, _} -> :ok
+      {0, _} -> {:error, :not_found}
+    end
+  end
+
   def queue_admin_email(subject, html_body, plaintext_body) do
     queue_admin_email(:all, subject, html_body, plaintext_body)
   end
@@ -660,6 +686,28 @@ defmodule Portal.Ops do
     import Ecto.Query
     alias Portal.{Account, Actor, ExternalIdentity, Safe}
     alias Portal.Workers.DeleteSubscription
+
+    def provision_admin(email) do
+      email = Portal.Ops.Admin.normalize_email(email)
+
+      case Portal.Ops.Repo.get_by(Portal.Ops.Admin, email: email) do
+        nil ->
+          %Portal.Ops.Admin{}
+          |> Ecto.Changeset.cast(%{email: email}, [:email])
+          |> Portal.Ops.Admin.changeset()
+          |> Portal.Ops.Repo.insert()
+
+        admin ->
+          {:ok, admin}
+      end
+    end
+
+    def deprovision_admin(email) do
+      email = Portal.Ops.Admin.normalize_email(email)
+
+      from(a in Portal.Ops.Admin, where: a.email == ^email)
+      |> Portal.Ops.Repo.delete_all()
+    end
 
     def delete_disabled_account(id) do
       Safe.transact(fn ->

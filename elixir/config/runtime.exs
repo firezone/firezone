@@ -115,6 +115,15 @@ if config_env() == :prod do
            {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
          ] ++ direct_pool_base_opts
 
+  # The private ops dashboard's own database on the same server
+  config :portal,
+         Portal.Ops.Repo,
+         Keyword.merge(direct_pool_base_opts,
+           database: env_var_to_config!(:ops_database_name),
+           pool_size: 2,
+           parameters: Keyword.merge(database_parameters, application_name: "ops")
+         )
+
   config :portal, Portal.ChangeLogs.Consumer,
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name)

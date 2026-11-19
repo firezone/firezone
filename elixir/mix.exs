@@ -21,7 +21,7 @@ defmodule Portal.MixProject do
       test_paths: ["test"] ++ ops_paths("test"),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
-      test_ignore_filters: [~r"^test/fixtures/"],
+      test_ignore_filters: [~r"^test/fixtures/", ~r"^ops/test/support/"],
       listeners: listeners(),
       docs: [
         logo: "assets/static/images/logo.svg",
@@ -68,6 +68,17 @@ defmodule Portal.MixProject do
     end
   end
 
+  # Portal.Ops.Repo keeps its migrations in priv/ops_repo (its `priv` config) and only
+  # runs with the ops dashboard. Mix runs a task once per alias, so it is re-enabled
+  # for Portal.Repo, which comes last to get the command line arguments.
+  defp ops_migrate do
+    if ops_paths("lib") == [] do
+      []
+    else
+      ["ecto.migrate -r Portal.Ops.Repo", fn _args -> Mix.Task.reenable("ecto.migrate") end]
+    end
+  end
+
   defp listeners do
     System.get_env()
     |> Enum.any?(fn {key, _val} -> String.starts_with?(key, "DEPENDABOT") end)
@@ -102,6 +113,7 @@ defmodule Portal.MixProject do
       {:plug_crypto, "~> 2.0"},
       {:jose, "~> 1.11"},
       {:argon2_elixir, "~> 4.0"},
+      {:wax_, "~> 0.7"},
 
       # Background jobs
       {:oban, "~> 2.22"},
@@ -190,11 +202,13 @@ defmodule Portal.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
-      "ecto.migrate": [
-        "ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
-      ],
+      "ecto.migrate":
+        ops_migrate() ++
+          [
+            "ecto.migrate -r Portal.Repo --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
+          ],
       "ecto.rollback": [
-        "ecto.rollback --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
+        "ecto.rollback -r Portal.Repo --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
       ],
       "ecto.seed": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],

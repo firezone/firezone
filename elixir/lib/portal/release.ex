@@ -19,6 +19,10 @@ defmodule Portal.Release do
       )
 
     {:ok, _, _} = do_migration(Portal.Repo, manual)
+
+    if Portal.Ops.Repo.enabled?() do
+      {:ok, _, _} = Ecto.Migrator.with_repo(Portal.Ops.Repo, &Ecto.Migrator.run(&1, :up, all: true))
+    end
   end
 
   # Release operators execute trusted seed scripts shipped with the application.
