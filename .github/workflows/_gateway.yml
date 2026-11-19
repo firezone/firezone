@@ -66,6 +66,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      security-events: write # trivy SARIF upload from setup-mise
     with:
       package: firezone-gateway
       name: gateway
