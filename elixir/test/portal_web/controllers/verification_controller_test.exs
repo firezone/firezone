@@ -6,6 +6,12 @@ defmodule PortalWeb.VerificationControllerTest do
   @principal_id "87654321-4321-4321-4321-210987654321"
   @global_administrator_role_id "62e90394-69f5-4237-9190-012177145e10"
 
+  setup %{conn: conn} do
+    account = Portal.AccountFixtures.account_fixture()
+    actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
+    %{conn: authorize_conn(conn, actor)}
+  end
+
   describe "oidc/2" do
     test "with valid success result token, sends message to LV and renders success", %{
       conn: conn
@@ -25,7 +31,7 @@ defmodule PortalWeb.VerificationControllerTest do
       verification_ref = Ecto.UUID.generate()
 
       token =
-        sign_oidc_result(%{
+        sign_oidc_result(conn, %{
           ok: true,
           issuer: "https://example.com",
           lv_pid: lv_pid_string,
@@ -62,7 +68,7 @@ defmodule PortalWeb.VerificationControllerTest do
       verification_ref = Ecto.UUID.generate()
 
       token =
-        sign_oidc_result(%{
+        sign_oidc_result(conn, %{
           ok: true,
           type: "google-directory-sync",
           domain: "verified.example.com",
@@ -85,7 +91,7 @@ defmodule PortalWeb.VerificationControllerTest do
       verification_ref = Ecto.UUID.generate()
 
       token =
-        sign_oidc_result(%{
+        sign_oidc_result(conn, %{
           ok: false,
           type: "google-directory-sync",
           error: "The Google account is not an administrator",
@@ -115,7 +121,7 @@ defmodule PortalWeb.VerificationControllerTest do
         end
       end)
       verification_ref = Ecto.UUID.generate()
-      token = sign_oidc_result(%{ok: true, type: "google-auth-provider",
+      token = sign_oidc_result(conn, %{ok: true, type: "google-auth-provider",
         issuer: "https://accounts.google.com", domains: @google_domains, name: @google_name,
         lv_pid: serialize_pid(lv_pid), verification_ref: verification_ref})
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
@@ -130,7 +136,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn: conn
     } do
       lv_pid_string = PortalWeb.OIDC.serialize_pid(self())
-      token = sign_oidc_result(%{ok: false, error: "invalid_grant", lv_pid: lv_pid_string})
+      token = sign_oidc_result(conn, %{ok: false, error: "invalid_grant", lv_pid: lv_pid_string})
 
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
@@ -143,7 +149,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
     test "with nil lv_pid in result token, renders failure without sending message", %{conn: conn} do
       token =
-        sign_oidc_result(%{
+        sign_oidc_result(conn, %{
           ok: true,
           issuer: "https://example.com",
           lv_pid: nil,
@@ -159,7 +165,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
     test "with success result token missing verification_ref, renders failure", %{conn: conn} do
       lv_pid_string = PortalWeb.OIDC.serialize_pid(self())
-      token = sign_oidc_result(%{ok: true, issuer: "https://example.com", lv_pid: lv_pid_string})
+      token = sign_oidc_result(conn, %{ok: true, issuer: "https://example.com", lv_pid: lv_pid_string})
 
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
@@ -198,7 +204,7 @@ defmodule PortalWeb.VerificationControllerTest do
       verification_ref = Ecto.UUID.generate()
 
       token =
-        sign_entra_result(%{
+        sign_entra_result(conn, %{
           ok: true,
           type: "entra-auth-provider",
           issuer: @issuer,
@@ -226,7 +232,7 @@ defmodule PortalWeb.VerificationControllerTest do
       verification_ref = Ecto.UUID.generate()
 
       token =
-        sign_entra_result(%{
+        sign_entra_result(conn, %{
           ok: true,
           type: "entra-auth-provider",
           issuer: @issuer,
@@ -248,7 +254,7 @@ defmodule PortalWeb.VerificationControllerTest do
       verification_ref = Ecto.UUID.generate()
 
       token =
-        sign_entra_result(%{
+        sign_entra_result(conn, %{
           ok: false,
           error: "The user denied consent",
           lv_pid: serialize_pid(self()),
@@ -264,7 +270,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
     test "rejects a result missing its verification reference", %{conn: conn} do
       token =
-        sign_entra_result(%{
+        sign_entra_result(conn, %{
           ok: true,
           type: "entra-auth-provider",
           issuer: @issuer,
@@ -295,7 +301,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
       stub_directory_access()
       verification_ref = Ecto.UUID.generate()
-      token = directory_result_token(lv_pid, verification_ref)
+      token = directory_result_token(conn, lv_pid, verification_ref)
 
       conn = get(conn, ~p"/verification/entra", %{"result" => token})
 
@@ -315,7 +321,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
       conn =
         get(conn, ~p"/verification/entra", %{
-          "result" => directory_result_token(self(), verification_ref)
+          "result" => directory_result_token(conn, self(), verification_ref)
         })
 
       assert conn.resp_body =~ "Global Administrator or Privileged Role Administrator"
@@ -332,7 +338,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
       conn =
         get(conn, ~p"/verification/entra", %{
-          "result" => directory_result_token(lv_pid, Ecto.UUID.generate(), principal_id)
+          "result" => directory_result_token(conn, lv_pid, Ecto.UUID.generate(), principal_id)
         })
 
       assert conn.resp_body =~ "Verification Successful"
@@ -345,7 +351,7 @@ defmodule PortalWeb.VerificationControllerTest do
       stub_directory_access()
       lv_pid = verification_ack_process()
 
-      conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(lv_pid)})
+      conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(conn, lv_pid)})
 
       assert conn.resp_body =~ "Verification Successful"
       paths = drain_entra_api_request_paths()
@@ -374,7 +380,7 @@ defmodule PortalWeb.VerificationControllerTest do
         )
       end)
 
-      conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(self())})
+      conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(conn, self())})
 
       assert conn.resp_body =~ "Unauthorized"
       assert conn.resp_body =~ "Invalid credentials"
@@ -391,7 +397,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
       conn =
         get(conn, ~p"/verification/entra", %{
-          "result" => directory_result_token(self(), verification_ref)
+          "result" => directory_result_token(conn, self(), verification_ref)
         })
 
       assert conn.resp_body =~ "Access denied"
@@ -407,7 +413,7 @@ defmodule PortalWeb.VerificationControllerTest do
         |> Plug.Conn.send_resp(404, JSON.encode!(%{}))
       end)
 
-      conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(self())})
+      conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(conn, self())})
 
       assert conn.resp_body =~ "Verification failed (HTTP 404)"
     end
@@ -417,7 +423,7 @@ defmodule PortalWeb.VerificationControllerTest do
         Req.Test.transport_error(req_conn, :econnrefused)
       end)
 
-      conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(self())})
+      conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(conn, self())})
 
       assert conn.resp_body =~ "Failed to verify directory access"
     end
@@ -441,7 +447,7 @@ defmodule PortalWeb.VerificationControllerTest do
       verification_ref = Ecto.UUID.generate()
 
       token =
-        sign_entra_result(%{
+        sign_entra_result(conn, %{
           ok: true,
           type: "intune-posture-provider",
           tenant_id: @tenant_id,
@@ -466,7 +472,7 @@ defmodule PortalWeb.VerificationControllerTest do
       verification_ref = Ecto.UUID.generate()
 
       token =
-        sign_entra_result(%{
+        sign_entra_result(conn, %{
           ok: true,
           type: "intune-posture-provider",
           tenant_id: @tenant_id,
@@ -487,7 +493,7 @@ defmodule PortalWeb.VerificationControllerTest do
       verification_ref = Ecto.UUID.generate()
 
       token =
-        sign_entra_result(%{
+        sign_entra_result(conn, %{
           ok: true,
           type: "intune-posture-provider",
           tenant_id: @tenant_id,
@@ -516,6 +522,31 @@ defmodule PortalWeb.VerificationControllerTest do
 
       assert conn.status == 200
       assert conn.resp_body =~ "Invalid verification request"
+    end
+
+    test "does not notify the LiveView from a browser without its portal session", %{
+      conn: conn
+    } do
+      parent = self()
+      lv_pid = spawn(fn -> receive do: (message -> send(parent, {:lv_message, message})) end)
+      entra_token = directory_result_token(conn, lv_pid)
+
+      oidc_token =
+        sign_oidc_result(conn, %{
+          ok: true,
+          issuer: "https://example.com",
+          lv_pid: serialize_pid(lv_pid),
+          verification_ref: Ecto.UUID.generate()
+        })
+
+      entra_conn = get(build_conn(), ~p"/verification/entra", %{"result" => entra_token})
+      assert entra_conn.resp_body =~ "browser where you are signed in"
+
+      oidc_conn = get(build_conn(), ~p"/verification/oidc", %{"result" => oidc_token})
+      assert oidc_conn.resp_body =~ "browser where you are signed in"
+
+      refute_received {:lv_message, _message}
+      refute_received {:entra_api_request, _path}
     end
 
     test "rejects invalid or missing result tokens", %{conn: conn} do
@@ -561,11 +592,12 @@ defmodule PortalWeb.VerificationControllerTest do
   end
 
   defp directory_result_token(
+         conn,
          lv_pid,
          verification_ref \\ Ecto.UUID.generate(),
          principal_id \\ @principal_id
        ) do
-    sign_entra_result(%{
+    sign_entra_result(conn, %{
       ok: true,
       type: "entra-directory-sync",
       issuer: @issuer,
@@ -595,11 +627,15 @@ defmodule PortalWeb.VerificationControllerTest do
 
   defp serialize_pid(pid), do: PortalWeb.OIDC.serialize_pid(pid)
 
-  defp sign_oidc_result(result) do
-    Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
+  defp sign_oidc_result(conn, result) do
+    Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", bind(conn, result))
   end
 
-  defp sign_entra_result(result) do
-    Phoenix.Token.sign(PortalWeb.Endpoint, "entra-verification-result", result)
+  defp sign_entra_result(conn, result) do
+    Phoenix.Token.sign(PortalWeb.Endpoint, "entra-verification-result", bind(conn, result))
+  end
+
+  defp bind(conn, result) do
+    Map.put(result, :session, PortalWeb.OIDC.verification_session(conn.assigns.subject))
   end
 end

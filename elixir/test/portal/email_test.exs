@@ -14,8 +14,8 @@ defmodule Portal.EmailTest do
     end
 
     test "rejects a domain IDNA cannot encode" do
-      assert Email.normalize("Ï@ú1å?") == :error
-      assert Email.normalize_for_match("Ï@ú1å?") == :error
+      assert Email.normalize("user@bücher..example") == :error
+      assert Email.normalize_for_match("user@bücher..example") == :error
     end
   end
 

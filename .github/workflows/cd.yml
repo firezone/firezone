@@ -113,6 +113,16 @@ jobs:
     with:
       flavour: release
 
+  otel-ingest-proxy-prod-binary:
+    uses: ./.github/workflows/_otel-ingest-proxy.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
+    with:
+      flavour: release
+
   # Build data-plane perf images for perf-tests
   headless-client-perf-images:
     uses: ./.github/workflows/_headless-client.yml
@@ -181,6 +191,7 @@ jobs:
         headless-client-prod-images,
         gateway-prod-images,
         relay-prod-images,
+        otel-ingest-proxy-prod-binary,
         control-plane-images,
         loadtest-binaries,
       ]

@@ -103,7 +103,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   ####################################
 
   def handle_info(%Change{} = change, socket) do
-    Session.apply_change(socket, change, &handle_change/2)
+    Session.apply_change(socket, socket.assigns.client, change, &handle_change/2)
   end
 
   ####################################
@@ -2048,29 +2048,6 @@ Relays.render(relays, relay_owner(socket)),
 
   # ACCOUNTS
 
-  # Disabling an account is broadcast as an account deletion. Unlike token-backed
-  # credentials, X.509 credentials have no token row for the account hook
-  # to delete, so every client channel for the account must be explicitly cut.
-  defp handle_change(
-         %Change{op: :delete, old_struct: %Portal.Account{id: account_id}},
-         %{assigns: %{client: %{account_id: account_id}}} = socket
-       ) do
-    handle_info(:disconnect, socket)
-  end
-
-  # Keep the channel fail-closed if an account-disabled update is ever broadcast
-  # directly instead of being normalized to the delete event above.
-  defp handle_change(
-         %Change{
-           op: :update,
-           old_struct: %Portal.Account{is_disabled: false},
-           struct: %Portal.Account{is_disabled: true}
-         },
-         socket
-       ) do
-    handle_info(:disconnect, socket)
-  end
-
   defp handle_change(
          %Change{
            op: :update,
@@ -2168,16 +2145,6 @@ Relays.render(relays, relay_owner(socket)),
     else
       {:noreply, socket}
     end
-  end
-
-  defp handle_change(
-         %Change{op: :delete, old_struct: %Portal.Device{id: id}},
-         %{assigns: %{client: %{id: client_id}}} = socket
-       )
-       when id == client_id do
-    # Deleting a client won't necessary delete its tokens in the case of a headless client.
-    # So we explicitly handle the deleted client here by forcing it to reconnect.
-    Session.close_transport(socket)
   end
 
   # SITES
@@ -2281,26 +2248,6 @@ Relays.render(relays, relay_owner(socket)),
   end
 
   # POLICY_AUTHORIZATIONS
-
-  # When a policy_authorization is deleted where this client is the receiving device,
-  # mirror the gateway flow: drop the cached authorization and push reject_access
-  # with the {initiator, resource} pair so connlib tears down the inbound peer
-  # connection. The wire shape parallels the gateway's reject_access rather than
-  # client_device_access_denied (which is keyed on {ipv4, reason} for the
-  # controlling-side denial path) — the receiver doesn't need a reason, only the
-  # identity of the connection to drop.
-  defp handle_change(
-         %Change{
-           op: :delete,
-           old_struct:
-             %Portal.PolicyAuthorization{receiving_device_id: client_id} =
-               policy_authorization
-         },
-         %{assigns: %{client: %{id: client_id}}} = socket
-       ) do
-    socket = Durability.cancel_authorization(socket, policy_authorization.id)
-    Authorizations.revoke(socket, policy_authorization)
-  end
 
   # On the v3 protocol the initiating side keeps the pool as its route to the peer, so
   # it gets the same reject_access when the authorization goes away and asks the portal
