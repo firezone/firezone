@@ -22,7 +22,7 @@ defmodule PortalWeb.Plugs.PutSecurityHeadersTest do
   end
 
   describe "Turnstile on the public form pages" do
-    for path <- ["/sign_up", "/sign_up/email", "/sign_up/google", "/sign_up/github", "/try", "/find_account"] do
+    for path <- ["/sign_up", "/sign_up/email", "/sign_up/google", "/sign_up/github", "/try", "/sign_in"] do
       @path path
 
       test "#{path} may load, connect to and frame Cloudflare" do
@@ -51,7 +51,7 @@ defmodule PortalWeb.Plugs.PutSecurityHeadersTest do
   end
 
   describe "every other page" do
-    for path <- ["/", "/sign_in", "/verify_sign_up", "/sign_upfoo", "/find_accounts", "/acme/sites", "/acme/settings/account"] do
+    for path <- ["/", "/find_account", "/verify_sign_up", "/sign_upfoo", "/sign_ins", "/acme/sites", "/acme/settings/account"] do
       @path path
 
       test "#{path} does not allow Cloudflare" do
@@ -64,7 +64,7 @@ defmodule PortalWeb.Plugs.PutSecurityHeadersTest do
     end
 
     test "the default policy has no connect-src or frame-src of its own" do
-      csp = csp("/sign_in")
+      csp = csp("/acme/sign_in")
 
       refute Map.has_key?(csp, "connect-src")
       refute Map.has_key?(csp, "frame-src")

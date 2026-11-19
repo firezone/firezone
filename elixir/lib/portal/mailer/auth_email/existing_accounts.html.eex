@@ -91,8 +91,24 @@
                       class="sm-leading-8"
                       style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000"
                     >
-                      Your Firezone accounts
+                      <%= cond do %>
+                        <% not @client? -> %>Your Firezone accounts
+                        <% length(@accounts_with_urls) == 1 -> %>Your Firezone sign-in URL
+                        <% true -> %>Your Firezone sign-in URLs
+                      <% end %>
                     </h1>
+                    <%= if @client? do %>
+                    <p style="margin: 0 0 24px; line-height: 24px">
+                      Enter <%= if length(@accounts_with_urls) == 1, do: "this URL", else: "one of these" %> on the sign-in page the Firezone app opened.
+                    </p>
+                    <%= for {account, sign_in_url} <- @accounts_with_urls do %>
+                    <% {host, slug} = split_sign_in_url(sign_in_url, account.slug) %>
+                    <div style="margin: 0 0 16px;">
+                      <p style="margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #1a1a1a;"><%= account.name %></p>
+                      <code style="display: block; border: 1px solid #e5e5e5; border-radius: 6px; background-color: #f6f6f6; padding: 14px 16px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; line-height: 22px; color: #1a1a1a; word-break: break-all;"><span class="url-host" style="color: #6d6d6d;"><%= host %></span><strong style="font-weight: 700;"><%= slug %></strong></code>
+                    </div>
+                    <% end %>
+                    <% else %>
                     <p style="margin: 0 0 24px; line-height: 24px">
                       We found the following <%= if length(@accounts_with_urls) == 1, do: "account", else: "accounts" %> associated with your email address. Click an account below to sign in.
                     </p>
@@ -119,6 +135,7 @@
                       </tr>
                       <% end %>
                     </table>
+                    <% end %>
                     <div
                       role="separator"
                       class="separator"
