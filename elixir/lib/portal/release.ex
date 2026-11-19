@@ -20,8 +20,9 @@ defmodule Portal.Release do
 
     {:ok, _, _} = do_migration(Portal.Repo, manual)
 
-    if Portal.Ops.Repo.enabled?() do
-      {:ok, _, _} = Ecto.Migrator.with_repo(Portal.Ops.Repo, &Ecto.Migrator.run(&1, :up, all: true))
+    # The private ops dashboard's database, when the dashboard is compiled in.
+    if Code.ensure_loaded?(PortalOps.Repo) do
+      {:ok, _, _} = Ecto.Migrator.with_repo(PortalOps.Repo, &Ecto.Migrator.run(&1, :up, all: true))
     end
   end
 

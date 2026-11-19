@@ -268,8 +268,15 @@ defmodule Portal.Application do
 
   # The ops dashboard is only compiled in from the private firezone/portal-ops repo.
   defp ops_endpoint do
-    if Portal.Ops.Repo.enabled?() do
-      [Portal.Ops.Repo, {PortalOps.Endpoint, shutdown: 40_000}]
+    repo =
+      if Code.ensure_loaded?(PortalOps.Repo) do
+        [PortalOps.Repo]
+      else
+        []
+      end
+
+    if Code.ensure_loaded?(PortalOps.Endpoint) do
+      repo ++ [{PortalOps.Endpoint, shutdown: 40_000}]
     else
       []
     end

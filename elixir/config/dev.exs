@@ -45,7 +45,7 @@ config :portal, Portal.Repo.Web, pgbouncer_db_opts
 config :portal, Portal.Repo.Api, pgbouncer_db_opts
 config :portal, Portal.Repo.Job, pgbouncer_db_opts
 config :portal, Portal.Repo.Poller, direct_db_opts
-config :portal, Portal.Ops.Repo, Keyword.put(direct_db_opts, :database, direct_db_opts[:database] <> "_ops")
+config :portal, PortalOps.Repo, Keyword.put(direct_db_opts, :database, direct_db_opts[:database] <> "_ops")
 
 # Poll fast locally so live updates and change logs appear without a wait
 config :portal, Portal.ChangeLogs.Consumer,

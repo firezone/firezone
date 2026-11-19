@@ -117,7 +117,7 @@ if config_env() == :prod do
 
   # The private ops dashboard's own database on the same server
   config :portal,
-         Portal.Ops.Repo,
+         PortalOps.Repo,
          Keyword.merge(direct_pool_base_opts,
            database: env_var_to_config!(:ops_database_name),
            pool_size: 2,

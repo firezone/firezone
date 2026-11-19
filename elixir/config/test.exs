@@ -42,7 +42,7 @@ for repo <- [
     queue_target: 1000
 end
 
-config :portal, Portal.Ops.Repo,
+config :portal, PortalOps.Repo,
   database: "#{database}_ops",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 5,

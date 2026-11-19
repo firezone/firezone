@@ -68,14 +68,17 @@ defmodule Portal.MixProject do
     end
   end
 
-  # Portal.Ops.Repo keeps its migrations in priv/ops_repo (its `priv` config) and only
-  # runs with the ops dashboard. Mix runs a task once per alias, so it is re-enabled
-  # for Portal.Repo, which comes last to get the command line arguments.
+  # PortalOps.Repo only runs with the ops dashboard, which keeps its migrations in
+  # ops/priv/migrations. Mix runs a task once per alias, so it is re-enabled for
+  # Portal.Repo, which comes last to get the command line arguments.
   defp ops_migrate do
-    if ops_paths("lib") == [] do
+    if ops_paths("priv/migrations") == [] do
       []
     else
-      ["ecto.migrate -r Portal.Ops.Repo", fn _args -> Mix.Task.reenable("ecto.migrate") end]
+      [
+        "ecto.migrate -r PortalOps.Repo --migrations-path ops/priv/migrations",
+        fn _args -> Mix.Task.reenable("ecto.migrate") end
+      ]
     end
   end
 

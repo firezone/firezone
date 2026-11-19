@@ -1,14 +1,5 @@
 Ecto.Adapters.SQL.Sandbox.mode(Portal.Repo, :manual)
 
-# The ops database only runs with the private ops dashboard compiled in.
-ops_exclude =
-  if Portal.Ops.Repo.enabled?() do
-    Ecto.Adapters.SQL.Sandbox.mode(Portal.Ops.Repo, :manual)
-    []
-  else
-    [:ops_repo]
-  end
-
 # Job lifecycle logs likewise fan out to all concurrent log captures. Worker
 # logs and telemetry events remain available to the tests that assert on them.
 :ok = Oban.Telemetry.detach_default_logger()
@@ -54,4 +45,4 @@ end)
 # Before any test opens a sandbox transaction, see the module doc.
 {:ok, _pid} = Portal.Test.LogicalSlots.start()
 
-ExUnit.start(formatters: [ExUnit.CLIFormatter, JUnitFormatter], exclude: ops_exclude)
+ExUnit.start(formatters: [ExUnit.CLIFormatter, JUnitFormatter])
