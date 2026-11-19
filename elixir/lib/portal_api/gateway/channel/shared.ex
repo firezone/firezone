@@ -4,6 +4,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   alias PortalAPI.Channel.Authorizations
   alias PortalAPI.Channel.Durability
   alias PortalAPI.Channel.Relays
+  alias PortalAPI.Channel.Session
   alias __MODULE__.Database
 
   alias Portal.{
@@ -88,21 +89,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:ok, socket}
   end
 
-  # On an abnormal exit, drain the whole WebSocket instead of just letting the
-  # channel die. connlib ignores `phx_error` and would keep the transport alive,
-  # re-joining reactively and reusing the transport-scoped session_ref (whose
-  # earlier flush confirmation could cancel the new session's durability
-  # timer). Draining forces a full reconnect that re-runs `Socket.connect/3`
-  # and mints a fresh session_ref, keeping transport:session 1:1. Graceful stops
-  # already send `phx_close`, so we only intervene here.
   @impl true
-  def terminate(reason, socket) do
-    if abnormal_exit?(reason) do
-      send(socket.transport_pid, :socket_drain)
-    end
-
-    :ok
-  end
+  def terminate(reason, socket), do: Session.terminate(reason, socket)
 
   ####################################
   ##### Channel lifecycle events #####
@@ -172,21 +160,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   ##### Reacting to domain events ####
   ####################################
 
-  def handle_info(%Change{lsn: lsn} = change, socket) do
-    last_lsn = Map.get(socket.assigns, :last_lsn, 0)
-
-    if lsn > last_lsn do
-      case handle_change(change, socket) do
-        {:noreply, socket} ->
-          {:noreply, assign(socket, last_lsn: lsn)}
-
-        result ->
-          result
-      end
-    else
-      # Change already processed; ignore to prevent replaying it
-      {:noreply, socket}
-    end
+  def handle_info(%Change{} = change, socket) do
+    Session.apply_change(socket, change, &handle_change/2)
   end
 
   ####################################
@@ -396,46 +371,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, Durability.cancel_session(socket, session_ref)}
   end
 
-  # Authz durability timer fired — no `:confirm_authz_durability` or
-  # `:reject_access` arrived within the timeout window. Treat as
-  # "originating queue lost state" and run the same eviction path as
-  # `:reject_access` (fail-closed). Logged at warning level because this
-  # path firing means something went wrong upstream.
-  #
-  # The generation check guards against the race where this timer fires
-  # right before a `:confirm_authz_durability` arrives: the cancel returned
-  # false because the message was already in the mailbox, but the entry
-  # for `pa.id` in `authz_durability` was either removed (durability
-  # confirmed/rejected) or replaced (new timer for the same authz_id),
-  # so the generation no longer matches. In that case, we ignore.
-  def handle_info(
-        {:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation},
-        socket
-      ) do
-    if Durability.authorization_lost?(socket, pa, generation) do
-      Logger.warning(
-        "Authz durability timeout firing for authz #{inspect(pa.id)} — queue never confirmed durability"
-      )
-
-      socket = Durability.cancel_authorization(socket, pa.id)
-      Authorizations.revoke(socket, pa)
-    else
-      {:noreply, socket}
-    end
+  def handle_info({:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation}, socket) do
+    Durability.authorization_timeout(socket, pa, generation)
   end
 
   def handle_info({:session_durability_timeout, session_ref}, socket) do
-    if Durability.session_lost?(socket, session_ref) do
-      Logger.warning(
-        "Gateway session #{inspect(session_ref)} was not confirmed durable; disconnecting"
-      )
-
-      # Avoid sending "token_expired" since that will tear down connlib
-      # state in the gateway. Instead, the gateway must reconnect.
-      {:stop, :shutdown, socket}
-    else
-      {:noreply, socket}
-    end
+    Durability.session_timeout(socket, session_ref)
   end
 
   # Handler for the public `revoke_pair_access/3` self-heal helper.
@@ -459,12 +400,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, assign(socket, authorizations_cache: cache)}
   end
 
-  def handle_info(:disconnect, socket) do
-    # Important: We push disconnect before closing the socket to prevent the gateway from
-    # attempting to immediately reconnect
-    push(socket, "disconnect", %{reason: "token_expired"})
-    close_transport(socket)
-  end
+  def handle_info(:disconnect, socket), do: Session.disconnect(socket)
 
   # Flush-failure disconnects are PG-delivered by device id but target one
   # session; a mismatched ref belongs to a predecessor channel and falls
@@ -494,7 +430,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   # No "token_expired" push: the gateway exits on it, but a duplicate must reconnect.
   def handle_info(:duplicate_connection, socket) do
-    close_transport(socket)
+    Session.close_transport(socket)
   end
 
   def handle_info({_ref, :leave, gateway_id, _pids}, socket)
@@ -502,17 +438,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, socket}
   end
 
-  # A monitored process crashed — determine which subsystem it belongs to and recover.
   def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
-    cond do
-      pid == socket.assigns[:pg_scope_pid] ->
-        register(socket)
-
-      Enum.any?(socket.assigns[:presence_monitors] || [], fn {p, _ref} -> p == pid end) ->
-        {:noreply, track_presence(socket)}
-
-      true ->
-        {:noreply, socket}
+    case Session.monitored(socket, pid) do
+      :pg_scope -> register(socket)
+      :presence -> {:noreply, track_presence(socket)}
+      nil -> {:noreply, socket}
     end
   end
 
@@ -836,7 +766,7 @@ Relays.render(relays, relay_owner(socket)),
            assigns: %{gateway: %{id: gateway_id}}
          } = socket
        ) do
-    close_transport(socket)
+    Session.close_transport(socket)
   end
 
   # RESOURCES
@@ -897,20 +827,8 @@ Relays.render(relays, relay_owner(socket)),
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
   defp register(socket) do
-    current_pid = socket.assigns[:pg_scope_pid]
-
-    case PG.scope_pid() do
-      nil ->
-        Logger.error("Portal.PG scope is not running, retrying registration shortly")
-        Process.send_after(self(), :register, 50)
-        {:noreply, socket}
-
-      ^current_pid ->
-        # We're already registered
-        {:noreply, socket}
-
-      new_pid ->
-        Process.monitor(new_pid)
+    case Session.monitor_pg_scope(socket) do
+      {:joined, socket, previous_pid} ->
         :ok = PG.join(socket.assigns.gateway.id)
         :ok = PG.join(socket.assigns.token_id)
 
@@ -919,8 +837,10 @@ Relays.render(relays, relay_owner(socket)),
         # scope, so this re-arms on every (re-)registration.
         {_ref, _members} = PG.monitor(socket.assigns.gateway.id)
 
-        socket = assign(socket, :pg_scope_pid, new_pid)
-        register_session(socket, current_pid)
+        register_session(socket, previous_pid)
+
+      result ->
+        result
     end
   end
 
@@ -945,34 +865,10 @@ Relays.render(relays, relay_owner(socket)),
     end
   end
 
-  # Tracks gateway presence and monitors Presence tracker shard processes so we
-  # can re-track if any crash. Monitoring the supervisor alone is insufficient
-  # because individual shard crashes under :one_for_one don't kill the supervisor.
   defp track_presence(socket) do
-    case Process.whereis(Portal.Presence) do
-      nil ->
-        Process.send_after(self(), :track_presence, 50)
-        socket
-
-      sup_pid ->
-        gateway = socket.assigns.gateway
-
-        :ok =
-          Presence.Devices.connect(gateway, socket.assigns.token_id, %{
-            site_ids: [socket.assigns.site.id]
-          })
-
-        for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
-          Process.demonitor(ref, [:flush])
-        end
-
-        monitors =
-          for {_, pid, _, _} <- Supervisor.which_children(sup_pid), is_pid(pid) do
-            {pid, Process.monitor(pid)}
-          end
-
-        assign(socket, presence_monitors: monitors)
-    end
+    Session.track_presence(socket, socket.assigns.gateway, socket.assigns.token_id, %{
+      site_ids: [socket.assigns.site.id]
+    })
   end
 
   defp session_attrs(%Portal.Device{} = gateway, session_ref) do
@@ -991,18 +887,6 @@ Relays.render(relays, relay_owner(socket)),
       version: gateway.last_seen_version
     }
   end
-
-  # Stopping the channel alone leaves the transport up, and a rejoin on it reuses
-  # the assigns from Socket.connect/3 without checking them again.
-  defp close_transport(socket) do
-    send(socket.transport_pid, :socket_drain)
-    {:stop, :shutdown, socket}
-  end
-
-  defp abnormal_exit?(:normal), do: false
-  defp abnormal_exit?(:shutdown), do: false
-  defp abnormal_exit?({:shutdown, _reason}), do: false
-  defp abnormal_exit?(_reason), do: true
 
   defp deliver_to_clients(socket, client_ids, tag, candidates) when is_list(client_ids) do
     candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.gateway)
