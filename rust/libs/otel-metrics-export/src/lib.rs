@@ -154,8 +154,8 @@ async fn run(
                     return;
                 }
             }
-            Outcome::RateLimited(retry_after) => {
-                tracing::debug!(?retry_after, "Metrics export was rate limited");
+            Outcome::RetryLater(retry_after) => {
+                tracing::debug!(?retry_after, "Metrics export was deferred");
 
                 retry_at = Instant::now() + retry_after.unwrap_or(current.interval);
             }
@@ -216,7 +216,7 @@ async fn export(
 enum Outcome {
     Exported,
     TokenRejected,
-    RateLimited(Option<Duration>),
+    RetryLater(Option<Duration>),
     Failed(StatusCode),
 }
 
@@ -225,7 +225,9 @@ impl Outcome {
         match response.status() {
             status if status.is_success() => Self::Exported,
             StatusCode::UNAUTHORIZED => Self::TokenRejected,
-            StatusCode::TOO_MANY_REQUESTS => Self::RateLimited(retry_after(response)),
+            StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE => {
+                Self::RetryLater(retry_after(response))
+            }
             status => Self::Failed(status),
         }
     }
@@ -327,7 +329,11 @@ mod tests {
         );
         assert_eq!(
             Outcome::from_response(&response(429, &[(header::RETRY_AFTER, "30")])),
-            Outcome::RateLimited(Some(Duration::from_secs(30)))
+            Outcome::RetryLater(Some(Duration::from_secs(30)))
+        );
+        assert_eq!(
+            Outcome::from_response(&response(503, &[(header::RETRY_AFTER, "30")])),
+            Outcome::RetryLater(Some(Duration::from_secs(30)))
         );
         assert_eq!(
             Outcome::from_response(&response(413, &[])),
