@@ -1,6 +1,6 @@
 use anyhow::Result;
-use axum::Router;
 use axum::body::Body;
+use axum::error_handling::HandleErrorLayer;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::http::header::{
@@ -8,6 +8,7 @@ use axum::http::header::{
 };
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
+use axum::{BoxError, Router};
 use http_body_util::{BodyExt as _, LengthLimitError, Limited};
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::Histogram;
@@ -18,7 +19,7 @@ use prost::Message as _;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tower::limit::ConcurrencyLimitLayer;
+use tower::ServiceBuilder;
 use url::Url;
 
 use crate::auth::{Claims, Verifier};
@@ -29,6 +30,7 @@ const PROTOBUF: &str = "application/x-protobuf";
 const BODY_READ_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_BODY_BYTES: usize = 64 * 1024;
 const MAX_CONCURRENT_REQUESTS: usize = 256;
+const OVERLOADED_RETRY_AFTER: Duration = Duration::from_secs(30);
 
 const DEVICE_REQUESTS_PER_MINUTE: NonZeroU32 = NonZeroU32::new(12).expect("12 > 0");
 const DEVICE_BURST: NonZeroU32 = NonZeroU32::new(6).expect("6 > 0");
@@ -46,9 +48,18 @@ pub struct Ingest {
 }
 
 pub fn router(ingest: Arc<Ingest>) -> Router {
+    let duration = ingest.metrics.duration.clone();
+
     Router::new()
         .route("/v1/metrics", post(export_metrics))
-        .layer(ConcurrencyLimitLayer::new(MAX_CONCURRENT_REQUESTS))
+        .layer(
+            ServiceBuilder::new()
+                .layer(HandleErrorLayer::new(move |_: BoxError| {
+                    std::future::ready(shed(&duration))
+                }))
+                .load_shed()
+                .concurrency_limit(MAX_CONCURRENT_REQUESTS),
+        )
         .with_state(ingest)
 }
 
@@ -65,6 +76,16 @@ async fn export_metrics(
         start.elapsed().as_secs_f64(),
         &[KeyValue::new("outcome", outcome.as_str())],
     );
+
+    outcome.into_response()
+}
+
+fn shed(duration: &Histogram<f64>) -> Response {
+    tracing::debug!("Too many concurrent requests");
+
+    let outcome = Outcome::Overloaded;
+
+    duration.record(0.0, &[KeyValue::new("outcome", outcome.as_str())]);
 
     outcome.into_response()
 }
@@ -195,6 +216,7 @@ enum Outcome {
     TooLarge,
     BadRequest,
     UpstreamError,
+    Overloaded,
 }
 
 impl Outcome {
@@ -209,6 +231,7 @@ impl Outcome {
             Outcome::TooLarge => "too_large",
             Outcome::BadRequest => "bad_request",
             Outcome::UpstreamError => "upstream_error",
+            Outcome::Overloaded => "overloaded",
         }
     }
 }
@@ -219,12 +242,19 @@ impl IntoResponse for Outcome {
             Outcome::Forwarded => success(),
             Outcome::FilteredEmpty => success(),
             Outcome::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
-            Outcome::RateLimitedDevice(retry_after) => too_many_requests(retry_after),
-            Outcome::RateLimitedAccount(retry_after) => too_many_requests(retry_after),
+            Outcome::RateLimitedDevice(retry_after) => {
+                retry_later(StatusCode::TOO_MANY_REQUESTS, retry_after)
+            }
+            Outcome::RateLimitedAccount(retry_after) => {
+                retry_later(StatusCode::TOO_MANY_REQUESTS, retry_after)
+            }
             Outcome::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(),
             Outcome::TooLarge => StatusCode::PAYLOAD_TOO_LARGE.into_response(),
             Outcome::BadRequest => StatusCode::BAD_REQUEST.into_response(),
             Outcome::UpstreamError => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            Outcome::Overloaded => {
+                retry_later(StatusCode::SERVICE_UNAVAILABLE, OVERLOADED_RETRY_AFTER)
+            }
         }
     }
 }
@@ -237,14 +267,10 @@ fn success() -> Response {
         .into_response()
 }
 
-fn too_many_requests(retry_after: Duration) -> Response {
+fn retry_later(status: StatusCode, retry_after: Duration) -> Response {
     let seconds = (retry_after.as_secs_f64().ceil() as u64).max(1);
 
-    (
-        StatusCode::TOO_MANY_REQUESTS,
-        [(RETRY_AFTER, HeaderValue::from(seconds))],
-    )
-        .into_response()
+    (status, [(RETRY_AFTER, HeaderValue::from(seconds))]).into_response()
 }
 
 struct Metrics {

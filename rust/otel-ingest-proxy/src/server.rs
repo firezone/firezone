@@ -17,9 +17,15 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_rustls::TlsAcceptor;
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+/// hyper also applies this to idle keep-alive connections. Staying below the minimum export
+/// interval of devices closes their connection between exports, not as they send the next one.
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(5);
+/// Stays below the default soft limit of 1024 open files, with room for upstream connections.
+const MAX_CONNECTIONS: usize = 512;
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Serves the certificate and key at the given paths, picking up changes on [`CertResolver::reload`].
@@ -105,15 +111,16 @@ fn load_certified_key(cert_path: &Path, key_path: &Path) -> Result<CertifiedKey>
 pub async fn serve(listener: TcpListener, tls: TlsAcceptor, router: Router) -> Result<()> {
     let mut terminate = Terminate::new().context("Failed to listen for signals")?;
     let graceful = GracefulShutdown::new();
+    let connections = Arc::new(Semaphore::new(MAX_CONNECTIONS));
 
     loop {
-        let accept = pin!(listener.accept());
+        let accept = pin!(accept(&listener, connections.clone()));
         let terminated = pin!(terminate.recv());
 
-        let stream = match future::select(accept, terminated).await {
-            Either::Left((Ok((stream, _)), _)) => stream,
+        let (stream, permit) = match future::select(accept, terminated).await {
+            Either::Left((Ok(accepted), _)) => accepted,
             Either::Left((Err(e), _)) => {
-                tracing::warn!("Failed to accept connection: {e}");
+                tracing::warn!("Failed to accept connection: {e:#}");
                 tokio::time::sleep(Duration::from_millis(100)).await;
 
                 continue;
@@ -123,6 +130,7 @@ pub async fn serve(listener: TcpListener, tls: TlsAcceptor, router: Router) -> R
 
         tokio::spawn(serve_connection(
             stream,
+            permit,
             tls.clone(),
             router.clone(),
             graceful.watcher(),
@@ -140,7 +148,27 @@ pub async fn serve(listener: TcpListener, tls: TlsAcceptor, router: Router) -> R
     Ok(())
 }
 
-async fn serve_connection(stream: TcpStream, tls: TlsAcceptor, router: Router, watcher: Watcher) {
+/// Accepts a connection once one of `connections` is free.
+async fn accept(
+    listener: &TcpListener,
+    connections: Arc<Semaphore>,
+) -> Result<(TcpStream, OwnedSemaphorePermit)> {
+    let permit = connections
+        .acquire_owned()
+        .await
+        .context("Connection limit is closed")?;
+    let (stream, _) = listener.accept().await?;
+
+    Ok((stream, permit))
+}
+
+async fn serve_connection(
+    stream: TcpStream,
+    _permit: OwnedSemaphorePermit,
+    tls: TlsAcceptor,
+    router: Router,
+    watcher: Watcher,
+) {
     let stream = match tokio::time::timeout(HANDSHAKE_TIMEOUT, tls.accept(stream)).await {
         Ok(Ok(stream)) => stream,
         Ok(Err(e)) => {
@@ -157,6 +185,7 @@ async fn serve_connection(stream: TcpStream, tls: TlsAcceptor, router: Router, w
 
     let connection = hyper::server::conn::http1::Builder::new()
         .timer(TokioTimer::new())
+        .header_read_timeout(HEADER_READ_TIMEOUT)
         .serve_connection(TokioIo::new(stream), TowerToHyperService::new(router));
 
     if let Err(e) = watcher.watch(connection).await {

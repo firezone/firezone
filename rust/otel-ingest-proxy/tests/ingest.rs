@@ -8,9 +8,11 @@ use axum::http::header::{AUTHORIZATION, CONTENT_ENCODING, CONTENT_TYPE, RETRY_AF
 use axum::http::{HeaderValue, Request, StatusCode};
 use common::{EDDSA_HEADER, PUBLIC_KEY, claims, sign};
 use firezone_otel_ingest_proxy::{Ingest, Verifier, router};
+use futures::stream;
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::metrics::v1::{Metric, ResourceMetrics, ScopeMetrics};
 use prost::Message as _;
+use std::convert::Infallible;
 use std::sync::Arc;
 use tower::ServiceExt as _;
 use url::Url;
@@ -56,6 +58,27 @@ async fn rate_limits_device_after_burst() {
 
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     assert!(response.headers().contains_key(RETRY_AFTER));
+}
+
+#[tokio::test]
+async fn sheds_requests_beyond_concurrency_limit() {
+    let app = app();
+    let mut stalled = Vec::new();
+    for device in 0..256 {
+        let mut request = export(&device_token(device), &[]);
+        *request.body_mut() = Body::from_stream(stream::pending::<Result<Vec<u8>, Infallible>>());
+        let mut response = Box::pin(app.clone().oneshot(request));
+        assert!(futures::poll!(&mut response).is_pending());
+        stalled.push(response);
+    }
+
+    let response = app
+        .oneshot(export(&token(&["connlib.*"]), &["tunnel.b"]))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.headers()[RETRY_AFTER], "30");
 }
 
 #[tokio::test]
@@ -107,6 +130,13 @@ fn app() -> Router {
 fn token(metrics: &[&str]) -> String {
     let mut claims = claims();
     claims["metrics"] = serde_json::json!(metrics);
+
+    sign(EDDSA_HEADER, &claims)
+}
+
+fn device_token(device: usize) -> String {
+    let mut claims = claims();
+    claims["device_id"] = serde_json::json!(format!("device-{device}"));
 
     sign(EDDSA_HEADER, &claims)
 }
