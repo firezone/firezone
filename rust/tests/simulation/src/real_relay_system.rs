@@ -29,7 +29,7 @@ use crate::{
     network::{ExecMutScope, Host, PollTimeout},
     real_relay::RealRelay,
     relay_model::{ModelHost, RelayModel},
-    relay_transition::{BitFlips, Crafting, Interference, Target, Template, Transition},
+    relay_transition::{Interference, Target, Transition},
     stun,
 };
 
@@ -74,7 +74,6 @@ pub(crate) struct RealRelaySystem {
 
     /// The data that arrived at the peers.
     at_peers: Vec<Transmit>,
-    last_from_client: Option<Transmit>,
     /// What the network still does to the current transition's control datagrams.
     interference: Interference,
 
@@ -109,7 +108,6 @@ impl RealRelaySystem {
             allocation_boot: 0,
             client: host(RealAllocation::default(), &model.client, model.client.stack),
             at_peers: Vec::new(),
-            last_from_client: None,
             interference: Interference::default(),
             lost_datagram: false,
         };
@@ -154,14 +152,14 @@ impl RealRelaySystem {
                 self.client
                     .update_interface(self.client.ip4, self.client.ip6);
             }
-            Transition::Inject { target, flips } => match target {
-                Target::RelayFromForeign(crafting) => {
-                    self.inject_to_relay(model, false, *crafting, flips);
+            Transition::InjectDatagram { target, datagram } => match target {
+                Target::RelayFromForeign { parse } => {
+                    self.inject_to_relay(model, false, *parse, datagram);
                 }
-                Target::RelayFromClient(crafting) => {
-                    from_client = self.inject_to_relay(model, true, *crafting, flips);
+                Target::RelayFromClient { parse } => {
+                    from_client = self.inject_to_relay(model, true, *parse, datagram);
                 }
-                Target::Client => self.inject_to_client(flips),
+                Target::Client => self.inject_to_client(datagram),
             },
         }
 
@@ -290,52 +288,44 @@ impl RealRelaySystem {
         self.allocation_boot = self.relay_boots;
     }
 
-    /// Sends the relay a datagram made from the bit flips, returning what it sent.
+    /// Sends the relay `payload`, returning what it sent.
     fn inject_to_relay(
         &mut self,
         model: &RelayModel,
         from_client: bool,
-        crafting: Crafting,
-        flips: &BitFlips,
+        parse: bool,
+        payload: &[u8],
     ) -> Option<Vec<u8>> {
         let now = self.clock.now();
-        let template = self
-            .last_from_client
-            .clone()
-            .filter(|_| crafting.template == Template::LastFromClient);
         let src = match from_client {
-            true => template
-                .as_ref()
-                .and_then(|t| t.src)
-                .filter(|s| self.client.sending_socket_for(s.ip()) == Some(*s))
-                .unwrap_or_else(|| any_socket(&self.client)),
+            true => [
+                IpAddr::from(Ipv4Addr::UNSPECIFIED),
+                Ipv6Addr::UNSPECIFIED.into(),
+            ]
+            .into_iter()
+            .filter_map(|ip| self.client.sending_socket_for(ip))
+            .find(|s| self.relay.sending_socket_for(s.ip()).is_some())?,
             false => model.foreign.socket_for(any_socket(&self.relay).ip()),
         };
         let dst = self.relay.sending_socket_for(src.ip())?;
-        let mut payload = flips.apply_to(
-            template
-                .as_ref()
-                .map(|t| &t.payload[..])
-                .unwrap_or_default(),
-        );
-
-        if crafting.parse {
-            payload = stun::round_trip(&payload)?;
-        }
+        let payload = match parse {
+            true => stun::round_trip(payload)?,
+            false => payload.to_vec(),
+        };
 
         self.relay.receive(datagram(Some(src), dst, &payload), now);
 
         Some(payload)
     }
 
-    fn inject_to_client(&mut self, flips: &BitFlips) {
+    fn inject_to_client(&mut self, payload: &[u8]) {
         let dst = any_socket(&self.client);
         let Some(src) = self.relay.sending_socket_for(dst.ip()) else {
             return;
         };
 
         self.client
-            .receive(datagram(Some(src), dst, &flips.mask), self.clock.now());
+            .receive(datagram(Some(src), dst, payload), self.clock.now());
     }
 
     /// Lets the client and the relay finish what they are doing, and gives the client a new
@@ -423,13 +413,12 @@ impl RealRelaySystem {
         if self.relay.ip4.map(IpAddr::from) == Some(dst.ip())
             || self.relay.ip6.map(IpAddr::from) == Some(dst.ip())
         {
-            if is_control && self.client.sending_socket_for(src.ip()) == Some(src) {
-                self.last_from_client = Some(transmit.clone());
-
-                if mem::take(&mut self.interference.lose_to_relay) {
-                    self.lost_datagram = true;
-                    return;
-                }
+            if is_control
+                && self.client.sending_socket_for(src.ip()) == Some(src)
+                && mem::take(&mut self.interference.lose_to_relay)
+            {
+                self.lost_datagram = true;
+                return;
             }
 
             self.relay.receive(transmit, now);

@@ -8,7 +8,7 @@ use connlib_model::IpStack;
 
 use crate::{
     relay_model::{ModelHost, RelayModel},
-    relay_transition::{BitFlips, Crafting, Interference, Target, Template, Transition},
+    relay_transition::{BitFlips, Interference, Target, Transition},
 };
 
 /// Samples the relay simulation's setup and transitions from the input.
@@ -85,19 +85,19 @@ impl<'a> RelayGenerator<'a> {
             9 => Transition::Partition {
                 duration: Duration::from_secs(PARTITION_SECS[self.int(3)]),
             },
-            _ => Transition::Inject {
+            _ => Transition::InjectDatagram {
                 target: match self.int(2) {
-                    0 => Target::RelayFromForeign(self.crafting()),
-                    1 => Target::RelayFromClient(self.crafting()),
+                    0 => Target::RelayFromForeign { parse: self.bool() },
+                    1 => Target::RelayFromClient { parse: self.bool() },
                     _ => Target::Client,
                 },
-                flips: self.bit_flips(),
+                datagram: self.bytes(),
             },
         };
         let interference = Interference {
             lose_to_relay: self.bool(),
             lose_to_client: self.bool(),
-            forge_to_client: self.bool().then(|| self.bit_flips()),
+            forge_to_client: self.bool().then(|| BitFlips { mask: self.bytes() }),
         };
 
         (transition, interference)
@@ -116,21 +116,10 @@ impl<'a> RelayGenerator<'a> {
         Duration::from_millis(self.input.int_in_range(10..=max - 1).unwrap_or(10))
     }
 
-    fn crafting(&mut self) -> Crafting {
-        Crafting {
-            parse: self.bool(),
-            template: match self.bool() {
-                true => Template::LastFromClient,
-                false => Template::Nothing,
-            },
-        }
-    }
-
-    fn bit_flips(&mut self) -> BitFlips {
+    fn bytes(&mut self) -> Vec<u8> {
         let len = self.int(255).min(self.input.len());
-        let mask = self.input.bytes(len).unwrap_or_default().to_vec();
 
-        BitFlips { mask }
+        self.input.bytes(len).unwrap_or_default().to_vec()
     }
 
     fn int(&mut self, max: u8) -> usize {

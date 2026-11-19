@@ -55,7 +55,7 @@ impl RelayModel {
             // `Allocation::refresh` does not retransmit, so a single lost datagram invalidates the
             // allocation.
             Transition::Refresh => lost_datagram,
-            Transition::Advance { .. } | Transition::Inject { .. } => false,
+            Transition::Advance { .. } | Transition::InjectDatagram { .. } => false,
         }
     }
 }
