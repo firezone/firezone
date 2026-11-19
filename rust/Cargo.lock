@@ -5851,6 +5851,8 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost",
+ "rustls",
+ "rustls-pki-types",
  "secrecy",
  "socket-factory",
  "tokio",

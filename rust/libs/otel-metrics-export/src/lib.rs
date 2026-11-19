@@ -16,6 +16,8 @@ use bytes::Bytes;
 use futures::future::{Either, select};
 use http::{StatusCode, header};
 use http_client::{HttpClient, TlsConfig};
+use rustls::RootCertStore;
+use rustls_pki_types::{CertificateDer, pem::PemObject as _};
 use secrecy::{ExposeSecret as _, SecretString};
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio::sync::watch;
@@ -291,7 +293,7 @@ impl Connection {
             host,
             port,
             addresses,
-            TlsConfig::webpki_roots(),
+            debug_ca()?.unwrap_or_else(TlsConfig::webpki_roots),
             self.socket_factory.clone(),
         )
         .await
@@ -300,6 +302,24 @@ impl Connection {
 
         Ok(client)
     }
+}
+
+/// Debug builds trust only the CA in `FIREZONE_METRICS_CA` if it is set, so a metrics endpoint
+/// with a self-signed certificate can be tested.
+fn debug_ca() -> Result<Option<TlsConfig>> {
+    let Some(path) = std::env::var_os("FIREZONE_METRICS_CA").filter(|_| cfg!(debug_assertions))
+    else {
+        return Ok(None);
+    };
+
+    let mut roots = RootCertStore::empty();
+    for cert in CertificateDer::pem_file_iter(&path).context("Failed to read metrics CA")? {
+        roots
+            .add(cert.context("Failed to parse metrics CA")?)
+            .context("Invalid metrics CA")?;
+    }
+
+    Ok(Some(TlsConfig::new(roots)))
 }
 
 #[cfg(test)]
