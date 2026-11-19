@@ -457,36 +457,16 @@ jobs:
     with:
       flavour: debug
 
-  otel-ingest-proxy-binary:
+  otel-ingest-proxy:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
-    uses: ./.github/workflows/_rust-binary.yml
+    uses: ./.github/workflows/_otel-ingest-proxy.yml
     secrets: inherit
     permissions:
       contents: read
-      id-token: write # Keyless signing of deployment manifests
+      id-token: write # OIDC auth
     with:
-      package: firezone-otel-ingest-proxy
-      name: otel-ingest-proxy
-      prefix: debug
-      profile: debug
-      stage: debug
-
-  otel-ingest-proxy:
-    needs: otel-ingest-proxy-binary
-    uses: ./.github/workflows/_rust-docker-image.yml
-    secrets: inherit
-    permissions:
-      contents: read
-      packages: write # push Docker images to GHCR
-      security-events: write # upload Trivy SARIF results
-    with:
-      package: firezone-otel-ingest-proxy
-      image_name: otel-ingest-proxy
-      image_prefix: debug
-      stage: debug
-      binary_artifact: ${{ needs.otel-ingest-proxy-binary.outputs.artifact }}
-      arches: ${{ needs.otel-ingest-proxy-binary.outputs.arches }}
+      flavour: debug
 
   loadtest:
     needs: planner
