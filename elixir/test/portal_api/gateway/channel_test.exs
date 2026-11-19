@@ -4613,7 +4613,7 @@ assert site_ids == [site.id]
       }
 
       push(socket, "broadcast_ice_candidates", attrs)
-      refute_receive {:ice_candidates, _client_id, _candidates}
+      refute_receive {:ice_candidates, %{type: :gateway, id: _client_id}, _candidates}
     end
 
     test "broadcasts :ice_candidates message to the target gateway", %{
@@ -4637,7 +4637,7 @@ assert site_ids == [site.id]
 
       push(socket, "broadcast_ice_candidates", attrs)
 
-      assert_receive {:ice_candidates, gateway_id, ^candidates},
+      assert_receive {:ice_candidates, %{type: :gateway, id: gateway_id}, ^candidates},
                      200
 
       assert gateway.id == gateway_id
@@ -4661,7 +4661,7 @@ assert site_ids == [site.id]
         "client_ids" => [client.id, other_client.id]
       })
 
-      refute_receive {:ice_candidates, _gateway_id, _candidates}
+      refute_receive {:ice_candidates, %{type: :gateway, id: _gateway_id}, _candidates}
     end
 
     test "broadcast_invalidated_ice_candidates does nothing when gateways list is empty", %{
@@ -4680,7 +4680,7 @@ assert site_ids == [site.id]
       }
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
-      refute_receive {:invalidate_ice_candidates, _gateway_id, _candidates}
+      refute_receive {:invalidate_ice_candidates, %{type: :gateway, id: _gateway_id}, _candidates}
     end
 
     test "broadcasts :invalidate_ice_candidates message to all gateways", %{
@@ -4704,7 +4704,7 @@ assert site_ids == [site.id]
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
-      assert_receive {:invalidate_ice_candidates, gateway_id, ^candidates},
+      assert_receive {:invalidate_ice_candidates, %{type: :gateway, id: gateway_id}, ^candidates},
                      200
 
       assert gateway.id == gateway_id
@@ -4728,7 +4728,7 @@ assert site_ids == [site.id]
         "client_ids" => [client.id, other_client.id]
       })
 
-      refute_receive {:invalidate_ice_candidates, _gateway_id, _candidates}
+      refute_receive {:invalidate_ice_candidates, %{type: :gateway, id: _gateway_id}, _candidates}
     end
   end
 

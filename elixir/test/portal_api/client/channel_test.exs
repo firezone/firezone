@@ -3809,7 +3809,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "gateway_id" => gateway.id
       })
 
-      assert_receive {:ice_candidates_from_client, client_id, ^candidates}, 200
+      assert_receive {:ice_candidates, %{type: :client, id: client_id}, ^candidates}, 200
       assert client_id == client.id
     end
   end
@@ -3835,7 +3835,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "gateway_id" => gateway.id
       })
 
-      assert_receive {:invalidate_ice_candidates_from_client, client_id, ^candidates}, 200
+      assert_receive {:invalidate_ice_candidates, %{type: :client, id: client_id}, ^candidates}, 200
       assert client_id == client.id
     end
   end
@@ -3861,7 +3861,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client.id
       })
 
-      assert_receive {:client_ice_candidates, sending_client_id, ^candidates}, 200
+      assert_receive {:ice_candidates, %{type: :client, id: sending_client_id}, ^candidates}, 200
       assert sending_client_id == client.id
     end
 
@@ -3882,7 +3882,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client.id
       })
 
-      refute_receive {:client_ice_candidates, _, _}
+      refute_receive {:ice_candidates, %{type: :client, id: _}, _}
     end
 
     test "does not forward to an online client without an authorization", %{
@@ -3901,7 +3901,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client.id
       })
 
-      refute_receive {:client_ice_candidates, _, _}
+      refute_receive {:ice_candidates, %{type: :client, id: _}, _}
     end
 
     test "does not forward to a client in another account", %{
@@ -3919,7 +3919,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => other_client.id
       })
 
-      refute_receive {:client_ice_candidates, _, _}
+      refute_receive {:ice_candidates, %{type: :client, id: _}, _}
     end
 
     test "drops oversized candidates and caps the count", %{
@@ -3955,7 +3955,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client.id
       })
 
-      assert_receive {:client_ice_candidates, _sending_client_id, candidates}, 200
+      assert_receive {:ice_candidates, %{type: :client, id: _sending_client_id}, candidates}, 200
       assert candidates == Enum.take(valid, 64)
 
       assert_receive {:ice_candidates_dropped, %{count: 1},
@@ -3988,7 +3988,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client.id
       })
 
-      assert_receive {:invalidate_client_ice_candidates, sending_client_id, ^candidates}, 200
+      assert_receive {:invalidate_ice_candidates, %{type: :client, id: sending_client_id}, ^candidates}, 200
       assert sending_client_id == client.id
     end
 
@@ -4038,7 +4038,7 @@ defmodule PortalAPI.Client.ChannelTest do
         reason: :offline
       }
 
-      refute_receive {:invalidate_client_ice_candidates, _, _}
+      refute_receive {:invalidate_ice_candidates, %{type: :client, id: _}, _}
     end
 
     test "stops forwarding after the outbound authorization is deleted", %{
@@ -4061,7 +4061,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client.id
       })
 
-      refute_receive {:client_ice_candidates, _, _}
+      refute_receive {:ice_candidates, %{type: :client, id: _}, _}
     end
 
     test "keeps forwarding when a superseded outbound authorization is deleted", %{
@@ -4086,7 +4086,7 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       client_id = client.id
-      assert_receive {:client_ice_candidates, ^client_id, ["cand1"]}, 500
+      assert_receive {:ice_candidates, %{type: :client, id: ^client_id}, ["cand1"]}, 500
     end
 
     test "stops forwarding after the outbound authorization fails to persist", %{
@@ -4109,7 +4109,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client.id
       })
 
-      refute_receive {:client_ice_candidates, _, _}
+      refute_receive {:ice_candidates, %{type: :client, id: _}, _}
     end
 
     test "forwards to a client with an outbound authorization hydrated on join", %{
@@ -4134,7 +4134,7 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       client_id = client.id
-      assert_receive {:client_ice_candidates, ^client_id, ["cand1"]}, 500
+      assert_receive {:ice_candidates, %{type: :client, id: ^client_id}, ["cand1"]}, 500
     end
 
     test "stops forwarding after the outbound authorization expires and is pruned", %{
@@ -4157,7 +4157,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client.id
       })
 
-      refute_receive {:client_ice_candidates, _, _}
+      refute_receive {:ice_candidates, %{type: :client, id: _}, _}
     end
 
     test "stops forwarding to the initiator after the inbound authorization is deleted", %{
@@ -4189,7 +4189,7 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       client_id = client.id
-      assert_receive {:client_ice_candidates, ^client_id, ["before-delete"]}, 500
+      assert_receive {:ice_candidates, %{type: :client, id: ^client_id}, ["before-delete"]}, 500
 
       send(socket.channel_pid, %Changes.Change{lsn: 100, op: :delete, old_struct: pa})
       assert_push "reject_access", %{client_id: ^initiating_client_id}
@@ -4199,7 +4199,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => initiating_client_id
       })
 
-      refute_receive {:client_ice_candidates, _, _}
+      refute_receive {:ice_candidates, %{type: :client, id: _}, _}
     end
   end
 
@@ -6618,7 +6618,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       push(socket, "broadcast_ice_candidates", attrs)
-      refute_receive {:ice_candidates_from_client, _client_id, _candidates}
+      refute_receive {:ice_candidates, %{type: :client, id: _client_id}, _candidates}
     end
 
     test "broadcasts :ice_candidates message to all gateways", %{
@@ -6645,7 +6645,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(socket, "broadcast_ice_candidates", attrs)
 
-      assert_receive {:ice_candidates_from_client, client_id, ^candidates}, 200
+      assert_receive {:ice_candidates, %{type: :client, id: client_id}, ^candidates}, 200
       assert client.id == client_id
     end
   end
@@ -6665,7 +6665,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
-      refute_receive {:invalidate_ice_candidates_from_client, _client_id, _candidates}
+      refute_receive {:invalidate_ice_candidates, %{type: :client, id: _client_id}, _candidates}
     end
 
     test "broadcasts :invalidate_ice_candidates message to all gateways", %{
@@ -6691,7 +6691,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
-      assert_receive {:invalidate_ice_candidates_from_client, client_id, ^candidates}, 200
+      assert_receive {:invalidate_ice_candidates, %{type: :client, id: client_id}, ^candidates}, 200
       assert client.id == client_id
     end
   end
@@ -8012,7 +8012,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client_id
       })
 
-      refute_receive {:client_ice_candidates, _, _}, 200
+      refute_receive {:ice_candidates, %{type: :client, id: _}, _}, 200
 
       send(ack_to, {:authorized, ref, %{use_iceless: false, name: target_client.name, slug: target_client.slug}})
       assert_push "client_device_access_authorized", %{client_id: ^target_client_id}
@@ -8023,7 +8023,7 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       client_id = client.id
-      assert_receive {:client_ice_candidates, ^client_id, ["after-ack"]}, 500
+      assert_receive {:ice_candidates, %{type: :client, id: ^client_id}, ["after-ack"]}, 500
     end
 
     test "stops forwarding the initiator's ICE candidates when the authorization fails to persist",
@@ -8071,7 +8071,7 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       client_id = client.id
-      assert_receive {:client_ice_candidates, ^client_id, ["before-failure"]}, 500
+      assert_receive {:ice_candidates, %{type: :client, id: ^client_id}, ["before-failure"]}, 500
 
       policy =
         Portal.Repo.one!(from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id))
@@ -8087,7 +8087,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_id" => target_client_id
       })
 
-      refute_receive {:client_ice_candidates, _, _}
+      refute_receive {:ice_candidates, %{type: :client, id: _}, _}
     end
 
     test "denies the initiator with :offline when the target never acks", %{
