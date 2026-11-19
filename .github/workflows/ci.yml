@@ -5,14 +5,6 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      stage:
-        required: true
-        type: string
-      profile:
-        required: true
-        type: string
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -437,9 +429,7 @@ jobs:
       security-events: write # upload Trivy SARIF results
     with:
       # Build debug/ on PRs and merge group, no prefix for production release images
-      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
-      profile: ${{ inputs.profile || 'debug' }}
-      stage: ${{ inputs.stage || 'debug' }}
+      flavour: debug
 
   gateway:
     needs: planner
@@ -453,9 +443,7 @@ jobs:
       security-events: write # upload Trivy SARIF results
     with:
       # Build debug/ on PRs and merge group, no prefix for production release images
-      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
-      profile: ${{ inputs.profile || 'debug' }}
-      stage: ${{ inputs.stage || 'debug' }}
+      flavour: debug
 
   relay:
     needs: planner
@@ -469,9 +457,7 @@ jobs:
       security-events: write # upload Trivy SARIF results
     with:
       # Build debug/ on PRs and merge group, no prefix for production release images
-      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
-      profile: ${{ inputs.profile || 'debug' }}
-      stage: ${{ inputs.stage || 'debug' }}
+      flavour: debug
 
   loadtest:
     needs: planner

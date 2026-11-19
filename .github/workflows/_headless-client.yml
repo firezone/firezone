@@ -8,50 +8,26 @@ on:
         required: false
         type: string
         default: ""
-      image_prefix:
-        description: "The prefix to prepend to the image name to prevent SHA conflicts ('', debug or perf)"
-        required: false
-        type: string
-        default: ""
-      profile:
-        description: "The Rust profile to build the headless client with."
+      flavour:
+        description: "What to build: release, debug, perf or dev. Sets the image prefix, Rust profile and image stage."
         required: true
         type: choice
         default: release
         options:
           - release
           - debug
-      stage:
-        description: "The stage of the client image to build."
-        required: true
-        type: choice
-        default: release
-        options:
-          - release
-          - debug
+          - perf
           - dev
   workflow_call:
     inputs:
-      image_prefix:
-        description: |
-          The prefix to prepend to the image name to prevent SHA conflicts.
-          * Use "debug" to build debug binaries inside debug stage images + with debug tooling installed.
-          * Use "perf" to build release binaries inside debug stage images + with debug tooling installed.
-          * Leave blank to build release binaries inside release stage images.
-        required: false
+      flavour:
+        description: "What to build: release, debug, perf or dev. Sets the image prefix, Rust profile and image stage."
+        required: true
         type: string
       sha:
         required: false
         type: string
         default: ${{ github.sha }}
-      profile:
-        description: "The Rust profile to build the headless client with"
-        required: true
-        type: string
-      stage:
-        description: "The stage of the client image to build"
-        required: true
-        type: string
     outputs:
       client_image:
         description: "The client image that was built"
@@ -87,7 +63,7 @@ jobs:
     needs: update-release-draft
     if: >-
       github.event_name == 'workflow_dispatch' && github.ref_name == 'main' &&
-      inputs.profile == 'release' && inputs.stage == 'release' && inputs.image_prefix == ''
+      inputs.flavour == 'release'
     runs-on: ubuntu-24.04
     permissions: {}
     strategy:
@@ -118,7 +94,7 @@ jobs:
             --field 'client_payload[publish]=true'
 
   windows:
-    if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
+    if: ${{ inputs.flavour != 'perf' }} # Perf testing happens only on Linux
     needs: update-release-draft
     runs-on: windows-2022
     defaults:
@@ -137,6 +113,7 @@ jobs:
       # mark:next-headless-version
       RELEASE_NAME: headless-client-1.5.17
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+      CARGO_PROFILE: ${{ (inputs.flavour == 'release' || inputs.flavour == 'perf') && 'release' || 'debug' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -144,8 +121,8 @@ jobs:
       - uses: ./.github/actions/setup-rust-binary-cache
         id: binary-cache
         with:
-          path: rust/target/${{ env.TARGET }}/${{ inputs.profile }}/${{ env.PACKAGE }}.exe
-          key: ${{ env.PACKAGE }}-${{ env.TARGET }}-${{ inputs.profile }}
+          path: rust/target/${{ env.TARGET }}/${{ env.CARGO_PROFILE }}/${{ env.PACKAGE }}.exe
+          key: ${{ env.PACKAGE }}-${{ env.TARGET }}-${{ env.CARGO_PROFILE }}
       # A restored binary skips the build below, so the toolchain that only
       # exists to compile it is skipped too.
       - uses: ./.github/actions/setup-rust-stable
@@ -162,7 +139,7 @@ jobs:
         run: |
           set -xe
 
-          if [[ "${{ inputs.profile }}" == "release" ]]; then
+          if [[ "$CARGO_PROFILE" == "release" ]]; then
             PROFILE="--release"
           else
             PROFILE=""
@@ -174,24 +151,24 @@ jobs:
         run: |
           set -xe
 
-          cp target/${{ env.TARGET }}/${{ inputs.profile }}/${{ env.PACKAGE }}.exe "$ARTIFACT_PATH"
+          cp target/${{ env.TARGET }}/${{ env.CARGO_PROFILE }}/${{ env.PACKAGE }}.exe "$ARTIFACT_PATH"
 
           # Stamp before signing, which would otherwise be invalidated.
           mise-tasks/patch-git-sha "$ARTIFACT_PATH" "$RESOLVED_SHA"
       - uses: ./.github/actions/setup-azure-sign-tool
-        if: ${{ inputs.profile == 'release' }}
+        if: ${{ inputs.flavour == 'release' }}
         with:
           client-id: ${{ vars.AZURE_CODESIGNING_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_CODESIGNING_TENANT_ID }}
       - name: Sign the binary
-        if: ${{ inputs.profile == 'release' }}
+        if: ${{ inputs.flavour == 'release' }}
         shell: bash
         env:
           AZURE_KEY_VAULT_URI: ${{ vars.AZURE_CODESIGNING_KEY_VAULT_URI }}
           AZURE_CERT_NAME: ${{ vars.AZURE_CODESIGNING_CERTIFICATE_NAME }}
         run: ../scripts/build/sign.sh "$ARTIFACT_PATH"
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        if: ${{ inputs.flavour == 'release' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -207,10 +184,10 @@ jobs:
     with:
       package: firezone-headless-client
       name: client
-      prefix: ${{ inputs.image_prefix }}
+      prefix: ${{ inputs.flavour != 'release' && inputs.flavour || '' }}
       sha: ${{ inputs.sha }}
-      profile: ${{ inputs.profile }}
-      stage: ${{ inputs.stage }}
+      profile: ${{ (inputs.flavour == 'release' || inputs.flavour == 'perf') && 'release' || 'debug' }}
+      stage: ${{ inputs.flavour == 'release' && 'release' || 'debug' }}
 
   image:
     needs: binary
@@ -223,15 +200,15 @@ jobs:
     with:
       package: firezone-headless-client
       image_name: client
-      image_prefix: ${{ inputs.image_prefix }}
+      image_prefix: ${{ inputs.flavour != 'release' && inputs.flavour || '' }}
       sha: ${{ inputs.sha }}
-      stage: ${{ inputs.stage }}
+      stage: ${{ inputs.flavour == 'release' && 'release' || 'debug' }}
       binary_artifact: ${{ needs.binary.outputs.artifact }}
       arches: ${{ needs.binary.outputs.arches }}
 
   linux-release-assets:
     needs: binary
-    if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+    if: ${{ inputs.flavour == 'release' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
     runs-on: ubuntu-24.04
     defaults:
       run:

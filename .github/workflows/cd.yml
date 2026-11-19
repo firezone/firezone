@@ -21,9 +21,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      image_prefix: "dev"
-      stage: "debug"
-      profile: "debug"
+      flavour: dev
 
   gateway-dev-images:
     uses: ./.github/workflows/_gateway.yml
@@ -34,9 +32,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      image_prefix: "dev"
-      stage: "debug"
-      profile: "debug"
+      flavour: dev
 
   relay-dev-images:
     uses: ./.github/workflows/_relay.yml
@@ -47,11 +43,9 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      image_prefix: "dev"
-      stage: "debug"
-      profile: "debug"
+      flavour: dev
 
-  # Builds debug images with release binaries for compatibility tests in case the merge_group was skipped.
+  # Builds debug images for compatibility tests in case the merge_group was skipped.
   client-test-images:
     uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
@@ -61,9 +55,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      image_prefix: "debug"
-      stage: "debug"
-      profile: "release"
+      flavour: debug
 
   gateway-test-images:
     uses: ./.github/workflows/_gateway.yml
@@ -74,9 +66,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      image_prefix: "debug"
-      stage: "debug"
-      profile: "release"
+      flavour: debug
 
   relay-test-images:
     uses: ./.github/workflows/_relay.yml
@@ -87,9 +77,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      image_prefix: "debug"
-      stage: "debug"
-      profile: "release"
+      flavour: debug
 
   # Build data-plane prod images for staging and production environments.
   client-prod-images:
@@ -101,8 +89,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      profile: "release"
-      stage: "release"
+      flavour: release
 
   gateway-prod-images:
     uses: ./.github/workflows/_gateway.yml
@@ -113,8 +100,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      profile: "release"
-      stage: "release"
+      flavour: release
 
   relay-prod-images:
     uses: ./.github/workflows/_relay.yml
@@ -125,8 +111,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      profile: "release"
-      stage: "release"
+      flavour: release
 
   # Build data-plane perf images for perf-tests
   client-perf-images:
@@ -138,9 +123,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      image_prefix: "perf"
-      profile: "release"
-      stage: "debug" # Only the debug images have perf tooling
+      flavour: perf
 
   gateway-perf-images:
     uses: ./.github/workflows/_gateway.yml
@@ -151,9 +134,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      image_prefix: "perf"
-      profile: "release"
-      stage: "debug" # Only the debug images have perf tooling
+      flavour: perf
 
   relay-perf-images:
     uses: ./.github/workflows/_relay.yml
@@ -164,9 +145,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      image_prefix: "perf"
-      profile: "release"
-      stage: "debug" # Only the debug images have perf tooling
+      flavour: perf
 
   # Build control-plane prod images for staging and production environments.
   control-plane-images:
