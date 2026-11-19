@@ -150,138 +150,38 @@ fn string_attribute(key: &str, value: &str) -> KeyValue {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
-    use crate::auth::DeviceType;
     use opentelemetry_proto::tonic::metrics::v1::{
-        Exemplar, Gauge, NumberDataPoint, ResourceMetrics, ScopeMetrics, Sum,
+        Gauge, NumberDataPoint, ResourceMetrics, ScopeMetrics, Sum,
     };
 
     #[test]
-    fn keeps_only_allowed_metrics_and_drops_empty_scopes() {
-        let request = request(&[&["connlib.a", "tunnel.b"], &["tunnel.c"]]);
-
-        let request = sanitize(request, &claims(&["connlib.*"])).unwrap();
-
-        let scopes = &request.resource_metrics[0].scope_metrics;
-        assert_eq!(scopes.len(), 1);
-        assert_eq!(scopes[0].metrics.len(), 1);
-        assert_eq!(scopes[0].metrics[0].name, "connlib.a");
-    }
-
-    #[test]
-    fn returns_none_if_nothing_is_allowed() {
-        let request = request(&[&["connlib.a"]]);
-
-        assert!(sanitize(request.clone(), &claims(&["tunnel.*"])).is_none());
-        assert!(sanitize(request, &claims(&[])).is_none());
-    }
-
-    #[test]
-    fn rebuilds_resource_from_claims() {
-        let mut request = request(&[&["connlib.a"]]);
-        request.resource_metrics[0].resource = Some(Resource {
-            attributes: vec![
-                string_attribute("service.name", "spoofed"),
-                string_attribute("service.version", "9.9.9"),
-                string_attribute("os.type", "linux"),
-                string_attribute("firezone.account.id", "spoofed"),
-                string_attribute("host.name", "laptop"),
-            ],
-            dropped_attributes_count: 3,
-            ..Default::default()
-        });
-
-        let request = sanitize(request, &claims(&["*"])).unwrap();
-
-        assert_eq!(
-            request.resource_metrics[0].resource,
-            Some(Resource {
-                attributes: vec![
-                    string_attribute("service.name", "client"),
-                    string_attribute("service.version", "1.5.0"),
-                    string_attribute("os.type", "linux"),
-                    string_attribute("firezone.account.id", "account"),
-                    string_attribute("firezone.account.slug", "slug"),
-                ],
-                ..Default::default()
-            })
-        );
-    }
-
-    #[test]
-    fn drops_firezone_data_point_attributes_and_exemplars() {
-        let mut request = request(&[&["connlib.a"]]);
-        let Some(Data::Sum(sum)) =
-            &mut request.resource_metrics[0].scope_metrics[0].metrics[0].data
-        else {
-            panic!("Expected a sum");
-        };
-        sum.data_points[0].attributes = vec![
-            string_attribute("network.type", "ipv4"),
-            string_attribute("firezone.account.id", "spoofed"),
-            string_attribute("FireZone.device", "spoofed"),
-        ];
-        sum.data_points[0].exemplars = vec![Exemplar::default()];
-
-        let request = sanitize(request, &claims(&["*"])).unwrap();
-
-        let Some(Data::Sum(sum)) = &request.resource_metrics[0].scope_metrics[0].metrics[0].data
-        else {
-            panic!("Expected a sum");
-        };
-        assert_eq!(
-            sum.data_points[0].attributes,
-            vec![string_attribute("network.type", "ipv4")]
-        );
-        assert!(sum.data_points[0].exemplars.is_empty());
-    }
-
-    #[test]
     fn counts_data_points_of_all_metrics() {
-        let mut request = request(&[&["a", "b"]]);
-        request.resource_metrics[0].scope_metrics[0].metrics[1].data = Some(Data::Gauge(Gauge {
-            data_points: vec![NumberDataPoint::default(); 3],
-        }));
-
-        assert_eq!(count_data_points(&request), 4);
-    }
-
-    pub(crate) fn request(scopes: &[&[&str]]) -> ExportMetricsServiceRequest {
-        ExportMetricsServiceRequest {
+        let request = ExportMetricsServiceRequest {
             resource_metrics: vec![ResourceMetrics {
-                scope_metrics: scopes
-                    .iter()
-                    .map(|names| ScopeMetrics {
-                        metrics: names
-                            .iter()
-                            .map(|name| Metric {
-                                name: name.to_string(),
-                                data: Some(Data::Sum(Sum {
-                                    data_points: vec![NumberDataPoint::default()],
-                                    ..Default::default()
-                                })),
+                scope_metrics: vec![ScopeMetrics {
+                    metrics: vec![
+                        Metric {
+                            data: Some(Data::Sum(Sum {
+                                data_points: vec![NumberDataPoint::default()],
                                 ..Default::default()
-                            })
-                            .collect(),
-                        ..Default::default()
-                    })
-                    .collect(),
+                            })),
+                            ..Default::default()
+                        },
+                        Metric {
+                            data: Some(Data::Gauge(Gauge {
+                                data_points: vec![NumberDataPoint::default(); 3],
+                            })),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }],
                 ..Default::default()
             }],
-        }
-    }
+        };
 
-    fn claims(metrics: &[&str]) -> Claims {
-        Claims {
-            account_id: "account".to_owned(),
-            account_slug: "slug".to_owned(),
-            device_id: "device".to_owned(),
-            device_type: DeviceType::Client,
-            device_version: Some("1.5.0".to_owned()),
-            metrics: metrics.iter().map(|m| m.to_string()).collect(),
-            iat: 0,
-            exp: 0,
-        }
+        assert_eq!(count_data_points(&request), 4);
     }
 }

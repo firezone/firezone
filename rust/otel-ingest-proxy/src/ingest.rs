@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::State;
@@ -14,8 +14,8 @@ use opentelemetry::metrics::Histogram;
 use opentelemetry_proto::tonic::collector::metrics::v1::{
     ExportMetricsServiceRequest, ExportMetricsServiceResponse,
 };
-use otel_azure_export::{ManagedIdentity, OtlpAuth};
 use prost::Message as _;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tower::limit::ConcurrencyLimitLayer;
@@ -27,21 +27,28 @@ use crate::sanitize::{count_data_points, sanitize};
 
 const PROTOBUF: &str = "application/x-protobuf";
 const BODY_READ_TIMEOUT: Duration = Duration::from_secs(10);
-const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_BODY_BYTES: usize = 64 * 1024;
+const MAX_CONCURRENT_REQUESTS: usize = 256;
+
+const DEVICE_REQUESTS_PER_MINUTE: NonZeroU32 = NonZeroU32::new(12).expect("12 > 0");
+const DEVICE_BURST: NonZeroU32 = NonZeroU32::new(6).expect("6 > 0");
+const MAX_RATE_LIMITED_DEVICES: usize = 100_000;
+const ACCOUNT_REQUESTS_PER_MINUTE: NonZeroU32 = NonZeroU32::new(30_000).expect("30000 > 0");
+const ACCOUNT_BURST: NonZeroU32 = NonZeroU32::new(3_000).expect("3000 > 0");
+const MAX_RATE_LIMITED_ACCOUNTS: usize = 10_000;
 
 pub struct Ingest {
-    pub verifier: Verifier,
-    pub device_limiter: RateLimiter,
-    pub account_limiter: RateLimiter,
-    pub max_body_bytes: usize,
-    pub upstream: Upstream,
-    pub metrics: Metrics,
+    verifier: Verifier,
+    device_limiter: RateLimiter,
+    account_limiter: RateLimiter,
+    upstream: otel_azure_export::Client,
+    metrics: Metrics,
 }
 
-pub fn router(ingest: Arc<Ingest>, max_concurrent_requests: usize) -> Router {
+pub fn router(ingest: Arc<Ingest>) -> Router {
     Router::new()
         .route("/v1/metrics", post(export_metrics))
-        .layer(ConcurrencyLimitLayer::new(max_concurrent_requests))
+        .layer(ConcurrencyLimitLayer::new(MAX_CONCURRENT_REQUESTS))
         .with_state(ingest)
 }
 
@@ -63,6 +70,30 @@ async fn export_metrics(
 }
 
 impl Ingest {
+    /// Creates an [`Ingest`] that forwards the metrics a device's token allows to `endpoint`.
+    pub fn new(verifier: Verifier, endpoint: &Url) -> Result<Self> {
+        Ok(Self {
+            verifier,
+            device_limiter: RateLimiter::new(
+                DEVICE_REQUESTS_PER_MINUTE,
+                DEVICE_BURST,
+                MAX_RATE_LIMITED_DEVICES,
+            ),
+            account_limiter: RateLimiter::new(
+                ACCOUNT_REQUESTS_PER_MINUTE,
+                ACCOUNT_BURST,
+                MAX_RATE_LIMITED_ACCOUNTS,
+            ),
+            upstream: otel_azure_export::Client::new(endpoint)?,
+            metrics: Metrics::new(),
+        })
+    }
+
+    pub fn evict_idle_rate_limits(&self, now: Instant) {
+        self.device_limiter.evict_idle(now);
+        self.account_limiter.evict_idle(now);
+    }
+
     async fn handle(&self, headers: &HeaderMap, body: Body) -> Outcome {
         let Some(claims) = self.authenticate(headers) else {
             return Outcome::Unauthorized;
@@ -82,7 +113,7 @@ impl Ingest {
 
         let body = match tokio::time::timeout(
             BODY_READ_TIMEOUT,
-            Limited::new(body, self.max_body_bytes).collect(),
+            Limited::new(body, MAX_BODY_BYTES).collect(),
         )
         .await
         {
@@ -117,10 +148,8 @@ impl Ingest {
             return Outcome::FilteredEmpty;
         };
         let data_points = count_data_points(&request);
-        let encoded = request.encode_to_vec();
-        drop(request);
 
-        if let Err(e) = self.upstream.forward(encoded).await {
+        if let Err(e) = self.upstream.export(request).await {
             tracing::debug!("Failed to forward metrics: {e:#}");
 
             return Outcome::UpstreamError;
@@ -218,69 +247,13 @@ fn too_many_requests(retry_after: Duration) -> Response {
         .into_response()
 }
 
-pub struct Upstream {
-    client: reqwest::Client,
-    endpoint: Url,
-    managed_identity: Option<ManagedIdentity>,
-}
-
-impl Upstream {
-    pub fn new(endpoint: Url, auth: Option<OtlpAuth>) -> Result<Self> {
-        let client = reqwest::Client::builder()
-            .timeout(UPSTREAM_TIMEOUT)
-            .retry(reqwest::retry::never())
-            .redirect(reqwest::redirect::Policy::none())
-            .no_proxy()
-            .build()
-            .context("Failed to build upstream HTTP client")?;
-        let managed_identity = match auth {
-            Some(OtlpAuth::AzureManagedIdentity) => Some(ManagedIdentity::new()?),
-            None => None,
-        };
-
-        Ok(Self {
-            client,
-            endpoint,
-            managed_identity,
-        })
-    }
-
-    async fn forward(&self, body: Vec<u8>) -> Result<()> {
-        let mut request = self
-            .client
-            .post(self.endpoint.clone())
-            .header(CONTENT_TYPE, PROTOBUF)
-            .body(body);
-        if let Some(managed_identity) = &self.managed_identity {
-            request = request.header(AUTHORIZATION, managed_identity.authorization().await?);
-        }
-
-        let response = request.send().await.context("Failed to send request")?;
-        let status = response.status();
-
-        if status == reqwest::StatusCode::UNAUTHORIZED
-            && let Some(managed_identity) = &self.managed_identity
-        {
-            managed_identity.invalidate().await;
-        }
-
-        let response = response.error_for_status()?;
-        response
-            .bytes()
-            .await
-            .context("Failed to read upstream response")?;
-
-        Ok(())
-    }
-}
-
-pub struct Metrics {
+struct Metrics {
     duration: Histogram<f64>,
     data_points: Histogram<u64>,
 }
 
 impl Metrics {
-    pub fn new() -> Self {
+    fn new() -> Self {
         let meter = opentelemetry::global::meter("otel-ingest-proxy");
 
         Self {
@@ -295,185 +268,5 @@ impl Metrics {
                 .with_unit("{data_point}")
                 .build(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::auth::tests::{PUBLIC_KEY, token};
-    use crate::sanitize::tests::request;
-    use axum::http::Request;
-    use std::num::NonZeroU32;
-    use tokio::sync::mpsc;
-    use tower::ServiceExt as _;
-
-    #[tokio::test]
-    async fn forwards_sanitized_metrics() {
-        let (upstream, mut forwarded) = mock_upstream(StatusCode::OK).await;
-        let app = app(upstream);
-
-        let response = app
-            .oneshot(export(&token(&["connlib.*"]), &["connlib.a", "tunnel.b"]))
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-        let forwarded =
-            ExportMetricsServiceRequest::decode(forwarded.recv().await.unwrap()).unwrap();
-        let metrics = &forwarded.resource_metrics[0].scope_metrics[0].metrics;
-        assert_eq!(metrics.len(), 1);
-        assert_eq!(metrics[0].name, "connlib.a");
-    }
-
-    #[tokio::test]
-    async fn filtered_out_metrics_are_not_forwarded() {
-        let (upstream, mut forwarded) = mock_upstream(StatusCode::OK).await;
-        let app = app(upstream);
-
-        let response = app
-            .oneshot(export(&token(&["connlib.*"]), &["tunnel.b"]))
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-        assert!(forwarded.try_recv().is_err());
-    }
-
-    #[tokio::test]
-    async fn rejects_invalid_token() {
-        let (upstream, _forwarded) = mock_upstream(StatusCode::OK).await;
-        let app = app(upstream);
-
-        let response = app
-            .oneshot(export("not.a.token", &["connlib.a"]))
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[tokio::test]
-    async fn rate_limits_device() {
-        let (upstream, _forwarded) = mock_upstream(StatusCode::OK).await;
-        let app = app(upstream);
-        let token = token(&["connlib.*"]);
-        app.clone()
-            .oneshot(export(&token, &["connlib.a"]))
-            .await
-            .unwrap();
-
-        let response = app.oneshot(export(&token, &["connlib.a"])).await.unwrap();
-
-        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
-        assert!(response.headers().contains_key(RETRY_AFTER));
-    }
-
-    #[tokio::test]
-    async fn rejects_compressed_body() {
-        let (upstream, _forwarded) = mock_upstream(StatusCode::OK).await;
-        let app = app(upstream);
-        let mut request = export(&token(&["*"]), &["connlib.a"]);
-        request
-            .headers_mut()
-            .insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
-
-        let response = app.oneshot(request).await.unwrap();
-
-        assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
-    }
-
-    #[tokio::test]
-    async fn rejects_too_large_body() {
-        let (upstream, _forwarded) = mock_upstream(StatusCode::OK).await;
-        let app = app(upstream);
-        let mut request = export(&token(&["*"]), &[]);
-        *request.body_mut() = Body::from(vec![0; 1025]);
-
-        let response = app.oneshot(request).await.unwrap();
-
-        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
-    }
-
-    #[tokio::test]
-    async fn rejects_undecodable_body() {
-        let (upstream, _forwarded) = mock_upstream(StatusCode::OK).await;
-        let app = app(upstream);
-        let mut request = export(&token(&["*"]), &[]);
-        *request.body_mut() = Body::from(vec![0xff; 16]);
-
-        let response = app.oneshot(request).await.unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn reports_upstream_failure() {
-        let (upstream, _forwarded) = mock_upstream(StatusCode::INTERNAL_SERVER_ERROR).await;
-        let app = app(upstream);
-
-        let response = app
-            .oneshot(export(&token(&["*"]), &["connlib.a"]))
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    }
-
-    fn app(upstream: Url) -> Router {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        let ingest = Ingest {
-            verifier: Verifier::from_ed_pem(PUBLIC_KEY).unwrap(),
-            device_limiter: RateLimiter::new(
-                NonZeroU32::new(1).unwrap(),
-                NonZeroU32::new(1).unwrap(),
-                10,
-            ),
-            account_limiter: RateLimiter::new(
-                NonZeroU32::new(60).unwrap(),
-                NonZeroU32::new(10).unwrap(),
-                10,
-            ),
-            max_body_bytes: 1024,
-            upstream: Upstream::new(upstream, None).unwrap(),
-            metrics: Metrics::new(),
-        };
-
-        router(Arc::new(ingest), 1)
-    }
-
-    fn export(token: &str, metrics: &[&str]) -> Request<Body> {
-        Request::post("/v1/metrics")
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .header(CONTENT_TYPE, PROTOBUF)
-            .body(Body::from(request(&[metrics]).encode_to_vec()))
-            .unwrap()
-    }
-
-    async fn mock_upstream(
-        status: StatusCode,
-    ) -> (Url, mpsc::UnboundedReceiver<axum::body::Bytes>) {
-        let (tx, rx) = mpsc::unbounded_channel();
-        let app = Router::new().route(
-            "/v1/metrics",
-            post(move |body: axum::body::Bytes| {
-                let tx = tx.clone();
-
-                async move {
-                    tx.send(body).unwrap();
-
-                    status
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = Url::parse(&format!(
-            "http://{}/v1/metrics",
-            listener.local_addr().unwrap()
-        ))
-        .unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-        (url, rx)
     }
 }

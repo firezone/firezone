@@ -2834,7 +2834,6 @@ dependencies = [
  "otel-metric-patterns",
  "parking_lot",
  "prost",
- "reqwest",
  "ring",
  "rustls",
  "rustls-pki-types",
