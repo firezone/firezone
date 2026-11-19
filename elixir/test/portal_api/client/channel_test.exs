@@ -117,7 +117,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
   defp connect_gateway_presence(gateway, token_id) do
     session_meta = %{
-      site_id: gateway.site.id,
+      site_ids: [gateway.site.id],
       public_key: gateway.public_key,
       psk_base: gateway.psk_base,
       version: gateway.last_seen_version,
@@ -127,6 +127,22 @@ defmodule PortalAPI.Client.ChannelTest do
     }
 
     Presence.Devices.connect(gateway, token_id, session_meta)
+  end
+
+  defp authorized_by(gateway, request) do
+    %{
+      receiver_id: gateway.id,
+      resource_id: Ecto.UUID.load!(request.resource.id),
+      site_id: gateway.site.id,
+      name: gateway.name,
+      slug: gateway.slug,
+      public_key: gateway.public_key,
+      ipv4: gateway.ipv4,
+      ipv6: gateway.ipv6,
+      preshared_key: request.preshared_key,
+      ice_credentials: request.ice_credentials,
+      use_iceless: false
+    }
   end
 
   defp put_user_agent(subject, user_agent) do
@@ -4323,7 +4339,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Queue must NOT have buffered a policy_authorization for the offline
       # gateway: if it did, flushing would create a row that can never be
       # revoked via the dispatched `:reject_access` path (because no
-      # `:create_authorization` ever reached a gateway).
+      # `:authorize` ever reached a gateway).
       Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
       assert Repo.all(Portal.PolicyAuthorization) == []
     end
@@ -4371,20 +4387,23 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
+      assert_receive {:authorize, {_channel_pid, _ref}, payload}
 
       assert %{
-               client: received_client,
+               initiator: received_client,
                resource: received_resource,
-               authorization_expires_at: authorization_expires_at,
+               expires_at: authorization_expires_at,
                ice_credentials: _ice_credentials,
                preshared_key: preshared_key
              } = payload
 
       assert received_client.id == client.id
-      assert received_resource.id == resource.id
+      assert Ecto.UUID.load!(received_resource.id) == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
+
+      device_fields = [:device_serial, :device_uuid, :firebase_installation_id, :identifier_for_vendor]
+      assert Map.take(received_client, device_fields) == Map.take(client, device_fields)
     end
 
     test "ends the authorization when the attesting certificate expires", %{
@@ -4412,22 +4431,22 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
-      assert payload.resource.id == resource.id
-      assert payload.authorization_expires_at == attested_until
+      assert_receive {:authorize, {_channel_pid, _ref}, payload}
+      assert Ecto.UUID.load!(payload.resource.id) == resource.id
+      assert payload.expires_at == attested_until
       assert DateTime.compare(attested_until, socket.assigns.subject.expires_at) == :lt
     end
 
     # End-to-end ordering test for the gateway create_flow path. The invariant
     # we're guarding against regressions of: a queued `policy_authorization`
     # that later fails to persist must produce a `:reject_access` AFTER the
-    # original `:create_authorization`, never before. The sender-pid guarantee
+    # original `:authorize`, never before. The sender-pid guarantee
     # (both sends originate from the Queue pid) is asserted at the Queue level
     # in `Portal.QueueTest`. Here we verify the channel correctly wires the
     # call site through the Queue: if it didn't, the row would never be
     # buffered and `on_failed` would never fire, so `:reject_access` would
     # never arrive.
-    test "delivers :create_authorization before :reject_access on FK violation",
+    test "delivers :authorize to the gateway before :reject_access on FK violation",
          %{
            dns_resource: resource,
            dns_resource_policy: policy,
@@ -4468,7 +4487,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, _allow_payload}, 500
+      assert_receive {:authorize, {_channel_pid, _ref}, _allow_payload}, 500
 
       # Force the queued insert to fail by deleting the policy parent row.
       # After flush, on_failed must fire reject_access for the orphaned entry.
@@ -4533,18 +4552,18 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
+      assert_receive {:authorize, {_channel_pid, _ref}, payload}
 
       assert %{
-               client: recv_client,
+               initiator: recv_client,
                resource: recv_resource,
-               authorization_expires_at: authorization_expires_at,
+               expires_at: authorization_expires_at,
                ice_credentials: _ice_credentials,
                preshared_key: preshared_key
              } = payload
 
       assert recv_client.id == client.id
-      assert recv_resource.id == resource.id
+      assert Ecto.UUID.load!(recv_resource.id) == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
     end
@@ -4590,14 +4609,15 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
+      assert_receive {:authorize, {channel_pid, ref}, payload}
 
       assert %{
-               resource: %{id: resource_id},
-               authorization_expires_at: authorization_expires_at,
-               ice_credentials: ice_credentials,
+               resource: %{id: rid_bytes},
+               expires_at: authorization_expires_at,
                preshared_key: preshared_key
              } = payload
+
+      resource_id = Ecto.UUID.load!(rid_bytes)
 
       Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
 
@@ -4616,13 +4636,9 @@ defmodule PortalAPI.Client.ChannelTest do
       assert resource_id == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
-      rid_bytes = Ecto.UUID.dump!(resource_id)
-
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
-         ice_credentials, false, payload.request_ref}
+        {:authorized, ref, authorized_by(gateway, payload)}
       )
 
       gateway_group_id = gateway.site.id
@@ -4699,24 +4715,11 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
+      assert_receive {:authorize, {_channel_pid, ref}, payload}
 
       send(
         socket.channel_pid,
-        {:authorized, payload.request_ref,
-         %{
-           receiver_id: gateway.id,
-           resource_id: resource.id,
-           site_id: gateway.site.id,
-           name: gateway.name,
-           slug: gateway.slug,
-           public_key: gateway.public_key,
-           ipv4: gateway.ipv4,
-           ipv6: gateway.ipv6,
-           preshared_key: payload.preshared_key,
-           ice_credentials: payload.ice_credentials,
-           use_iceless: false
-         }}
+        {:authorized, ref, authorized_by(gateway, payload)}
       )
 
       resource_id = resource.id
@@ -4762,25 +4765,21 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
-      assert is_binary(payload.flow_logs_ingest_token)
+      assert_receive {:authorize, {channel_pid, ref}, payload}
+      assert is_binary(payload.responder_token)
 
-      assert {:ok, responder_claims, _account} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
+      assert {:ok, responder_claims, _account} = Portal.FlowLogToken.verify(payload.responder_token)
       assert responder_claims["uploads_enabled"] == true
       assert responder_claims["role"] == "responder"
 
-      rid_bytes = Ecto.UUID.dump!(resource.id)
-
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials, false, payload.request_ref}
+        {:authorized, ref, authorized_by(gateway, payload)}
       )
 
       assert_push "flow_created", %{flow_logs_ingest_token: initiator_token}
       assert is_binary(initiator_token)
-      assert initiator_token != payload.flow_logs_ingest_token
+      assert initiator_token != payload.responder_token
 
       assert {:ok, initiator_claims, _account} = Portal.FlowLogToken.verify(initiator_token)
       assert initiator_claims["uploads_enabled"] == true
@@ -4817,19 +4816,15 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
-      assert is_binary(payload.flow_logs_ingest_token)
+      assert_receive {:authorize, {channel_pid, ref}, payload}
+      assert is_binary(payload.responder_token)
 
-      assert {:ok, responder_claims, _account} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
+      assert {:ok, responder_claims, _account} = Portal.FlowLogToken.verify(payload.responder_token)
       assert responder_claims["uploads_enabled"] == false
-
-      rid_bytes = Ecto.UUID.dump!(resource.id)
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials, false, payload.request_ref}
+        {:authorized, ref, authorized_by(gateway, payload)}
       )
 
       assert_push "flow_created", %{flow_logs_ingest_token: initiator_token}
@@ -4870,9 +4865,20 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:connect, make_ref(), Ecto.UUID.dump!(resource.id), gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
-         ice_credentials, false, request_ref}
+        {:authorized, request_ref,
+         %{
+           receiver_id: gateway.id,
+           resource_id: resource.id,
+           site_id: gateway.site.id,
+           name: gateway.name,
+           slug: gateway.slug,
+           public_key: gateway.public_key,
+           ipv4: gateway.ipv4,
+           ipv6: gateway.ipv6,
+           preshared_key: preshared_key,
+           ice_credentials: ice_credentials,
+           use_iceless: false
+         }}
       )
 
       site_id = gateway.site.id
@@ -4953,7 +4959,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {:authorize, {_channel_pid, _ref}, _payload}
     end
 
     test "selects compatible gateway versions", %{
@@ -5029,7 +5035,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {:authorize, {_channel_pid, _ref}, _payload}
     end
 
     test "selects already connected gateway", %{
@@ -5092,7 +5098,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => [gateway2.id]
       })
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, %{}}
+      assert_receive {:authorize, {_channel_pid, _ref}, %{}}
 
       Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
 
@@ -5107,7 +5113,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => [gateway1.id]
       })
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, %{}}
+      assert_receive {:authorize, {_channel_pid, _ref}, %{}}
 
       Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
 
@@ -5159,7 +5165,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {:authorize, {_channel_pid, _ref}, _payload}
 
       fire_authorization_creation_timeout(socket.channel_pid, resource.id)
 
@@ -5167,7 +5173,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert resource_id == resource.id
     end
 
-    test "ignores late {:connect, ...} after flow has already timed out", %{
+    test "ignores a late :authorized reply after the flow has timed out", %{
       dns_resource: resource,
       dns_resource_policy: policy,
       membership: membership,
@@ -5206,27 +5212,23 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
+      assert_receive {:authorize, {channel_pid, ref}, payload}
 
       fire_authorization_creation_timeout(channel_pid, resource.id)
 
       assert_push "flow_creation_failed", %{resource_id: resource_id, reason: :offline}
       assert resource_id == resource.id
 
-      rid_bytes = Ecto.UUID.dump!(resource.id)
-
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials, false, payload.request_ref}
+        {:authorized, ref, authorized_by(gateway, payload)}
       )
 
       # The late connect should be ignored — no "flow_created" push
       refute_push "flow_created", _
     end
 
-    test "accepts {:connect, ...} only for the pending request and its gateway", %{
+    test "accepts :authorized only for the pending request and its gateway", %{
       account: account,
       dns_resource: resource,
       dns_resource_policy: policy,
@@ -5252,37 +5254,29 @@ defmodule PortalAPI.Client.ChannelTest do
       end
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
-      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload1}
+      assert_receive {:authorize, {channel_pid, ref1}, payload1}
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
-      assert_receive {:create_authorization, {^channel_pid, _socket_ref}, payload2}
-      refute payload1.request_ref == payload2.request_ref
-
-      rid_bytes = Ecto.UUID.dump!(resource.id)
+      assert_receive {:authorize, {^channel_pid, ref2}, payload2}
+      refute ref1 == ref2
       other_site = site_fixture(account: account)
       other_gateway = gateway_fixture(account: account, site: other_site)
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id, gateway.public_key,
-         gateway.ipv4, gateway.ipv6, payload1.preshared_key, payload1.ice_credentials, false,
-         payload1.request_ref}
+        {:authorized, ref1, authorized_by(gateway, payload1)}
       )
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, other_site.id, other_gateway.id,
-         other_gateway.public_key, other_gateway.ipv4, other_gateway.ipv6,
-         payload2.preshared_key, payload2.ice_credentials, false, payload2.request_ref}
+        {:authorized, ref2, authorized_by(other_gateway, payload2)}
       )
 
       refute_push "flow_created", _
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id, gateway.public_key,
-         gateway.ipv4, gateway.ipv6, payload2.preshared_key, payload2.ice_credentials, false,
-         payload2.request_ref}
+        {:authorized, ref2, authorized_by(gateway, payload2)}
       )
 
       assert_push "flow_created", %{resource_id: resource_id, gateway_id: gateway_id}
@@ -5329,17 +5323,13 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
+      assert_receive {:authorize, {channel_pid, ref}, payload}
 
       generation = gateway_authorization_generation(channel_pid, resource.id)
 
-      rid_bytes = Ecto.UUID.dump!(resource.id)
-
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
-         payload.ice_credentials, false, payload.request_ref}
+        {:authorized, ref, authorized_by(gateway, payload)}
       )
 
       assert_push "authorization_created", %{resource_id: resource_id}
@@ -5375,11 +5365,11 @@ defmodule PortalAPI.Client.ChannelTest do
       end
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
-      assert_receive {:create_authorization, {channel_pid, _socket_ref1}, payload1}
+      assert_receive {:authorize, {channel_pid, _ref1}, payload1}
       stale_generation = gateway_authorization_generation(channel_pid, resource.id)
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
-      assert_receive {:create_authorization, {^channel_pid, socket_ref2}, payload2}
+      assert_receive {:authorize, {^channel_pid, ref2}, payload2}
       assert payload2.ice_credentials == payload1.ice_credentials
       refute gateway_authorization_generation(channel_pid, resource.id) == stale_generation
 
@@ -5388,9 +5378,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref2, Ecto.UUID.dump!(resource.id), gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, payload2.preshared_key,
-         payload2.ice_credentials, false, payload2.request_ref}
+        {:authorized, ref2, authorized_by(gateway, payload2)}
       )
 
       assert_push "flow_created", %{resource_id: resource_id}
@@ -7298,7 +7286,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "client_device_access_authorized", %{
         ice_role: :controlled,
-        resource: %{id: ^pool_id, type: :device_pool}
+        resource: %{id: ^pool_id, type: :static_device_pool}
       }
     end
 
@@ -7711,13 +7699,13 @@ defmodule PortalAPI.Client.ChannelTest do
     end
 
     # End-to-end ordering test for the c2c path. Same shape as the
-    # `delivers :create_authorization before :reject_access` test for gateway
+    # `delivers :authorize to the gateway before :reject_access` test for gateway
     # flows. We register the test pid as the c2c receiver in `:pg` (instead
     # of joining a real target channel) so we can directly observe the order
-    # of `:client_device_access_authorized` and `:reject_access` at the
+    # of `:authorize` and `:reject_access` at the
     # receiver. The Queue-level test in `Portal.QueueTest` already asserts
     # both sends originate from the same Queue pid.
-    test "delivers :client_device_access_authorized before :reject_access on FK violation",
+    test "delivers :authorize to the target before :reject_access on FK violation",
          %{
            client: client,
            subject: subject,
@@ -7758,7 +7746,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => target_ip})
 
-      assert_receive {:client_device_access_authorized, {_ack_to, _ref}, _allow_payload}, 500
+      assert_receive {:authorize, {_ack_to, _ref}, _allow_payload}, 500
 
       # Force the queued insert to fail by deleting the policy that grants this
       # authorization. After flush, on_failed must fire reject_access for the
@@ -7810,7 +7798,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => target_ip})
 
-      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
+      assert_receive {:authorize, {ack_to, ref}, _payload}, 500
 
       # The initiator must not be released before the target acks.
       refute_push "client_device_access_authorized", _, 200
@@ -7818,7 +7806,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client_name = target_client.name
       target_client_slug = target_client.slug
 
-      send(ack_to, {:device_access_acked, ref, false, target_client_name, target_client_slug})
+      send(ack_to, {:authorized, ref, %{use_iceless: false, name: target_client_name, slug: target_client_slug}})
 
       assert_push "client_device_access_authorized", %{
         client_id: ^target_client_id,
@@ -7858,7 +7846,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => target_ip})
 
-      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
+      assert_receive {:authorize, {ack_to, ref}, _payload}, 500
       refute_push "client_device_access_authorized", _, 100
 
       target_client_name = target_client.name
@@ -7984,7 +7972,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => target_ip})
 
-      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
+      assert_receive {:authorize, {ack_to, ref}, _payload}, 500
 
       push(initiating_socket, "new_client_ice_candidates", %{
         "candidates" => ["before-ack"],
@@ -7993,7 +7981,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       refute_receive {:client_ice_candidates, _, _}, 200
 
-      send(ack_to, {:device_access_acked, ref, false, target_client.name, target_client.slug})
+      send(ack_to, {:authorized, ref, %{use_iceless: false, name: target_client.name, slug: target_client.slug}})
       assert_push "client_device_access_authorized", %{client_id: ^target_client_id}
 
       push(initiating_socket, "new_client_ice_candidates", %{
@@ -8040,8 +8028,8 @@ defmodule PortalAPI.Client.ChannelTest do
         "ipv4" => target_ip
       })
 
-      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
-      send(ack_to, {:device_access_acked, ref, false, target_client.name, target_client.slug})
+      assert_receive {:authorize, {ack_to, ref}, _payload}, 500
+      send(ack_to, {:authorized, ref, %{use_iceless: false, name: target_client.name, slug: target_client.slug}})
       assert_push "client_device_access_authorized", %{client_id: ^target_client_id}
 
       push(initiating_socket, "new_client_ice_candidates", %{
@@ -8100,7 +8088,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => target_ip})
 
-      assert_receive {:client_device_access_authorized, {_ack_to, ref}, _payload}, 500
+      assert_receive {:authorize, {_ack_to, ref}, _payload}, 500
 
       # Simulate the ack-wait timeout firing before any ack arrives.
       send(initiating_socket.channel_pid, {:authorization_creation_timeout, ref})
@@ -8910,21 +8898,11 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(socket, "request_access", %{"resource_ids" => [cidr_resource.id]})
 
-      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
-
-      assert %{
-               resource: %{id: resource_id},
-               ice_credentials: ice_credentials,
-               preshared_key: preshared_key
-             } = payload
-
+      assert_receive {:authorize, {channel_pid, ref}, payload}
+      resource_id = Ecto.UUID.load!(payload.resource.id)
       assert resource_id == cidr_resource.id
 
-      send(
-        channel_pid,
-        {:connect, socket_ref, Ecto.UUID.dump!(resource_id), gateway.site.id, gateway.id,
-         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials, false, payload.request_ref}
-      )
+      send(channel_pid, {:authorized, ref, authorized_by(gateway, payload)})
 
       gateway_id = gateway.id
 
@@ -8950,8 +8928,8 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       push(socket, "request_access", %{"resource_ids" => [wide.id, cidr_resource.id]})
-      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, %{resource: %{id: wide_id}}}
-      assert wide_id == wide.id
+      assert_receive {:authorize, {_channel_pid, _ref}, %{resource: %{id: wide_id}}}
+      assert Ecto.UUID.load!(wide_id) == wide.id
     end
 
     test "fails with :not_found for a resource the client may not reach", %{
@@ -9010,7 +8988,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       refute_push "authorization_creation_failed", _
       refute_push "authorization_created", _
-      refute_receive {:create_authorization, _, _}
+      refute_receive {:authorize, _, _}
     end
   end
 
