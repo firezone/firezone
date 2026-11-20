@@ -26,8 +26,8 @@ url = { workspace = true }
 windows-security = { workspace = true } # Locks the spool (Bearer tokens) to SYSTEM/Administrators.
 
 [dev-dependencies]
-chrono = { workspace = true, features = ["clock"] }
 filetime = { workspace = true }
+jiff = { workspace = true, features = ["std"] }
 tempfile = { workspace = true }
 
 [lints]

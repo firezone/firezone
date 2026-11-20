@@ -99,6 +99,7 @@
                     <p style="margin: 0 0 24px; line-height: 24px">
                       If you think this is a mistake, contact your Firezone administrator and ask them to verify that your email address has been added to your organization's account.
                     </p>
+                    <%= if @sign_up_url do %>
                     <div
                       role="separator"
                       class="separator"
@@ -115,6 +116,7 @@
                     >
                       Create an organization &rarr;
                     </a>
+                    <% end %>
                     <div
                       role="separator"
                       class="separator"

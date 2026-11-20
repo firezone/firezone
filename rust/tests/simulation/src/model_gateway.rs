@@ -5,13 +5,13 @@ use super::{
     site_network::{Routes, SiteNetwork},
     tunnel_model::PrivateKey,
 };
-use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;
 use dns_types::{DomainName, OwnedRecordData};
+use jiff::Timestamp;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{Ipv4Addr, Ipv6Addr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tunnel_proto::{GatewayState, IpConfig};
 
@@ -61,15 +61,12 @@ impl ModelGateway {
         tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         listen_port: u16,
         now: Instant,
-        utc_now: DateTime<Utc>,
+        utc_now: Timestamp,
     ) -> RealGateway {
         let mut state = GatewayState::new(
             self.key.0,
             now,
-            utc_now
-                .signed_duration_since(DateTime::UNIX_EPOCH)
-                .to_std()
-                .unwrap(),
+            Duration::try_from(utc_now.as_duration()).unwrap(),
         ); // Cheating a bit here by reusing the key as seed.
         if let Some(max) = self.max_dns_domains_per_client {
             state.set_max_dns_domains_per_client(max);

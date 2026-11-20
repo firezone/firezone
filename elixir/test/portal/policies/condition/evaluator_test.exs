@@ -284,6 +284,18 @@ defmodule Portal.Policies.EvaluatorTest do
     end
   end
 
+  describe "any device" do
+    test "evaluates a gateway's conditions like a client's" do
+      conditions = [%{property: :client_verified, operator: :is, values: ["true"]}]
+
+      assert ensure_conforms(conditions, %Portal.Device{type: :gateway, verified_at: DateTime.utc_now()}, nil) ==
+               {:ok, nil}
+
+      assert ensure_conforms(conditions, %Portal.Device{type: :gateway, verified_at: nil}, nil) ==
+               {:error, [:client_verified]}
+    end
+  end
+
   describe "fetch_conformation_expiration/3 with client_verified" do
     test "is with values [\"true\"] returns ok when device is verified" do
       verified_client = %Portal.Device{type: :client, verified_at: DateTime.utc_now()}

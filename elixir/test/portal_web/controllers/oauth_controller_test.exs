@@ -103,7 +103,7 @@ defmodule PortalWeb.OAuthControllerTest do
       response = html_response(conn, 200)
 
       assert response =~ "No account found"
-      assert response =~ "account slug or ID"
+      assert response =~ "Your organization's sign-in URL"
     end
 
     test "a browser with no cookie is offered no account at all", %{
@@ -123,7 +123,7 @@ defmodule PortalWeb.OAuthControllerTest do
       refute response =~ account.slug
       refute response =~ "Pick which Firezone account"
       refute response =~ "Recently signed in"
-      assert response =~ "account slug or ID"
+      assert response =~ "Your organization's sign-in URL"
     end
 
     test "a document with a logo_uri that is not a string is refused, not a crash", %{
@@ -164,7 +164,9 @@ defmodule PortalWeb.OAuthControllerTest do
 
       conn = get(conn, ~p"/oauth/authorize?#{params}")
 
-      assert html_response(conn, 400) =~ "This request is not valid"
+      html = html_response(conn, 400)
+      assert html =~ "This request is not valid"
+      refute html =~ "ri-error-warning-line"
     end
   end
 

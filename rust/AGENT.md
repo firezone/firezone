@@ -2,6 +2,25 @@
 
 Follow the [Rust coding guidelines](CODING_GUIDELINES.md).
 
+## Making changes
+
+- Size attracts attention, so make it proportional to what matters.
+  A long comment, a new abstraction or a large diff tells the reader that something important is happening before they can check.
+  If it isn't, they learn to skim, including the one comment that does encode a subtle invariant.
+  The goal is proportion, not minimalism: a real invariant earns a real comment.
+- Before writing a helper, check whether `std`, a crate that is already in the dependency tree or a neighbouring module provides it.
+  For example, `clap` handles defaults, environment variables and enums.
+- Don't write migration, cleanup or compatibility code for a state that was never released.
+  If nothing that shipped could have produced it, there is nothing to migrate.
+- Cover the behaviour a change introduces, not every path: one or two focused tests are usually enough.
+- Keep the diff minimal: every hunk serves the purpose of the PR.
+  Don't reorder, move, rename or reformat code that the change doesn't need to touch.
+- Whenever the design of a change moves, re-evaluate what the earlier design introduced: abstractions, helpers, parameters, widened visibility.
+  Remove everything the current design no longer needs.
+- Send refactorings that prepare a feature as their own PR, ahead of the feature.
+- Don't regenerate `Cargo.lock`.
+  Start from the lockfile on `main` (`git checkout main -- rust/Cargo.lock`) and let `cargo` apply only what the `Cargo.toml` change requires.
+
 ## Use of log levels
 
 - Sensitive information such as domain names or customer IP addresses MUST NOT be logged above `DEBUG`.

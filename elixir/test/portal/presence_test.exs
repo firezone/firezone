@@ -34,7 +34,7 @@ defmodule Portal.PresenceTest do
       gateway = gateway_fixture(account: account, site: site)
       unloaded = Repo.get_by!(Portal.Device, account_id: account.id, id: gateway.id)
 
-      :ok = Presence.Devices.connect(unloaded, Ecto.UUID.generate(), %{site_id: site.id})
+      :ok = Presence.Devices.connect(unloaded, Ecto.UUID.generate(), %{site_ids: [site.id]})
 
       assert [_gateway] = Presence.Devices.connected_gateways_in_site(account.id, site.id)
     end

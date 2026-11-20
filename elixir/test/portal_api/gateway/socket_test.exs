@@ -555,6 +555,44 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.gateway.id == oldest.id
     end
 
+    test "site-token connect keeps exempt gateways sharing a firezone_id across sites apart" do
+      account = account_fixture()
+      site_a = site_fixture(account: account)
+      site_b = site_fixture(account: account)
+      gateway_a = gateway_fixture(account: account, site: site_a)
+      gateway_b = gateway_fixture(account: account, site: site_b)
+
+      Repo.update_all(
+        from(d in "devices", where: d.id == type(^gateway_b.id, Ecto.UUID)),
+        set: [firezone_id_exempt: true]
+      )
+
+      gateway_b
+      |> Ecto.Changeset.change(firezone_id: gateway_a.firezone_id)
+      |> Repo.update!()
+
+      token_a = gateway_token_fixture(account: account, site: site_a)
+      attrs_a = connect_attrs(token: encode_gateway_token(token_a), external_id: gateway_a.firezone_id)
+      assert {:ok, socket_a} = connect(Socket, attrs_a, connect_info: build_connect_info())
+      assert socket_a.assigns.gateway.id == gateway_a.id
+
+      :ok = Portal.PG.join(gateway_a.id)
+
+      token_b = gateway_token_fixture(account: account, site: site_b)
+      attrs_b = connect_attrs(token: encode_gateway_token(token_b), external_id: gateway_a.firezone_id)
+      assert {:ok, socket_b} = connect(Socket, attrs_b, connect_info: build_connect_info())
+      assert socket_b.assigns.gateway.id == gateway_b.id
+      assert socket_b.assigns.site.id == site_b.id
+
+      assert [%Portal.SiteDevice{site_id: site_a_id}] =
+               Repo.all(from(sd in Portal.SiteDevice, where: sd.device_id == ^gateway_a.id))
+
+      assert [%Portal.SiteDevice{site_id: site_b_id}] =
+               Repo.all(from(sd in Portal.SiteDevice, where: sd.device_id == ^gateway_b.id))
+
+      assert {site_a_id, site_b_id} == {site_a.id, site_b.id}
+    end
+
     test "site-token connect creates one gateway and one site assignment" do
       account = account_fixture()
       site = site_fixture(account: account)

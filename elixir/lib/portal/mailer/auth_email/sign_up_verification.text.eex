@@ -1,6 +1,6 @@
-Verify your email address to complete your Firezone sign up.
+Finish signing up for Firezone.
 
-Click the link below to verify your email and continue setting up your account.
+Open the link below in the same browser you signed up from. You'll confirm your email and tell us a little about your organization.
 This link expires in 24 hours.
 
 <%= @sign_up_url %>

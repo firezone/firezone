@@ -188,7 +188,10 @@ defmodule PortalWeb.Settings.Authentication do
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,
              PortalWeb.OIDC.verification_state_type(type),
-             %{verification_ref: verification_ref}
+             %{
+               verification_ref: verification_ref,
+               session: PortalWeb.OIDC.verification_session(socket.assigns.subject)
+             }
            ),
          {:ok, uri} <- PortalWeb.OIDC.build_verification_uri(type, config, verifier, state_token) do
       verification = %{

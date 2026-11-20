@@ -38,7 +38,7 @@ defmodule PortalAPI.DefenderDeviceController do
   operation :show,
     summary: "Show a synced Defender device",
     parameters: [
-      id: [in: :path, description: "Synced Defender device ID", type: :string]
+      defender_device: [in: :path, description: "Synced Defender machine ID", type: :string]
     ],
     responses:
       [
@@ -65,7 +65,7 @@ defmodule PortalAPI.DefenderDeviceController do
     end
   end
 
-  def show(conn, %{"id" => id}) do
+  def show(conn, %{"defender_device" => id}) do
     with {:ok, device} <- Database.fetch_device(id, conn.assigns.subject) do
       json(conn, JSON.encode(device))
     else
