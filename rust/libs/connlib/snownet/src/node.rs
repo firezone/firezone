@@ -560,11 +560,12 @@ where
             return;
         };
 
-        let Some(candidate) = crate::candidate::decode(c.agent.is_frostlink(), &candidate) else {
+        let frostlink = c.agent.is_frostlink();
+        let Some(candidate) = crate::candidate::decode(frostlink, &candidate) else {
             return;
         };
 
-        if self.connections.is_contested(candidate.addr()) {
+        if frostlink && self.connections.is_contested(candidate.addr()) {
             tracing::debug!(?candidate, "Ignoring candidate at contested address");
             return;
         }
@@ -685,7 +686,11 @@ where
             probes,
         } = batch;
 
-        let probes = if self.connections.is_contested(src) {
+        let contested = self.connections.is_contested(src);
+        let (cid, conn) = self
+            .connections
+            .get_established_mut_by_tunnel_id(tunnel, now)?;
+        let probes = if contested && conn.agent.is_frostlink() {
             if !probes.is_empty() {
                 tracing::trace!(%src, "Dropping probes from contested address");
             }
@@ -694,9 +699,6 @@ where
         } else {
             Some(probes)
         };
-        let (cid, conn) = self
-            .connections
-            .get_established_mut_by_tunnel_id(tunnel, now)?;
 
         let packets = conn.commit_decrypted(cid, (dst, src), data, probes, now);
         conn.handle_tunnel_events(
@@ -1196,12 +1198,6 @@ where
             return ControlFlow::Continue(());
         };
 
-        if self.connections.is_contested(from) {
-            tracing::trace!(%from, "Dropping STUN message from contested address");
-
-            return ControlFlow::Break(Ok(()));
-        }
-
         let (_, c) = match self.connections.get_established_mut_for_stun_message(
             &message,
             &mut self.inflight_stun_requests,
@@ -1260,25 +1256,17 @@ where
             }
         };
 
+        let handshake_from_contested = match &parsed_packet {
+            sanstun::ReceivedMessage::HandshakeInitiation(_) => self.connections.is_contested(from),
+            sanstun::ReceivedMessage::HandshakeResponse(_) => self.connections.is_contested(from),
+            sanstun::ReceivedMessage::CookieReply(_) => false,
+            sanstun::ReceivedMessage::TransportData(_) => false,
+        };
         let connection = match &parsed_packet {
-            sanstun::ReceivedMessage::HandshakeInitiation(_)
-                if self.connections.is_contested(from) =>
-            {
-                tracing::trace!(%from, "Dropping handshake from contested address");
-
-                return ControlFlow::Break(Ok(()));
-            }
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
             sanstun::ReceivedMessage::HandshakeInitiation(init) => self
                 .connections
                 .get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now),
-            sanstun::ReceivedMessage::HandshakeResponse(_)
-                if self.connections.is_contested(from) =>
-            {
-                tracing::trace!(%from, "Dropping handshake from contested address");
-
-                return ControlFlow::Break(Ok(()));
-            }
             sanstun::ReceivedMessage::HandshakeResponse(response) => self
                 .connections
                 .get_established_mut_by_tunnel_id(response.tunnel_id(), now),
@@ -1293,6 +1281,11 @@ where
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
+        if handshake_from_contested && conn.agent.is_frostlink() {
+            tracing::trace!(%from, "Dropping handshake from contested address");
+
+            return ControlFlow::Break(Ok(()));
+        }
         let tunnel = conn.tunnel.id();
 
         let control_flow = conn.decapsulate(
@@ -1322,10 +1315,10 @@ where
         }
     }
 
-    /// Records that `cid` validated a path to `remote`.
+    /// Records that the Frostlink connection `cid` validated a path to `remote`.
     ///
-    /// Once that makes `remote` contested, no connection uses it until fewer than two of those
-    /// that validated it remain.
+    /// Once that makes `remote` contested, no Frostlink connection uses it until fewer than two
+    /// of those that validated it remain.
     fn add_remote(&mut self, cid: TId, remote: SocketAddr, now: Instant) {
         if !self.connections.add_remote(cid, remote) {
             return;
@@ -1335,7 +1328,10 @@ where
 
         self.contested_addresses.add(1, &[]);
 
-        for (cid, c) in self.connections.iter_mut_by_remote_candidate(remote) {
+        for (cid, c) in self
+            .connections
+            .iter_mut_frostlink_by_remote_candidate(remote)
+        {
             let candidates = c
                 .agent
                 .remote_candidates()
@@ -1815,8 +1811,6 @@ where
                             "Nominated a relay different from what we set out to! Weird?"
                         );
                     }
-
-                    validated_remotes.push((cid, destination));
 
                     let remote_socket =
                         self.peer_socket_for_tuple(allocations, source, destination);

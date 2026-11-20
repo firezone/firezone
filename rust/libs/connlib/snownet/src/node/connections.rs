@@ -35,7 +35,7 @@ pub struct Connections<TId, RId> {
 
     established_by_tunnel_id: HashMap<sanstun::TunnelId, TId, FastRandomState>,
     established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
-    /// The connections that validated a path to each remote socket.
+    /// The Frostlink connections that validated a path to each remote socket.
     established_by_remote: HashMap<SocketAddr, BTreeSet<TId>, FastRandomState>,
 
     disconnected_ids: HashMap<TId, Instant, FastRandomState>,
@@ -268,7 +268,7 @@ where
         existing
     }
 
-    /// Records that `id` validated a path to `remote`.
+    /// Records that the Frostlink connection `id` validated a path to `remote`.
     ///
     /// Returns whether this made `remote` contested, see [`Connections::is_contested`].
     pub(crate) fn add_remote(&mut self, id: TId, remote: SocketAddr) -> bool {
@@ -282,22 +282,23 @@ where
         ids.insert(id) && ids.len() == 2
     }
 
-    /// Whether more than one connection validated a path to `remote`.
+    /// Whether more than one Frostlink connection validated a path to `remote`.
     ///
     /// A NAT that maps several devices to the same public socket delivers what we send there to
-    /// whichever of them sent last, so no connection can rely on a contested `remote`.
+    /// whichever of them sent last, so no Frostlink connection can rely on a contested `remote`.
+    /// Classic ICE connections neither count towards a contest nor react to one.
     pub(crate) fn is_contested(&self, remote: SocketAddr) -> bool {
         self.established_by_remote
             .get(&remote)
             .is_some_and(|ids| ids.len() > 1)
     }
 
-    pub(crate) fn iter_mut_by_remote_candidate(
+    pub(crate) fn iter_mut_frostlink_by_remote_candidate(
         &mut self,
         remote: SocketAddr,
     ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
         self.established
-            .filter_mut(move |c| c.agent.has_remote_candidate(remote))
+            .filter_mut(move |c| c.agent.is_frostlink() && c.agent.has_remote_candidate(remote))
     }
 
     pub(crate) fn iter_mut_by_relay(
