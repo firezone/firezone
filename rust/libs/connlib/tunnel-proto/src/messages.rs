@@ -13,6 +13,7 @@ use std::fmt;
 use std::ops::RangeInclusive;
 
 pub mod client;
+pub mod device;
 pub mod gateway;
 mod key;
 
