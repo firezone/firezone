@@ -7,6 +7,7 @@ pub use crate::server::client_message::{
 };
 
 use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Nonces};
+use crate::known_peers::KnownPeers;
 use crate::net_ext::IpAddrExt;
 use crate::peer_policy;
 use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
@@ -21,7 +22,7 @@ use otel_instruments::{Counter, Histogram, UpDownCounter};
 use rand::RngExt;
 use secrecy::SecretString;
 use smallvec::SmallVec;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::num::{NonZeroU64, NonZeroUsize};
@@ -83,6 +84,8 @@ pub struct Server<R> {
     channels_by_client_and_number: BTreeMap<(ClientSocket, ChannelNumber), Channel>,
     /// Channel numbers are unique between clients and peers, thus indexed by both.
     channel_numbers_by_client_and_peer: HashMap<(ClientSocket, PeerSocket), ChannelNumber>,
+    /// The channels in [`ChannelState::Pending`].
+    pending_channels: BTreeSet<(ClientSocket, ChannelNumber)>,
 
     pending_commands: VecDeque<Command>,
 
@@ -93,6 +96,11 @@ pub struct Server<R> {
     /// Maps the account hash carried in a TURN credential to the account
     /// received from the Portal. Allocations retain the raw UUID.
     accounts_by_hash: HashMap<auth::AccountIdHash, Account>,
+
+    /// The peer addresses the portal reported per account.
+    known_peers: HashMap<auth::AccountId, KnownPeers>,
+    /// Whether channel bindings to unknown peers are deferred, see [`Server::set_enforce_known_peers`].
+    enforce_known_peers: bool,
 
     nonces: Nonces,
 
@@ -221,6 +229,9 @@ const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
 /// See <https://www.rfc-editor.org/rfc/rfc8656#section-12-14>.
 const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// How long a channel waits for the portal to report its peer before it is removed.
+const PENDING_CHANNEL_LIFETIME: Duration = Duration::from_secs(15);
+
 impl<R> Server<R>
 where
     R: RngExt,
@@ -257,9 +268,12 @@ where
             allow_private_peers: false,
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
+            pending_channels: Default::default(),
             pending_commands: Default::default(),
             auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
             accounts_by_hash: Default::default(),
+            known_peers: Default::default(),
+            enforce_known_peers: false,
             nonces: Nonces::new(rng.random()),
             rate_limit_epoch: None,
             rng,
@@ -353,6 +367,12 @@ where
         self.apply_throughput_limits(changed_limits);
 
         self.accounts_by_hash = accounts_by_hash;
+
+        for _ in self.known_peers.extract_if(|account, _| {
+            !self
+                .accounts_by_hash
+                .contains_key(&auth::hash_account_id(account))
+        }) {}
     }
 
     /// Adds an account or updates the throughput limit of an existing one.
@@ -385,6 +405,7 @@ where
         self.allocation_limits.remove(account);
         self.accounts_by_hash
             .remove(&auth::hash_account_id(account));
+        self.known_peers.remove(account);
 
         let allocations = self
             .allocations
@@ -417,14 +438,65 @@ where
         self.data_relayed
     }
 
+    /// Records peer addresses the portal reported for an account and binds the channels waiting for them.
+    ///
+    /// Addresses for accounts the relay does not serve are dropped.
+    pub fn add_known_peers(
+        &mut self,
+        account: auth::AccountId,
+        ips: impl IntoIterator<Item = IpAddr>,
+        now: Instant,
+    ) {
+        if !self
+            .accounts_by_hash
+            .contains_key(&auth::hash_account_id(&account))
+        {
+            tracing::debug!(target: "relay", %account, "Ignoring known peers of unknown account");
+            return;
+        }
+
+        let known_peers = self.known_peers.entry(account).or_default();
+
+        for ip in ips {
+            known_peers.insert(ip);
+        }
+
+        let activated = self
+            .pending_channels
+            .iter()
+            .filter(|(client, number)| {
+                let peer = self.channels_by_client_and_number[&(*client, *number)].peer_address;
+
+                self.allocations[client].account == account
+                    && known_peers.contains(peer.into_socket().ip())
+            })
+            .copied()
+            .collect::<Vec<_>>();
+
+        for (client, number) in activated {
+            let peer = self.channels_by_client_and_number[&(client, number)].peer_address;
+
+            self.bind_channel(client, number, now);
+
+            tracing::debug!(target: "relay", %client, %peer, channel = %number.value(), "Activated pending channel binding");
+        }
+    }
+
+    /// Sets whether channel bindings to unknown peers are deferred until the portal reports the peer.
+    ///
+    /// Peers may only be treated as unknown while the portal can report known ones, otherwise every peer is unknown.
+    pub fn set_enforce_known_peers(&mut self, enforce: bool) {
+        self.enforce_known_peers = enforce;
+    }
+
     pub fn num_allocations(&self) -> usize {
         self.allocations.len()
     }
 
     pub fn num_active_channels(&self) -> usize {
         self.channels_by_client_and_number
-            .iter()
-            .filter(|(_, c)| c.bound)
+            .values()
+            .filter(|c| c.state == ChannelState::Bound)
             .count()
     }
 
@@ -618,13 +690,14 @@ where
 
     // TODO: It might be worth to do some caching here?
     pub fn poll_timeout(&self) -> Option<Instant> {
-        let channel_expiries = self.channels_by_client_and_number.values().map(|c| {
-            if c.bound {
-                c.expiry
-            } else {
-                c.expiry + CHANNEL_REBIND_TIMEOUT
-            }
-        });
+        let channel_expiries = self
+            .channels_by_client_and_number
+            .values()
+            .map(|c| match c.state {
+                ChannelState::Pending => c.expiry,
+                ChannelState::Bound => c.expiry,
+                ChannelState::Unbound => c.expiry + CHANNEL_REBIND_TIMEOUT,
+            });
         let allocation_expiries = self.allocations.values().map(|a| a.expires_at);
 
         channel_expiries
@@ -646,7 +719,7 @@ where
         for ((client, number), channel) in self
             .channels_by_client_and_number
             .iter_mut()
-            .filter(|(_, c)| c.is_expired(now) && c.bound)
+            .filter(|(_, c)| c.is_expired(now) && c.state == ChannelState::Bound)
         {
             tracing::info!(target: "relay", channel = %number.value(), %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
 
@@ -658,7 +731,7 @@ where
                     allocation_port: channel.allocation,
                 });
 
-            channel.bound = false;
+            channel.state = ChannelState::Unbound;
             if let Some((cs, n)) = self
                 .channel_and_client_by_port_and_peer
                 .remove(&(channel.allocation, channel.peer_address))
@@ -967,25 +1040,28 @@ where
 
             // Binding requests for existing channels act as a refresh for the binding.
 
-            channel.refresh(now);
+            let port = allocation.port;
+            let account = allocation.account;
 
-            // Update the fast-path map in case the binding expired in the cooldown period and got removed.
-            self.channel_and_client_by_port_and_peer.insert(
-                (channel.allocation, channel.peer_address),
-                (sender, requested_channel),
-            );
+            if channel.state == ChannelState::Pending {
+                tracing::debug!(target: "relay", %sender, allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed pending channel binding");
 
-            self.pending_commands
-                .push_back(Command::CreateChannelBinding {
-                    client: sender,
-                    channel_number: requested_channel,
-                    peer: channel.peer_address,
-                    allocation_port: channel.allocation,
-                    throughput_limit: allocation.throughput_limit,
-                });
+                self.authenticate_and_send(
+                    &username,
+                    request,
+                    channel_bind_success_response(request.transaction_id()),
+                    sender,
+                    now_utc,
+                );
 
-            tracing::info!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
+                return Ok(());
+            }
 
+            self.bind_channel(sender, requested_channel, now);
+
+            tracing::info!(target: "relay", %sender, allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
+
+            self.refresh_known_peer(account, peer_address);
             self.authenticate_and_send(
                 &username,
                 request,
@@ -1002,8 +1078,14 @@ where
         // TODO: Capacity checking would go here.
 
         let port = allocation.port;
+        let account = allocation.account;
         let throughput_limit = allocation.throughput_limit;
-        self.create_channel_binding(
+        let is_known_peer = self
+            .known_peers
+            .get(&account)
+            .is_some_and(|known_peers| known_peers.contains(peer_address.into_socket().ip()));
+
+        self.create_channel(
             sender,
             requested_channel,
             peer_address,
@@ -1011,6 +1093,23 @@ where
             throughput_limit,
             now,
         );
+
+        if self.enforce_known_peers && !is_known_peer {
+            tracing::debug!(target: "relay", %sender, allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Peer is not known for account, channel binding is pending");
+
+            self.authenticate_and_send(
+                &username,
+                request,
+                channel_bind_success_response(request.transaction_id()),
+                sender,
+                now_utc,
+            );
+
+            return Ok(());
+        }
+
+        self.bind_channel(sender, requested_channel, now);
+        self.refresh_known_peer(account, peer_address);
         self.authenticate_and_send(
             &username,
             request,
@@ -1102,9 +1201,16 @@ where
         // TODO: Do we need to enforce that only the creator of the channel can relay data?
         // The sender of a UDP packet can be spoofed, so why would we bother?
 
-        if !channel.bound {
-            tracing::debug!(target: "relay", channel = %channel_number.value(), "Channel exists but is unbound");
-            return None;
+        match channel.state {
+            ChannelState::Bound => {}
+            ChannelState::Pending => {
+                tracing::debug!(target: "relay", channel = %channel_number.value(), "Channel is pending, refusing to forward data");
+                return None;
+            }
+            ChannelState::Unbound => {
+                tracing::debug!(target: "relay", channel = %channel_number.value(), "Channel exists but is unbound");
+                return None;
+            }
         }
 
         if !is_relayable(data) {
@@ -1270,7 +1376,8 @@ where
         self.ports.clone().count()
     }
 
-    fn create_channel_binding(
+    /// Creates a channel in [`ChannelState::Pending`].
+    fn create_channel(
         &mut self,
         client: ClientSocket,
         requested_channel: ChannelNumber,
@@ -1279,27 +1386,17 @@ where
         throughput_limit: Option<ThroughputLimit>,
         now: Instant,
     ) {
-        let expiry = now + CHANNEL_BINDING_DURATION;
-
         let existing = self.channels_by_client_and_number.insert(
             (client, requested_channel),
             Channel {
-                expiry,
+                expiry: now + PENDING_CHANNEL_LIFETIME,
                 peer_address: peer,
                 allocation: id,
-                bound: true,
+                state: ChannelState::Pending,
                 client_to_peer: ThroughputLimit::rate_limiter(throughput_limit),
                 peer_to_client: ThroughputLimit::rate_limiter(throughput_limit),
             },
         );
-        self.pending_commands
-            .push_back(Command::CreateChannelBinding {
-                client,
-                channel_number: requested_channel,
-                peer,
-                allocation_port: id,
-                throughput_limit,
-            });
 
         debug_assert!(existing.is_none());
 
@@ -1309,11 +1406,46 @@ where
 
         debug_assert!(existing.is_none());
 
+        self.pending_channels.insert((client, requested_channel));
+    }
+
+    /// Puts a channel on the data path for [`CHANNEL_BINDING_DURATION`].
+    fn bind_channel(&mut self, client: ClientSocket, number: ChannelNumber, now: Instant) {
+        let throughput_limit = self
+            .allocations
+            .get(&client)
+            .and_then(|allocation| allocation.throughput_limit);
+        let channel = self
+            .channels_by_client_and_number
+            .get_mut(&(client, number))
+            .expect("only existing channels are bound");
+
+        channel.expiry = now + CHANNEL_BINDING_DURATION;
+        channel.state = ChannelState::Bound;
+        self.pending_channels.remove(&(client, number));
+
         let existing = self
             .channel_and_client_by_port_and_peer
-            .insert((id, peer), (client, requested_channel));
+            .insert((channel.allocation, channel.peer_address), (client, number));
 
-        debug_assert!(existing.is_none());
+        debug_assert!(existing.is_none_or(|e| e == (client, number)));
+
+        self.pending_commands
+            .push_back(Command::CreateChannelBinding {
+                client,
+                channel_number: number,
+                peer: channel.peer_address,
+                allocation_port: channel.allocation,
+                throughput_limit,
+            });
+    }
+
+    /// Keeps an actively relayed peer in the account's known peers so rotation never forgets it.
+    fn refresh_known_peer(&mut self, account: auth::AccountId, peer: PeerSocket) {
+        self.known_peers
+            .entry(account)
+            .or_default()
+            .insert(peer.into_socket().ip());
     }
 
     fn authenticate_and_send(
@@ -1418,8 +1550,10 @@ where
             channel.client_to_peer = ThroughputLimit::rate_limiter(throughput_limit);
             channel.peer_to_client = ThroughputLimit::rate_limiter(throughput_limit);
 
-            if !channel.bound {
-                continue; // Rebinding the channel installs the new limit.
+            match channel.state {
+                ChannelState::Bound => {}
+                ChannelState::Pending => continue, // Binding the channel installs the new limit.
+                ChannelState::Unbound => continue, // Rebinding the channel installs the new limit.
             }
 
             self.pending_commands
@@ -1479,6 +1613,14 @@ where
                 debug_assert_eq!(existing, number, "internal state should be consistent");
             }
 
+            if c.state == ChannelState::Pending {
+                self.pending_channels.remove(&(cs, number));
+
+                tracing::debug!(target: "relay", %peer, %number, allocation = %port, "Deleted pending channel binding");
+
+                continue;
+            }
+
             if let Some((existing_cs, existing_n)) = self
                 .channel_and_client_by_port_and_peer
                 .remove(&(port, peer))
@@ -1514,7 +1656,7 @@ where
     }
 
     fn delete_channel_binding(&mut self, client: ClientSocket, chan: ChannelNumber) {
-        let Some(channel) = self.channels_by_client_and_number.get(&(client, chan)) else {
+        let Some(channel) = self.channels_by_client_and_number.remove(&(client, chan)) else {
             return;
         };
 
@@ -1528,7 +1670,13 @@ where
             debug_assert_eq!(_peer_channel, chan, "internal state should be consistent");
         }
 
-        self.channels_by_client_and_number.remove(&(client, chan));
+        if channel.state == ChannelState::Pending {
+            self.pending_channels.remove(&(client, chan));
+
+            tracing::debug!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Pending channel binding expired");
+
+            return;
+        }
 
         tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
@@ -1591,7 +1739,7 @@ struct Allocation {
 
 #[derive(Debug, Clone)]
 struct Channel {
-    /// When the channel expires.
+    /// When the channel expires: a pending one is removed, a bound one becomes unbound and an unbound one is removed [`CHANNEL_REBIND_TIMEOUT`] later.
     expiry: Instant,
 
     /// The address of the peer that the channel is bound to.
@@ -1600,33 +1748,40 @@ struct Channel {
     /// The allocation this channel belongs to.
     allocation: AllocationPort,
 
-    /// Whether the channel is currently bound.
-    ///
-    /// Channels are active for 10 minutes. During this time, data can be relayed through the channel.
-    /// After 10 minutes, the channel is considered unbound.
-    ///
-    /// To prevent race conditions, we MUST NOT use the same channel number for a different peer and vice versa for another 5 minutes after the channel becomes unbound.
-    /// Once it becomes unbound, we simply flip this bool and only completely remove the channel after another 5 minutes.
-    ///
-    /// With the data structure still existing while the channel is unbound, our existing validations cover the above requirement.
-    bound: bool,
+    state: ChannelState,
 
     client_to_peer: RateLimiter,
     peer_to_client: RateLimiter,
 }
 
-impl Channel {
-    fn refresh(&mut self, now: Instant) {
-        self.expiry = now + CHANNEL_BINDING_DURATION;
-        self.bound = true;
-    }
+/// Whether the channel is currently bound.
+///
+/// Channels are active for 10 minutes. During this time, data can be relayed through the channel.
+/// After 10 minutes, the channel is considered unbound.
+///
+/// To prevent race conditions, we MUST NOT use the same channel number for a different peer and vice versa for another 5 minutes after the channel becomes unbound.
+/// Once it becomes unbound, we simply flip this state and only completely remove the channel after another 5 minutes.
+///
+/// With the data structure still existing while the channel is unbound, our existing validations cover the above requirement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChannelState {
+    /// The portal has not reported the peer for the allocation's account; nothing is relayed and the channel is removed after [`PENDING_CHANNEL_LIFETIME`] unless it does.
+    Pending,
+    Bound,
+    Unbound,
+}
 
+impl Channel {
     fn is_expired(&self, now: Instant) -> bool {
         self.expiry <= now
     }
 
     fn can_be_deleted(&self, now: Instant) -> bool {
-        self.expiry + CHANNEL_REBIND_TIMEOUT <= now
+        match self.state {
+            ChannelState::Pending => self.expiry <= now,
+            ChannelState::Bound => false,
+            ChannelState::Unbound => self.expiry + CHANNEL_REBIND_TIMEOUT <= now,
+        }
     }
 }
 

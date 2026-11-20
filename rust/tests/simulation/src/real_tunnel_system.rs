@@ -11,7 +11,9 @@ use crate::clock::Clock;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::tunnel_transition::Transition;
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, StaticSecret};
+use connlib_model::{
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, RelayId, StaticSecret,
+};
 use ip_packet::IpPacket;
 use rand::SeedableRng;
 use rand::distr::SampleString;
@@ -20,7 +22,7 @@ use snownet::Transmit;
 use std::iter;
 use std::net::SocketAddr;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     net::IpAddr,
     time::{Duration, Instant, SystemTime},
 };
@@ -40,6 +42,7 @@ pub struct RealTunnelSystem {
     pub(crate) clients: BTreeMap<ClientId, Host<RealClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RealGateway>>,
     relays: BTreeMap<RelayId, Host<RealRelay>>,
+    known_peer_reports: KnownPeerReports,
 
     /// While set and `now` is before the deadline, this client's messages to the
     /// portal are dropped, simulating a client that has not yet reconnected to
@@ -160,6 +163,7 @@ impl RealTunnelSystem {
             clients,
             gateways,
             relays,
+            known_peer_reports: KnownPeerReports::new(model.known_peer_report_delay),
             icmp_flows: Default::default(),
             udp_flows: Default::default(),
             tcp_flows: Default::default(),
@@ -1074,6 +1078,7 @@ impl RealTunnelSystem {
             while let Some(transmit) = buffered_transmits.pop(now) {
                 self.dispatch_transmit(transmit, now);
             }
+            self.known_peer_reports.deliver(&mut self.relays, now);
 
             let mut busy = false;
             let gateway_events = self
@@ -1109,6 +1114,7 @@ impl RealTunnelSystem {
                     &mut self.clients,
                     gateway,
                     &self.relays,
+                    &mut self.known_peer_reports,
                     portal,
                     model,
                     now,
@@ -1145,6 +1151,7 @@ impl RealTunnelSystem {
             .chain(self.clients.values_mut().flat_map(|c| c.poll_timeout()))
             .chain(self.gateways.values_mut().flat_map(|g| g.poll_timeout()))
             .chain(self.relays.values_mut().flat_map(|r| r.poll_timeout()))
+            .chain(self.known_peer_reports.poll_timeout())
             .min()
     }
 
@@ -1208,6 +1215,9 @@ impl RealTunnelSystem {
                 candidates,
                 conn_id: ClientOrGatewayId::Gateway(conn_id),
             } => {
+                self.known_peer_reports
+                    .report(&self.relays, &candidates, now);
+
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
                 gateway.exec_mut(|g| {
@@ -1232,6 +1242,9 @@ impl RealTunnelSystem {
                 conn_id: ClientOrGatewayId::Client(conn_id),
                 candidates,
             } => {
+                self.known_peer_reports
+                    .report(&self.relays, &candidates, now);
+
                 let client = self.clients.get_mut(&conn_id).expect("unknown client");
 
                 client.exec_mut(|c| {
@@ -1308,6 +1321,7 @@ impl RealTunnelSystem {
                         &mut self.clients,
                         gateway,
                         &self.relays,
+                        &mut self.known_peer_reports,
                         portal,
                         model,
                         now,
@@ -1635,6 +1649,7 @@ fn on_gateway_event(
     clients: &mut BTreeMap<ClientId, Host<RealClient>>,
     gateway: &mut Host<RealGateway>,
     relays: &BTreeMap<RelayId, Host<RealRelay>>,
+    known_peer_reports: &mut KnownPeerReports,
     portal: &mut FakePortal,
     model: &TunnelModel,
     now: Instant,
@@ -1644,6 +1659,8 @@ fn on_gateway_event(
             conn_id,
             candidates,
         } => {
+            known_peer_reports.report(relays, &candidates, now);
+
             let client = clients.get_mut(&conn_id).unwrap();
             client.exec_mut(|c| {
                 for candidate in candidates {
@@ -1692,6 +1709,67 @@ fn on_gateway_event(
             );
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
         }
+    }
+}
+
+/// The portal's reports of forwarded candidates' IPs, on their way to the relays.
+struct KnownPeerReports {
+    delay: Duration,
+    pending: VecDeque<KnownPeerReport>,
+}
+
+struct KnownPeerReport {
+    due: Instant,
+    relays: BTreeSet<RelayId>,
+    ips: BTreeSet<IpAddr>,
+}
+
+impl KnownPeerReports {
+    fn new(delay: Duration) -> Self {
+        Self {
+            delay,
+            pending: VecDeque::new(),
+        }
+    }
+
+    /// Reports the IPs of forwarded candidates to the relays `delay` after `now`.
+    fn report(
+        &mut self,
+        relays: &BTreeMap<RelayId, Host<RealRelay>>,
+        candidates: &BTreeSet<IceCandidate>,
+        now: Instant,
+    ) {
+        let ips = candidates
+            .iter()
+            .filter_map(|candidate| {
+                String::from(candidate.clone())
+                    .split_ascii_whitespace()
+                    .nth(4)?
+                    .parse::<IpAddr>()
+                    .ok()
+            })
+            .collect::<BTreeSet<_>>();
+
+        self.pending.push_back(KnownPeerReport {
+            due: now + self.delay,
+            relays: relays.keys().copied().collect(),
+            ips,
+        });
+    }
+
+    fn deliver(&mut self, relays: &mut BTreeMap<RelayId, Host<RealRelay>>, now: Instant) {
+        while let Some(report) = self.pending.pop_front_if(|report| report.due <= now) {
+            for (_, relay) in relays
+                .iter_mut()
+                .filter(|(id, _)| report.relays.contains(id))
+            {
+                relay.exec_mut(|r| r.add_known_peers(report.ips.iter().copied(), now));
+            }
+        }
+    }
+
+    fn poll_timeout(&self) -> Option<Instant> {
+        self.pending.front().map(|report| report.due)
     }
 }
 
