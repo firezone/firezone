@@ -66,8 +66,8 @@ defmodule PortalAPI.Device.ChannelTest do
       join_channel(device, subject)
 
       assert_push "init", payload
-      assert payload.sites_served == [%{id: site.id, name: site.name}]
-      assert [%{id: resource_id, type: :cidr}] = payload.local_resources
+      assert payload.served_sites == [%{id: site.id, name: site.name}]
+      assert [%{id: resource_id, type: :cidr}] = payload.served_resources
       assert resource_id == resource.id
       assert Map.has_key?(payload, :resources)
       assert Map.has_key?(payload, :interface)
@@ -80,8 +80,8 @@ defmodule PortalAPI.Device.ChannelTest do
       join_channel(device, subject)
 
       assert_push "init", payload
-      assert payload.sites_served == []
-      assert payload.local_resources == []
+      assert payload.served_sites == []
+      assert payload.served_resources == []
     end
 
     test "puts the served sites in presence", %{
@@ -102,7 +102,7 @@ defmodule PortalAPI.Device.ChannelTest do
   end
 
   describe "handle_info/2 :authorize" do
-    test "pushes create_authorization for a resource and replies once the device echoes the ref",
+    test "pushes authorize_peer for a resource and replies once the device confirms it",
          %{account: account, device: device, subject: subject, site: site, resource: resource} do
       put_in_site(device, site)
       socket = join_channel(device, subject)
@@ -114,18 +114,18 @@ defmodule PortalAPI.Device.ChannelTest do
 
       send(socket.channel_pid, {:authorize, {self(), ref}, request})
 
-      assert_push "create_authorization", payload
-      assert payload.target == %{type: :resource, resource_id: resource.id}
-      assert payload.resource.id == resource.id
-      assert payload.client.id == initiator.id
-      assert payload.ice_role == :controlled
-      assert payload.gateway_ice_credentials == request.ice_credentials.receiver
-      assert payload.client_ice_credentials == request.ice_credentials.initiator
+      assert_push "authorize_peer", payload
+      assert %{type: :resource, resource: %{id: resource_id}} = payload.target
+      assert resource_id == resource.id
+      assert payload.peer.id == initiator.id
+      assert payload.connection == %{type: :ice, role: :controlled}
+      assert payload.local_ice_credentials == request.ice_credentials.receiver
+      assert payload.remote_ice_credentials == request.ice_credentials.initiator
       assert payload.expires_at == DateTime.to_unix(request.expires_at, :second)
 
       refute_receive {:authorized, ^ref, _reply}
 
-      reply_ref = push(socket, "authorization_created", %{"ref" => payload.ref})
+      reply_ref = push(socket, "peer_authorized", %{"ref" => payload.ref})
       assert_reply reply_ref, :ok
 
       assert_receive {:authorized, ^ref, reply}
@@ -134,7 +134,7 @@ defmodule PortalAPI.Device.ChannelTest do
       assert reply.site_id == site.id
     end
 
-    test "pushes create_authorization with the device itself as the target for a pool", %{
+    test "pushes authorize_peer with the device itself as the target for a pool", %{
       account: account,
       device: device,
       subject: subject
@@ -148,17 +148,16 @@ defmodule PortalAPI.Device.ChannelTest do
 
       send(socket.channel_pid, {:authorize, {self(), make_ref()}, request})
 
-      assert_push "create_authorization", payload
-      assert %{type: :self, pool_id: pool_id, filters: _} = payload.target
+      assert_push "authorize_peer", payload
+      assert %{type: :device, pool_id: pool_id, filters: _} = payload.target
       assert pool_id == pool.id
-      assert payload.resource == nil
     end
 
     test "refuses a ref it did not sign", %{device: device, subject: subject} do
       socket = join_channel(device, subject)
       assert_push "init", _
 
-      reply_ref = push(socket, "authorization_created", %{"ref" => "not-a-ref"})
+      reply_ref = push(socket, "peer_authorized", %{"ref" => "not-a-ref"})
       assert_reply reply_ref, :error, %{reason: :invalid_ref}
     end
   end
@@ -200,7 +199,7 @@ defmodule PortalAPI.Device.ChannelTest do
       initiator = client_fixture(account: account) |> fetch_device!()
       request = authorize_request(initiator, Cache.Cacheable.to_cache(Portal.Repo.preload(resource, :site)))
       send(socket.channel_pid, {:authorize, {self(), make_ref()}, request})
-      assert_push "create_authorization", _
+      assert_push "authorize_peer", _
 
       :ok = PG.register(initiator.id)
 
@@ -234,7 +233,7 @@ defmodule PortalAPI.Device.ChannelTest do
   end
 
   describe "handle_info/2 changes to what the device serves" do
-    test "pushes sites_served_changed and updates presence when the device is put in a site", %{
+    test "pushes served_sites_changed and updates presence when the device is put in a site", %{
       account: account,
       device: device,
       subject: subject,
@@ -242,14 +241,14 @@ defmodule PortalAPI.Device.ChannelTest do
       resource: resource
     } do
       socket = join_channel(device, subject)
-      assert_push "init", %{sites_served: []}
+      assert_push "init", %{served_sites: []}
 
       site_device = put_in_site(device, site)
       send(socket.channel_pid, change(:insert, nil, site_device))
 
-      assert_push "sites_served_changed", payload
-      assert payload.sites_served == [%{id: site.id, name: site.name}]
-      assert [%{id: resource_id}] = payload.local_resources
+      assert_push "served_sites_changed", payload
+      assert payload.served_sites == [%{id: site.id, name: site.name}]
+      assert [%{id: resource_id}] = payload.served_resources
       assert resource_id == resource.id
 
       :sys.get_state(socket.channel_pid)
@@ -257,7 +256,7 @@ defmodule PortalAPI.Device.ChannelTest do
       assert meta.site_ids == [site.id]
     end
 
-    test "pushes sites_served_changed when the device is taken out of a site", %{
+    test "pushes served_sites_changed when the device is taken out of a site", %{
       device: device,
       subject: subject,
       site: site
@@ -269,7 +268,7 @@ defmodule PortalAPI.Device.ChannelTest do
       Portal.Repo.delete!(site_device)
       send(socket.channel_pid, change(:delete, site_device, nil))
 
-      assert_push "sites_served_changed", %{sites_served: [], local_resources: []}
+      assert_push "served_sites_changed", %{served_sites: [], served_resources: []}
     end
 
     test "ignores site changes of other devices", %{account: account, device: device, subject: subject, site: site} do
@@ -279,7 +278,7 @@ defmodule PortalAPI.Device.ChannelTest do
       other = client_fixture(account: account) |> fetch_device!()
       send(socket.channel_pid, change(:insert, nil, put_in_site(other, site)))
 
-      refute_push "sites_served_changed", _
+      refute_push "served_sites_changed", _
     end
 
     test "pushes resource changes in a site it serves", %{
@@ -296,14 +295,14 @@ defmodule PortalAPI.Device.ChannelTest do
       added = cidr_resource_fixture(account: account, site: site)
       send(socket.channel_pid, change(:insert, nil, added))
       added_id = added.id
-      assert_push "local_resource_created_or_updated", %{id: ^added_id}
+      assert_push "served_resource_created_or_updated", %{id: ^added_id}
 
       send(socket.channel_pid, change(:delete, resource, nil))
       resource_id = resource.id
-      assert_push "local_resource_deleted", ^resource_id
+      assert_push "served_resource_deleted", ^resource_id
     end
 
-    test "pushes local_resource_deleted when a resource leaves a site it serves", %{
+    test "pushes served_resource_deleted when a resource leaves a site it serves", %{
       account: account,
       device: device,
       subject: subject,
@@ -318,7 +317,7 @@ defmodule PortalAPI.Device.ChannelTest do
       send(socket.channel_pid, change(:update, resource, %{resource | site_id: other_site.id}))
 
       resource_id = resource.id
-      assert_push "local_resource_deleted", ^resource_id
+      assert_push "served_resource_deleted", ^resource_id
     end
 
     test "ignores resources in sites it does not serve", %{account: account, device: device, subject: subject} do
@@ -328,7 +327,7 @@ defmodule PortalAPI.Device.ChannelTest do
       other = cidr_resource_fixture(account: account, site: site_fixture(account: account))
       send(socket.channel_pid, change(:insert, nil, other))
 
-      refute_push "local_resource_created_or_updated", _
+      refute_push "served_resource_created_or_updated", _
     end
   end
 
@@ -367,16 +366,87 @@ defmodule PortalAPI.Device.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_push "create_authorization", payload
-      assert payload.target == %{type: :resource, resource_id: resource.id}
-      assert payload.client.id == initiator.id
+      assert_push "authorize_peer", payload
+      assert payload.peer.id == initiator.id
 
-      reply_ref = push(device_socket, "authorization_created", %{"ref" => payload.ref})
+      reply_ref = push(device_socket, "peer_authorized", %{"ref" => payload.ref})
       assert_reply reply_ref, :ok
 
       device_id = device.id
       site_id = site.id
       assert_push "authorization_created", %{gateway_id: ^device_id, site_id: ^site_id}
+    end
+  end
+
+  describe "reaching a resource another device serves" do
+    test "the initiator gets access_granted once the serving device confirmed", %{
+      account: account,
+      device: device,
+      subject: subject,
+      site: site,
+      resource: resource
+    } do
+      put_in_site(device, site)
+      serving_socket = join_channel(device, subject)
+      assert_push "init", _
+
+      :ok = Presence.Relays.connect(relay_fixture(%{lat: 37.0, lon: -120.0}))
+
+      group = group_fixture(account: account)
+      initiator_actor = actor_fixture(account: account)
+      membership_fixture(account: account, actor: initiator_actor, group: group)
+      policy_fixture(account: account, group: group, resource: resource)
+
+      initiator_subject =
+        subject_fixture(
+          account: account,
+          actor: initiator_actor,
+          type: :client,
+          user_agent: "iOS/18.0 apple-client/1.5.16"
+        )
+
+      initiator = client_fixture(account: account, actor: initiator_actor) |> fetch_device!()
+      initiator_socket = join_channel(initiator, initiator_subject)
+      assert_push "init", _
+
+      push(initiator_socket, "request_access", %{
+        "resource_ids" => [resource.id],
+        "connected_device_ids" => []
+      })
+
+      assert_push "authorize_peer", payload
+      assert payload.peer.id == initiator.id
+      assert payload.peer.slug == initiator.slug
+
+      reply_ref = push(serving_socket, "peer_authorized", %{"ref" => payload.ref})
+      assert_reply reply_ref, :ok
+
+      assert_push "access_granted", granted
+      assert granted.peer.id == device.id
+      assert granted.peer.name == device.name
+      assert granted.peer.slug == device.slug
+      assert granted.target == %{type: :resource, resource_id: resource.id, site_id: site.id}
+      assert granted.connection == %{type: :ice, role: :controlling}
+      assert granted.local_ice_credentials == payload.remote_ice_credentials
+      assert granted.remote_ice_credentials == payload.local_ice_credentials
+    end
+
+    test "the initiator gets access_denied for a resource it may not reach", %{
+      account: account,
+      subject: subject,
+      resource: resource
+    } do
+      initiator = client_fixture(account: account) |> fetch_device!()
+      socket = join_channel(initiator, subject)
+      assert_push "init", _
+
+      push(socket, "request_access", %{
+        "resource_ids" => [resource.id],
+        "connected_device_ids" => []
+      })
+
+      resource_id = resource.id
+      assert_push "access_denied", %{type: :resource, resource_id: ^resource_id, reason: _}
     end
   end
 

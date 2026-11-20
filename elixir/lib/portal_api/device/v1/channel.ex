@@ -1,12 +1,14 @@
 defmodule PortalAPI.Device.V1.Channel do
   @moduledoc """
-  The `/device/v1` protocol: what a client gets on `/client/v3`, plus what a device needs to
-  serve the resources of the site it is in.
+  The `/device/v1` protocol: one message set for a device that reaches resources and serves
+  the resources of the sites it is in.
 
-  Init also carries `sites_served` and `local_resources`. Every authorization this device
-  receives arrives as `create_authorization`, with a `target` of a resource it serves or of the
-  device itself through a pool, and the device echoes the signed `ref` once it installed it.
-  ICE candidates name the peer by `device_id` in both directions.
+  Peers are named by `device_id`, never by kind. The receiving side of a connection gets
+  `authorize_peer` with the target the peer may reach, a resource it serves or the device
+  itself through a pool, and confirms it with `peer_authorized`. The initiating side then gets
+  `access_granted`. `connection` says whether the pair skips ICE, or which ICE role a side has.
+
+  The shared client code speaks `/client/v3`; `encode/3` turns what it pushes into this protocol.
   """
   use PortalAPI, :channel
   alias PortalAPI.Channel.Authorizations
@@ -52,8 +54,7 @@ defmodule PortalAPI.Device.V1.Channel do
 
     payload = %{
       ref: encode_ref(socket, ref_tuple),
-      target: target(request.resource),
-      client: %{
+      peer: %{
         id: initiator.id,
         name: initiator.name,
         slug: initiator.slug,
@@ -62,16 +63,15 @@ defmodule PortalAPI.Device.V1.Channel do
         ipv4: initiator.ipv4,
         ipv6: initiator.ipv6
       },
-      client_ice_credentials: request.ice_credentials.initiator,
-      gateway_ice_credentials: request.ice_credentials.receiver,
-      resource: served_resource(request.resource),
+      target: target(request.resource),
+      local_ice_credentials: request.ice_credentials.receiver,
+      remote_ice_credentials: request.ice_credentials.initiator,
+      connection: connection(use_iceless, :controlled),
       expires_at: request.expires_at && DateTime.to_unix(request.expires_at, :second),
-      use_iceless: use_iceless,
-      ice_role: :controlled,
       flow_logs_ingest_token: request.responder_token
     }
 
-    push(socket, "create_authorization", payload)
+    push(socket, "authorize_peer", payload)
 
     {:noreply, socket}
   end
@@ -100,7 +100,7 @@ defmodule PortalAPI.Device.V1.Channel do
 
   # The initiator is told only once the device echoes the ref, after it installed the authorization.
   @impl true
-  def handle_in("authorization_created", %{"ref" => signed_ref}, socket) do
+  def handle_in("peer_authorized", %{"ref" => signed_ref}, socket) do
     case decode_ref(socket, signed_ref) do
       {:ok, {initiator_pid, ref, rid_bytes, site_id, preshared_key, ice_credentials, use_iceless}} ->
         Authorizations.reply(initiator_pid, ref, socket.assigns.client, %{
@@ -137,8 +137,14 @@ defmodule PortalAPI.Device.V1.Channel do
     {:noreply, socket}
   end
 
-  def handle_in("set_capabilities", payload, socket) when is_map(payload) do
-    {:noreply, assign(socket, :iceless_capable, payload["iceless"] == true)}
+  def handle_in("request_access", payload, socket) when is_map(payload) do
+    payload =
+      payload
+      |> Map.take(["resource_ids"])
+      |> Map.put("connected_gateway_ids", Map.get(payload, "connected_device_ids", []))
+      |> Map.merge(device_ip(payload["device_ip"]))
+
+    Shared.handle_in("request_access", payload, socket)
   end
 
   def handle_in(event, payload, socket), do: Shared.handle_in(event, payload, socket)
@@ -156,6 +162,81 @@ defmodule PortalAPI.Device.V1.Channel do
   def extend_init(socket, payload), do: Map.merge(payload, served_view(socket))
 
   @doc false
+  def encode("init", payload, _context) do
+    authorizations =
+      Enum.map(payload.authorizations, fn authorization ->
+        %{
+          device_id: authorization.client_id,
+          resource_id: authorization.resource_id,
+          expires_at: authorization.expires_at
+        }
+      end)
+
+    {"init", %{payload | authorizations: authorizations}}
+  end
+
+  def encode("authorization_created", payload, gateway) do
+    {"access_granted",
+     %{
+       peer: %{
+         id: payload.gateway_id,
+         name: gateway.name,
+         slug: gateway.slug,
+         public_key: payload.gateway_public_key,
+         preshared_key: payload.preshared_key,
+         ipv4: payload.gateway_ipv4,
+         ipv6: payload.gateway_ipv6
+       },
+       target: %{type: :resource, resource_id: payload.resource_id, site_id: payload.site_id},
+       local_ice_credentials: payload.client_ice_credentials,
+       remote_ice_credentials: payload.gateway_ice_credentials,
+       connection: connection(payload.use_iceless, :controlling),
+       flow_logs_ingest_token: payload.flow_logs_ingest_token
+     }}
+  end
+
+  # The receiving side is told through `authorize_peer`, so only the initiator gets this.
+  def encode("client_device_access_authorized", payload, _context) do
+    {"access_granted",
+     %{
+       peer: %{
+         id: payload.client_id,
+         name: payload.client_name,
+         slug: payload.client_slug,
+         public_key: payload.client_public_key,
+         preshared_key: payload.preshared_key,
+         ipv4: payload.client_ipv4,
+         ipv6: payload.client_ipv6
+       },
+       target: %{type: :device, pool_id: payload.resource_id},
+       local_ice_credentials: payload.local_ice_credentials,
+       remote_ice_credentials: payload.remote_ice_credentials,
+       connection: connection(payload.use_iceless, payload.ice_role),
+       flow_logs_ingest_token: payload.flow_logs_ingest_token
+     }}
+  end
+
+  def encode("authorization_creation_failed", payload, _context),
+    do: {"access_denied", Map.put(payload, :type, :resource)}
+
+  def encode("client_device_access_denied", payload, _context),
+    do: {"access_denied", Map.put(payload, :type, :device)}
+
+  def encode("reject_access", %{client_id: device_id, resource_id: resource_id}, _context),
+    do: {"revoke_access", %{device_id: device_id, resource_id: resource_id}}
+
+  def encode("public_key_changed", %{client_id: device_id, public_key: public_key}, _context),
+    do: {"public_key_changed", %{device_id: device_id, public_key: public_key}}
+
+  def encode("public_key_changed", %{gateway_id: device_id, public_key: public_key}, _context),
+    do: {"public_key_changed", %{device_id: device_id, public_key: public_key}}
+
+  def encode("client_ice_candidate_error", %{client_id: device_id, reason: reason}, _context),
+    do: {"ice_candidates_undeliverable", %{device_id: device_id, reason: reason}}
+
+  def encode(event, payload, _context), do: {event, payload}
+
+  @doc false
   def extend_presence_meta(_socket, meta), do: Map.put(meta, :device_v1, true)
 
   defp served_view(socket) do
@@ -163,8 +244,8 @@ defmodule PortalAPI.Device.V1.Channel do
     site_ids = socket.assigns.served_site_ids
 
     %{
-      sites_served: device |> Database.sites(site_ids) |> Enum.map(&%{id: &1.id, name: &1.name}),
-      local_resources: device |> Database.resources(site_ids) |> Enum.flat_map(&render_local_resource/1)
+      served_sites: device |> Database.sites(site_ids) |> Enum.map(&%{id: &1.id, name: &1.name}),
+      served_resources: device |> Database.resources(site_ids) |> Enum.flat_map(&render_served_resource/1)
     }
   end
 
@@ -176,18 +257,18 @@ defmodule PortalAPI.Device.V1.Channel do
     do: sites_served_changed(socket)
 
   defp served_change(%Change{op: :delete, old_struct: %Resource{} = resource}, socket) do
-    if served?(socket, resource), do: push(socket, "local_resource_deleted", resource.id)
+    if served?(socket, resource), do: push(socket, "served_resource_deleted", resource.id)
     socket
   end
 
   defp served_change(%Change{struct: %Resource{} = resource, old_struct: old_resource}, socket) do
     cond do
       served?(socket, resource) ->
-        Enum.each(render_local_resource(resource), &push(socket, "local_resource_created_or_updated", &1))
-        maybe_push_served_resource_change(socket, old_resource, resource)
+        Enum.each(render_served_resource(resource), &push(socket, "served_resource_created_or_updated", &1))
+        maybe_revoke_served_resource(socket, old_resource, resource)
 
       old_resource && served?(socket, old_resource) ->
-        push(socket, "local_resource_deleted", resource.id)
+        push(socket, "served_resource_deleted", resource.id)
 
       true ->
         :ok
@@ -200,36 +281,27 @@ defmodule PortalAPI.Device.V1.Channel do
 
   defp sites_served_changed(socket) do
     socket = assign(socket, :served_site_ids, Database.served_site_ids(socket.assigns.client))
-    push(socket, "sites_served_changed", served_view(socket))
+    push(socket, "served_sites_changed", served_view(socket))
     send(self(), :track_presence)
     socket
   end
 
   defp served?(socket, %Resource{site_id: site_id}), do: site_id in socket.assigns.served_site_ids
 
-  # The device keeps state only for peers authorized for the resource. A changed address or
-  # type cannot be applied in place, so those peers are cut and authorize again; changed
-  # filters are applied in place.
-  defp maybe_push_served_resource_change(socket, %Resource{} = old, %Resource{type: type} = resource)
+  # A changed address or type cannot be applied to a peer's authorization in place, so those
+  # peers are cut and authorize again. Changed filters arrive with the resource itself.
+  defp maybe_revoke_served_resource(socket, %Resource{} = old, %Resource{type: type} = resource)
        when type != :device_pool do
-    cond do
-      old.address != resource.address or old.ip_stack != resource.ip_stack or old.type != type ->
-        socket.assigns.authorizations_cache
-        |> Cache.Authorizations.all_pairs_for_resource(resource.id)
-        |> Enum.each(fn {client_id, resource_id} ->
-          push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
-        end)
-
-      old.filters != resource.filters ->
-        [rendered] = render_local_resource(resource)
-        push(socket, "resource_updated", rendered)
-
-      true ->
-        :ok
+    if old.address != resource.address or old.ip_stack != resource.ip_stack or old.type != type do
+      socket.assigns.authorizations_cache
+      |> Cache.Authorizations.all_pairs_for_resource(resource.id)
+      |> Enum.each(fn {device_id, resource_id} ->
+        push(socket, "revoke_access", %{device_id: device_id, resource_id: resource_id})
+      end)
     end
   end
 
-  defp maybe_push_served_resource_change(_socket, _old, _resource), do: :ok
+  defp maybe_revoke_served_resource(_socket, _old, _resource), do: :ok
 
   # A peer this device serves is told the candidates come from a gateway, so a legacy client
   # keeps its payloads. Every other peer is told they come from a client. A legacy client never
@@ -264,22 +336,34 @@ defmodule PortalAPI.Device.V1.Channel do
 
   defp target(%Cache.Cacheable.Resource{type: :device_pool} = resource) do
     %{
-      type: :self,
+      type: :device,
       pool_id: Ecto.UUID.load!(resource.id),
       filters: Views.Resource.render_filters(resource.filters)
     }
   end
 
   defp target(%Cache.Cacheable.Resource{} = resource) do
-    %{type: :resource, resource_id: Ecto.UUID.load!(resource.id)}
+    %{type: :resource, resource: Views.Resource.render(resource)}
   end
 
-  defp served_resource(%Cache.Cacheable.Resource{type: :device_pool}), do: nil
-  defp served_resource(%Cache.Cacheable.Resource{} = resource), do: Views.Resource.render(resource)
+  defp connection(true, _ice_role), do: %{type: :frostlink}
+  defp connection(_use_iceless, ice_role), do: %{type: :ice, role: ice_role}
 
-  defp render_local_resource(%Portal.Resource{type: :device_pool}), do: []
+  defp device_ip(nil), do: %{}
 
-  defp render_local_resource(%Portal.Resource{} = resource) do
+  defp device_ip(ip) when is_binary(ip) do
+    case :inet.parse_strict_address(String.to_charlist(ip)) do
+      {:ok, {_, _, _, _}} -> %{"ipv4" => ip}
+      {:ok, {_, _, _, _, _, _, _, _}} -> %{"ipv6" => ip}
+      {:error, _reason} -> %{}
+    end
+  end
+
+  defp device_ip(_ip), do: %{}
+
+  defp render_served_resource(%Portal.Resource{type: :device_pool}), do: []
+
+  defp render_served_resource(%Portal.Resource{} = resource) do
     [resource |> Cache.Cacheable.to_cache() |> Views.Resource.render()]
   end
 

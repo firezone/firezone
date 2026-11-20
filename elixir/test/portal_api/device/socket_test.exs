@@ -34,6 +34,16 @@ defmodule PortalAPI.Device.SocketTest do
                {:error, :invalid_proto_range}
     end
 
+    test "keeps whether the device connects without ICE", %{encoded_token: encoded_token} do
+      range = %{"proto_min" => "5", "proto_max" => "7"}
+
+      assert {:ok, socket} = connect_device(encoded_token, Map.put(range, "frostlink", "true"))
+      assert socket.assigns.iceless_capable
+
+      assert {:ok, socket} = connect_device(encoded_token, range)
+      refute socket.assigns.iceless_capable
+    end
+
     test "checks the token before the range" do
       assert connect_device("invalid", %{}) == {:error, :invalid_token}
     end

@@ -3,7 +3,8 @@ defmodule PortalAPI.Device.Socket do
   The `/device/v1` socket, for the binary that both reaches and serves resources.
 
   A device connects with the same credentials as on the client socket. It also states the
-  range of protocol minors it speaks, as `proto_min` and `proto_max`.
+  range of protocol minors it speaks, as `proto_min` and `proto_max`, and with `frostlink`
+  whether it connects to its peers without ICE where the account allows it.
   """
   use Phoenix.Socket
 
@@ -13,7 +14,11 @@ defmodule PortalAPI.Device.Socket do
   def connect(attrs, socket, connect_info) do
     with {:ok, socket} <- PortalAPI.Client.Socket.connect(attrs, socket, connect_info),
          {:ok, proto_range} <- proto_range(attrs) do
-      {:ok, assign(socket, :proto_range, proto_range)}
+      {:ok,
+       assign(socket,
+         proto_range: proto_range,
+         iceless_capable: Map.get(attrs, "frostlink") == "true"
+       )}
     end
   end
 
