@@ -80,6 +80,16 @@ defmodule PortalAPI.Endpoint do
     longpoll: false,
     drainer: []
 
+  socket "/device/v1", PortalAPI.Device.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false,
+    drainer: []
+
   socket "/relay", PortalAPI.Relay.Socket,
     websocket: [
       check_origin: :conn,

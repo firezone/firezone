@@ -1828,7 +1828,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp init(socket, resources, relays) do
-    push(socket, "init", %{
+    payload = %{
       flow_logs: flow_logs_config(),
       account_slug: socket.assigns.subject.account.slug,
       actor_name: socket.assigns.subject.actor.name,
@@ -1841,7 +1841,9 @@ Relays.render(relays, relay_owner(socket)),
           socket.assigns.client
           | account: socket.assigns.subject.account
         })
-    })
+    }
+
+    push(socket, "init", protocol_extension(socket, :extend_init, payload))
   end
 
   defp reinitialize_client(socket) do
@@ -2367,6 +2369,17 @@ Relays.render(relays, relay_owner(socket)),
 
   defp protocol_version(socket), do: socket.assigns.channel_protocol.protocol_version()
 
+  # A protocol that adds to what every client gets defines the callback; the others leave it as is.
+  defp protocol_extension(socket, callback, value) do
+    protocol = socket.assigns.channel_protocol
+
+    if function_exported?(protocol, callback, 2) do
+      apply(protocol, callback, [socket, value])
+    else
+      value
+    end
+  end
+
   defp expired?(%Portal.PolicyAuthorization{expires_at: nil}), do: false
 
   defp expired?(%Portal.PolicyAuthorization{expires_at: expires_at}) do
@@ -2716,13 +2729,16 @@ Relays.render(relays, relay_owner(socket)),
   defp track_presence(socket) do
     range = proto_range(socket)
 
-    Session.track_presence(socket, socket.assigns.client, socket.assigns.subject.credential.id, %{
-      group_ids: group_ids(socket.assigns.cache),
-      site_ids: Map.get(socket.assigns, :served_site_ids, []),
-      capabilities: Map.get(socket.assigns, :capabilities, [:tun]),
-      proto_min: range && range.min,
-      proto_max: range && range.max
-    })
+    meta =
+      protocol_extension(socket, :extend_presence_meta, %{
+        group_ids: group_ids(socket.assigns.cache),
+        site_ids: Map.get(socket.assigns, :served_site_ids, []),
+        capabilities: Map.get(socket.assigns, :capabilities, [:tun]),
+        proto_min: range && range.min,
+        proto_max: range && range.max
+      })
+
+    Session.track_presence(socket, socket.assigns.client, socket.assigns.subject.credential.id, meta)
   end
 
   # Pool authorization reads the target's groups off its presence, so they must follow
