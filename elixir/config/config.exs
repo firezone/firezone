@@ -189,6 +189,7 @@ config :portal, Portal.Changes.Consumer,
     policy_authorizations
     device_tokens
     sites
+    site_devices
     policies
     resources
     google_auth_providers

@@ -12,7 +12,7 @@ defmodule PortalAPI.Device.V1.Channel do
   alias PortalAPI.Channel.Authorizations
   alias PortalAPI.Client.Channel.Shared
   alias PortalAPI.Gateway.Views
-  alias Portal.{Cache, PG, Presence, Telemetry}
+  alias Portal.{Cache, Changes.Change, PG, Presence, Resource, SiteDevice, Telemetry}
   alias __MODULE__.Database
 
   require Logger
@@ -25,7 +25,12 @@ defmodule PortalAPI.Device.V1.Channel do
   @impl true
   def join("device", _payload, socket) do
     send(self(), :after_join)
-    {:ok, assign(socket, :channel_protocol, __MODULE__)}
+
+    {:ok,
+     assign(socket,
+       channel_protocol: __MODULE__,
+       served_site_ids: Database.served_site_ids(socket.assigns.client)
+     )}
   end
 
   @impl true
@@ -79,6 +84,16 @@ defmodule PortalAPI.Device.V1.Channel do
     end
 
     {:noreply, socket}
+  end
+
+  # The shared handler drops a change it has seen; the device reacts only to a fresh one.
+  def handle_info(%Change{lsn: lsn} = change, socket) do
+    fresh? = lsn > Map.get(socket.assigns, :last_lsn, 0)
+
+    case Shared.handle_info(change, socket) do
+      {:noreply, socket} when fresh? -> {:noreply, served_change(change, socket)}
+      result -> result
+    end
   end
 
   def handle_info(message, socket), do: Shared.handle_info(message, socket)
@@ -138,28 +153,83 @@ defmodule PortalAPI.Device.V1.Channel do
   def authorization_creation_failed_event, do: "authorization_creation_failed"
 
   @doc false
-  def extend_init(socket, payload) do
-    site_ids = Database.served_site_ids(socket.assigns.client)
-
-    Map.merge(payload, %{
-      sites_served:
-        socket.assigns.client
-        |> Database.sites(site_ids)
-        |> Enum.map(&%{id: &1.id, name: &1.name}),
-      local_resources:
-        socket.assigns.client
-        |> Database.resources(site_ids)
-        |> Enum.flat_map(&render_local_resource/1)
-    })
-  end
+  def extend_init(socket, payload), do: Map.merge(payload, served_view(socket))
 
   @doc false
-  def extend_presence_meta(socket, meta) do
-    Map.merge(meta, %{
-      site_ids: Database.served_site_ids(socket.assigns.client),
-      device_v1: true
-    })
+  def extend_presence_meta(_socket, meta), do: Map.put(meta, :device_v1, true)
+
+  defp served_view(socket) do
+    device = socket.assigns.client
+    site_ids = socket.assigns.served_site_ids
+
+    %{
+      sites_served: device |> Database.sites(site_ids) |> Enum.map(&%{id: &1.id, name: &1.name}),
+      local_resources: device |> Database.resources(site_ids) |> Enum.flat_map(&render_local_resource/1)
+    }
   end
+
+  # An admin put this device in a site or took it out of one.
+  defp served_change(%Change{struct: %SiteDevice{device_id: id}}, %{assigns: %{client: %{id: id}}} = socket),
+    do: sites_served_changed(socket)
+
+  defp served_change(%Change{old_struct: %SiteDevice{device_id: id}}, %{assigns: %{client: %{id: id}}} = socket),
+    do: sites_served_changed(socket)
+
+  defp served_change(%Change{op: :delete, old_struct: %Resource{} = resource}, socket) do
+    if served?(socket, resource), do: push(socket, "local_resource_deleted", resource.id)
+    socket
+  end
+
+  defp served_change(%Change{struct: %Resource{} = resource, old_struct: old_resource}, socket) do
+    cond do
+      served?(socket, resource) ->
+        Enum.each(render_local_resource(resource), &push(socket, "local_resource_created_or_updated", &1))
+        maybe_push_served_resource_change(socket, old_resource, resource)
+
+      old_resource && served?(socket, old_resource) ->
+        push(socket, "local_resource_deleted", resource.id)
+
+      true ->
+        :ok
+    end
+
+    socket
+  end
+
+  defp served_change(_change, socket), do: socket
+
+  defp sites_served_changed(socket) do
+    socket = assign(socket, :served_site_ids, Database.served_site_ids(socket.assigns.client))
+    push(socket, "sites_served_changed", served_view(socket))
+    send(self(), :track_presence)
+    socket
+  end
+
+  defp served?(socket, %Resource{site_id: site_id}), do: site_id in socket.assigns.served_site_ids
+
+  # The device keeps state only for peers authorized for the resource. A changed address or
+  # type cannot be applied in place, so those peers are cut and authorize again; changed
+  # filters are applied in place.
+  defp maybe_push_served_resource_change(socket, %Resource{} = old, %Resource{type: type} = resource)
+       when type != :device_pool do
+    cond do
+      old.address != resource.address or old.ip_stack != resource.ip_stack or old.type != type ->
+        socket.assigns.authorizations_cache
+        |> Cache.Authorizations.all_pairs_for_resource(resource.id)
+        |> Enum.each(fn {client_id, resource_id} ->
+          push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
+        end)
+
+      old.filters != resource.filters ->
+        [rendered] = render_local_resource(resource)
+        push(socket, "resource_updated", rendered)
+
+      true ->
+        :ok
+    end
+  end
+
+  defp maybe_push_served_resource_change(_socket, _old, _resource), do: :ok
 
   # A peer this device serves is told the candidates come from a gateway, so a legacy client
   # keeps its payloads. Every other peer is told they come from a client. A legacy client never

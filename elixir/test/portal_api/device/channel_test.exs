@@ -233,6 +233,105 @@ defmodule PortalAPI.Device.ChannelTest do
     end
   end
 
+  describe "handle_info/2 changes to what the device serves" do
+    test "pushes sites_served_changed and updates presence when the device is put in a site", %{
+      account: account,
+      device: device,
+      subject: subject,
+      site: site,
+      resource: resource
+    } do
+      socket = join_channel(device, subject)
+      assert_push "init", %{sites_served: []}
+
+      site_device = put_in_site(device, site)
+      send(socket.channel_pid, change(:insert, nil, site_device))
+
+      assert_push "sites_served_changed", payload
+      assert payload.sites_served == [%{id: site.id, name: site.name}]
+      assert [%{id: resource_id}] = payload.local_resources
+      assert resource_id == resource.id
+
+      :sys.get_state(socket.channel_pid)
+      assert %{metas: [meta | _]} = Presence.Devices.Account.get(account.id, device.id)
+      assert meta.site_ids == [site.id]
+    end
+
+    test "pushes sites_served_changed when the device is taken out of a site", %{
+      device: device,
+      subject: subject,
+      site: site
+    } do
+      site_device = put_in_site(device, site)
+      socket = join_channel(device, subject)
+      assert_push "init", _
+
+      Portal.Repo.delete!(site_device)
+      send(socket.channel_pid, change(:delete, site_device, nil))
+
+      assert_push "sites_served_changed", %{sites_served: [], local_resources: []}
+    end
+
+    test "ignores site changes of other devices", %{account: account, device: device, subject: subject, site: site} do
+      socket = join_channel(device, subject)
+      assert_push "init", _
+
+      other = client_fixture(account: account) |> fetch_device!()
+      send(socket.channel_pid, change(:insert, nil, put_in_site(other, site)))
+
+      refute_push "sites_served_changed", _
+    end
+
+    test "pushes resource changes in a site it serves", %{
+      account: account,
+      device: device,
+      subject: subject,
+      site: site,
+      resource: resource
+    } do
+      put_in_site(device, site)
+      socket = join_channel(device, subject)
+      assert_push "init", _
+
+      added = cidr_resource_fixture(account: account, site: site)
+      send(socket.channel_pid, change(:insert, nil, added))
+      added_id = added.id
+      assert_push "local_resource_created_or_updated", %{id: ^added_id}
+
+      send(socket.channel_pid, change(:delete, resource, nil))
+      resource_id = resource.id
+      assert_push "local_resource_deleted", ^resource_id
+    end
+
+    test "pushes local_resource_deleted when a resource leaves a site it serves", %{
+      account: account,
+      device: device,
+      subject: subject,
+      site: site,
+      resource: resource
+    } do
+      put_in_site(device, site)
+      socket = join_channel(device, subject)
+      assert_push "init", _
+
+      other_site = site_fixture(account: account)
+      send(socket.channel_pid, change(:update, resource, %{resource | site_id: other_site.id}))
+
+      resource_id = resource.id
+      assert_push "local_resource_deleted", ^resource_id
+    end
+
+    test "ignores resources in sites it does not serve", %{account: account, device: device, subject: subject} do
+      socket = join_channel(device, subject)
+      assert_push "init", _
+
+      other = cidr_resource_fixture(account: account, site: site_fixture(account: account))
+      send(socket.channel_pid, change(:insert, nil, other))
+
+      refute_push "local_resource_created_or_updated", _
+    end
+  end
+
   describe "serving a legacy client" do
     test "a client on /client/v3 reaches a resource through the device", %{
       account: account,
@@ -279,6 +378,15 @@ defmodule PortalAPI.Device.ChannelTest do
       site_id = site.id
       assert_push "authorization_created", %{gateway_id: ^device_id, site_id: ^site_id}
     end
+  end
+
+  defp change(op, old_struct, struct) do
+    %Portal.Changes.Change{
+      lsn: System.unique_integer([:positive, :monotonic]),
+      op: op,
+      old_struct: old_struct,
+      struct: struct
+    }
   end
 
   defp put_in_site(device, site) do
