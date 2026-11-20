@@ -741,20 +741,8 @@ impl PerfUdpSocket {
 }
 
 impl UdpSocket {
-    /// Performs a single request-response handshake with the specified destination socket address.
-    ///
-    /// This consumes `self` because we want to enforce that we only receive a single message on this socket.
-    /// UDP is stateless and therefore, anybody can just send a packet to the destination.
-    ///
-    /// To simulate a handshake, we therefore only wait for a single message arriving on this socket,
-    /// after that, we discard it, freeing up the used source port.
-    ///
-    /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
-    pub async fn handshake<const BUF_SIZE: usize>(
-        self,
-        dst: SocketAddr,
-        payload: &[u8],
-    ) -> io::Result<Vec<u8>> {
+    /// Sends one datagram to `dst`.
+    pub async fn send_to(&self, payload: &[u8], dst: SocketAddr) -> io::Result<()> {
         let src_ip = self
             .source_ip_resolver
             .as_ref()
@@ -780,9 +768,33 @@ impl UdpSocket {
             })
             .await?;
 
+        Ok(())
+    }
+
+    /// Receives one datagram, returning its length and its sender.
+    pub async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
+        self.inner.recv_from(buf).await
+    }
+
+    /// Performs a single request-response handshake with the specified destination socket address.
+    ///
+    /// This consumes `self` because we want to enforce that we only receive a single message on this socket.
+    /// UDP is stateless and therefore, anybody can just send a packet to the destination.
+    ///
+    /// To simulate a handshake, we therefore only wait for a single message arriving on this socket,
+    /// after that, we discard it, freeing up the used source port.
+    ///
+    /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
+    pub async fn handshake<const BUF_SIZE: usize>(
+        self,
+        dst: SocketAddr,
+        payload: &[u8],
+    ) -> io::Result<Vec<u8>> {
+        self.send_to(payload, dst).await?;
+
         let mut buffer = vec![0u8; BUF_SIZE];
 
-        let (num_received, sender) = self.inner.recv_from(&mut buffer).await?;
+        let (num_received, sender) = self.recv_from(&mut buffer).await?;
 
         // Even though scopes are technically important for link-local IPv6 addresses, they can be ignored for our purposes.
         // We only want to ensure that the reply is from the expected source after we have already received the packet.

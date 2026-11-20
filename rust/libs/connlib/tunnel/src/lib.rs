@@ -16,6 +16,7 @@ use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::{CryptoWorkers, Io};
+use ip_packet::IpPacket;
 use packet_counts::{DroppedTunPackets, TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -261,6 +262,13 @@ impl Tunnel {
     }
 
     /// Drops every datagram sent directly to a peer while `enabled`, forcing connections through a relay.
+    /// Forwards the traffic of the resources this device serves through host sockets.
+    ///
+    /// For platforms whose kernel cannot route and masquerade that traffic itself.
+    pub fn enable_userspace_forwarding(&mut self, now: Instant) {
+        self.io.enable_userspace_forwarding(now);
+    }
+
     pub fn set_force_relayed_connections(&self, enabled: bool) {
         self.io.set_force_relayed_connections(enabled);
     }
@@ -346,6 +354,7 @@ impl Tunnel {
                 dns_responses,
                 dns_queries,
                 mut device,
+                forwarded,
                 network,
                 decrypted,
                 mut error,
@@ -365,38 +374,31 @@ impl Tunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut jobs = self.io.new_encrypt_jobs();
+                    encapsulate_tun_packets(
+                        &mut self.role_state,
+                        &mut self.io.new_encrypt_jobs(),
+                        &self.dropped_tun_packets,
+                        packets.prefetching().inspect(|p| tun_received.record(p)),
+                        &mut error,
+                        now,
+                    );
 
-                    let mut packets = packets
-                        .prefetching()
-                        .inspect(|p| tun_received.record(p))
-                        .peekable();
+                    self.needs_timeout = true;
 
-                    while let Some(packet) = packets.next() {
-                        let mut tun_batch = match self.role_state.handle_tun_input(packet, now) {
-                            Ok(Some(tun_batch)) => tun_batch,
-                            Ok(None) => continue,
-                            Err(e) => {
-                                self.dropped_tun_packets.record(&e, 1);
-                                error.push(e.context("Failed to handle packet from TUN device"));
-                                continue;
-                            }
-                        };
+                    tick.want_continue();
+                }
 
-                        while let Some(packet) = packets.next_if(|p| tun_batch.accepts(p)) {
-                            tun_batch.push(packet);
-                        }
-
-                        let num_packets = tun_batch.num_packets();
-
-                        match tun_batch.finish() {
-                            Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
-                            Err(e) => {
-                                self.dropped_tun_packets.record(&e, num_packets);
-                                error.push(e.context("Failed to handle packet from TUN device"));
-                            }
-                        }
-                    }
+                // The forwarder's replies to the peers we serve take the same way as replies the
+                // kernel routes into the TUN device.
+                if !forwarded.is_empty() {
+                    encapsulate_tun_packets(
+                        &mut self.role_state,
+                        &mut self.io.new_encrypt_jobs(),
+                        &self.dropped_tun_packets,
+                        forwarded.into_iter(),
+                        &mut error,
+                        now,
+                    );
 
                     self.needs_timeout = true;
 
@@ -448,6 +450,7 @@ impl Tunnel {
                         packets,
                     } in decrypted.drain()
                     {
+                        let local_tun = self.role_state.tunnel_ip_config();
                         let batch = match self
                             .role_state
                             .handle_peer_batch(packets, local, from, now)
@@ -463,6 +466,12 @@ impl Tunnel {
                             match result {
                                 Ok(Some(packet)) => {
                                     let packet = packet.with_ecn_from_transport(ecn);
+
+                                    let Some(packet) =
+                                        forward_served(&mut self.io, local_tun, packet, now)
+                                    else {
+                                        continue;
+                                    };
 
                                     tun_transmitted.record(&packet);
                                     self.io.queue_tun(packet);
@@ -510,6 +519,63 @@ impl Tunnel {
         }
 
         Poll::Pending
+    }
+}
+
+/// Hands a packet a peer sent to a resource we serve to the userspace forwarder, if there is one.
+///
+/// Every other packet from a peer is for our own tunnel address. Returns the packet when it
+/// goes to the TUN device.
+fn forward_served(
+    io: &mut Io,
+    local_tun: Option<IpConfig>,
+    packet: IpPacket,
+    now: Instant,
+) -> Option<IpPacket> {
+    if local_tun.is_none_or(|tun| tun.is_ip(packet.destination())) {
+        return Some(packet);
+    }
+
+    io.forward(packet, now)
+}
+
+/// Routes the packets read from the TUN device, or replies from the forwarder, to their peers.
+///
+/// Consecutive packets of one flow share the routing decision of the first.
+fn encapsulate_tun_packets(
+    role_state: &mut DeviceState,
+    jobs: &mut io::EncryptJobs<'_>,
+    dropped_tun_packets: &DroppedTunPackets,
+    packets: impl Iterator<Item = IpPacket>,
+    error: &mut TunnelError,
+    now: Instant,
+) {
+    let mut packets = packets.peekable();
+
+    while let Some(packet) = packets.next() {
+        let mut tun_batch = match role_state.handle_tun_input(packet, now) {
+            Ok(Some(tun_batch)) => tun_batch,
+            Ok(None) => continue,
+            Err(e) => {
+                dropped_tun_packets.record(&e, 1);
+                error.push(e.context("Failed to handle packet from TUN device"));
+                continue;
+            }
+        };
+
+        while let Some(packet) = packets.next_if(|p| tun_batch.accepts(p)) {
+            tun_batch.push(packet);
+        }
+
+        let num_packets = tun_batch.num_packets();
+
+        match tun_batch.finish() {
+            Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
+            Err(e) => {
+                dropped_tun_packets.record(&e, num_packets);
+                error.push(e.context("Failed to handle packet from TUN device"));
+            }
+        }
     }
 }
 

@@ -12,7 +12,7 @@ pub use smoltcp::iface::{Interface, PollResult, SocketHandle, SocketSet};
 pub use smoltcp::socket::Socket as AnySocket;
 pub use smoltcp::socket::tcp::{Socket, State};
 pub use smoltcp::time::{Duration, Instant};
-pub use smoltcp::wire::IpEndpoint;
+pub use smoltcp::wire::{IpAddress, IpEndpoint};
 
 pub fn create_tcp_socket() -> Socket<'static> {
     /// The 2-byte length prefix of DNS over TCP messages limits their size to effectively u16::MAX.

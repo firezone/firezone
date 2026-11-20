@@ -42,6 +42,7 @@ members = [
     "libs/connlib/tun-offload",
     "libs/connlib/tun-windows",
     "libs/connlib/tunnel",
+    "libs/connlib/userspace-forwarder",
     "libs/connlib/tunnel-proto",
     "libs/desktop-notifications",
     "libs/eventloop-budget",
@@ -296,6 +297,7 @@ tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }
 uniffi = "0.31.1"
 url = "2.5.2"
+userspace-forwarder = { path = "libs/connlib/userspace-forwarder" }
 uuid = "1.23.2"
 webpki-roots = "1.0.7"
 which = "8.0.5"

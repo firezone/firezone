@@ -206,6 +206,8 @@ impl Eventloop {
             clock.now(),
         )
         .context("Failed to create tunnel")?;
+        // A client's platform does not route and masquerade the traffic of the resources it serves.
+        tunnel.enable_userspace_forwarding(clock.now());
         tunnel.update_system_resolvers(dns_servers.clone());
         tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
