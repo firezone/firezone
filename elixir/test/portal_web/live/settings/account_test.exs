@@ -117,6 +117,8 @@ defmodule PortalWeb.Settings.AccountTest do
       site = site_fixture(account: account, name: "HQ")
       gateway_fixture(account: account, site: site)
       gateway_fixture(account: account, site: site)
+      client = client_fixture(account: account)
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: client.id})
       empty_site = site_fixture(account: account, name: "Branch")
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account/usage/sites")

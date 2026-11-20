@@ -141,6 +141,15 @@ defmodule PortalAPI.Sockets do
           "registered under the same MDM device ID. Please contact your administrator."
       )
 
+  def handle_error(conn, :invalid_proto_range),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        400,
+        :invalid_proto_range,
+        "proto_min and proto_max must be whole numbers with proto_min no larger than proto_max"
+      )
+
   def handle_error(conn, :conflict),
     do:
       ProblemDetails.send_with_code(

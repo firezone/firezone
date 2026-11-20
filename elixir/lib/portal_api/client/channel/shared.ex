@@ -4,6 +4,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   alias PortalAPI.Client.Views
   alias PortalAPI.Channel.Authorizations
   alias PortalAPI.Channel.Durability
+  alias PortalAPI.Channel.Protocol
   alias PortalAPI.Channel.Relays
   alias PortalAPI.Channel.Session
 
@@ -129,11 +130,11 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
 
     for resource_id <- removed_ids do
-      push(socket, "resource_deleted", resource_id)
+      Protocol.push(socket, "resource_deleted", resource_id)
     end
 
     for resource <- added_resources do
-      push(
+      Protocol.push(
         socket,
         "resource_created_or_updated",
         Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
@@ -182,17 +183,17 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   def handle_info({tag, %{type: :gateway, id: gateway_id}, candidates}, socket)
       when tag in [:ice_candidates, :invalidate_ice_candidates] do
-    push(socket, Atom.to_string(tag), %{gateway_id: gateway_id, candidates: candidates})
+    Protocol.push(socket, Atom.to_string(tag), %{gateway_id: gateway_id, candidates: candidates})
     {:noreply, socket}
   end
 
   def handle_info({:ice_candidates, %{type: :client, id: client_id}, candidates}, socket) do
-    push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
+    Protocol.push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
     {:noreply, socket}
   end
 
   def handle_info({:invalidate_ice_candidates, %{type: :client, id: client_id}, candidates}, socket) do
-    push(socket, "invalidate_client_ice_candidates", %{
+    Protocol.push(socket, "invalidate_client_ice_candidates", %{
       client_id: client_id,
       candidates: candidates
     })
@@ -257,7 +258,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       # Client-to-client: the target's channel never acked that it pushed the
       # authorization to its data plane (e.g. it disconnected in the window).
       {%{deny_payload: deny_payload}, remaining} ->
-        push(socket, "client_device_access_denied", deny_payload)
+        Protocol.push(socket, "client_device_access_denied", deny_payload)
         {:noreply, assign(socket, :pending_authorizations, remaining)}
     end
   end
@@ -289,7 +290,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       }
       |> maybe_put_expires_at(request.expires_at)
 
-    push(socket, "client_device_access_authorized", payload)
+    Protocol.push(socket, "client_device_access_authorized", payload)
 
     # The initiator is told only after the push, so its ICE candidates, which come over this
     # socket too, cannot reach this client before the authorization.
@@ -312,7 +313,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           :gateway -> %{gateway_id: device_id, public_key: public_key}
         end
 
-      push(socket, "public_key_changed", payload)
+      Protocol.push(socket, "public_key_changed", payload)
     end
 
     {:noreply, socket}
@@ -384,7 +385,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
 
       Database.delete_policy_authorizations(socket.assigns.client)
-      push(socket, "disconnect", %{reason: "certificate_revoked"})
+      Protocol.push(socket, "disconnect", %{reason: "certificate_revoked"})
       Session.close_transport(socket)
     else
       {:noreply, socket}
@@ -408,13 +409,13 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   def handle_info({:device_domain_resolution_failed, domain, reason}, socket) do
-    push(socket, "device_domain_resolution_failed", %{domain: domain, reason: reason})
+    Protocol.push(socket, "device_domain_resolution_failed", %{domain: domain, reason: reason})
 
     {:noreply, socket}
   end
 
   def handle_info({:device_domain_browse_failed, domain}, socket) do
-    push(socket, "device_domain_browse_failed", %{domain: domain, reason: :not_found})
+    Protocol.push(socket, "device_domain_browse_failed", %{domain: domain, reason: :not_found})
 
     {:noreply, socket}
   end
@@ -584,7 +585,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     case resolve_device_domain(domain, socket) do
       {:ok, %Portal.Device{} = device} ->
-        push(socket, "device_domain_resolved", %{
+        Protocol.push(socket, "device_domain_resolved", %{
           domain: domain,
           ipv4: to_string(:inet.ntoa(device.ipv4.address)),
           ipv6: to_string(:inet.ntoa(device.ipv6.address))
@@ -612,7 +613,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     case browse_device_domain(domain, socket) do
       {:ok, labels, total} ->
-        push(socket, "device_domain_browsed", %{
+        Protocol.push(socket, "device_domain_browsed", %{
           domain: domain,
           names: Enum.map(labels, &Portal.Device.fqdn_for_slug/1),
           ttl: @device_domain_browse_ttl,
@@ -889,7 +890,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply, socket}
 
       {:error, :not_found} ->
-        push(socket, "client_ice_candidate_error", %{
+        Protocol.push(socket, "client_ice_candidate_error", %{
           client_id: target_client_id,
           reason: :offline
         })
@@ -949,10 +950,9 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp check_peer_compatibility(target_meta, socket) do
     target_user_agent = Map.get(target_meta, :user_agent)
     target_version = Map.get(target_meta, :version)
-    initiator_version = socket.assigns.client.last_seen_version
 
     if Portal.Version.supports_device_access?(target_user_agent, target_version) and
-         Portal.Version.same_minor_version?(initiator_version, target_version) do
+         Portal.Version.compatible?(proto_range(socket), Portal.Version.proto_range_from_meta(target_meta)) do
       :ok
     else
       {:error, :version_mismatch}
@@ -1215,7 +1215,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp push_authorization_creation_failed(socket, resource_id, reason, address) do
-    push(
+    Protocol.push(
       socket,
       authorization_creation_failed_event(socket),
       Map.merge(%{resource_id: resource_id, reason: reason}, address_fields(address))
@@ -1265,7 +1265,7 @@ defmodule PortalAPI.Client.Channel.Shared do
            socket.assigns.subject
          ) do
       {:ok, %Cache.Cacheable.Resource{type: :device_pool}, _membership_id, _policy_id, _expires_at} ->
-        push(socket, authorization_creation_failed_event(socket), %{
+        Protocol.push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :missing_address
         })
@@ -1297,7 +1297,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         )
 
       {:error, :not_found} ->
-        push(socket, authorization_creation_failed_event(socket), %{
+        Protocol.push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :not_found
         })
@@ -1305,7 +1305,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
-        push(socket, authorization_creation_failed_event(socket), %{
+        Protocol.push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :forbidden,
           violated_properties: violated_properties
@@ -1397,7 +1397,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp push_device_access_denied(socket, payload, reason) do
-    push(
+    Protocol.push(
       socket,
       "client_device_access_denied",
       %{ipv4: payload["ipv4"], ipv6: payload["ipv6"], reason: reason}
@@ -1439,7 +1439,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           )
 
         :offline ->
-          push(socket, "client_device_access_denied", %{
+          Protocol.push(socket, "client_device_access_denied", %{
             client_id: target_device_id,
             ipv4: payload["ipv4"],
             ipv6: payload["ipv6"],
@@ -1455,7 +1455,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           resource_id: resource_id
         )
 
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
           reason: :ambiguous_address
@@ -1464,7 +1464,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply, socket}
 
       {:error, :missing_address} ->
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           resource_id: resource_id,
           reason: :missing_address
         })
@@ -1480,7 +1480,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           ipv6: payload["ipv6"]
         )
 
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
           reason: :invalid_address
@@ -1489,7 +1489,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply, socket}
 
       {:error, :forbidden} ->
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
           reason: :forbidden
@@ -1525,7 +1525,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         )
 
       {:error, :version_mismatch} ->
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           client_id: target_client_id,
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
@@ -1632,7 +1632,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply, assign(socket, :pending_authorizations, pending)}
 
       {:error, _} ->
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           client_id: target_client_id,
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
@@ -1742,11 +1742,19 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp initiator(socket) do
     %{
       account_id: socket.assigns.subject.account.id,
+      device_id: socket.assigns.client.id,
       version: socket.assigns.client_version,
+      proto_range: proto_range(socket),
       location:
         {socket.assigns.subject.context.remote_ip_location_lat,
          socket.assigns.subject.context.remote_ip_location_lon}
     }
+  end
+
+  # A device that states its range has it assigned; a legacy client speaks its own minor.
+  defp proto_range(socket) do
+    Map.get(socket.assigns, :proto_range) ||
+      Portal.Version.legacy_proto_range(:client, socket.assigns.client_version)
   end
 
   # The socket read these before the channel subscribed, so a change in between would be lost.
@@ -1803,7 +1811,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         authorizations_cache: authorizations_cache,
         outbound_authorizations_cache: outbound_authorizations_cache,
         pending_authorizations: %{},
-        iceless_capable: false
+        iceless_capable: Map.get(socket.assigns, :iceless_capable, false)
       )
       # Track client's presence and monitor tracker shard processes for crash recovery
       |> track_presence()
@@ -1822,7 +1830,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp init(socket, resources, relays) do
-    push(socket, "init", %{
+    payload = %{
       flow_logs: flow_logs_config(),
       account_slug: socket.assigns.subject.account.slug,
       actor_name: socket.assigns.subject.actor.name,
@@ -1835,7 +1843,9 @@ Relays.render(relays, relay_owner(socket)),
           socket.assigns.client
           | account: socket.assigns.subject.account
         })
-    })
+    }
+
+    Protocol.push(socket, "init", protocol_extension(socket, :extend_init, payload))
   end
 
   defp reinitialize_client(socket) do
@@ -2035,7 +2045,7 @@ Relays.render(relays, relay_owner(socket)),
     if old_account.config != account.config do
       client = %{socket.assigns.client | account: account}
       payload = %{interface: Views.Interface.render(client)}
-      :ok = push(socket, "config_changed", payload)
+      :ok = Protocol.push(socket, "config_changed", payload)
     end
 
     if Portal.Account.device_posture_enabled?(old_account) != Portal.Account.device_posture_enabled?(account) do
@@ -2236,10 +2246,15 @@ Relays.render(relays, relay_owner(socket)),
 
     if protocol_version(socket) >= 3 and
          not expired?(policy_authorization) do
-      push(socket, "reject_access", %{
-        client_id: policy_authorization.receiving_device_id,
-        resource_id: policy_authorization.resource_id
-      })
+      Protocol.push(
+        socket,
+        "reject_access",
+        %{
+          client_id: policy_authorization.receiving_device_id,
+          resource_id: policy_authorization.resource_id
+        },
+        :outbound
+      )
     end
 
     {:noreply, socket}
@@ -2361,6 +2376,17 @@ Relays.render(relays, relay_owner(socket)),
 
   defp protocol_version(socket), do: socket.assigns.channel_protocol.protocol_version()
 
+  # A protocol that adds to what every client gets defines the callback; the others leave it as is.
+  defp protocol_extension(socket, callback, value) do
+    protocol = socket.assigns.channel_protocol
+
+    if function_exported?(protocol, callback, 2) do
+      apply(protocol, callback, [socket, value])
+    else
+      value
+    end
+  end
+
   defp expired?(%Portal.PolicyAuthorization{expires_at: nil}), do: false
 
   defp expired?(%Portal.PolicyAuthorization{expires_at: expires_at}) do
@@ -2370,7 +2396,7 @@ Relays.render(relays, relay_owner(socket)),
   defp push_device_access_denied(_socket, nil), do: :ok
 
   defp push_device_access_denied(socket, {ipv4_tuple, ipv6_tuple}) do
-    push(socket, "client_device_access_denied", %{
+    Protocol.push(socket, "client_device_access_denied", %{
       ipv4: to_string(:inet.ntoa(ipv4_tuple)),
       ipv6: to_string(:inet.ntoa(ipv6_tuple)),
       reason: :forbidden
@@ -2389,7 +2415,7 @@ Relays.render(relays, relay_owner(socket)),
   defp maybe_push_resource_filters_updated(socket, resource, _old_filters, _filters) do
     if Cache.Authorizations.has_resource?(socket.assigns.authorizations_cache, resource.id) do
       cacheable = Cache.Cacheable.to_cache(resource)
-      push(socket, "resource_filters_updated", Views.Resource.render_authorization(cacheable))
+      Protocol.push(socket, "resource_filters_updated", Views.Resource.render_authorization(cacheable))
     end
 
     :ok
@@ -2401,11 +2427,11 @@ Relays.render(relays, relay_owner(socket)),
     # important that deletions are processed first here.
     # See https://github.com/firezone/firezone/issues/9881
     for resource_id <- removed_ids do
-      push(socket, "resource_deleted", resource_id)
+      Protocol.push(socket, "resource_deleted", resource_id)
     end
 
     for resource <- added_resources do
-      push(
+      Protocol.push(
         socket,
         "resource_created_or_updated",
         Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
@@ -2708,9 +2734,18 @@ Relays.render(relays, relay_owner(socket)),
   defp certificate_revoked?(_socket), do: false
 
   defp track_presence(socket) do
-    Session.track_presence(socket, socket.assigns.client, socket.assigns.subject.credential.id, %{
-      group_ids: group_ids(socket.assigns.cache)
-    })
+    range = proto_range(socket)
+
+    meta =
+      protocol_extension(socket, :extend_presence_meta, %{
+        group_ids: group_ids(socket.assigns.cache),
+        site_ids: Map.get(socket.assigns, :served_site_ids, []),
+        capabilities: Map.get(socket.assigns, :capabilities, [:tun]),
+        proto_min: range && range.min,
+        proto_max: range && range.max
+      })
+
+    Session.track_presence(socket, socket.assigns.client, socket.assigns.subject.credential.id, meta)
   end
 
   # Pool authorization reads the target's groups off its presence, so they must follow
@@ -2789,7 +2824,7 @@ Relays.render(relays, relay_owner(socket)),
           |> put_site_id(gateway.site_id, socket.assigns.client)
           |> Map.merge(address_fields(address))
 
-        push(socket, authorization_created_event(socket), reply_payload)
+        Protocol.push(socket, authorization_created_event(socket), reply_payload, gateway)
 
         {:noreply,
          assign(
@@ -2817,7 +2852,7 @@ Relays.render(relays, relay_owner(socket)),
           |> Map.put(:client_name, client_name)
           |> Map.put(:client_slug, client_slug)
 
-        push(socket, "client_device_access_authorized", initiator_payload)
+        Protocol.push(socket, "client_device_access_authorized", initiator_payload)
 
         {:noreply,
          socket
