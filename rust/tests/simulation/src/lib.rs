@@ -133,13 +133,16 @@ pub fn run_relay(data: &[u8], now: Instant) {
         model.apply(&transition, &interference);
         system.apply(&model, &transition, interference);
 
-        // Without settling, the next transition meets whatever the client and the relay are
-        // in the middle of.
-        if settle || generator.is_empty() || applied + 1 == MAX_RELAY_TRANSITIONS {
-            system.check(&model);
-            model.settle();
+        // The next transition meets whatever the client and the relay are in the middle of.
+        if !settle {
+            continue;
         }
+
+        system.check(&model);
+        model.settle();
     }
+
+    system.check(&model);
 }
 
 /// Initializes a subscriber that panics on error events.

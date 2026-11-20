@@ -6,7 +6,7 @@
 //! the relay, which [`RealRelaySystem::check`] holds against what the model expects.
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant, SystemTime},
@@ -20,7 +20,11 @@ use jiff::Timestamp;
 use relay_client_proto::{Allocation, Event, channel_data};
 use relay_server_proto::{ChannelData, ClientSocket, Command};
 use snownet::Transmit;
-use stun_codec::rfc5389::attributes::{Nonce, Realm, Username};
+use stun_codec::{
+    MessageClass, TransactionId,
+    rfc5389::attributes::{Nonce, Realm, Username},
+    rfc5766::attributes::ChannelNumber,
+};
 
 use crate::{
     buffered_transmits::BufferedTransmits,
@@ -96,6 +100,17 @@ struct RealAllocation {
     /// The data that arrived: the peer and the relay address that the allocation attributes
     /// it to, and its payload.
     received: Vec<(SocketAddr, SocketAddr, Vec<u8>)>,
+    /// The channels that the allocation asked the relay for, by the request's transaction.
+    requested_channels: BTreeMap<TransactionId, u16>,
+    /// The channels that the relay answered a request for with a success response.
+    confirmed_channels: BTreeSet<u16>,
+}
+
+/// Where a data message is going.
+#[derive(Clone, Copy)]
+enum Direction {
+    ToPeer,
+    ToClient,
 }
 
 impl RealRelaySystem {
@@ -239,7 +254,7 @@ impl RealRelaySystem {
         for peer in model.connections.keys().copied() {
             let relay_address = self.client.inner().relay_address_for(peer);
 
-            let data = self.next_data(peer);
+            let data = self.next_data(Direction::ToPeer, peer);
             if self.send_to_peer(peer, &data) {
                 to_peers.push((relay_address, peer, data));
             }
@@ -247,7 +262,7 @@ impl RealRelaySystem {
             let Some(relay_address) = relay_address else {
                 continue;
             };
-            let data = self.next_data(peer);
+            let data = self.next_data(Direction::ToClient, peer);
             self.transmits.push(
                 datagram(Some(peer), relay_address, &data),
                 Duration::ZERO,
@@ -308,13 +323,15 @@ impl RealRelaySystem {
         true
     }
 
-    /// Builds a WireGuard data message that is unlike every other: the relay only relays
-    /// WireGuard and STUN.
-    fn next_data(&mut self, peer: SocketAddr) -> Vec<u8> {
+    /// Builds a WireGuard data message that is unlike every other, between the client and
+    /// `peer`: the relay only relays WireGuard and STUN.
+    fn next_data(&mut self, direction: Direction, peer: SocketAddr) -> Vec<u8> {
         self.data_messages += 1;
 
         let mut message = vec![0u8; 32];
         message[0] = 4;
+        message[4] = direction as u8;
+        message[5] = u8::from(peer.is_ipv6());
         message[6..8].copy_from_slice(&peer.port().to_be_bytes());
         message[8..16].copy_from_slice(&self.data_messages.to_be_bytes());
 
@@ -389,7 +406,7 @@ impl RealRelaySystem {
             Injection::RelayAddresses => {
                 for relay_address in self.client.inner().relay_addresses.clone() {
                     let foreign = model.foreign.socket_for(relay_address.ip());
-                    let data = self.next_data(foreign);
+                    let data = self.next_data(Direction::ToClient, foreign);
 
                     self.transmits.push(
                         datagram(Some(foreign), relay_address, &data),
@@ -597,6 +614,8 @@ impl RealRelaySystem {
 
 impl Host<RealAllocation> {
     /// Steps the client with what is due at `now`.
+    ///
+    /// The allocation only handles a timeout when it asked for one.
     fn step(&mut self, transmits: &mut BufferedTransmits, now: Instant) {
         while let Some(transmit) = self.poll_inbox(now) {
             self.handle_input(transmits, transmit, now);
@@ -626,6 +645,13 @@ impl Host<RealAllocation> {
                     return;
                 };
 
+                self.exec_mut(|c| {
+                    let channel = c.requested_channels.get(&message.transaction_id());
+
+                    if message.class() == MessageClass::SuccessResponse {
+                        c.confirmed_channels.extend(channel);
+                    }
+                });
                 self.drive(transmits, now, |a| {
                     a.handle_input(from, transmit.dst, message, now)
                 });
@@ -634,12 +660,16 @@ impl Host<RealAllocation> {
                 let Ok(packet) = channel_data::decode(&transmit.payload) else {
                     return;
                 };
-                let data = packet.payload().to_vec();
+                let (channel, data) = (packet.channel(), packet.payload().to_vec());
                 let decapsulated = self.drive(transmits, now, |a| a.decapsulate(from, packet, now));
                 let Some(Some((peer, socket))) = decapsulated else {
                     return;
                 };
 
+                assert!(
+                    self.inner().confirmed_channels.contains(&channel),
+                    "The client accepted data on a channel that the relay did not confirm"
+                );
                 self.exec_mut(|c| c.received.push((peer, socket.address(), data)));
             }
             _ => {}
@@ -690,7 +720,17 @@ impl RealAllocation {
 
         let transmits = iter::from_fn(|| allocation.poll_transmit())
             .map(|t| datagram(None, t.dst, &t.payload))
-            .collect();
+            .collect::<Vec<_>>();
+
+        for request in transmits
+            .iter()
+            .filter_map(|t| relay_client_proto::decode(&t.payload).ok()?.ok())
+        {
+            let channel = request.get_attribute::<ChannelNumber>().map(|c| c.value());
+
+            self.requested_channels
+                .extend(iter::repeat(request.transaction_id()).zip(channel));
+        }
 
         if let Some(reason) = allocation.can_be_freed() {
             tracing::debug!(%reason, "Client gives up on the relay");
@@ -719,9 +759,12 @@ impl RealAllocation {
         seed
     }
 
+    /// Forgets what an allocation that starts from scratch no longer has.
     fn forget_relay_addresses(&mut self) {
         self.relay_addresses_changed |= !self.relay_addresses.is_empty();
         self.relay_addresses.clear();
+        self.requested_channels.clear();
+        self.confirmed_channels.clear();
     }
 }
 
