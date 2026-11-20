@@ -17,7 +17,7 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 use telemetry::SentryMeterProvider;
-use tunnel::GatewayTunnel;
+use tunnel::Tunnel;
 
 use clock::Clock;
 use phoenix_channel::PhoenixChannel;
@@ -292,10 +292,12 @@ async fn try_main(cli: Cli) -> Result<()> {
 
     let eventloop = async_runtime::spawn_thread("fz-eventloop", move || async move {
         let mut clock = Clock::new();
-        let mut tunnel = GatewayTunnel::new(
+        let mut tunnel = Tunnel::new(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             LISTEN_PORT,
+            BTreeSet::new(),
+            false,
             nameservers,
             clock.now(),
         )

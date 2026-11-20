@@ -19,9 +19,9 @@ use relay_server_proto::{AllocationPort, ChannelData, ClientSocket, Command, Pee
 use snownet::{RelaySocket, Transmit};
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::PacketBatch;
-use tunnel::{ClientState, FakeTunnelEnds, GatewayState, Role, Tunnel};
+use tunnel::{DeviceState, FakeTunnelEnds, Tunnel};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
-use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
+use tunnel_proto::{DeviceEvent, IpConfig};
 use uuid::Uuid;
 
 use crate::callgrind;
@@ -200,16 +200,16 @@ impl Resource {
 ///
 /// Its crypto jobs run inline, and the caller stands in for its UDP socket and TUN device: time
 /// only moves when the caller moves it, to the deadline the tunnel asked for.
-pub struct Host<R> {
-    tunnel: Tunnel<R>,
+pub struct Host {
+    tunnel: Tunnel,
     /// The fake tunnel's TUN device, sockets and resolver; every address is IPv4.
     ends: FakeTunnelEnds,
     /// The deadline the tunnel asked to be woken at.
     alarm: Option<Instant>,
 }
 
-impl<R: Role> Host<R> {
-    fn new(state: R) -> Self {
+impl Host {
+    fn new(state: DeviceState) -> Self {
         let (tunnel, ends) = Tunnel::fake(state);
 
         Self {
@@ -224,7 +224,7 @@ impl<R: Role> Host<R> {
     ///
     /// Like the Client's and the Gateway's event loops, it handles a deadline that has passed
     /// before anything else, and asks for the next deadline only once the tunnel is pending.
-    pub fn run(&mut self, now: Instant) -> Vec<R::Event> {
+    pub fn run(&mut self, now: Instant) -> Vec<DeviceEvent> {
         let mut cx = Context::from_waker(Waker::noop());
         let mut events = Vec::new();
 
@@ -254,13 +254,13 @@ impl<R: Role> Host<R> {
     }
 
     /// Returns the tunnel's state to change, and has the tunnel woken at `now`.
-    pub fn state_mut(&mut self, now: Instant) -> &mut R {
+    pub fn state_mut(&mut self, now: Instant) -> &mut DeviceState {
         self.alarm = Some(now);
 
         self.tunnel.state_mut()
     }
 
-    pub fn into_state(self) -> R {
+    pub fn into_state(self) -> DeviceState {
         self.tunnel.into_state()
     }
 
@@ -348,14 +348,9 @@ pub fn tun_batches(packet: &IpPacket, count: usize) -> Vec<PacketBatch> {
         .collect()
 }
 
-pub enum AnyHost {
-    Client(Host<ClientState>),
-    Gateway(Host<GatewayState>),
-}
-
 /// One side of an established connection.
 pub struct Side {
-    pub host: AnyHost,
+    pub host: Host,
     pub socket: SocketAddr,
     /// What this side reads from its TUN device.
     pub reads: IpPacket,
@@ -365,10 +360,7 @@ impl Side {
     /// Returns `count` copies of what this side reads from its TUN device, encrypted for `dst`
     /// in as few GSO batches as fit.
     pub fn encrypt(&mut self, count: usize, dst: SocketAddr, now: Instant) -> Vec<DatagramOut> {
-        match &mut self.host {
-            AnyHost::Client(host) => host.encrypt(&self.reads, count, dst, now),
-            AnyHost::Gateway(host) => host.encrypt(&self.reads, count, dst, now),
-        }
+        self.host.encrypt(&self.reads, count, dst, now)
     }
 }
 
@@ -381,10 +373,10 @@ pub fn connect(resource: Resource) -> (Side, Side, Instant) {
     let client = Side {
         socket: client_socket(client.index),
         reads: client.request(),
-        host: AnyHost::Client(client.host),
+        host: client.host,
     };
     let gateway = Side {
-        host: AnyHost::Gateway(network.gateway),
+        host: network.gateway,
         socket: *GATEWAY_SOCKET,
         reads: reply,
     };
@@ -399,7 +391,7 @@ pub fn connect(resource: Resource) -> (Side, Side, Instant) {
 /// deadline to the next.
 pub struct Network {
     pub clients: Vec<Client>,
-    pub gateway: Host<GatewayState>,
+    pub gateway: Host,
     relay: Relay,
     pub now: Instant,
     connectivity: Connectivity,
@@ -410,7 +402,7 @@ pub struct Network {
 
 pub struct Client {
     index: usize,
-    pub host: Host<ClientState>,
+    pub host: Host,
     /// Where it sends packets for the resource: its address or the DNS proxy IP.
     dst: IpAddr,
 }
@@ -423,7 +415,13 @@ impl Network {
             .unwrap();
         let relay = Relay::new(now);
 
-        let mut gateway = Host::new(GatewayState::new([2; 32], now, unix_ts));
+        let mut gateway = Host::new(DeviceState::new(
+            [2; 32],
+            BTreeSet::new(),
+            false,
+            now,
+            unix_ts,
+        ));
         let state = gateway.state_mut(now);
         state.set_flow_logs_enabled(true);
         state.update_tun_device(GATEWAY_TUN);
@@ -606,9 +604,10 @@ impl Network {
 
         for event in callgrind::count(|| self.gateway.run(now)) {
             match event {
-                GatewayEvent::AddedIceCandidates {
+                DeviceEvent::AddedIceCandidates {
                     conn_id,
                     candidates,
+                    ..
                 } => {
                     let client = self
                         .clients
@@ -622,7 +621,7 @@ impl Network {
                             .add_ice_candidate(GID, candidate, now);
                     }
                 }
-                GatewayEvent::ResolveDns(request) => {
+                DeviceEvent::ResolveDns(request) => {
                     self.gateway
                         .state_mut(now)
                         .handle_domain_resolved(request, Ok(vec![DNS_RESOURCE_IP.into()]), now)
@@ -644,8 +643,8 @@ impl Network {
 
         for event in self.clients[index].host.run(now) {
             match event {
-                ClientEvent::RequestAccess { .. } => self.authorize(index),
-                ClientEvent::AddedIceCandidates { candidates, .. } => {
+                DeviceEvent::RequestAccess { .. } => self.authorize(index),
+                DeviceEvent::AddedIceCandidates { candidates, .. } => {
                     for candidate in candidates {
                         self.gateway.state_mut(now).add_ice_candidate(
                             client_id(index),
@@ -740,7 +739,7 @@ impl Client {
         let mut key = [1; 32];
         key[..8].copy_from_slice(&(index as u64).to_be_bytes());
 
-        let mut host = Host::new(ClientState::new(key, BTreeSet::new(), false, now, unix_ts));
+        let mut host = Host::new(DeviceState::new(key, BTreeSet::new(), false, now, unix_ts));
         let state = host.state_mut(now);
         state.set_flow_logs_enabled(true);
         state.update_interface_config(Interface {
@@ -760,7 +759,7 @@ impl Client {
             .run(now)
             .into_iter()
             .find_map(|event| {
-                let ClientEvent::TunInterfaceUpdated(config) = event else {
+                let DeviceEvent::TunInterfaceUpdated(config) = event else {
                     return None;
                 };
 
@@ -787,12 +786,7 @@ impl Client {
 }
 
 /// Resolves the DNS resource through the Client's stub resolver and returns its proxy IP.
-fn resolve(
-    client: &mut Host<ClientState>,
-    tun: Ipv4Addr,
-    sentinel: IpAddr,
-    now: Instant,
-) -> IpAddr {
+fn resolve(client: &mut Host, tun: Ipv4Addr, sentinel: IpAddr, now: Instant) -> IpAddr {
     let query = Query::new(DNS_RESOURCE_DOMAIN.parse().unwrap(), RecordType::A).into_bytes();
     let query = ip_packet::make::udp_packet(tun, sentinel, 5353, 53, &query).unwrap();
 

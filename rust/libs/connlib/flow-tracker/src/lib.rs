@@ -71,17 +71,11 @@ pub trait Scope: Copy + Eq + Hash + Debug {
     fn from_flow(peer: DeviceId, resource: Option<ResourceId>) -> Option<Self>;
 }
 
-/// The Client scopes its flows by the peer they are tunneled through.
-impl Scope for DeviceId {
-    fn from_flow(peer: DeviceId, _: Option<ResourceId>) -> Option<Self> {
-        Some(peer)
-    }
-}
-
-/// The Gateway scopes its flows by the client and the resource it accesses.
-impl Scope for (DeviceId, ResourceId) {
+/// A device scopes its flows by the peer they are tunneled through and, for
+/// the resources it serves, by the resource the peer accesses through it.
+impl Scope for (DeviceId, Option<ResourceId>) {
     fn from_flow(peer: DeviceId, resource: Option<ResourceId>) -> Option<Self> {
-        Some((peer, resource?))
+        Some((peer, resource))
     }
 }
 

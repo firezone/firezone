@@ -13,7 +13,7 @@ use std::{
     ops::Range,
 };
 
-use crate::client::resource::{CidrResource, DnsResource, Resource};
+use crate::device::resource::{CidrResource, DnsResource, Resource};
 use crate::messages::{Filter, PortRange};
 
 pub fn resource(

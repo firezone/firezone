@@ -377,7 +377,7 @@ impl InboundResources {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::OutboundAuthorizations;
+    use crate::device::OutboundAuthorizations;
     use crate::messages::PortRange;
     use connlib_model::{DeviceId, ResourceId};
     use flow_tracker::IngestTokenRole::{Initiator, Responder};

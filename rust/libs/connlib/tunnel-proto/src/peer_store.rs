@@ -7,7 +7,7 @@ use std::time::Instant;
 use deadline_map::{DeadlineMap, PollTimeout};
 use fast_random_state::FastRandomState;
 
-use crate::client::GatewayOnClient;
+use crate::device::GatewayOnClient;
 use crate::peer_inbound::PeerInbound;
 
 pub(crate) struct PeerStore<TId, P>

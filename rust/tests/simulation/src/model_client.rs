@@ -13,7 +13,7 @@ use super::{
     tunnel_transition::{Destination, DnsQuery, DnsTransport},
 };
 use tunnel_proto::{
-    ClientState, MaliciousBehaviour, dns,
+    DeviceState, MaliciousBehaviour, dns,
     messages::{Filter, Interface, UpstreamDo53, UpstreamDoH, client::FailReason},
 };
 
@@ -161,7 +161,7 @@ impl ModelClient {
         }
     }
 
-    /// Initialize the [`ClientState`].
+    /// Initialize the [`DeviceState`].
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(
@@ -172,7 +172,7 @@ impl ModelClient {
         now: Instant,
         utc_now: Timestamp,
     ) -> RealClient {
-        let mut client_state = ClientState::new(
+        let mut client_state = DeviceState::new(
             self.key.0,
             Default::default(),
             self.internet_resource_active,

@@ -7,23 +7,25 @@ mod peer_batch;
 mod pending_authorizations;
 pub(crate) mod resource;
 mod routing;
+mod served;
 mod tracked_state;
 
-pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
+pub(crate) use crate::device::gateway_on_client::GatewayOnClient;
+pub use served::{ResolveDnsRequest, SiteDnsQuery};
 
 use crate::authorization_rejections::AuthorizationRejections;
 use peer_batch::{Decision, PeerBatch};
 use resource::{DevicePoolResource, InternetResource, Resource};
 
 use crate::batch::{BatchingKey, TunBatch};
-use crate::client::dns_cache::DnsCache;
-use crate::client::dns_config::DnsConfig;
-use crate::client::pending_authorizations::{
+use crate::conn_track::Originator;
+use crate::device::dns_cache::DnsCache;
+use crate::device::dns_config::DnsConfig;
+use crate::device::pending_authorizations::{
     AuthorizationRequest, DnsQueryForSite, PendingAuthorizations,
 };
-use crate::client::routing::{MatchedRoutes, RoutingTables};
-use crate::client::tracked_state::TrackedState;
-use crate::conn_track::Originator;
+use crate::device::routing::{MatchedRoutes, RoutingTables};
+use crate::device::tracked_state::TrackedState;
 use crate::dns::{
     DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, device_stub_resolver,
     resource_stub_resolver,
@@ -34,13 +36,13 @@ use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
 };
 use crate::p2p_control::dns_resource_nat::ProxyIps;
-use crate::peer_inbound::{self, InboundResult, PeerIdentity, PeerInbound};
+use crate::peer_inbound::{self, InboundResult, OutboundRewrite, PeerIdentity, PeerInbound};
 use crate::peer_store::{Peer, PeerStore};
 use crate::portal_connection::PortalConnection;
 use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{ClientEvent, FailedToDecapsulate, PeerKind, otel, packet_kind};
+use crate::{DeviceEvent, FailedToDecapsulate, PeerKind, otel, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
 use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{
@@ -114,25 +116,25 @@ enum UpstreamQuery {
     Tcp(dns_over_tcp::QueryToken),
 }
 
-/// A sans-IO implementation of a Client's functionality.
+/// A sans-IO implementation of a device's functionality.
 ///
 /// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
-/// Clients differ from gateways in that they also implement a DNS resolver for DNS resources.
-/// They also initiate connections to:
-/// - Gateways based on packets sent to Resources
-/// - Other clients based on packets to their TUN device IPs
+/// A device reaches resources and other devices itself, with a DNS resolver for DNS resources,
+/// and initiates connections for that to:
+/// - the peers that serve the resources it sends packets to,
+/// - other devices, based on packets to their tunnel addresses.
 ///
-/// Gateways only accept incoming connections.
-pub struct ClientState {
-    /// Manages wireguard tunnels to gateways and clients.
+/// It also accepts connections from peers it serves resources to, see [`served`].
+pub struct DeviceState {
+    /// Manages wireguard tunnels to our peers.
     node: Node<DeviceId, RelayId>,
-    /// All gateways we are connected to and the associated, connection-specific state.
+    /// The peers that serve resources to us.
     gateways: PeerStore<DeviceId, GatewayOnClient>,
-    /// All clients we are connected to and the associated, connection-specific state.
-    clients: PeerStore<DeviceId, PeerInbound>,
+    /// The peers that reach us, or that we reach, directly: through device pools, or to a resource we serve.
+    peers: PeerStore<DeviceId, PeerInbound>,
 
-    /// Tracks the flows tunneled through this Client.
-    flow_tracker: flow_tracker::Tracker<DeviceId>,
+    /// Tracks the flows tunneled through this device, by peer and, for the resources we serve, by resource.
+    flow_tracker: flow_tracker::Tracker<(DeviceId, Option<ResourceId>)>,
     authorization_rejections: AuthorizationRejections,
     /// Tracks the authorizations we have requested but not yet been granted.
     pending_authorizations: PendingAuthorizations,
@@ -191,7 +193,7 @@ pub struct ClientState {
     /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the token of the recursive DNS query we issued.
     dns_streams_by_upstream_query: HashMap<UpstreamQuery, (SocketAddr, SocketAddr, Instant)>,
 
-    buffered_events: VecDeque<ClientEvent>,
+    buffered_events: VecDeque<DeviceEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<snownet::Transmit>,
 
@@ -201,9 +203,14 @@ pub struct ClientState {
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
+
+    /// How many domains of DNS resources we translate at most for each new peer we serve.
+    max_dns_domains_per_client: usize,
+    /// When the serving sweep runs next, while we serve a peer.
+    next_serving_tick: Option<Instant>,
 }
 
-impl ClientState {
+impl DeviceState {
     pub fn new(
         seed: [u8; 32],
         records: BTreeSet<DnsResourceRecord>,
@@ -216,7 +223,7 @@ impl ClientState {
             routing_tables: RoutingTables::default(),
             resources_by_id: Default::default(),
             gateways: Default::default(),
-            clients: Default::default(),
+            peers: Default::default(),
             dns_config: Default::default(),
             buffered_events: Default::default(),
             tun_config: Default::default(),
@@ -244,6 +251,8 @@ impl ClientState {
             resource_list: Default::default(),
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
+            max_dns_domains_per_client: peer_inbound::DEFAULT_MAX_DNS_DOMAINS,
+            next_serving_tick: None,
         }
     }
 
@@ -286,7 +295,7 @@ impl ClientState {
 
     /// Returns the connected devices whose flows with us are authorised through the given pool, either way.
     fn connected_devices_in(&self, pool: ResourceId) -> Vec<ConnectedDeviceView> {
-        self.clients
+        self.peers
             .iter()
             .filter(|peer| self.node.is_connected(&peer.id()))
             .filter(|peer| {
@@ -379,7 +388,7 @@ impl ClientState {
 
     /// Abandons the pending authorizations and any connection to an offline device.
     pub fn set_device_offline(&mut self, cid: DeviceId, now: Instant) {
-        if let Some(peer) = self.clients.peer_by_id(&cid) {
+        if let Some(peer) = self.peers.peer_by_id(&cid) {
             let tun = peer.peer_tun();
 
             for _ in self
@@ -430,7 +439,7 @@ impl ClientState {
 
         self.flow_tracker.close_all(now);
 
-        self.clients.clear();
+        self.peers.clear();
         self.gateways.clear();
         self.node.close_all(p2p_control::goodbye(), now);
     }
@@ -547,9 +556,13 @@ impl ClientState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<TunBatch<'_, DeviceId>>> {
+    ) -> Result<Option<TunBatch<'_, (DeviceId, Option<ResourceId>)>>> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
+        }
+
+        if self.is_served_reply(&packet) {
+            return self.handle_served_tun_input(packet, now);
         }
 
         if packet.destination().is_multicast() {
@@ -595,7 +608,7 @@ impl ClientState {
             // classify. It belongs to the flow of the packet that failed, and that
             // flow decides where it goes.
             Err(e) => {
-                let Some(cid) = client_for_icmp_error(&self.clients, &packet) else {
+                let Some(cid) = client_for_icmp_error(&self.peers, &packet) else {
                     return Err(e.into());
                 };
 
@@ -617,7 +630,7 @@ impl ClientState {
             }
         };
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
-        let peer_originated_client_flow = self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
+        let peer_originated_client_flow = self.peers.peer_by_ip(dst).and_then(|(cid, peer)| {
             (peer.self_targets().outbound_flow_originator(&packet) == Some(Originator::Peer))
                 .then_some(cid)
         });
@@ -647,7 +660,7 @@ impl ClientState {
                 cid
             }
             (None, None, Ok(MatchedRoutes::DevicePools(pools))) => {
-                let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
+                let Some((cid, _)) = self.peers.peer_by_ip(dst) else {
                     self.pending_authorizations.on_not_authorized(
                         AuthorizationRequest::device(dst, pools.iter().copied()),
                         packet,
@@ -670,7 +683,7 @@ impl ClientState {
                 flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
                 flow_tracker::record_ingest_token(Some(token));
 
-                self.clients
+                self.peers
                     .peer_by_id_mut(&cid)
                     .with_context(|| UnroutablePacket::no_peer_state(&packet))?
                     .self_targets_mut()
@@ -745,10 +758,10 @@ impl ClientState {
     /// Handles UDP packets received on the network interface.
     ///
     /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::DecapsulateBatch`].
-    /// Add the further segments received on the same path to it, decrypt it and pass the result to [`ClientState::handle_peer_batch`].
+    /// Add the further segments received on the same path to it, decrypt it and pass the result to [`DeviceState::handle_peer_batch`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
-    /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    /// In case this function returns `None`, you should call [`DeviceState::handle_timeout`] next to fully advance the internal state.
     pub fn handle_network_input(
         &mut self,
         local: SocketAddr,
@@ -767,7 +780,7 @@ impl ClientState {
     /// `local` and `from` are the addresses the segments were received on and from. Packets of
     /// one flow reuse the routing decision of the flow's first packet in the batch.
     ///
-    /// In case an item is `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    /// In case an item is `None`, you should call [`DeviceState::handle_timeout`] next to fully advance the internal state.
     pub fn handle_peer_batch(
         &mut self,
         decrypted: snownet::DecryptedBatch,
@@ -792,34 +805,29 @@ impl ClientState {
         from: SocketAddr,
         now: Instant,
     ) -> Result<peer_batch::Outcome> {
-        let Some(kind) = self.peer_kind(&pid) else {
-            tracing::error!(%pid, "Couldn't find connection by ID");
+        let serves_us = self.gateways.peer_by_id(&pid).is_some();
+        let reaches_us = self.peers.peer_by_id(&pid).is_some();
+
+        if !serves_us && !reaches_us {
+            tracing::debug!(%pid, "No peer state for connection; closing connection");
+            self.node.close_connection(pid, p2p_control::goodbye(), now);
 
             return Ok(peer_batch::Outcome::Consumed);
-        };
+        }
 
-        let key = BatchingKey::of(&packet);
-        let flow = self.flow_tracker.begin_network_packet(local, from, now);
-
-        flow_tracker::record_decrypted_packet(&packet);
-
-        if kind == PeerKind::Gateway && self.udp_dns_client.accepts(&packet) {
+        if serves_us && self.udp_dns_client.accepts(&packet) {
             self.udp_dns_client.handle_inbound(packet);
             return Ok(peer_batch::Outcome::Consumed);
         }
 
-        if kind == PeerKind::Gateway && self.tcp_dns_client.accepts(&packet) {
+        if serves_us && self.tcp_dns_client.accepts(&packet) {
             self.tcp_dns_client.handle_inbound(packet);
             return Ok(peer_batch::Outcome::Consumed);
         }
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
-            // Control traffic is not a flow; release the tracker borrow for
-            // the `&mut self` calls below.
-            drop(flow);
-
-            match (fz_p2p_control.event_type(), kind) {
-                (p2p_control::DOMAIN_STATUS_EVENT, PeerKind::Gateway) => {
+            match fz_p2p_control.event_type() {
+                p2p_control::DOMAIN_STATUS_EVENT if serves_us => {
                     let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
                         .context("Failed to decode `DomainStatus`")?;
 
@@ -841,21 +849,25 @@ impl ClientState {
                         }
                     }
                 }
-                (p2p_control::NO_AUTHORIZATION_EVENT, kind) => {
+                p2p_control::ASSIGNED_IPS_EVENT if reaches_us => {
+                    self.handle_assigned_ips(fz_p2p_control, pid, now)?;
+                }
+                p2p_control::NO_AUTHORIZATION_EVENT => {
                     let event = p2p_control::no_authorization::decode(fz_p2p_control)
                         .context("Failed to decode `NoAuthorization`")?;
 
-                    if let Err(e) = self.handle_no_authorization(pid, kind, event, now) {
+                    if let Err(e) = self.handle_no_authorization(pid, event, now) {
                         tracing::debug!(%pid, dst = %event.dst, protocol = ?event.protocol, "Ignoring `NoAuthorization` event: {e:#}");
                     }
                 }
-                (p2p_control::GOODBYE_EVENT, _) => {
+                p2p_control::GOODBYE_EVENT => {
                     self.node.remove_connection(pid, "received `goodbye`", now);
+                    self.peers.remove(&pid);
                     self.cleanup_connected_peer(&pid, now);
 
                     return Ok(peer_batch::Outcome::Goodbye);
                 }
-                (code, _) => {
+                code => {
                     tracing::debug!(code = %code.into_u8(), %pid, "Unknown / unsupported control protocol");
                 }
             };
@@ -863,9 +875,36 @@ impl ClientState {
             return Ok(peer_batch::Outcome::Consumed);
         }
 
-        let packet = match kind {
-            PeerKind::Client => {
-                let Some(peer) = self.clients.peer_by_id_mut(&pid) else {
+        let to_this_device = match self.classify_peer_packet(pid, &packet) {
+            PeerPacket::ToServedResource => {
+                return self.handle_served_peer_message(pid, packet, local, from, now);
+            }
+            PeerPacket::ThisDevice(packet) => packet,
+        };
+
+        let key = BatchingKey::of(&packet);
+        let flow = self.flow_tracker.begin_network_packet(local, from, now);
+
+        flow_tracker::record_decrypted_packet(&packet);
+
+        let packet = match to_this_device {
+            ThisDevicePacket::FromResource => {
+                let Some(peer) = self.gateways.peer_by_id_mut(&pid) else {
+                    tracing::error!(%pid, "Couldn't find connection by ID");
+
+                    return Ok(peer_batch::Outcome::Consumed);
+                };
+
+                peer.ensure_allowed_src(&packet)?;
+
+                // To a gateway we are always the one who opened the flow;
+                // this packet is a reply.
+                flow_tracker::record_peer(pid, flow_tracker::Role::Initiator);
+
+                packet
+            }
+            ThisDevicePacket::ToUs => {
+                let Some(peer) = self.peers.peer_by_id_mut(&pid) else {
                     tracing::error!(%pid, "Couldn't find connection by ID");
 
                     return Ok(peer_batch::Outcome::Consumed);
@@ -905,29 +944,45 @@ impl ClientState {
                     }
                 }
             }
-            PeerKind::Gateway => {
-                let Some(peer) = self.gateways.peer_by_id_mut(&pid) else {
-                    tracing::error!(%pid, "Couldn't find connection by ID");
-
-                    return Ok(peer_batch::Outcome::Consumed);
-                };
-
-                peer.ensure_allowed_src(&packet)?;
-
-                // To a gateway we are always the one who opened the flow;
-                // this packet is a reply.
-                flow_tracker::record_peer(pid, flow_tracker::Role::Initiator);
-
-                packet
-            }
         };
 
         let decision = key.map(|key| Decision {
             key,
+            rewrite: OutboundRewrite::None,
             flow: flow.detach(),
         });
 
         Ok(peer_batch::Outcome::Deliver(packet, decision))
+    }
+
+    /// Decides what a packet `pid` sent us is, from the roles `pid` has towards us.
+    ///
+    /// A peer that serves us answers from the addresses of its resources. A
+    /// peer that reaches us sends from its own tunnel address, either to us or
+    /// to a resource we serve to it.
+    fn classify_peer_packet(&self, pid: DeviceId, packet: &IpPacket) -> PeerPacket {
+        let serves_us = self.gateways.peer_by_id(&pid).is_some();
+        let Some(peer) = self.peers.peer_by_id(&pid) else {
+            return PeerPacket::ThisDevice(ThisDevicePacket::FromResource);
+        };
+
+        if serves_us && !peer.peer_tun().is_ip(packet.source()) {
+            return PeerPacket::ThisDevice(ThisDevicePacket::FromResource);
+        }
+
+        let to_us = self
+            .tunnel_ip_config()
+            .is_some_and(|tun| tun.is_ip(packet.destination()));
+
+        match (to_us, peer.resources().is_empty()) {
+            (_, true) => PeerPacket::ThisDevice(ThisDevicePacket::ToUs),
+            (false, false) => PeerPacket::ToServedResource,
+            (true, false) if is_tun_dns_query(packet) => PeerPacket::ToServedResource,
+            // Only DNS reaches our tunnel address through a served resource, and the served
+            // half refuses the rest.
+            (true, false) if peer.self_targets().is_empty() => PeerPacket::ToServedResource,
+            (true, false) => PeerPacket::ThisDevice(ThisDevicePacket::ToUs),
+        }
     }
 
     pub fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
@@ -1232,7 +1287,7 @@ impl ClientState {
             (auth.resource_id, auth.filters, expires_at)
         });
 
-        let peer = self.clients.upsert(cid, || {
+        let peer = self.peers.upsert(cid, || {
             PeerInbound::new(
                 cid,
                 client_key.into(),
@@ -1302,7 +1357,7 @@ impl ClientState {
         resource_id: ResourceId,
         filters: Vec<Filter>,
     ) {
-        for peer in self.clients.iter_mut() {
+        for peer in self.peers.iter_mut() {
             peer.self_targets_mut()
                 .update_resource(resource_id, filters.clone());
         }
@@ -1312,7 +1367,7 @@ impl ClientState {
     pub fn handle_reject_client_device_access(&mut self, cid: DeviceId, resource_id: ResourceId) {
         self.outbound_authorizations.remove_client(resource_id, cid);
 
-        let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
+        let Some(peer) = self.peers.peer_by_id_mut(&cid) else {
             return;
         };
         peer.self_targets_mut().remove_resource(&resource_id);
@@ -1331,13 +1386,11 @@ impl ClientState {
     /// Resyncs inbound client-to-client authorizations from the portal's `init`.
     pub fn retain_authorizations(
         &mut self,
-        authorizations: BTreeMap<DeviceId, BTreeSet<ResourceId>>,
+        mut authorizations: BTreeMap<DeviceId, BTreeSet<ResourceId>>,
     ) {
-        let no_authorizations = BTreeSet::new();
-
-        for peer in self.clients.iter_mut() {
-            let retain = authorizations.get(&peer.id()).unwrap_or(&no_authorizations);
-            peer.self_targets_mut().retain_authorizations(retain);
+        for peer in self.peers.iter_mut() {
+            let retain = authorizations.remove(&peer.id()).unwrap_or_default();
+            peer.retain_authorizations(retain);
         }
     }
 
@@ -1349,13 +1402,12 @@ impl ClientState {
         expires_at: Duration,
         now: Instant,
     ) {
-        let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
+        let Some(peer) = self.peers.peer_by_id_mut(&cid) else {
             return;
         };
 
         let new_expiry = self.unix_ts_clock.instant_at(expires_at, now);
-        peer.self_targets_mut()
-            .update_resource_expiry(resource_id, new_expiry, now);
+        peer.update_expiry(resource_id, new_expiry, now);
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -1419,7 +1471,6 @@ impl ClientState {
     fn handle_no_authorization(
         &mut self,
         pid: DeviceId,
-        kind: PeerKind,
         event: p2p_control::no_authorization::NoAuthorization,
         now: Instant,
     ) -> Result<()> {
@@ -1429,6 +1480,7 @@ impl ClientState {
             "Malicious client is configured to ignore the event"
         );
 
+        let kind = self.peer_kind(&pid).context("Unknown peer")?;
         let internet_resource = self.active_internet_resource().map(|r| r.id);
         let routes = self
             .routing_tables
@@ -1439,7 +1491,7 @@ impl ClientState {
         let request = match (kind, routes) {
             (PeerKind::Client, MatchedRoutes::DevicePools(pools)) => {
                 let peer = self
-                    .clients
+                    .peers
                     .peer_by_id(&pid)
                     .context("Client peer no longer exists")?;
                 anyhow::ensure!(
@@ -1614,20 +1666,27 @@ impl ClientState {
             self.update_site_status_by_gateway(id, ResourceStatus::Unknown, now);
         }
 
-        if self.clients.remove(id).is_some() {
-            self.resource_list.update(self.resources());
+        // A peer we serve keeps its authorizations: it may connect again, and it
+        // considers them valid until the portal says otherwise.
+        let Some(peer) = self.peers.peer_by_id(id) else {
+            return;
+        };
+
+        if !peer.resources().is_empty() {
+            return;
         }
+
+        self.peers.remove(id);
+        self.resource_list.update(self.resources());
     }
 
+    /// What `id` is to us, for the protocols that name peers by kind.
+    ///
+    /// Those protocols never make a peer both, so a peer that serves us is a Gateway.
     fn peer_kind(&self, id: &DeviceId) -> Option<PeerKind> {
-        match (self.gateways.peer_by_id(id), self.clients.peer_by_id(id)) {
-            (Some(_), None) => Some(PeerKind::Gateway),
+        match (self.gateways.peer_by_id(id), self.peers.peer_by_id(id)) {
+            (Some(_), _) => Some(PeerKind::Gateway),
             (None, Some(_)) => Some(PeerKind::Client),
-            (Some(_), Some(_)) => {
-                debug_assert!(false, "Peer {id} is both a Gateway and a Client");
-
-                Some(PeerKind::Gateway)
-            }
             (None, None) => None,
         }
     }
@@ -1746,7 +1805,7 @@ impl ClientState {
             .chain(self.tcp_dns_server.poll_timeout())
             .chain(self.device_stub_resolver.poll_timeout())
             .chain(
-                self.clients
+                self.peers
                     .iter_mut()
                     .filter_map(|peer| peer.poll_timeout())
                     .min(),
@@ -1761,6 +1820,7 @@ impl ClientState {
                     .min(),
             )
             .chain(self.node.poll_timeout())
+            .chain(self.next_serving_tick)
             .min()
     }
 
@@ -1771,7 +1831,7 @@ impl ClientState {
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
 
-        for peer in self.clients.iter_mut() {
+        for peer in self.peers.iter_mut() {
             peer.handle_timeout(now);
         }
 
@@ -1783,6 +1843,7 @@ impl ClientState {
         self.send_dns_resource_nat_packets(now);
         self.reset_offline_site_status(now);
         self.discard_stale_dns_streams(now);
+        self.handle_serving_timeout(now);
     }
 
     /// Advance the DNS server and client state machines.
@@ -2285,12 +2346,12 @@ impl ClientState {
                         self.update_site_status_by_gateway(&id, ResourceStatus::Online, now);
                     }
 
-                    if self.clients.peer_by_id(&id).is_some() {
+                    if self.peers.peer_by_id(&id).is_some() {
                         self.resource_list.update(self.resources());
                     }
                 }
                 snownet::Event::NoRelays { blocked } => {
-                    self.buffered_events.push_back(ClientEvent::NoRelays {
+                    self.buffered_events.push_back(DeviceEvent::NoRelays {
                         excluded_relay_ids: blocked,
                     });
                 }
@@ -2304,7 +2365,7 @@ impl ClientState {
             };
 
             self.buffered_events
-                .push_back(ClientEvent::AddedIceCandidates {
+                .push_back(DeviceEvent::AddedIceCandidates {
                     conn_id,
                     kind,
                     candidates,
@@ -2318,7 +2379,7 @@ impl ClientState {
             };
 
             self.buffered_events
-                .push_back(ClientEvent::RemovedIceCandidates {
+                .push_back(DeviceEvent::RemovedIceCandidates {
                     conn_id,
                     kind,
                     candidates,
@@ -2352,7 +2413,7 @@ impl ClientState {
             self.resource_stub_resolver.poll_event()
         {
             self.buffered_events
-                .push_back(ClientEvent::DnsRecordsChanged { records });
+                .push_back(DeviceEvent::DnsRecordsChanged { records });
         }
     }
 
@@ -2361,11 +2422,11 @@ impl ClientState {
             match event {
                 device_stub_resolver::Event::QueryDomain { domain } => {
                     self.buffered_events
-                        .push_back(ClientEvent::DeviceDomainQueried { domain });
+                        .push_back(DeviceEvent::DeviceDomainQueried { domain });
                 }
                 device_stub_resolver::Event::BrowseDomain { domain } => {
                     self.buffered_events
-                        .push_back(ClientEvent::DeviceDomainBrowsed { domain });
+                        .push_back(DeviceEvent::DeviceDomainBrowsed { domain });
                 }
                 device_stub_resolver::Event::SendResponse {
                     local,
@@ -2399,22 +2460,22 @@ impl ClientState {
         self.resource_list.update(self.resources());
     }
 
-    pub fn poll_event(&mut self) -> Option<ClientEvent> {
+    pub fn poll_event(&mut self) -> Option<DeviceEvent> {
         if let Some(config) = self.tun_config.take_pending_update() {
             tracing::info!(?config, "Updating TUN device");
 
-            return Some(ClientEvent::TunInterfaceUpdated(config));
+            return Some(DeviceEvent::TunInterfaceUpdated(config));
         }
 
         if let Some(resources) = self.resource_list.take_pending_update() {
             tracing::debug!(count = %resources.len(), "Updating resource list");
 
-            return Some(ClientEvent::ResourcesChanged { resources });
+            return Some(DeviceEvent::ResourcesChanged { resources });
         }
 
         if let Some(request) = self.pending_authorizations.poll_authorization_requests() {
             return Some(match request {
-                AuthorizationRequest::Resources(resources) => ClientEvent::RequestAccess {
+                AuthorizationRequest::Resources(resources) => DeviceEvent::RequestAccess {
                     preferred_gateways: resources
                         .iter()
                         .flat_map(|resource| self.preferred_gateways(*resource))
@@ -2423,7 +2484,7 @@ impl ClientState {
                     resource_ids: resources,
                     ip: None,
                 },
-                AuthorizationRequest::Device { addr, pools } => ClientEvent::RequestAccess {
+                AuthorizationRequest::Device { addr, pools } => DeviceEvent::RequestAccess {
                     resource_ids: pools,
                     ip: Some(addr),
                     preferred_gateways: Vec::new(),
@@ -2459,7 +2520,7 @@ impl ClientState {
             };
 
             self.buffered_events
-                .push_back(ClientEvent::AddedIceCandidates {
+                .push_back(DeviceEvent::AddedIceCandidates {
                     conn_id,
                     kind,
                     candidates,
@@ -2477,7 +2538,7 @@ impl ClientState {
             };
 
             self.buffered_events
-                .push_back(ClientEvent::RemovedIceCandidates {
+                .push_back(DeviceEvent::RemovedIceCandidates {
                     conn_id,
                     kind,
                     candidates,
@@ -2695,7 +2756,7 @@ impl ClientState {
                 .remove_device_authorizations_for_pool(id);
         }
 
-        for peer in self.clients.iter_mut() {
+        for peer in self.peers.iter_mut() {
             peer.self_targets_mut().remove_resource(&id);
         }
 
@@ -2838,6 +2899,32 @@ impl OutboundAuthorizations {
         for clients in self.device_pools.values_mut() {
             clients.remove(&device);
         }
+    }
+}
+
+/// What a packet a peer sent us is.
+enum PeerPacket {
+    /// A packet for this device itself.
+    ThisDevice(ThisDevicePacket),
+    /// A packet to a resource we serve to the peer, or to the DNS server we run for it.
+    ToServedResource,
+}
+
+/// A packet a peer sent to this device itself.
+enum ThisDevicePacket {
+    /// A reply from a resource the peer serves to us.
+    FromResource,
+    /// A packet to our tunnel address: through a device pool, or a reply to a flow we opened.
+    ToUs,
+}
+
+/// Whether the packet queries the DNS server a serving device runs on its tunnel addresses.
+fn is_tun_dns_query(packet: &IpPacket) -> bool {
+    match packet.destination_protocol() {
+        Ok(Protocol::Udp(port)) => port == crate::TUN_DNS_PORT,
+        Ok(Protocol::Tcp(port)) => port == crate::TUN_DNS_PORT,
+        Ok(Protocol::IcmpEcho(_)) => false,
+        Err(_) => false,
     }
 }
 
@@ -3058,7 +3145,7 @@ mod tests {
 
     #[test]
     fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv4() {
-        let mut state = ClientState::for_test();
+        let mut state = DeviceState::for_test();
         let tun_ipv4 = Ipv4Addr::new(100, 82, 80, 16);
         state.update_interface_config(interface(tun_ipv4, Ipv6Addr::LOCALHOST));
 
@@ -3076,7 +3163,7 @@ mod tests {
 
     #[test]
     fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv6() {
-        let mut state = ClientState::for_test();
+        let mut state = DeviceState::for_test();
         let tun_ipv6 = Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1);
         state.update_interface_config(interface(Ipv4Addr::LOCALHOST, tun_ipv6));
 
@@ -3094,7 +3181,7 @@ mod tests {
 
     #[test]
     fn packet_to_a_tunnel_address_asks_for_device_access_through_permitting_pools() {
-        let mut state = ClientState::for_test();
+        let mut state = DeviceState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
         state.upsert_resource(device_pool(1, vec![]), now);
@@ -3110,7 +3197,7 @@ mod tests {
         state.handle_out_of_band_ip_packet(packet, now).unwrap();
 
         let request = iter::from_fn(|| state.poll_event()).find_map(|event| {
-            if let ClientEvent::RequestAccess {
+            if let DeviceEvent::RequestAccess {
                 ip: Some(ip),
                 resource_ids,
                 ..
@@ -3131,7 +3218,7 @@ mod tests {
 
     #[test]
     fn packet_to_a_tunnel_address_no_pool_permits_is_prohibited_locally() {
-        let mut state = ClientState::for_test();
+        let mut state = DeviceState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
         state.upsert_resource(device_pool(2, vec![Filter::Icmp]), now);
@@ -3151,7 +3238,7 @@ mod tests {
 
     #[test]
     fn denied_device_flow_is_answered_and_asked_again_on_the_next_packet() {
-        let mut state = ClientState::for_test();
+        let mut state = DeviceState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
         state.upsert_resource(device_pool(1, vec![]), now);
@@ -3183,7 +3270,7 @@ mod tests {
         assert!(
             state.poll_event().is_some_and(|event| matches!(
                 event,
-                ClientEvent::RequestAccess { ip: Some(_), .. }
+                DeviceEvent::RequestAccess { ip: Some(_), .. }
             )),
             "expected a new device access request"
         );
@@ -3191,7 +3278,7 @@ mod tests {
 
     #[test]
     fn prefers_already_connected_gateways() {
-        let mut state = ClientState::for_test();
+        let mut state = DeviceState::for_test();
         state.gateways_by_site.insert(
             SiteId::from_u128(1),
             HashSet::from([DeviceId::from_u128(10), DeviceId::from_u128(20)]),
@@ -3217,7 +3304,7 @@ mod tests {
 
     #[test]
     fn remembers_preference_for_authorized_resource_after_reset() {
-        let mut state = ClientState::for_test();
+        let mut state = DeviceState::for_test();
         state.gateways_by_site.insert(
             SiteId::from_u128(1),
             HashSet::from([DeviceId::from_u128(10), DeviceId::from_u128(20)]),
@@ -3250,7 +3337,7 @@ mod tests {
     #[test]
     fn offline_site_status_resets_after_5_minutes() {
         let now = Instant::now();
-        let mut state = ClientState::for_test();
+        let mut state = DeviceState::for_test();
         let site = SiteId::from_u128(1);
 
         state
@@ -3269,14 +3356,14 @@ mod tests {
         );
         assert!(matches!(
             state.poll_event().unwrap(),
-            ClientEvent::ResourcesChanged { .. }
+            DeviceEvent::ResourcesChanged { .. }
         ));
     }
 
     #[test]
     fn no_resource_list_update_if_site_status_does_not_change() {
         let mut now = Instant::now();
-        let mut state = ClientState::for_test();
+        let mut state = DeviceState::for_test();
         let site = SiteId::from_u128(1);
 
         let offline_at = now;
@@ -3296,9 +3383,9 @@ mod tests {
         assert!(state.poll_event().is_none());
     }
 
-    impl ClientState {
-        pub fn for_test() -> ClientState {
-            ClientState::new(
+    impl DeviceState {
+        pub fn for_test() -> DeviceState {
+            DeviceState::new(
                 rand::random(),
                 Default::default(),
                 false,
@@ -3346,10 +3433,10 @@ mod tests {
         })
     }
 
-    fn assert_no_device_connection_intent(state: &mut ClientState) {
+    fn assert_no_device_connection_intent(state: &mut DeviceState) {
         while let Some(event) = state.poll_event() {
             assert!(
-                !matches!(event, ClientEvent::RequestAccess { ip: Some(_), .. }),
+                !matches!(event, DeviceEvent::RequestAccess { ip: Some(_), .. }),
                 "unexpected device access request"
             );
         }
@@ -3372,7 +3459,7 @@ mod proptests {
         #[strategy(cidr_resource())] resource1: CidrResource,
         #[strategy(cidr_resource())] resource2: CidrResource,
     ) {
-        let mut client_state = ClientState::for_test();
+        let mut client_state = DeviceState::for_test();
 
         client_state.upsert_resource(Resource::Cidr(resource1.clone()), Instant::now());
         client_state.upsert_resource(Resource::Cidr(resource2.clone()), Instant::now());
@@ -3389,7 +3476,7 @@ mod proptests {
         #[strategy(dns_resource())] resource2: DnsResource,
         #[strategy(cidr_resource())] resource3: CidrResource,
     ) {
-        let mut client_state = ClientState::for_test();
+        let mut client_state = DeviceState::for_test();
 
         client_state.upsert_resource(Resource::Cidr(resource1.clone()), Instant::now());
         client_state.upsert_resource(Resource::Dns(resource2.clone()), Instant::now());
@@ -3419,7 +3506,7 @@ mod proptests {
         #[strategy(cidr_resource())] resource: CidrResource,
         #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
-        let mut client_state = ClientState::for_test();
+        let mut client_state = DeviceState::for_test();
         client_state.upsert_resource(Resource::Cidr(resource.clone()), Instant::now());
 
         let updated_resource = CidrResource {
@@ -3446,7 +3533,7 @@ mod proptests {
         #[strategy(dns_resource())] dns_resource: DnsResource,
         #[strategy(cidr_resource())] cidr_resource: CidrResource,
     ) {
-        let mut client_state = ClientState::for_test();
+        let mut client_state = DeviceState::for_test();
         client_state.upsert_resource(Resource::Dns(dns_resource.clone()), Instant::now());
         client_state.upsert_resource(Resource::Cidr(cidr_resource.clone()), Instant::now());
 
@@ -3476,7 +3563,7 @@ mod proptests {
         #[strategy(cidr_resource())] cidr_resource1: CidrResource,
         #[strategy(cidr_resource())] cidr_resource2: CidrResource,
     ) {
-        let mut client_state = ClientState::for_test();
+        let mut client_state = DeviceState::for_test();
         client_state.upsert_resource(Resource::Dns(dns_resource1), Instant::now());
         client_state.upsert_resource(Resource::Cidr(cidr_resource1), Instant::now());
 
@@ -3507,7 +3594,7 @@ mod proptests {
         #[strategy(resources_sharing_n_sites(1))] resources_unknown: Vec<Resource>,
         #[strategy(gateway_id())] gateway: DeviceId,
     ) {
-        let mut client_state = ClientState::for_test();
+        let mut client_state = DeviceState::for_test();
 
         for r in resources_online.iter().chain(resources_unknown.iter()) {
             client_state.upsert_resource(r.clone(), Instant::now())
@@ -3550,7 +3637,7 @@ mod proptests {
         #[strategy(resources_sharing_n_sites(1))] resources: Vec<Resource>,
         #[strategy(gateway_id())] gateway: DeviceId,
     ) {
-        let mut client_state = ClientState::for_test();
+        let mut client_state = DeviceState::for_test();
         for r in &resources {
             client_state.upsert_resource(r.clone(), Instant::now());
         }
@@ -3589,7 +3676,7 @@ mod proptests {
         #[strategy(resources_sharing_n_sites(2))] multi_site_resources: Vec<Resource>,
         #[strategy(resource())] single_site_resource: Resource,
     ) {
-        let mut client_state = ClientState::for_test();
+        let mut client_state = DeviceState::for_test();
         client_state.upsert_resource(single_site_resource.clone(), Instant::now());
         for r in &multi_site_resources {
             client_state.upsert_resource(r.clone(), Instant::now());

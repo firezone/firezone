@@ -1,7 +1,7 @@
 //! Sans-IO core of connlib's tunnel implementation.
 //!
-//! This crate contains the pure, side-effect-free state machines for the Client
-//! ([`ClientState`]) and the Gateway ([`GatewayState`]) as well as all supporting logic.
+//! This crate contains the pure, side-effect-free state machine of a device
+//! ([`DeviceState`]) as well as all supporting logic.
 //! The IO / runtime shell lives in the `tunnel` crate which depends on and re-exports this crate.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
@@ -20,12 +20,11 @@ use std::{
 mod authorization_rejections;
 mod batch;
 mod cache;
-mod client;
 mod conn_track;
+mod device;
 pub mod dns;
 mod expiring_map;
 mod filter_engine;
-mod gateway;
 #[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
 pub mod messages;
@@ -52,10 +51,12 @@ pub const IPV6_TUNNEL: Ipv6Network =
         Err(_) => unreachable!(),
     };
 
-pub use client::dns_config::DnsMapping;
-pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
+pub use device::dns_config::DnsMapping;
+pub use device::{
+    DNS_SENTINELS_V4, DNS_SENTINELS_V6, DeviceState, IPV4_RESOURCES, IPV6_RESOURCES,
+    ResolveDnsRequest, SiteDnsQuery,
+};
 pub use dns::DnsResourceRecord;
-pub use gateway::{GatewayState, ResolveDnsRequest, SiteDnsQuery};
 #[cfg(feature = "malicious-behaviour")]
 pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};
 pub use unroutable_packet::UnroutablePacket;
@@ -64,17 +65,20 @@ pub use unroutable_packet::UnroutablePacket;
 // their consumers into `connlib-model` so this crate can expose only the
 // state-machine API.
 
-/// What a peer is to the Client, for the protocol that names peers by kind.
+/// The port of the DNS server a device runs on its tunnel addresses for the peers it serves.
+pub const TUN_DNS_PORT: u16 = 53535;
+
+/// What a peer is to us, for the protocols that name peers by kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PeerKind {
     /// The peer serves resources to us.
     Gateway,
-    /// We reach the peer, or the peer reaches us, through a device pool.
+    /// We serve resources to the peer, or one of us reaches the other through a device pool.
     Client,
 }
 
 #[derive(Debug)]
-pub enum ClientEvent {
+pub enum DeviceEvent {
     AddedIceCandidates {
         conn_id: DeviceId,
         kind: PeerKind,
@@ -112,6 +116,8 @@ pub enum ClientEvent {
     NoRelays {
         excluded_relay_ids: Vec<RelayId>,
     },
+    /// A peer reaches a DNS resource we serve; resolve its domain for the NAT.
+    ResolveDns(ResolveDnsRequest),
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
@@ -143,23 +149,6 @@ impl IpConfig {
             IpAddr::V6(v6) => v6 == self.v6,
         }
     }
-}
-
-#[derive(Debug)]
-pub enum GatewayEvent {
-    AddedIceCandidates {
-        conn_id: DeviceId,
-        candidates: BTreeSet<IceCandidate>,
-    },
-    RemovedIceCandidates {
-        conn_id: DeviceId,
-        candidates: BTreeSet<IceCandidate>,
-    },
-    ResolveDns(ResolveDnsRequest),
-    /// We ran out of relays and need a new set from the portal, without the excluded ones.
-    NoRelays {
-        excluded_relay_ids: Vec<RelayId>,
-    },
 }
 
 #[derive(Debug, thiserror::Error)]

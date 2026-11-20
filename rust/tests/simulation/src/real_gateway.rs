@@ -19,12 +19,12 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
-use tunnel_proto::{GatewayEvent, GatewayState};
+use tunnel_proto::{DeviceEvent, DeviceState};
 
 /// Simulation state for a particular client.
 pub(crate) struct RealGateway {
     id: DeviceId,
-    pub(crate) tunnel: RealTunnel<GatewayState>,
+    pub(crate) tunnel: RealTunnel,
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
 
@@ -56,7 +56,7 @@ pub(crate) struct DnsResolution {
 impl RealGateway {
     pub(crate) fn new(
         id: DeviceId,
-        mut state: GatewayState,
+        mut state: DeviceState,
         network: SiteNetwork,
         site_specific_dns_records: DnsRecords,
         max_dns_domains_per_client: Option<usize>,
@@ -88,8 +88,10 @@ impl RealGateway {
             .tunnel_ip_config()
             .expect("Gateway to have a tunnel IP configuration");
 
-        let mut state = GatewayState::new(
+        let mut state = DeviceState::new(
             key.0,
+            BTreeSet::new(),
+            false,
             now,
             Duration::try_from(utc_now.as_duration()).unwrap(),
         );
@@ -110,11 +112,11 @@ impl RealGateway {
         }
     }
 
-    pub(crate) fn state(&self) -> &GatewayState {
+    pub(crate) fn state(&self) -> &DeviceState {
         self.tunnel.inner().state()
     }
 
-    pub(crate) fn state_mut(&mut self) -> &mut GatewayState {
+    pub(crate) fn state_mut(&mut self) -> &mut DeviceState {
         self.tunnel.inner_mut().state_mut()
     }
 
@@ -464,7 +466,7 @@ impl Host<RealGateway> {
         global_dns_records: &DnsRecords,
         transmits: &mut BufferedTransmits,
         now: Instant,
-    ) -> (Option<GatewayEvent>, bool) {
+    ) -> (Option<DeviceEvent>, bool) {
         let arrived = std::iter::from_fn(|| self.poll_inbox(now)).collect::<Vec<_>>();
         let turn = self.exec_mut(|g| {
             g.tunnel.receive(arrived);

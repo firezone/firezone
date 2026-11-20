@@ -13,7 +13,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
     time::{Duration, Instant},
 };
-use tunnel_proto::{GatewayState, IpConfig};
+use tunnel_proto::{DeviceState, IpConfig};
 
 /// Model of a particular gateway.
 #[derive(Debug, Clone)]
@@ -52,7 +52,7 @@ impl ModelGateway {
         }
     }
 
-    /// Initialize the [`GatewayState`].
+    /// Initialize the [`DeviceState`].
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(
@@ -62,8 +62,10 @@ impl ModelGateway {
         now: Instant,
         utc_now: Timestamp,
     ) -> RealGateway {
-        let mut state = GatewayState::new(
+        let mut state = DeviceState::new(
             self.key.0,
+            BTreeSet::new(),
+            false,
             now,
             Duration::try_from(utc_now.as_duration()).unwrap(),
         ); // Cheating a bit here by reusing the key as seed.

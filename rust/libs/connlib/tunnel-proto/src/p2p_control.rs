@@ -19,7 +19,7 @@ pub const NO_AUTHORIZATION_EVENT: FzP2pEventType = FzP2pEventType::new(3);
 
 pub mod dns_resource_nat {
     use super::*;
-    use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+    use crate::device::{IPV4_RESOURCES, IPV6_RESOURCES};
     use anyhow::{Context as _, Result};
     use connlib_model::{IpStack, ResourceId};
     use dns_types::DomainName;

@@ -1,4 +1,4 @@
-//! A [`ClientTunnel`](tunnel::ClientTunnel) / [`GatewayTunnel`](tunnel::GatewayTunnel) event loop
+//! A [`Tunnel`](tunnel::Tunnel) event loop
 //! that Callgrind can count the instructions of: a [`Host`](crate::fixture::Host), of which only
 //! [`Host::run`](crate::fixture::Host::run) is counted.
 

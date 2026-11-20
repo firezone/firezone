@@ -10,7 +10,7 @@ use fast_random_state::FastRandomState;
 use ip_network::IpNetwork;
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::device::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::expiring_map;
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
@@ -667,11 +667,11 @@ impl ResourceTargets {
 
         if self.gateway_tun.is_ip(packet.destination()) {
             match packet.destination_protocol() {
-                Ok(Protocol::Tcp(crate::gateway::TUN_DNS_PORT)) => return Ok(()),
-                Ok(Protocol::Udp(crate::gateway::TUN_DNS_PORT)) => return Ok(()),
+                Ok(Protocol::Tcp(crate::TUN_DNS_PORT)) => return Ok(()),
+                Ok(Protocol::Udp(crate::TUN_DNS_PORT)) => return Ok(()),
                 _ => bail!(
                     "Only DNS on port {} is allowed to the gateway TUN IP",
-                    crate::gateway::TUN_DNS_PORT
+                    crate::TUN_DNS_PORT
                 ),
             }
         }
@@ -1110,19 +1110,13 @@ mod tests {
                     client,
                     gateway,
                     5401,
-                    crate::gateway::TUN_DNS_PORT,
+                    crate::TUN_DNS_PORT,
                     TcpFlags::default(),
                     &[],
                 )
                 .unwrap(),
-                ip_packet::make::udp_packet(
-                    client,
-                    gateway,
-                    5401,
-                    crate::gateway::TUN_DNS_PORT,
-                    &[],
-                )
-                .unwrap(),
+                ip_packet::make::udp_packet(client, gateway, 5401, crate::TUN_DNS_PORT, &[])
+                    .unwrap(),
             ] {
                 assert!(matches!(
                     peer.translate_outbound(request, Instant::now()).unwrap(),
@@ -1145,7 +1139,7 @@ mod tests {
             let mut response = ip_packet::make::tcp_packet(
                 gateway,
                 client,
-                crate::gateway::TUN_DNS_PORT,
+                crate::TUN_DNS_PORT,
                 5401,
                 TcpFlags::default(),
                 &[],

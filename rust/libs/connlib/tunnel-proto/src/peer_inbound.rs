@@ -120,6 +120,23 @@ impl PeerInbound {
         self.resources.handle_timeout(now);
     }
 
+    /// Updates when the authorization for `resource_id` expires, whichever kind of target it is for.
+    pub(crate) fn update_expiry(
+        &mut self,
+        resource_id: ResourceId,
+        expires_at: Instant,
+        now: Instant,
+    ) {
+        if self.resources.is_allowed(resource_id) {
+            self.resources
+                .update_resource_expiry(resource_id, expires_at, now);
+            return;
+        }
+
+        self.self_targets
+            .update_resource_expiry(resource_id, expires_at, now);
+    }
+
     /// Drops every authorization that is not in `retain`, whichever kind of target it is for.
     pub(crate) fn retain_authorizations(&mut self, retain: BTreeSet<ResourceId>) {
         self.self_targets.retain_authorizations(&retain);

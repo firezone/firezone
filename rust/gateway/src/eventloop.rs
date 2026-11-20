@@ -25,7 +25,7 @@ use tunnel::messages::gateway::{
 };
 use tunnel::messages::{self, RelaysPresence, SnownetCapabilities};
 use tunnel::{
-    GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
+    DeviceEvent, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, Tunnel, TunnelError,
 };
 
 use crate::{RELEASE, account_slug};
@@ -38,7 +38,7 @@ const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct Eventloop {
     clock: Clock,
     // Tunnel is `Option` because we need to take ownership on shutdown.
-    tunnel: Option<GatewayTunnel>,
+    tunnel: Option<Tunnel>,
     tun_device_manager: TunDeviceManager,
     resolver: TokioResolver,
 
@@ -82,7 +82,7 @@ enum PortalEvent {
 impl Eventloop {
     pub(crate) fn new(
         clock: Clock,
-        tunnel: GatewayTunnel,
+        tunnel: Tunnel,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         flow_logs_dir: std::path::PathBuf,
@@ -129,7 +129,7 @@ impl Eventloop {
 
 enum CombinedEvent {
     SigIntTerm,
-    Tunnel(Result<GatewayEvent, TunnelError>),
+    Tunnel(Result<DeviceEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
     Clock(clock::Event),
@@ -272,13 +272,11 @@ impl Eventloop {
         Ok(())
     }
 
-    async fn handle_tunnel_event(
-        &mut self,
-        event: Result<GatewayEvent, TunnelError>,
-    ) -> Result<()> {
+    async fn handle_tunnel_event(&mut self, event: Result<DeviceEvent, TunnelError>) -> Result<()> {
         match event {
-            Ok(GatewayEvent::AddedIceCandidates {
+            Ok(DeviceEvent::AddedIceCandidates {
                 conn_id: client,
+                kind: _,
                 candidates,
             }) => {
                 self.portal_cmd_tx
@@ -290,8 +288,9 @@ impl Eventloop {
                     )))
                     .await?;
             }
-            Ok(GatewayEvent::RemovedIceCandidates {
+            Ok(DeviceEvent::RemovedIceCandidates {
                 conn_id: client,
+                kind: _,
                 candidates,
             }) => {
                 self.portal_cmd_tx
@@ -303,7 +302,7 @@ impl Eventloop {
                     ))
                     .await?;
             }
-            Ok(GatewayEvent::ResolveDns(setup_nat)) => {
+            Ok(DeviceEvent::ResolveDns(setup_nat)) => {
                 if self
                     .resolve_tasks
                     .try_push(self.resolve(setup_nat.domain().clone()), setup_nat)
@@ -312,7 +311,7 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
-            Ok(GatewayEvent::NoRelays { excluded_relay_ids }) => {
+            Ok(DeviceEvent::NoRelays { excluded_relay_ids }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::NoRelays {
                         excluded_relay_ids,
@@ -320,6 +319,15 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
+            // A Gateway reaches no resources itself and configures its TUN device on its own.
+            Ok(
+                DeviceEvent::RequestAccess { .. }
+                | DeviceEvent::DeviceDomainQueried { .. }
+                | DeviceEvent::DeviceDomainBrowsed { .. }
+                | DeviceEvent::ResourcesChanged { .. }
+                | DeviceEvent::DnsRecordsChanged { .. }
+                | DeviceEvent::TunInterfaceUpdated(_),
+            ) => {}
             Err(error) => self.handle_tunnel_error(error)?,
         }
 
@@ -440,7 +448,7 @@ impl Eventloop {
             }) => {
                 tunnel
                     .state_mut()
-                    .handle_public_key_changed(client_id, public_key, now);
+                    .handle_public_key_changed(client_id, public_key.into(), now);
             }
             IngressMessages::RelaysPresence(RelaysPresence {
                 disconnected_ids,
@@ -510,12 +518,9 @@ impl Eventloop {
                     expires_at,
                 } in authorizations
                 {
-                    if let Err(e) = tunnel
+                    tunnel
                         .state_mut()
-                        .update_access_authorization_expiry(cid, rid, expires_at, now)
-                    {
-                        tracing::debug!(%cid, %rid, "Failed to update access authorization: {e:#}");
-                    }
+                        .update_access_authorization_expiry(cid, rid, expires_at, now);
                 }
 
                 let tun_ip_stack = self
@@ -566,7 +571,9 @@ impl Eventloop {
                 }
             }
             IngressMessages::ResourceUpdated(resource_description) => {
-                tunnel.state_mut().update_resource(resource_description);
+                tunnel
+                    .state_mut()
+                    .update_served_resource(resource_description);
             }
             // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
             IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}

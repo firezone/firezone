@@ -28,9 +28,7 @@ use tunnel::messages::client::{
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
 use tunnel::unroutable_packet::RoutingError;
-use tunnel::{
-    ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, PeerKind, TunConfig, TunnelError,
-};
+use tunnel::{DeviceEvent, DnsResourceRecord, IpConfig, PeerKind, TunConfig, Tunnel, TunnelError};
 
 /// In-memory cache for DNS resource records.
 ///
@@ -54,7 +52,7 @@ static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::n
 
 pub struct Eventloop {
     clock: Clock,
-    tunnel: Option<ClientTunnel>,
+    tunnel: Option<Tunnel>,
 
     resolver_bypass: tunnel_bypass_resolver::Bypass,
 
@@ -188,12 +186,13 @@ impl Eventloop {
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
         let mut clock = Clock::new();
 
-        let mut tunnel = ClientTunnel::new(
+        let mut tunnel = Tunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
             listen_port,
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
+            BTreeSet::new(),
             clock.now(),
         )
         .context("Failed to create tunnel")?;
@@ -236,7 +235,7 @@ impl Eventloop {
 
 enum CombinedEvent {
     Command(Option<Command>),
-    Tunnel(Result<ClientEvent, TunnelError>),
+    Tunnel(Result<DeviceEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     Clock(clock::Event),
 }
@@ -392,9 +391,9 @@ impl Eventloop {
         Ok(ControlFlow::Continue(()))
     }
 
-    async fn handle_tunnel_event(&mut self, event: Result<ClientEvent, TunnelError>) -> Result<()> {
+    async fn handle_tunnel_event(&mut self, event: Result<DeviceEvent, TunnelError>) -> Result<()> {
         match event {
-            Ok(ClientEvent::AddedIceCandidates {
+            Ok(DeviceEvent::AddedIceCandidates {
                 conn_id: gid,
                 kind: PeerKind::Gateway,
                 candidates,
@@ -411,7 +410,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::RemovedIceCandidates {
+            Ok(DeviceEvent::RemovedIceCandidates {
                 conn_id: gid,
                 kind: PeerKind::Gateway,
                 candidates,
@@ -428,7 +427,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::AddedIceCandidates {
+            Ok(DeviceEvent::AddedIceCandidates {
                 conn_id: cid,
                 kind: PeerKind::Client,
                 candidates,
@@ -445,7 +444,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::RemovedIceCandidates {
+            Ok(DeviceEvent::RemovedIceCandidates {
                 conn_id: cid,
                 kind: PeerKind::Client,
                 candidates,
@@ -462,7 +461,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::RequestAccess {
+            Ok(DeviceEvent::RequestAccess {
                 resource_ids,
                 ip,
                 preferred_gateways,
@@ -483,7 +482,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::DeviceDomainQueried { domain }) => {
+            Ok(DeviceEvent::DeviceDomainQueried { domain }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::ResolveDeviceDomain {
                         domain: domain.to_string(),
@@ -491,7 +490,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::DeviceDomainBrowsed { domain }) => {
+            Ok(DeviceEvent::DeviceDomainBrowsed { domain }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::BrowseDeviceDomain {
                         domain: domain.to_string(),
@@ -499,26 +498,30 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::ResourcesChanged { resources }) => {
+            Ok(DeviceEvent::ResourcesChanged { resources }) => {
                 self.resource_list_sender
                     .send(resources)
                     .context("Failed to emit event")?;
             }
-            Ok(ClientEvent::TunInterfaceUpdated(config)) => {
+            Ok(DeviceEvent::TunInterfaceUpdated(config)) => {
                 self.tun_config_sender
                     .send(Some(config))
                     .context("Failed to emit event")?;
             }
-            Ok(ClientEvent::DnsRecordsChanged { records }) => {
+            Ok(DeviceEvent::DnsRecordsChanged { records }) => {
                 *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
-            Ok(ClientEvent::NoRelays { excluded_relay_ids }) => {
+            Ok(DeviceEvent::NoRelays { excluded_relay_ids }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::NoRelays {
                         excluded_relay_ids,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
+            }
+            Ok(DeviceEvent::ResolveDns(request)) => {
+                // The client protocol never authorizes a peer for a resource we serve.
+                tracing::debug!(domain = %request.domain(), "Ignoring DNS resolution for a served resource");
             }
             Err(error) => self.handle_tunnel_error(error)?,
         }

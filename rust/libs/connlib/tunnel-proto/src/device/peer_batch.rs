@@ -6,13 +6,15 @@ use connlib_model::DeviceId;
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
 
-use super::{GatewayState, OutboundRewrite};
+use super::DeviceState;
 use crate::batch::BatchingKey;
+use crate::peer_inbound::OutboundRewrite;
 use crate::{FailedToDecapsulate, packet_kind};
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 pub(super) struct Decision {
     pub(super) key: BatchingKey,
+    /// How the first packet of a served flow was translated, for the rest of the flow.
     pub(super) rewrite: OutboundRewrite,
     pub(super) flow: flow_tracker::DetachedFlow,
 }
@@ -31,7 +33,7 @@ pub(super) enum Outcome {
 /// Dropping it records the flows of the batch.
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct PeerBatch<'a> {
-    state: &'a mut GatewayState,
+    state: &'a mut DeviceState,
     packets: snownet::CommittedBatch<DeviceId>,
     local: SocketAddr,
     from: SocketAddr,
@@ -43,7 +45,7 @@ pub struct PeerBatch<'a> {
 
 impl<'a> PeerBatch<'a> {
     pub(super) fn new(
-        state: &'a mut GatewayState,
+        state: &'a mut DeviceState,
         packets: snownet::CommittedBatch<DeviceId>,
         local: SocketAddr,
         from: SocketAddr,
