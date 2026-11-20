@@ -2718,6 +2718,8 @@ Relays.render(relays, relay_owner(socket)),
 
     Session.track_presence(socket, socket.assigns.client, socket.assigns.subject.credential.id, %{
       group_ids: group_ids(socket.assigns.cache),
+      site_ids: Map.get(socket.assigns, :served_site_ids, []),
+      capabilities: Map.get(socket.assigns, :capabilities, [:tun]),
       proto_min: range && range.min,
       proto_max: range && range.max
     })

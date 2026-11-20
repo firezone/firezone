@@ -740,6 +740,7 @@ Relays.render(relays, relay_owner(socket)),
 
     Session.track_presence(socket, socket.assigns.gateway, socket.assigns.token_id, %{
       site_ids: [socket.assigns.site.id],
+      capabilities: [],
       proto_min: range && range.min,
       proto_max: range && range.max
     })

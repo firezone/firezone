@@ -28,6 +28,19 @@ defmodule Portal.PresenceTest do
       assert Presence.Devices.connected_gateways_in_site(account.id, Ecto.UUID.generate()) == []
     end
 
+    test "lists any device that serves the site, whatever its kind" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      client = client_fixture(account: account, actor: actor_fixture(account: account))
+
+      :ok = Presence.Devices.connect(client, Ecto.UUID.generate(), %{site_ids: [site.id]})
+
+      assert [%Portal.Device{id: id}] = Presence.Devices.connected_gateways_in_site(account.id, site.id)
+      assert id == client.id
+      assert {:ok, _device} = Presence.Devices.fetch_gateway(account.id, client.id, site.id)
+      assert Presence.Devices.online_gateway_ids_by_site(account.id) == %{site.id => MapSet.new([client.id])}
+    end
+
     test "places a gateway loaded without its site by the site it connects with" do
       account = account_fixture()
       site = site_fixture(account: account)
@@ -100,7 +113,7 @@ defmodule Portal.PresenceTest do
              }
     end
 
-    test "ignores connected clients" do
+    test "ignores devices that serve no site" do
       account = account_fixture()
       actor = actor_fixture(account: account)
       client = client_fixture(account: account, actor: actor)
@@ -108,6 +121,33 @@ defmodule Portal.PresenceTest do
       :ok = Presence.Devices.Account.track(client)
 
       assert Presence.Devices.online_gateway_ids_by_site(account.id) == %{}
+    end
+  end
+
+  describe "Devices.capabilities/1" do
+    test "reads the capabilities a meta carries" do
+      assert Presence.Devices.capabilities(%{type: :gateway, capabilities: [:tun]}) == [:tun]
+      assert Presence.Devices.capabilities(%{type: :client, capabilities: []}) == []
+    end
+
+    test "defaults by kind when a meta has none" do
+      assert Presence.Devices.capabilities(%{type: :client}) == [:tun]
+      assert Presence.Devices.capabilities(%{type: :gateway}) == []
+    end
+  end
+
+  describe "Devices.Account.find_by_ipv4/2" do
+    test "finds only a device with a TUN interface" do
+      account = account_fixture()
+      client = client_fixture(account: account, actor: actor_fixture(account: account))
+      address = client.ipv4.address
+
+      :ok = Presence.Devices.connect(client, Ecto.UUID.generate(), %{capabilities: []})
+      assert Presence.Devices.Account.find_by_ipv4(account.id, address) == nil
+
+      :ok = Presence.Devices.connect(client, Ecto.UUID.generate(), %{capabilities: [:tun]})
+      assert {id, _meta} = Presence.Devices.Account.find_by_ipv4(account.id, address)
+      assert id == client.id
     end
   end
 end
