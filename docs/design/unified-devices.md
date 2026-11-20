@@ -559,8 +559,9 @@ between portal nodes.
    `sites_served`, `local_resources` and inbound `authorizations`;
    `local_resource_*` pushes; `create_authorization` with `ice_role`,
    `target` and the pair's minor; `device_id` for every peer field. Reuses
-   #15920. Shapes may change until the first binary that speaks it ships;
-   after that, a shape change needs a new socket version.
+   #15920. Jamil and Thomas approve it before the first binary that speaks
+   it ships; until then shapes may change, after that a shape change needs a
+   new socket version.
 7. **B2 `/device/v1` socket (4.12)**: all four salts, subject, lookup by
    account and `firezone_id`, last-wins, served site from the site token or
    `site_devices`, `capabilities`, `proto_min` and `proto_max`. No feature
