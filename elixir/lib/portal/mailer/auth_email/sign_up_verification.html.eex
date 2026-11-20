@@ -19,7 +19,7 @@
     td,th,div,p,a,h1,h2,h3,h4,h5,h6 {font-family: "Segoe UI", sans-serif; mso-line-height-rule: exactly;}
   </style>
   <![endif]-->
-    <title>Complete your Firezone sign up</title>
+    <title>Finish signing up for Firezone</title>
     <style>
       img {
         max-width: 100%;
@@ -50,7 +50,7 @@
     </style>
   </head>
   <body style="margin: 0; width: 100%; background-color: #f6f6f6; padding: 0; -webkit-font-smoothing: antialiased; word-break: break-word">
-    <div role="article" aria-roledescription="email" aria-label="Complete your Firezone sign up" lang="en">
+    <div role="article" aria-roledescription="email" aria-label="Finish signing up for Firezone" lang="en">
       <div
         class="sm-px-4 email-container"
         style="background-color: #f6f6f6; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
@@ -91,10 +91,10 @@
                       class="sm-leading-8"
                       style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000"
                     >
-                      Verify your email
+                      Finish signing up
                     </h1>
                     <p style="margin: 0 0 24px; line-height: 24px">
-                      Click the button below to verify your email address and complete your Firezone account setup. This link expires in 24 hours.
+                      Open the link below in the same browser you signed up from. You&rsquo;ll confirm your email and tell us a little about your organization. This link expires in 24 hours.
                     </p>
                     <div>
                       <a
@@ -105,7 +105,7 @@
       <i style="mso-font-width: -100%; letter-spacing: 32px; mso-text-raise: 30px" hidden>&nbsp;</i>
     <![endif]-->
                         <span style="mso-text-raise: 16px">
-                          Complete Sign Up &rarr;
+                          Finish signing up &rarr;
                         </span>
                         <!--[if mso]>
       <i style="mso-font-width: -100%; letter-spacing: 32px;" hidden>&nbsp;</i>

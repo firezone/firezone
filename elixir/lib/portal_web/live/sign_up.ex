@@ -1,4 +1,13 @@
 defmodule PortalWeb.SignUp do
+  @moduledoc """
+  Sign-up for a new organization.
+
+  The chooser offers Google, GitHub or an email address. Google and GitHub verify the
+  email through `PortalWeb.OIDCController`. An email address is verified by a link that
+  only works in the browser that requested it (`PortalWeb.SignUpController.verify/2`).
+  Either way the verified email ends up in the session as an identity, and the details
+  form creates the account through `PortalWeb.SignUpController.complete_identity/2`.
+  """
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
   import Ecto.Changeset
   alias __MODULE__.Database
@@ -10,7 +19,9 @@ defmodule PortalWeb.SignUp do
   @sign_up_token_max_age 86_400
   @idp_sign_up_session_key "idp_sign_up"
   @idp_sign_up_max_age 900
+  @email_sign_up_max_age 3600
   @idp_sign_up_providers ~w[google github]
+  @verified_providers ~w[google github email]
   @email_domain_error "This email domain is not allowed at this time."
 
   # ── Full registration schema ──────────────────────────────────────────────────
@@ -26,9 +37,10 @@ defmodule PortalWeb.SignUp do
     import Ecto.Changeset
     import Portal.Changeset
 
+    @type t :: %__MODULE__{}
+
     embedded_schema do
       field(:email, :string)
-      field(:phone, :string)
       embeds_one(:account, Portal.Account)
       embeds_one(:actor, Actor)
       embeds_one(:sign_up_survey, Portal.SignUpSurvey)
@@ -37,38 +49,14 @@ defmodule PortalWeb.SignUp do
     @spec changeset(map()) :: Ecto.Changeset.t()
     def changeset(attrs) do
       %Registration{}
-      |> cast(attrs, [:email, :phone])
+      |> cast(attrs, [:email])
       |> validate_required([:email])
       |> trim_change(:email)
-      |> trim_change(:phone)
       |> validate_email(:email, message: "invalid email")
-      |> validate_email_allowed()
+      |> PortalWeb.EmailForm.validate_email_allowed(:email)
       |> cast_embed(:account, with: fn _account, a -> create_account_changeset(a) end)
       |> cast_embed(:actor, with: fn _actor, a -> create_actor_changeset(a) end)
       |> cast_embed(:sign_up_survey, required: true)
-    end
-
-    defp validate_email_allowed(changeset) do
-      whitelisted_domains = Portal.Config.get_env(:portal, :sign_up_whitelisted_domains)
-      do_validate_email_allowed(changeset, whitelisted_domains)
-    end
-
-    defp do_validate_email_allowed(changeset, []), do: changeset
-
-    defp do_validate_email_allowed(changeset, whitelisted_domains) do
-      validate_change(changeset, :email, fn :email, email ->
-        if email_allowed?(email, whitelisted_domains),
-          do: [],
-          else: [email: "domain not allowed"]
-      end)
-    end
-
-    defp email_allowed?(email, whitelisted_domains) do
-      with [_, domain] <- String.split(email, "@", parts: 2) do
-        Enum.member?(whitelisted_domains, domain)
-      else
-        _ -> false
-      end
     end
 
     defp create_account_changeset(attrs) do
@@ -88,67 +76,50 @@ defmodule PortalWeb.SignUp do
 
   # ── Mount & params ────────────────────────────────────────────────────────────
 
-  def mount(_params, session, socket) do
-    user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
-    real_ip = PortalWeb.Authentication.real_ip(socket)
-    website_attribution = PortalWeb.WebsiteAttribution.fetch(session)
+  # Accounts are never created from a client, so a client that lands here signs in instead.
+  def mount(params, session, socket) do
+    sign_in_params = PortalWeb.Authentication.take_sign_in_params(params)
+
+    if PortalWeb.Authentication.client_sign_in?(sign_in_params),
+      do: {:ok, redirect(socket, to: ~p"/sign_in?#{sign_in_params}")},
+      else: mount_sign_up(session, socket)
+  end
+
+  defp mount_sign_up(session, socket) do
     sign_up_browser_id = PortalWeb.Cookie.SignUpBrowser.from_session(session)
 
-    case socket.assigns.live_action do
-      :verify ->
-        {:ok,
-         assign(socket,
-           page_title: "Verify Sign Up",
-           step: :verifying,
-           token: nil,
-           trigger_submit: false,
-           error_message: nil,
-           sign_up_browser_id: sign_up_browser_id
-         )}
+    socket =
+      assign(socket,
+        page_title: "Sign Up",
+        hide_data_residency_footer: true,
+        step: :choose,
+        form: email_form(%{}),
+        trigger_submit: false,
+        error_message: nil,
+        turnstile_error: nil,
+        idp_identity: identity_from_session(session),
+        existing_accounts: [],
+        query_params: %{},
+        website_attribution: PortalWeb.WebsiteAttribution.fetch(session),
+        sign_up_browser_id: sign_up_browser_id,
+        survey_seed: sign_up_browser_id || :crypto.strong_rand_bytes(16),
+        user_agent: Phoenix.LiveView.get_connect_info(socket, :user_agent),
+        real_ip: PortalWeb.Authentication.real_ip(socket)
+      )
 
-      _ ->
-        socket =
-          assign(socket,
-            page_title: "Sign Up",
-            hide_data_residency_footer: true,
-            step: :choose,
-            form: registration_form(%{}),
-            trigger_submit: false,
-            error_message: nil,
-            turnstile_error: nil,
-            idp_identity: identity_from_session(session),
-            existing_accounts: [],
-            query_params: %{},
-            website_attribution: website_attribution,
-            sign_up_browser_id: sign_up_browser_id,
-            user_agent: user_agent,
-            real_ip: real_ip
-          )
-
-        {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    end
-  end
-
-  # The account is created by PortalWeb.SignUpController, which can set the session cookie.
-  # Submitting only once connected keeps link scanners that don't run JS from consuming it.
-  # A failed submission redirects back here with an error flash. Show it instead of resubmitting.
-  def handle_params(%{"token" => token}, _uri, %{assigns: %{live_action: :verify}} = socket) do
-    case Phoenix.Flash.get(socket.assigns.flash, :error) do
-      nil -> {:noreply, start_sign_up_verification(socket, token)}
-      message -> {:noreply, sign_up_error(socket, message)}
-    end
-  end
-
-  def handle_params(_params, _uri, %{assigns: %{live_action: :verify}} = socket) do
-    {:noreply, push_navigate(socket, to: ~p"/sign_up")}
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :pending}} = socket) do
     {:noreply, assign(socket, step: :pending_review)}
   end
 
+  def handle_params(_params, _uri, %{assigns: %{live_action: :different_browser}} = socket) do
+    {:noreply, assign(socket, step: :different_browser)}
+  end
+
   def handle_params(_params, _uri, %{assigns: %{live_action: action}} = socket)
-      when action in [:google, :github] do
+      when action in [:google, :github, :email] do
     provider = Atom.to_string(action)
 
     case socket.assigns.idp_identity do
@@ -164,14 +135,10 @@ defmodule PortalWeb.SignUp do
     end
   end
 
-  def handle_params(_params, _uri, %{assigns: %{live_action: :fill_form}} = socket) do
-    {:noreply, assign(socket, step: :fill_form, form: registration_form(%{}))}
-  end
-
   def handle_params(params, _uri, socket),
-    do: {:noreply, assign(socket, step: :choose, query_params: params)}
+    do: {:noreply, assign(socket, step: :choose, query_params: params, form: email_form(%{}))}
 
-  # ── Identity provider session ────────────────────────────────────────────────
+  # ── Verified identity in the session ─────────────────────────────────────────
 
   @spec session_key() :: String.t()
   def session_key, do: @idp_sign_up_session_key
@@ -200,12 +167,41 @@ defmodule PortalWeb.SignUp do
   end
 
   @doc """
-  Returns the verified identity stored by `PortalWeb.OIDCController` for an identity provider
-  sign-up, or `nil` when it is missing, malformed or expired.
+  The session identity for an email verified by a sign-up link. It carries the website
+  attribution from the link, which the browser that requested it held at the time.
+  """
+  @spec email_session_identity(String.t(), map() | nil) :: map()
+  def email_session_identity(email, website_attribution) when is_binary(email) do
+    %{
+      "provider" => "email",
+      "email" => email,
+      "website_attribution" => website_attribution,
+      "expires_at" => System.os_time(:second) + @email_sign_up_max_age
+    }
+  end
+
+  @doc """
+  Returns the verified identity stored in the session for a sign-up, by
+  `PortalWeb.OIDCController` for Google and GitHub or by `PortalWeb.SignUpController` for
+  an email link. Returns `nil` when it is missing, malformed or expired.
   """
   @spec identity_from_session(map()) :: map() | nil
   def identity_from_session(session) do
     case Map.get(session, @idp_sign_up_session_key) do
+      %{"provider" => "email", "email" => email, "expires_at" => expires_at} = identity
+      when is_binary(email) and is_integer(expires_at) ->
+        %{
+          provider: "email",
+          email: email,
+          issuer: nil,
+          idp_id: nil,
+          expires_at: expires_at,
+          workspace_domain: nil,
+          website_attribution: valid_attribution(identity["website_attribution"]),
+          profile_attrs: %{"email" => email}
+        }
+        |> unless_expired()
+
       %{
         "provider" => provider,
         "email" => email,
@@ -215,29 +211,28 @@ defmodule PortalWeb.SignUp do
       } = identity
       when provider in @idp_sign_up_providers and is_binary(email) and is_binary(issuer) and
              is_binary(idp_id) and is_integer(expires_at) ->
-        domain = Map.get(identity, "workspace_domain")
-        valid_domain? = valid_session_domain?(provider, identity)
-
-        identity = %{
-          provider: provider,
-          email: email,
-          issuer: issuer,
-          idp_id: idp_id,
-          expires_at: expires_at,
-          workspace_domain: domain,
-          profile_attrs: Map.take(identity, ~w[email name given_name family_name])
-        }
-
-        if identity_expired?(identity) or not valid_domain? do
-          nil
-        else
-          identity
+        if valid_session_domain?(provider, identity) do
+          %{
+            provider: provider,
+            email: email,
+            issuer: issuer,
+            idp_id: idp_id,
+            expires_at: expires_at,
+            workspace_domain: Map.get(identity, "workspace_domain"),
+            profile_attrs: Map.take(identity, ~w[email name given_name family_name])
+          }
+          |> unless_expired()
         end
 
       _ ->
         nil
     end
   end
+
+  defp unless_expired(identity), do: if(identity_expired?(identity), do: nil, else: identity)
+
+  defp valid_attribution(attribution) when is_map(attribution), do: attribution
+  defp valid_attribution(_attribution), do: nil
 
   defp valid_session_domain?("google", %{"workspace_domain" => domain}),
     do: is_nil(domain) or (is_binary(domain) and domain != "")
@@ -247,31 +242,25 @@ defmodule PortalWeb.SignUp do
 
   # ── Render ────────────────────────────────────────────────────────────────────
 
-  def render(%{live_action: :verify} = assigns) do
-    ~H"""
-    <.verifying :if={@step == :verifying} token={@token} trigger_submit={@trigger_submit} />
-    <.different_browser :if={@step == :different_browser} />
-    <.sign_up_error :if={@step == :error} error_message={@error_message} />
-    """
-  end
-
   def render(assigns) do
     ~H"""
     <Core.flash flash={@flash} kind={:error} />
     <Core.flash flash={@flash} kind={:info} />
 
-    <.method_chooser
+    <.chooser
       :if={@step == :choose}
+      form={@form}
+      turnstile_error={@turnstile_error}
       query_params={@query_params}
       website_attribution={@website_attribution}
     />
-    <.sign_up_form :if={@step == :fill_form} form={@form} turnstile_error={@turnstile_error} />
-    <.idp_sign_up_form
+    <.details_form
       :if={@step == :idp_form}
       form={@form}
       email={@idp_identity.email}
       provider={@idp_identity.provider}
       trigger_submit={@trigger_submit}
+      survey_seed={@survey_seed}
     />
     <.existing_accounts
       :if={@step == :existing_accounts}
@@ -280,157 +269,127 @@ defmodule PortalWeb.SignUp do
     />
     <.email_sent :if={@step == :email_sent} />
     <.pending_review :if={@step == :pending_review} />
+    <.different_browser :if={@step == :different_browser} />
     <.sign_up_error :if={@step == :error} error_message={@error_message} />
     """
   end
 
   # ── Components ────────────────────────────────────────────────────────────────
 
-  defp sign_up_form(assigns) do
-    ~H"""
-    <.step_header title="Create your organization" subtitle="Set up Firezone and become the admin for your team.">
-      <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
-    </.step_header>
-
-    <.selected_region />
-
-    <.form id="sign-up-form" for={@form} phx-submit="submit" phx-change="validate" class="flex flex-col gap-3">
-      <Form.input
-        field={@form[:email]}
-        type="email"
-        beside_errors
-        label="Work Email"
-        placeholder="E.g. foo@example.com"
-        required
-        autofocus
-        phx-debounce="blur"
-      />
-
-      <.inputs_for :let={account} field={@form[:account]}>
-        <Form.input
-          field={account[:name]}
-          type="text"
-          beside_errors
-          label="Organization Name"
-          placeholder="E.g. Example Corp"
-          required
-          phx-debounce="blur"
-        />
-      </.inputs_for>
-
-      <.inputs_for :let={actor} field={@form[:actor]}>
-        <Form.input
-          field={actor[:name]}
-          type="text"
-          beside_errors
-          label="Your Name"
-          placeholder="E.g. John Smith"
-          required
-          phx-debounce="blur"
-        />
-        <Form.input field={actor[:type]} type="hidden" />
-      </.inputs_for>
-
-      <.survey_fields form={@form} />
-
-      <div class="absolute -left-[10000px] top-auto w-px h-px overflow-hidden" aria-hidden="true">
-        <Form.input
-          field={@form[:phone]}
-          type="text"
-          beside_errors
-          label="Phone"
-          placeholder="123-456-7890"
-          tabindex="-1"
-          autocomplete="off"
-        />
-      </div>
-
-      <Turnstile.widget id="email-turnstile-widget" />
-      <Turnstile.token_input id="email-turnstile-token" />
-      <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-error">
-        {@turnstile_error}
-      </p>
-
-      <button
-        type="submit"
-        phx-disable-with="Sending..."
-        class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors mt-1"
-      >
-        Create Account
-      </button>
-    </.form>
-
-    <.terms_notice />
-
-    <.footer>
-      <p class="text-xs text-subtle leading-relaxed">
-        Prefer to use Google or GitHub?
-        <Navigation.link patch={~p"/sign_up"}>Sign up with your account.</Navigation.link>
-      </p>
-      <.sign_in_links />
-    </.footer>
-    """
-  end
-
+  attr :form, :any, required: true
+  attr :turnstile_error, :string, default: nil
   attr :query_params, :map, required: true
   attr :website_attribution, :map, default: nil
 
-  defp method_chooser(assigns) do
+  defp chooser(assigns) do
     ~H"""
-    <.step_header title="Create your organization" subtitle="Set up Firezone and become the admin for your team.">
-      <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
-    </.step_header>
+    <.step_header title="Let's get started!" subtitle="Set up Firezone for you or your team." />
 
     <.region_picker query_params={@query_params} website_attribution={@website_attribution} />
 
-    <Turnstile.widget id="choose-turnstile-widget" />
+    <Turnstile.widget id="sign-up-turnstile-widget" />
 
-    <div class="flex flex-col gap-2">
+    <div id="sign-up-options" role="group" aria-label="Sign up options" class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
         <Turnstile.token_input id="google-turnstile-token" />
-        <button type="submit" class={method_button_style()}>
+        <button type="submit" class={option_button_style()}>
           <Core.provider_icon provider="google" size="md" />
-          <span class="flex-1 text-left">Sign up with <strong>Google</strong></span>
-          <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+          <span class="flex-1 text-left">Continue with <strong>Google</strong></span>
+          <.option_arrow />
         </button>
       </.form>
 
       <.form for={%{}} id="github-sign-up" action={~p"/sign_up/github"} method="post">
         <Turnstile.token_input id="github-turnstile-token" />
-        <button type="submit" class={method_button_style()}>
+        <button type="submit" class={option_button_style()}>
           <Core.provider_icon provider="github" size="md" />
-          <span class="flex-1 text-left">Sign up with <strong>GitHub</strong></span>
-          <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+          <span class="flex-1 text-left">Continue with <strong>GitHub</strong></span>
+          <.option_arrow />
         </button>
       </.form>
 
-      <Navigation.link patch={~p"/sign_up/email"} class={method_button_style()}>
-        <span class="shrink-0 w-6 h-6 flex items-center justify-center">
-          <Core.icon name="ri-mail-line" class="w-5 h-5 text-brand" />
-        </span>
-        <span class="flex-1 text-left">Sign up with <strong>email</strong></span>
-        <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
-      </Navigation.link>
+      <button
+        id="email-sign-up-toggle"
+        type="button"
+        aria-controls="email-link-form"
+        aria-expanded={to_string(email_form_open?(@form, @turnstile_error))}
+        phx-click={
+          JS.toggle_class("hidden", to: "#email-link-form")
+          |> JS.toggle_attribute({"aria-expanded", "true", "false"})
+          |> JS.focus(to: "#email_form_email")
+        }
+        class={option_button_style()}
+      >
+        <Core.icon name="ri-mail-line" class="w-5 h-5" />
+        <span class="flex-1 text-left">Continue with <strong>Email</strong></span>
+        <.option_arrow />
+      </button>
     </div>
+
+    <.form
+      id="email-link-form"
+      for={@form}
+      phx-submit="submit_email"
+      phx-change="validate_email"
+      class={["flex flex-col gap-3 mt-5", !email_form_open?(@form, @turnstile_error) && "hidden"]}
+    >
+      <div>
+        <Core.label for={@form[:email].id}>Work email</Core.label>
+        <div id="email-sign-up-row" class="flex items-start gap-2">
+          <div class="flex-1 min-w-0">
+            <Form.input
+              field={@form[:email]}
+              type="email"
+              placeholder="you@company.com"
+              required
+              phx-debounce="blur"
+            />
+          </div>
+          <button
+            type="submit"
+            phx-disable-with="Sending..."
+            class="shrink-0 px-4 py-2 rounded border border-transparent text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+
+      <%!-- Honeypot: hidden from people, filled in by bots --%>
+      <div class="absolute -left-[10000px] top-auto w-px h-px overflow-hidden" aria-hidden="true">
+        <label for="email-sign-up-phone">Phone</label>
+        <input
+          id="email-sign-up-phone"
+          type="text"
+          name="email_form[phone]"
+          tabindex="-1"
+          autocomplete="off"
+        />
+      </div>
+
+      <Turnstile.token_input id="email-turnstile-token" />
+      <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-error">
+        {@turnstile_error}
+      </p>
+    </.form>
 
     <.terms_notice />
 
-    <.footer>
+    <div id="sign-in-link" class="mt-1 text-center">
       <.sign_in_links />
-    </.footer>
+    </div>
     """
   end
 
   attr :form, :any, required: true
   attr :email, :string, required: true
-  attr :provider, :string, required: true, values: @idp_sign_up_providers
+  attr :provider, :string, required: true, values: @verified_providers
   attr :trigger_submit, :boolean, default: false
+  attr :survey_seed, :string, required: true
 
-  defp idp_sign_up_form(assigns) do
+  defp details_form(assigns) do
     ~H"""
-    <.step_header title="Almost there" subtitle="Tell us about your organization to finish signing up.">
-      <:icon><Core.provider_icon provider={@provider} size="md" /></:icon>
-    </.step_header>
+    <.step_header title="Almost there" subtitle="Tell us about your organization to finish signing up." />
 
     <.selected_region />
 
@@ -440,79 +399,83 @@ defmodule PortalWeb.SignUp do
       data-submitting={@trigger_submit}
       inert={@trigger_submit}
     >
-    <.form
-      id={"#{@provider}-sign-up-form"}
-      for={@form}
-      action={~p"/sign_up/#{@provider}/complete"}
-      method="post"
-      phx-submit="submit_identity"
-      phx-change="validate"
-      phx-trigger-action={@trigger_submit}
-      class="flex flex-col gap-3"
-    >
-      <div>
-        <label class="block text-sm font-medium text-heading mb-1">Work Email</label>
-        <div class="w-full px-3 py-2 text-sm rounded border bg-raised border-border text-body flex items-center gap-2">
-          <Core.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-brand shrink-0" />
-          <span class="truncate">{@email}</span>
-          <span class="ml-auto text-xs text-subtle shrink-0">
-            Verified by {provider_name(@provider)}
-          </span>
-        </div>
-      </div>
-
-      <.inputs_for :let={account} field={@form[:account]}>
-        <Form.input
-          field={account[:name]}
-          type="text"
-          beside_errors
-          label="Organization Name"
-          placeholder="E.g. Example Corp"
-          required
-          autofocus
-          phx-debounce="blur"
-        />
-      </.inputs_for>
-
-      <.inputs_for :let={actor} field={@form[:actor]}>
-        <Form.input
-          field={actor[:name]}
-          type="text"
-          beside_errors
-          label="Your Name"
-          placeholder="E.g. John Smith"
-          required
-          phx-debounce="blur"
-        />
-      </.inputs_for>
-
-      <.survey_fields form={@form} />
-
-      <button
-        type="submit"
-        class={[
-          "w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors mt-1",
-          "phx-submit-loading:opacity-75 group-data-submitting/submit:opacity-75"
-        ]}
+      <.form
+        id={"#{@provider}-sign-up-form"}
+        for={@form}
+        action={~p"/sign_up/#{@provider}/complete"}
+        method="post"
+        phx-submit="submit_identity"
+        phx-change="validate"
+        phx-trigger-action={@trigger_submit}
+        class="flex flex-col gap-3"
       >
-        <span class="phx-submit-loading:hidden group-data-submitting/submit:hidden">Create Account</span>
-        <span class="hidden phx-submit-loading:inline group-data-submitting/submit:inline">
-          Creating Account…
-        </span>
-      </button>
-    </.form>
+        <div>
+          <label class="block text-sm font-medium text-heading mb-1">Work email</label>
+          <div class="w-full px-3 py-2 text-sm rounded border bg-raised border-border text-body flex items-center gap-2">
+            <Core.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-brand shrink-0" />
+            <span class="truncate">{@email}</span>
+            <span class="ml-auto text-xs text-subtle shrink-0">{verified_label(@provider)}</span>
+          </div>
+        </div>
+
+        <.inputs_for :let={account} field={@form[:account]}>
+          <Form.input
+            field={account[:name]}
+            type="text"
+            beside_errors
+            label="Organization name"
+            placeholder="E.g. Example Corp"
+            required
+            autofocus
+            phx-debounce="blur"
+          />
+        </.inputs_for>
+
+        <.inputs_for :let={actor} field={@form[:actor]}>
+          <Form.input
+            field={actor[:name]}
+            type="text"
+            beside_errors
+            label="Your name"
+            placeholder="E.g. John Smith"
+            required
+            phx-debounce="blur"
+          />
+        </.inputs_for>
+
+        <.survey_fields form={@form} seed={@survey_seed} />
+
+        <button
+          type="submit"
+          class={[
+            "w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors mt-1",
+            "phx-submit-loading:opacity-75 group-data-submitting/submit:opacity-75"
+          ]}
+        >
+          <span class="phx-submit-loading:hidden group-data-submitting/submit:hidden">Create organization</span>
+          <span class="hidden phx-submit-loading:inline group-data-submitting/submit:inline">
+            Creating organization…
+          </span>
+        </button>
+      </.form>
     </div>
 
     <.terms_notice />
 
-    <.footer>
-      <p class="text-xs text-subtle leading-relaxed">
-        Wrong {provider_name(@provider)} account?
+    <div id="start-over-link" class="mt-1 text-center">
+      <p class="text-sm text-subtle leading-relaxed">
+        {wrong_identity_prompt(@provider)}
         <Navigation.link href={~p"/sign_up"}>Start over.</Navigation.link>
       </p>
-    </.footer>
+    </div>
     """
   end
+
+  defp verified_label("email"), do: "Email verified"
+  defp verified_label(provider), do: "Verified by #{provider_name(provider)}"
+
+  defp wrong_identity_prompt("email"), do: "Wrong email?"
+  defp wrong_identity_prompt(provider), do: "Wrong #{provider_name(provider)} account?"
 
   @referral_source_options [
     {"Google / web search", "search"},
@@ -570,15 +533,16 @@ defmodule PortalWeb.SignUp do
   ]
 
   attr :form, :any, required: true
+  attr :seed, :string, required: true
 
   defp survey_fields(assigns) do
     assigns =
       assign(assigns,
-        referral_source_options: @referral_source_options,
-        motivation_options: @motivation_options,
-        use_case_options: @use_case_options,
-        role_options: @role_options,
-        previous_solution_options: @previous_solution_options,
+        referral_source_options: shuffle_options(@referral_source_options, assigns.seed),
+        motivation_options: shuffle_options(@motivation_options, assigns.seed),
+        use_case_options: shuffle_options(@use_case_options, assigns.seed),
+        role_options: shuffle_options(@role_options, assigns.seed),
+        previous_solution_options: shuffle_options(@previous_solution_options, assigns.seed),
         other_max_length: Portal.SignUpSurvey.other_max_length()
       )
 
@@ -683,10 +647,7 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <.step_header
       title="You already have an account"
-      subtitle={"Your #{provider_name(@provider)} email is the owner of the organizations below. Sign in to continue."}
-    >
-      <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
-    </.step_header>
+      subtitle={"#{owner_prefix(@provider)} is the owner of the organizations below. Sign in to continue."} />
 
     <div class="flex flex-col gap-2">
       <Navigation.link :for={account <- @accounts} href={~p"/#{account}/sign_in"} class={method_button_style()}>
@@ -703,6 +664,9 @@ defmodule PortalWeb.SignUp do
     </.footer>
     """
   end
+
+  defp owner_prefix("email"), do: "Your email"
+  defp owner_prefix(provider), do: "Your #{provider_name(provider)} email"
 
   attr :query_params, :map, required: true
   attr :website_attribution, :map, default: nil
@@ -815,35 +779,19 @@ defmodule PortalWeb.SignUp do
 
   attr :title, :string, required: true
   attr :subtitle, :string, required: true
-  attr :variant, :string, default: "brand", values: ~w[brand error]
-  slot :icon, required: true
-
   defp step_header(assigns) do
     ~H"""
-    <div class="flex items-center gap-3 mb-8">
-      <div class={[
-        "w-11 h-11 rounded border flex items-center justify-center shrink-0",
-        step_header_variant(@variant)
-      ]}>
-        {render_slot(@icon)}
-      </div>
-      <div>
-        <h1 class="text-xl font-bold text-heading tracking-tight">{@title}</h1>
-        <p class="text-xs text-subtle mt-0.5">{@subtitle}</p>
-      </div>
+    <div class="text-center mb-6">
+      <h1 class="text-2xl font-bold text-heading tracking-tight">{@title}</h1>
+      <p class="text-sm text-subtle mt-1.5">{@subtitle}</p>
     </div>
     """
   end
 
-  defp step_header_variant("brand"), do: "bg-brand/10 border-brand/20"
-
-  defp step_header_variant("error"),
-    do: "bg-danger/10 border-danger/20"
-
   defp terms_notice(assigns) do
     ~H"""
     <div class="mt-2 pt-2 text-center">
-      <p class="text-xs text-subtle mt-1.5">
+      <p id="terms-notice" class="text-sm text-subtle mt-1.5">
         By signing up you agree to our <Navigation.link
           href="https://www.firezone.dev/terms"
         >Terms of Use</Navigation.link>.
@@ -864,13 +812,8 @@ defmodule PortalWeb.SignUp do
 
   defp sign_in_links(assigns) do
     ~H"""
-    <p class="text-xs text-subtle leading-relaxed">
-      Organization already have an account?
-      <Navigation.link href={~p"/sign_in"}>Sign in here.</Navigation.link>
-    </p>
-    <p class="text-xs text-subtle leading-relaxed">
-      Not sure where to start?
-      <Navigation.link href={~p"/getting_started"}>Let's get started.</Navigation.link>
+    <p class="text-sm text-subtle leading-relaxed">
+      Already have an account? <Navigation.link href={~p"/sign_in"}>Sign in</Navigation.link>
     </p>
     """
   end
@@ -879,59 +822,66 @@ defmodule PortalWeb.SignUp do
     "w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm transition-all duration-150 group text-sm font-medium text-heading"
   end
 
+  # Matches the provider buttons on the account sign-in page.
+  defp option_button_style do
+    "w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm aria-expanded:border-brand aria-expanded:bg-brand-muted transition-all duration-150 group text-sm font-medium text-heading"
+  end
+
+  defp option_arrow(assigns) do
+    ~H"""
+    <Core.icon
+      name="ri-arrow-right-s-line"
+      class="w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+    />
+    """
+  end
+
+  # The email form opens in the browser when the Email tile is clicked. It stays open once
+  # the person has typed in it or a submission failed, so errors are never hidden.
+  defp email_form_open?(form, turnstile_error), do: form.params != %{} or turnstile_error != nil
+
   defp method_button_arrow_style do
     "w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
   end
 
   defp email_sent(assigns) do
     ~H"""
-    <.step_header title="Check your email" subtitle="We've sent a sign-up link to your inbox.">
-      <:icon><Core.icon name="ri-mail-line" class="w-5 h-5 text-brand" /></:icon>
-    </.step_header>
+    <.step_header title="Check your email" subtitle="We've sent you a link to finish signing up." />
 
     <div class="rounded border border-border bg-raised p-4 mb-6">
-      <p class="text-xs font-semibold text-body uppercase tracking-widest mb-4">
-        What happens next
-      </p>
       <ol class="space-y-4">
         <li class="flex gap-3">
-          <div class="shrink-0 w-6 h-6 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center">
-            <span class="text-xs font-bold text-brand">1</span>
-          </div>
+          <.step_number>1</.step_number>
           <div>
-            <p class="text-sm font-medium text-heading">Open the email from Firezone</p>
+            <p class="text-sm font-medium text-heading">Open "Finish signing up"</p>
             <p class="text-xs text-subtle mt-0.5 leading-relaxed">
-              Check your inbox (and spam folder) for a message with subject "Complete your Firezone sign up".
+              It should arrive within a minute or two. Check your spam folder too.
             </p>
           </div>
         </li>
         <li class="flex gap-3">
-          <div class="shrink-0 w-6 h-6 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center">
-            <span class="text-xs font-bold text-brand">2</span>
-          </div>
+          <.step_number>2</.step_number>
           <div>
-            <p class="text-sm font-medium text-heading">Click the verification link</p>
+            <p class="text-sm font-medium text-heading">Use this browser</p>
             <p class="text-xs text-subtle mt-0.5 leading-relaxed">
-              Open it in this browser. The link will verify your email and automatically create your organization. It expires in 24 hours.
+              For your security, the link only works here. It expires in 24 hours.
             </p>
           </div>
         </li>
         <li class="flex gap-3">
-          <div class="shrink-0 w-6 h-6 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center">
-            <span class="text-xs font-bold text-brand">3</span>
-          </div>
+          <.step_number>3</.step_number>
           <div>
-            <p class="text-sm font-medium text-heading">Sign in and invite your team</p>
+            <p class="text-sm font-medium text-heading">Tell us about your organization</p>
             <p class="text-xs text-subtle mt-0.5 leading-relaxed">
-              You'll land in your account, ready to add users and set up access.
+              A few quick details, then you're in.
             </p>
           </div>
         </li>
       </ol>
     </div>
 
-    <div class="pt-6 border-t border-border text-center">
-      <p class="text-xs text-subtle">
+    <div id="email-sent-footer" class="text-center">
+      <p class="text-sm text-subtle">
         Wrong address or didn't receive it?
         <Navigation.link href={~p"/sign_up"}>Start over.</Navigation.link>
       </p>
@@ -939,45 +889,13 @@ defmodule PortalWeb.SignUp do
     """
   end
 
-  # Before the LiveView connects (or without JS), nothing runs until the user clicks Continue.
-  # Once connected, the form submits itself and the controller does all steps in one request,
-  # so the page shows ongoing work rather than claiming any step is done.
-  defp verifying(assigns) do
+  slot :inner_block, required: true
+
+  defp step_number(assigns) do
     ~H"""
-    <.step_header
-      title={if @trigger_submit, do: "Setting up your account…", else: "Finish setting up your account"}
-      subtitle={
-        if @trigger_submit,
-          do: "This usually takes a few seconds. You'll be signed in automatically.",
-          else: "Your email is verified. Continue to create your account and sign in."
-      }
-    >
-      <:icon><Core.icon name="ri-mail-check-line" class="w-5 h-5 text-brand" /></:icon>
-    </.step_header>
-
-    <div :if={@trigger_submit} class="h-0.75 rounded-full bg-border overflow-hidden mb-5">
-      <div class="indeterminate-bar h-full rounded-full bg-brand"></div>
+    <div class="shrink-0 w-6 h-6 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center">
+      <span class="text-xs font-bold text-brand">{render_slot(@inner_block)}</span>
     </div>
-
-    <.form
-      for={%{}}
-      id="verify-sign-up-form"
-      action={~p"/verify_sign_up"}
-      method="post"
-      phx-trigger-action={@trigger_submit}
-    >
-      <input type="hidden" name="token" value={@token} />
-      <p :if={@trigger_submit} class="text-xs text-subtle text-center">
-        Not redirected? <button type="submit" class={Core.link_style()}>Continue</button>
-      </p>
-      <button
-        :if={!@trigger_submit}
-        type="submit"
-        class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
-      >
-        Continue
-      </button>
-    </.form>
     """
   end
 
@@ -985,10 +903,7 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <.step_header
       title="Thanks for signing up"
-      subtitle="Your account is being created. We are checking a few things first."
-    >
-      <:icon><Core.icon name="ri-time-line" class="w-5 h-5 text-brand" /></:icon>
-    </.step_header>
+      subtitle="Your account is being created. We are checking a few things first." />
 
     <div class="rounded border border-border bg-raised p-4 mb-6">
       <p class="text-sm text-body leading-relaxed">
@@ -1003,10 +918,7 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <.step_header
       title="Open this link in the same browser"
-      subtitle="For your security, sign-up links only work in the browser that requested them."
-    >
-      <:icon><Core.icon name="ri-computer-line" class="w-5 h-5 text-brand" /></:icon>
-    </.step_header>
+      subtitle="For your security, sign-up links only work in the browser that requested them." />
 
     <div class="rounded border border-border bg-raised p-4 mb-6">
       <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
@@ -1019,7 +931,7 @@ defmodule PortalWeb.SignUp do
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
           <span class="text-sm text-body">
-            Open the link from your email in the browser where you filled in the sign-up form.
+            Open the link from your email in the browser where you entered your email address.
           </span>
         </li>
         <li class="flex items-start gap-2.5">
@@ -1038,7 +950,7 @@ defmodule PortalWeb.SignUp do
           />
           <span class="text-sm text-body">
             Already finished signing up?
-            <Navigation.link href={~p"/"}>Sign in here.</Navigation.link>
+            <Navigation.link href={~p"/sign_in"}>Sign in here.</Navigation.link>
           </span>
         </li>
       </ul>
@@ -1055,9 +967,7 @@ defmodule PortalWeb.SignUp do
 
   defp sign_up_error(assigns) do
     ~H"""
-    <.step_header title="Something went wrong" subtitle="We weren't able to complete your sign up." variant="error">
-      <:icon><Core.icon name="ri-error-warning-line" class="w-5 h-5 text-danger" /></:icon>
-    </.step_header>
+    <.step_header title="Something went wrong" subtitle="We weren't able to complete your sign up." />
 
     <div class="rounded border border-danger/30 bg-danger-light p-4 mb-6">
       <p class="text-sm text-danger">{@error_message}</p>
@@ -1084,7 +994,7 @@ defmodule PortalWeb.SignUp do
           />
           <span class="text-sm text-body">
             If you already have an account,
-            <Navigation.link href={~p"/"}>sign in here.</Navigation.link>
+            <Navigation.link href={~p"/sign_in"}>sign in here.</Navigation.link>
           </span>
         </li>
         <li class="flex items-start gap-2.5">
@@ -1111,26 +1021,29 @@ defmodule PortalWeb.SignUp do
 
   # ── Event handlers ────────────────────────────────────────────────────────────
 
-  def handle_event("validate", %{"registration" => attrs}, socket) do
-    changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :validate)
-    {:noreply, assign(socket, form: to_form(changeset, as: :registration), turnstile_error: nil)}
+  def handle_event("validate_email", %{"email_form" => attrs}, socket) do
+    changeset = attrs |> PortalWeb.EmailForm.changeset() |> Map.put(:action, :validate)
+    {:noreply, assign(socket, form: to_form(changeset, as: :email_form), turnstile_error: nil)}
   end
 
-  def handle_event("submit", %{"registration" => attrs} = params, socket) do
-    attrs = normalize_registration_attrs(attrs)
-
+  def handle_event("submit_email", %{"email_form" => attrs} = params, socket) do
     if honeypot_filled?(attrs) do
       log_honeypot_hit(attrs, socket.assigns.user_agent, socket.assigns.real_ip)
       {:noreply, assign(socket, step: :email_sent)}
     else
-      changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :insert)
-      {:noreply, submit_registration(socket, changeset, params["cf-turnstile-response"])}
+      changeset = attrs |> PortalWeb.EmailForm.changeset() |> Map.put(:action, :insert)
+      {:noreply, submit_email(socket, changeset, params["cf-turnstile-response"])}
     end
   end
 
-  # Only the identity provider step may create an account without an email round
-  # trip, and the email must come from the verified identity. A connected
-  # LiveView outlives the session entry, so the proof expiry is checked again here.
+  def handle_event("validate", %{"registration" => attrs}, socket) do
+    changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :validate)
+    {:noreply, assign(socket, form: to_form(changeset, as: :registration))}
+  end
+
+  # Only the details step may create an account, and the email must come from the
+  # verified identity. A connected LiveView outlives the session entry, so the
+  # identity's expiry is checked again here.
   def handle_event(
         "submit_identity",
         %{"registration" => attrs},
@@ -1181,6 +1094,11 @@ defmodule PortalWeb.SignUp do
 
   defp identity_expired?(%{expires_at: expires_at}), do: expires_at <= System.os_time(:second)
 
+  defp idp_session_error("email") do
+    "Your sign-up link has expired or was already used in another browser session. " <>
+      "Please request a new one."
+  end
+
   defp idp_session_error(provider) do
     "Your #{provider_name(provider)} sign-up session is invalid or has expired. Please try again."
   end
@@ -1193,8 +1111,7 @@ defmodule PortalWeb.SignUp do
     assign(socket, step: :existing_accounts, existing_accounts: accounts)
   end
 
-  # Validation on the identity provider form uses the verified email so domain
-  # errors show early.
+  # Validation on the details form uses the verified email so domain errors show early.
   defp registration_changeset(%{assigns: %{step: :idp_form, idp_identity: identity}}, attrs) do
     attrs
     |> Map.put("email", identity.email)
@@ -1209,44 +1126,43 @@ defmodule PortalWeb.SignUp do
     |> Registration.changeset()
   end
 
-  defp registration_form(attrs), do: to_form(registration_changeset(attrs), as: :registration)
+  defp email_form(attrs), do: attrs |> PortalWeb.EmailForm.changeset() |> to_form(as: :email_form)
 
   # An invalid form is sent back before the challenge is checked, so a typo does not spend
   # the single-use token.
-  defp submit_registration(socket, %{valid?: false} = changeset, _token) do
-    apply_registration(socket, changeset)
+  defp submit_email(socket, %{valid?: false} = changeset, _token) do
+    assign(socket, form: to_form(changeset, as: :email_form))
   end
 
-  defp submit_registration(socket, changeset, token) do
+  defp submit_email(socket, changeset, token) do
     case Portal.Turnstile.verify(token, socket.assigns.real_ip) do
       :ok ->
-        socket |> assign(turnstile_error: nil) |> apply_registration(changeset) |> reset_turnstile()
+        socket |> assign(turnstile_error: nil) |> send_sign_up_email(changeset) |> reset_turnstile()
 
       {:error, reason} ->
         socket
-        |> assign(form: to_form(changeset, as: :registration), turnstile_error: Turnstile.error_message(reason))
+        |> assign(form: to_form(changeset, as: :email_form), turnstile_error: Turnstile.error_message(reason))
         |> reset_turnstile()
     end
   end
 
-  defp apply_registration(socket, %{valid?: true} = changeset) do
-    registration = Ecto.Changeset.apply_changes(changeset)
+  # The page looks the same whether or not the email owns an account, so it can't be used
+  # to find out who has one. The email itself says which happened.
+  defp send_sign_up_email(socket, changeset) do
+    email = get_field(changeset, :email)
 
     result =
       with :ok <- PublicEmailRateLimit.check(:sign_up, socket.assigns.real_ip) do
-        case Database.find_accounts_by_owner_email(registration.email) do
+        case Database.find_accounts_by_owner_email(email) do
           [] ->
             send_verification_email(
-              registration.email,
-              registration.account.name,
-              registration.actor.name,
-              survey_attrs(registration.sign_up_survey),
+              email,
               socket.assigns.website_attribution,
               socket.assigns.sign_up_browser_id
             )
 
           existing_accounts ->
-            send_existing_accounts_email(registration.email, existing_accounts)
+            send_existing_accounts_email(email, existing_accounts)
         end
       end
 
@@ -1255,49 +1171,38 @@ defmodule PortalWeb.SignUp do
         assign(socket, step: :email_sent)
 
       {:error, :rate_limited} ->
-        new_changeset =
-          Ecto.Changeset.add_error(
-            changeset,
-            :email,
-            "Too many attempts. Please try again later."
-          )
-
-        assign(socket, form: to_form(new_changeset, as: :registration))
+        changeset = add_error(changeset, :email, "Too many attempts. Please try again later.")
+        assign(socket, form: to_form(changeset, as: :email_form))
 
       {:error, _reason} ->
-        new_changeset =
-          Ecto.Changeset.add_error(
-            changeset,
-            :email,
-            "We were unable to send you an email. Please try again later."
-          )
-
-        assign(socket, form: to_form(new_changeset, as: :registration))
+        changeset = add_error(changeset, :email, "We were unable to send you an email. Please try again later.")
+        assign(socket, form: to_form(changeset, as: :email_form))
     end
-  end
-
-  defp apply_registration(socket, changeset) do
-    assign(socket, form: to_form(changeset, as: :registration))
   end
 
   # ── Private helpers ───────────────────────────────────────────────────────────
 
   defp normalize_registration_attrs(attrs) do
-    attrs
-    |> Map.update(
+    Map.update(
+      attrs,
       "actor",
       %{"type" => "account_admin_user"},
       &Map.put(&1, "type", "account_admin_user")
     )
-    |> Map.update("phone", "", &String.trim/1)
   end
 
-  defp honeypot_filled?(attrs), do: Map.get(attrs, "phone", "") != ""
+  defp honeypot_filled?(attrs), do: String.trim(Map.get(attrs, "phone") || "") != ""
 
   defp reset_turnstile(%{assigns: %{step: :email_sent}} = socket), do: socket
   defp reset_turnstile(socket), do: Turnstile.reset(socket)
 
   defp survey_attrs(%Portal.SignUpSurvey{} = survey), do: Map.from_struct(survey)
+
+  # Seeded by the browser id so the disconnected and connected renders agree.
+  defp shuffle_options(options, seed) do
+    {other, rest} = Enum.split_with(options, &match?({_label, "other"}, &1))
+    Enum.sort_by(rest, fn {_label, value} -> :erlang.phash2({seed, value}) end) ++ other
+  end
 
   defp log_honeypot_hit(attrs, user_agent, real_ip) do
     Logger.warning("Sign-up honeypot triggered",
@@ -1323,28 +1228,12 @@ defmodule PortalWeb.SignUp do
     )
   end
 
-  @spec send_verification_email(
-          String.t(),
-          String.t(),
-          String.t(),
-          map(),
-          map() | nil,
-          String.t() | nil
-        ) ::
+  # The link only verifies the email. The details are filled in after it is opened.
+  @spec send_verification_email(String.t(), map() | nil, String.t() | nil) ::
           {:ok, any()} | {:error, any()}
-  defp send_verification_email(
-         email,
-         company_name,
-         actor_name,
-         sign_up_survey,
-         website_attribution,
-         sign_up_browser_id
-       ) do
+  defp send_verification_email(email, website_attribution, sign_up_browser_id) do
     payload = %{
       email: email,
-      company_name: company_name,
-      actor_name: actor_name,
-      sign_up_survey: sign_up_survey,
       website_attribution: website_attribution,
       browser: PortalWeb.Cookie.SignUpBrowser.token_claim(sign_up_browser_id)
     }
@@ -1460,19 +1349,6 @@ defmodule PortalWeb.SignUp do
 
       {:error, _reason} ->
         {:error, :stripe_provision}
-    end
-  end
-
-  defp start_sign_up_verification(socket, token) do
-    case verify_sign_up_token(token, socket.assigns.sign_up_browser_id) do
-      {:ok, _registration_claims} ->
-        assign(socket, token: token, trigger_submit: connected?(socket))
-
-      {:error, :different_browser} ->
-        assign(socket, step: :different_browser)
-
-      {:error, message} ->
-        sign_up_error(socket, message)
     end
   end
 
@@ -1708,6 +1584,52 @@ defmodule PortalWeb.SignUp do
     )
     |> validate_required([:group_id, :resource_id])
     |> Portal.Policy.changeset()
+  end
+  @doc """
+  Creates the account for an email verified by a sign-up link, once the email's mail
+  servers pass `PortalWeb.SignUpReview`. Returns `:pending_review` when the sign-up is held
+  for an approver instead.
+
+  The email always comes from the verified `identity`, never from `attrs`.
+  """
+  @spec complete_verified_email_sign_up(map(), map(), String.t() | nil, :inet.ip_address()) ::
+          {:ok, map()}
+          | :pending_review
+          | {:error, {:account_exists, [Portal.Account.t()]}}
+          | {:error, Ecto.Changeset.t()}
+          | {:error, String.t()}
+  def complete_verified_email_sign_up(%{provider: "email"} = identity, attrs, user_agent, real_ip) do
+    case identity_registration_changeset(identity, attrs) do
+      %{valid?: true} = changeset ->
+        registration_claims = review_registration(identity, Ecto.Changeset.apply_changes(changeset))
+
+        with :ok <- PortalWeb.SignUpReview.check(registration_claims, user_agent, real_ip) do
+          complete_email_sign_up(registration_claims, user_agent, real_ip)
+        end
+
+      changeset ->
+        {:error, changeset}
+    end
+  end
+
+  @doc """
+  The registration an email sign-up is created from, and that `PortalWeb.SignUpReview`
+  encrypts when the sign-up is held for review.
+
+  The private ops dashboard (firezone/portal-ops) decrypts held sign-ups, reads `email`,
+  `company_name` and `actor_name`, and approves them by passing this map to
+  `complete_email_sign_up/3`. Changing its keys breaks reviews that are already held and
+  the ops dashboard.
+  """
+  @spec review_registration(map(), Registration.t()) :: map()
+  def review_registration(%{provider: "email", email: email} = identity, %Registration{} = registration) do
+    %{
+      email: email,
+      company_name: registration.account.name,
+      actor_name: registration.actor.name,
+      sign_up_survey: survey_attrs(registration.sign_up_survey),
+      website_attribution: identity.website_attribution
+    }
   end
 
   # ── Database ─────────────────────────────────────────────────────────────────

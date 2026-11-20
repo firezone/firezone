@@ -491,6 +491,29 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_name, :string, default: "firezone")
 
   @doc """
+  Name of the PostgreSQL database of the private ops dashboard, on the same server.
+  It is only used where the dashboard is compiled in.
+  """
+  defconfig(:ops_database_name, :string, default: "firezone_ops")
+
+  @doc """
+  User for the ops database. It has no access to the portal's database, and the
+  portal's user has none to the ops database.
+  """
+  defconfig(:ops_database_user, :string, default: "postgres", sensitive: true)
+
+  @doc """
+  Password for the ops database user, when DATABASE_ENTRA_AUTH is disabled.
+  """
+  defconfig(:ops_database_password, :string, default: nil, sensitive: true)
+
+  @doc """
+  Client ID of the Azure user-assigned managed identity of the ops database user,
+  used when DATABASE_ENTRA_AUTH is enabled. It must be attached to the VM.
+  """
+  defconfig(:ops_azure_client_id, :string, default: nil)
+
+  @doc """
   User that will be used to access the PostgreSQL database.
   """
   defconfig(:database_user, :string, default: "postgres", sensitive: true)
@@ -817,6 +840,19 @@ defmodule Portal.Config.Definitions do
   Maps to the `OPS_ADMIN_PASSWORD` environment variable.
   """
   defconfig(:ops_admin_password, :string, sensitive: true)
+
+  @doc """
+  Client ID of the Google OAuth client that ops admins sign in with. It is not the
+  portal's Google OAuth client.
+  Maps to the `OPS_GOOGLE_OIDC_CLIENT_ID` environment variable.
+  """
+  defconfig(:ops_google_oidc_client_id, :string, default: nil)
+
+  @doc """
+  Client secret of the ops Google OAuth client.
+  Maps to the `OPS_GOOGLE_OIDC_CLIENT_SECRET` environment variable.
+  """
+  defconfig(:ops_google_oidc_client_secret, :string, default: nil, sensitive: true)
 
   ##############################################
   ## Userpass / SAML / OIDC / Email authentication

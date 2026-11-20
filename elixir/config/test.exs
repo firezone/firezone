@@ -42,6 +42,12 @@ for repo <- [
     queue_target: 1000
 end
 
+config :portal, PortalOps.Repo,
+  database: "#{database}_ops",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 5,
+  queue_target: 1000
+
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,
@@ -354,6 +360,10 @@ config :portal, Portal.Google.AuthProvider,
     retry: false,
     plug: {Req.Test, PortalWeb.OIDC}
   ]
+
+config :portal, PortalOps.Google,
+  client_id: "test-ops-client",
+  client_secret: "test-ops-secret"
 
 config :portal, Portal.GitHub.AuthProvider,
   client_id: "test_github_client_id",

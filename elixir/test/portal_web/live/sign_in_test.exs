@@ -140,9 +140,13 @@ defmodule PortalWeb.SignInTest do
     end
 
     test "shows the client sign-in hint for browser sign-in", %{conn: conn, account: account} do
-      {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+      {:ok, lv, html} = live(conn, ~p"/#{account}/sign_in")
 
       assert html =~ "Meant to sign in from a client instead?"
+      assert has_element?(lv, "#sign-in-footer p.text-sm", "Meant to sign in from a client instead?")
+      assert has_element?(lv, "#sign-in-footer p.text-sm.mt-1", "Looking for a different account?")
+      assert has_element?(lv, "#sign-in-footer a[href='/sign_in']", "See recently used accounts.")
+      refute has_element?(lv, "#sign-in-footer.border-t")
     end
 
     test "hides the client sign-in hint during client sign-in", %{conn: conn, account: account} do
