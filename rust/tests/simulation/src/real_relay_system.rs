@@ -726,10 +726,12 @@ impl RealAllocation {
             .iter()
             .filter_map(|t| relay_client_proto::decode(&t.payload).ok()?.ok())
         {
-            let channel = request.get_attribute::<ChannelNumber>().map(|c| c.value());
+            let Some(channel) = request.get_attribute::<ChannelNumber>() else {
+                continue;
+            };
 
             self.requested_channels
-                .extend(iter::repeat(request.transaction_id()).zip(channel));
+                .insert(request.transaction_id(), channel.value());
         }
 
         if let Some(reason) = allocation.can_be_freed() {
