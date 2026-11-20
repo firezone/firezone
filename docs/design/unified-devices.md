@@ -532,7 +532,7 @@ Decisions:
   code reads `type`; existing reads move to user agent, `site_ids`,
   `device_actors` or `tun`, one area per PR, after `/device/v1` ships.
 - **Ranges are declared** (decision 10): `proto_min` and `proto_max` connect
-  parameters, clamped to the portal floor; the pair's minor travels in the
+  parameters, stored as declared (no portal floor); the pair's minor travels in the
   `:authorize` request as an added key.
 
 Steps, one PR per deploy. Nothing connects to `/device/v1` until the unified
@@ -669,6 +669,7 @@ tables, and a migration in the next deploy copies what is missing.
 - **1.11 Client tokens into `device_tokens`.** Done (#16392 to #16398; the
   device token columns became `devices.token_id` in #16462 to #16468). The
   same steps as 1.2 to 1.4, 1.7 and 1.9, after 1.7, one PR per deploy:
+
   - C1: create and revoke write both tables in one transaction. The
     `device_tokens` actor foreign key becomes `ON DELETE CASCADE`, as on
     `client_tokens`. `/client` and `/gateway` accept the `"device"` salt;
@@ -857,8 +858,8 @@ serial)`; drop the actor-scoped indexes. Depends 2.15. The Gateway part
   One binary playing both roles cannot satisfy that with one version. New
   binaries send `proto_min` and `proto_max` as connect parameters; legacy
   clients are mapped to `[m, m]` and legacy gateways to `[m-1, m+1]`, which
-  reproduces today's rules exactly. The portal clamps a declared range to
-  its supported floor (decision 10). Compatible means the ranges overlap.
+  reproduces today's rules exactly. The portal stores a declared range as
+  is (decision 10). Compatible means the ranges overlap.
   Presence meta carries the range; `Routing.select_receiver` and the c2c
   peer check read it; `Portal.Version` keeps only feature gates. Policy:
   `firezone` supports two minor versions back on both sides (see 3a). Must
@@ -1136,15 +1137,14 @@ has 12, phase 4 has 13, phase 5 has 12, phase 5b has 10, phase 6 has 8.
    package or image and keep their token, `FIREZONE_ID`, device row and
    Site. Rolling back to the old binary keeps working because `/gateway`
    stays served. Retiring `/gateway` later only asks for a binary upgrade.
-10. **Version compatibility by minor range, declared by the device and
-    clamped by the portal.** Each device has a range of minors it is
+10. **Version compatibility by minor range, declared by the device.** Each device has a range of minors it is
     compatible with. New binaries send it as `proto_min` and `proto_max`
     connect parameters, so a release can narrow its own range without a
     portal change; `firezone` declares `[m-2, m]`. Devices that send no range
     get one from the version they report: a legacy Client on minor `m` is
-    `[m, m]` and a legacy Gateway is `[m-1, m+1]`. The portal intersects the
-    declared range with its own supported floor, so a device can never widen
-    itself past what the portal supports. Two devices are compatible when
+    `[m, m]` and a legacy Gateway is `[m-1, m+1]`. There is no portal floor,
+    as there is none today; if a release ever declares a range it cannot
+    support, a clamp at connect is one portal PR. Two devices are compatible when
     their ranges overlap, which reproduces today's rules for legacy devices.
     The pair
     speaks the highest minor both share, sent with the connection details.
