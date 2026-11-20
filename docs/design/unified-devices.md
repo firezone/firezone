@@ -559,16 +559,22 @@ between portal nodes.
    `sites_served`, `local_resources` and inbound `authorizations`;
    `local_resource_*` pushes; `create_authorization` with `ice_role`,
    `target` and the pair's minor; `device_id` for every peer field. Reuses
-   #15920. Agreed with the Rust side before B2 merges.
+   #15920. Shapes may change until the first binary that speaks it ships;
+   after that, a shape change needs a new socket version.
 7. **B2 `/device/v1` socket (4.12)**: all four salts, subject, lookup by
    account and `firezone_id`, last-wins, served site from the site token or
-   `site_devices`, `capabilities`, `proto_min` and `proto_max`, and an account
-   feature flag.
+   `site_devices`, `capabilities`, `proto_min` and `proto_max`. No feature
+   flag: only a new binary connects here, so the release is the gate. The
+   socket makes every check the legacy sockets make.
 8. **B3 Channel, initiating half**: `/client/v3` parity with `device_id`.
 9. **B4 Channel, serving half**: the device always echoes the signed ref. In
    ICE and `:authorized`, the sender `type` is the device's role in that pair,
    so legacy peers keep their current payloads.
 10. **B5 Feature gates (4.13)** from the pair's range.
+
+B3 and B4 test every pair with a legacy peer: the device initiates to a
+gateway, a client initiates to the serving device, and client to client with
+a pool target. In each, the legacy side gets the payloads it gets today.
 
 ### Phase 0: prep, no behaviour change
 
