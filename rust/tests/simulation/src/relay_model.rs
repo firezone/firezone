@@ -1,18 +1,40 @@
-//! The relay simulation's model: when the client's `Allocation` must relay data, and what may
-//! interrupt it.
+//! The relay simulation's model: what the client is connected to and whether a transition may
+//! interrupt relaying.
 //!
-//! The model answers two questions per transition, see [`RelayModel::must_relay`] and
-//! [`RelayModel::apply`]. It describes how the client behaves today, flaws included, so that
-//! fixing one shows up as a change here.
+//! It only knows the transitions and the interference that were asked for, never what the
+//! client or the relay made of them.
 
 use std::{
+    collections::BTreeMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
 
 use connlib_model::IpStack;
 
-use crate::relay_transition::Transition;
+use crate::relay_transition::{Interference, Transition};
+
+/// The sockets that the client relays data to, two per address family.
+pub(crate) const PEERS: [SocketAddr; 4] = [
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10)), 40000),
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 11)), 40001),
+    SocketAddr::new(
+        IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 3, 0, 0, 0, 0, 10)),
+        40000,
+    ),
+    SocketAddr::new(
+        IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 3, 0, 0, 0, 0, 11)),
+        40001,
+    ),
+];
+
+/// How many transmissions of a request may get lost: a client sends each one four times, after
+/// 0, 1, 2.5 and 4.75 seconds.
+const RETRANSMISSION_BUDGET: u8 = 3;
+
+/// The longest partition that the last transmission of every request outlasts, with the
+/// latencies that the hosts may have.
+const BRIDGED_PARTITION: Duration = Duration::from_secs(4);
 
 #[derive(Debug)]
 pub(crate) struct RelayModel {
@@ -20,8 +42,17 @@ pub(crate) struct RelayModel {
     pub(crate) client: ModelHost,
     /// A host on the internet that has nothing to do with the client.
     pub(crate) foreign: ModelHost,
-    /// Where the client relays data to.
-    pub(crate) peer: ModelHost,
+
+    /// The peers that the client is connected to, and whether each connection is established:
+    /// it relayed data since relaying was last disrupted.
+    pub(crate) connections: BTreeMap<SocketAddr, bool>,
+
+    /// Whether relaying was disrupted since the system last settled.
+    disrupted: bool,
+    /// How many transmissions a request may have lost since the system last settled.
+    lost_transmissions: u8,
+    /// Whether the client called `Allocation::refresh` since the system last settled.
+    refreshed: bool,
 }
 
 /// A host with an address of each family, of which it uses those in `stack`.
@@ -36,27 +67,98 @@ pub(crate) struct ModelHost {
 }
 
 impl RelayModel {
-    /// Whether relaying must work once a transition has settled: whenever the client and the
+    pub(crate) fn new(relay: ModelHost, client: ModelHost, foreign: ModelHost) -> Self {
+        Self {
+            relay,
+            client,
+            foreign,
+            connections: PEERS.into_iter().map(|peer| (peer, false)).collect(),
+            disrupted: true,
+            lost_transmissions: 0,
+            refreshed: false,
+        }
+    }
+
+    /// Whether relaying must work once the system has settled: whenever the client and the
     /// relay share an address family.
     pub(crate) fn must_relay(&self) -> bool {
         (self.client.stack.supports_ipv4() && self.relay.stack.supports_ipv4())
             || (self.client.stack.supports_ipv6() && self.relay.stack.supports_ipv6())
     }
 
-    /// Applies a transition, returning whether it was allowed to interrupt relaying.
-    pub(crate) fn apply(&mut self, transition: &Transition, lost_datagram: bool) -> bool {
+    /// Whether the relay can relay data between the client and `peer`: it needs an address of
+    /// the peer's family to send from.
+    pub(crate) fn can_relay(&self, peer: SocketAddr) -> bool {
+        let reaches_peer = match peer {
+            SocketAddr::V4(_) => self.relay.stack.supports_ipv4(),
+            SocketAddr::V6(_) => self.relay.stack.supports_ipv6(),
+        };
+
+        self.must_relay() && reaches_peer
+    }
+
+    /// Whether the client's relay addresses may have changed since the system last settled.
+    pub(crate) fn disrupted(&self) -> bool {
+        self.disrupted
+    }
+
+    pub(crate) fn apply(&mut self, transition: &Transition, interference: &Interference) {
+        self.lost_transmissions = self
+            .lost_transmissions
+            .saturating_add(interference.lose_to_relay)
+            .saturating_add(interference.lose_to_client);
+
         match transition {
             Transition::Roam { stack } => {
                 self.client.stack = *stack;
-
-                true
+                self.disrupted = true;
             }
-            Transition::RebootRelay | Transition::Partition { .. } => true,
-            // `Allocation::refresh` does not retransmit, so a single lost datagram invalidates the
-            // allocation.
-            Transition::Refresh => lost_datagram,
-            Transition::Advance { .. } | Transition::InjectDatagram { .. } => false,
+            Transition::RebootRelay => self.disrupted = true,
+            Transition::Partition { duration } if *duration > BRIDGED_PARTITION => {
+                self.disrupted = true;
+            }
+            // Costs every request that is in flight all but its last transmission.
+            Transition::Partition { .. } => {
+                self.lost_transmissions = self
+                    .lost_transmissions
+                    .saturating_add(RETRANSMISSION_BUDGET);
+            }
+            Transition::Refresh => self.refreshed = true,
+            Transition::Connect { peer } => {
+                self.connections.entry(*peer).or_insert(false);
+            }
+            Transition::Disconnect { peer } => {
+                self.connections.remove(peer);
+            }
+            Transition::Advance { .. } | Transition::InjectDatagram(_) => {}
         }
+
+        // `Allocation::refresh` sends its request once only.
+        let budget = match self.refreshed {
+            true => 0,
+            false => RETRANSMISSION_BUDGET,
+        };
+        self.disrupted |= self.lost_transmissions > budget;
+
+        if self.disrupted {
+            for established in self.connections.values_mut() {
+                *established = false;
+            }
+        }
+    }
+
+    /// Records that the system settled and relays data for every connection it can.
+    pub(crate) fn settle(&mut self) {
+        for peer in PEERS {
+            let can_relay = self.can_relay(peer);
+
+            self.connections
+                .entry(peer)
+                .and_modify(|established| *established = can_relay);
+        }
+        self.disrupted = false;
+        self.lost_transmissions = 0;
+        self.refreshed = false;
     }
 }
 

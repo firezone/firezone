@@ -1,5 +1,5 @@
 use std::{
-    net::{Ipv4Addr, Ipv6Addr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
 
@@ -7,8 +7,10 @@ use arbitrary::Unstructured;
 use connlib_model::IpStack;
 
 use crate::{
-    relay_model::{ModelHost, RelayModel},
-    relay_transition::{BitFlips, Interference, Target, Transition},
+    relay_model::{ModelHost, PEERS, RelayModel},
+    relay_transition::{
+        ForeignRequest, Forgery, Injection, Interference, RelayDatagram, Transition,
+    },
 };
 
 /// Samples the relay simulation's setup and transitions from the input.
@@ -49,58 +51,91 @@ impl<'a> RelayGenerator<'a> {
             stack: IpStack::Dual,
             latency: Duration::ZERO,
         };
-        let peer = ModelHost {
-            ip4: Ipv4Addr::new(192, 0, 2, 10),
-            ip6: Ipv6Addr::new(0x2001, 0xdb8, 3, 0, 0, 0, 0, 10),
-            port: 40000,
-            stack: IpStack::Dual,
-            latency: Duration::ZERO,
-        };
 
-        RelayModel {
-            relay,
-            client,
-            foreign,
-            peer,
-        }
+        RelayModel::new(relay, client, foreign)
     }
 
-    pub(crate) fn transition(&mut self) -> (Transition, Interference) {
-        const ADVANCE_SECS: [u64; 8] = [5, 30, 120, 360, 660, 960, 1860, 3660];
-        const PARTITION_SECS: [u64; 4] = [2, 9, 40, 720];
-
-        let transition = match self.int(12) {
-            0..=4 => Transition::Advance {
-                duration: Duration::from_secs(ADVANCE_SECS[self.int(7)]),
+    /// Samples a transition, what the network does to it and whether the system settles and
+    /// is checked before the next one.
+    pub(crate) fn transition(&mut self) -> (Transition, Interference, bool) {
+        let transition = match self.int(15) {
+            0..=5 => Transition::Advance {
+                duration: self.duration(),
             },
-            5..=6 => Transition::Refresh,
+            6 => Transition::Refresh,
             7 => Transition::Roam {
-                stack: match (self.bool(), self.bool()) {
-                    (true, false) => IpStack::Ipv4Only,
-                    (false, true) => IpStack::Ipv6Only,
-                    (true, true) | (false, false) => IpStack::Dual,
-                },
+                stack: self.ip_stack(),
             },
             8 => Transition::RebootRelay,
             9 => Transition::Partition {
-                duration: Duration::from_secs(PARTITION_SECS[self.int(3)]),
+                duration: self.duration(),
             },
-            _ => Transition::InjectDatagram {
-                target: match self.int(2) {
-                    0 => Target::RelayFromForeign { parse: self.bool() },
-                    1 => Target::RelayFromClient { parse: self.bool() },
-                    _ => Target::Client,
-                },
-                datagram: self.bytes(),
-            },
+            10 => Transition::Connect { peer: self.peer() },
+            11 => Transition::Disconnect { peer: self.peer() },
+            _ => Transition::InjectDatagram(match self.int(3) {
+                0 => Injection::RelayFromForeign(self.relay_datagram()),
+                1 => Injection::RelayFromClient(self.relay_datagram()),
+                2 => Injection::Client(self.bytes()),
+                _ => Injection::RelayAddresses,
+            }),
         };
         let interference = Interference {
-            lose_to_relay: self.bool(),
-            lose_to_client: self.bool(),
-            forge_to_client: self.bool().then(|| BitFlips { mask: self.bytes() }),
+            lose_to_relay: self.losses(),
+            lose_to_client: self.losses(),
+            forge_to_client: match self.int(3) {
+                0..=1 => None,
+                2 => Some(Forgery::BitFlips(self.bytes())),
+                _ => Some(Forgery::Error {
+                    code: self.error_code(),
+                }),
+            },
         };
+        let settle = self.int(3) < 3;
 
-        (transition, interference)
+        (transition, interference, settle)
+    }
+
+    fn relay_datagram(&mut self) -> RelayDatagram {
+        match self.int(5) {
+            0 => RelayDatagram::Raw(self.bytes()),
+            1 => RelayDatagram::Stun(self.bytes()),
+            2 => RelayDatagram::Request(ForeignRequest::Allocate),
+            3 => RelayDatagram::Request(ForeignRequest::Refresh {
+                lifetime: Duration::ZERO,
+            }),
+            4 => RelayDatagram::Request(ForeignRequest::Refresh {
+                lifetime: Duration::from_secs(600),
+            }),
+            _ => RelayDatagram::Request(ForeignRequest::ChannelBind {
+                channel: 0x4000 + self.int(7) as u16,
+                peer: self.peer(),
+            }),
+        }
+    }
+
+    /// A duration on one of three scales: short enough to interrupt a handshake, or long
+    /// enough to reach what expires.
+    fn duration(&mut self) -> Duration {
+        match self.int(2) {
+            0 => Duration::from_millis(4) * (self.int(249) as u32 + 1),
+            1 => Duration::from_secs(1) * (self.int(255) as u32 + 1),
+            _ => Duration::from_secs(60) * (self.int(60) as u32 + 1),
+        }
+    }
+
+    /// How many datagrams the network loses, mostly none.
+    fn losses(&mut self) -> u8 {
+        (self.int(9) as u8).saturating_sub(5)
+    }
+
+    fn error_code(&mut self) -> u16 {
+        const CODES: [u16; 11] = [300, 400, 401, 403, 420, 437, 438, 441, 486, 500, 508];
+
+        CODES[self.int(10)]
+    }
+
+    fn peer(&mut self) -> SocketAddr {
+        PEERS[self.int(3)]
     }
 
     /// The address families of a host.
@@ -124,9 +159,5 @@ impl<'a> RelayGenerator<'a> {
 
     fn int(&mut self, max: u8) -> usize {
         usize::from(self.input.int_in_range(0..=max).unwrap_or(0))
-    }
-
-    fn bool(&mut self) -> bool {
-        self.int(1) == 1
     }
 }

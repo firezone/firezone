@@ -116,20 +116,29 @@ pub fn run_relay(data: &[u8], now: Instant) {
     let mut model = generator.model();
 
     let mut system = RealRelaySystem::new(&model, now);
-    system.check(&model, true);
+    system.check(&model);
+    model.settle();
 
     for applied in 0..MAX_RELAY_TRANSITIONS {
         if generator.is_empty() {
             break;
         }
 
-        let (transition, interference) = generator.transition();
+        let (transition, interference, settle) = generator.transition();
 
-        tracing::debug!("Applying transition {applied}: {transition:?} with {interference:?}");
+        tracing::debug!(
+            "Applying transition {applied}: {transition:?} with {interference:?}, settle: {settle}"
+        );
 
+        model.apply(&transition, &interference);
         system.apply(&model, &transition, interference);
-        let may_interrupt = model.apply(&transition, system.lost_datagram);
-        system.check(&model, may_interrupt);
+
+        // Without settling, the next transition meets whatever the client and the relay are
+        // in the middle of.
+        if settle || generator.is_empty() || applied + 1 == MAX_RELAY_TRANSITIONS {
+            system.check(&model);
+            model.settle();
+        }
     }
 }
 
