@@ -41,6 +41,7 @@ defmodule PortalAPI.Schemas.PoolMember do
                :last_seen_user_agent,
                :last_seen_version,
                :online?,
+               :proto_range,
                :provisioned_token,
                :public_key,
                :type,

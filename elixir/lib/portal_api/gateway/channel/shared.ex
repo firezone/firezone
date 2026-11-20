@@ -736,8 +736,12 @@ Relays.render(relays, relay_owner(socket)),
   end
 
   defp track_presence(socket) do
+    range = Portal.Version.legacy_proto_range(:gateway, socket.assigns.gateway.last_seen_version)
+
     Session.track_presence(socket, socket.assigns.gateway, socket.assigns.token_id, %{
-      site_ids: [socket.assigns.site.id]
+      site_ids: [socket.assigns.site.id],
+      proto_min: range && range.min,
+      proto_max: range && range.max
     })
   end
 

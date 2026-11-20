@@ -949,10 +949,9 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp check_peer_compatibility(target_meta, socket) do
     target_user_agent = Map.get(target_meta, :user_agent)
     target_version = Map.get(target_meta, :version)
-    initiator_version = socket.assigns.client.last_seen_version
 
     if Portal.Version.supports_device_access?(target_user_agent, target_version) and
-         Portal.Version.same_minor_version?(initiator_version, target_version) do
+         Portal.Version.compatible?(proto_range(socket), Portal.Version.proto_range_from_meta(target_meta)) do
       :ok
     else
       {:error, :version_mismatch}
@@ -1743,10 +1742,17 @@ defmodule PortalAPI.Client.Channel.Shared do
     %{
       account_id: socket.assigns.subject.account.id,
       version: socket.assigns.client_version,
+      proto_range: proto_range(socket),
       location:
         {socket.assigns.subject.context.remote_ip_location_lat,
          socket.assigns.subject.context.remote_ip_location_lon}
     }
+  end
+
+  # A device that states its range has it assigned; a legacy client speaks its own minor.
+  defp proto_range(socket) do
+    Map.get(socket.assigns, :proto_range) ||
+      Portal.Version.legacy_proto_range(:client, socket.assigns.client_version)
   end
 
   # The socket read these before the channel subscribed, so a change in between would be lost.
@@ -2708,8 +2714,12 @@ Relays.render(relays, relay_owner(socket)),
   defp certificate_revoked?(_socket), do: false
 
   defp track_presence(socket) do
+    range = proto_range(socket)
+
     Session.track_presence(socket, socket.assigns.client, socket.assigns.subject.credential.id, %{
-      group_ids: group_ids(socket.assigns.cache)
+      group_ids: group_ids(socket.assigns.cache),
+      proto_min: range && range.min,
+      proto_max: range && range.max
     })
   end
 
