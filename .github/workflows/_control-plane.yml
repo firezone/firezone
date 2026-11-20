@@ -112,8 +112,8 @@ jobs:
           sarif_file: trivy-results.sarif
           category: trivy-portal
 
-  # The image we deploy: the portal plus the private ops dashboard from the latest
-  # main of firezone/portal-ops. GHCR keeps this package private.
+  # The image we deploy: the portal plus the private ops dashboard at the commit in
+  # .github/portal-ops-sha. GHCR keeps this package private.
   portal-ops:
     name: portal-ops
     runs-on: ubuntu-24.04

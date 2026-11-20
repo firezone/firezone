@@ -1,8 +1,8 @@
 name: "Check out portal-ops"
 description: >-
-  Checks out the latest main of the private ops dashboard (firezone/portal-ops) at
-  elixir/ops, where mix.exs compiles it in. Does nothing without the bot key, such as
-  on fork pull requests.
+  Checks out the private ops dashboard (firezone/portal-ops) at the commit in
+  .github/portal-ops-sha to elixir/ops, where mix.exs compiles it in. Does nothing
+  without the bot key, such as on fork pull requests.
 
 inputs:
   client-id:
@@ -32,12 +32,18 @@ runs:
         repositories: portal-ops
         permission-contents: read
 
+    - name: Read the pinned portal-ops commit
+      if: ${{ inputs.private-key != '' }}
+      id: pin
+      shell: bash
+      run: echo "sha=$(tr -d '[:space:]' < .github/portal-ops-sha)" >> "$GITHUB_OUTPUT"
+
     - name: Check out portal-ops
       if: ${{ inputs.private-key != '' }}
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         repository: firezone/portal-ops
-        ref: main
+        ref: ${{ steps.pin.outputs.sha }}
         path: elixir/ops
         token: ${{ steps.app-token.outputs.token }}
         persist-credentials: false
