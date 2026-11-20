@@ -2,8 +2,11 @@ defmodule PortalAPI.Client.Channel.Shared do
   use PortalAPI, :channel
   alias Portal.Authentication.Credential
   alias PortalAPI.Client.Views
+  alias PortalAPI.Channel.Authorizations
   alias PortalAPI.Channel.Durability
+  alias PortalAPI.Channel.Protocol
   alias PortalAPI.Channel.Relays
+  alias PortalAPI.Channel.Session
 
   alias Portal.{
     Cache,
@@ -73,21 +76,8 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:ok, socket}
   end
 
-  # On an abnormal exit, drain the whole WebSocket instead of just letting the
-  # channel die. connlib ignores `phx_error` and would keep the transport alive,
-  # re-joining reactively and reusing the transport-scoped session_ref (whose
-  # earlier flush confirmation could cancel the new session's durability
-  # timer). Draining forces a full reconnect that re-runs `Socket.connect/3`
-  # and mints a fresh session_ref, keeping transport:session 1:1. Graceful stops
-  # already send `phx_close`, so we only intervene here.
   @impl true
-  def terminate(reason, socket) do
-    if abnormal_exit?(reason) do
-      send(socket.transport_pid, :socket_drain)
-    end
-
-    :ok
-  end
+  def terminate(reason, socket), do: Session.terminate(reason, socket)
 
   @impl true
   # Called immediately after the client joins the channel
@@ -113,21 +103,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   ##### Reacting to domain events ####
   ####################################
 
-  def handle_info(%Change{lsn: lsn} = change, socket) do
-    last_lsn = Map.get(socket.assigns, :last_lsn, 0)
-
-    if lsn > last_lsn do
-      case handle_change(change, socket) do
-        {:noreply, socket} ->
-          {:noreply, assign(socket, last_lsn: lsn)}
-
-        result ->
-          result
-      end
-    else
-      # Change already processed; ignore to prevent replaying it
-      {:noreply, socket}
-    end
+  def handle_info(%Change{} = change, socket) do
+    Session.apply_change(socket, socket.assigns.client, change, &handle_change/2)
   end
 
   ####################################
@@ -153,11 +130,11 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
 
     for resource_id <- removed_ids do
-      push(socket, "resource_deleted", resource_id)
+      Protocol.push(socket, "resource_deleted", resource_id)
     end
 
     for resource <- added_resources do
-      push(
+      Protocol.push(
         socket,
         "resource_created_or_updated",
         Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
@@ -204,19 +181,20 @@ defmodule PortalAPI.Client.Channel.Shared do
   ##### Forwarding replies from the gateway to the client #####
   #############################################################
 
-  # This the list of ICE candidates gathered by the gateway and relayed to the client
-  def handle_info({:ice_candidates, gateway_id, candidates}, socket) do
-    push(socket, "ice_candidates", %{
-      gateway_id: gateway_id,
-      candidates: candidates
-    })
-
+  def handle_info({tag, %{type: :gateway, id: gateway_id}, candidates}, socket)
+      when tag in [:ice_candidates, :invalidate_ice_candidates] do
+    Protocol.push(socket, Atom.to_string(tag), %{gateway_id: gateway_id, candidates: candidates})
     {:noreply, socket}
   end
 
-  def handle_info({:invalidate_ice_candidates, gateway_id, candidates}, socket) do
-    push(socket, "invalidate_ice_candidates", %{
-      gateway_id: gateway_id,
+  def handle_info({:ice_candidates, %{type: :client, id: client_id}, candidates}, socket) do
+    Protocol.push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
+    {:noreply, socket}
+  end
+
+  def handle_info({:invalidate_ice_candidates, %{type: :client, id: client_id}, candidates}, socket) do
+    Protocol.push(socket, "invalidate_client_ice_candidates", %{
+      client_id: client_id,
       candidates: candidates
     })
 
@@ -243,25 +221,8 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
-  # A reply counts only for the pending request and the gateway it was sent to.
-  def handle_info(
-        {:connect, _socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials, use_iceless, request_ref},
-        socket
-      ) do
-    release_gateway_authorization(socket, Ecto.UUID.load!(rid_bytes), request_ref, %{
-      site_id: site_id,
-      receiver_id: gateway_id,
-      public_key: gateway_public_key,
-      ipv4: gateway_ipv4,
-      ipv6: gateway_ipv6,
-      preshared_key: preshared_key,
-      ice_credentials: ice_credentials,
-      use_iceless: use_iceless
-    })
-  end
-
-  # The one reply every receiver will send, in place of `:connect` and `:device_access_acked`.
+  # A gateway replies once it confirms; a client replies at once. A gateway reply counts only
+  # for the pending request and the gateway it was sent to.
   def handle_info({:authorized, ref, reply}, socket) do
     if Map.has_key?(socket.assigns.pending_authorizations, ref) do
       release_device_access(socket, ref, reply.use_iceless, reply.name, reply.slug)
@@ -297,78 +258,51 @@ defmodule PortalAPI.Client.Channel.Shared do
       # Client-to-client: the target's channel never acked that it pushed the
       # authorization to its data plane (e.g. it disconnected in the window).
       {%{deny_payload: deny_payload}, remaining} ->
-        push(socket, "client_device_access_denied", deny_payload)
+        Protocol.push(socket, "client_device_access_denied", deny_payload)
         {:noreply, assign(socket, :pending_authorizations, remaining)}
     end
   end
 
-  # Client-to-client: the target's channel confirmed it pushed the
-  # authorization onto the target's websocket. Only now is it safe to release
-  # the initiator, because the target's data plane is guaranteed to receive
-  # (and process) the authorization before any relayed ICE candidate, which
-  # travels the same socket behind it. See `deliver_pool_target_authorized/8`.
-  # The target already resolved `use_iceless` (reading the flag once, with both
-  # peers' capabilities), so we apply it as-is rather than reading the flag a
-  # second time — a second read could race a mid-flow toggle and disagree.
-  def handle_info({:device_access_acked, ref, use_iceless, client_name, client_slug}, socket) do
-    release_device_access(socket, ref, use_iceless, client_name, client_slug)
-  end
-
-  def handle_info({:client_device_access_authorized, {ack_to, ref}, payload}, socket) do
-    accept_device_access(socket, payload, fn use_iceless ->
-      send(
-        ack_to,
-        {:device_access_acked, ref, use_iceless, socket.assigns.client.name,
-         socket.assigns.client.slug}
-      )
-    end)
-  end
-
-  # The one request every initiator will send, in place of `:client_device_access_authorized`.
   # The resource is rendered for this client's own protocol version.
   def handle_info({:authorize, {initiator_pid, ref}, request}, socket) do
     initiator = request.initiator
     client = socket.assigns.client
 
-    payload = %{
-      client_id: initiator.id,
-      client_name: initiator.name,
-      client_slug: initiator.slug,
-      client_public_key: initiator.public_key,
-      client_ipv4: initiator.ipv4,
-      client_ipv6: initiator.ipv6,
-      preshared_key: request.preshared_key,
-      local_ice_credentials: request.ice_credentials.receiver,
-      remote_ice_credentials: request.ice_credentials.initiator,
-      ice_role: :controlled,
-      resource: Views.Resource.render(request.resource, client, protocol_version(socket)),
-      subject: request.subject,
-      policy_authorization_id: request.policy_authorization_id,
-      authorization_expires_at: request.expires_at,
-      policy_authorization: request[:policy_authorization],
-      initiator_iceless_capable: request.initiator_iceless_capable,
-      flow_logs_ingest_token: request.responder_token
-    }
+    {use_iceless, socket} =
+      Authorizations.accept(socket, client, socket.assigns.subject.account, request)
 
-    accept_device_access(socket, payload, fn use_iceless ->
-      send(
-        initiator_pid,
-        {:authorized, ref,
-         %{
-           receiver_id: client.id,
-           resource_id: Ecto.UUID.load!(request.resource.id),
-           site_id: nil,
-           name: client.name,
-           slug: client.slug,
-           public_key: client.public_key,
-           ipv4: client.ipv4,
-           ipv6: client.ipv6,
-           preshared_key: request.preshared_key,
-           ice_credentials: request.ice_credentials,
-           use_iceless: use_iceless
-         }}
-      )
-    end)
+    payload =
+      %{
+        client_id: initiator.id,
+        client_name: initiator.name,
+        client_slug: initiator.slug,
+        client_public_key: initiator.public_key,
+        client_ipv4: initiator.ipv4,
+        client_ipv6: initiator.ipv6,
+        preshared_key: request.preshared_key,
+        local_ice_credentials: request.ice_credentials.receiver,
+        remote_ice_credentials: request.ice_credentials.initiator,
+        ice_role: :controlled,
+        resource: Views.Resource.render(request.resource, client, protocol_version(socket)),
+        subject: request.subject,
+        flow_logs_ingest_token: request.responder_token,
+        use_iceless: use_iceless
+      }
+      |> maybe_put_expires_at(request.expires_at)
+
+    Protocol.push(socket, "client_device_access_authorized", payload)
+
+    # The initiator is told only after the push, so its ICE candidates, which come over this
+    # socket too, cannot reach this client before the authorization.
+    Authorizations.reply(initiator_pid, ref, client, %{
+      resource_id: Ecto.UUID.load!(request.resource.id),
+      site_id: nil,
+      preshared_key: request.preshared_key,
+      ice_credentials: request.ice_credentials,
+      use_iceless: use_iceless
+    })
+
+    {:noreply, socket}
   end
 
   def handle_info({:public_key_changed, type, device_id, public_key}, socket) do
@@ -379,22 +313,8 @@ defmodule PortalAPI.Client.Channel.Shared do
           :gateway -> %{gateway_id: device_id, public_key: public_key}
         end
 
-      push(socket, "public_key_changed", payload)
+      Protocol.push(socket, "public_key_changed", payload)
     end
-
-    {:noreply, socket}
-  end
-
-  def handle_info({:client_ice_candidates, client_id, candidates}, socket) do
-    push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
-    {:noreply, socket}
-  end
-
-  def handle_info({:invalidate_client_ice_candidates, client_id, candidates}, socket) do
-    push(socket, "invalidate_client_ice_candidates", %{
-      client_id: client_id,
-      candidates: candidates
-    })
 
     {:noreply, socket}
   end
@@ -406,7 +326,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   # via the same eviction path used for CDC deletes.
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
     socket = Durability.cancel_authorization(socket, policy_authorization.id)
-    revoke_policy_authorization(socket, policy_authorization)
+    Authorizations.revoke(socket, policy_authorization)
   end
 
   # Sent to the initiator when its policy_authorization failed to persist, so no CDC delete comes.
@@ -424,45 +344,15 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, Durability.cancel_session(socket, session_ref)}
   end
 
-  # Authz durability timer fired — no confirm/reject arrived in time. Fail-closed.
-  # See gateway channel's equivalent handler for the rationale on the
-  # generation check.
-  def handle_info(
-        {:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation},
-        socket
-      ) do
-    if Durability.authorization_lost?(socket, pa, generation) do
-      Logger.warning(
-        "Authz durability timeout firing for c2c authz #{inspect(pa.id)} — queue never confirmed durability"
-      )
-
-      socket = Durability.cancel_authorization(socket, pa.id)
-      revoke_policy_authorization(socket, pa)
-    else
-      {:noreply, socket}
-    end
+  def handle_info({:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation}, socket) do
+    Durability.authorization_timeout(socket, pa, generation)
   end
 
   def handle_info({:session_durability_timeout, session_ref}, socket) do
-    if Durability.session_lost?(socket, session_ref) do
-      Logger.warning(
-        "Client session #{inspect(session_ref)} was not confirmed durable; disconnecting"
-      )
-
-      # Avoid sending "token_expired" since that will tear down connlib
-      # state in the client. Instead, the client must reconnect.
-      {:stop, :shutdown, socket}
-    else
-      {:noreply, socket}
-    end
+    Durability.session_timeout(socket, session_ref)
   end
 
-  def handle_info(:disconnect, socket) do
-    # Important: We push disconnect before closing the socket to prevent the client from
-    # attempting to immediately reconnect
-    push(socket, "disconnect", %{reason: "token_expired"})
-    close_transport(socket)
-  end
+  def handle_info(:disconnect, socket), do: Session.disconnect(socket)
 
   # Flush-failure disconnects are PG-delivered by device id but target one
   # session; a mismatched ref belongs to a predecessor channel and falls
@@ -495,24 +385,18 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
 
       Database.delete_policy_authorizations(socket.assigns.client)
-      push(socket, "disconnect", %{reason: "certificate_revoked"})
-      close_transport(socket)
+      Protocol.push(socket, "disconnect", %{reason: "certificate_revoked"})
+      Session.close_transport(socket)
     else
       {:noreply, socket}
     end
   end
 
-  # A monitored process crashed — determine which subsystem it belongs to and recover.
   def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
-    cond do
-      pid == socket.assigns[:pg_scope_pid] ->
-        register(socket)
-
-      Enum.any?(socket.assigns[:presence_monitors] || [], fn {p, _ref} -> p == pid end) ->
-        {:noreply, track_presence(socket)}
-
-      true ->
-        {:noreply, socket}
+    case Session.monitored(socket, pid) do
+      :pg_scope -> register(socket)
+      :presence -> {:noreply, track_presence(socket)}
+      nil -> {:noreply, socket}
     end
   end
 
@@ -525,13 +409,13 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   def handle_info({:device_domain_resolution_failed, domain, reason}, socket) do
-    push(socket, "device_domain_resolution_failed", %{domain: domain, reason: reason})
+    Protocol.push(socket, "device_domain_resolution_failed", %{domain: domain, reason: reason})
 
     {:noreply, socket}
   end
 
   def handle_info({:device_domain_browse_failed, domain}, socket) do
-    push(socket, "device_domain_browse_failed", %{domain: domain, reason: :not_found})
+    Protocol.push(socket, "device_domain_browse_failed", %{domain: domain, reason: :not_found})
 
     {:noreply, socket}
   end
@@ -701,7 +585,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     case resolve_device_domain(domain, socket) do
       {:ok, %Portal.Device{} = device} ->
-        push(socket, "device_domain_resolved", %{
+        Protocol.push(socket, "device_domain_resolved", %{
           domain: domain,
           ipv4: to_string(:inet.ntoa(device.ipv4.address)),
           ipv6: to_string(:inet.ntoa(device.ipv6.address))
@@ -729,7 +613,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     case browse_device_domain(domain, socket) do
       {:ok, labels, total} ->
-        push(socket, "device_domain_browsed", %{
+        Protocol.push(socket, "device_domain_browsed", %{
           domain: domain,
           names: Enum.map(labels, &Portal.Device.fqdn_for_slug/1),
           ttl: @device_domain_browse_ttl,
@@ -971,7 +855,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    deliver_to_gateways(socket, [gateway_id], :ice_candidates_from_client, candidates)
+    deliver_to_gateways(socket, [gateway_id], :ice_candidates, candidates)
   end
 
   def handle_in(
@@ -979,7 +863,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    deliver_to_gateways(socket, [gateway_id], :invalidate_ice_candidates_from_client, candidates)
+    deliver_to_gateways(socket, [gateway_id], :invalidate_ice_candidates, candidates)
   end
 
   def handle_in(
@@ -987,7 +871,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    deliver_to_client(socket, target_client_id, :client_ice_candidates, candidates)
+    deliver_to_client(socket, target_client_id, :ice_candidates, candidates)
     {:noreply, socket}
   end
 
@@ -999,14 +883,14 @@ defmodule PortalAPI.Client.Channel.Shared do
     case deliver_to_client(
            socket,
            target_client_id,
-           :invalidate_client_ice_candidates,
+           :invalidate_ice_candidates,
            candidates
          ) do
       :ok ->
         {:noreply, socket}
 
       {:error, :not_found} ->
-        push(socket, "client_ice_candidate_error", %{
+        Protocol.push(socket, "client_ice_candidate_error", %{
           client_id: target_client_id,
           reason: :offline
         })
@@ -1021,7 +905,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    deliver_to_gateways(socket, gateway_ids, :ice_candidates_from_client, candidates)
+    deliver_to_gateways(socket, gateway_ids, :ice_candidates, candidates)
   end
 
   def handle_in(
@@ -1029,7 +913,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    deliver_to_gateways(socket, gateway_ids, :invalidate_ice_candidates_from_client, candidates)
+    deliver_to_gateways(socket, gateway_ids, :invalidate_ice_candidates, candidates)
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
@@ -1066,10 +950,9 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp check_peer_compatibility(target_meta, socket) do
     target_user_agent = Map.get(target_meta, :user_agent)
     target_version = Map.get(target_meta, :version)
-    initiator_version = socket.assigns.client.last_seen_version
 
     if Portal.Version.supports_device_access?(target_user_agent, target_version) and
-         Portal.Version.same_minor_version?(initiator_version, target_version) do
+         Portal.Version.compatible?(proto_range(socket), Portal.Version.proto_range_from_meta(target_meta)) do
       :ok
     else
       {:error, :version_mismatch}
@@ -1268,12 +1151,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         policy_authorization_id = Ecto.UUID.generate()
         request_ref = make_ref()
 
-        %{
-          preshared_key: preshared_key,
-          ice_credentials: ice_credentials,
-          initiator_token: initiator_token,
-          responder_token: responder_token
-        } =
+        secrets =
           connection_secrets(
             socket,
             gateway,
@@ -1285,27 +1163,8 @@ defmodule PortalAPI.Client.Channel.Shared do
           )
 
         message =
-          {:create_authorization, {self(), socket_ref(socket)},
-           %{
-             client:
-               PortalAPI.Gateway.Views.Client.render(
-                 socket.assigns.client,
-                 socket.assigns.client.public_key,
-                 preshared_key,
-                 socket.assigns.subject.context.user_agent
-               ),
-             # Kept for older gateways that do not report flow logs to the portal.
-             # These do not parse the attribution fields from the ingest token.
-             subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
-             resource: PortalAPI.Gateway.Views.Resource.render(resource),
-             policy_authorization_id: policy_authorization_id,
-             authorization_expires_at: expires_at,
-             ice_credentials: ice_credentials,
-             preshared_key: preshared_key,
-             initiator_iceless_capable: socket.assigns.iceless_capable,
-             flow_logs_ingest_token: responder_token,
-             request_ref: request_ref
-           }}
+          {:authorize, {self(), request_ref},
+           authorize_request(socket, resource, policy_authorization_id, expires_at, secrets)}
 
         attrs =
           policy_authorization_attrs(
@@ -1336,7 +1195,7 @@ defmodule PortalAPI.Client.Channel.Shared do
                resource_id,
                request_ref,
                gateway.id,
-               initiator_token,
+               secrets.initiator_token,
                address
              )}
 
@@ -1356,7 +1215,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp push_authorization_creation_failed(socket, resource_id, reason, address) do
-    push(
+    Protocol.push(
       socket,
       authorization_creation_failed_event(socket),
       Map.merge(%{resource_id: resource_id, reason: reason}, address_fields(address))
@@ -1406,7 +1265,7 @@ defmodule PortalAPI.Client.Channel.Shared do
            socket.assigns.subject
          ) do
       {:ok, %Cache.Cacheable.Resource{type: :device_pool}, _membership_id, _policy_id, _expires_at} ->
-        push(socket, authorization_creation_failed_event(socket), %{
+        Protocol.push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :missing_address
         })
@@ -1438,7 +1297,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         )
 
       {:error, :not_found} ->
-        push(socket, authorization_creation_failed_event(socket), %{
+        Protocol.push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :not_found
         })
@@ -1446,7 +1305,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
-        push(socket, authorization_creation_failed_event(socket), %{
+        Protocol.push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :forbidden,
           violated_properties: violated_properties
@@ -1538,7 +1397,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp push_device_access_denied(socket, payload, reason) do
-    push(
+    Protocol.push(
       socket,
       "client_device_access_denied",
       %{ipv4: payload["ipv4"], ipv6: payload["ipv6"], reason: reason}
@@ -1580,7 +1439,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           )
 
         :offline ->
-          push(socket, "client_device_access_denied", %{
+          Protocol.push(socket, "client_device_access_denied", %{
             client_id: target_device_id,
             ipv4: payload["ipv4"],
             ipv6: payload["ipv6"],
@@ -1596,7 +1455,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           resource_id: resource_id
         )
 
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
           reason: :ambiguous_address
@@ -1605,7 +1464,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply, socket}
 
       {:error, :missing_address} ->
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           resource_id: resource_id,
           reason: :missing_address
         })
@@ -1621,7 +1480,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           ipv6: payload["ipv6"]
         )
 
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
           reason: :invalid_address
@@ -1630,7 +1489,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply, socket}
 
       {:error, :forbidden} ->
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
           reason: :forbidden
@@ -1666,7 +1525,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         )
 
       {:error, :version_mismatch} ->
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           client_id: target_client_id,
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
@@ -1718,14 +1577,14 @@ defmodule PortalAPI.Client.Channel.Shared do
     # `ref` correlates the target channel's ack back to this request. The
     # initiator is NOT released on `Queue.enqueue/3` returning `:ok` — it is
     # released only once the target's channel acks that it has pushed the
-    # authorization onto the target's websocket (`{:device_access_acked, ref, _, _, _}`).
+    # authorization onto the target's websocket (`{:authorized, ref, _}`).
     # Until then the initiator must not start ICE, because its candidates
     # travel the same socket as the authorization and would otherwise race
     # ahead of it at the target's data plane.
     ref = make_ref()
 
     {receiver_message, initiator_payload} =
-      build_client_device_access_authorized_messages(
+      build_device_access_messages(
         target_client_id,
         target_meta,
         resource,
@@ -1773,7 +1632,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply, assign(socket, :pending_authorizations, pending)}
 
       {:error, _} ->
-        push(socket, "client_device_access_denied", %{
+        Protocol.push(socket, "client_device_access_denied", %{
           client_id: target_client_id,
           ipv4: payload["ipv4"],
           ipv6: payload["ipv6"],
@@ -1787,10 +1646,10 @@ defmodule PortalAPI.Client.Channel.Shared do
   # Returns `{receiver_message, initiator_payload}`. The receiver_message goes
   # to the target client via PG (delivered inside the Queue's dispatch
   # callback so it shares a sender pid with any later `:reject_access`). It
-  # carries `{ack_to, ref}` so the target's channel can ack back once it has
-  # pushed the authorization onto the target's websocket; the initiator_payload
-  # is released to the originating client only after that ack arrives.
-  defp build_client_device_access_authorized_messages(
+  # carries `{self(), ref}` so the target's channel can reply `:authorized` once
+  # it has pushed the authorization onto the target's websocket; the
+  # initiator_payload is released to the originating client only after that.
+  defp build_device_access_messages(
          target_client_id,
          target_meta,
          resource,
@@ -1800,21 +1659,13 @@ defmodule PortalAPI.Client.Channel.Shared do
          ref,
          socket
        ) do
-    client = socket.assigns.client
-    client_public_key = socket.assigns.client.public_key
-
     target_client = %Portal.Device{
       id: target_client_id,
       psk_base: target_meta.psk_base,
       type: :client
     }
 
-    %{
-      preshared_key: preshared_key,
-      ice_credentials: ice_credentials,
-      initiator_token: initiator_token,
-      responder_token: responder_token
-    } =
+    secrets =
       connection_secrets(
         socket,
         target_client,
@@ -1825,35 +1676,9 @@ defmodule PortalAPI.Client.Channel.Shared do
         expires_at
       )
 
-    # Mirror the gateway's create-authorization payload on the receiver side: the
-    # receiving client gets the full resource view (filters, type, name,
-    # devices) plus the subject (actor) view, in addition to peer/ICE fields.
-    # We render with the initiator's session here — the receiver only reads the
-    # id and filters out of it, so this is safe across version skew.
-    rendered_resource = Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
-
-    rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
-
     receiver_message =
-      {:client_device_access_authorized, {self(), ref},
-       %{
-         client_id: client.id,
-         client_name: client.name,
-         client_slug: client.slug,
-         client_public_key: client_public_key,
-         client_ipv4: client.ipv4,
-         client_ipv6: client.ipv6,
-         preshared_key: preshared_key,
-         local_ice_credentials: ice_credentials.receiver,
-         remote_ice_credentials: ice_credentials.initiator,
-         ice_role: :controlled,
-         resource: rendered_resource,
-         subject: rendered_subject,
-         policy_authorization_id: policy_authorization_id,
-         authorization_expires_at: expires_at,
-         initiator_iceless_capable: socket.assigns.iceless_capable,
-         flow_logs_ingest_token: responder_token
-       }}
+      {:authorize, {self(), ref},
+       authorize_request(socket, resource, policy_authorization_id, expires_at, secrets)}
 
     initiator_payload = %{
       client_id: target_client_id,
@@ -1861,14 +1686,47 @@ defmodule PortalAPI.Client.Channel.Shared do
       client_public_key: target_meta.public_key,
       client_ipv4: %Postgrex.INET{address: target_meta.ipv4},
       client_ipv6: %Postgrex.INET{address: target_meta.ipv6},
-      preshared_key: preshared_key,
-      local_ice_credentials: ice_credentials.initiator,
-      remote_ice_credentials: ice_credentials.receiver,
+      preshared_key: secrets.preshared_key,
+      local_ice_credentials: secrets.ice_credentials.initiator,
+      remote_ice_credentials: secrets.ice_credentials.receiver,
       ice_role: :controlling,
-      flow_logs_ingest_token: initiator_token
+      flow_logs_ingest_token: secrets.initiator_token
     }
 
     {receiver_message, initiator_payload}
+  end
+
+  # Each receiver renders the initiator and resource for its own protocol.
+  defp authorize_request(socket, resource, policy_authorization_id, expires_at, secrets) do
+    client = socket.assigns.client
+
+    %{
+      initiator:
+        client
+        |> Map.take([
+          :id,
+          :name,
+          :slug,
+          :public_key,
+          :ipv4,
+          :ipv6,
+          :device_serial,
+          :device_uuid,
+          :firebase_installation_id,
+          :identifier_for_vendor
+        ])
+        |> Map.put(:user_agent, socket.assigns.subject.context.user_agent),
+      # Kept for older gateways that do not report flow logs to the portal.
+      # These do not parse the attribution fields from the ingest token.
+      subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
+      resource: resource,
+      policy_authorization_id: policy_authorization_id,
+      expires_at: expires_at,
+      preshared_key: secrets.preshared_key,
+      ice_credentials: secrets.ice_credentials,
+      responder_token: secrets.responder_token,
+      initiator_iceless_capable: socket.assigns.iceless_capable
+    }
   end
 
   defp relay_owner(socket) do
@@ -1884,11 +1742,19 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp initiator(socket) do
     %{
       account_id: socket.assigns.subject.account.id,
+      device_id: socket.assigns.client.id,
       version: socket.assigns.client_version,
+      proto_range: proto_range(socket),
       location:
         {socket.assigns.subject.context.remote_ip_location_lat,
          socket.assigns.subject.context.remote_ip_location_lon}
     }
+  end
+
+  # A device that states its range has it assigned; a legacy client speaks its own minor.
+  defp proto_range(socket) do
+    Map.get(socket.assigns, :proto_range) ||
+      Portal.Version.legacy_proto_range(:client, socket.assigns.client_version)
   end
 
   # The socket read these before the channel subscribed, so a change in between would be lost.
@@ -1945,7 +1811,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         authorizations_cache: authorizations_cache,
         outbound_authorizations_cache: outbound_authorizations_cache,
         pending_authorizations: %{},
-        iceless_capable: false
+        iceless_capable: Map.get(socket.assigns, :iceless_capable, false)
       )
       # Track client's presence and monitor tracker shard processes for crash recovery
       |> track_presence()
@@ -1964,7 +1830,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp init(socket, resources, relays) do
-    push(socket, "init", %{
+    payload = %{
       flow_logs: flow_logs_config(),
       account_slug: socket.assigns.subject.account.slug,
       actor_name: socket.assigns.subject.actor.name,
@@ -1977,7 +1843,9 @@ Relays.render(relays, relay_owner(socket)),
           socket.assigns.client
           | account: socket.assigns.subject.account
         })
-    })
+    }
+
+    Protocol.push(socket, "init", protocol_extension(socket, :extend_init, payload))
   end
 
   defp reinitialize_client(socket) do
@@ -2112,7 +1980,7 @@ Relays.render(relays, relay_owner(socket)),
          socket
        ) do
     if certificate_session?(socket) do
-      close_transport(socket)
+      Session.close_transport(socket)
     else
       {:noreply, socket}
     end
@@ -2161,29 +2029,6 @@ Relays.render(relays, relay_owner(socket)),
 
   # ACCOUNTS
 
-  # Disabling an account is broadcast as an account deletion. Unlike token-backed
-  # credentials, X.509 credentials have no token row for the account hook
-  # to delete, so every client channel for the account must be explicitly cut.
-  defp handle_change(
-         %Change{op: :delete, old_struct: %Portal.Account{id: account_id}},
-         %{assigns: %{client: %{account_id: account_id}}} = socket
-       ) do
-    handle_info(:disconnect, socket)
-  end
-
-  # Keep the channel fail-closed if an account-disabled update is ever broadcast
-  # directly instead of being normalized to the delete event above.
-  defp handle_change(
-         %Change{
-           op: :update,
-           old_struct: %Portal.Account{is_disabled: false},
-           struct: %Portal.Account{is_disabled: true}
-         },
-         socket
-       ) do
-    handle_info(:disconnect, socket)
-  end
-
   defp handle_change(
          %Change{
            op: :update,
@@ -2200,7 +2045,7 @@ Relays.render(relays, relay_owner(socket)),
     if old_account.config != account.config do
       client = %{socket.assigns.client | account: account}
       payload = %{interface: Views.Interface.render(client)}
-      :ok = push(socket, "config_changed", payload)
+      :ok = Protocol.push(socket, "config_changed", payload)
     end
 
     if Portal.Account.device_posture_enabled?(old_account) != Portal.Account.device_posture_enabled?(account) do
@@ -2281,16 +2126,6 @@ Relays.render(relays, relay_owner(socket)),
     else
       {:noreply, socket}
     end
-  end
-
-  defp handle_change(
-         %Change{op: :delete, old_struct: %Portal.Device{id: id}},
-         %{assigns: %{client: %{id: client_id}}} = socket
-       )
-       when id == client_id do
-    # Deleting a client won't necessary delete its tokens in the case of a headless client.
-    # So we explicitly handle the deleted client here by forcing it to reconnect.
-    close_transport(socket)
   end
 
   # SITES
@@ -2395,26 +2230,6 @@ Relays.render(relays, relay_owner(socket)),
 
   # POLICY_AUTHORIZATIONS
 
-  # When a policy_authorization is deleted where this client is the receiving device,
-  # mirror the gateway flow: drop the cached authorization and push reject_access
-  # with the {initiator, resource} pair so connlib tears down the inbound peer
-  # connection. The wire shape parallels the gateway's reject_access rather than
-  # client_device_access_denied (which is keyed on {ipv4, reason} for the
-  # controlling-side denial path) — the receiver doesn't need a reason, only the
-  # identity of the connection to drop.
-  defp handle_change(
-         %Change{
-           op: :delete,
-           old_struct:
-             %Portal.PolicyAuthorization{receiving_device_id: client_id} =
-               policy_authorization
-         },
-         %{assigns: %{client: %{id: client_id}}} = socket
-       ) do
-    socket = Durability.cancel_authorization(socket, policy_authorization.id)
-    revoke_policy_authorization(socket, policy_authorization)
-  end
-
   # On the v3 protocol the initiating side keeps the pool as its route to the peer, so
   # it gets the same reject_access when the authorization goes away and asks the portal
   # again on the next flow. Authorizations cascade on device and policy deletes, so a
@@ -2431,10 +2246,15 @@ Relays.render(relays, relay_owner(socket)),
 
     if protocol_version(socket) >= 3 and
          not expired?(policy_authorization) do
-      push(socket, "reject_access", %{
-        client_id: policy_authorization.receiving_device_id,
-        resource_id: policy_authorization.resource_id
-      })
+      Protocol.push(
+        socket,
+        "reject_access",
+        %{
+          client_id: policy_authorization.receiving_device_id,
+          resource_id: policy_authorization.resource_id
+        },
+        :outbound
+      )
     end
 
     {:noreply, socket}
@@ -2556,59 +2376,27 @@ Relays.render(relays, relay_owner(socket)),
 
   defp protocol_version(socket), do: socket.assigns.channel_protocol.protocol_version()
 
+  # A protocol that adds to what every client gets defines the callback; the others leave it as is.
+  defp protocol_extension(socket, callback, value) do
+    protocol = socket.assigns.channel_protocol
+
+    if function_exported?(protocol, callback, 2) do
+      apply(protocol, callback, [socket, value])
+    else
+      value
+    end
+  end
+
   defp expired?(%Portal.PolicyAuthorization{expires_at: nil}), do: false
 
   defp expired?(%Portal.PolicyAuthorization{expires_at: expires_at}) do
     DateTime.compare(expires_at, DateTime.utc_now()) != :gt
   end
 
-  # Stopping the channel alone leaves the transport up, and a rejoin on it reuses
-  # the assigns from Socket.connect/3 without checking them again.
-  defp close_transport(socket) do
-    send(socket.transport_pid, :socket_drain)
-    {:stop, :shutdown, socket}
-  end
-
-  # Shared eviction path for the CDC delete handler, the direct `:reject_access`
-  # from `Portal.Queue`'s on_failed callback, and the authz durability timeout.
-  # Drop the cached authorization and, if it was still active, push
-  # `reject_access` so connlib tears down the inbound peer connection. The peer
-  # recovers by tripping ICMP "destination prohibited" and requesting a fresh
-  # flow. Deletes of already-expired authorizations (the
-  # `DeleteExpiredPolicyAuthorizations` reaper) are dropped silently — connlib
-  # has already expired them locally.
-  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{
-         id: id,
-         initiating_device_id: initiating_client_id,
-         resource_id: resource_id
-       }) do
-    case Cache.Authorizations.delete(
-           socket.assigns.authorizations_cache,
-           id,
-           initiating_client_id,
-           resource_id
-         ) do
-      {:ok, expires_at_unix, authorizations_cache} ->
-        now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
-
-        if expires_at_unix > now_unix do
-          push(socket, "reject_access", %{
-            client_id: initiating_client_id,
-            resource_id: resource_id
-          })
-        end
-
-        {:noreply, assign(socket, authorizations_cache: authorizations_cache)}
-
-      :error ->
-        {:noreply, socket}
-    end
-  end
-
   defp push_device_access_denied(_socket, nil), do: :ok
 
   defp push_device_access_denied(socket, {ipv4_tuple, ipv6_tuple}) do
-    push(socket, "client_device_access_denied", %{
+    Protocol.push(socket, "client_device_access_denied", %{
       ipv4: to_string(:inet.ntoa(ipv4_tuple)),
       ipv6: to_string(:inet.ntoa(ipv6_tuple)),
       reason: :forbidden
@@ -2617,26 +2405,17 @@ Relays.render(relays, relay_owner(socket)),
     :ok
   end
 
-  defp maybe_put_authorization(
-         cache,
-         client_id,
-         %{id: resource_id},
-         pa_id,
-         %DateTime{} = expires_at
-       )
-       when not is_nil(client_id) and not is_nil(pa_id) do
-    Cache.Authorizations.put(cache, pa_id, client_id, resource_id, expires_at)
-  end
+  defp maybe_put_expires_at(payload, %DateTime{} = expires_at),
+    do: Map.put(payload, :expires_at, DateTime.to_unix(expires_at, :second))
 
-  defp maybe_put_authorization(cache, _client_id, _resource, _pa_id, _expires_at),
-    do: cache
+  defp maybe_put_expires_at(payload, _expires_at), do: payload
 
   defp maybe_push_resource_filters_updated(_socket, _resource, filters, filters), do: :ok
 
   defp maybe_push_resource_filters_updated(socket, resource, _old_filters, _filters) do
     if Cache.Authorizations.has_resource?(socket.assigns.authorizations_cache, resource.id) do
       cacheable = Cache.Cacheable.to_cache(resource)
-      push(socket, "resource_filters_updated", Views.Resource.render_authorization(cacheable))
+      Protocol.push(socket, "resource_filters_updated", Views.Resource.render_authorization(cacheable))
     end
 
     :ok
@@ -2648,11 +2427,11 @@ Relays.render(relays, relay_owner(socket)),
     # important that deletions are processed first here.
     # See https://github.com/firezone/firezone/issues/9881
     for resource_id <- removed_ids do
-      push(socket, "resource_deleted", resource_id)
+      Protocol.push(socket, "resource_deleted", resource_id)
     end
 
     for resource <- added_resources do
-      push(
+      Protocol.push(
         socket,
         "resource_created_or_updated",
         Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
@@ -2805,8 +2584,8 @@ Relays.render(relays, relay_owner(socket)),
   #      authorization and push `reject_access`.
   #
   # All peer-bound messages carry a `{channel_pid, ref}` reply tuple:
-  # `{tag, {channel_pid, ref}, payload}` (used by :allow_access,
-  # :create_authorization, :request_connection, and :client_device_access_authorized).
+  # `{tag, {channel_pid, ref}, payload}` (used by :allow_access, :authorize and
+  # :request_connection).
   defp attach_policy_authorization({tag, ref_tuple, payload}, %Portal.PolicyAuthorization{} = pa)
        when is_tuple(ref_tuple) do
     {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
@@ -2857,32 +2636,22 @@ Relays.render(relays, relay_owner(socket)),
   end
 
   defp register(socket) do
-    current_pid = socket.assigns[:pg_scope_pid]
-
-    case PG.scope_pid() do
-      nil ->
-        Logger.error("Portal.PG scope is not running, retrying registration shortly")
-        Process.send_after(self(), :register, 50)
-        {:noreply, socket}
-
-      ^current_pid ->
-        # We're already registered
-        {:noreply, socket}
-
-      new_pid ->
-        Process.monitor(new_pid)
+    case Session.monitor_pg_scope(socket) do
+      {:joined, socket, previous_pid} ->
         :ok = PG.register(socket.assigns.client.id)
         :ok = PG.join(socket.assigns.subject.credential.id)
-        socket = assign(socket, :pg_scope_pid, new_pid)
 
         # The account CDC subscription is already active. Checking current state
         # after subscribing closes the connect race: an earlier change is seen
         # here, while a later one arrives through the CDC-derived broadcast.
         cond do
           not x509_session_enabled?(socket) -> handle_info(:disconnect, socket)
-          not trust_anchor_kept?(socket) -> close_transport(socket)
-          true -> register_session(socket, current_pid)
+          not trust_anchor_kept?(socket) -> Session.close_transport(socket)
+          true -> register_session(socket, previous_pid)
         end
+
+      result ->
+        result
     end
   end
 
@@ -2964,37 +2733,19 @@ Relays.render(relays, relay_owner(socket)),
 
   defp certificate_revoked?(_socket), do: false
 
-  # Tracks client presence and monitors Presence tracker shard processes so we
-  # can re-track if any crash. Monitoring the supervisor alone is insufficient
-  # because individual shard crashes under :one_for_one don't kill the supervisor.
   defp track_presence(socket) do
-    case Process.whereis(Portal.Presence) do
-      nil ->
-        Process.send_after(self(), :track_presence, 50)
-        socket
+    range = proto_range(socket)
 
-      sup_pid ->
-        # Everything a device puts in its presence comes off the row itself,
-        # so both kinds carry the same shape. `attested?` is the exception,
-        # because it describes THIS session rather than the row's history.
-        :ok =
-          Presence.Devices.connect(
-            socket.assigns.client,
-            socket.assigns.subject.credential.id,
-            %{group_ids: group_ids(socket.assigns.cache)}
-          )
+    meta =
+      protocol_extension(socket, :extend_presence_meta, %{
+        group_ids: group_ids(socket.assigns.cache),
+        site_ids: Map.get(socket.assigns, :served_site_ids, []),
+        capabilities: Map.get(socket.assigns, :capabilities, [:tun]),
+        proto_min: range && range.min,
+        proto_max: range && range.max
+      })
 
-        for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
-          Process.demonitor(ref, [:flush])
-        end
-
-        monitors =
-          for {_, pid, _, _} <- Supervisor.which_children(sup_pid), is_pid(pid) do
-            {pid, Process.monitor(pid)}
-          end
-
-        assign(socket, presence_monitors: monitors)
-    end
+    Session.track_presence(socket, socket.assigns.client, socket.assigns.subject.credential.id, meta)
   end
 
   # Pool authorization reads the target's groups off its presence, so they must follow
@@ -3073,7 +2824,7 @@ Relays.render(relays, relay_owner(socket)),
           |> put_site_id(gateway.site_id, socket.assigns.client)
           |> Map.merge(address_fields(address))
 
-        push(socket, authorization_created_event(socket), reply_payload)
+        Protocol.push(socket, authorization_created_event(socket), reply_payload, gateway)
 
         {:noreply,
          assign(
@@ -3101,7 +2852,7 @@ Relays.render(relays, relay_owner(socket)),
           |> Map.put(:client_name, client_name)
           |> Map.put(:client_slug, client_slug)
 
-        push(socket, "client_device_access_authorized", initiator_payload)
+        Protocol.push(socket, "client_device_access_authorized", initiator_payload)
 
         {:noreply,
          socket
@@ -3110,72 +2861,13 @@ Relays.render(relays, relay_owner(socket)),
     end
   end
 
-  defp accept_device_access(socket, payload, ack) do
-    {policy_authorization_id, payload} = Map.pop(payload, :policy_authorization_id)
-    {authorization_expires_at, payload} = Map.pop(payload, :authorization_expires_at)
-    {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
-    {initiator_iceless_capable, payload} = Map.pop(payload, :initiator_iceless_capable, false)
-
-    iceless_feature_enabled = Portal.Account.iceless_enabled?(socket.assigns.subject.account)
-    initiator_capable = initiator_iceless_capable == true
-    receiver_capable = socket.assigns.iceless_capable == true
-
-    use_iceless = iceless_feature_enabled and initiator_capable and receiver_capable
-
-    Portal.Telemetry.authorization_granted(:client,
-      iceless_feature_enabled: iceless_feature_enabled,
-      initiator_iceless_capable: initiator_capable,
-      receiver_iceless_capable: receiver_capable
-    )
-
-    payload = Map.put(payload, :use_iceless, use_iceless)
-
-    authorizations_cache =
-      maybe_put_authorization(
-        socket.assigns.authorizations_cache,
-        payload[:client_id],
-        payload[:resource],
-        policy_authorization_id,
-        authorization_expires_at
-      )
-
-    payload =
-      if match?(%DateTime{}, authorization_expires_at) do
-        Map.put(payload, :expires_at, DateTime.to_unix(authorization_expires_at, :second))
-      else
-        payload
-      end
-
-    push(socket, "client_device_access_authorized", payload)
-
-    # Ack back to the initiator's channel that the authorization is on this
-    # target's websocket. The initiator is released only after this, so the
-    # initiator's ICE candidates (which traverse the same socket) can never
-    # overtake the authorization at the target's data plane. We send the
-    # resolved `use_iceless` (not our capability) so the initiator applies the
-    # same decision without reading the flag again.
-    ack.(use_iceless)
-
-    socket =
-      socket
-      |> assign(authorizations_cache: authorizations_cache)
-      |> Durability.arm_authorization(policy_authorization)
-
-    {:noreply, socket}
-  end
-
-  defp abnormal_exit?(:normal), do: false
-  defp abnormal_exit?(:shutdown), do: false
-  defp abnormal_exit?({:shutdown, _reason}), do: false
-  defp abnormal_exit?(_reason), do: true
-
   # The receiving gateway checks its authorization cache before it forwards the candidates.
   defp deliver_to_gateways(socket, gateway_ids, tag, candidates) when is_list(gateway_ids) do
     candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.client)
 
     if candidates != [] do
       for gateway_id <- Enum.uniq(gateway_ids), is_binary(gateway_id) do
-        PG.deliver(gateway_id, {tag, socket.assigns.client.id, candidates})
+        PG.deliver(gateway_id, {tag, %{type: :client, id: socket.assigns.client.id}, candidates})
       end
     end
 
@@ -3197,7 +2889,7 @@ Relays.render(relays, relay_owner(socket)),
         :ok
 
       true ->
-        PG.deliver(target_client_id, {tag, socket.assigns.client.id, candidates})
+        PG.deliver(target_client_id, {tag, %{type: :client, id: socket.assigns.client.id}, candidates})
     end
   end
 

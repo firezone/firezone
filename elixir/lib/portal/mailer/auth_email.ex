@@ -114,18 +114,42 @@ defmodule Portal.Mailer.AuthEmail do
 
   def sign_up_verification_email(email, sign_up_url) when is_binary(email) do
     default_email()
-    |> subject("Complete your Firezone sign up")
+    |> subject("Finish signing up for Firezone")
     |> to(email)
     |> render_body(__MODULE__, :sign_up_verification, sign_up_url: sign_up_url)
   end
 
-  def existing_accounts_email(email, accounts_with_urls) when is_binary(email) do
+  @doc """
+  The sign-in URLs of the accounts an email belongs to.
+
+  With `client: true` the URLs are listed as text to enter in the client's sign-in page,
+  since a link opened from the email would sign in a browser rather than the client.
+  """
+  def existing_accounts_email(email, accounts_with_urls, opts \\ []) when is_binary(email) do
+    client? = Keyword.get(opts, :client, false)
+
     default_email()
-    |> subject("Your Firezone accounts")
+    |> subject(existing_accounts_subject(client?, accounts_with_urls))
     |> to(email)
-    |> render_body(__MODULE__, :existing_accounts, accounts_with_urls: accounts_with_urls)
+    |> render_body(__MODULE__, :existing_accounts,
+      accounts_with_urls: accounts_with_urls,
+      client?: client?
+    )
   end
 
+  defp existing_accounts_subject(false, _accounts_with_urls), do: "Your Firezone accounts"
+  defp existing_accounts_subject(true, [_account]), do: "Your Firezone sign-in URL"
+  defp existing_accounts_subject(true, _accounts_with_urls), do: "Your Firezone sign-in URLs"
+
+  # Splits a sign-in URL into what the client's sign-in form already shows (the portal URL and a
+  # slash) and the part the person types, so the email can make that part stand out.
+  defp split_sign_in_url(sign_in_url, slug) do
+    if String.ends_with?(sign_in_url, "/" <> slug),
+      do: {String.replace_suffix(sign_in_url, slug, ""), slug},
+      else: {"", sign_in_url}
+  end
+
+  @doc "Says no account was found. Without a `sign_up_url`, the sign-up offer is left out."
   def no_accounts_found_email(email, sign_up_url) when is_binary(email) do
     default_email()
     |> subject("We couldn't find your Firezone account")

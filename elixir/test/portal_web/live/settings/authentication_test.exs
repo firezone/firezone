@@ -681,18 +681,16 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     } do
       Mocks.GitHub.stub()
 
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/authentication/github/new")
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/authentication/github/new")
 
       lv |> element("#verify-button") |> render_click()
 
       assert_push_event(lv, "open_url", %{url: url})
       %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
-      callback_conn = get(build_conn(), ~p"/auth/oidc/callback", %{"state" => state, "code" => "c"})
-      get(build_conn(), redirected_to(callback_conn))
+      callback_conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "c"})
+      get(recycle(callback_conn), redirected_to(callback_conn))
 
       refute_received {:github_token_request, _params}
 
@@ -708,10 +706,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     } do
       Mocks.GitHub.stub()
 
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/authentication/github/new")
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/authentication/github/new")
 
       lv |> element("#verify-button") |> render_click()
 
@@ -720,13 +716,13 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       %{"state" => state, "prompt" => "select_account"} = URI.decode_query(query)
 
       callback_conn =
-        get(build_conn(), ~p"/auth/oidc/callback", %{
+        get(conn, ~p"/auth/oidc/callback", %{
           "state" => state,
           "code" => "c",
           "iss" => "https://github.com/login/oauth"
         })
 
-      get(build_conn(), redirected_to(callback_conn))
+      get(recycle(callback_conn), redirected_to(callback_conn))
 
       html = render(lv)
       assert html =~ "Verified"

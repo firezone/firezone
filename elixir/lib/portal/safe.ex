@@ -998,6 +998,7 @@ defmodule Portal.Safe do
 
   # Site permissions
   def permit(_action, Portal.Site, :account_admin_user), do: :ok
+  def permit(_action, Portal.SiteDevice, :account_admin_user), do: :ok
   def permit(_action, Portal.Site, :api_client), do: :ok
   def permit(:read, Portal.Site, _), do: :ok
 

@@ -59,27 +59,52 @@ defmodule PortalWeb.HomeControllerTest do
   end
 
   describe "home/2" do
-    test "redirects to /getting_started when no cookie present", %{conn: conn} do
+    test "sends people with no recent accounts to sign-up", %{conn: conn} do
       conn = get(conn, ~p"/")
-      assert redirected_to(conn) == ~p"/getting_started"
+
+      assert redirected_to(conn) == ~p"/sign_up"
+    end
+
+    test "keeps campaign params, not sign-in params, on the way to sign-up", %{conn: conn} do
+      conn = get(conn, ~p"/?#{%{"redirect_to" => "/sites", "utm_source" => "x", "utm_campaign" => ""}}")
+
+      assert redirected_to(conn) == ~p"/sign_up?#{%{"utm_source" => "x"}}"
     end
 
     test "redirects to /sign_in when recent_accounts cookie present", %{conn: conn} do
       account = account_fixture()
 
-      cookie_conn =
-        PortalWeb.Cookie.RecentAccounts.put(conn, %PortalWeb.Cookie.RecentAccounts{
-          account_ids: [account.id]
-        })
-
-      %{value: signed_value} = cookie_conn.resp_cookies["recent_accounts"]
-
       conn =
         conn
-        |> put_req_cookie("recent_accounts", signed_value)
+        |> put_recent_accounts([account.id])
         |> get(~p"/")
 
       assert redirected_to(conn) == ~p"/sign_in"
+    end
+
+    test "sends a browser whose recent accounts were all deleted to sign-up and clears them", %{conn: conn} do
+      conn = conn |> put_recent_accounts([Ecto.UUID.generate()]) |> get(~p"/")
+
+      assert redirected_to(conn) == ~p"/sign_up"
+      assert %{"recent_accounts" => _pruned} = conn.resp_cookies
+    end
+
+    test "keeps a browser with at least one remaining account on sign-in", %{conn: conn} do
+      account = account_fixture()
+
+      conn = conn |> put_recent_accounts([Ecto.UUID.generate(), account.id]) |> get(~p"/")
+
+      assert redirected_to(conn) == ~p"/sign_in"
+    end
+
+    test "redirects clients to /sign_in with or without recent accounts", %{conn: conn} do
+      account = account_fixture()
+
+      for client <- @client_sign_in_types, recent <- [[], [account.id]] do
+        conn = conn |> put_recent_accounts(recent) |> get(~p"/?#{%{"as" => client}}")
+
+        assert redirected_to(conn) == ~p"/sign_in?#{%{"as" => client}}"
+      end
     end
 
     test "redirects client sign-in without slug to /sign_in and preserves all sign-in params", %{
@@ -97,56 +122,9 @@ defmodule PortalWeb.HomeControllerTest do
         assert redirected_to(conn) == ~p"/sign_in?#{params}"
       end
     end
-  end
-
-  describe "getting_started/2" do
-    test "renders 'getting started' page", %{conn: conn} do
-      conn = get(conn, ~p"/getting_started")
-      html = response(conn, 200)
-
-      assert html =~ "Let's get started!"
-      assert html =~ "Which best describes why you're here?"
-      assert html =~ "My organization uses Firezone"
-      refute html =~ "Sign in to Firezone"
-    end
-
-    test "links the same page on the EU portal from the US portal", %{conn: conn} do
-      Portal.Config.put_env_override(:data_residency_region, :us)
-      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
-
-      html = conn |> get(~p"/getting_started") |> response(200)
-
-      assert html =~ ~s(href="https://eu.app.firezone.dev/getting_started")
-    end
-
-    test "links the same page on the US portal from the EU portal", %{conn: conn} do
-      Portal.Config.put_env_override(:data_residency_region, :eu)
-      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
-
-      html = conn |> get(~p"/getting_started?client_platform=apple") |> response(200)
-
-      assert html =~ ~s(href="https://app.firezone.dev/getting_started?client_platform=apple")
-    end
-
-    test "shows no portal link on other portals", %{conn: conn} do
-      Portal.Config.put_env_override(:data_residency_region, :eu)
-      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firez.one")
-
-      html = conn |> get(~p"/getting_started") |> response(200)
-
-      assert html =~ "European Union"
-      refute html =~ "other-region-portal"
-    end
-
-    test "shows no region links on on-prem portals", %{conn: conn} do
-      html = conn |> get(~p"/getting_started") |> response(200)
-
-      refute html =~ "eu-beta-banner"
-      refute html =~ "other-region-portal"
-    end
 
     test "sets security headers", %{conn: conn} do
-      conn = get(conn, ~p"/getting_started")
+      conn = get(conn, ~p"/")
 
       assert get_resp_header(conn, "x-frame-options") == ["SAMEORIGIN"]
 
@@ -156,74 +134,132 @@ defmodule PortalWeb.HomeControllerTest do
     end
   end
 
-  describe "sign_in_chooser/2" do
-    test "renders account chooser without accounts when no cookie", %{conn: conn} do
-      conn = get(conn, ~p"/sign_in")
-      html = response(conn, 200)
+  describe "region links on the sign-in layout" do
+    test "links the same page on the EU portal from the US portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
 
-      assert html =~ "Sign in to Firezone"
-      refute html =~ "Recently signed in"
+      html = conn |> get(~p"/sign_in") |> response(200)
+
+      assert html =~ ~s(href="https://eu.app.firezone.dev/sign_in")
     end
 
-    test "renders account chooser with recent accounts when cookie present", %{conn: conn} do
+    test "links the same page on the US portal from the EU portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
+
+      html = conn |> get(~p"/sign_in?client_platform=apple") |> response(200)
+
+      assert html =~ ~s(href="https://app.firezone.dev/sign_in?client_platform=apple")
+    end
+
+    test "shows no portal link on other portals", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firez.one")
+
+      html = conn |> get(~p"/sign_in") |> response(200)
+
+      assert html =~ "European Union"
+      refute html =~ "other-region-portal"
+    end
+
+    test "shows no region links on on-prem portals", %{conn: conn} do
+      html = conn |> get(~p"/sign_in") |> response(200)
+
+      refute html =~ "other-region-portal"
+    end
+
+  end
+
+  describe "pages this replaced" do
+    test "/getting_started redirects home with the sign-in params", %{conn: conn} do
+      conn = get(conn, ~p"/getting_started?#{%{"as" => "client", "utm_source" => "x"}}")
+      assert redirected_to(conn) == ~p"/?as=client"
+    end
+
+    test "/find_account redirects to the sign-in chooser with the sign-in params", %{conn: conn} do
+      conn = get(conn, ~p"/find_account?#{%{"redirect_to" => "/sites"}}")
+      assert redirected_to(conn) == ~p"/sign_in?redirect_to=%2Fsites"
+    end
+  end
+
+  describe "remove_recent_account/2" do
+    test "forgets one account and keeps the sign-in params", %{conn: conn} do
+      [removed, kept] = [account_fixture(), account_fixture()]
+      params = %{"as" => "client", "state" => "abc"}
+
+      conn =
+        conn
+        |> put_recent_accounts([removed.id, kept.id])
+        |> post(~p"/sign_in/recent_accounts/#{removed.id}/remove?#{params}")
+
+      assert redirected_to(conn) == ~p"/sign_in?#{params}"
+
+      html = conn |> recycle() |> get(~p"/sign_in") |> html_response(200)
+      assert html =~ kept.name
+      refute html =~ removed.name
+    end
+
+    test "forgetting the last account sends home to sign-up again", %{conn: conn} do
       account = account_fixture()
 
-      cookie_conn =
-        PortalWeb.Cookie.RecentAccounts.put(conn, %PortalWeb.Cookie.RecentAccounts{
-          account_ids: [account.id]
-        })
-
-      %{value: signed_value} = cookie_conn.resp_cookies["recent_accounts"]
-
       conn =
         conn
-        |> put_req_cookie("recent_accounts", signed_value)
-        |> get(~p"/sign_in")
+        |> put_recent_accounts([account.id])
+        |> post(~p"/sign_in/recent_accounts/#{account.id}/remove")
 
-      html = response(conn, 200)
-
-      assert html =~ "Sign in to Firezone"
-      assert html =~ "Recently signed in"
-      assert html =~ account.name
-      assert html =~ ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/sign_in"
+      assert conn |> recycle() |> get(~p"/") |> redirected_to() == ~p"/sign_up"
     end
 
-    test "renders multiple recent accounts", %{conn: conn} do
-      accounts = [account_fixture(), account_fixture()]
-      account_ids = Enum.map(accounts, & &1.id)
+    test "changes nothing for an account that isn't recent or an id that isn't one", %{conn: conn} do
+      account = account_fixture()
 
-      cookie_conn =
-        PortalWeb.Cookie.RecentAccounts.put(conn, %PortalWeb.Cookie.RecentAccounts{
-          account_ids: account_ids
-        })
+      for account_id <- [Ecto.UUID.generate(), "not-an-id"] do
+        conn =
+          conn
+          |> put_recent_accounts([account.id])
+          |> post(~p"/sign_in/recent_accounts/#{account_id}/remove")
 
-      %{value: signed_value} = cookie_conn.resp_cookies["recent_accounts"]
-
-      conn =
-        conn
-        |> put_req_cookie("recent_accounts", signed_value)
-        |> get(~p"/sign_in")
-
-      html = response(conn, 200)
-
-      for account <- accounts do
-        assert html =~ account.name
-        assert html =~ ~p"/#{account}/sign_in"
+        assert redirected_to(conn) == ~p"/sign_in"
+        refute Map.has_key?(conn.resp_cookies, "recent_accounts")
       end
     end
 
-    test "hides portal-only links for client sign-in", %{conn: conn} do
-      for client <- @client_sign_in_types do
-        conn = get(conn, ~p"/sign_in?#{%{"as" => client}}")
-        html = response(conn, 200)
+    test "needs the CSRF token, so other sites can't clear the list", %{conn: conn} do
+      account = account_fixture()
 
-        refute html =~ "Want to set up a new Organization?"
-        refute html =~ "Not sure where to start?"
-      end
+      conn =
+        conn
+        |> put_recent_accounts([account.id])
+        |> put_private(:plug_skip_csrf_protection, false)
+
+      assert_error_sent 403, fn -> post(conn, ~p"/sign_in/recent_accounts/#{account.id}/remove") end
     end
   end
 
   describe "redirect_to_sign_in/2" do
+    test "takes the account from a pasted sign-in URL", %{conn: conn} do
+      for input <- [
+            "https://app.firezone.dev/acme",
+            "https://app.firezone.dev/acme/sign_in",
+            "app.firezone.dev/Acme/",
+            "http://localhost:13443/acme",
+            "  acme/sign_in ",
+            "acme"
+          ] do
+        conn = post(conn, ~p"/sign_in", %{"account_id_or_slug" => input, "as" => "client"})
+        assert redirected_to(conn) == ~p"/acme/sign_in?as=client", "for #{inspect(input)}"
+      end
+    end
+
+    test "rejects a pasted URL with no account in it", %{conn: conn} do
+      conn = post(conn, ~p"/sign_in", %{"account_id_or_slug" => "https://app.firezone.dev/", "as" => "client"})
+
+      assert redirected_to(conn) == ~p"/sign_in?as=client"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Sign-in URLs can only contain"
+    end
+
     test "redirects to the account sign-in page via POST /sign_in and preserves all sign-in params",
          %{conn: conn} do
       id = Ecto.UUID.generate()
@@ -273,7 +309,7 @@ defmodule PortalWeb.HomeControllerTest do
       assert redirected_to(conn) == ~p"/sign_in?as=client"
 
       assert conn.assigns.flash["error"] ==
-               "Account ID or Slug can only contain letters, digits and underscore"
+               "Sign-in URLs can only contain letters, digits and underscores"
     end
   end
 
@@ -289,5 +325,13 @@ defmodule PortalWeb.HomeControllerTest do
 
       assert redirected_to(conn) == "/sign_up"
     end
+  end
+
+  defp put_recent_accounts(conn, account_ids) do
+    cookie_conn =
+      PortalWeb.Cookie.RecentAccounts.put(conn, %PortalWeb.Cookie.RecentAccounts{account_ids: account_ids})
+
+    %{value: signed_value} = cookie_conn.resp_cookies["recent_accounts"]
+    put_req_cookie(conn, "recent_accounts", signed_value)
   end
 end

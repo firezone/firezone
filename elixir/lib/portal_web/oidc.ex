@@ -467,6 +467,35 @@ defmodule PortalWeb.OIDC do
   end
 
   @doc """
+  Returns the portal session a settings verification is bound to. It goes into
+  the signed state, and `verification_session_matches?/2` checks it on every
+  request that completes the verification.
+  """
+  def verification_session(%Portal.Authentication.Subject{
+        account: %Portal.Account{id: account_id},
+        credential: %Portal.Authentication.Credential.PortalSession{id: session_id}
+      }) do
+    %{account_id: account_id, session_id: session_id}
+  end
+
+  @doc """
+  Returns true when the request carries the portal session the verification
+  was started from.
+  """
+  def verification_session_matches?(%Plug.Conn{} = conn, %{
+        account_id: account_id,
+        session_id: session_id
+      })
+      when is_binary(account_id) and is_binary(session_id) do
+    case PortalWeb.Cookie.Session.fetch(conn, account_id) do
+      %PortalWeb.Cookie.Session{session_id: ^session_id} -> true
+      _ -> false
+    end
+  end
+
+  def verification_session_matches?(_conn, _session), do: false
+
+  @doc """
   Returns the signed state type for a verification provider type.
   This keeps provider type and signed state type mapping in one place.
   """

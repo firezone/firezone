@@ -17,10 +17,6 @@ Where no rule fits, apply the principle.
 - Give every fact one owner.
   A second copy, a second timer or a second computation of the same thing will eventually disagree with the first.
   The exception is performance: a copy that saves work on the per-packet path is fine if a benchmark shows the win and the copy is documented as a cache.
-- Size attracts attention, so make it proportional to what matters.
-  A long comment, a new abstraction or a large diff tells the reader that something important is happening before they can check.
-  If it isn't, they learn to skim, including the one comment that does encode a subtle invariant.
-  The goal is proportion, not minimalism: a real invariant earns a real comment.
 - Reliability comes first: Firezone is a connectivity product.
   A dropped packet is retransmitted by the host's network stack, but a panic takes down the entire application or background service.
 - Keep indentation low.
@@ -59,8 +55,6 @@ Where no rule fits, apply the principle.
 - Never use the `tokio::select!` or `futures::select!` macros.
   Their custom syntax obscures in which order things happen.
   Use `futures::future::select` and match on the `Either`, or write a helper function that polls.
-- Before writing a helper, check whether `std`, a crate that is already in the dependency tree or a neighbouring module provides it.
-  For example, `clap` handles defaults, environment variables and enums.
 - Don't rename imports with `as`.
   Refer to the item through its module instead, e.g. `expiring_map::Event`, and name modules and types such that this reads well without stutter.
   Importing a trait `as _` and giving per-platform modules a common name (`use linux as platform`) are fine.
@@ -96,8 +90,6 @@ Where no rule fits, apply the principle.
 - Return values or emit events instead of accepting callbacks; callbacks don't compose.
 - Don't add what nothing uses: parameters that are always passed the same value, flags, config knobs, injection seams whose only caller passes the default, API that nobody asked for.
   In the same change, remove whatever it made unnecessary: unused parameters, an `async`, a `clone`, a helper.
-- Don't write migration, cleanup or compatibility code for a state that was never released.
-  If nothing that shipped could have produced it, there is nothing to migrate.
 - Decide between sharing and duplicating code by its reason to change.
   Code that changes for the same reason lives in one place, otherwise a later change updates one copy and misses the other.
   Code that changes for different reasons can be duplicated, even if it looks the same today.
@@ -151,7 +143,6 @@ Where no rule fits, apply the principle.
 ## Tests
 
 - Focus on the public API of the module.
-- Cover the behaviour a change introduces, not every path: one or two focused tests are usually enough.
 - Follow the arrange - act - assert pattern.
 - Test only our own code.
   Don't test third-party behaviour, derived `serde` impls or functions that only forward to an inner method.
@@ -182,13 +173,3 @@ Where no rule fits, apply the principle.
 - Drive a background task with a single channel and a message enum.
   It stops when the sender is dropped.
 - Respect back-pressure: Wait for readiness instead of queueing more work, yielding or batching ahead of a blocked sink.
-
-## Changes
-
-- Keep the diff minimal: every hunk serves the purpose of the PR.
-  Don't reorder, move, rename or reformat code that the change doesn't need to touch.
-- Whenever the design of a change moves, re-evaluate what the earlier design introduced: abstractions, helpers, parameters, widened visibility.
-  Remove everything the current design no longer needs.
-- Send refactorings that prepare a feature as their own PR, ahead of the feature.
-- Don't regenerate `Cargo.lock`.
-  Start from the lockfile on `main` (`git checkout main -- rust/Cargo.lock`) and let `cargo` apply only what the `Cargo.toml` change requires.

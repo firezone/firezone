@@ -12,6 +12,7 @@ defmodule PortalWeb.Devices do
 
   @selected_device_events ~w[
     change_policy_authorizations_page open_device_edit_form verify_device unverify_device delete_device
+    put_device_in_site remove_device_from_site
   ]
 
   def mount(_params, _session, socket) do
@@ -26,6 +27,8 @@ defmodule PortalWeb.Devices do
       socket
       |> assign(page_title: "Devices")
       |> assign(selected_device: nil)
+      |> assign(unified_devices?: Portal.Features.enabled?(:unified_devices))
+      |> assign(device_site: nil, sites: [])
       |> assign(stale: false)
       |> assign_async(:devices_count, fn -> {:ok, %{devices_count: Database.count_devices(subject)}} end)
       |> assign(
@@ -86,7 +89,8 @@ defmodule PortalWeb.Devices do
            device_certificate: Database.certificate_status(device, socket.assigns.subject),
            posture_providers_connected?:
              Database.posture_providers_connected?(socket.assigns.subject)
-         )}
+         )
+         |> assign_site_assignment(device)}
     end
   end
 
@@ -120,6 +124,17 @@ defmodule PortalWeb.Devices do
      )
      |> assign(base_device_assigns())}
   end
+
+  defp assign_site_assignment(%{assigns: %{unified_devices?: true}} = socket, device) do
+    subject = socket.assigns.subject
+
+    assign(socket,
+      device_site: Database.get_device_site(device, subject),
+      sites: Database.list_sites(subject)
+    )
+  end
+
+  defp assign_site_assignment(socket, _device), do: socket
 
   defp load_devices(subject, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
@@ -262,6 +277,9 @@ defmodule PortalWeb.Devices do
         policy_authorizations_page={@policy_authorizations_page}
         policy_authorizations_has_next={@policy_authorizations_has_next}
         policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
+        site_assignment={
+          if @unified_devices?, do: %{site: @device_site, sites: @sites}, else: nil
+        }
       />
     </div>
     """
@@ -356,6 +374,45 @@ defmodule PortalWeb.Devices do
 
     {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
   end
+
+  def handle_event(
+        "put_device_in_site",
+        %{"site_device" => %{"site_id" => site_id}},
+        %{assigns: %{unified_devices?: true}} = socket
+      )
+      when site_id != "" do
+    device = socket.assigns.selected_device
+
+    case Database.put_device_in_site(device, site_id, socket.assigns.subject) do
+      {:ok, _site_device} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Device added to the site.")
+         |> assign_site_assignment(device)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not add the device to the site.")}
+    end
+  end
+
+  def handle_event("put_device_in_site", _params, socket), do: {:noreply, socket}
+
+  def handle_event("remove_device_from_site", _params, %{assigns: %{unified_devices?: true}} = socket) do
+    device = socket.assigns.selected_device
+
+    case Database.remove_device_from_site(device, socket.assigns.subject) do
+      {:ok, _device} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Device removed from the site.")
+         |> assign_site_assignment(device)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not remove the device from the site.")}
+    end
+  end
+
+  def handle_event("remove_device_from_site", _params, socket), do: {:noreply, socket}
 
   def handle_event("open_device_edit_form", _params, socket) do
     {:noreply,
@@ -569,6 +626,8 @@ defmodule PortalWeb.Devices do
     alias Portal.Repo.Filter
     alias Portal.Repo.OffsetPaginator
     alias Portal.PostureProvider
+    alias Portal.Site
+    alias Portal.SiteDevice
 
     def count_devices(subject) do
       from(d in Device, as: :devices)
@@ -730,6 +789,73 @@ defmodule PortalWeb.Devices do
         _ ->
           nil
       end
+    end
+
+    @spec get_device_site(Device.t(), Portal.Authentication.Subject.t()) :: Site.t() | nil
+    def get_device_site(%Device{} = device, subject) do
+      from(s in Site, as: :sites)
+      |> join(:inner, [sites: s], sd in SiteDevice,
+        on: sd.account_id == s.account_id and sd.site_id == s.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.device_id == ^device.id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        {:error, _} -> nil
+        site -> site
+      end
+    end
+
+    @spec list_sites(Portal.Authentication.Subject.t()) :: [Site.t()]
+    def list_sites(subject) do
+      from(s in Site, as: :sites)
+      |> order_by([sites: s], asc: s.name)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        sites -> sites
+      end
+    end
+
+    @spec put_device_in_site(Device.t(), String.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, SiteDevice.t()} | {:error, term()}
+    def put_device_in_site(%Device{} = device, site_id, subject) do
+      site =
+        from(s in Site, as: :sites, where: s.id == ^site_id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case site do
+        %Site{} = site ->
+          %SiteDevice{account_id: device.account_id, site_id: site.id, device_id: device.id}
+          |> change()
+          |> SiteDevice.changeset()
+          |> Safe.scoped(subject)
+          |> Safe.insert()
+
+        nil ->
+          {:error, :not_found}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    # Authorizations toward the device for its site's resources go with it.
+    @spec remove_device_from_site(Device.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Device.t()} | {:error, term()}
+    def remove_device_from_site(%Device{} = device, subject) do
+      Safe.transact(fn ->
+        with {deleted, _} when is_integer(deleted) <- delete_site_authorizations(device, subject),
+             {count, _} when is_integer(count) <-
+               from(sd in SiteDevice, where: sd.device_id == ^device.id)
+               |> Safe.scoped(subject)
+               |> Safe.delete_all() do
+          {:ok, device}
+        end
+      end)
     end
 
     @spec list_device_pools(Portal.Device.t(), Portal.Authentication.Subject.t()) ::
@@ -1168,5 +1294,20 @@ defmodule PortalWeb.Devices do
     defp provider_type_rank(:sentinelone), do: 4
     defp provider_type_rank(:sophos), do: 5
 
+    defp delete_site_authorizations(device, subject) do
+      from(pa in PolicyAuthorization, as: :policy_authorizations)
+      |> join(:inner, [policy_authorizations: pa], r in Resource,
+        on: r.account_id == pa.account_id and r.id == pa.resource_id,
+        as: :resources
+      )
+      |> join(:inner, [resources: r], sd in SiteDevice,
+        on: sd.account_id == r.account_id and sd.site_id == r.site_id,
+        as: :site_device
+      )
+      |> where([policy_authorizations: pa], pa.receiving_device_id == ^device.id)
+      |> where([site_device: sd], sd.device_id == ^device.id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+    end
   end
 end
