@@ -2,8 +2,8 @@ defmodule Portal.Features do
   # credo:disable-for-this-file Credo.Check.Warning.MissingChangesetFunction
   use Ecto.Schema
 
-  @features [:x509_auth]
-  @type feature :: :x509_auth
+  @features [:x509_auth, :unified_devices]
+  @type feature :: :x509_auth | :unified_devices
 
   @primary_key false
 

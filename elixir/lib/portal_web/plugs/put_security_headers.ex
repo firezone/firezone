@@ -67,7 +67,7 @@ defmodule PortalWeb.Plugs.PutSecurityHeaders do
   end
 
   defp turnstile_path?(path),
-    do: path in ["/sign_up", "/try", "/find_account"] or String.starts_with?(path, "/sign_up/")
+    do: path in ["/sign_up", "/try", "/sign_in"] or String.starts_with?(path, "/sign_up/")
 
   # A directive that is absent falls back to default-src, so a new one starts from its sources.
   defp allow_turnstile(policy) do

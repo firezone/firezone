@@ -169,6 +169,7 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
+  attr :site_assignment, :map, default: nil
 
   def device_panel(assigns) do
     assigns =
@@ -210,6 +211,7 @@ defmodule PortalWeb.Devices.Components do
           policy_authorizations_page={@policy_authorizations_page}
           policy_authorizations_has_next={@policy_authorizations_has_next}
           policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
+          site_assignment={@site_assignment}
         />
       </div>
     </div>
@@ -307,6 +309,7 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
+  attr :site_assignment, :map, default: nil
 
   def device_details_view(assigns) do
     ~H"""
@@ -336,6 +339,12 @@ defmodule PortalWeb.Devices.Components do
               :if={@device_pools != []}
               account={@account}
               device_pools={@device_pools}
+            />
+            <.device_site_section
+              :if={@site_assignment}
+              account={@account}
+              site={@site_assignment.site}
+              sites={@site_assignment.sites}
             />
             <.device_section account={@account} device={@device} />
             <.device_certificate_section
@@ -596,6 +605,56 @@ defmodule PortalWeb.Devices.Components do
           </Navigation.link>
         </li>
       </ul>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :site, :any, default: nil
+  attr :sites, :list, default: []
+
+  def device_site_section(assigns) do
+    assigns = assign(assigns, :form, to_form(%{"site_id" => ""}, as: :site_device))
+
+    ~H"""
+    <div id="device-site" class="px-5 pt-4 pb-3 border-b border-border">
+      <.section_heading title="Site" />
+      <div :if={@site} class="flex items-center justify-between gap-3">
+        <Navigation.link
+          navigate={~p"/#{@account}/sites/#{@site.id}"}
+          class="text-sm font-medium text-heading hover:text-brand truncate transition-colors"
+        >
+          {@site.name}
+        </Navigation.link>
+        <Form.button
+          type="button"
+          size="sm"
+          phx-click="remove_device_from_site"
+        >
+          Remove from site
+        </Form.button>
+      </div>
+      <div :if={is_nil(@site)}>
+        <p class="mb-2 text-xs text-subtle">
+          This device serves the resources of the site you add it to.
+        </p>
+        <.form
+          for={@form}
+          id="device-site-form"
+          phx-submit="put_device_in_site"
+          class="flex items-end gap-2"
+        >
+          <Form.input
+            field={@form[:site_id]}
+            type="select"
+            prompt="Select a site"
+            options={Enum.map(@sites, &{&1.name, &1.id})}
+          />
+          <Form.button type="submit" size="sm" style="primary">
+            Add to site
+          </Form.button>
+        </.form>
+      </div>
     </div>
     """
   end

@@ -3397,7 +3397,7 @@ assert site_ids == [site.id]
       assert relays1 == relays2
     end
 
-    test "pushes ice_candidates message", %{
+    test "pushes ice candidates from an authorized client", %{
       client: client,
       gateway: gateway,
       site: site,
@@ -3407,71 +3407,25 @@ assert site_ids == [site.id]
       assert_push "init", _init_payload
       put_authorized_client(socket, client.id)
 
-      candidates = ["foo", "bar"]
+      for tag <- [:ice_candidates, :invalidate_ice_candidates] do
+        send(socket.channel_pid, {tag, %{id: client.id, type: :client}, ["foo"]})
 
-      for tag <- [:ice_candidates_from_client, :ice_candidates] do
-        send(socket.channel_pid, {tag, client.id, candidates})
-
-        assert_push "ice_candidates", payload
-
-        assert payload == %{
-                 candidates: candidates,
-                 client_id: client.id
-               }
+        event = Atom.to_string(tag)
+        assert_push ^event, payload
+        assert payload == %{candidates: ["foo"], client_id: client.id}
       end
     end
 
-    test "does not push ice_candidates from a client without an authorization", %{
-      client: client,
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
+    test "does not push ice candidates from a client without an authorization",
+         %{client: client, gateway: gateway, site: site, token: token} do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      send(socket.channel_pid, {:ice_candidates_from_client, client.id, ["foo"]})
-      send(socket.channel_pid, {:ice_candidates_from_client, "not-a-uuid", ["foo"]})
+      for tag <- [:ice_candidates, :invalidate_ice_candidates] do
+        send(socket.channel_pid, {tag, %{id: client.id, type: :client}, ["foo"]})
+      end
 
       refute_push "ice_candidates", _payload
-    end
-
-    test "pushes invalidate_ice_candidates message", %{
-      client: client,
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
-      socket = join_channel(gateway, site, token)
-      assert_push "init", _init_payload
-      put_authorized_client(socket, client.id)
-
-      candidates = ["foo", "bar"]
-
-      for tag <- [:invalidate_ice_candidates_from_client, :invalidate_ice_candidates] do
-        send(socket.channel_pid, {tag, client.id, candidates})
-
-        assert_push "invalidate_ice_candidates", payload
-
-        assert payload == %{
-                 candidates: candidates,
-                 client_id: client.id
-               }
-      end
-    end
-
-    test "does not push invalidate_ice_candidates from a client without an authorization", %{
-      client: client,
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
-      socket = join_channel(gateway, site, token)
-      assert_push "init", _init_payload
-
-      send(socket.channel_pid, {:invalidate_ice_candidates_from_client, client.id, ["foo"]})
-      send(socket.channel_pid, {:invalidate_ice_candidates_from_client, "not-a-uuid", ["foo"]})
-
       refute_push "invalidate_ice_candidates", _payload
     end
 
@@ -4707,7 +4661,7 @@ assert site_ids == [site.id]
       }
 
       push(socket, "broadcast_ice_candidates", attrs)
-      refute_receive {:ice_candidates, _client_id, _candidates}
+      refute_receive {:ice_candidates, %{type: :gateway, id: _client_id}, _candidates}
     end
 
     test "broadcasts :ice_candidates message to the target gateway", %{
@@ -4731,7 +4685,7 @@ assert site_ids == [site.id]
 
       push(socket, "broadcast_ice_candidates", attrs)
 
-      assert_receive {:ice_candidates, gateway_id, ^candidates},
+      assert_receive {:ice_candidates, %{type: :gateway, id: gateway_id}, ^candidates},
                      200
 
       assert gateway.id == gateway_id
@@ -4755,7 +4709,7 @@ assert site_ids == [site.id]
         "client_ids" => [client.id, other_client.id]
       })
 
-      refute_receive {:ice_candidates, _gateway_id, _candidates}
+      refute_receive {:ice_candidates, %{type: :gateway, id: _gateway_id}, _candidates}
     end
 
     test "broadcast_invalidated_ice_candidates does nothing when gateways list is empty", %{
@@ -4774,7 +4728,7 @@ assert site_ids == [site.id]
       }
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
-      refute_receive {:invalidate_ice_candidates, _gateway_id, _candidates}
+      refute_receive {:invalidate_ice_candidates, %{type: :gateway, id: _gateway_id}, _candidates}
     end
 
     test "broadcasts :invalidate_ice_candidates message to all gateways", %{
@@ -4798,7 +4752,7 @@ assert site_ids == [site.id]
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
-      assert_receive {:invalidate_ice_candidates, gateway_id, ^candidates},
+      assert_receive {:invalidate_ice_candidates, %{type: :gateway, id: gateway_id}, ^candidates},
                      200
 
       assert gateway.id == gateway_id
@@ -4822,7 +4776,7 @@ assert site_ids == [site.id]
         "client_ids" => [client.id, other_client.id]
       })
 
-      refute_receive {:invalidate_ice_candidates, _gateway_id, _candidates}
+      refute_receive {:invalidate_ice_candidates, %{type: :gateway, id: _gateway_id}, _candidates}
     end
   end
 

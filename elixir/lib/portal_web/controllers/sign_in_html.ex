@@ -34,19 +34,6 @@ defmodule PortalWeb.SignInHTML do
       </head>
       <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-sm px-4 py-12 text-center">
-          <div class="mx-auto mb-6 w-14 h-14 rounded-full bg-success-light flex items-center justify-center">
-            <svg
-              class="w-7 h-7 text-success"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-          </div>
           <h1 class="text-xl font-semibold text-heading tracking-tight">
             Signed in successfully
           </h1>
@@ -165,21 +152,6 @@ defmodule PortalWeb.SignInHTML do
       </head>
       <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-sm px-4 py-12 text-center">
-          <div class="mx-auto mb-6 w-14 h-14 rounded-full bg-error-light flex items-center justify-center">
-            <svg
-              class="w-7 h-7 text-error"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
           <h1 class="text-xl font-semibold text-heading tracking-tight">
             Account disabled
           </h1>

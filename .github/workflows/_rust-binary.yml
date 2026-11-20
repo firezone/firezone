@@ -26,13 +26,18 @@ on:
         description: "The stage of the image the binary is built for"
         required: true
         type: string
+      arches:
+        description: "The architectures to build the binary for, as a JSON array"
+        required: false
+        type: string
+        default: '["x86_64","aarch64","armv7"]'
     outputs:
       artifact:
         description: "The name of the binary artifact, without the `-<arch>` suffix"
         value: ${{ format('{0}{1}-{2}-binary', inputs.prefix && format('{0}-', inputs.prefix) || '', inputs.name, inputs.sha || github.sha) }}
       arches:
         description: "The architectures the binary was built for, as a JSON array"
-        value: '["x86_64","aarch64","armv7"]'
+        value: ${{ inputs.arches }}
 
 permissions:
   contents: read
@@ -50,10 +55,7 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        arch:
-          - x86_64
-          - aarch64 # E.g. AWS Graviton
-          - armv7 # E.g. Raspberry Pi
+        arch: ${{ fromJSON(inputs.arches) }}
     env:
       SENTRY_ENVIRONMENT: "production"
       TARGET: ${{ fromJSON('{"x86_64":"x86_64-unknown-linux-musl","aarch64":"aarch64-unknown-linux-musl","armv7":"armv7-unknown-linux-musleabihf"}')[matrix.arch] }}
