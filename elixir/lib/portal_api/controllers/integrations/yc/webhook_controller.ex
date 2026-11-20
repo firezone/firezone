@@ -4,6 +4,21 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
   alias Portal.Mailer
   require Logger
 
+  # From Bookface. The alumni deal is 23974.
+  @current_batch_deal_id 2417
+
+  @season_quarters %{
+    "Winter" => 1,
+    "W" => 1,
+    "Spring" => 2,
+    "Sp" => 2,
+    "X" => 2,
+    "Summer" => 3,
+    "S" => 3,
+    "Fall" => 4,
+    "F" => 4
+  }
+
   def handle_webhook(conn, _params) do
     case get_req_header(conn, "x-yc-signature") do
       [signature] ->
@@ -46,8 +61,34 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
     send_resp(conn, 401, "Unauthorized")
   end
 
+  defp redeem(conn, %{"id" => redemption_id, "deal_id" => @current_batch_deal_id} = payload, request)
+       when is_integer(redemption_id) do
+    if current_batch?(payload) do
+      redeem_deal(conn, @current_batch_deal_id, redemption_id, payload, request)
+    else
+      Logger.info("YC current batch deal redeemed by a founder outside the current batch",
+        yc_redemption_id: redemption_id,
+        batches: inspect(batches(payload))
+      )
+
+      conn
+      |> put_status(422)
+      |> json(%{
+        message: "Oops! It looks like the batch has ended. Please use the alumni deal instead."
+      })
+    end
+  end
+
   defp redeem(conn, %{"id" => redemption_id, "deal_id" => deal_id} = payload, request)
        when is_integer(redemption_id) do
+    redeem_deal(conn, deal_id, redemption_id, payload, request)
+  end
+
+  defp redeem(conn, _payload, _request) do
+    send_resp(conn, 400, "Bad Request")
+  end
+
+  defp redeem_deal(conn, deal_id, redemption_id, payload, request) do
     case Map.fetch(Portal.Config.fetch_env!(:portal, :yc_deal_coupon_ids), to_string(deal_id)) do
       {:ok, coupon_id} ->
         create_code(conn, coupon_id, redemption_id, payload, request)
@@ -61,8 +102,38 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
     end
   end
 
-  defp redeem(conn, _payload, _request) do
-    send_resp(conn, 400, "Bad Request")
+  # A batch counts as current until the end of its calendar quarter, which is
+  # a few weeks after its Demo Day. Batches that have not started count too.
+  defp current_batch?(payload) do
+    today = payload |> redeemed_at() |> DateTime.to_date()
+
+    payload
+    |> batches()
+    |> Enum.any?(fn batch ->
+      case batch_ends_on(batch) do
+        {:ok, ends_on} -> Date.compare(today, ends_on) != :gt
+        :error -> false
+      end
+    end)
+  end
+
+  defp batches(%{"companies" => companies}) when is_list(companies) do
+    for %{"batch" => batch} when is_binary(batch) <- companies, do: batch
+  end
+
+  defp batches(_payload), do: []
+
+  # YC writes batches as "W26" or "Winter 2026". Spring is "X26" or "Sp26".
+  defp batch_ends_on(batch) do
+    case Regex.run(~r/^(Winter|Spring|Summer|Fall|Sp|W|X|S|F) ?(\d{4}|\d{2})$/, String.trim(batch)) do
+      [_batch, season, year] ->
+        year = String.to_integer(year)
+        year = if year < 100, do: 2000 + year, else: year
+        {:ok, Date.new!(year, Map.fetch!(@season_quarters, season) * 3, 1) |> Date.end_of_month()}
+
+      nil ->
+        :error
+    end
   end
 
   defp create_code(conn, coupon_id, redemption_id, payload, request) do
@@ -143,15 +214,17 @@ defmodule PortalAPI.Integrations.YC.WebhookController do
   # Codes work for 30 days from redemption. The expiry comes from the payload
   # rather than the clock so that a YC retry sends Stripe the same request.
   defp expires_at(payload) do
-    redeemed_at =
-      case DateTime.from_iso8601(payload["redeemed_at"] || "") do
-        {:ok, redeemed_at, _offset} -> redeemed_at
-        {:error, _reason} -> DateTime.utc_now() |> DateTime.to_date() |> DateTime.new!(~T[00:00:00])
-      end
-
-    redeemed_at
+    payload
+    |> redeemed_at()
     |> DateTime.truncate(:second)
     |> DateTime.shift(day: 30)
+  end
+
+  defp redeemed_at(payload) do
+    case DateTime.from_iso8601(payload["redeemed_at"] || "") do
+      {:ok, redeemed_at, _offset} -> redeemed_at
+      {:error, _reason} -> DateTime.utc_now() |> DateTime.to_date() |> DateTime.new!(~T[00:00:00])
+    end
   end
 
   defp send_code(%{"email" => email} = payload, code, sign_up_url, expires_on)

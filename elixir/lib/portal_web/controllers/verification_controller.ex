@@ -6,6 +6,7 @@ defmodule PortalWeb.VerificationController do
   require Logger
   @verification_ack_timeout 5_000
   @verification_ack_error "Could not confirm verification in settings. Please try again."
+  @unbound_verification_error "Finish verification in the browser where you are signed in to Firezone, then try again."
   @entra_admin_required_error "The Microsoft account completing setup must be a tenant-wide Global Administrator or Privileged Role Administrator."
 
   # Render standalone HTML pages with minimal layout (CSS only, no portal chrome)
@@ -23,7 +24,11 @@ defmodule PortalWeb.VerificationController do
            max_age: 60
          ) do
       {:ok, result} ->
-        render_oidc_result(conn, result)
+        if bound_to_session?(conn, result) do
+          render_oidc_result(conn, result)
+        else
+          render(conn, :failure, error: @unbound_verification_error)
+        end
 
       {:error, _} ->
         render_invalid_oidc_result(conn)
@@ -129,7 +134,11 @@ defmodule PortalWeb.VerificationController do
            max_age: 60
          ) do
       {:ok, result} ->
-        render_entra_result(conn, result)
+        if bound_to_session?(conn, result) do
+          render_entra_result(conn, result)
+        else
+          render(conn, :failure, error: @unbound_verification_error)
+        end
 
       {:error, _} ->
         render_invalid_entra_result(conn)
@@ -338,6 +347,13 @@ defmodule PortalWeb.VerificationController do
 
   defp verify_entra_setup_admin_role(_directory_roles),
     do: {:error, :entra_setup_admin_required}
+
+  # A result that names a LiveView is accepted only from the portal session
+  # that started the verification.
+  defp bound_to_session?(conn, %{lv_pid: lv_pid} = result) when not is_nil(lv_pid),
+    do: PortalWeb.OIDC.verification_session_matches?(conn, result[:session])
+
+  defp bound_to_session?(_conn, _result), do: true
 
   defp notify_and_await_ack(nil, _msg), do: {:error, :no_receiver}
 

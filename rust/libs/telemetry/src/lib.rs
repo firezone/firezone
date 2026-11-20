@@ -82,6 +82,10 @@ pub const HEADLESS_DSN: Dsn = Dsn {
     public_key: "bc27dca8bb37be0142c48c4f89647c13",
     project_id: 4508010028728320,
 };
+pub const OTEL_INGEST_PROXY_DSN: Dsn = Dsn {
+    public_key: "04ee1afc787649fa8efb42c6b0ea8c49",
+    project_id: 4512456592064512,
+};
 pub const RELAY_DSN: Dsn = Dsn {
     public_key: "9d5f664d8f8f7f1716d4b63a58bcafd5",
     project_id: 4508373298970624,

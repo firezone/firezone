@@ -32,6 +32,9 @@
     background-color: #1a1a1a !important;
     color: #e5e5e5 !important;
   }
+  .content-box .url-host {
+    color: #a3a3a3 !important;
+  }
   .separator {
     background-color: #525252 !important;
   }

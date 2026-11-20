@@ -177,6 +177,7 @@ jobs:
         headless-client,
         gateway,
         relay,
+        otel-ingest-proxy,
         integration-tests,
         compatibility-tests,
         nix,
@@ -453,6 +454,18 @@ jobs:
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
+    with:
+      flavour: debug
+
+  otel-ingest-proxy:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
+    uses: ./.github/workflows/_otel-ingest-proxy.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
     with:
       flavour: debug
 

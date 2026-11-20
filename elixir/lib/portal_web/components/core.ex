@@ -1195,6 +1195,7 @@ defmodule PortalWeb.Components.Core do
 
   attr :size, :string, default: "md", values: ~w[xs sm md lg xl]
   attr :variant, :string, default: "plain", values: ~w[plain circle square]
+  attr :icon_class, :string, default: nil, doc: "extra classes for the icon, e.g. responsive sizes"
   attr :rest, :global
 
   def provider_icon(assigns) do
@@ -1210,7 +1211,7 @@ defmodule PortalWeb.Components.Core do
     assigns =
       assigns
       |> assign(:icon_spec, icon_spec)
-      |> assign(:icon_class, icon_class)
+      |> assign(:icon_class, [icon_class, assigns.icon_class])
       |> assign(:wrapper_class, provider_icon_variant(assigns.variant, assigns.size))
 
     ~H"""
