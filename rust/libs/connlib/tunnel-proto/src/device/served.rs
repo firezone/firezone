@@ -401,9 +401,12 @@ impl DeviceState {
         }
     }
 
-    /// Revokes the authorization of `cid` to reach `rid`, whichever kind of target it is.
-    pub fn revoke_access(&mut self, cid: DeviceId, rid: ResourceId, now: Instant) {
-        self.handle_reject_client_device_access(cid, rid);
+    /// Ends the authorization of `cid` to reach `rid` through us, whichever kind of target it is.
+    pub fn deauthorize_peer(&mut self, cid: DeviceId, rid: ResourceId, now: Instant) {
+        if let Some(peer) = self.peers.peer_by_id_mut(&cid) {
+            peer.self_targets_mut().remove_resource(&rid);
+        }
+
         self.remove_access(&cid, &rid, now);
     }
 

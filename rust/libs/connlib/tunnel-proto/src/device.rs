@@ -1456,14 +1456,9 @@ impl DeviceState {
         }
     }
 
-    /// Drop a previously-active authorization for the given peer, either way.
-    pub fn handle_reject_client_device_access(&mut self, cid: DeviceId, resource_id: ResourceId) {
+    /// Ends our authorization to reach `cid` through the pool `resource_id`.
+    pub fn handle_access_revoked(&mut self, cid: DeviceId, resource_id: ResourceId) {
         self.outbound_authorizations.remove_client(resource_id, cid);
-
-        let Some(peer) = self.peers.peer_by_id_mut(&cid) else {
-            return;
-        };
-        peer.self_targets_mut().remove_resource(&resource_id);
     }
 
     /// Checks the connection to a peer that reconnected to the portal with a different key.

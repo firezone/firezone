@@ -172,16 +172,13 @@ impl TunnelModel {
                         .unwrap_or_default();
                     if let Some(client) = self.clients.get_mut(&authorization.initiator) {
                         client.exec_mut(|client| {
-                            client.reject_peer_pool(
-                                authorization.target,
-                                authorization.pool,
-                                filters.clone(),
-                            )
+                            client
+                                .revoke_outbound_peer_pool(authorization.target, authorization.pool)
                         });
                     }
                     if let Some(client) = self.clients.get_mut(&authorization.target) {
                         client.exec_mut(|client| {
-                            client.reject_peer_pool(
+                            client.revoke_inbound_peer_pool(
                                 authorization.initiator,
                                 authorization.pool,
                                 filters,
@@ -693,7 +690,7 @@ impl TunnelModel {
             Transition::RevokePeerAuthorization { client, peer, pool } => {
                 let filters = portal.device_pool_filters(*pool).unwrap_or_default();
                 self.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
-                    receiver.reject_peer_pool(*client, *pool, filters);
+                    receiver.revoke_inbound_peer_pool(*client, *pool, filters);
                 });
             }
             Transition::RevokeGatewayAuthorization(resource) => {

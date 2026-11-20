@@ -250,15 +250,9 @@ impl ModelClient {
         }
     }
 
-    /// Drops a rejected pool in both directions for `peer`.
-    pub(crate) fn reject_peer_pool(
-        &mut self,
-        peer: DeviceId,
-        pool: ResourceId,
-        filters: Vec<Filter>,
-    ) {
+    /// Drops the pool through which we reach `peer`.
+    pub(crate) fn revoke_outbound_peer_pool(&mut self, peer: DeviceId, pool: ResourceId) {
         remove_peer_pool(&mut self.outbound_peer_authorizations, peer, pool);
-        self.revoke_inbound_peer_pool(peer, pool, filters);
     }
 
     /// Expires the inbound authorization `peer` holds towards us through `pool`.

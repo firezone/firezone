@@ -29,6 +29,7 @@ use super::{
 };
 
 /// The `init` message.
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct Init {
     pub interface: Interface,
@@ -40,7 +41,8 @@ pub struct Init {
     /// The sites we serve.
     #[serde(default)]
     pub served_sites: Vec<Site>,
-    /// The resources behind the sites we serve.
+    /// The resources behind the sites we serve. A type we do not know is skipped.
+    #[serde_as(as = "VecSkipError<_>")]
     #[serde(default)]
     pub served_resources: Vec<gateway::ResourceDescription>,
     /// The authorizations of peers to reach a target through us, to resync on (re)connect.
@@ -63,10 +65,13 @@ pub struct Authorization {
 }
 
 /// The sites we serve changed, with the resources behind them.
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct ServedSites {
     #[serde(default)]
     pub served_sites: Vec<Site>,
+    /// A type we do not know is skipped.
+    #[serde_as(as = "VecSkipError<_>")]
     #[serde(default)]
     pub served_resources: Vec<gateway::ResourceDescription>,
 }
@@ -182,9 +187,16 @@ pub enum AccessDenied {
     },
 }
 
-/// An authorization of `device_id` to reach `resource_id` through us was revoked.
+/// The authorization of `device_id` to reach `resource_id` through us ended.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
-pub struct RevokeAccess {
+pub struct DeauthorizePeer {
+    pub device_id: DeviceId,
+    pub resource_id: ResourceId,
+}
+
+/// Our authorization to reach `device_id` through `resource_id` ended.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub struct AccessRevoked {
     pub device_id: DeviceId,
     pub resource_id: ResourceId,
 }
@@ -237,7 +249,8 @@ pub enum IngressMessages {
     AuthorizePeer(AuthorizePeer),
     AccessGranted(AccessGranted),
     AccessDenied(AccessDenied),
-    RevokeAccess(RevokeAccess),
+    DeauthorizePeer(DeauthorizePeer),
+    AccessRevoked(AccessRevoked),
     PublicKeyChanged(PublicKeyChanged),
 
     IceCandidates(IceCandidates),
@@ -416,7 +429,7 @@ mod tests {
     fn ignores_unknown_fields() {
         let msg = ingress(
             r#"{
-                "event": "revoke_access",
+                "event": "deauthorize_peer",
                 "payload": {
                     "device_id": "00000000-0000-0000-0000-000000000001",
                     "resource_id": "00000000-0000-0000-0000-000000000002",
@@ -425,7 +438,26 @@ mod tests {
             }"#,
         );
 
-        assert!(matches!(msg, IngressMessages::RevokeAccess(_)));
+        assert!(matches!(msg, IngressMessages::DeauthorizePeer(_)));
+    }
+
+    #[test]
+    fn parses_access_revoked() {
+        let msg = ingress(
+            r#"{
+                "event": "access_revoked",
+                "payload": {
+                    "device_id": "00000000-0000-0000-0000-000000000001",
+                    "resource_id": "00000000-0000-0000-0000-000000000002"
+                }
+            }"#,
+        );
+
+        assert!(matches!(
+            msg,
+            IngressMessages::AccessRevoked(AccessRevoked { device_id, resource_id })
+                if device_id == DeviceId::from_u128(1) && resource_id == ResourceId::from_u128(2)
+        ));
     }
 
     #[test]
@@ -676,6 +708,22 @@ mod tests {
             serde_json::to_string(&browse).unwrap(),
             r#"{"event":"browse_device_domain","payload":{"domain":"firezone.network"}}"#
         );
+    }
+
+    #[test]
+    fn skips_served_resources_of_an_unknown_type() {
+        let json = init_json(
+            r#""served_resources": [
+                {"type": "future", "id": "73037362-715d-4a83-a749-f18eadd970e6"},
+                {"type": "internet", "id": "1106047c-cd5d-4151-b679-96b93da7383b"}
+            ],"#,
+        );
+
+        let IngressMessages::Init(init) = serde_json::from_str(&json).unwrap() else {
+            panic!("expected init");
+        };
+
+        assert_eq!(init.served_resources.len(), 1);
     }
 
     #[test]

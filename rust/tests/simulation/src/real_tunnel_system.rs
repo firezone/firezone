@@ -350,17 +350,16 @@ impl RealTunnelSystem {
                 for authorization in revoked {
                     if let Some(client) = self.clients.get_mut(&authorization.initiator) {
                         client.exec_mut(|c| {
-                            c.state_mut().handle_reject_client_device_access(
-                                authorization.target,
-                                authorization.pool,
-                            )
+                            c.state_mut()
+                                .handle_access_revoked(authorization.target, authorization.pool)
                         });
                     }
                     if let Some(client) = self.clients.get_mut(&authorization.target) {
                         client.exec_mut(|c| {
-                            c.state_mut().handle_reject_client_device_access(
+                            c.state_mut().deauthorize_peer(
                                 authorization.initiator,
                                 authorization.pool,
+                                now,
                             )
                         });
                     }
@@ -790,9 +789,7 @@ impl RealTunnelSystem {
             }
             Transition::RevokePeerAuthorization { client, peer, pool } => {
                 self.clients.get_mut(&peer).unwrap().exec_mut(|receiver| {
-                    receiver
-                        .state_mut()
-                        .handle_reject_client_device_access(client, pool);
+                    receiver.state_mut().deauthorize_peer(client, pool, now);
                 });
             }
             Transition::RevokeGatewayAuthorization(rid) => {

@@ -24,8 +24,9 @@ use tunnel::messages::client::{
     DeviceDomainResolved, FailReason, ResourceFiltersUpdated,
 };
 use tunnel::messages::device::{
-    AccessDenied, Authorization, BroadcastIceCandidates, EgressMessages, IceCandidates,
-    IceCandidatesUndeliverable, IngressMessages, Init, PublicKeyChanged, RevokeAccess, ServedSites,
+    AccessDenied, AccessRevoked, Authorization, BroadcastIceCandidates, DeauthorizePeer,
+    EgressMessages, IceCandidates, IceCandidatesUndeliverable, IngressMessages, Init,
+    PublicKeyChanged, ServedSites,
 };
 use tunnel::messages::{IngestToken, RelaysPresence};
 use tunnel::unroutable_packet::RoutingError;
@@ -771,13 +772,21 @@ impl Eventloop {
                     .state_mut()
                     .handle_client_device_access_denied(ipv4, ipv6, reason);
             }
-            IngressMessages::RevokeAccess(RevokeAccess {
+            IngressMessages::DeauthorizePeer(DeauthorizePeer {
                 device_id,
                 resource_id,
             }) => {
                 tunnel
                     .state_mut()
-                    .revoke_access(device_id, resource_id, now);
+                    .deauthorize_peer(device_id, resource_id, now);
+            }
+            IngressMessages::AccessRevoked(AccessRevoked {
+                device_id,
+                resource_id,
+            }) => {
+                tunnel
+                    .state_mut()
+                    .handle_access_revoked(device_id, resource_id);
             }
             IngressMessages::PublicKeyChanged(PublicKeyChanged {
                 device_id,
