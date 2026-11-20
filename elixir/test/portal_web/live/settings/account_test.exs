@@ -10,6 +10,7 @@ defmodule PortalWeb.Settings.AccountTest do
   import Portal.DeviceFixtures
   import Portal.ObanJobFixtures
   import Portal.OutboundEmailTestHelpers
+  import Portal.SiteFixtures
   import Portal.SubjectFixtures
 
   setup do
@@ -43,6 +44,145 @@ defmodule PortalWeb.Settings.AccountTest do
       {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
       assert has_element?(lv, "#usage", "Admins")
       refute has_element?(lv, "#usage-skeleton")
+    end
+  end
+
+  describe "usage panels" do
+    setup %{conn: conn, actor: actor} do
+      %{conn: authorize_conn(conn, actor)}
+    end
+
+    test "each usage row opens its panel", %{conn: conn, account: account} do
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+
+      lv |> element("#usage a", "Admins") |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/settings/account/usage/admins")
+      assert has_element?(lv, "#usage-panel h2", "Admins")
+
+      lv |> element("#usage-panel button[title='Close (Esc)']") |> render_click()
+      assert_patch(lv, ~p"/#{account}/settings/account")
+      refute has_element?(lv, "#usage-panel h2")
+    end
+
+    test "seats list active actors with their active devices", %{conn: conn, account: account} do
+      account = update_account(account, %{limits: %{monthly_active_users_count: 25}})
+
+      user = actor_fixture(account: account, name: "Active User")
+      laptop = client_fixture(account: account, actor: user, name: "Laptop")
+      tablet = client_fixture(account: account, actor: user, name: "Tablet")
+      record_last_seen(tablet, DateTime.add(DateTime.utc_now(), -5, :day))
+
+      service_account = actor_fixture(account: account, type: :service_account, name: "CI Runner")
+      client_fixture(account: account, actor: service_account, name: "Runner Box")
+
+      stale = actor_fixture(account: account, name: "Stale User")
+      stale_device = client_fixture(account: account, actor: stale)
+      record_last_seen(stale_device, DateTime.add(DateTime.utc_now(), -40, :day))
+
+      disabled = disabled_actor_fixture(account: account)
+      client_fixture(account: account, actor: disabled)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account/usage/seats")
+
+      assert has_element?(lv, "#usage-actor-#{user.id}", "Active User")
+      assert has_element?(lv, "#usage-actor-#{user.id}", laptop.name)
+      refute has_element?(lv, "#usage-actor-#{user.id}", "Tablet")
+      assert has_element?(lv, "#usage-actor-#{user.id} a[href='/#{account.slug}/actors/#{user.id}']")
+
+      assert has_element?(lv, "#usage-actor-#{service_account.id}", "Runner Box")
+      refute has_element?(lv, "#usage-actor-#{stale.id}")
+      refute has_element?(lv, "#usage-actor-#{disabled.id}")
+    end
+
+    test "users list every enabled user, including those never seen", %{
+      conn: conn,
+      account: account,
+      actor: admin
+    } do
+      user = actor_fixture(account: account, name: "Seen User")
+      device = client_fixture(account: account, actor: user)
+      record_last_seen(device, DateTime.add(DateTime.utc_now(), -40, :day))
+
+      service_account = actor_fixture(account: account, type: :service_account)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account/usage/users")
+
+      assert has_element?(lv, "#usage-actor-#{user.id}", device.name)
+      assert has_element?(lv, "#usage-actor-#{admin.id}", "Never")
+      refute has_element?(lv, "#usage-actor-#{service_account.id}")
+    end
+
+    test "sites list managed sites with gateway counts", %{conn: conn, account: account} do
+      site = site_fixture(account: account, name: "HQ")
+      gateway_fixture(account: account, site: site)
+      gateway_fixture(account: account, site: site)
+      empty_site = site_fixture(account: account, name: "Branch")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account/usage/sites")
+
+      assert has_element?(lv, "#usage-site-#{site.id} td", "2")
+      assert has_element?(lv, "#usage-site-#{empty_site.id} td", "0")
+      assert has_element?(lv, "#usage-site-#{site.id} a[href='/#{account.slug}/sites/#{site.id}']")
+    end
+
+    test "pages through long lists", %{conn: conn, account: account} do
+      for n <- 1..51, do: actor_fixture(account: account, type: :service_account, name: "SA #{n}")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account/usage/service_accounts")
+
+      assert lv |> element("#usage-panel-rows") |> render() |> count_rows() == 50
+      assert has_element?(lv, "#usage-panel", "Page 1 of 2")
+      assert has_element?(lv, "#usage-panel", "(51 total)")
+      lv |> element("#usage-panel button[title='Next page']") |> render_click()
+      assert has_element?(lv, "#usage-panel", "Page 2 of 2")
+      assert lv |> element("#usage-panel-rows") |> render() |> count_rows() == 1
+    end
+
+    test "filters actors by name or email", %{conn: conn, account: account} do
+      alice = actor_fixture(account: account, name: "Alice Jones", email: "alice@example.com")
+      bob = actor_fixture(account: account, name: "Bob Smith", email: "bob@corp.example.com")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account/usage/users")
+
+      lv |> form("#usage-filter-form", filter: "alice") |> render_change()
+      assert has_element?(lv, "#usage-actor-#{alice.id}")
+      refute has_element?(lv, "#usage-actor-#{bob.id}")
+
+      lv |> form("#usage-filter-form", filter: "CORP.example") |> render_change()
+      assert has_element?(lv, "#usage-actor-#{bob.id}")
+      refute has_element?(lv, "#usage-actor-#{alice.id}")
+
+      lv |> form("#usage-filter-form", filter: "%") |> render_change()
+      assert has_element?(lv, "#usage-panel-empty", "Nothing matches your filter.")
+    end
+
+    test "filtering returns to the first page", %{conn: conn, account: account} do
+      for n <- 1..51, do: actor_fixture(account: account, type: :service_account, name: "SA #{n}")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account/usage/service_accounts")
+      lv |> element("#usage-panel button[title='Next page']") |> render_click()
+
+      lv |> form("#usage-filter-form", filter: "SA 1") |> render_change()
+      refute has_element?(lv, "#usage-panel", "Page 2")
+      assert lv |> element("#usage-panel-rows") |> render() |> count_rows() == 11
+    end
+
+    test "filters sites by name", %{conn: conn, account: account} do
+      hq = site_fixture(account: account, name: "HQ")
+      branch = site_fixture(account: account, name: "Branch Office")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account/usage/sites")
+      lv |> form("#usage-filter-form", filter: "branch") |> render_change()
+
+      assert has_element?(lv, "#usage-site-#{branch.id}")
+      refute has_element?(lv, "#usage-site-#{hq.id}")
+    end
+
+    test "returns not found for an unknown item", %{conn: conn, account: account} do
+      assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
+        live(conn, ~p"/#{account}/settings/account/usage/devices")
+      end
     end
   end
 
@@ -1040,5 +1180,9 @@ defmodule PortalWeb.Settings.AccountTest do
     account_id
     |> collect_queued_emails()
     |> Enum.filter(&({nil, "feedback@example.com"} in &1.to or {"", "feedback@example.com"} in &1.to))
+  end
+
+  defp count_rows(html) do
+    html |> Floki.parse_fragment!() |> Floki.find("tr") |> length()
   end
 end
