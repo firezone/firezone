@@ -972,7 +972,7 @@ impl<'a> Handler<'a> {
             url,
             Some(token),
             get_user_agent("gui-client", env!("CARGO_PKG_VERSION")),
-            "client",
+            client_shared::PHOENIX_TOPIC,
             (),
             || {
                 ExponentialBackoffBuilder::default()

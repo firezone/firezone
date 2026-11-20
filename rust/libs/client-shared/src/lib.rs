@@ -33,7 +33,8 @@ use crate::eventloop::UserNotification;
 
 mod eventloop;
 
-const PHOENIX_TOPIC: &str = "device";
+/// The channel topic a client joins on the portal.
+pub const PHOENIX_TOPIC: &str = "device";
 
 /// What this build speaks on `/device/v1`, to declare when connecting.
 pub fn device_protocol() -> DeviceProtocol {

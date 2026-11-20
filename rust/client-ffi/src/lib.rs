@@ -674,7 +674,7 @@ fn connect(
         url,
         Some(token),
         get_user_agent(platform::COMPONENT, platform::VERSION),
-        "client",
+        client_shared::PHOENIX_TOPIC,
         (),
         || {
             ExponentialBackoffBuilder::default()

@@ -430,7 +430,7 @@ fn try_main() -> Result<()> {
             url,
             Some(token),
             get_user_agent("headless-client", env!("CARGO_PKG_VERSION")),
-            "client",
+            client_shared::PHOENIX_TOPIC,
             (),
             move || {
                 ExponentialBackoffBuilder::default()
