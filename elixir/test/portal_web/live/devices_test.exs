@@ -18,6 +18,7 @@ defmodule PortalWeb.DevicesTest do
   import Portal.ActorFixtures
   import Portal.DefenderFixtures
   import Portal.DevicePostureFixtures
+  import Portal.FeaturesFixtures
   import Portal.IntuneFixtures
   import Portal.IruFixtures
   import Portal.SantaFixtures
@@ -1801,6 +1802,119 @@ defmodule PortalWeb.DevicesTest do
         assert device.name == client.name
         assert device.verified_at == client.verified_at
       end
+    end
+  end
+
+  describe ":show action site section" do
+    test "is hidden without the unified devices feature", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+      site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      refute has_element?(lv, "#device-site")
+    end
+
+    test "adds the device to a site", %{conn: conn, account: account, actor: actor} do
+      enable_feature(:unified_devices)
+      client = client_fixture(account: account, actor: actor)
+      site = internet_site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      assert has_element?(lv, "#device-site-form option[value='#{site.id}']", site.name)
+
+      html =
+        lv
+        |> form("#device-site-form", site_device: %{site_id: site.id})
+        |> render_submit()
+
+      assert html =~ "Device added to the site."
+      assert has_element?(lv, "#device-site a", site.name)
+      refute has_element?(lv, "#device-site-form")
+
+      assert Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: site.id,
+               device_id: client.id
+             )
+    end
+
+    test "removes the device from its site with the authorizations for that site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:unified_devices)
+      client = client_fixture(account: account, actor: actor)
+      site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
+
+      Repo.insert!(%Portal.SiteDevice{
+        account_id: account.id,
+        site_id: site.id,
+        device_id: client.id
+      })
+
+      served =
+        policy_authorization_fixture(
+          account: account,
+          gateway: client,
+          resource: resource_fixture(account: account, site: site)
+        )
+
+      unrelated =
+        policy_authorization_fixture(
+          account: account,
+          gateway: client,
+          resource: resource_fixture(account: account, site: other_site)
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      assert has_element?(lv, "#device-site a", site.name)
+
+      html =
+        lv
+        |> element("#device-site button", "Remove from site")
+        |> render_click()
+
+      assert html =~ "Device removed from the site."
+      assert has_element?(lv, "#device-site-form")
+      refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
+      refute Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: served.id)
+      assert Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: unrelated.id)
+    end
+
+    test "ignores site events without the unified devices feature", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      render_hook(lv, "put_device_in_site", %{"site_device" => %{"site_id" => site.id}})
+
+      refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
     end
   end
 end
