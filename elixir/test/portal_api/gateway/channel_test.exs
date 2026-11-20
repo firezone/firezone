@@ -3290,6 +3290,87 @@ assert site_ids == [site.id]
       end
     end
 
+    test "reports the candidate IPs to the gateway's relays", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      global_relay: global_relay,
+      site: site,
+      token: token
+    } do
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+      put_authorized_client(socket, client.id)
+      :ok = PG.register(global_relay.id)
+      account_id = account.id
+
+      send(
+        socket.channel_pid,
+        {:ice_candidates, %{type: :client, id: client.id},
+         ["candidate:1 1 udp 1694498815 203.0.113.5 51000 typ srflx raddr 10.0.0.2 rport 51000"]}
+      )
+
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_push "ice_candidates", _
+    end
+
+    test "reports the candidate IPs to every relay the gateway was given", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      global_relay: first_relay,
+      site: site,
+      token: token
+    } do
+      :ok = Portal.Presence.Relays.connect(first_relay)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+      put_authorized_client(socket, client.id)
+
+      second_relay = relay_fixture()
+      :ok = Portal.Presence.Relays.connect(second_relay)
+      push(socket, "no_relays", %{"excluded_relay_ids" => [first_relay.id]})
+      assert_push "relays_presence", _
+
+      :ok = PG.register(first_relay.id)
+      :ok = PG.register(second_relay.id)
+      account_id = account.id
+
+      send(
+        socket.channel_pid,
+        {:ice_candidates, %{type: :client, id: client.id},
+         ["candidate:1 1 udp 2130706431 203.0.113.5 51000 typ host"]}
+      )
+
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+    end
+
+    test "does not report IPs of unparsable or invalidated candidates", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      global_relay: global_relay,
+      site: site,
+      token: token
+    } do
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+      put_authorized_client(socket, client.id)
+      :ok = PG.register(global_relay.id)
+      account_id = account.id
+      candidate = "candidate:1 1 udp 2130706431 203.0.113.5 51000 typ host"
+
+      send(socket.channel_pid, {:ice_candidates, %{type: :client, id: client.id}, ["foo"]})
+      send(socket.channel_pid, {:invalidate_ice_candidates, %{type: :client, id: client.id}, [candidate]})
+
+      assert_push "ice_candidates", _
+      assert_push "invalidate_ice_candidates", _
+      refute_receive {:candidate_ips, ^account_id, _ips}
+    end
+
     test "does not push ice candidates from a client without an authorization",
          %{client: client, gateway: gateway, site: site, token: token} do
       socket = join_channel(gateway, site, token)
