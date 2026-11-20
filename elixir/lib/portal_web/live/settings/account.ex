@@ -1390,9 +1390,13 @@ defmodule PortalWeb.Settings.Account do
           on: sd.account_id == s.account_id and sd.site_id == s.id,
           as: :site_devices
         )
+        |> join(:left, [site_devices: sd], d in Portal.Device,
+          on: d.account_id == sd.account_id and d.id == sd.device_id and d.type == :gateway,
+          as: :gateways
+        )
         |> group_by([sites: s], [s.account_id, s.id])
         |> order_by([sites: s], asc: s.name, asc: s.id)
-        |> select([sites: s, site_devices: sd], %{site: s, gateways_count: count(sd.device_id)})
+        |> select([sites: s, gateways: d], %{site: s, gateways_count: count(d.id)})
         |> limit(^page_size)
         |> offset(^((page - 1) * page_size))
         |> Safe.scoped(subject)

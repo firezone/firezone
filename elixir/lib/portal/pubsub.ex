@@ -64,6 +64,7 @@ defmodule Portal.PubSub do
             | :posture_providers
             | :resources
             | :sites
+            | :site_devices
             | :x509_auth_providers
 
     @spec subscribe(String.t()) :: :ok | {:error, term()}

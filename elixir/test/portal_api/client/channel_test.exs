@@ -481,6 +481,20 @@ defmodule PortalAPI.Client.ChannelTest do
       assert is_number(online_at)
     end
 
+    test "tracks a legacy client as serving no site and having a TUN interface", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      assert %{metas: [meta]} = Map.fetch!(Presence.Devices.Account.list(account.id), client.id)
+      assert meta.site_ids == []
+      assert meta.capabilities == [:tun]
+      assert meta.proto_min == meta.proto_max
+    end
+
     test "after_join enqueues the session and a flush persists it", %{
       client: client,
       subject: subject

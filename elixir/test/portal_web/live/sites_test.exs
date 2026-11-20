@@ -469,6 +469,27 @@ defmodule PortalWeb.SitesTest do
              )
     end
 
+    test "deleting a site keeps the client devices in it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      client = client_fixture(account: account)
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: client.id})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "confirm_delete_site")
+      render_click(lv, "delete_site")
+
+      assert Repo.get_by(Device, account_id: account.id, id: client.id)
+      refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
+    end
+
     test "deleting a site that is already gone shows an error", %{
       conn: conn,
       account: account,
