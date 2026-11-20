@@ -506,6 +506,70 @@ Deploys, each after the previous one is fully rolled out:
 3. The old messages and their handlers go. Requests time out after 15
    seconds, so a few minutes after deploy 2 none are in flight.
 
+### `/device/v1` plan (2026-11-19)
+
+Done on main: the shared channel modules (`Session`, `Relays`, `Durability`,
+`Authorizations`), one receiver message (`:authorize` and `:authorized`), one
+ICE message `{tag, %{type, id}, candidates}`, one presence tracker with
+`site_ids` as a list, sites through `site_devices`, `device_tokens` with the
+`client`, `gateway`, `gateway_group` and `device` salts, and lookup by account
+and `firezone_id`.
+
+Decisions:
+
+- **Every device can serve.** Serving is decided by site assignment, not by a
+  capability, so `nat` is gone. The only capability is `tun`: a device with a
+  TUN interface can initiate and be a device pool target. Legacy defaults:
+  clients `[:tun]`, gateways `[]`.
+- **Only sockets that can serve put sites in presence.** `/gateway` and
+  `/device/v1` write the device's `site_ids`; `/client` v1 to v3 always write
+  `[]`. Routing reads presence only, so a legacy client binary is never
+  selected to serve, even if its device row has a `site_devices` row from an
+  earlier `/device/v1` connect. Refusing to assign such a device to a site is
+  UX only.
+- **`type` stays until 6.4.** A `/device/v1` device gets `:gateway` when its
+  token belongs to the `legacy_gateway` actor and `:client` otherwise. No new
+  code reads `type`; existing reads move to user agent, `site_ids`,
+  `device_actors` or `tun`, one area per PR, after `/device/v1` ships.
+- **Ranges are declared** (decision 10): `proto_min` and `proto_max` connect
+  parameters, clamped to the portal floor; the pair's minor travels in the
+  `:authorize` request as an added key.
+
+Steps, one PR per deploy. Nothing connects to `/device/v1` until the unified
+binary ships, so none of them is visible to users. Adding a presence key that
+readers default when missing is one deploy, and no step changes a message
+between portal nodes.
+
+1. **A1 Ranges in presence (3.0).** Legacy sockets write the range derived from
+   the version; `Routing` and the c2c peer check read it with that fallback.
+   Test: old and new rules agree for every legacy version pair. Reuses #15914.
+2. **A2 `tun` and `site_ids` routing.** Presence `capabilities`; receivers are
+   selected by `site_ids`, not `type`; legacy client sockets write
+   `site_ids: []`; pool targets and initiators need `:tun`.
+3. **A3 Serving receiver out of the Gateway channel** into a shared module:
+   resource cache hydration, served resource, site and policy changes,
+   `:authorize` for a resource target, the `authorization_created` echo,
+   `revoke_pair_access`, `reject_access`. Pure move.
+4. **A4 Client handlers chainable**, so one channel uses both halves.
+   `:authorize` dispatches on the target: resource to the serving half, self
+   to the client receiver.
+5. **A5 Registration policy as an option**: `:last_wins` with a `superseded`
+   reason, or `:first_wins`. Legacy behaviour unchanged.
+6. **B1 Message set (4.11)**: docs and views. Init with `resources`,
+   `sites_served`, `local_resources` and inbound `authorizations`;
+   `local_resource_*` pushes; `create_authorization` with `ice_role`,
+   `target` and the pair's minor; `device_id` for every peer field. Reuses
+   #15920. Agreed with the Rust side before B2 merges.
+7. **B2 `/device/v1` socket (4.12)**: all four salts, subject, lookup by
+   account and `firezone_id`, last-wins, served site from the site token or
+   `site_devices`, `capabilities`, `proto_min` and `proto_max`, and an account
+   feature flag.
+8. **B3 Channel, initiating half**: `/client/v3` parity with `device_id`.
+9. **B4 Channel, serving half**: the device always echoes the signed ref. In
+   ICE and `:authorized`, the sender `type` is the device's role in that pair,
+   so legacy peers keep their current payloads.
+10. **B5 Feature gates (4.13)** from the pair's range.
+
 ### Phase 0: prep, no behaviour change
 
 - **0.1 Audit: duplicate `firezone_id`.** Done 2026-10-22; figures kept privately. Read-only query listing devices that
