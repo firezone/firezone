@@ -190,6 +190,7 @@ impl RealClient {
         query_id: u16,
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
+        now: Instant,
     ) {
         let ips = self
             .dns_records
@@ -213,6 +214,7 @@ impl RealClient {
             upstream,
             dns_transport,
             false,
+            now,
         )
     }
 
@@ -224,6 +226,7 @@ impl RealClient {
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
         edns: bool,
+        now: Instant,
     ) {
         let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
             tracing::error!(%upstream, "Unknown DNS server");
@@ -252,6 +255,8 @@ impl RealClient {
                 self.send(packet);
             }
             DnsTransport::Tcp => {
+                // The query's deadline counts from when the client last advanced.
+                self.tcp_dns_client.handle_timeout(now);
                 self.tcp_dns_client
                     .send_query(SocketAddr::new(sentinel, 53), query)
                     .unwrap();

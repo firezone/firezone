@@ -516,7 +516,7 @@ impl RealTunnelSystem {
                 {
                     self.clients.get_mut(&client_id).unwrap().exec_mut(|sim| {
                         sim.send_dns_query_for(
-                            domain, r_type, query_id, dns_server, transport, edns,
+                            domain, r_type, query_id, dns_server, transport, edns, now,
                         )
                     });
                 }
@@ -538,6 +538,7 @@ impl RealTunnelSystem {
                         query_id,
                         dns_server,
                         transport,
+                        now,
                     )
                 });
             }
