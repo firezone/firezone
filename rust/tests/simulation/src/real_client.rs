@@ -14,7 +14,7 @@ use super::{
     tunnel_model::PrivateKey,
     tunnel_transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
-use connlib_model::{ClientId, RelayId, ResourceView};
+use connlib_model::{DeviceId, RelayId, ResourceView};
 use dns_types::{DomainName, Query, RecordData, RecordType, ResponseCode, prelude::*};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -32,7 +32,7 @@ use tunnel_proto::{
 
 /// Simulation state for a particular client.
 pub(crate) struct RealClient {
-    id: ClientId,
+    id: DeviceId,
 
     pub(crate) tunnel: RealTunnel<ClientState>,
 
@@ -81,7 +81,7 @@ pub(crate) struct RealClient {
 
 impl RealClient {
     pub(crate) fn new(
-        id: ClientId,
+        id: DeviceId,
         mut state: ClientState,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,

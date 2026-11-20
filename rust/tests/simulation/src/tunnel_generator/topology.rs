@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use connlib_model::{ClientId, GatewayId, RelayId, Site, SiteId};
+use connlib_model::{DeviceId, RelayId, Site, SiteId};
 use dns_types::{DomainName, OwnedRecordData};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use smallvec::SmallVec;
@@ -22,7 +22,7 @@ use crate::dns_records::DnsRecords;
 use crate::fake_portal::{FakePortal, PoolMembers};
 use crate::model_client::ModelClient;
 use crate::model_gateway::ModelGateway;
-use crate::network::{Expiry, FilterMode, Host, Mapping, Nat, RoutingTable};
+use crate::network::{Expiry, FilterMode, Host, HostId, Mapping, Nat, RoutingTable};
 use crate::os::SimulatedOs;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
 use crate::site_network::{IcmpError, RouteType, Routes};
@@ -145,7 +145,7 @@ pub(super) fn arb_fake_portal(g: &mut TunnelGenerator, domain_tree: &[DomainName
     g.allocate_site_subnets(&regular_sites);
 
     let clients = (0..g.count(3, 4))
-        .map(|_| (g.fresh_client_id(), g.tunnel_ip4(), g.tunnel_ip6()))
+        .map(|_| (g.fresh_device_id(), g.tunnel_ip4(), g.tunnel_ip6()))
         .collect::<SmallVec<[_; 4]>>();
 
     let upstream_do53 = arb_upstream_do53_servers(g);
@@ -163,7 +163,7 @@ pub(super) fn arb_fake_portal(g: &mut TunnelGenerator, domain_tree: &[DomainName
         .chain(&regular_sites)
         .map(|site| {
             let gateways = (0..g.count(1, 3))
-                .map(|_| (g.fresh_gateway_id(), g.tunnel_ip4(), g.tunnel_ip6()))
+                .map(|_| (g.fresh_device_id(), g.tunnel_ip4(), g.tunnel_ip6()))
                 .collect::<SmallVec<[_; 3]>>();
             (site.id, gateways)
         })
@@ -249,7 +249,7 @@ fn arb_internet_resource(g: &mut TunnelGenerator, site: &Site) -> InternetResour
 
 fn arb_device_pool_resource(
     g: &mut TunnelGenerator,
-    clients: &[(ClientId, Ipv4Addr, Ipv6Addr)],
+    clients: &[(DeviceId, Ipv4Addr, Ipv6Addr)],
 ) -> (DevicePoolResource, PoolMembers) {
     let resource = DevicePoolResource {
         id: g.fresh_resource_id(),
@@ -369,13 +369,13 @@ fn arb_clients(
     portal: &FakePortal,
     nat_ips: &[Ipv4Addr],
     network: &mut RoutingTable,
-) -> BTreeMap<ClientId, Host<ModelClient>> {
+) -> BTreeMap<DeviceId, Host<ModelClient>> {
     portal
         .client_tunnel_ips()
         .map(|(id, tun4, tun6)| {
             let host = arb_client_host(g, id, tun4, tun6);
             let nat = nat_ips[g.choose_index(nat_ips.len())];
-            let ok = network.add_host(id, &host, nat);
+            let ok = network.add_host(HostId::Client(id), &host, nat);
             debug_assert!(ok, "client socket IPs must be unique by construction");
 
             (id, host)
@@ -385,7 +385,7 @@ fn arb_clients(
 
 fn arb_client_host(
     g: &mut TunnelGenerator,
-    id: ClientId,
+    id: DeviceId,
     tun4: Ipv4Addr,
     tun6: Ipv6Addr,
 ) -> Host<ModelClient> {
@@ -425,7 +425,7 @@ fn arb_gateways(
     sites: &BTreeMap<SiteId, SiteView>,
     nat_ips: &[Ipv4Addr],
     network: &mut RoutingTable,
-) -> BTreeMap<GatewayId, Host<ModelGateway>> {
+) -> BTreeMap<DeviceId, Host<ModelGateway>> {
     portal
         .gateway_tunnel_ips()
         .map(|(id, tun4, tun6, site_id)| {
@@ -444,7 +444,7 @@ fn arb_gateways(
             let host = Host::new(inner, latency, 52625);
             let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
             let nat = nat_ips[g.choose_index(nat_ips.len())];
-            let ok = network.add_host(id, &host, nat);
+            let ok = network.add_host(HostId::Gateway(id), &host, nat);
             debug_assert!(ok, "gateway socket IPs must be unique by construction");
 
             (id, host)

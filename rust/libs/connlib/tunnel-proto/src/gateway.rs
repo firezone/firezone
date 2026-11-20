@@ -21,7 +21,7 @@ use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
-use connlib_model::{ClientId, IceCandidate, PublicKey, RelayId, ResourceId};
+use connlib_model::{DeviceId, IceCandidate, PublicKey, RelayId, ResourceId};
 use dns_types::{DomainName, Query, Response, ResponseBuilder, ResponseCode};
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket};
@@ -54,12 +54,12 @@ impl SiteDnsQuery {
 /// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
 pub struct GatewayState {
     /// Manages wireguard tunnels to clients.
-    node: Node<ClientId, RelayId>,
+    node: Node<DeviceId, RelayId>,
     /// All clients we are connected to and the associated, connection-specific state.
-    peers: PeerStore<ClientId, ClientOnGateway>,
+    peers: PeerStore<DeviceId, ClientOnGateway>,
 
     /// Tracks the flows tunneled through this Gateway.
-    flow_tracker: flow_tracker::Tracker<(ClientId, ResourceId)>,
+    flow_tracker: flow_tracker::Tracker<(DeviceId, ResourceId)>,
     authorization_rejections: AuthorizationRejections,
 
     tun_ip_config: Option<IpConfig>,
@@ -76,7 +76,7 @@ pub struct GatewayState {
     buffered_transmits: VecDeque<snownet::Transmit>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
-    portal: PortalConnection<ClientId>,
+    portal: PortalConnection<DeviceId>,
 
     max_dns_domains_per_client: usize,
 }
@@ -155,7 +155,7 @@ impl GatewayState {
         &mut self,
         mut packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<TunBatch<'_, (ClientId, ResourceId)>>> {
+    ) -> Result<Option<TunBatch<'_, (DeviceId, ResourceId)>>> {
         let flow = self.flow_tracker.begin_tun_packet(&packet, now);
 
         if packet.is_fz_p2p_control() {
@@ -234,7 +234,7 @@ impl GatewayState {
     /// Handles one decrypted packet on the slow path, for when no decision of its flow is cached.
     fn handle_peer_message(
         &mut self,
-        cid: ClientId,
+        cid: DeviceId,
         packet: IpPacket,
         local: SocketAddr,
         from: SocketAddr,
@@ -333,14 +333,14 @@ impl GatewayState {
         }
     }
 
-    pub fn cleanup_connection(&mut self, id: &ClientId, now: Instant) {
+    pub fn cleanup_connection(&mut self, id: &DeviceId, now: Instant) {
         self.peers.remove(id);
         self.node.close_connection(*id, p2p_control::goodbye(), now);
     }
 
     pub fn add_ice_candidate(
         &mut self,
-        conn_id: ClientId,
+        conn_id: DeviceId,
         ice_candidate: IceCandidate,
         now: Instant,
     ) {
@@ -350,7 +350,7 @@ impl GatewayState {
 
     pub fn remove_ice_candidate(
         &mut self,
-        conn_id: ClientId,
+        conn_id: DeviceId,
         ice_candidate: IceCandidate,
         now: Instant,
     ) {
@@ -361,13 +361,13 @@ impl GatewayState {
     /// Checks the connection to a Client that reconnected to the portal with a different key.
     ///
     /// Its previous state is forgotten once it authorizes with the new key.
-    pub fn handle_public_key_changed(&mut self, cid: ClientId, public_key: Key, now: Instant) {
+    pub fn handle_public_key_changed(&mut self, cid: DeviceId, public_key: Key, now: Instant) {
         self.node
             .handle_remote_key_changed(cid, public_key.into(), now);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
-    pub fn remove_access(&mut self, cid: &ClientId, rid: &ResourceId, now: Instant) {
+    pub fn remove_access(&mut self, cid: &DeviceId, rid: &ResourceId, now: Instant) {
         let Some(peer) = self.peers.peer_by_id_mut(cid) else {
             return;
         };
@@ -470,7 +470,7 @@ impl GatewayState {
 
     pub fn update_access_authorization_expiry(
         &mut self,
-        client: ClientId,
+        client: DeviceId,
         resource: ResourceId,
         expires_at: Duration,
         now: Instant,
@@ -607,9 +607,9 @@ impl GatewayState {
 
     fn drain_node_events(&mut self) {
         let mut added_ice_candidates =
-            HashMap::<ClientId, BTreeSet<IceCandidate>, FastRandomState>::default();
+            HashMap::<DeviceId, BTreeSet<IceCandidate>, FastRandomState>::default();
         let mut removed_ice_candidates =
-            HashMap::<ClientId, BTreeSet<IceCandidate>, FastRandomState>::default();
+            HashMap::<DeviceId, BTreeSet<IceCandidate>, FastRandomState>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -748,7 +748,7 @@ impl GatewayState {
 
     pub fn retain_authorizations(
         &mut self,
-        mut authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+        mut authorizations: BTreeMap<DeviceId, BTreeSet<ResourceId>>,
     ) {
         for client in self.peers.iter_mut() {
             let resources = authorizations.remove(&client.id()).unwrap_or_default();
@@ -807,8 +807,8 @@ fn inactive_domain_status(resource: ResourceId, domain: DomainName) -> Option<Ip
 
 fn encrypt_packet(
     packet: IpPacket,
-    cid: ClientId,
-    node: &mut Node<ClientId, RelayId>,
+    cid: DeviceId,
+    node: &mut Node<DeviceId, RelayId>,
     now: Instant,
 ) -> Result<Option<snownet::Transmit>> {
     let Some(batch) = encapsulate(&packet, cid, node, now)? else {
@@ -820,8 +820,8 @@ fn encrypt_packet(
 
 fn encapsulate<'n>(
     packet: &IpPacket,
-    cid: ClientId,
-    node: &'n mut Node<ClientId, RelayId>,
+    cid: DeviceId,
+    node: &'n mut Node<DeviceId, RelayId>,
     now: Instant,
 ) -> Result<Option<snownet::EncapsulateBatch<'n>>> {
     match node.encapsulate(cid, packet, now) {

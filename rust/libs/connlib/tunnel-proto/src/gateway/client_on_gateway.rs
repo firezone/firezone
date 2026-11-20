@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, ErrorExt, Result, bail};
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::{DeviceId, ResourceId};
 use dns_types::{DomainName, Query, RecordType};
 use fast_random_state::FastRandomState;
 use ip_network::IpNetwork;
@@ -45,7 +45,7 @@ pub(crate) struct EvictedDomain {
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
-    id: ClientId,
+    id: DeviceId,
     public_key: Key,
 
     client_tun: IpConfig,
@@ -96,7 +96,7 @@ pub enum TranslateOutboundResult {
 
 impl ClientOnGateway {
     pub(crate) fn new(
-        id: ClientId,
+        id: DeviceId,
         public_key: Key,
         client_tun: IpConfig,
         gateway_tun: IpConfig,
@@ -740,7 +740,7 @@ impl ClientOnGateway {
         Ok(entry.resource_id)
     }
 
-    pub fn id(&self) -> ClientId {
+    pub fn id(&self) -> DeviceId {
         self.id
     }
 
@@ -2149,7 +2149,7 @@ mod tests {
         "40b725b2-5904-46fd-b739-756f7d1cbb88".parse().unwrap()
     }
 
-    fn client_id() -> ClientId {
+    fn client_id() -> DeviceId {
         "9d4b79f6-1db7-4cb3-a077-712102204d73".parse().unwrap()
     }
 
@@ -2180,7 +2180,7 @@ mod proptests {
 
     #[test_strategy::proptest()]
     fn gateway_accepts_allowed_packet(
-        #[strategy(client_id())] client_id: ClientId,
+        #[strategy(client_id())] client_id: DeviceId,
         #[strategy(cidr_resources(filters_with_allowed_protocol(), 5))] resources: Vec<(
             ResourceDescription,
             Protocol,
@@ -2230,7 +2230,7 @@ mod proptests {
 
     #[test_strategy::proptest()]
     fn gateway_accepts_different_resources_with_same_ip_packet(
-        #[strategy(client_id())] client_id: ClientId,
+        #[strategy(client_id())] client_id: DeviceId,
         #[strategy(collection::btree_set(resource_id(), 10))] resources_ids: BTreeSet<ResourceId>,
         #[strategy(any::<Ipv4Addr>())] client_v4: Ipv4Addr,
         #[strategy(any::<Ipv6Addr>())] client_v6: Ipv6Addr,
@@ -2291,7 +2291,7 @@ mod proptests {
 
     #[test_strategy::proptest()]
     fn gateway_reject_unallowed_packet(
-        #[strategy(client_id())] client_id: ClientId,
+        #[strategy(client_id())] client_id: DeviceId,
         #[strategy(resource_id())] resource_id: ResourceId,
         #[strategy(any::<Ipv4Addr>())] client_v4: Ipv4Addr,
         #[strategy(any::<Ipv6Addr>())] client_v6: Ipv6Addr,
@@ -2346,7 +2346,7 @@ mod proptests {
 
     #[test_strategy::proptest()]
     fn gateway_reject_removed_filter_packet(
-        #[strategy(client_id())] client_id: ClientId,
+        #[strategy(client_id())] client_id: DeviceId,
         #[strategy(resource_id())] resource_id_allowed: ResourceId,
         #[strategy(resource_id())] resource_id_removed: ResourceId,
         #[strategy(any::<Ipv4Addr>())] client_v4: Ipv4Addr,

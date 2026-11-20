@@ -9,7 +9,7 @@ use std::{
 };
 
 use base64::Engine as _;
-use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
+use connlib_model::{DeviceId, ResourceId};
 use flow_tracker::{FlowClose, FlowContext, FlowProtocol, IngestToken, Record, Role, Tracker};
 use ip_packet::IpPacket;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -163,9 +163,9 @@ fn tracked_packets_spool_open_and_completed_reports() {
 
     let spool = SpoolObserver::new(authz_id);
     let now = Instant::now();
-    let mut tracker = enabled_tracker::<(ClientId, ResourceId)>(now);
+    let mut tracker = enabled_tracker::<(DeviceId, ResourceId)>(now);
 
-    let client = ClientId::from_u128(1);
+    let client = DeviceId::from_u128(1);
     let resource = ResourceId::from_u128(2);
 
     // The Gateway's socket and the Client's public endpoint.
@@ -425,7 +425,7 @@ fn added_packets_count_towards_one_flow() {
             t0,
         );
         flow_tracker::record_decrypted_packet(&tcp_packet(ack(), &[0; 100]));
-        flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
+        flow_tracker::record_peer(DeviceId::from_u128(1), Role::Responder);
         flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
         flow.count_packet(&tcp_packet(ack(), &[0; 200]));
         flow.count_packet(&tcp_packet(ack(), &[0; 50]));
@@ -449,18 +449,13 @@ fn enabled_tracker<S>(now: Instant) -> Tracker<S> {
 
 /// Runs the initiator-to-responder packet through the tracker's public
 /// entry points, as the gateway does for a packet arriving over the network.
-fn drive_tx(
-    tracker: &mut Tracker<ClientOrGatewayId>,
-    packet: &IpPacket,
-    authz_id: &str,
-    now: Instant,
-) {
+fn drive_tx(tracker: &mut Tracker<DeviceId>, packet: &IpPacket, authz_id: &str, now: Instant) {
     drive_tx_from(tracker, "203.0.113.7:51820", packet, authz_id, now);
 }
 
 /// [`drive_tx`] with the Client sending from `remote`, e.g. after a roam.
 fn drive_tx_from(
-    tracker: &mut Tracker<ClientOrGatewayId>,
+    tracker: &mut Tracker<DeviceId>,
     remote: &str,
     packet: &IpPacket,
     authz_id: &str,
@@ -472,15 +467,15 @@ fn drive_tx_from(
         now,
     );
     flow_tracker::record_decrypted_packet(packet);
-    flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
+    flow_tracker::record_peer(DeviceId::from_u128(1), Role::Responder);
     flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
 }
 
 /// Runs the responder-to-initiator return packet through the tracker's
 /// public entry points, as the gateway does for a packet read from TUN.
-fn drive_rx(tracker: &mut Tracker<ClientOrGatewayId>, packet: &IpPacket, now: Instant) {
+fn drive_rx(tracker: &mut Tracker<DeviceId>, packet: &IpPacket, now: Instant) {
     let _flow = tracker.begin_tun_packet(packet, now);
-    flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
+    flow_tracker::record_peer(DeviceId::from_u128(1), Role::Responder);
     flow_tracker::record_transmit(
         Some("198.51.100.1:51820".parse().unwrap()),
         "203.0.113.7:51820".parse().unwrap(),

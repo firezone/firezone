@@ -8,9 +8,7 @@
 #![cfg_attr(test, allow(clippy::print_stdout))]
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
-use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, RelayId, ResourceId, ResourceView,
-};
+use connlib_model::{DeviceId, IceCandidate, RelayId, ResourceId, ResourceView};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
@@ -65,14 +63,25 @@ pub use unroutable_packet::UnroutablePacket;
 // their consumers into `connlib-model` so this crate can expose only the
 // state-machine API.
 
+/// What a peer is to the Client, for the protocol that names peers by kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerKind {
+    /// The peer serves resources to us.
+    Gateway,
+    /// We reach the peer, or the peer reaches us, through a device pool.
+    Client,
+}
+
 #[derive(Debug)]
 pub enum ClientEvent {
     AddedIceCandidates {
-        conn_id: ClientOrGatewayId,
+        conn_id: DeviceId,
+        kind: PeerKind,
         candidates: BTreeSet<IceCandidate>,
     },
     RemovedIceCandidates {
-        conn_id: ClientOrGatewayId,
+        conn_id: DeviceId,
+        kind: PeerKind,
         candidates: BTreeSet<IceCandidate>,
     },
     /// Requests access through the candidate resources, most preferred first.
@@ -80,7 +89,7 @@ pub enum ClientEvent {
         resource_ids: Vec<ResourceId>,
         /// The target device's tunnel address when requesting access through device pools.
         ip: Option<IpAddr>,
-        preferred_gateways: Vec<GatewayId>,
+        preferred_gateways: Vec<DeviceId>,
     },
     /// A DNS query for a device name asks the portal to resolve it.
     DeviceDomainQueried {
@@ -138,11 +147,11 @@ impl IpConfig {
 #[derive(Debug)]
 pub enum GatewayEvent {
     AddedIceCandidates {
-        conn_id: ClientId,
+        conn_id: DeviceId,
         candidates: BTreeSet<IceCandidate>,
     },
     RemovedIceCandidates {
-        conn_id: ClientId,
+        conn_id: DeviceId,
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),

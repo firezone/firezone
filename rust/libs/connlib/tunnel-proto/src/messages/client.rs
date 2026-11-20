@@ -4,9 +4,7 @@ use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
     RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
-use connlib_model::{
-    ClientId, GatewayId, IceCandidate, IpStack, RelayId, ResourceId, Site, SiteId,
-};
+use connlib_model::{DeviceId, IceCandidate, IpStack, RelayId, ResourceId, Site, SiteId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, VecSkipError, serde_as};
@@ -131,7 +129,7 @@ pub struct ConfigUpdate {
 #[derive(Debug, Deserialize, Clone)]
 pub struct AuthorizationCreated {
     pub resource_id: ResourceId,
-    pub gateway_id: GatewayId,
+    pub gateway_id: DeviceId,
     pub gateway_public_key: Key,
     pub gateway_ipv4: Ipv4Addr,
     pub gateway_ipv6: Ipv6Addr,
@@ -162,7 +160,7 @@ pub struct AuthorizationCreationFailed {
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessAuthorized {
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     pub client_name: String,
     pub client_slug: String,
     pub client_public_key: Key,
@@ -239,7 +237,7 @@ pub struct ResourceFiltersUpdated {
 /// `resource_id` for `client_id`.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientRejectAccess {
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     pub resource_id: ResourceId,
 }
 
@@ -255,15 +253,15 @@ pub struct PublicKeyChanged {
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum Peer {
-    Client { client_id: ClientId },
-    Gateway { gateway_id: GatewayId },
+    Client { client_id: DeviceId },
+    Gateway { gateway_id: DeviceId },
 }
 
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientAccessAuthorizationExpiryUpdated {
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     pub resource_id: ResourceId,
     #[serde_as(as = "DurationSeconds<u64>")]
     pub expires_at: Duration,
@@ -284,7 +282,7 @@ pub struct ClientDeviceAccessDenied {
 /// Sent by the portal when our ICE candidates could not be delivered to a target peer.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientIceCandidateError {
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     pub reason: FailReason,
 }
 
@@ -403,7 +401,7 @@ pub enum IngressMessages {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are sent to / received from
-    pub gateway_id: GatewayId,
+    pub gateway_id: DeviceId,
     /// Actual RTC ice candidates
     #[serde_as(as = "serde_with::VecSkipError<_>")]
     pub candidates: Vec<IceCandidate>,
@@ -413,7 +411,7 @@ pub struct GatewayIceCandidates {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ClientIceCandidates {
     /// Client's id the ice candidates are sent to / received from
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     /// Actual RTC ice candidates
     #[serde_as(as = "serde_with::VecSkipError<_>")]
     pub candidates: Vec<IceCandidate>,
@@ -439,7 +437,7 @@ pub enum EgressMessages {
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv6: Option<Ipv6Addr>,
         #[serde(rename = "connected_gateway_ids")]
-        preferred_gateways: Vec<GatewayId>,
+        preferred_gateways: Vec<DeviceId>,
     },
     ResolveDeviceDomain {
         domain: String,

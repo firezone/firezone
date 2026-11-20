@@ -7,7 +7,7 @@ use super::probe::{
 use super::{
     fake_portal::FakePortal, model_client::*, model_gateway::*, network::*, tunnel_transition::*,
 };
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
+use connlib_model::{DeviceId, RelayId, ResourceId, StaticSecret};
 use dns_types::{DomainName, RecordType, prelude::*};
 use ip_packet::Protocol;
 use itertools::Itertools;
@@ -37,8 +37,8 @@ const FLOW_EXPIRY_MARGIN: Duration = Duration::from_secs(10);
 /// This is the "expected" part of our test.
 #[derive(Debug, Clone)]
 pub struct TunnelModel {
-    pub(crate) clients: BTreeMap<ClientId, Host<ModelClient>>,
-    pub(crate) gateways: BTreeMap<GatewayId, Host<ModelGateway>>,
+    pub(crate) clients: BTreeMap<DeviceId, Host<ModelClient>>,
+    pub(crate) gateways: BTreeMap<DeviceId, Host<ModelGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
     /// Relays that answer new allocations with `508 Insufficient Capacity`.
     pub(crate) exhausted_relays: BTreeSet<RelayId>,
@@ -76,8 +76,8 @@ impl TunnelModel {
     ///
     /// Used by the structured generator after it has built each component.
     pub(crate) fn from_parts(
-        clients: BTreeMap<ClientId, Host<ModelClient>>,
-        gateways: BTreeMap<GatewayId, Host<ModelGateway>>,
+        clients: BTreeMap<DeviceId, Host<ModelClient>>,
+        gateways: BTreeMap<DeviceId, Host<ModelGateway>>,
         relays: BTreeMap<RelayId, Host<u64>>,
         global_dns_records: DnsRecords,
         domain_tree: Vec<DomainName>,
@@ -200,7 +200,7 @@ impl TunnelModel {
                 let upstream_do53 = portal.upstream_do53();
                 let global_dns_records = &self.global_dns_records;
                 let gateways = &self.gateways;
-                let resolve = |gateway: Option<GatewayId>, domain: &DomainName| match gateway {
+                let resolve = |gateway: Option<DeviceId>, domain: &DomainName| match gateway {
                     Some(gateway) => gateways[&gateway]
                         .inner()
                         .resolve(domain, global_dns_records)
@@ -556,7 +556,9 @@ impl TunnelModel {
                 self.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
-                let added = self.network.add_host(*client_id, client, *nat_ip4);
+                let added = self
+                    .network
+                    .add_host(HostId::Client(*client_id), client, *nat_ip4);
                 debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
@@ -618,7 +620,7 @@ impl TunnelModel {
                         .gateways
                         .iter()
                         .map(|(id, g)| {
-                            let edge = self.network.edge_config(*id);
+                            let edge = self.network.edge_config(HostId::Gateway(*id));
                             (*id, (edge, g.ip4.is_some(), g.ip6.is_some()))
                         })
                         .collect::<BTreeMap<_, _>>();
@@ -626,13 +628,13 @@ impl TunnelModel {
                         .clients
                         .iter()
                         .map(|(id, c)| {
-                            let edge = self.network.edge_config(*id);
+                            let edge = self.network.edge_config(HostId::Client(*id));
                             (*id, (edge, c.ip4.is_some(), c.ip6.is_some()))
                         })
                         .collect::<BTreeMap<_, _>>();
 
                     for (client_id, client) in self.clients.iter_mut() {
-                        let client_edge = self.network.edge_config(*client_id);
+                        let client_edge = self.network.edge_config(HostId::Client(*client_id));
                         let client_has_ip4 = client.ip4.is_some();
                         let client_has_ip6 = client.ip6.is_some();
                         let unreachable_gateways = gateway_edges
@@ -814,7 +816,7 @@ impl TunnelModel {
         &mut self,
         portal: &FakePortal,
         id: ProbeId,
-        origin: ClientId,
+        origin: DeviceId,
         route: Route,
         request: ProbeRequest,
         sent_at: Instant,
@@ -859,7 +861,7 @@ impl TunnelModel {
         &mut self,
         portal: &FakePortal,
         id: ProbeId,
-        origin: ClientId,
+        origin: DeviceId,
         request: ProbeRequest,
         sent_at: Instant,
         outcome: ExpectedOutcome,
@@ -904,7 +906,7 @@ impl TunnelModel {
     fn verdict(
         &self,
         portal: &FakePortal,
-        origin: ClientId,
+        origin: DeviceId,
         request: &ProbeRequest,
         established: Option<Route>,
     ) -> (ExpectedOutcome, Option<Authorization>) {
@@ -970,7 +972,7 @@ impl TunnelModel {
     fn peer_verdict(
         &self,
         portal: &FakePortal,
-        origin: ClientId,
+        origin: DeviceId,
         ip: IpAddr,
         protocol: Protocol,
     ) -> (ExpectedOutcome, Option<Authorization>) {
@@ -1031,9 +1033,9 @@ impl TunnelModel {
     fn resource_verdict(
         &self,
         portal: &FakePortal,
-        origin: ClientId,
+        origin: DeviceId,
         resource: ResourceId,
-        gateway: GatewayId,
+        gateway: DeviceId,
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
@@ -1087,7 +1089,7 @@ impl TunnelModel {
     }
 
     /// Records the authorization `origin` holds after its packet.
-    fn record_authorization(&mut self, origin: ClientId, authorization: Option<Authorization>) {
+    fn record_authorization(&mut self, origin: DeviceId, authorization: Option<Authorization>) {
         match authorization {
             Some(Authorization::Resource {
                 resource,
@@ -1117,9 +1119,9 @@ impl TunnelModel {
     fn select_gateway(
         &self,
         portal: &FakePortal,
-        origin: ClientId,
+        origin: DeviceId,
         resource: ResourceId,
-    ) -> Option<GatewayId> {
+    ) -> Option<DeviceId> {
         let site = portal.site_for_resource(resource)?;
         let gateway = self.clients[&origin]
             .inner()
@@ -1139,8 +1141,8 @@ impl TunnelModel {
     fn gateway_verdict(
         &self,
         portal: &FakePortal,
-        origin: ClientId,
-        gateway: GatewayId,
+        origin: DeviceId,
+        gateway: DeviceId,
         resource: ResourceId,
         src: IpAddr,
         dst: &Destination,
@@ -1197,8 +1199,8 @@ impl TunnelModel {
     fn pool_towards_peer(
         &self,
         portal: &FakePortal,
-        origin: ClientId,
-        peer: ClientId,
+        origin: DeviceId,
+        peer: DeviceId,
         protocol: Protocol,
     ) -> Result<PoolTowardsPeer, ExpectedOutcome> {
         let client = self.clients[&origin].inner();
@@ -1226,7 +1228,7 @@ impl TunnelModel {
     fn trace_requirement(
         &self,
         portal: &FakePortal,
-        origin: ClientId,
+        origin: DeviceId,
         outcome: ExpectedOutcome,
         sent_at: Instant,
     ) -> TraceRequirement {
@@ -1260,7 +1262,7 @@ impl TunnelModel {
     }
 
     // TODO: Remove with classic ICE.
-    fn can_drop_during_rekey(&self, origin: ClientId, remote: Remote, sent_at: Instant) -> bool {
+    fn can_drop_during_rekey(&self, origin: DeviceId, remote: Remote, sent_at: Instant) -> bool {
         let client = self.clients[&origin].inner();
 
         match remote {
@@ -1281,7 +1283,7 @@ impl TunnelModel {
     /// The expired ICMP flow that a new ICMP flow with this identity resumes.
     pub(crate) fn resumed_icmp_flow(
         &self,
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         dst: &Destination,
         identifier: Identifier,
@@ -1300,7 +1302,7 @@ impl TunnelModel {
     /// The expired UDP flow that a new UDP flow with this identity resumes.
     pub(crate) fn resumed_udp_flow(
         &self,
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         dst: &Destination,
         (sport, dport): (SPort, DPort),
@@ -1317,7 +1319,7 @@ impl TunnelModel {
     }
 
     /// Returns every client's tunnel IPs mapped to its identifier.
-    fn client_ip_to_id(&self) -> BTreeMap<IpAddr, ClientId> {
+    fn client_ip_to_id(&self) -> BTreeMap<IpAddr, DeviceId> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -1397,12 +1399,12 @@ enum Authorization {
     /// Access to `resource` through `gateway`.
     Resource {
         resource: ResourceId,
-        gateway: GatewayId,
+        gateway: DeviceId,
         /// The records `gateway` resolves the resource's domains to as the client connects.
         resolutions: BTreeMap<DomainName, BTreeSet<RecordType>>,
     },
     /// Access to `peer` through `pool`, recorded by the sender and installed on the receiver.
-    Peer { peer: ClientId, pool: ResourceId },
+    Peer { peer: DeviceId, pool: ResourceId },
 }
 
 /// The pool a packet to a peer travels through.
@@ -1441,7 +1443,7 @@ fn address_record_type(src: IpAddr) -> RecordType {
     }
 }
 
-fn gateway_tun_probe_outcome(gateway: GatewayId, protocol: Protocol) -> ExpectedOutcome {
+fn gateway_tun_probe_outcome(gateway: DeviceId, protocol: Protocol) -> ExpectedOutcome {
     match protocol {
         Protocol::Tcp(53535) => panic!("gateway TUN probes do not target the DNS listener"),
         Protocol::Udp(53535) => panic!("gateway TUN probes do not target the DNS listener"),

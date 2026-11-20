@@ -3,7 +3,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
-use connlib_model::ClientId;
+use connlib_model::DeviceId;
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
@@ -18,40 +18,40 @@ use crate::tunnel_transition::{Destination, Transition};
 #[derive(Clone)]
 pub(super) enum PacketTarget {
     Cidr {
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         network: IpNetwork,
         filters: Vec<Filter>,
     },
     Dns {
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         domain: DomainName,
         filters: Vec<Filter>,
         tcp_service_ports: Vec<u16>,
     },
     NonResource {
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         dst: IpAddr,
     },
     InternetResourceRejectedAddress {
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
     },
     ConnectedGateway {
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         network: IpNetwork,
     },
     Peer {
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         dst: IpAddr,
         filters: Vec<Filter>,
     },
     RevokedPeer {
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         dst: IpAddr,
         protocol: Protocol,
@@ -388,7 +388,7 @@ pub(super) fn host_in_v6(g: &mut TunnelGenerator, network: Ipv6Network) -> Ipv6A
 }
 
 /// Selects a subset of the online clients as a pool's members.
-pub(super) fn arb_pool_members(g: &mut TunnelGenerator, state: &TunnelModel) -> BTreeSet<ClientId> {
+pub(super) fn arb_pool_members(g: &mut TunnelGenerator, state: &TunnelModel) -> BTreeSet<DeviceId> {
     state.clients.keys().filter(|_| g.bool()).copied().collect()
 }
 
@@ -411,7 +411,7 @@ fn tcp_service_ports(state: &TunnelModel, domain: &DomainName) -> Vec<u16> {
 
 fn arb_filtered_packet(
     g: &mut TunnelGenerator,
-    client_id: ClientId,
+    client_id: DeviceId,
     src: IpAddr,
     dst: DstSpec,
     filters: &[Filter],
@@ -456,7 +456,7 @@ fn arb_filtered_packet(
 
 fn arb_tcp_connection(
     g: &mut TunnelGenerator,
-    client_id: ClientId,
+    client_id: DeviceId,
     src: IpAddr,
     domain: DomainName,
     filters: &[Filter],
@@ -507,7 +507,7 @@ fn arb_tcp_connection(
 
 fn arb_unfiltered_packet(
     g: &mut TunnelGenerator,
-    client_id: ClientId,
+    client_id: DeviceId,
     src: IpAddr,
     dst: IpAddr,
     allow_dns_ports: bool,
@@ -525,7 +525,7 @@ fn arb_unfiltered_packet(
 }
 fn arb_icmp_packet(
     g: &mut TunnelGenerator,
-    client_id: ClientId,
+    client_id: DeviceId,
     src: IpAddr,
     dst: DstSpec,
 ) -> Transition {
@@ -547,7 +547,7 @@ fn arb_icmp_packet(
 
 fn arb_udp_packet(
     g: &mut TunnelGenerator,
-    client_id: ClientId,
+    client_id: DeviceId,
     src: IpAddr,
     dst: DstSpec,
     dport: u16,

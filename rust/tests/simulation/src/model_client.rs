@@ -17,7 +17,7 @@ use tunnel_proto::{
     messages::{Filter, Interface, UpstreamDo53, UpstreamDoH, client::FailReason},
 };
 
-use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView, Site, SiteId};
+use connlib_model::{DeviceId, ResourceId, ResourceStatus, ResourceView, Site, SiteId};
 use dns_types::{DomainName, RecordType, ResponseCode};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
@@ -37,7 +37,7 @@ use std::{
 /// For example, we try to model connectivity to _resources_ and don't really care, which gateway is being used to route us there.
 #[derive(Clone, derive_more::Debug)]
 pub struct ModelClient {
-    id: ClientId,
+    id: DeviceId,
 
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
@@ -72,7 +72,7 @@ pub struct ModelClient {
 
     /// The resources the client holds an authorization for, and the Gateway each goes through.
     #[debug(skip)]
-    authorizations: BTreeMap<ResourceId, GatewayId>,
+    authorizations: BTreeMap<ResourceId, DeviceId>,
 
     /// The current record kinds resolved by a connected gateway for each DNS resource domain.
     #[debug(skip)]
@@ -80,7 +80,7 @@ pub struct ModelClient {
 
     /// The Gateway we prefer per site when asking for access, until our connection to it fails.
     #[debug(skip)]
-    gateways_by_site: BTreeMap<SiteId, GatewayId>,
+    gateways_by_site: BTreeMap<SiteId, DeviceId>,
 
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
@@ -100,23 +100,23 @@ pub struct ModelClient {
     /// Per Gateway, the instants at which this client sent a packet on that
     /// connection.
     #[debug(skip)]
-    gateway_send_times: BTreeMap<GatewayId, BTreeSet<Instant>>,
+    gateway_send_times: BTreeMap<DeviceId, BTreeSet<Instant>>,
 
     // TODO: Remove with classic ICE.
     /// Per peer Client, the instants at which this client sent a packet on that
     /// connection.
     #[debug(skip)]
-    client_send_times: BTreeMap<ClientId, BTreeSet<Instant>>,
+    client_send_times: BTreeMap<DeviceId, BTreeSet<Instant>>,
 
     /// Per peer, the pools the portal authorised us to reach it through.
     #[debug(skip)]
-    outbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    outbound_peer_authorizations: BTreeMap<DeviceId, BTreeSet<ResourceId>>,
 
     /// Per peer, the pools through which the portal authorised it to reach us.
     #[debug(skip)]
-    inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    inbound_peer_authorizations: BTreeMap<DeviceId, BTreeSet<ResourceId>>,
     #[debug(skip)]
-    rejected_inbound_peer_authorizations: BTreeMap<ClientId, BTreeMap<ResourceId, Vec<Filter>>>,
+    rejected_inbound_peer_authorizations: BTreeMap<DeviceId, BTreeMap<ResourceId, Vec<Filter>>>,
 }
 
 impl ModelClient {
@@ -125,7 +125,7 @@ impl ModelClient {
     /// The structured generator supplies all independent values; this
     /// constructor initializes the derived model state.
     pub(crate) fn new(
-        id: ClientId,
+        id: DeviceId,
         key: PrivateKey,
         tunnel_ip4: Ipv4Addr,
         tunnel_ip6: Ipv6Addr,
@@ -240,7 +240,7 @@ impl ModelClient {
     }
 
     /// Records a pool through which `peer` may reach us.
-    pub(crate) fn add_inbound_peer_pool(&mut self, peer: ClientId, pool: ResourceId) {
+    pub(crate) fn add_inbound_peer_pool(&mut self, peer: DeviceId, pool: ResourceId) {
         self.inbound_peer_authorizations
             .entry(peer)
             .or_default()
@@ -253,7 +253,7 @@ impl ModelClient {
     /// Drops a rejected pool in both directions for `peer`.
     pub(crate) fn reject_peer_pool(
         &mut self,
-        peer: ClientId,
+        peer: DeviceId,
         pool: ResourceId,
         filters: Vec<Filter>,
     ) {
@@ -264,7 +264,7 @@ impl ModelClient {
     /// Expires the inbound authorization `peer` holds towards us through `pool`.
     pub(crate) fn revoke_inbound_peer_pool(
         &mut self,
-        peer: ClientId,
+        peer: DeviceId,
         pool: ResourceId,
         filters: Vec<Filter>,
     ) {
@@ -285,7 +285,7 @@ impl ModelClient {
 
     pub(crate) fn rejected_inbound_peer_filter_allows(
         &self,
-        peer: ClientId,
+        peer: DeviceId,
         protocol: Protocol,
     ) -> bool {
         self.rejected_inbound_peer_authorizations
@@ -299,7 +299,7 @@ impl ModelClient {
 
     pub(crate) fn rejected_inbound_peer_pools(
         &self,
-    ) -> impl Iterator<Item = (ClientId, ResourceId, &[Filter])> + '_ {
+    ) -> impl Iterator<Item = (DeviceId, ResourceId, &[Filter])> + '_ {
         self.rejected_inbound_peer_authorizations
             .iter()
             .flat_map(|(peer, pools)| {
@@ -310,7 +310,7 @@ impl ModelClient {
     }
 
     /// Whether we hold any authorization at all for `peer` to reach us.
-    pub(crate) fn has_inbound_peer_authorization(&self, peer: ClientId) -> bool {
+    pub(crate) fn has_inbound_peer_authorization(&self, peer: DeviceId) -> bool {
         self.inbound_peer_authorizations
             .get(&peer)
             .is_some_and(|pools| !pools.is_empty())
@@ -318,7 +318,7 @@ impl ModelClient {
 
     pub(crate) fn inbound_peer_pools(
         &self,
-    ) -> impl Iterator<Item = (ClientId, BTreeSet<ResourceId>)> + '_ {
+    ) -> impl Iterator<Item = (DeviceId, BTreeSet<ResourceId>)> + '_ {
         self.inbound_peer_authorizations
             .iter()
             .map(|(peer, pools)| (*peer, pools.clone()))
@@ -331,14 +331,14 @@ impl ModelClient {
     }
 
     /// Drops every authorization involving `peer`, as the connection to it is gone.
-    pub(crate) fn forget_peer_authorizations(&mut self, peer: ClientId) {
+    pub(crate) fn forget_peer_authorizations(&mut self, peer: DeviceId) {
         self.outbound_peer_authorizations.remove(&peer);
         self.inbound_peer_authorizations.remove(&peer);
         self.rejected_inbound_peer_authorizations.remove(&peer);
     }
 
     /// Checks whether any active inbound authorization from `peer` permits `protocol`.
-    pub(crate) fn inbound_peer_filter_allows(&self, peer: ClientId, protocol: Protocol) -> bool {
+    pub(crate) fn inbound_peer_filter_allows(&self, peer: DeviceId, protocol: Protocol) -> bool {
         self.inbound_peer_authorizations
             .get(&peer)
             .is_some_and(|pools| {
@@ -350,7 +350,7 @@ impl ModelClient {
 
     pub(crate) fn authorized_pools_towards(
         &self,
-        peer: ClientId,
+        peer: DeviceId,
     ) -> impl Iterator<Item = ResourceId> + '_ {
         self.outbound_peer_authorizations
             .get(&peer)
@@ -359,7 +359,7 @@ impl ModelClient {
             .copied()
     }
 
-    pub(crate) fn record_outbound_peer_authorization(&mut self, peer: ClientId, pool: ResourceId) {
+    pub(crate) fn record_outbound_peer_authorization(&mut self, peer: DeviceId, pool: ResourceId) {
         self.outbound_peer_authorizations
             .entry(peer)
             .or_default()
@@ -433,7 +433,7 @@ impl ModelClient {
     /// connection failed.
     pub(crate) fn fail_connections_to_gateways(
         &mut self,
-        gateways: &BTreeSet<GatewayId>,
+        gateways: &BTreeSet<DeviceId>,
         now: Instant,
     ) {
         // TODO: Remove with classic ICE.
@@ -467,11 +467,11 @@ impl ModelClient {
     }
 
     /// The Gateway `resource` goes through, if the client holds an authorization for it.
-    pub(crate) fn gateway_for_resource(&self, resource: ResourceId) -> Option<GatewayId> {
+    pub(crate) fn gateway_for_resource(&self, resource: ResourceId) -> Option<DeviceId> {
         self.authorizations.get(&resource).copied()
     }
 
-    pub(crate) fn preferred_gateway(&self, site: SiteId) -> Option<GatewayId> {
+    pub(crate) fn preferred_gateway(&self, site: SiteId) -> Option<DeviceId> {
         self.gateways_by_site.get(&site).copied()
     }
 
@@ -481,7 +481,7 @@ impl ModelClient {
     /// `connection_resets` tracks, is untouched.
     pub(crate) fn close_gateway_connection(
         &mut self,
-        gateway: GatewayId,
+        gateway: DeviceId,
         resources: &BTreeSet<ResourceId>,
     ) {
         // TODO: Remove with classic ICE.
@@ -645,7 +645,7 @@ impl ModelClient {
 
     /// The client holds an authorization for `resource` through `gateway`, which it prefers for the
     /// resource's site from now on.
-    pub(crate) fn connect_to_resource(&mut self, resource: ResourceId, gateway: GatewayId) {
+    pub(crate) fn connect_to_resource(&mut self, resource: ResourceId, gateway: DeviceId) {
         let previous = self.authorizations.insert(resource, gateway);
         if previous.is_none() {
             tracing::debug!(%resource, %gateway, "Now connected to resource");
@@ -659,9 +659,9 @@ impl ModelClient {
     pub(crate) fn on_dns_query(
         &mut self,
         query: &DnsQuery,
-        gateway: Option<GatewayId>,
+        gateway: Option<DeviceId>,
         upstream_do53: &[UpstreamDo53],
-        resolve: impl Fn(Option<GatewayId>, &DomainName) -> BTreeSet<RecordType>,
+        resolve: impl Fn(Option<DeviceId>, &DomainName) -> BTreeSet<RecordType>,
         routes: Option<&Routes>,
     ) {
         if self.is_device_dns_query(query) {
@@ -1408,7 +1408,7 @@ impl ModelClient {
     // TODO: Remove with classic ICE.
     pub(crate) fn last_packet_sent_to_gateway_before(
         &self,
-        gateway: GatewayId,
+        gateway: DeviceId,
         at: Instant,
     ) -> Option<Instant> {
         self.gateway_send_times
@@ -1421,7 +1421,7 @@ impl ModelClient {
     // TODO: Remove with classic ICE.
     pub(crate) fn last_packet_sent_to_client_before(
         &self,
-        client: ClientId,
+        client: DeviceId,
         at: Instant,
     ) -> Option<Instant> {
         self.client_send_times
@@ -1450,8 +1450,8 @@ impl ModelClient {
 }
 
 fn remove_peer_pool(
-    authorizations: &mut BTreeMap<ClientId, BTreeSet<ResourceId>>,
-    peer: ClientId,
+    authorizations: &mut BTreeMap<DeviceId, BTreeSet<ResourceId>>,
+    peer: DeviceId,
     pool: ResourceId,
 ) {
     let Some(pools) = authorizations.get_mut(&peer) else {
@@ -1464,7 +1464,7 @@ fn remove_peer_pool(
     }
 }
 
-fn remove_pool(authorizations: &mut BTreeMap<ClientId, BTreeSet<ResourceId>>, pool: ResourceId) {
+fn remove_pool(authorizations: &mut BTreeMap<DeviceId, BTreeSet<ResourceId>>, pool: ResourceId) {
     for pools in authorizations.values_mut() {
         pools.remove(&pool);
     }

@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use anyhow::Result;
-use connlib_model::ClientId;
+use connlib_model::DeviceId;
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
 
@@ -32,7 +32,7 @@ pub(super) enum Outcome {
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct PeerBatch<'a> {
     state: &'a mut GatewayState,
-    packets: snownet::CommittedBatch<ClientId>,
+    packets: snownet::CommittedBatch<DeviceId>,
     local: SocketAddr,
     from: SocketAddr,
     now: Instant,
@@ -44,7 +44,7 @@ pub struct PeerBatch<'a> {
 impl<'a> PeerBatch<'a> {
     pub(super) fn new(
         state: &'a mut GatewayState,
-        packets: snownet::CommittedBatch<ClientId>,
+        packets: snownet::CommittedBatch<DeviceId>,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,

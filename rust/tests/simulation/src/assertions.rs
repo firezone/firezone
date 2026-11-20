@@ -15,7 +15,7 @@ use super::{
     tunnel_model::TunnelModel,
     tunnel_transition::Destination,
 };
-use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView};
+use connlib_model::{DeviceId, ResourceId, ResourceStatus, ResourceView};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
@@ -72,8 +72,8 @@ pub fn check_invariants(model: &TunnelModel, state: &RealTunnelSystem, portal: &
 /// Compares each expected application probe with all endpoint observations.
 fn assert_probes(
     expected_probes: &BTreeMap<ProbeId, ExpectedProbe>,
-    model_clients: &BTreeMap<ClientId, &ModelClient>,
-    model_gateways: &BTreeMap<GatewayId, &ModelGateway>,
+    model_clients: &BTreeMap<DeviceId, &ModelClient>,
+    model_gateways: &BTreeMap<DeviceId, &ModelGateway>,
     state: &RealTunnelSystem,
 ) {
     let observations = state.probe_observations().collect_vec();
@@ -266,8 +266,8 @@ fn assert_round_trip(
     submitted_request: &SubmittedRequest,
     expected_remote: Remote,
     answer: RemoteResponse,
-    model_clients: &BTreeMap<ClientId, &ModelClient>,
-    model_gateways: &BTreeMap<GatewayId, &ModelGateway>,
+    model_clients: &BTreeMap<DeviceId, &ModelClient>,
+    model_gateways: &BTreeMap<DeviceId, &ModelGateway>,
 ) {
     let [received_request] = trace.received_requests.as_slice() else {
         tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received request");
@@ -532,7 +532,7 @@ fn assert_received_request(
     expected: &ExpectedProbe,
     submitted_request: &SubmittedRequest,
     received_request: &ReceivedRequest,
-    model_clients: &BTreeMap<ClientId, &ModelClient>,
+    model_clients: &BTreeMap<DeviceId, &ModelClient>,
 ) {
     if submitted_request.packet.as_tcp().is_none() {
         assert_probe_payload(expected.id, &received_request.packet);

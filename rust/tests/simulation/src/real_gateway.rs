@@ -9,7 +9,7 @@ use super::{
     site_network::SiteNetwork,
     tunnel_model::PrivateKey,
 };
-use connlib_model::{ClientId, GatewayId, PublicKey, RelayId, ResourceId};
+use connlib_model::{DeviceId, PublicKey, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
 use jiff::Timestamp;
@@ -23,20 +23,20 @@ use tunnel_proto::{GatewayEvent, GatewayState};
 
 /// Simulation state for a particular client.
 pub(crate) struct RealGateway {
-    id: GatewayId,
+    id: DeviceId,
     pub(crate) tunnel: RealTunnel<GatewayState>,
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
 
-    pub(crate) dns_resolutions: BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
-    dns_nat_generations: BTreeMap<ClientId, u64>,
-    dns_proxy_owners: BTreeMap<(ClientId, IpAddr), DomainName>,
+    pub(crate) dns_resolutions: BTreeMap<(DeviceId, DomainName), Vec<DnsResolution>>,
+    dns_nat_generations: BTreeMap<DeviceId, u64>,
+    dns_proxy_owners: BTreeMap<(DeviceId, IpAddr), DomainName>,
     max_dns_domains_per_client: Option<usize>,
     next_observation_order: u64,
 
-    authorized_resources: BTreeMap<ClientId, BTreeSet<ResourceId>>,
-    client_keys: BTreeMap<ClientId, PublicKey>,
-    clients_by_ip: BTreeMap<IpAddr, ClientId>,
+    authorized_resources: BTreeMap<DeviceId, BTreeSet<ResourceId>>,
+    client_keys: BTreeMap<DeviceId, PublicKey>,
+    clients_by_ip: BTreeMap<IpAddr, DeviceId>,
 
     site_specific_dns_records: DnsRecords,
     /// The DNS servers on the Gateway's tunnel IPs.
@@ -55,7 +55,7 @@ pub(crate) struct DnsResolution {
 
 impl RealGateway {
     pub(crate) fn new(
-        id: GatewayId,
+        id: DeviceId,
         mut state: GatewayState,
         network: SiteNetwork,
         site_specific_dns_records: DnsRecords,
@@ -217,7 +217,7 @@ impl RealGateway {
 
     pub(crate) fn record_dns_resolution(
         &mut self,
-        client: ClientId,
+        client: DeviceId,
         domain: DomainName,
         proxy_ips: Vec<IpAddr>,
         addresses: Vec<IpAddr>,
@@ -254,7 +254,7 @@ impl RealGateway {
 
     pub(crate) fn dns_resolution_before(
         &self,
-        client: ClientId,
+        client: DeviceId,
         domain: &DomainName,
         at: Instant,
         order: u64,
@@ -268,7 +268,7 @@ impl RealGateway {
 
     pub(crate) fn dns_resolutions(
         &self,
-        client: ClientId,
+        client: DeviceId,
         domain: &DomainName,
         dns_nat_generation: u64,
         proxy_ip: IpAddr,
@@ -283,7 +283,7 @@ impl RealGateway {
 
     pub(crate) fn record_authorization(
         &mut self,
-        client: ClientId,
+        client: DeviceId,
         client_key: PublicKey,
         resource: ResourceId,
         client_ips: [IpAddr; 2],
@@ -304,12 +304,12 @@ impl RealGateway {
         self.clients_by_ip.extend(client_ips.map(|ip| (ip, client)));
     }
 
-    pub(crate) fn remove_access(&mut self, client: &ClientId, resource: &ResourceId, now: Instant) {
+    pub(crate) fn remove_access(&mut self, client: &DeviceId, resource: &ResourceId, now: Instant) {
         self.state_mut().remove_access(client, resource, now);
         self.record_resource_disabled(*client, *resource);
     }
 
-    pub(crate) fn record_resource_disabled(&mut self, client: ClientId, resource: ResourceId) {
+    pub(crate) fn record_resource_disabled(&mut self, client: DeviceId, resource: ResourceId) {
         let Some(resources) = self.authorized_resources.get_mut(&client) else {
             return;
         };
@@ -323,7 +323,7 @@ impl RealGateway {
         self.record_peer_removed(client);
     }
 
-    pub(crate) fn record_client_restart(&mut self, client: ClientId) {
+    pub(crate) fn record_client_restart(&mut self, client: DeviceId) {
         if self.authorized_resources.remove(&client).is_none() {
             return;
         }
@@ -333,7 +333,7 @@ impl RealGateway {
 
     pub(crate) fn retain_authorizations(
         &mut self,
-        authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+        authorizations: BTreeMap<DeviceId, BTreeSet<ResourceId>>,
     ) {
         let previous = mem::take(&mut self.authorized_resources);
         self.authorized_resources = previous
@@ -403,7 +403,7 @@ impl RealGateway {
     /// Whether the Gateway may have evicted or refused the NAT of a domain for `client`.
     ///
     /// Packets to the domains of that client may then get lost or rejected as prohibited.
-    pub(crate) fn dns_nat_may_be_limited(&self, client: ClientId) -> bool {
+    pub(crate) fn dns_nat_may_be_limited(&self, client: DeviceId) -> bool {
         let Some(max) = self.max_dns_domains_per_client else {
             return false;
         };
@@ -423,14 +423,14 @@ impl RealGateway {
         num_domains > max
     }
 
-    pub(crate) fn dns_nat_generation(&self, client: ClientId) -> u64 {
+    pub(crate) fn dns_nat_generation(&self, client: DeviceId) -> u64 {
         self.dns_nat_generations
             .get(&client)
             .copied()
             .unwrap_or_default()
     }
 
-    fn start_new_dns_nat_generation(&mut self, client: ClientId) {
+    fn start_new_dns_nat_generation(&mut self, client: DeviceId) {
         let generation = self.dns_nat_generation(client) + 1;
         self.dns_nat_generations.insert(client, generation);
         for _ in self
@@ -439,7 +439,7 @@ impl RealGateway {
         {}
     }
 
-    fn record_peer_removed(&mut self, client: ClientId) {
+    fn record_peer_removed(&mut self, client: DeviceId) {
         for _ in self
             .clients_by_ip
             .extract_if(.., |_, owner| *owner == client)
@@ -497,7 +497,7 @@ impl ExecMutScope for RealGateway {
 }
 
 fn resolved_to(
-    dns_resolutions: &BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
+    dns_resolutions: &BTreeMap<(DeviceId, DomainName), Vec<DnsResolution>>,
     domain: &DomainName,
     ip: IpAddr,
 ) -> bool {

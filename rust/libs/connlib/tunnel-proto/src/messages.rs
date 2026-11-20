@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
-use connlib_model::{ClientId, RelayId, ResourceId};
+use connlib_model::{DeviceId, RelayId, ResourceId};
 use dns_types::{DoHUrl, DomainName};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ pub use key::{Key, SecretKey};
 #[serde_as]
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Authorization {
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     pub resource_id: ResourceId,
     #[serde_as(as = "DurationSeconds<u64>")]
     pub expires_at: Duration,
@@ -33,7 +33,7 @@ pub struct Authorization {
 /// against the currently connected peers.
 pub fn group_authorizations_by_client(
     authorizations: &[Authorization],
-) -> BTreeMap<ClientId, BTreeSet<ResourceId>> {
+) -> BTreeMap<DeviceId, BTreeSet<ResourceId>> {
     authorizations.iter().fold(
         BTreeMap::new(),
         |mut grouped,

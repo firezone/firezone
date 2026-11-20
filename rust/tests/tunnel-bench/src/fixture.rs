@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant, SystemTime};
 
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
+use connlib_model::{DeviceId, RelayId, ResourceId, SiteId};
 use dns_types::{Query, RecordType, Response};
 use ip_packet::{Ecn, IpPacket};
 use rand::{SeedableRng as _, rngs::StdRng};
@@ -123,8 +123,8 @@ const GATEWAY_TUN: IpConfig = IpConfig {
     v6: Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0xffff),
 };
 
-fn client_id(index: usize) -> ClientId {
-    ClientId::from_u128(0x1000 + index as u128)
+fn client_id(index: usize) -> DeviceId {
+    DeviceId::from_u128(0x1000 + index as u128)
 }
 
 fn client_tun(index: usize) -> IpConfig {
@@ -134,7 +134,7 @@ fn client_tun(index: usize) -> IpConfig {
     }
 }
 
-const GID: GatewayId = GatewayId::from_u128(2);
+const GID: DeviceId = DeviceId::from_u128(2);
 const SITE: SiteId = SiteId::from_u128(3);
 const CIDR_RESOURCE: ResourceId = ResourceId::from_u128(4);
 const DNS_RESOURCE: ResourceId = ResourceId::from_u128(5);

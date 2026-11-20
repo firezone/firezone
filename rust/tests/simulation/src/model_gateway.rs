@@ -5,7 +5,7 @@ use super::{
     site_network::{Routes, SiteNetwork},
     tunnel_model::PrivateKey,
 };
-use connlib_model::GatewayId;
+use connlib_model::DeviceId;
 use dns_types::{DomainName, OwnedRecordData};
 use jiff::Timestamp;
 use std::{
@@ -57,7 +57,7 @@ impl ModelGateway {
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(
         self,
-        id: GatewayId,
+        id: DeviceId,
         tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         now: Instant,
         utc_now: Timestamp,

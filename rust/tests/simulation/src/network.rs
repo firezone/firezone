@@ -1,6 +1,6 @@
 use crate::buffered_transmits::BufferedTransmits;
 use anyhow::{Context as _, Result, bail};
-use connlib_model::{ClientId, GatewayId, RelayId};
+use connlib_model::{DeviceId, RelayId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use snownet::Transmit;
@@ -464,14 +464,7 @@ impl RoutingTable {
     }
 
     /// Adds a host behind the NAT device with the public IPv4 address `nat`.
-    pub(crate) fn add_host<T>(
-        &mut self,
-        id: impl Into<HostId>,
-        host: &Host<T>,
-        nat: Ipv4Addr,
-    ) -> bool {
-        let id = id.into();
-
+    pub(crate) fn add_host<T>(&mut self, id: HostId, host: &Host<T>, nat: Ipv4Addr) -> bool {
         if !self.nats.contains_key(&nat) {
             return false;
         }
@@ -538,8 +531,8 @@ impl RoutingTable {
     }
 
     /// The edge of a host behind a NAT device, i.e. a Client or a Gateway.
-    pub(crate) fn edge_config(&self, id: impl Into<HostId>) -> EdgeConfig {
-        self.nats[&self.attachments[&id.into()]].edge_config()
+    pub(crate) fn edge_config(&self, id: HostId) -> EdgeConfig {
+        self.nats[&self.attachments[&id]].edge_config()
     }
 
     /// Passes a packet through the NAT devices of its sender and its receiver.
@@ -638,8 +631,8 @@ fn interface_ips<T>(host: &Host<T>) -> Vec<IpAddr> {
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub(crate) enum HostId {
-    Client(ClientId),
-    Gateway(GatewayId),
+    Client(DeviceId),
+    Gateway(DeviceId),
     Relay(RelayId),
     Stale,
 }
@@ -647,18 +640,6 @@ pub(crate) enum HostId {
 impl From<RelayId> for HostId {
     fn from(v: RelayId) -> Self {
         Self::Relay(v)
-    }
-}
-
-impl From<GatewayId> for HostId {
-    fn from(v: GatewayId) -> Self {
-        Self::Gateway(v)
-    }
-}
-
-impl From<ClientId> for HostId {
-    fn from(v: ClientId) -> Self {
-        Self::Client(v)
     }
 }
 

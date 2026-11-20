@@ -5,7 +5,7 @@ use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{RouteEntry, RoutingTable};
 use crate::{IpConfig, p2p_control};
 use anyhow::{Context, Result};
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::{DeviceId, ResourceId};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
@@ -25,7 +25,7 @@ use std::time::Instant;
 /// authorized packets and replies to flows we opened. Revoked authorizations let us
 /// request fresh access when a previously permitted packet is denied.
 pub(crate) struct ClientOnClient {
-    id: ClientId,
+    id: DeviceId,
     local_tun: IpConfig,
     remote_tun: IpConfig,
     remote_name: String,
@@ -68,7 +68,7 @@ pub(crate) enum InboundResult {
 
 impl ClientOnClient {
     pub(crate) fn new(
-        id: ClientId,
+        id: DeviceId,
         local_tun: IpConfig,
         remote_tun: IpConfig,
         remote_name: String,
@@ -89,7 +89,7 @@ impl ClientOnClient {
         }
     }
 
-    pub(crate) fn id(&self) -> ClientId {
+    pub(crate) fn id(&self) -> DeviceId {
         self.id
     }
 
@@ -406,7 +406,7 @@ mod tests {
     use super::*;
     use crate::client::OutboundAuthorizations;
     use crate::messages::PortRange;
-    use connlib_model::{ClientId, ResourceId};
+    use connlib_model::{DeviceId, ResourceId};
     use flow_tracker::IngestTokenRole::{Initiator, Responder};
     use ip_packet::make;
     use std::collections::BTreeSet;
@@ -437,8 +437,8 @@ mod tests {
 
     #[test]
     fn outbound_tokens_follow_each_device_authorization() {
-        let first = ClientId::from_u128(1);
-        let second = ClientId::from_u128(2);
+        let first = DeviceId::from_u128(1);
+        let second = DeviceId::from_u128(2);
         let first_token = ingest_token_for_client(Initiator, first);
         let second_token = ingest_token_for_client(Initiator, second);
         let rid = ResourceId::from_u128(1);
@@ -718,12 +718,12 @@ mod tests {
     }
 
     fn ingest_token(role: flow_tracker::IngestTokenRole) -> IngestToken {
-        ingest_token_for_client(role, ClientId::from_u128(1))
+        ingest_token_for_client(role, DeviceId::from_u128(1))
     }
 
     fn ingest_token_for_client(
         role: flow_tracker::IngestTokenRole,
-        client: ClientId,
+        client: DeviceId,
     ) -> IngestToken {
         use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
@@ -744,7 +744,7 @@ mod tests {
 
     fn peer() -> ClientOnClient {
         ClientOnClient::new(
-            ClientId::from_u128(1),
+            DeviceId::from_u128(1),
             local_tun(),
             peer_tun(),
             "peer".to_owned(),
