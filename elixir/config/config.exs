@@ -395,6 +395,11 @@ config :portal, Portal.Google.AuthProvider,
   scope: "openid email profile",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
 
+# A separate Google OAuth client from the portal's, for the ops dashboard
+config :portal, PortalOps.Google,
+  client_id: System.get_env("OPS_GOOGLE_OIDC_CLIENT_ID"),
+  client_secret: System.get_env("OPS_GOOGLE_OIDC_CLIENT_SECRET")
+
 config :portal, Portal.GitHub.AuthProvider,
   # Should match an OAuth App registered under the Firezone GitHub organization
   client_id: System.get_env("GITHUB_OAUTH_CLIENT_ID"),

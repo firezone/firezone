@@ -841,6 +841,19 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:ops_admin_password, :string, sensitive: true)
 
+  @doc """
+  Client ID of the Google OAuth client that ops admins sign in with. It is not the
+  portal's Google OAuth client.
+  Maps to the `OPS_GOOGLE_OIDC_CLIENT_ID` environment variable.
+  """
+  defconfig(:ops_google_oidc_client_id, :string, default: nil)
+
+  @doc """
+  Client secret of the ops Google OAuth client.
+  Maps to the `OPS_GOOGLE_OIDC_CLIENT_SECRET` environment variable.
+  """
+  defconfig(:ops_google_oidc_client_secret, :string, default: nil, sensitive: true)
+
   ##############################################
   ## Userpass / SAML / OIDC / Email authentication
   ##############################################
