@@ -133,7 +133,8 @@ impl RelayModel {
             Transition::Advance { .. } | Transition::InjectDatagram(_) => {}
         }
 
-        // `Allocation::refresh` sends its request once only.
+        // An exception for `Allocation::refresh`: it sends its request only once, so a single
+        // lost datagram makes the client give up on the allocation.
         let budget = match self.refreshed {
             true => 0,
             false => RETRANSMISSION_BUDGET,
