@@ -7,8 +7,8 @@ use std::time::Instant;
 use deadline_map::{DeadlineMap, PollTimeout};
 use fast_random_state::FastRandomState;
 
-use crate::client::{ClientOnClient, GatewayOnClient};
-use crate::gateway::ClientOnGateway;
+use crate::client::GatewayOnClient;
+use crate::peer_inbound::PeerInbound;
 
 pub(crate) struct PeerStore<TId, P>
 where
@@ -132,19 +132,19 @@ pub(crate) trait Peer: PollTimeout {
     fn tun_ipv6(&self) -> Ipv6Addr;
 }
 
-impl Peer for ClientOnGateway {
+impl Peer for PeerInbound {
     fn tun_ipv4(&self) -> Ipv4Addr {
-        self.client_tun().v4
+        self.peer_tun().v4
     }
 
     fn tun_ipv6(&self) -> Ipv6Addr {
-        self.client_tun().v6
+        self.peer_tun().v6
     }
 }
 
-impl PollTimeout for ClientOnGateway {
+impl PollTimeout for PeerInbound {
     fn poll_timeout(&mut self) -> Option<Instant> {
-        ClientOnGateway::poll_timeout(self)
+        PeerInbound::poll_timeout(self)
     }
 }
 
@@ -161,22 +161,6 @@ impl Peer for GatewayOnClient {
 impl PollTimeout for GatewayOnClient {
     fn poll_timeout(&mut self) -> Option<Instant> {
         None
-    }
-}
-
-impl Peer for ClientOnClient {
-    fn tun_ipv4(&self) -> Ipv4Addr {
-        self.remote_tun().v4
-    }
-
-    fn tun_ipv6(&self) -> Ipv6Addr {
-        self.remote_tun().v6
-    }
-}
-
-impl PollTimeout for ClientOnClient {
-    fn poll_timeout(&mut self) -> Option<Instant> {
-        ClientOnClient::poll_timeout(self)
     }
 }
 

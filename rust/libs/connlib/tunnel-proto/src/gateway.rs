@@ -1,20 +1,16 @@
-mod client_on_gateway;
-mod nat_table;
 mod peer_batch;
 
 use peer_batch::{Decision, PeerBatch};
 
-pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
-
 use crate::authorization_rejections::AuthorizationRejections;
 use crate::batch::{BatchingKey, TunBatch};
-use crate::gateway::client_on_gateway::{
-    InboundRewrite, OutboundRewrite, ProxyIpAlreadyAssigned, TooManyDnsDomains,
-    TooManyProxyIpsForDomain, TranslateOutboundResult,
-};
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, Key};
 use crate::p2p_control::dns_resource_nat::ProxyIps;
+use crate::peer_inbound::{
+    self, InboundRewrite, OutboundRewrite, PeerInbound, ProxyIpAlreadyAssigned, TooManyDnsDomains,
+    TooManyProxyIpsForDomain, TranslateOutboundResult,
+};
 use crate::peer_store::PeerStore;
 use crate::portal_connection::PortalConnection;
 use crate::unix_ts::UnixTsClock;
@@ -56,7 +52,7 @@ pub struct GatewayState {
     /// Manages wireguard tunnels to clients.
     node: Node<DeviceId, RelayId>,
     /// All clients we are connected to and the associated, connection-specific state.
-    peers: PeerStore<DeviceId, ClientOnGateway>,
+    peers: PeerStore<DeviceId, PeerInbound>,
 
     /// Tracks the flows tunneled through this Gateway.
     flow_tracker: flow_tracker::Tracker<(DeviceId, ResourceId)>,
@@ -94,7 +90,7 @@ impl GatewayState {
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
-            max_dns_domains_per_client: client_on_gateway::DEFAULT_MAX_DNS_DOMAINS,
+            max_dns_domains_per_client: peer_inbound::DEFAULT_MAX_DNS_DOMAINS,
         }
     }
 
@@ -121,7 +117,7 @@ impl GatewayState {
         let allowed = self
             .peers
             .peer_by_ip(remote.ip())
-            .is_some_and(|(_, peer)| peer.allows_site_dns_query(&message));
+            .is_some_and(|(_, peer)| peer.resources().allows_site_dns_query(&message));
 
         if !allowed {
             return Err(ResponseBuilder::for_query(&message, ResponseCode::REFUSED).build());
@@ -174,7 +170,7 @@ impl GatewayState {
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-        let (key, nat) = match peer.translate_inbound(&mut packet, now) {
+        let (key, nat) = match peer.resources_mut().translate_inbound(&mut packet, now) {
             Ok(InboundRewrite::None) => (key, None),
             Ok(InboundRewrite::Source(proto, ip)) => (key, Some((proto, ip))),
             Ok(InboundRewrite::IcmpError) => (None, None),
@@ -288,7 +284,7 @@ impl GatewayState {
             return Ok(peer_batch::Outcome::Consumed);
         }
 
-        let translated = match peer.translate_outbound(packet, now) {
+        let translated = match peer.resources_mut().translate_outbound(packet, now) {
             Ok(translated) => translated,
             Err(e) => return Err(e.context("Failed to translate outbound packet")),
         };
@@ -372,7 +368,7 @@ impl GatewayState {
             return;
         };
 
-        peer.remove_resource(rid);
+        peer.resources_mut().remove_resource(rid);
         if peer.is_empty() {
             self.peers.remove(cid);
             self.node
@@ -384,7 +380,7 @@ impl GatewayState {
 
     pub fn update_resource(&mut self, resource: ResourceDescription) {
         for peer in self.peers.iter_mut() {
-            peer.update_resource(&resource);
+            peer.resources_mut().update_resource(&resource);
         }
     }
 
@@ -453,7 +449,7 @@ impl GatewayState {
                 v6: client.ipv6,
             };
 
-            ClientOnGateway::new(
+            PeerInbound::new(
                 client.id,
                 client.public_key,
                 client_tun,
@@ -462,8 +458,9 @@ impl GatewayState {
             )
         });
 
-        peer.add_resource(resource.clone(), expires_at, now);
-        peer.set_ingest_token(resource.id(), flow_logs_ingest_token);
+        let resources = peer.resources_mut();
+        resources.add_resource(resource.clone(), expires_at, now);
+        resources.set_ingest_token(resource.id(), flow_logs_ingest_token);
 
         Ok(())
     }
@@ -488,6 +485,7 @@ impl GatewayState {
         self.peers
             .peer_by_id_mut(&client)
             .context("No peer state")?
+            .resources_mut()
             .update_resource_expiry(resource, new_expiry, now);
 
         Ok(())
@@ -512,6 +510,7 @@ impl GatewayState {
                 .peers
                 .peer_by_id_mut(&client)
                 .context("Unknown peer")?
+                .resources_mut()
                 .setup_nat(
                     req.domain.clone(),
                     req.resource,
@@ -760,7 +759,7 @@ impl GatewayState {
 
 fn handle_assigned_ips_event(
     fz_p2p_control: FzP2pControlSlice,
-    peer: &ClientOnGateway,
+    peer: &PeerInbound,
     buffered_events: &mut VecDeque<GatewayEvent>,
 ) -> Option<IpPacket> {
     use p2p_control::dns_resource_nat;
@@ -771,7 +770,7 @@ fn handle_assigned_ips_event(
         return None;
     };
 
-    if !peer.is_allowed(req.resource) {
+    if !peer.resources().is_allowed(req.resource) {
         tracing::warn!(cid = %peer.id(), rid = %req.resource, domain = %req.domain, "Received `AssignedIpsEvent` for resource that is not allowed");
 
         return inactive_domain_status(req.resource, req.domain);

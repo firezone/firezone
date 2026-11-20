@@ -24,12 +24,10 @@ use std::time::Instant;
 /// Inbound authorizations and flow tracking limit traffic from the remote Client to
 /// authorized packets and replies to flows we opened. Revoked authorizations let us
 /// request fresh access when a previously permitted packet is denied.
-pub(crate) struct ClientOnClient {
+pub(crate) struct SelfTargets {
     id: DeviceId,
     local_tun: IpConfig,
     remote_tun: IpConfig,
-    remote_name: String,
-    remote_slug: String,
     /// Inbound resources authorising the remote peer to send packets to us.
     ///
     /// When this map is empty, no inbound traffic from this peer is admitted
@@ -66,20 +64,12 @@ pub(crate) enum InboundResult {
     },
 }
 
-impl ClientOnClient {
-    pub(crate) fn new(
-        id: DeviceId,
-        local_tun: IpConfig,
-        remote_tun: IpConfig,
-        remote_name: String,
-        remote_slug: String,
-    ) -> ClientOnClient {
-        ClientOnClient {
+impl SelfTargets {
+    pub(crate) fn new(id: DeviceId, local_tun: IpConfig, remote_tun: IpConfig) -> SelfTargets {
+        SelfTargets {
             id,
             local_tun,
             remote_tun,
-            remote_name,
-            remote_slug,
             resources: ExpiringMap::default(),
             rejected_resources: HashMap::default(),
             // No resources -> no allowed inbound traffic by default.
@@ -89,30 +79,13 @@ impl ClientOnClient {
         }
     }
 
-    pub(crate) fn id(&self) -> DeviceId {
-        self.id
-    }
-
-    pub(crate) fn remote_tun(&self) -> IpConfig {
-        self.remote_tun
-    }
-
     /// The resources through which the remote peer may reach us.
     pub(crate) fn inbound_resource_ids(&self) -> impl Iterator<Item = ResourceId> + '_ {
         self.resources.iter().map(|(id, _)| *id)
     }
 
-    pub(crate) fn remote_name(&self) -> &str {
-        &self.remote_name
-    }
-
-    pub(crate) fn remote_slug(&self) -> &str {
-        &self.remote_slug
-    }
-
-    pub(crate) fn set_remote_identity(&mut self, name: String, slug: String) {
-        self.remote_name = name;
-        self.remote_slug = slug;
+    pub(crate) fn is_empty(&self) -> bool {
+        self.resources.is_empty()
     }
 
     /// Allow the remote peer to send us packets associated with `resource_id` limited by the given filter set.
@@ -425,14 +398,14 @@ mod tests {
 
         if inbound_first {
             peer.add_resource(rid, udp_port(80), None, inbound.clone(), now);
-            authorizations.authorize_client(rid, peer.id(), outbound.clone());
+            authorizations.authorize_client(rid, peer_id(), outbound.clone());
         } else {
-            authorizations.authorize_client(rid, peer.id(), outbound.clone());
+            authorizations.authorize_client(rid, peer_id(), outbound.clone());
             peer.add_resource(rid, udp_port(80), None, inbound.clone(), now);
         }
 
         assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), Some(&inbound));
-        assert_eq!(authorizations.client_token(rid, peer.id()), Some(&outbound));
+        assert_eq!(authorizations.client_token(rid, peer_id()), Some(&outbound));
     }
 
     #[test]
@@ -581,7 +554,7 @@ mod tests {
         ));
         assert_eq!(peer.poll_timeout(), Some(now + Duration::from_secs(60)));
         let mut authorizations = OutboundAuthorizations::default();
-        authorizations.authorize_client(rid, peer.id(), ingest_token(Initiator));
+        authorizations.authorize_client(rid, peer_id(), ingest_token(Initiator));
 
         let later = now + Duration::from_secs(61);
         peer.handle_timeout(later);
@@ -589,7 +562,7 @@ mod tests {
         assert_eq!(peer.poll_timeout(), None);
         assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), None);
         assert_eq!(
-            authorizations.client_token(rid, peer.id()),
+            authorizations.client_token(rid, peer_id()),
             Some(&ingest_token(Initiator))
         );
         assert!(is_filtered(
@@ -614,11 +587,11 @@ mod tests {
         ));
 
         let mut authorizations = OutboundAuthorizations::default();
-        authorizations.authorize_client(keep, peer.id(), ingest_token(Initiator));
+        authorizations.authorize_client(keep, peer_id(), ingest_token(Initiator));
         peer.retain_authorizations(&BTreeSet::from([keep]));
         assert_eq!(peer.ingest_token_for_inbound(&udp_to(90)), None);
         assert_eq!(
-            authorizations.client_token(keep, peer.id()),
+            authorizations.client_token(keep, peer_id()),
             Some(&ingest_token(Initiator))
         );
 
@@ -742,14 +715,12 @@ mod tests {
         serde_json::from_value(serde_json::json!(format!("{header}.{payload}.AA"))).unwrap()
     }
 
-    fn peer() -> ClientOnClient {
-        ClientOnClient::new(
-            DeviceId::from_u128(1),
-            local_tun(),
-            peer_tun(),
-            "peer".to_owned(),
-            "peer".to_owned(),
-        )
+    fn peer() -> SelfTargets {
+        SelfTargets::new(peer_id(), local_tun(), peer_tun())
+    }
+
+    fn peer_id() -> DeviceId {
+        DeviceId::from_u128(1)
     }
 
     fn peer_tun() -> IpConfig {
