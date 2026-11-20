@@ -372,7 +372,7 @@ fn try_main() -> Result<()> {
         }
     };
 
-    let url = LoginUrl::client(
+    let url = LoginUrl::device(
         cli.api_url.clone(),
         firezone_id.clone(),
         cli.firezone_name,
@@ -382,6 +382,7 @@ fn try_main() -> Result<()> {
             ..Default::default()
         },
         certificate,
+        client_shared::device_protocol(),
     )?;
 
     if cli.check {

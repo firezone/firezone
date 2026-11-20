@@ -36,7 +36,9 @@ use tokio_tungstenite::{
 use url::Url;
 
 pub use get_user_agent::get_user_agent;
-pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
+pub use login_url::{
+    DeviceInfo, DeviceProtocol, LoginUrl, LoginUrlError, NoParams, PublicKeyParam,
+};
 pub use tokio_tungstenite::tungstenite::http::StatusCode;
 pub use x509_credential::ClientCertificate;
 

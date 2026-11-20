@@ -1432,6 +1432,7 @@ dependencies = [
  "flow-log-upload",
  "flow-log-writer",
  "futures",
+ "futures-bounded",
  "logging",
  "opentelemetry",
  "otel-attributes",

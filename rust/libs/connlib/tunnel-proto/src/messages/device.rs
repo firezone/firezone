@@ -454,6 +454,265 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parses_init() {
+        let msg = ingress(&init_json(INIT_FIELDS));
+
+        let IngressMessages::Init(init) = msg else {
+            panic!("Expected `init`, got {msg:?}");
+        };
+
+        assert_eq!(init.account_slug, "acme");
+        assert_eq!(init.actor_name, "Jane Doe");
+        assert_eq!(init.flow_logs.api_url, "https://flow-api.firezone.dev");
+        assert!(init.flow_logs.upload_enabled());
+        assert_eq!(init.resources.len(), 2);
+        assert_eq!(init.served_sites.len(), 1);
+        assert_eq!(init.served_resources.len(), 1);
+        assert_eq!(init.authorizations.len(), 1);
+    }
+
+    #[test_case::test_case("account_slug"; "account slug")]
+    #[test_case::test_case("actor_name"; "actor name")]
+    #[test_case::test_case("flow_logs"; "flow logs config")]
+    fn init_requires(field: &str) {
+        let mut init = serde_json::from_str::<serde_json::Value>(&init_json(INIT_FIELDS)).unwrap();
+        init["payload"].as_object_mut().unwrap().remove(field);
+
+        serde_json::from_value::<IngressMessages>(init).unwrap_err();
+    }
+
+    #[test]
+    fn init_skips_resources_it_cannot_parse() {
+        let msg = ingress(&init_json(
+            r#""resources": [
+                {"address_foobar": "172.172.0.0/16", "id": "73037362-715d-4a83-a749-f18eadd970e6", "type": "cidr"},
+                {"type": "what_is_this"}
+            ],"#,
+        ));
+
+        assert!(matches!(msg, IngressMessages::Init(_)));
+    }
+
+    #[test]
+    fn parses_config_changed() {
+        let msg = ingress(
+            r#"{
+                "event": "config_changed",
+                "payload": {"interface": {"ipv4": "100.67.138.25", "ipv6": "fd00:2021:1111::e:65ea"}}
+            }"#,
+        );
+
+        assert!(matches!(msg, IngressMessages::ConfigChanged(_)));
+    }
+
+    #[test]
+    fn parses_relays_presence() {
+        let msg = ingress(
+            r#"{
+                "event": "relays_presence",
+                "payload": {
+                    "disconnected_ids": ["e95f9517-2152-4677-a16a-fbb2687050a3"],
+                    "connected": [{
+                        "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8",
+                        "type": "turn",
+                        "username": "1719367575:ZQHcVGkdnfgGmcP1",
+                        "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
+                        "addr": "172.28.0.101:3478",
+                        "expires_at": 1719367575
+                    }]
+                }
+            }"#,
+        );
+
+        assert!(matches!(msg, IngressMessages::RelaysPresence(_)));
+    }
+
+    #[test]
+    fn parses_ice_candidates_and_skips_the_ones_it_cannot_parse() {
+        let msg = ingress(
+            r#"{
+                "event": "ice_candidates",
+                "payload": {
+                    "device_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
+                    "candidates": ["foo", "candidate:fffeff6435be70ddbf995982 1 udp 1694498559 87.121.72.60 57114 typ srflx raddr 0.0.0.0 rport 0"]
+                }
+            }"#,
+        );
+
+        let IngressMessages::IceCandidates(candidates) = msg else {
+            panic!("Expected `ice_candidates`, got {msg:?}");
+        };
+
+        assert_eq!(candidates.candidates.len(), 1);
+    }
+
+    #[test_case::test_case("offline", FailReason::Offline; "known reason")]
+    #[test_case::test_case("foobar", FailReason::Unknown; "unknown reason")]
+    fn parses_access_denied_for_a_resource(reason: &str, expected: FailReason) {
+        let msg = ingress(&format!(
+            r#"{{
+                "event": "access_denied",
+                "payload": {{"type": "resource", "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3", "reason": "{reason}"}}
+            }}"#
+        ));
+
+        let IngressMessages::AccessDenied(AccessDenied::Resource { reason, .. }) = msg else {
+            panic!("Expected `access_denied` for a resource, got {msg:?}");
+        };
+
+        assert_eq!(
+            std::mem::discriminant(&reason),
+            std::mem::discriminant(&expected)
+        );
+    }
+
+    #[test]
+    fn parses_public_key_changed() {
+        let msg = ingress(&format!(
+            r#"{{
+                "event": "public_key_changed",
+                "payload": {{"device_id": "a3632404-4b03-4468-9fc0-4a4c82415ade", "public_key": "{KEY}"}}
+            }}"#
+        ));
+
+        assert!(matches!(msg, IngressMessages::PublicKeyChanged(_)));
+    }
+
+    #[test]
+    fn parses_ice_candidates_undeliverable() {
+        let msg = ingress(
+            r#"{
+                "event": "ice_candidates_undeliverable",
+                "payload": {"device_id": "a3632404-4b03-4468-9fc0-4a4c82415ade", "reason": "offline"}
+            }"#,
+        );
+
+        assert!(matches!(
+            msg,
+            IngressMessages::IceCandidatesUndeliverable(IceCandidatesUndeliverable {
+                reason: FailReason::Offline,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_device_domain_answers() {
+        let resolved = ingress(
+            r#"{
+                "event": "device_domain_resolved",
+                "payload": {"domain": "device-42.firezone.network", "ipv4": "100.64.0.42", "ipv6": "fd00:2021:1111::42"}
+            }"#,
+        );
+        let failed = ingress(
+            r#"{
+                "event": "device_domain_resolution_failed",
+                "payload": {"domain": "your-devices.firezone.network", "reason": "not_a_device"}
+            }"#,
+        );
+        let browsed = ingress(
+            r#"{
+                "event": "device_domain_browsed",
+                "payload": {"domain": "your-devices.firezone.network", "names": ["alice-laptop.firezone.network"], "ttl": 30, "total": 5}
+            }"#,
+        );
+        let browse_failed = ingress(
+            r#"{
+                "event": "device_domain_browse_failed",
+                "payload": {"domain": "ghost.firezone.network", "reason": "not_found"}
+            }"#,
+        );
+
+        assert!(matches!(resolved, IngressMessages::DeviceDomainResolved(_)));
+        assert!(matches!(
+            failed,
+            IngressMessages::DeviceDomainResolutionFailed(DeviceDomainResolutionFailed {
+                reason: FailReason::NotADevice,
+                ..
+            })
+        ));
+        assert!(matches!(
+            browsed,
+            IngressMessages::DeviceDomainBrowsed(DeviceDomainBrowsed { total: 5, .. })
+        ));
+        assert!(matches!(
+            browse_failed,
+            IngressMessages::DeviceDomainBrowseFailed(DeviceDomainBrowseFailed {
+                reason: FailReason::NotFound,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn serializes_request_access_to_resources() {
+        let msg = EgressMessages::RequestAccess {
+            resource_ids: vec![ResourceId::from_u128(1)],
+            device_ip: None,
+            connected_device_ids: vec![DeviceId::from_u128(2)],
+        };
+
+        assert_eq!(
+            serde_json::to_string(&msg).unwrap(),
+            r#"{"event":"request_access","payload":{"resource_ids":["00000000-0000-0000-0000-000000000001"],"connected_device_ids":["00000000-0000-0000-0000-000000000002"]}}"#
+        );
+    }
+
+    #[test]
+    fn serializes_device_domain_queries() {
+        let resolve = EgressMessages::ResolveDeviceDomain {
+            domain: "device-42.firezone.network".to_owned(),
+        };
+        let browse = EgressMessages::BrowseDeviceDomain {
+            domain: "firezone.network".to_owned(),
+        };
+
+        assert_eq!(
+            serde_json::to_string(&resolve).unwrap(),
+            r#"{"event":"resolve_device_domain","payload":{"domain":"device-42.firezone.network"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&browse).unwrap(),
+            r#"{"event":"browse_device_domain","payload":{"domain":"firezone.network"}}"#
+        );
+    }
+
+    #[test]
+    fn serializes_no_relays() {
+        let msg = EgressMessages::NoRelays {
+            excluded_relay_ids: vec![RelayId::from_u128(1)],
+        };
+
+        assert_eq!(
+            serde_json::to_string(&msg).unwrap(),
+            r#"{"event":"no_relays","payload":{"excluded_relay_ids":["00000000-0000-0000-0000-000000000001"]}}"#
+        );
+    }
+
+    const INIT_FIELDS: &str = r#""resources": [
+            {"type": "cidr", "id": "73037362-715d-4a83-a749-f18eadd970e6", "name": "172.172.0.0/16", "address": "172.172.0.0/16", "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]},
+            {"type": "dns", "id": "03000143-e25e-45c7-aafb-144990e57dcd", "name": "gitlab.mycorp.com", "address": "gitlab.mycorp.com", "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]}
+        ],
+        "served_sites": [{"name": "Internet", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+        "served_resources": [{"type": "internet", "id": "1106047c-cd5d-4151-b679-96b93da7383b"}],
+        "authorizations": [{"device_id": "a3632404-4b03-4468-9fc0-4a4c82415ade", "resource_id": "1106047c-cd5d-4151-b679-96b93da7383b", "expires_at": 1729813989}],"#;
+
+    fn init_json(fields: &str) -> String {
+        format!(
+            r#"{{
+                "event": "init",
+                "payload": {{
+                    "interface": {{"ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1"}},
+                    {fields}
+                    "account_slug": "acme",
+                    "actor_name": "Jane Doe",
+                    "flow_logs": {{"api_url": "https://flow-api.firezone.dev", "upload_interval_secs": 60, "upload_batch_size": 1000}}
+                }}
+            }}"#
+        )
+    }
+
     fn ingress(json: &str) -> IngressMessages {
         serde_json::from_str(json).unwrap()
     }

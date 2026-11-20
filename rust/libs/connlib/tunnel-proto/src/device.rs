@@ -34,6 +34,7 @@ use crate::filter_engine::FilterEngine;
 use crate::messages::IngestToken;
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
+    device,
 };
 use crate::p2p_control::dns_resource_nat::ProxyIps;
 use crate::peer_inbound::{self, InboundResult, OutboundRewrite, PeerIdentity, PeerInbound};
@@ -42,7 +43,7 @@ use crate::portal_connection::PortalConnection;
 use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{DeviceEvent, FailedToDecapsulate, PeerKind, otel, packet_kind};
+use crate::{DeviceEvent, FailedToDecapsulate, otel, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
 use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{
@@ -1114,7 +1115,67 @@ impl DeviceState {
             .remove_remote_candidate(conn_id, ice_candidate.into(), now);
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
+    /// The portal granted us access to a target through a peer, see [`device::AccessGranted`].
+    pub fn handle_access_granted(
+        &mut self,
+        granted: device::AccessGranted,
+        now: Instant,
+    ) -> Result<()> {
+        let device::AccessGranted {
+            peer,
+            target,
+            local_ice_credentials,
+            remote_ice_credentials,
+            connection,
+            flow_logs_ingest_token,
+        } = granted;
+        let (ice_role, use_frostlink) = connection_params(connection, IceRole::Controlling);
+        let peer_tun = IpConfig {
+            v4: peer.ipv4,
+            v6: peer.ipv6,
+        };
+
+        match target {
+            device::GrantedTarget::Resource {
+                resource_id,
+                site_id,
+            } => self.authorize_through_gateway(
+                resource_id,
+                peer.id,
+                PublicKey::from(peer.public_key.0),
+                peer_tun,
+                site_id,
+                peer.preshared_key,
+                local_ice_credentials,
+                remote_ice_credentials,
+                ice_role,
+                use_frostlink,
+                flow_logs_ingest_token,
+                now,
+            ),
+            device::GrantedTarget::Device { pool_id } => {
+                self.handle_client_device_access_authorized(
+                    peer.id,
+                    PublicKey::from(peer.public_key.0),
+                    peer_tun,
+                    peer.preshared_key,
+                    local_ice_credentials,
+                    remote_ice_credentials,
+                    ice_role,
+                    use_frostlink,
+                    peer.name,
+                    peer.slug,
+                    Some(pool_id),
+                    None,
+                    flow_logs_ingest_token,
+                    now,
+                );
+
+                Ok(())
+            }
+        }
+    }
+
     pub fn handle_resource_access_authorized(
         &mut self,
         rid: ResourceId,
@@ -1125,6 +1186,38 @@ impl DeviceState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
+        use_frostlink: bool,
+        flow_logs_ingest_token: IngestToken,
+        now: Instant,
+    ) -> Result<()> {
+        self.authorize_through_gateway(
+            rid,
+            gid,
+            gateway_key,
+            gateway_tun,
+            site_id,
+            preshared_key,
+            client_ice,
+            gateway_ice,
+            IceRole::Controlling,
+            use_frostlink,
+            flow_logs_ingest_token,
+            now,
+        )
+    }
+
+    #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
+    fn authorize_through_gateway(
+        &mut self,
+        rid: ResourceId,
+        gid: DeviceId,
+        gateway_key: PublicKey,
+        gateway_tun: IpConfig,
+        site_id: SiteId,
+        preshared_key: SecretKey,
+        client_ice: IceCredentials,
+        gateway_ice: IceCredentials,
+        ice_role: IceRole,
         use_frostlink: bool,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
@@ -1152,7 +1245,7 @@ impl DeviceState {
             sanstun::StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
             client_ice.into(),
             gateway_ice.into(),
-            snownet::IceRole::Controlling,
+            ice_role.into(),
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_idle(),
             use_frostlink,
@@ -1480,7 +1573,6 @@ impl DeviceState {
             "Malicious client is configured to ignore the event"
         );
 
-        let kind = self.peer_kind(&pid).context("Unknown peer")?;
         let internet_resource = self.active_internet_resource().map(|r| r.id);
         let routes = self
             .routing_tables
@@ -1488,12 +1580,12 @@ impl DeviceState {
             .map_err(|routing::Denied| anyhow::anyhow!("Destination rejected by routing policy"))?;
         anyhow::ensure!(!routes.is_empty(), "No matching route");
 
-        let request = match (kind, routes) {
-            (PeerKind::Client, MatchedRoutes::DevicePools(pools)) => {
+        let request = match routes {
+            MatchedRoutes::DevicePools(pools) => {
                 let peer = self
                     .peers
                     .peer_by_id(&pid)
-                    .context("Client peer no longer exists")?;
+                    .context("Destination routes to a device, but not to this peer")?;
                 anyhow::ensure!(
                     peer.peer_tun().is_ip(event.dst),
                     "Destination does not belong to the client peer"
@@ -1515,7 +1607,7 @@ impl DeviceState {
 
                 AuthorizationRequest::device(event.dst, pools)
             }
-            (PeerKind::Gateway, MatchedRoutes::Gateways(routes)) => {
+            MatchedRoutes::Gateways(routes) => {
                 let resources = routes
                     .iter()
                     .map(|route| route.resource_id)
@@ -1529,12 +1621,6 @@ impl DeviceState {
                 );
 
                 AuthorizationRequest::resources(resources)
-            }
-            (PeerKind::Client, MatchedRoutes::Gateways(_)) => {
-                anyhow::bail!("Client reported a destination that routes through a gateway");
-            }
-            (PeerKind::Gateway, MatchedRoutes::DevicePools(_)) => {
-                anyhow::bail!("Gateway reported a destination that routes to a client");
             }
         };
         self.pending_authorizations.on_not_authorized(
@@ -1678,17 +1764,6 @@ impl DeviceState {
 
         self.peers.remove(id);
         self.resource_list.update(self.resources());
-    }
-
-    /// What `id` is to us, for the protocols that name peers by kind.
-    ///
-    /// Those protocols never make a peer both, so a peer that serves us is a Gateway.
-    fn peer_kind(&self, id: &DeviceId) -> Option<PeerKind> {
-        match (self.gateways.peer_by_id(id), self.peers.peer_by_id(id)) {
-            (Some(_), _) => Some(PeerKind::Gateway),
-            (None, Some(_)) => Some(PeerKind::Client),
-            (None, None) => None,
-        }
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -2359,29 +2434,17 @@ impl DeviceState {
         }
 
         for (conn_id, candidates) in added_ice_candidates.into_iter() {
-            let Some(kind) = self.peer_kind(&conn_id) else {
-                tracing::debug!(%conn_id, "Dropping ICE candidates for unknown peer");
-                continue;
-            };
-
             self.buffered_events
                 .push_back(DeviceEvent::AddedIceCandidates {
                     conn_id,
-                    kind,
                     candidates,
                 });
         }
 
         for (conn_id, candidates) in removed_ice_candidates.into_iter() {
-            let Some(kind) = self.peer_kind(&conn_id) else {
-                tracing::debug!(%conn_id, "Dropping ICE candidates for unknown peer");
-                continue;
-            };
-
             self.buffered_events
                 .push_back(DeviceEvent::RemovedIceCandidates {
                     conn_id,
-                    kind,
                     candidates,
                 });
         }
@@ -2514,15 +2577,9 @@ impl DeviceState {
                 continue;
             }
 
-            let Some(kind) = self.peer_kind(&conn_id) else {
-                tracing::debug!(%conn_id, "Dropping ICE candidates for unknown peer");
-                continue;
-            };
-
             self.buffered_events
                 .push_back(DeviceEvent::AddedIceCandidates {
                     conn_id,
-                    kind,
                     candidates,
                 });
         }
@@ -2532,15 +2589,9 @@ impl DeviceState {
                 continue;
             }
 
-            let Some(kind) = self.peer_kind(&conn_id) else {
-                tracing::debug!(%conn_id, "Dropping ICE candidates for unknown peer");
-                continue;
-            };
-
             self.buffered_events
                 .push_back(DeviceEvent::RemovedIceCandidates {
                     conn_id,
-                    kind,
                     candidates,
                 });
         }
@@ -2925,6 +2976,16 @@ fn is_tun_dns_query(packet: &IpPacket) -> bool {
         Ok(Protocol::Tcp(port)) => port == crate::TUN_DNS_PORT,
         Ok(Protocol::IcmpEcho(_)) => false,
         Err(_) => false,
+    }
+}
+
+/// The ICE role and whether to use frostlink for a connection the portal describes.
+///
+/// A frostlink connection needs no ICE role; `fallback` keeps snownet's ICE agent consistent.
+fn connection_params(connection: device::Connection, fallback: IceRole) -> (IceRole, bool) {
+    match connection {
+        device::Connection::Frostlink => (fallback, true),
+        device::Connection::Ice { role } => (role, false),
     }
 }
 

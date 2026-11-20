@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use futures::future::Either;
 use futures::{SinkExt, StreamExt as _};
-use phoenix_channel::{DeviceInfo, Error, Event, LoginUrl, PhoenixChannel, PublicKeyParam};
+use phoenix_channel::{
+    DeviceInfo, DeviceProtocol, Error, Event, LoginUrl, PhoenixChannel, PublicKeyParam,
+};
 use secrecy::SecretString;
 use test_case::test_case;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -589,12 +591,16 @@ fn make_test_channel(
     port: u16,
     make_reconnect_backoff: impl Fn() -> backoff::ExponentialBackoff + Send + 'static,
 ) -> TestChannel {
-    let url = LoginUrl::client(
+    let url = LoginUrl::device(
         format!("ws://{host}:{port}").as_str(),
         "test-device-id".to_string(),
         Some("test-device".to_string()),
         DeviceInfo::default(),
         None,
+        DeviceProtocol {
+            versions: 3..=5,
+            frostlink: true,
+        },
     )
     .unwrap();
 

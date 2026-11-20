@@ -660,12 +660,13 @@ fn connect(
         .transpose()
         .context("Failed to set up the client certificate")?;
 
-    let url = LoginUrl::client(
+    let url = LoginUrl::device(
         api_url.as_str(),
         device_id.clone(),
         device_name,
         device_info,
         certificate,
+        client_shared::device_protocol(),
     )
     .context("Failed to create login URL")?;
 

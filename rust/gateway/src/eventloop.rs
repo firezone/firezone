@@ -276,7 +276,6 @@ impl Eventloop {
         match event {
             Ok(DeviceEvent::AddedIceCandidates {
                 conn_id: client,
-                kind: _,
                 candidates,
             }) => {
                 self.portal_cmd_tx
@@ -290,7 +289,6 @@ impl Eventloop {
             }
             Ok(DeviceEvent::RemovedIceCandidates {
                 conn_id: client,
-                kind: _,
                 candidates,
             }) => {
                 self.portal_cmd_tx

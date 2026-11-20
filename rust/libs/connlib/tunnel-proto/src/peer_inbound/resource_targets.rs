@@ -643,6 +643,11 @@ impl ResourceTargets {
         Ok(InboundRewrite::Source(proto, ip))
     }
 
+    /// The resources the peer may reach through us.
+    pub(crate) fn resource_ids(&self) -> impl Iterator<Item = ResourceId> + '_ {
+        self.resources.iter().map(|(id, _)| *id)
+    }
+
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
         self.resources.contains_key(&resource)
     }

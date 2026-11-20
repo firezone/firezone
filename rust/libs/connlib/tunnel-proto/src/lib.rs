@@ -15,6 +15,7 @@ use logging::DisplayBTreeSet;
 use std::{
     collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    ops::RangeInclusive,
 };
 
 mod authorization_rejections;
@@ -65,28 +66,23 @@ pub use unroutable_packet::UnroutablePacket;
 // their consumers into `connlib-model` so this crate can expose only the
 // state-machine API.
 
+/// The minor versions of the protocol this build speaks with its peers.
+///
+/// A device declares them when it connects, and the portal only pairs it with
+/// peers that speak one of them.
+pub const PROTOCOL_VERSIONS: RangeInclusive<u32> = 3..=5;
+
 /// The port of the DNS server a device runs on its tunnel addresses for the peers it serves.
 pub const TUN_DNS_PORT: u16 = 53535;
-
-/// What a peer is to us, for the protocols that name peers by kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PeerKind {
-    /// The peer serves resources to us.
-    Gateway,
-    /// We serve resources to the peer, or one of us reaches the other through a device pool.
-    Client,
-}
 
 #[derive(Debug)]
 pub enum DeviceEvent {
     AddedIceCandidates {
         conn_id: DeviceId,
-        kind: PeerKind,
         candidates: BTreeSet<IceCandidate>,
     },
     RemovedIceCandidates {
         conn_id: DeviceId,
-        kind: PeerKind,
         candidates: BTreeSet<IceCandidate>,
     },
     /// Requests access through the candidate resources, most preferred first.

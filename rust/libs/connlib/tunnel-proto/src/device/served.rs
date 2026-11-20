@@ -22,11 +22,12 @@ use zeroize::Zeroizing;
 use super::DeviceState;
 use super::peer_batch::{self, Decision};
 use crate::batch::{BatchingKey, TunBatch};
+use crate::messages::client::ResourceAuthorization;
 use crate::messages::gateway::{Client, ResourceDescription};
-use crate::messages::{IceCredentials, IngestToken, Interface};
+use crate::messages::{self, IceCredentials, IngestToken, Interface, Key, SecretKey, device};
 use crate::p2p_control::dns_resource_nat::ProxyIps;
 use crate::peer_inbound::{
-    InboundRewrite, PeerInbound, ProxyIpAlreadyAssigned, TooManyDnsDomains,
+    InboundRewrite, PeerIdentity, PeerInbound, ProxyIpAlreadyAssigned, TooManyDnsDomains,
     TooManyProxyIpsForDomain, TranslateOutboundResult,
 };
 use crate::unroutable_packet::UnroutablePacket;
@@ -118,6 +119,86 @@ impl DeviceState {
         })
     }
 
+    /// The portal asks us to accept a connection from a peer, see [`device::AuthorizePeer`].
+    ///
+    /// Once this returns, the authorization is installed and the portal may release the peer.
+    #[tracing::instrument(level = "debug", skip_all, fields(peer = %authorize.peer.id))]
+    pub fn handle_authorize_peer(
+        &mut self,
+        authorize: device::AuthorizePeer,
+        now: Instant,
+    ) -> Result<device::AuthorizationRef> {
+        let device::AuthorizePeer {
+            reference,
+            peer,
+            target,
+            local_ice_credentials,
+            remote_ice_credentials,
+            connection,
+            expires_at,
+            flow_logs_ingest_token,
+        } = authorize;
+        let (ice_role, use_frostlink) =
+            super::connection_params(connection, messages::IceRole::Controlled);
+        let peer_tun = IpConfig {
+            v4: peer.ipv4,
+            v6: peer.ipv6,
+        };
+
+        match target {
+            device::ServedTarget::Resource { resource } => {
+                self.accept_served_peer(
+                    peer.id,
+                    peer.public_key,
+                    &peer.preshared_key,
+                    local_ice_credentials,
+                    remote_ice_credentials,
+                    ice_role.into(),
+                    use_frostlink,
+                    now,
+                );
+
+                let served = self.serve(
+                    peer.id,
+                    peer.public_key,
+                    peer_tun,
+                    flow_logs_ingest_token,
+                    expires_at,
+                    resource,
+                    now,
+                )?;
+                served.set_identity(PeerIdentity {
+                    name: peer.name,
+                    slug: peer.slug,
+                });
+            }
+            device::ServedTarget::Device { pool_id, filters } => {
+                self.handle_client_device_access_authorized(
+                    peer.id,
+                    PublicKey::from(peer.public_key.0),
+                    peer_tun,
+                    peer.preshared_key,
+                    local_ice_credentials,
+                    remote_ice_credentials,
+                    ice_role,
+                    use_frostlink,
+                    peer.name,
+                    peer.slug,
+                    None,
+                    Some(ResourceAuthorization {
+                        resource_id: pool_id,
+                        filters,
+                        expires_at,
+                    }),
+                    flow_logs_ingest_token,
+                    now,
+                );
+            }
+        }
+
+        Ok(reference)
+    }
+
     /// Accepts a connection from `client` so it can reach `resource` through us.
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %client.id))]
     pub fn create_authorization(
@@ -131,31 +212,57 @@ impl DeviceState {
         now: Instant,
         flow_logs_ingest_token: IngestToken,
     ) {
-        if self
-            .peers
-            .peer_by_id(&client.id)
-            .is_some_and(|peer| peer.public_key() != client.public_key)
-        {
-            tracing::debug!("Client reconnected with a new key; clearing its previous state");
-
-            self.peers.remove(&client.id);
-        }
-
-        self.node.upsert_connection(
+        self.accept_served_peer(
             client.id,
-            client.public_key.into(),
-            sanstun::StaticSecret::from(Zeroizing::new(client.preshared_key.expose_secret().0)),
-            gateway_ice.into(),
-            client_ice.into(),
+            client.public_key,
+            &client.preshared_key,
+            gateway_ice,
+            client_ice,
             IceRole::Controlled,
-            IceConfig::server_default(),
-            IceConfig::server_idle(),
             use_frostlink,
             now,
         );
 
         let result = self.allow_access(&client, flow_logs_ingest_token, expires_at, resource, now);
         debug_assert!(result.is_ok(), "`allow_access` should never fail");
+    }
+
+    /// Sets up the connection from a peer we serve.
+    ///
+    /// A peer that reconnected with a new key starts over: its previous state is forgotten.
+    fn accept_served_peer(
+        &mut self,
+        id: DeviceId,
+        public_key: Key,
+        preshared_key: &SecretKey,
+        local_ice: IceCredentials,
+        remote_ice: IceCredentials,
+        ice_role: IceRole,
+        use_frostlink: bool,
+        now: Instant,
+    ) {
+        if self
+            .peers
+            .peer_by_id(&id)
+            .is_some_and(|peer| peer.public_key() != public_key)
+        {
+            tracing::debug!("Peer reconnected with a new key; clearing its previous state");
+
+            self.peers.remove(&id);
+        }
+
+        self.node.upsert_connection(
+            id,
+            public_key.into(),
+            sanstun::StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
+            local_ice.into(),
+            remote_ice.into(),
+            ice_role,
+            IceConfig::server_default(),
+            IceConfig::server_idle(),
+            use_frostlink,
+            now,
+        );
     }
 
     pub fn allow_access(
@@ -166,6 +273,33 @@ impl DeviceState {
         resource: ResourceDescription,
         now: Instant,
     ) -> Result<()> {
+        self.serve(
+            client.id,
+            client.public_key,
+            IpConfig {
+                v4: client.ipv4,
+                v6: client.ipv6,
+            },
+            flow_logs_ingest_token,
+            expires_at,
+            resource,
+            now,
+        )?;
+
+        Ok(())
+    }
+
+    /// Allows the peer `id` to reach `resource` through us.
+    fn serve(
+        &mut self,
+        id: DeviceId,
+        public_key: Key,
+        peer_tun: IpConfig,
+        flow_logs_ingest_token: IngestToken,
+        expires_at: Option<Duration>,
+        resource: ResourceDescription,
+        now: Instant,
+    ) -> Result<&mut PeerInbound> {
         let local_tun = self
             .tunnel_ip_config()
             .context("TUN device not configured")?;
@@ -174,32 +308,24 @@ impl DeviceState {
         let expires_in = expires_at.map(|e| e.saturating_duration_since(now));
 
         tracing::info!(
-            cid = %client.id,
+            cid = %id,
             rid = %resource.id(),
             expires_in = expires_in.map(tracing::field::debug),
             "Allowing access to resource",
         );
 
-        let peer = self.peers.upsert(client.id, || {
-            PeerInbound::new(
-                client.id,
-                client.public_key,
-                IpConfig {
-                    v4: client.ipv4,
-                    v6: client.ipv6,
-                },
-                local_tun,
-                self.max_dns_domains_per_client,
-            )
+        self.next_serving_tick.get_or_insert(now + SERVING_TICK);
+
+        let max_dns_domains = self.max_dns_domains_per_client;
+        let peer = self.peers.upsert(id, || {
+            PeerInbound::new(id, public_key, peer_tun, local_tun, max_dns_domains)
         });
 
         let resources = peer.resources_mut();
         resources.add_resource(resource.clone(), expires_at, now);
         resources.set_ingest_token(resource.id(), flow_logs_ingest_token);
 
-        self.next_serving_tick.get_or_insert(now + SERVING_TICK);
-
-        Ok(())
+        Ok(peer)
     }
 
     /// Withdraws `rid` from `cid`, closing the connection once the peer may reach nothing through us.
@@ -210,14 +336,21 @@ impl DeviceState {
         };
 
         peer.resources_mut().remove_resource(rid);
+        tracing::debug!("Access removed");
 
-        if peer.is_empty() {
-            self.peers.remove(cid);
-            self.node
-                .close_connection(*cid, p2p_control::goodbye(), now);
+        if !peer.is_empty() {
+            return;
         }
 
-        tracing::debug!("Access removed");
+        self.peers.remove(cid);
+
+        // The connection also carries what the peer serves us.
+        if self.gateways.peer_by_id(cid).is_some() {
+            return;
+        }
+
+        self.node
+            .close_connection(*cid, p2p_control::goodbye(), now);
     }
 
     /// Applies the changed description of a resource we serve.
@@ -225,6 +358,53 @@ impl DeviceState {
         for peer in self.peers.iter_mut() {
             peer.resources_mut().update_resource(&resource);
         }
+    }
+
+    /// Sets the resources we serve, revoking every authorization for a resource we no longer serve.
+    pub fn set_served_resources(&mut self, resources: Vec<ResourceDescription>, now: Instant) {
+        let served = resources
+            .iter()
+            .map(ResourceDescription::id)
+            .collect::<BTreeSet<_>>();
+
+        for resource in resources {
+            self.update_served_resource(resource);
+        }
+
+        let unserved = self
+            .peers
+            .iter()
+            .flat_map(|peer| {
+                peer.resources()
+                    .resource_ids()
+                    .filter(|rid| !served.contains(rid))
+                    .map(|rid| (peer.id(), rid))
+            })
+            .collect::<Vec<_>>();
+
+        for (cid, rid) in unserved {
+            self.remove_access(&cid, &rid, now);
+        }
+    }
+
+    /// We stopped serving `rid`: no peer may reach it through us any more.
+    pub fn remove_served_resource(&mut self, rid: ResourceId, now: Instant) {
+        let peers = self
+            .peers
+            .iter()
+            .filter(|peer| peer.resources().is_allowed(rid))
+            .map(PeerInbound::id)
+            .collect::<Vec<_>>();
+
+        for cid in peers {
+            self.remove_access(&cid, &rid, now);
+        }
+    }
+
+    /// Revokes the authorization of `cid` to reach `rid`, whichever kind of target it is.
+    pub fn revoke_access(&mut self, cid: DeviceId, rid: ResourceId, now: Instant) {
+        self.handle_reject_client_device_access(cid, rid);
+        self.remove_access(&cid, &rid, now);
     }
 
     pub fn handle_domain_resolved(

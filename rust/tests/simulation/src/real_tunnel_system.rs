@@ -29,7 +29,7 @@ use tunnel_proto::dns::is_subdomain;
 use tunnel_proto::messages::client::{FailReason, ResourceAuthorization};
 use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
-use tunnel_proto::{DeviceEvent, PeerKind, messages::Interface};
+use tunnel_proto::{DeviceEvent, messages::Interface};
 
 /// The actual system-under-test.
 ///
@@ -1201,8 +1201,7 @@ impl RealTunnelSystem {
             DeviceEvent::AddedIceCandidates {
                 candidates,
                 conn_id,
-                kind: PeerKind::Gateway,
-            } => {
+            } if self.gateways.contains_key(&conn_id) => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
                 gateway.exec_mut(|g| {
@@ -1214,8 +1213,7 @@ impl RealTunnelSystem {
             DeviceEvent::RemovedIceCandidates {
                 candidates,
                 conn_id,
-                kind: PeerKind::Gateway,
-            } => {
+            } if self.gateways.contains_key(&conn_id) => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
                 gateway.exec_mut(|g| {
@@ -1226,7 +1224,6 @@ impl RealTunnelSystem {
             }
             DeviceEvent::AddedIceCandidates {
                 conn_id,
-                kind: PeerKind::Client,
                 candidates,
             } => {
                 let client = self.clients.get_mut(&conn_id).expect("unknown client");
@@ -1239,7 +1236,6 @@ impl RealTunnelSystem {
             }
             DeviceEvent::RemovedIceCandidates {
                 conn_id,
-                kind: PeerKind::Client,
                 candidates,
             } => {
                 let client = self.clients.get_mut(&conn_id).expect("unknown client");
@@ -1638,7 +1634,6 @@ fn on_gateway_event(
     match event {
         DeviceEvent::AddedIceCandidates {
             conn_id,
-            kind: _,
             candidates,
         } => {
             let client = clients.get_mut(&conn_id).unwrap();
@@ -1650,7 +1645,6 @@ fn on_gateway_event(
         }
         DeviceEvent::RemovedIceCandidates {
             conn_id,
-            kind: _,
             candidates,
         } => {
             let client = clients.get_mut(&conn_id).unwrap();
