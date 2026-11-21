@@ -14,6 +14,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     PG,
     Changes.Change,
     PubSub,
+    Relay.CandidateIPs,
     Resource,
     Presence,
     SchemaHelpers,
@@ -196,6 +197,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_info({tag, %{type: :client, id: client_id}, candidates}, socket)
       when tag in [:ice_candidates, :invalidate_ice_candidates] do
     if Cache.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
+      # The gateway binds channels on its own relays towards new candidates.
+      if tag == :ice_candidates do
+        CandidateIPs.report(
+          socket.assigns[:cached_relay_ids] || MapSet.new(),
+          socket.assigns.gateway.account_id,
+          candidates
+        )
+      end
+
       push(socket, Atom.to_string(tag), %{client_id: client_id, candidates: candidates})
     else
       Telemetry.ice_candidates_dropped(:client, :unauthorized, candidate_count(candidates))
