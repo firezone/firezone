@@ -5,6 +5,7 @@ use std::{
     iter,
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
+    ops::RangeInclusive,
     str::FromStr as _,
     sync::Arc,
 };
@@ -30,6 +31,15 @@ pub struct DeviceInfo {
     pub device_serial: Option<String>,
     pub identifier_for_vendor: Option<String>,
     pub firebase_installation_id: Option<String>,
+}
+
+/// What a device speaks on `/device/v1`, declared when it connects.
+#[derive(Debug, Clone)]
+pub struct DeviceProtocol {
+    /// The minor versions of the protocol this device speaks with its peers.
+    pub versions: RangeInclusive<u32>,
+    /// Whether this device connects to its peers without ICE where the portal allows it.
+    pub frostlink: bool,
 }
 
 #[derive(Clone)]
@@ -73,12 +83,13 @@ impl IntoIterator for NoParams {
 }
 
 impl LoginUrl<PublicKeyParam> {
-    pub fn client<E>(
+    pub fn device<E>(
         url: impl TryInto<Url, Error = E>,
         device_id: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
         certificate: Option<ClientCertificate>,
+        protocol: DeviceProtocol,
     ) -> Result<Self, LoginUrlError<E>> {
         let mut url = url.try_into().map_err(LoginUrlError::InvalidUrl)?;
 
@@ -105,10 +116,10 @@ impl LoginUrl<PublicKeyParam> {
             .or(get_host_name())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        let url = get_websocket_path(
+        let mut url = get_websocket_path(
             url,
-            "client",
-            Some("v3"),
+            "device",
+            Some("v1"),
             Some(external_id),
             Some(device_name),
             None,
@@ -116,6 +127,10 @@ impl LoginUrl<PublicKeyParam> {
             None,
             device_info,
         )?;
+        url.query_pairs_mut()
+            .append_pair("proto_min", &protocol.versions.start().to_string())
+            .append_pair("proto_max", &protocol.versions.end().to_string())
+            .append_pair("frostlink", &protocol.frostlink.to_string());
 
         let (host, port) = parse_host(&url)?;
 
@@ -386,12 +401,13 @@ mod tests {
 
     #[test]
     fn base_url_removes_params_and_path() {
-        let login_url = LoginUrl::client(
+        let login_url = LoginUrl::device(
             "wss://api.firez.one",
             "some-id".to_owned(),
             None,
             DeviceInfo::default(),
             None,
+            protocol(),
         )
         .unwrap();
 
@@ -402,30 +418,32 @@ mod tests {
 
     #[test]
     fn client_uses_v2_endpoint() {
-        let login_url = LoginUrl::client(
+        let login_url = LoginUrl::device(
             "wss://api.firez.one",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
             None,
+            protocol(),
         )
         .unwrap();
 
         assert_eq!(
             login_url.to_url(PublicKeyParam([0; 32])).path(),
-            "/client/v3/websocket"
+            "/device/v1/websocket"
         )
     }
 
     #[test]
     fn client_with_certificate_rejects_plaintext_url() {
         for url in ["http://api.firez.one", "ws://api.firez.one"] {
-            let result = LoginUrl::client(
+            let result = LoginUrl::device(
                 url,
                 "some-id".to_owned(),
                 Some("some-name".to_owned()),
                 DeviceInfo::default(),
                 Some(certificate()),
+                protocol(),
             );
 
             assert!(matches!(
@@ -437,12 +455,13 @@ mod tests {
 
     #[test]
     fn client_without_certificate_allows_plaintext_url() {
-        let login_url = LoginUrl::client(
+        let login_url = LoginUrl::device(
             "http://localhost:8081",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
             None,
+            protocol(),
         )
         .unwrap();
 
@@ -451,12 +470,13 @@ mod tests {
 
     #[test]
     fn client_with_certificate_uses_mtls_api_host() {
-        let login_url = LoginUrl::client(
+        let login_url = LoginUrl::device(
             "wss://api.firez.one:444",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
             Some(certificate()),
+            protocol(),
         )
         .unwrap();
 
@@ -466,12 +486,13 @@ mod tests {
 
     #[test]
     fn client_with_certificate_uses_mtls_staging_api_host() {
-        let login_url = LoginUrl::client(
+        let login_url = LoginUrl::device(
             "wss://api.firezone.dev",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
             Some(certificate()),
+            protocol(),
         )
         .unwrap();
 
@@ -480,12 +501,13 @@ mod tests {
 
     #[test]
     fn client_with_certificate_uses_mtls_eu_api_host() {
-        let login_url = LoginUrl::client(
+        let login_url = LoginUrl::device(
             "wss://eu.api.firezone.dev",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
             Some(certificate()),
+            protocol(),
         )
         .unwrap();
 
@@ -494,12 +516,13 @@ mod tests {
 
     #[test]
     fn client_with_certificate_keeps_self_hosted_portal() {
-        let login_url = LoginUrl::client(
+        let login_url = LoginUrl::device(
             "wss://portal.example.com",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
             Some(certificate()),
+            protocol(),
         )
         .unwrap();
 
@@ -509,12 +532,13 @@ mod tests {
 
     #[test]
     fn client_without_certificate_keeps_self_hosted_portal() {
-        let login_url = LoginUrl::client(
+        let login_url = LoginUrl::device(
             "wss://portal.example.com",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
             None,
+            protocol(),
         )
         .unwrap();
 
@@ -524,12 +548,13 @@ mod tests {
 
     #[test]
     fn client_without_certificate_keeps_api_host() {
-        let login_url = LoginUrl::client(
+        let login_url = LoginUrl::device(
             "wss://api.firezone.dev",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
             None,
+            protocol(),
         )
         .unwrap();
 
@@ -604,6 +629,33 @@ mod tests {
             _: &[u8],
         ) -> Result<Vec<u8>, x509_credential::SigningError> {
             unimplemented!("these tests never complete a handshake")
+        }
+    }
+
+    #[test]
+    fn device_url_declares_the_protocol_it_speaks() {
+        let login_url = LoginUrl::device(
+            "wss://api.firez.one",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            None,
+            protocol(),
+        )
+        .unwrap();
+
+        let url = login_url.to_url(PublicKeyParam([0; 32]));
+        let params = url.query_pairs().collect::<Vec<_>>();
+
+        assert!(params.contains(&(Cow::from("proto_min"), Cow::from("3"))));
+        assert!(params.contains(&(Cow::from("proto_max"), Cow::from("5"))));
+        assert!(params.contains(&(Cow::from("frostlink"), Cow::from("true"))));
+    }
+
+    fn protocol() -> DeviceProtocol {
+        DeviceProtocol {
+            versions: 3..=5,
+            frostlink: true,
         }
     }
 }

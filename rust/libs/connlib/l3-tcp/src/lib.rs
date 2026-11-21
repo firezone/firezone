@@ -12,7 +12,7 @@ pub use smoltcp::iface::{Interface, PollResult, SocketHandle, SocketSet};
 pub use smoltcp::socket::Socket as AnySocket;
 pub use smoltcp::socket::tcp::{Socket, State};
 pub use smoltcp::time::{Duration, Instant};
-pub use smoltcp::wire::IpEndpoint;
+pub use smoltcp::wire::{IpAddress, IpEndpoint};
 
 pub fn create_tcp_socket() -> Socket<'static> {
     /// The 2-byte length prefix of DNS over TCP messages limits their size to effectively u16::MAX.
@@ -21,9 +21,16 @@ pub fn create_tcp_socket() -> Socket<'static> {
     /// In practice, this allows the OS to queue multiple queries even if we can't immediately process them.
     const MAX_TCP_DNS_MSG_LENGTH: usize = u16::MAX as usize;
 
+    create_tcp_socket_with_buffer_size(MAX_TCP_DNS_MSG_LENGTH)
+}
+
+/// A TCP socket with receive and send buffers of `size` bytes each.
+///
+/// The receive buffer caps the window we advertise; above 64 KiB, the window is scaled.
+pub fn create_tcp_socket_with_buffer_size(size: usize) -> Socket<'static> {
     Socket::new(
-        smoltcp::storage::RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
-        smoltcp::storage::RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
+        smoltcp::storage::RingBuffer::new(vec![0u8; size]),
+        smoltcp::storage::RingBuffer::new(vec![0u8; size]),
     )
 }
 

@@ -1,7 +1,7 @@
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use connlib_model::ClientId;
+use connlib_model::DeviceId;
 use dns_types::{DomainName, RecordType};
 use itertools::Itertools as _;
 use tunnel_proto::dns;
@@ -15,7 +15,7 @@ use crate::tunnel_transition::{DnsQuery, DnsTransport, IpFamily, Transition};
 
 #[derive(Clone)]
 pub(super) struct DnsQueryTarget {
-    client_id: ClientId,
+    client_id: DeviceId,
     dns_server: dns::Upstream,
     name: DnsNameSpec,
 }
@@ -164,7 +164,7 @@ fn generate_query(
     g: &mut TunnelGenerator,
     target: DnsQueryTarget,
     domain_tree: &[DomainName],
-) -> (ClientId, DnsQuery) {
+) -> (DeviceId, DnsQuery) {
     let (domain, rtypes) = match target.name {
         DnsNameSpec::Concrete { domain, rtypes } => (domain, rtypes),
         DnsNameSpec::Resource { address } => {
@@ -220,7 +220,7 @@ fn generate_query(
 fn arb_known_ptr_target(
     g: &mut TunnelGenerator,
     state: &TunnelModel,
-    client_id: ClientId,
+    client_id: DeviceId,
 ) -> Option<KnownPtrTarget> {
     let client = state.clients[&client_id].inner();
     let resolved_v4_domains = client

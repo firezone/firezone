@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 
-use connlib_model::{ClientId, GatewayId, IpStack, ResourceId, Site, SiteId};
+use connlib_model::{DeviceId, IpStack, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
@@ -13,7 +13,7 @@ use std::{
     ops::Range,
 };
 
-use crate::client::resource::{CidrResource, DnsResource, Resource};
+use crate::device::resource::{CidrResource, DnsResource, Resource};
 use crate::messages::{Filter, PortRange};
 
 pub fn resource(
@@ -106,12 +106,12 @@ pub fn resource_id() -> impl Strategy<Value = ResourceId> + Clone {
     any::<u128>().prop_map(ResourceId::from_u128).no_shrink()
 }
 
-pub fn gateway_id() -> impl Strategy<Value = GatewayId> + Clone {
-    any::<u128>().prop_map(GatewayId::from_u128).no_shrink()
+pub fn gateway_id() -> impl Strategy<Value = DeviceId> + Clone {
+    any::<u128>().prop_map(DeviceId::from_u128).no_shrink()
 }
 
-pub fn client_id() -> impl Strategy<Value = ClientId> {
-    any::<u128>().prop_map(ClientId::from_u128).no_shrink()
+pub fn client_id() -> impl Strategy<Value = DeviceId> {
+    any::<u128>().prop_map(DeviceId::from_u128).no_shrink()
 }
 
 pub fn site_id() -> impl Strategy<Value = SiteId> + Clone {

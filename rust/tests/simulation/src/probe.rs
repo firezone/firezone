@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use connlib_model::{ClientId, GatewayId, ResourceId};
+use connlib_model::{DeviceId, ResourceId};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::model_client::ModelClient;
@@ -51,7 +51,7 @@ pub(crate) enum ProbeProtocol {
 
 #[derive(Debug, Clone)]
 pub(crate) struct IcmpFlow {
-    pub(crate) client_id: ClientId,
+    pub(crate) client_id: DeviceId,
     pub(crate) src: IpAddr,
     pub(crate) dst: Destination,
     pub(crate) identifier: Identifier,
@@ -62,7 +62,7 @@ pub(crate) struct IcmpFlow {
 
 #[derive(Debug, Clone)]
 pub(crate) struct UdpFlow {
-    pub(crate) client_id: ClientId,
+    pub(crate) client_id: DeviceId,
     pub(crate) src: IpAddr,
     pub(crate) dst: Destination,
     pub(crate) sport: SPort,
@@ -73,7 +73,7 @@ pub(crate) struct UdpFlow {
 
 #[derive(Debug, Clone)]
 pub(crate) struct TcpFlow {
-    pub(crate) client_id: ClientId,
+    pub(crate) client_id: DeviceId,
     pub(crate) src: IpAddr,
     pub(crate) dst: Destination,
     pub(crate) sport: SPort,
@@ -85,9 +85,9 @@ pub(crate) struct TcpFlow {
 pub(crate) enum Route {
     Resource {
         resource: ResourceId,
-        gateway: GatewayId,
+        gateway: DeviceId,
     },
-    Peer(ClientId),
+    Peer(DeviceId),
 }
 
 impl Route {
@@ -170,8 +170,8 @@ impl ProbeRequest {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Remote {
-    Gateway(GatewayId),
-    Client(ClientId),
+    Gateway(DeviceId),
+    Client(DeviceId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,8 +225,8 @@ impl ExpectedOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RejectionRemote {
     Local,
-    Gateway(GatewayId),
-    Client(ClientId),
+    Gateway(DeviceId),
+    Client(DeviceId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -251,7 +251,7 @@ pub(crate) enum KnownLoss {
 #[derive(Debug, Clone)]
 pub(crate) struct ExpectedProbe {
     pub(crate) id: ProbeId,
-    pub(crate) origin: ClientId,
+    pub(crate) origin: DeviceId,
     pub(crate) sent_at: Instant,
     pub(crate) request: ProbeRequest,
     pub(crate) outcome: ExpectedOutcome,
@@ -275,10 +275,10 @@ pub(crate) fn remote_response(
     expected: &ExpectedProbe,
     received_request: &ReceivedRequest,
     answer: RemoteResponse,
-    model_clients: &BTreeMap<ClientId, &ModelClient>,
-    model_gateways: &BTreeMap<GatewayId, &ModelGateway>,
+    model_clients: &BTreeMap<DeviceId, &ModelClient>,
+    model_gateways: &BTreeMap<DeviceId, &ModelGateway>,
 ) -> RemoteResponse {
-    let peer = |client: ClientId| {
+    let peer = |client: DeviceId| {
         if model_clients[&client]
             .malicious_behaviour
             .send_untracked_icmp_errors
@@ -288,7 +288,7 @@ pub(crate) fn remote_response(
 
         answer
     };
-    let network = |gateway: GatewayId| match model_gateways[&gateway]
+    let network = |gateway: DeviceId| match model_gateways[&gateway]
         .routes
         .route(received_request.packet.destination())
     {
@@ -311,7 +311,7 @@ pub(crate) fn remote_response(
 pub(crate) struct SubmittedRequest {
     pub(crate) id: ProbeId,
     pub(crate) at: Instant,
-    pub(crate) client: ClientId,
+    pub(crate) client: DeviceId,
     pub(crate) packet: IpPacket,
 }
 
@@ -330,7 +330,7 @@ pub(crate) struct ReceivedRequest {
 pub(crate) struct ReceivedResponse {
     pub(crate) id: ProbeId,
     pub(crate) at: Instant,
-    pub(crate) client: ClientId,
+    pub(crate) client: DeviceId,
     pub(crate) packet: IpPacket,
 }
 
@@ -338,7 +338,7 @@ pub(crate) struct ReceivedResponse {
 #[derive(Debug, Clone)]
 pub(crate) struct CompletedStream {
     pub(crate) id: ProbeId,
-    pub(crate) client: ClientId,
+    pub(crate) client: DeviceId,
 }
 
 #[derive(Debug, Clone)]
@@ -404,8 +404,8 @@ impl<'a> ProbeTrace<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct DnsNatKey {
-    pub(crate) client: ClientId,
-    pub(crate) gateway: GatewayId,
+    pub(crate) client: DeviceId,
+    pub(crate) gateway: DeviceId,
     pub(crate) dns_nat_generation: u64,
     pub(crate) proxy: IpAddr,
     pub(crate) protocol: Protocol,
@@ -413,10 +413,10 @@ pub(crate) struct DnsNatKey {
 
 #[derive(Debug)]
 pub(crate) enum InvalidDnsNatObservation {
-    RemoteIsClient(ClientId),
+    RemoteIsClient(DeviceId),
     Tcp(u16),
     UnsupportedProtocol(UnsupportedProtocol),
-    MissingGeneration(GatewayId),
+    MissingGeneration(DeviceId),
 }
 
 pub(crate) struct DnsNatSession<'a> {

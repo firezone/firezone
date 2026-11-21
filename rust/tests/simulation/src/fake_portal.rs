@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, RelayId, ResourceId, Site, SiteId};
+use connlib_model::{DeviceId, RelayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_packet::Protocol;
 use itertools::Itertools;
@@ -29,8 +29,8 @@ const DEVICE_LISTING_TTL: u32 = 4;
 /// Fake implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub struct FakePortal {
-    clients: BTreeMap<ClientId, ClientRecord>,
-    gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
+    clients: BTreeMap<DeviceId, ClientRecord>,
+    gateways_by_site: BTreeMap<SiteId, SmallVec<[(DeviceId, Ipv4Addr, Ipv6Addr); 3]>>,
     regular_sites: SmallVec<[Site; 3]>,
 
     #[debug(skip)]
@@ -48,7 +48,7 @@ pub struct FakePortal {
     ///
     /// A revoked one is kept, because the Gateway that held it is what decides whether
     /// it has anything left for the Client.
-    gateway_policy_authorizations: BTreeMap<(ClientId, ResourceId), GatewayAuthorization>,
+    gateway_policy_authorizations: BTreeMap<(DeviceId, ResourceId), GatewayAuthorization>,
     internet_resource: client::InternetResource,
 
     search_domain: Option<DomainName>,
@@ -60,10 +60,10 @@ pub struct FakePortal {
     gateway_selector: u32,
     /// How often each Client was handed a Gateway it did not prefer since it started, per site.
     #[debug(skip)]
-    load_balanced_requests: BTreeMap<(ClientId, SiteId), u32>,
+    load_balanced_requests: BTreeMap<(DeviceId, SiteId), u32>,
     /// When the portal handed each node relays.
     #[debug(skip)]
-    relay_handouts: BTreeMap<ClientOrGatewayId, Vec<Instant>>,
+    relay_handouts: BTreeMap<DeviceId, Vec<Instant>>,
 
     // TODO: Remove with classic ICE.
     /// Whether the portal hands out Frostlink flows. Sampled once per test case
@@ -76,27 +76,27 @@ pub struct FakePortal {
 #[derive(Clone, Debug)]
 pub(crate) enum PoolMembers {
     AllClients,
-    Listed(BTreeSet<ClientId>),
+    Listed(BTreeSet<DeviceId>),
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct PeerAuthorization {
-    pub(crate) initiator: ClientId,
-    pub(crate) target: ClientId,
+    pub(crate) initiator: DeviceId,
+    pub(crate) target: DeviceId,
     pub(crate) pool: ResourceId,
 }
 
 /// A Gateway connection the portal left with nothing, and what the Client reached
 /// through it.
 pub(crate) struct ClosedGatewayConnection {
-    pub(crate) client: ClientId,
-    pub(crate) gateway: GatewayId,
+    pub(crate) client: DeviceId,
+    pub(crate) gateway: DeviceId,
     pub(crate) resources: BTreeSet<ResourceId>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct GatewayAuthorization {
-    gateway: GatewayId,
+    gateway: DeviceId,
     revoked: bool,
 }
 
@@ -113,8 +113,8 @@ struct ClientRecord {
 
 impl FakePortal {
     pub(crate) fn new(
-        clients: impl IntoIterator<Item = (ClientId, Ipv4Addr, Ipv6Addr)>,
-        gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
+        clients: impl IntoIterator<Item = (DeviceId, Ipv4Addr, Ipv6Addr)>,
+        gateways_by_site: BTreeMap<SiteId, SmallVec<[(DeviceId, Ipv4Addr, Ipv6Addr); 3]>>,
         regular_sites: SmallVec<[Site; 3]>,
         gateway_selector: u32,
         cidr_resources: impl IntoIterator<Item = client::CidrResource>,
@@ -320,14 +320,14 @@ impl FakePortal {
     /// Used by the structured generator to materialize client hosts.
     pub(crate) fn client_tunnel_ips(
         &self,
-    ) -> impl Iterator<Item = (ClientId, Ipv4Addr, Ipv6Addr)> + '_ {
+    ) -> impl Iterator<Item = (DeviceId, Ipv4Addr, Ipv6Addr)> + '_ {
         self.clients.iter().map(|(id, c)| (*id, c.ipv4, c.ipv6))
     }
 
     /// The tunnel IPs and owning site of each gateway.
     pub(crate) fn gateway_tunnel_ips(
         &self,
-    ) -> impl Iterator<Item = (GatewayId, Ipv4Addr, Ipv6Addr, SiteId)> + '_ {
+    ) -> impl Iterator<Item = (DeviceId, Ipv4Addr, Ipv6Addr, SiteId)> + '_ {
         self.gateways_by_site
             .iter()
             .flat_map(|(site_id, gateways)| {
@@ -358,7 +358,7 @@ impl FakePortal {
             .collect()
     }
 
-    pub(crate) fn device_label(&self, id: ClientId) -> String {
+    pub(crate) fn device_label(&self, id: DeviceId) -> String {
         self.clients[&id].device_label.clone()
     }
 
@@ -453,7 +453,7 @@ impl FakePortal {
         Some(members)
     }
 
-    pub(crate) fn client_by_ip(&self, ip: IpAddr) -> Option<ClientId> {
+    pub(crate) fn client_by_ip(&self, ip: IpAddr) -> Option<DeviceId> {
         self.clients
             .iter()
             .find(|(_, c)| IpAddr::V4(c.ipv4) == ip || IpAddr::V6(c.ipv6) == ip)
@@ -466,7 +466,7 @@ impl FakePortal {
     pub(crate) fn pick_device_pool(
         &self,
         candidates: &[ResourceId],
-        target: ClientId,
+        target: DeviceId,
     ) -> Option<ResourceId> {
         candidates.iter().copied().find(|pool| {
             self.device_pool_resources.contains_key(pool) && self.is_pool_member(*pool, target)
@@ -476,8 +476,8 @@ impl FakePortal {
     /// Authorizes `initiator` to reach `target`, naming the pool that admits it.
     pub(crate) fn request_peer_access(
         &mut self,
-        initiator: ClientId,
-        target: ClientId,
+        initiator: DeviceId,
+        target: DeviceId,
         candidates: &[ResourceId],
     ) -> Option<ResourceId> {
         let pool = self.pick_device_pool(candidates, target)?;
@@ -494,7 +494,7 @@ impl FakePortal {
     /// Whether a Gateway still holds an authorization for `client` to reach `resource`.
     pub(crate) fn holds_gateway_authorization(
         &self,
-        client: ClientId,
+        client: DeviceId,
         resource: ResourceId,
     ) -> bool {
         self.gateway_policy_authorizations
@@ -506,8 +506,8 @@ impl FakePortal {
     /// `protocol` to `ip`.
     pub(crate) fn gateway_cidr_authorization_allows(
         &self,
-        client: ClientId,
-        gateway: GatewayId,
+        client: DeviceId,
+        gateway: DeviceId,
         ip: IpAddr,
         protocol: Protocol,
     ) -> bool {
@@ -554,7 +554,7 @@ impl FakePortal {
     }
 
     /// Everything `client` was authorized to reach through `gateway`, revoked or not.
-    fn resources_on_gateway(&self, client: ClientId, gateway: GatewayId) -> BTreeSet<ResourceId> {
+    fn resources_on_gateway(&self, client: DeviceId, gateway: DeviceId) -> BTreeSet<ResourceId> {
         self.gateway_policy_authorizations
             .iter()
             .filter(|((candidate, _), authorization)| {
@@ -564,7 +564,7 @@ impl FakePortal {
             .collect()
     }
 
-    fn holds_any_gateway_authorization(&self, client: ClientId, gateway: GatewayId) -> bool {
+    fn holds_any_gateway_authorization(&self, client: DeviceId, gateway: DeviceId) -> bool {
         self.gateway_policy_authorizations
             .iter()
             .any(|((candidate, _), authorization)| {
@@ -605,7 +605,7 @@ impl FakePortal {
         }
     }
 
-    fn forget_gateway_authorizations(&mut self, client_id: ClientId) {
+    fn forget_gateway_authorizations(&mut self, client_id: DeviceId) {
         for _ in self
             .gateway_policy_authorizations
             .extract_if(.., |(client, _), _| *client == client_id)
@@ -637,7 +637,7 @@ impl FakePortal {
             .filter(|pool| held.contains(&pool.id))
     }
 
-    fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
+    fn is_pool_member(&self, pool: ResourceId, client: DeviceId) -> bool {
         match self.pool_members.get(&pool) {
             Some(PoolMembers::AllClients) => self.clients.contains_key(&client),
             Some(PoolMembers::Listed(members)) => members.contains(&client),
@@ -646,7 +646,7 @@ impl FakePortal {
     }
 
     /// The clients a pool admits.
-    pub(crate) fn pool_members(&self, pool: ResourceId) -> Vec<ClientId> {
+    pub(crate) fn pool_members(&self, pool: ResourceId) -> Vec<DeviceId> {
         self.clients
             .keys()
             .copied()
@@ -669,7 +669,7 @@ impl FakePortal {
     pub(crate) fn peer_authorizations_revoked_by(
         &self,
         pool: ResourceId,
-        members: &BTreeSet<ClientId>,
+        members: &BTreeSet<DeviceId>,
     ) -> Vec<PeerAuthorization> {
         self.peer_policy_authorizations
             .iter()
@@ -681,7 +681,7 @@ impl FakePortal {
     }
 
     /// The peers holding a peer authorization with `client`, in either direction.
-    pub(crate) fn authorized_peers_of(&self, client: ClientId) -> BTreeSet<ClientId> {
+    pub(crate) fn authorized_peers_of(&self, client: DeviceId) -> BTreeSet<DeviceId> {
         self.peer_policy_authorizations
             .iter()
             .filter_map(|authorization| {
@@ -697,7 +697,7 @@ impl FakePortal {
             .collect()
     }
 
-    fn set_pool_members(&mut self, pool: ResourceId, members: BTreeSet<ClientId>) {
+    fn set_pool_members(&mut self, pool: ResourceId, members: BTreeSet<DeviceId>) {
         if !self.device_pool_resources.contains_key(&pool) {
             tracing::error!(%pool, "Unknown device pool");
             return;
@@ -762,10 +762,10 @@ impl FakePortal {
     /// serve the resource's site and load-balances across the site otherwise.
     pub(crate) fn request_resource_access(
         &mut self,
-        client: ClientId,
+        client: DeviceId,
         resource: ResourceId,
-        connected_gateway_ids: Vec<GatewayId>,
-    ) -> (GatewayId, SiteId) {
+        connected_gateway_ids: Vec<DeviceId>,
+    ) -> (DeviceId, SiteId) {
         let site_id = *self
             .sites_by_resource
             .get(&resource)
@@ -803,7 +803,7 @@ impl FakePortal {
     /// Answers `node`'s request for relays with every relay it did not exclude.
     pub(crate) fn request_relays<'a>(
         &mut self,
-        node: ClientOrGatewayId,
+        node: DeviceId,
         excluded_relay_ids: &[RelayId],
         relays: &'a BTreeMap<RelayId, Host<RealRelay>>,
         now: Instant,
@@ -820,7 +820,7 @@ impl FakePortal {
         relays
     }
 
-    pub(crate) fn relay_handouts(&self) -> &BTreeMap<ClientOrGatewayId, Vec<Instant>> {
+    pub(crate) fn relay_handouts(&self) -> &BTreeMap<DeviceId, Vec<Instant>> {
         &self.relay_handouts
     }
 
@@ -862,7 +862,7 @@ impl FakePortal {
     ///
     /// Each such request moves on to the site's next Gateway, standing in for the portal's
     /// random choice.
-    pub(crate) fn load_balanced_gateway(&self, client: ClientId, site: SiteId) -> GatewayId {
+    pub(crate) fn load_balanced_gateway(&self, client: DeviceId, site: SiteId) -> DeviceId {
         let requests = self
             .load_balanced_requests
             .get(&(client, site))
@@ -884,16 +884,16 @@ impl FakePortal {
     /// The Gateway that `client` was last authorized to reach `resource` through.
     pub(crate) fn authorized_gateway(
         &self,
-        client: ClientId,
+        client: DeviceId,
         resource: ResourceId,
-    ) -> Option<GatewayId> {
+    ) -> Option<DeviceId> {
         self.gateway_policy_authorizations
             .get(&(client, resource))
             .map(|authorization| authorization.gateway)
     }
 
     /// The Clients holding an authorization through `gateway`.
-    pub(crate) fn clients_authorized_through(&self, gateway: GatewayId) -> BTreeSet<ClientId> {
+    pub(crate) fn clients_authorized_through(&self, gateway: DeviceId) -> BTreeSet<DeviceId> {
         self.gateway_policy_authorizations
             .iter()
             .filter(|(_, authorization)| authorization.gateway == gateway && !authorization.revoked)
@@ -902,7 +902,7 @@ impl FakePortal {
     }
 
     /// The Gateways that any Client was authorized to reach `resource` through.
-    pub(crate) fn gateways_authorized_for(&self, resource: ResourceId) -> BTreeSet<GatewayId> {
+    pub(crate) fn gateways_authorized_for(&self, resource: ResourceId) -> BTreeSet<DeviceId> {
         self.gateway_policy_authorizations
             .iter()
             .filter(|((_, candidate), _)| *candidate == resource)
@@ -910,7 +910,7 @@ impl FakePortal {
             .collect()
     }
 
-    pub(crate) fn gateway_by_ip(&self, ip: IpAddr) -> Option<GatewayId> {
+    pub(crate) fn gateway_by_ip(&self, ip: IpAddr) -> Option<DeviceId> {
         self.gateways_by_site
             .values()
             .flatten()

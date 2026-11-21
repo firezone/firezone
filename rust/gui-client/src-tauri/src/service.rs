@@ -954,7 +954,7 @@ impl<'a> Handler<'a> {
 
         // The settings may have moved since the GUI last asked us to start telemetry.
         self.point_telemetry_at_api_url(api_url.as_str());
-        let url = LoginUrl::client(
+        let url = LoginUrl::device(
             api_url.clone(),
             device_id.id.clone(),
             None,
@@ -964,6 +964,7 @@ impl<'a> Handler<'a> {
                 ..Default::default()
             },
             certificate,
+            client_shared::device_protocol(),
         )
         .context("Failed to create `LoginUrl`")?;
 
@@ -971,7 +972,7 @@ impl<'a> Handler<'a> {
             url,
             Some(token),
             get_user_agent("gui-client", env!("CARGO_PKG_VERSION")),
-            "client",
+            client_shared::PHOENIX_TOPIC,
             (),
             || {
                 ExponentialBackoffBuilder::default()

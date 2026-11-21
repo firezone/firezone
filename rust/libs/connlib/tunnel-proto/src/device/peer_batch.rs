@@ -2,17 +2,20 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use anyhow::Result;
-use connlib_model::ClientOrGatewayId;
+use connlib_model::DeviceId;
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
 
-use super::ClientState;
+use super::DeviceState;
 use crate::batch::BatchingKey;
+use crate::peer_inbound::OutboundRewrite;
 use crate::{FailedToDecapsulate, packet_kind};
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 pub(super) struct Decision {
     pub(super) key: BatchingKey,
+    /// How the first packet of a served flow was translated, for the rest of the flow.
+    pub(super) rewrite: OutboundRewrite,
     pub(super) flow: flow_tracker::DetachedFlow,
 }
 
@@ -30,8 +33,8 @@ pub(super) enum Outcome {
 /// Dropping it records the flows of the batch.
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct PeerBatch<'a> {
-    state: &'a mut ClientState,
-    packets: snownet::CommittedBatch<ClientOrGatewayId>,
+    state: &'a mut DeviceState,
+    packets: snownet::CommittedBatch<DeviceId>,
     local: SocketAddr,
     from: SocketAddr,
     now: Instant,
@@ -42,8 +45,8 @@ pub struct PeerBatch<'a> {
 
 impl<'a> PeerBatch<'a> {
     pub(super) fn new(
-        state: &'a mut ClientState,
-        packets: snownet::CommittedBatch<ClientOrGatewayId>,
+        state: &'a mut DeviceState,
+        packets: snownet::CommittedBatch<DeviceId>,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
@@ -69,7 +72,7 @@ impl Iterator for PeerBatch<'_> {
         }
 
         let cid = self.packets.cid();
-        let packet = match self.packets.next()? {
+        let mut packet = match self.packets.next()? {
             Ok(Some(packet)) => packet,
             Ok(None) => return Some(Ok(None)),
             Err(e) => {
@@ -96,6 +99,13 @@ impl Iterator for PeerBatch<'_> {
                 }
             }));
         };
+
+        if let OutboundRewrite::Destination(proto, ip) = decision.rewrite {
+            let translated = packet.translate_destination(proto, ip);
+
+            // The first packet translated fine and this one shares its flow, thus its IP version.
+            debug_assert!(translated.is_ok(), "{translated:?}");
+        }
 
         decision.flow.count_packet(&packet);
 

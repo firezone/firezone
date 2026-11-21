@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, RelayId, ResourceId};
+use connlib_model::{DeviceId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use tunnel_proto::{
     dns::{self, is_subdomain},
@@ -28,16 +28,16 @@ pub enum Transition {
     /// portal's peer authorizations through it towards a client that left.
     UpdateDevicePoolMembers {
         pool_id: ResourceId,
-        members: BTreeSet<ClientId>,
+        members: BTreeSet<DeviceId>,
         revoked: Vec<PeerAuthorization>,
     },
     SetInternetResourceState {
-        client_id: ClientId,
+        client_id: DeviceId,
         active: bool,
     },
     SendIcmpPacketOnNewFlow {
         flow_id: FlowId,
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         dst: Destination,
         seq: Seq,
@@ -51,7 +51,7 @@ pub enum Transition {
     },
     SendUdpPacketOnNewFlow {
         flow_id: FlowId,
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
@@ -65,7 +65,7 @@ pub enum Transition {
     /// Opens a TCP connection; its SYN is the probe, which the resource accepts.
     ConnectTcp {
         flow_id: FlowId,
-        client_id: ClientId,
+        client_id: DeviceId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
@@ -79,9 +79,9 @@ pub enum Transition {
         seed: u64,
         probe_id: ProbeId,
     },
-    SendDnsQueries(Vec<(ClientId, DnsQuery)>),
+    SendDnsQueries(Vec<(DeviceId, DnsQuery)>),
     SendDnsResourcePtrQuery {
-        client_id: ClientId,
+        client_id: DeviceId,
         record_domain: DomainName,
         family: IpFamily,
         address_index: u32,
@@ -96,7 +96,7 @@ pub enum Transition {
     UpdateUpstreamDoHServers(Vec<UpstreamDoH>),
     UpdateUpstreamSearchDomain(Option<DomainName>),
     RoamClient {
-        client_id: ClientId,
+        client_id: DeviceId,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
         nat_ip4: Ipv4Addr,
@@ -104,10 +104,10 @@ pub enum Transition {
         portal_window: Duration,
     },
     ReconnectPortal {
-        client_id: ClientId,
+        client_id: DeviceId,
     },
     RestartClient {
-        client_id: ClientId,
+        client_id: DeviceId,
         key: PrivateKey,
     },
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
@@ -129,14 +129,14 @@ pub enum Transition {
     RevokeGatewayAuthorization(ResourceId),
     /// Expires inbound authorizations at the receiving client while the sender retains its own.
     ExpirePeerAuthorizations {
-        client: ClientId,
-        peer: ClientId,
+        client: DeviceId,
+        peer: DeviceId,
         pools: BTreeSet<ResourceId>,
     },
     /// Revokes one of several peer authorizations on the receiver while the sender retains its own.
     RevokePeerAuthorization {
-        client: ClientId,
-        peer: ClientId,
+        client: DeviceId,
+        peer: DeviceId,
         pool: ResourceId,
     },
     UpdateDnsRecords {
@@ -146,21 +146,37 @@ pub enum Transition {
     /// Restarts a Client whose process died: it sends no `goodbye` and loses the DNS resource
     /// records it cached in memory.
     CrashClient {
-        client_id: ClientId,
+        client_id: DeviceId,
         key: PrivateKey,
     },
     /// Restarts a Gateway whose process died: it sends no `goodbye`. `clients` are the Clients
     /// the portal tells about its new key.
     CrashGateway {
-        gateway_id: GatewayId,
+        gateway_id: DeviceId,
         key: PrivateKey,
-        clients: BTreeSet<ClientId>,
+        clients: BTreeSet<DeviceId>,
     },
     SpuriousPublicKeyChanged {
-        recipient: ClientOrGatewayId,
-        remote: ClientOrGatewayId,
+        recipient: NodeId,
+        remote: NodeId,
         key: PrivateKey,
     },
+}
+
+/// A simulated node, by the binary it runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum NodeId {
+    Client(DeviceId),
+    Gateway(DeviceId),
+}
+
+impl NodeId {
+    pub(crate) fn device_id(self) -> DeviceId {
+        match self {
+            NodeId::Client(id) => id,
+            NodeId::Gateway(id) => id,
+        }
+    }
 }
 
 impl Transition {
@@ -245,7 +261,7 @@ impl Transition {
 
     // TODO: Remove the `frostlink` parameter with classic ICE: every flow then survives roams and relay changes.
     /// Returns whether a flow remains predictable across this transition.
-    pub(crate) fn retains_flow(&self, client_id: ClientId, route: Route, frostlink: bool) -> bool {
+    pub(crate) fn retains_flow(&self, client_id: DeviceId, route: Route, frostlink: bool) -> bool {
         match self {
             Transition::AddResource(_) => match route {
                 Route::Resource { .. } => false,

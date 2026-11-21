@@ -14,7 +14,7 @@ use super::{
     tunnel_model::PrivateKey,
     tunnel_transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
-use connlib_model::{ClientId, RelayId, ResourceView};
+use connlib_model::{DeviceId, RelayId, ResourceView};
 use dns_types::{DomainName, Query, RecordData, RecordType, ResponseCode, prelude::*};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -26,15 +26,15 @@ use std::{
     time::{Duration, Instant},
 };
 use tunnel_proto::{
-    ClientEvent, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
+    DNS_SENTINELS_V4, DNS_SENTINELS_V6, DeviceEvent, DeviceState, DnsMapping, DnsResourceRecord,
     MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
 };
 
 /// Simulation state for a particular client.
 pub(crate) struct RealClient {
-    id: ClientId,
+    id: DeviceId,
 
-    pub(crate) tunnel: RealTunnel<ClientState>,
+    pub(crate) tunnel: RealTunnel,
 
     /// The malicious behaviours sampled for this client.
     malicious_behaviour: MaliciousBehaviour,
@@ -81,8 +81,8 @@ pub(crate) struct RealClient {
 
 impl RealClient {
     pub(crate) fn new(
-        id: ClientId,
-        mut state: ClientState,
+        id: DeviceId,
+        mut state: DeviceState,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
         now: Instant,
@@ -111,11 +111,11 @@ impl RealClient {
         }
     }
 
-    pub(crate) fn state(&self) -> &ClientState {
+    pub(crate) fn state(&self) -> &DeviceState {
         self.tunnel.inner().state()
     }
 
-    pub(crate) fn state_mut(&mut self) -> &mut ClientState {
+    pub(crate) fn state_mut(&mut self) -> &mut DeviceState {
         self.tunnel.inner_mut().state_mut()
     }
 
@@ -135,7 +135,7 @@ impl RealClient {
         //
         // We keep all the state in `RealClient` which is equivalent to host system.
         // That is where we cache resolved DNS names for example.
-        let mut state = ClientState::new(
+        let mut state = DeviceState::new(
             key.0,
             dns_resource_records,
             is_internet_resource_active,
@@ -190,6 +190,7 @@ impl RealClient {
         query_id: u16,
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
+        now: Instant,
     ) {
         let ips = self
             .dns_records
@@ -213,6 +214,7 @@ impl RealClient {
             upstream,
             dns_transport,
             false,
+            now,
         )
     }
 
@@ -224,6 +226,7 @@ impl RealClient {
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
         edns: bool,
+        now: Instant,
     ) {
         let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
             tracing::error!(%upstream, "Unknown DNS server");
@@ -252,6 +255,8 @@ impl RealClient {
                 self.send(packet);
             }
             DnsTransport::Tcp => {
+                // The query's deadline counts from when the client last advanced.
+                self.tcp_dns_client.handle_timeout(now);
                 self.tcp_dns_client
                     .send_query(SocketAddr::new(sentinel, 53), query)
                     .unwrap();
@@ -766,7 +771,7 @@ impl Host<RealClient> {
         global_dns_records: &DnsRecords,
         transmits: &mut BufferedTransmits,
         now: Instant,
-    ) -> (Option<ClientEvent>, bool) {
+    ) -> (Option<DeviceEvent>, bool) {
         let arrived = std::iter::from_fn(|| self.poll_inbox(now)).collect::<Vec<_>>();
         let (event, busy) = self.exec_mut(|c| {
             c.tunnel.receive(arrived);
@@ -795,17 +800,17 @@ impl Host<RealClient> {
 
 impl RealClient {
     /// Handles `event` if it only concerns the Client, and returns it otherwise.
-    fn handle_local_event(&mut self, event: ClientEvent) -> Option<ClientEvent> {
+    fn handle_local_event(&mut self, event: DeviceEvent) -> Option<DeviceEvent> {
         match event {
-            ClientEvent::ResourcesChanged { resources } => {
+            DeviceEvent::ResourcesChanged { resources } => {
                 self.observed_resource_list = resources;
                 None
             }
-            ClientEvent::DnsRecordsChanged { records } => {
+            DeviceEvent::DnsRecordsChanged { records } => {
                 self.dns_resource_record_cache = records;
                 None
             }
-            ClientEvent::TunInterfaceUpdated(config) => {
+            DeviceEvent::TunInterfaceUpdated(config) => {
                 if self.dns_by_sentinel == config.dns_by_sentinel
                     && self.routes == config.routes
                     && self.search_domain == config.search_domain
@@ -822,12 +827,13 @@ impl RealClient {
                     .set_source_interface(config.ip.v4, config.ip.v6);
                 None
             }
-            event @ (ClientEvent::AddedIceCandidates { .. }
-            | ClientEvent::RemovedIceCandidates { .. }
-            | ClientEvent::RequestAccess { .. }
-            | ClientEvent::DeviceDomainQueried { .. }
-            | ClientEvent::DeviceDomainBrowsed { .. }
-            | ClientEvent::NoRelays { .. }) => Some(event),
+            event @ (DeviceEvent::AddedIceCandidates { .. }
+            | DeviceEvent::RemovedIceCandidates { .. }
+            | DeviceEvent::RequestAccess { .. }
+            | DeviceEvent::DeviceDomainQueried { .. }
+            | DeviceEvent::DeviceDomainBrowsed { .. }
+            | DeviceEvent::NoRelays { .. }
+            | DeviceEvent::ResolveDns(_)) => Some(event),
         }
     }
 }

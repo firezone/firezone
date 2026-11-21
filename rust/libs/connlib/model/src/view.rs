@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::ClientId;
+use crate::DeviceId;
 use crate::ResourceId;
 use crate::Site;
 
@@ -143,7 +143,7 @@ pub struct DevicePoolResourceView {
 /// A device peer that the client currently has a live snownet connection to.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ConnectedDeviceView {
-    pub id: ClientId,
+    pub id: DeviceId,
     /// Name assigned to the connected client.
     pub name: String,
     /// Label the device is reached at under the device domain, e.g. `bench-controller-01`.

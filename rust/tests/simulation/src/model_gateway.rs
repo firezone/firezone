@@ -5,7 +5,7 @@ use super::{
     site_network::{Routes, SiteNetwork},
     tunnel_model::PrivateKey,
 };
-use connlib_model::GatewayId;
+use connlib_model::DeviceId;
 use dns_types::{DomainName, OwnedRecordData};
 use jiff::Timestamp;
 use std::{
@@ -13,7 +13,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
     time::{Duration, Instant},
 };
-use tunnel_proto::{GatewayState, IpConfig};
+use tunnel_proto::{DeviceState, IpConfig};
 
 /// Model of a particular gateway.
 #[derive(Debug, Clone)]
@@ -52,18 +52,20 @@ impl ModelGateway {
         }
     }
 
-    /// Initialize the [`GatewayState`].
+    /// Initialize the [`DeviceState`].
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(
         self,
-        id: GatewayId,
+        id: DeviceId,
         tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         now: Instant,
         utc_now: Timestamp,
     ) -> RealGateway {
-        let mut state = GatewayState::new(
+        let mut state = DeviceState::new(
             self.key.0,
+            BTreeSet::new(),
+            false,
             now,
             Duration::try_from(utc_now.as_duration()).unwrap(),
         ); // Cheating a bit here by reusing the key as seed.

@@ -1,8 +1,10 @@
 mod crypto;
 mod device;
+mod forwarder;
 mod udp_gro_train;
 mod udp_gso_train;
 
+pub(crate) use crypto::EncryptJobs;
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
 pub use crypto::{CryptoWorkers, DecryptedBatch};
 pub use device::{Device, TunChannelClosed};
@@ -13,7 +15,7 @@ use crate::{
     sockets::{ReceivedDatagrams, Sockets},
 };
 use anyhow::Result;
-use crypto::{DecryptJobs, DecryptedJobs, Decrypting, EncryptJobs};
+use crypto::{DecryptJobs, DecryptedJobs, Decrypting};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -23,6 +25,7 @@ use std::{
     net::SocketAddr,
     sync::Arc,
     task::{Context, Poll},
+    time::Instant,
 };
 use tun::Tun;
 
@@ -41,6 +44,9 @@ pub struct Io {
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     tun: Device,
+
+    /// Forwards served traffic through host sockets where the kernel does not.
+    forwarder: Option<forwarder::Forwarder>,
 }
 
 /// Represents all IO sources that may be ready during a single event-loop tick.
@@ -49,6 +55,8 @@ pub struct Io {
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
+    /// Replies from the userspace forwarder, handled like packets read from the TUN device.
+    pub forwarded: Vec<IpPacket>,
     pub network: Option<ReceivedDatagrams>,
     pub decrypted: Option<DecryptedJobs>,
     pub dns_queries: Vec<DnsQuery>,
@@ -103,6 +111,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             tun_has_room: false,
             input: Input {
                 device: None,
+                forwarded: Vec::new(),
                 network: None,
                 decrypted: None,
                 dns_queries: Vec::new(),
@@ -144,6 +153,18 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         while let Poll::Ready(e) = self.io.sockets.poll_error(self.cx) {
             self.input.error.push(e);
         }
+    }
+
+    fn poll_forwarder(&mut self) {
+        if !self.udp_has_room {
+            return;
+        }
+
+        let Some(forwarder) = self.io.forwarder.as_mut() else {
+            return;
+        };
+
+        self.input.forwarded = forwarder.poll(self.cx, Instant::now());
     }
 
     fn poll_device(&mut self) {
@@ -192,6 +213,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         let input = self.input;
 
         if input.device.is_none()
+            && input.forwarded.is_empty()
             && input.network.is_none()
             && input.decrypted.is_none()
             && input.dns_queries.is_empty()
@@ -223,7 +245,28 @@ impl Io {
             tcp_socket_factory,
             udp_socket_factory,
             tun: Device::new(),
+            forwarder: None,
         }
+    }
+
+    /// Forwards served traffic through host sockets from now on, instead of through the TUN device.
+    pub fn enable_userspace_forwarding(&mut self, now: Instant) {
+        self.forwarder = Some(forwarder::Forwarder::new(
+            self.tcp_socket_factory.clone(),
+            self.udp_socket_factory.clone(),
+            now,
+        ));
+    }
+
+    /// Hands a served packet to the userspace forwarder, or returns it if there is none.
+    pub fn forward(&mut self, packet: IpPacket, now: Instant) -> Option<IpPacket> {
+        let Some(forwarder) = self.forwarder.as_mut() else {
+            return Some(packet);
+        };
+
+        forwarder.forward(packet, now);
+
+        None
     }
 
     pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<(), TunnelError> {
@@ -282,6 +325,7 @@ impl Io {
         state.poll_decrypted();
         state.poll_network();
         state.poll_socket_errors();
+        state.poll_forwarder();
         state.poll_device();
         state.poll_dns_queries();
         state.poll_dns_responses();
