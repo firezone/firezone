@@ -231,7 +231,7 @@ jobs:
         timeout-minutes: 15
       - uses: ./.github/actions/setup-mise
         with:
-          install_args: "--cd rust github:getsentry/sentry-cli"
+          install_args: ${{ runner.os == 'Linux' && '--cd rust/gui-client github:getsentry/sentry-cli cargo:cargo-deb cargo:cargo-generate-rpm' || '--cd rust/gui-client github:getsentry/sentry-cli' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Check sentry-cli runs
