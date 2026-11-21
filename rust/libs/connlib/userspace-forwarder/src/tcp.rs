@@ -14,13 +14,19 @@ use std::{
 use ip_packet::IpPacket;
 use l3_tcp::{
     InMemoryDevice, Interface, IpAddress, IpEndpoint, Socket, SocketHandle, SocketSet, State,
-    create_interface, create_tcp_socket,
+    create_interface, create_tcp_socket_with_buffer_size,
 };
 
 use crate::{Command, Event, FlowId, FlowIds, Outbox};
 
+/// Receive and send buffer of each socket.
+///
+/// The receive buffer is the most a peer may have in flight to us, so it caps a connection at
+/// this many bytes per round trip: 1 MiB is about 200 Mbit/s at 40 ms.
+const SOCKET_BUFFER: usize = 1024 * 1024;
+
 /// Bytes the driver may have in flight toward the host before we stop reading from a socket.
-const INITIAL_SEND_CREDIT: usize = 64 * 1024;
+const INITIAL_SEND_CREDIT: usize = SOCKET_BUFFER;
 
 /// Room in a socket's send buffer worth telling the driver about.
 ///
@@ -50,6 +56,19 @@ struct Flow {
     /// Whether the handshake completed; before that the receive half reads as closed.
     established: bool,
     shutdown_sent: bool,
+    stats: Stats,
+}
+
+/// Logged when a connection closes, to tell where a slow one waited.
+#[derive(Debug)]
+struct Stats {
+    opened_at: Instant,
+    to_host: usize,
+    to_peer: usize,
+    /// Times we left data in the receive buffer because the host had not taken earlier bytes.
+    send_credit_stalls: usize,
+    /// The most bytes that waited in the receive buffer.
+    max_recv_queue: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,6 +142,8 @@ impl Tcp {
                 if let Some(f) = self.flows.get_mut(&flow) {
                     f.recv_outstanding = f.recv_outstanding.saturating_sub(data.len());
 
+                    f.stats.to_peer += data.len();
+
                     let socket = self.sockets.get_mut::<Socket>(f.handle);
                     match socket.send_slice(&data) {
                         Ok(n) if n == data.len() => {}
@@ -179,7 +200,7 @@ impl Tcp {
             return;
         }
 
-        let mut socket = create_tcp_socket();
+        let mut socket = create_tcp_socket_with_buffer_size(SOCKET_BUFFER);
         if let Err(e) = socket.listen(port) {
             tracing::warn!(%port, "Failed to listen for a peer's connection: {e}");
             return;
@@ -237,6 +258,13 @@ impl Tcp {
                     recv_outstanding: 0,
                     established: false,
                     shutdown_sent: false,
+                    stats: Stats {
+                        opened_at: self.last_now,
+                        to_host: 0,
+                        to_peer: 0,
+                        send_credit_stalls: 0,
+                        max_recv_queue: 0,
+                    },
                 },
             );
             out.commands.push_back(Command::TcpConnect { flow, remote });
@@ -256,6 +284,8 @@ impl Tcp {
                 f.established = true;
             }
 
+            f.stats.max_recv_queue = f.stats.max_recv_queue.max(socket.recv_queue());
+
             while socket.can_recv() && f.send_credit > 0 {
                 let credit = f.send_credit;
                 let data = socket
@@ -270,8 +300,13 @@ impl Tcp {
                 }
 
                 f.send_credit -= data.len();
+                f.stats.to_host += data.len();
                 out.commands
                     .push_back(Command::TcpSend { flow: *flow, data });
+            }
+
+            if socket.can_recv() && f.send_credit == 0 {
+                f.stats.send_credit_stalls += 1;
             }
 
             if f.established && !socket.may_recv() && !f.shutdown_sent {
@@ -309,7 +344,22 @@ impl Tcp {
                 continue;
             };
 
-            tracing::debug!(%flow, "TCP connection closed");
+            let Stats {
+                opened_at,
+                to_host,
+                to_peer,
+                send_credit_stalls,
+                max_recv_queue,
+            } = f.stats;
+            tracing::debug!(
+                %flow,
+                duration = ?self.last_now.saturating_duration_since(opened_at),
+                %to_host,
+                %to_peer,
+                %send_credit_stalls,
+                %max_recv_queue,
+                "TCP connection closed"
+            );
 
             self.sockets.remove(f.handle);
             if f.host != Host::Closed {
