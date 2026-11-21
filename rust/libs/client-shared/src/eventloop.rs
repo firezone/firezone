@@ -175,7 +175,6 @@ impl Eventloop {
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Result<Self> {
         let SessionConfig {
-            listen_port,
             is_internet_resource_active,
             dns_servers,
             additional_host_candidates,
@@ -189,7 +188,6 @@ impl Eventloop {
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
-            listen_port,
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
@@ -513,6 +511,19 @@ impl Eventloop {
                     }))
                     .await
                     .context("Failed to send message to portal")?;
+            }
+            Ok(ClientEvent::PublicKeyRotated) => {
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(());
+                };
+
+                tunnel.state_mut().set_portal_connected(false);
+                self.portal_cmd_tx
+                    .send(PortalCommand::Connect(PublicKeyParam(
+                        tunnel.public_key().to_bytes(),
+                    )))
+                    .await
+                    .context("Failed to connect phoenix-channel")?;
             }
             Err(error) => self.handle_tunnel_error(error)?,
         }

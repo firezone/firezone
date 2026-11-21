@@ -260,17 +260,14 @@ impl EventLoop {
         let tun = device.io();
         let thread = match host {
             AnyHost::Client(client) => {
-                let mut tunnel =
-                    ClientTunnel::new(tcp, udp, socket.port(), BTreeSet::new(), false, now)
-                        .unwrap();
+                let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now).unwrap();
                 *tunnel.state_mut() = client.into_state();
                 tunnel.set_tun(tun);
 
                 run(tunnel, runtime, now)
             }
             AnyHost::Gateway(gateway) => {
-                let mut tunnel =
-                    GatewayTunnel::new(tcp, udp, socket.port(), BTreeSet::new(), now).unwrap();
+                let mut tunnel = GatewayTunnel::new(tcp, udp, BTreeSet::new(), now).unwrap();
                 *tunnel.state_mut() = gateway.into_state();
                 tunnel.set_tun(tun);
 

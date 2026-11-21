@@ -84,12 +84,14 @@ impl RealTunnelSystem {
             .clients
             .iter()
             .map(|(client_id, model_client)| {
+                let listen_port = model_client.port;
                 let client = model_client.map(
                     |model_client, _, _| {
                         model_client.init(
                             portal.upstream_do53().to_vec(),
                             portal.upstream_doh().to_vec(),
                             portal.search_domain(),
+                            listen_port,
                             clock.now(),
                             clock.now(),
                         )
@@ -104,11 +106,13 @@ impl RealTunnelSystem {
             .gateways
             .iter()
             .map(|(gid, gateway)| {
+                let listen_port = gateway.port;
                 let gateway = gateway.map(
                     |model_gateway, _, _| {
                         model_gateway.init(
                             *gid,
                             model.tcp_services.clone(),
+                            listen_port,
                             clock.now(),
                             clock.now(),
                         )
@@ -833,23 +837,7 @@ impl RealTunnelSystem {
                     },
                 );
 
-                // The portal sees the Client reconnect with a new key and tells its peers and Gateways.
-                let public_key = self.clients[&client_id].inner().state().public_key();
-                for peer in portal.authorized_peers_of(client_id) {
-                    self.clients.get_mut(&peer).unwrap().exec_mut(|c| {
-                        c.state_mut().handle_public_key_changed(
-                            ClientOrGatewayId::Client(client_id),
-                            public_key,
-                            now,
-                        )
-                    });
-                }
-                for gateway in self.gateways.values_mut() {
-                    gateway.exec_mut(|g| {
-                        g.state_mut()
-                            .handle_public_key_changed(client_id, public_key.into(), now)
-                    });
-                }
+                self.notify_public_key_changed(client_id, portal, now);
             }
             Transition::CrashGateway {
                 gateway_id,
@@ -910,6 +898,31 @@ impl RealTunnelSystem {
         }
 
         self
+    }
+
+    /// Mimics the portal seeing `client_id` reconnect with a new key: it tells its peers and Gateways.
+    fn notify_public_key_changed(
+        &mut self,
+        client_id: ClientId,
+        portal: &FakePortal,
+        now: Instant,
+    ) {
+        let public_key = self.clients[&client_id].inner().state().public_key();
+        for peer in portal.authorized_peers_of(client_id) {
+            self.clients.get_mut(&peer).unwrap().exec_mut(|c| {
+                c.state_mut().handle_public_key_changed(
+                    ClientOrGatewayId::Client(client_id),
+                    public_key,
+                    now,
+                )
+            });
+        }
+        for gateway in self.gateways.values_mut() {
+            gateway.exec_mut(|g| {
+                g.state_mut()
+                    .handle_public_key_changed(client_id, public_key.into(), now)
+            });
+        }
     }
 
     /// Replaces the tunnel of `client_id` through `restart` and configures the new one as the
@@ -1160,16 +1173,22 @@ impl RealTunnelSystem {
 
         match host {
             HostId::Client(id) => {
-                self.clients
-                    .get_mut(&id)
-                    .expect("unknown client")
-                    .receive(transmit, at);
+                let client = self.clients.get_mut(&id).expect("unknown client");
+                if client.port != transmit.dst.port() {
+                    tracing::debug!(dst = %transmit.dst, "Dropping packet because host no longer listens on the port");
+                    return;
+                }
+
+                client.receive(transmit, at);
             }
             HostId::Gateway(id) => {
-                self.gateways
-                    .get_mut(&id)
-                    .expect("unknown gateway")
-                    .receive(transmit, at);
+                let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
+                if gateway.port != transmit.dst.port() {
+                    tracing::debug!(dst = %transmit.dst, "Dropping packet because host no longer listens on the port");
+                    return;
+                }
+
+                gateway.receive(transmit, at);
             }
             HostId::Relay(id) => {
                 self.relays
@@ -1197,7 +1216,7 @@ impl RealTunnelSystem {
         let portal_unreachable = self
             .client_portal_offline_until
             .is_some_and(|(cid, until)| cid == src && now < until);
-        if portal_unreachable {
+        if portal_unreachable && !matches!(event, ClientEvent::PublicKeyRotated) {
             tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
             return;
@@ -1439,6 +1458,24 @@ impl RealTunnelSystem {
                 );
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
+            }
+            ClientEvent::PublicKeyRotated => {
+                let resources = model.clients[&src].inner().resource_descriptions();
+                let client = self.clients.get_mut(&src).unwrap();
+
+                // Mimic the event loop: rejoin the portal with our new key and receive `init`.
+                client.exec_mut(|c| c.state_mut().set_portal_connected(false));
+
+                if portal_unreachable {
+                    return;
+                }
+
+                client.exec_mut(|c| {
+                    c.state_mut().set_portal_connected(true);
+                    c.update_relays(iter::empty(), self.relays.iter(), now);
+                    c.state_mut().set_resources(resources, now);
+                });
+                self.notify_public_key_changed(src, portal, now);
             }
             ClientEvent::DeviceDomainQueried { domain } => {
                 // Mimic the portal: every device resolves, access is asked for per flow.

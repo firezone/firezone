@@ -112,6 +112,9 @@ pub struct Tunnel<TRoleState> {
     packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_tun_packets: DroppedTunPackets,
 
+    /// The local IPs advertised as host candidates on our UDP port.
+    additional_host_candidates: Vec<IpAddr>,
+
     /// Set when the last poll handled IO whose effects only `handle_timeout` completes.
     ///
     /// Not every component advertises a deadline for that work, so the tunnel says so itself:
@@ -124,9 +127,9 @@ impl<TRoleState> Tunnel<TRoleState> {
     /// crypto jobs as they are submitted, the TUN device's, the IPv4 and IPv6 sockets' and the
     /// recursive DNS resolver's through the returned [`FakeTunnelEnds`].
     ///
-    /// Nothing else can bind a socket.
-    pub fn fake(role_state: TRoleState) -> (Self, FakeTunnelEnds) {
-        let (sockets, socket_v4, socket_v6) = Sockets::fake();
+    /// The sockets listen on `listen_port`. Nothing else can bind a socket.
+    pub fn fake(role_state: TRoleState, listen_port: u16) -> (Self, FakeTunnelEnds) {
+        let (sockets, socket_v4, socket_v6) = Sockets::fake(listen_port);
         let (tun, tun_inbound, tun_outbound) = tun::fake(tun::CHANNEL_CAPACITY);
         let (resolver, dns) = resolver::channels();
         let tcp: Arc<dyn SocketFactory<TcpSocket>> =
@@ -144,6 +147,7 @@ impl<TRoleState> Tunnel<TRoleState> {
             ),
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
+            additional_host_candidates: Vec::new(),
             needs_timeout: false,
         };
 
@@ -194,6 +198,8 @@ pub trait Role: Sized {
     ) -> Poll<Result<Self::Event, TunnelError>>;
     fn poll_timeout(&mut self) -> Option<Instant>;
     fn handle_timeout(&mut self, now: Instant);
+    fn reset_on_new_port(&mut self, now: Instant);
+    fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant);
 }
 
 impl Role for ClientState {
@@ -214,6 +220,14 @@ impl Role for ClientState {
     fn handle_timeout(&mut self, now: Instant) {
         ClientState::handle_timeout(self, now);
     }
+
+    fn reset_on_new_port(&mut self, now: Instant) {
+        ClientState::reset_on_new_port(self, now);
+    }
+
+    fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
+        ClientState::set_additional_host_candidates(self, sockets, now);
+    }
 }
 
 impl Role for GatewayState {
@@ -233,6 +247,14 @@ impl Role for GatewayState {
 
     fn handle_timeout(&mut self, now: Instant) {
         GatewayState::handle_timeout(self, now);
+    }
+
+    fn reset_on_new_port(&mut self, now: Instant) {
+        GatewayState::reset_on_new_port(self, now);
+    }
+
+    fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
+        GatewayState::set_additional_host_candidates(self, sockets, now);
     }
 }
 
@@ -259,20 +281,52 @@ impl<R: Role> Tunnel<R> {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.role_state.handle_timeout(now);
     }
+
+    /// The local port our UDP sockets are bound to.
+    pub fn listen_port(&self) -> u16 {
+        self.io.listen_port()
+    }
+
+    /// Advertises the given local IPs as additional host candidates on our UDP port.
+    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
+        self.role_state.set_additional_host_candidates(
+            listen_sockets(ips.clone(), self.io.listen_port()),
+            now,
+        );
+        self.additional_host_candidates = ips;
+    }
+
+    /// Binds our UDP sockets to a new port that the OS picks and resets.
+    fn rebind_to_new_port(&mut self, now: Instant) {
+        self.io.reset_on_new_port();
+        let ips = mem::take(&mut self.additional_host_candidates);
+        self.set_additional_host_candidates(ips, now);
+        self.handle_overdue_timeout(now);
+        self.role_state.reset_on_new_port(now);
+    }
+
+    fn handle_overdue_timeout(&mut self, now: Instant) {
+        if self
+            .role_state
+            .poll_timeout()
+            .is_some_and(|timeout| timeout <= now)
+        {
+            self.role_state.handle_timeout(now);
+        }
+    }
 }
 
 impl ClientTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        listen_port: u16,
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
         now: Instant,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(
-                Sockets::new(udp_socket_factory.clone(), listen_port),
+                Sockets::new(udp_socket_factory.clone()),
                 CryptoWorkers::default(),
                 resolver::spawn(
                     tcp_socket_factory.clone(),
@@ -293,6 +347,7 @@ impl ClientTunnel {
             ),
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
+            additional_host_candidates: Vec::new(),
             needs_timeout: false,
         })
     }
@@ -302,22 +357,9 @@ impl ClientTunnel {
     }
 
     pub fn reset(&mut self, reason: &str, now: Instant) {
-        if self
-            .role_state
-            .poll_timeout()
-            .is_some_and(|timeout| timeout <= now)
-        {
-            self.role_state.handle_timeout(now);
-        }
-
+        self.handle_overdue_timeout(now);
         self.role_state.reset(now, reason);
         self.io.reset();
-    }
-
-    /// Advertises the given local IPs as additional host candidates on our UDP port.
-    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
-        self.role_state
-            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
     }
 
     /// Drops every datagram sent directly to a peer while `enabled`, forcing connections through a relay.
@@ -365,6 +407,10 @@ impl ClientTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            if self.role_state.is_socket_taken() {
+                self.rebind_to_new_port(now);
+            }
+
             let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
             let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
             let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
@@ -547,13 +593,12 @@ impl GatewayTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        listen_port: u16,
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(
-                Sockets::new(udp_socket_factory.clone(), listen_port),
+                Sockets::new(udp_socket_factory.clone()),
                 CryptoWorkers::default(),
                 resolver::spawn(
                     tcp_socket_factory.clone(),
@@ -572,18 +617,13 @@ impl GatewayTunnel {
             ),
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
+            additional_host_candidates: Vec::new(),
             needs_timeout: false,
         })
     }
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
-    }
-
-    /// Advertises the given local IPs as additional host candidates on our UDP port.
-    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
-        self.role_state
-            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
     }
 
     /// Shut down the Gateway tunnel.
@@ -618,6 +658,10 @@ impl GatewayTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            if self.role_state.is_socket_taken() {
+                self.rebind_to_new_port(now);
+            }
+
             let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
             let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
             let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);

@@ -22,7 +22,7 @@ use crate::dns_records::DnsRecords;
 use crate::fake_portal::{FakePortal, PoolMembers};
 use crate::model_client::ModelClient;
 use crate::model_gateway::ModelGateway;
-use crate::network::{Expiry, FilterMode, Host, Mapping, Nat, RoutingTable};
+use crate::network::{Expiry, FilterMode, Host, Mapping, Nat, PortAssignment, RoutingTable};
 use crate::os::SimulatedOs;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
 use crate::site_network::{IcmpError, RouteType, Routes};
@@ -36,7 +36,7 @@ pub(super) fn generate(
     let mut network = RoutingTable::default();
     let hosts = portal.client_tunnel_ips().count() + portal.gateway_tunnel_ips().count();
     for _ in 0..=hosts {
-        let ok = network.add_nat(arb_nat(g));
+        let ok = network.add_nat(arb_nat(g, portal));
         debug_assert!(ok, "NAT IPs must be unique by construction");
     }
     let nat_ips = network.nat_ips().collect::<Vec<_>>();
@@ -470,8 +470,13 @@ fn arb_simulated_os(g: &mut TunnelGenerator) -> SimulatedOs {
     }
 }
 
-fn arb_nat(g: &mut TunnelGenerator) -> Nat {
+fn arb_nat(g: &mut TunnelGenerator, portal: &FakePortal) -> Nat {
     let ip4 = g.nat_ip4();
+    let assignment = if g.bool() {
+        PortAssignment::Overloading(fastrand::Rng::with_seed(g.u64()))
+    } else {
+        PortAssignment::Compliant
+    };
 
     match g.choose_index(2) {
         0 => {
@@ -481,13 +486,31 @@ fn arb_nat(g: &mut TunnelGenerator) -> Nat {
                 _ => FilterMode::PortRestricted,
             };
 
-            Nat::new(ip4, Mapping::EndpointIndependent, filter, arb_expiry(g))
+            Nat::new(
+                ip4,
+                Mapping::EndpointIndependent,
+                filter,
+                arb_expiry(g),
+                assignment,
+            )
         }
+        // TODO: Remove with classic ICE.
+        // Through an overloading NAT with endpoint-dependent mapping, the model can predict
+        // neither hole punching nor when a rebind hits a live connection, and classic ICE does
+        // not handle a socket that two devices share towards a peer.
+        _ if !portal.frostlink() => Nat::new(
+            ip4,
+            Mapping::EndpointDependent,
+            FilterMode::PortRestricted,
+            arb_expiry(g),
+            PortAssignment::Compliant,
+        ),
         _ => Nat::new(
             ip4,
             Mapping::EndpointDependent,
             FilterMode::PortRestricted,
             arb_expiry(g),
+            assignment,
         ),
     }
 }

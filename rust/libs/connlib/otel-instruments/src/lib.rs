@@ -127,6 +127,17 @@ pub fn connection_count() -> Gauge<u64> {
         .build()
 }
 
+/// How often a remote address became contested by several Frostlink connections.
+pub fn contested_addresses() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("tunnel.address.contested")
+        .with_description(
+            "Number of remote addresses that several Frostlink connections validated a path to.",
+        )
+        .with_unit("{address}")
+        .build()
+}
+
 /// Measures how long connlib takes to recursively resolve a DNS query against an upstream resolver.
 pub fn dns_lookup_duration() -> Histogram<f64> {
     connlib_meter()

@@ -700,6 +700,13 @@ impl Agent {
                 let inflight = state.inflight.remove(i);
                 let rtt = now.saturating_duration_since(inflight.sent_at);
 
+                if state.rtt.is_none() {
+                    self.events.push_back(Event::PathValidated {
+                        local: pair.0,
+                        remote: pair.1,
+                    });
+                }
+
                 state.rtt = Some(Rtt {
                     smoothed: match state.rtt {
                         None => rtt,

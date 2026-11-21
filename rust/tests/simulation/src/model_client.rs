@@ -169,6 +169,7 @@ impl ModelClient {
         upstream_do53: Vec<UpstreamDo53>,
         upstream_doh: Vec<UpstreamDoH>,
         search_domain: Option<DomainName>,
+        listen_port: u16,
         now: Instant,
         utc_now: Timestamp,
     ) -> RealClient {
@@ -194,6 +195,7 @@ impl ModelClient {
             client_state,
             self.malicious_behaviour,
             self.os,
+            listen_port,
             now,
         )
     }

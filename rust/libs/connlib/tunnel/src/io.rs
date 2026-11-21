@@ -335,6 +335,14 @@ impl Io {
         self.resolver.send_control(ResolverControl::Reset);
     }
 
+    /// Like [`Io::reset`] but binds the UDP sockets to a new port that the OS picks.
+    pub fn reset_on_new_port(&mut self) {
+        self.tcp_socket_factory.reset();
+        self.udp_socket_factory.reset();
+        self.sockets.rebind_to_new_port();
+        self.resolver.send_control(ResolverControl::Reset);
+    }
+
     /// Creates the jobs that encrypt encapsulated packets off the main thread.
     ///
     /// Their datagrams go to the UDP sockets when dropped. Create them only for the packets

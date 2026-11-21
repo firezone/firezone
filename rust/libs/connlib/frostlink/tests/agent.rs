@@ -487,6 +487,30 @@ fn a_reply_with_a_stale_pair_id_is_ignored() {
     );
 }
 
+#[test]
+fn only_the_first_probe_reply_on_a_pair_validates_its_path() {
+    let mut a = agent_with_relay_pairs();
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    let probes = a.tick(t0);
+    a.ack_probe(&probes, (addr(2), addr(4)), t0 + ms(30));
+
+    assert_eq!(
+        a.poll_event(),
+        Some(Event::PathValidated {
+            local: addr(2),
+            remote: addr(4),
+        }),
+    );
+
+    let next_burst = t0 + PROBE_BURST_GAPS[0];
+    let probes = a.tick(next_burst);
+    a.ack_probe(&probes, (addr(2), addr(4)), next_burst + ms(30));
+
+    assert_eq!(a.poll_event(), None);
+}
+
 // --- WireGuard distress ---
 
 #[test]

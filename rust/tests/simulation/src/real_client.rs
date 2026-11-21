@@ -85,13 +85,14 @@ impl RealClient {
         mut state: ClientState,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
+        listen_port: u16,
         now: Instant,
     ) -> Self {
         state.set_flow_logs_enabled(true);
 
         Self {
             id,
-            tunnel: RealTunnel::new(state),
+            tunnel: RealTunnel::new(state, listen_port),
             malicious_behaviour,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
@@ -143,7 +144,8 @@ impl RealClient {
             Duration::try_from(utc_now.as_duration()).unwrap(),
         );
         state.set_flow_logs_enabled(true);
-        let old = std::mem::replace(&mut self.tunnel, RealTunnel::new(state));
+        let listen_port = self.tunnel.inner().listen_port();
+        let old = std::mem::replace(&mut self.tunnel, RealTunnel::new(state, listen_port));
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
@@ -785,6 +787,7 @@ impl Host<RealClient> {
             (event.and_then(|event| c.handle_local_event(event)), busy)
         });
 
+        self.port = self.inner().tunnel.inner().listen_port();
         for transmit in self.exec_mut(|c| c.tunnel.take_sent()) {
             transmits.push_from(transmit, self, now);
         }
@@ -827,7 +830,8 @@ impl RealClient {
             | ClientEvent::RequestAccess { .. }
             | ClientEvent::DeviceDomainQueried { .. }
             | ClientEvent::DeviceDomainBrowsed { .. }
-            | ClientEvent::NoRelays { .. }) => Some(event),
+            | ClientEvent::NoRelays { .. }
+            | ClientEvent::PublicKeyRotated) => Some(event),
         }
     }
 }

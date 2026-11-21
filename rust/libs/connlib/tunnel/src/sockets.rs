@@ -26,6 +26,10 @@ use tokio::sync::mpsc::{
 };
 use tokio::sync::oneshot;
 
+const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
+const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
+const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
+
 /// How many outgoing UDP batches the send task drains from a socket's channel per wakeup.
 ///
 /// The outbound queue is sized as a small multiple of this (see [`QUEUE_SIZE`]), and every queued
@@ -125,21 +129,18 @@ pub(crate) struct Sockets {
 }
 
 impl Sockets {
-    /// Creates sockets for both families, bound to the unspecified address on `listen_port`.
-    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>, listen_port: u16) -> Self {
-        let mut sockets = Self::without_sockets(Some(socket_factory), listen_port);
+    /// Creates sockets for both families, bound to the unspecified address.
+    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
+        let mut sockets = Self::without_sockets(Some(socket_factory));
         sockets.rebind();
 
         sockets
     }
 
-    fn without_sockets(
-        socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>,
-        listen_port: u16,
-    ) -> Self {
+    fn without_sockets(socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>) -> Self {
         Self {
             socket_factory,
-            listen_port,
+            listen_port: DEFAULT_LISTEN_PORT,
             socket_v4: None,
             socket_v6: None,
             overflow_v4: VecDeque::new(),
@@ -167,6 +168,42 @@ impl Sockets {
 
         self.socket_v4 = self.bind(&socket_factory, unspecified_v4(self.listen_port));
         self.socket_v6 = self.bind(&socket_factory, unspecified_v6(self.listen_port));
+    }
+
+    /// Drops the items waiting for room and binds new sockets to a port that the OS picks.
+    ///
+    /// IPv6 binds to the port IPv4 got. If it is taken there, we try another one.
+    pub fn rebind_to_new_port(&mut self) {
+        const ATTEMPTS: usize = 5;
+
+        self.overflow_v4.clear();
+        self.overflow_v6.clear();
+
+        let Some(socket_factory) = self.socket_factory.clone() else {
+            // Fake sockets have no OS to pick a port, so they move to the next one.
+            self.listen_port = self.listen_port.wrapping_add(1).max(1);
+            return;
+        };
+
+        for _ in 0..ATTEMPTS {
+            self.socket_v4 = None;
+            self.socket_v6 = None;
+
+            self.socket_v4 = self.bind(&socket_factory, unspecified_v4(0));
+            let port = self.socket_v4.as_ref().map_or(0, |s| s.port);
+            self.socket_v6 = self.bind(&socket_factory, unspecified_v6(port));
+
+            match (&self.socket_v4, &self.socket_v6) {
+                (Some(v4), Some(v6)) if v4.port != v6.port => {
+                    tracing::debug!(port, "UDP port is taken for IPv6");
+                }
+                _ => break,
+            }
+        }
+
+        if let Some(socket) = self.socket_v4.as_ref().or(self.socket_v6.as_ref()) {
+            self.listen_port = socket.port;
+        }
     }
 
     pub fn listen_port(&self) -> u16 {
@@ -438,6 +475,8 @@ const _: () = {
 
 struct ThreadedUdpSocket {
     thread_name: String,
+    /// The local port the socket is bound to.
+    port: u16,
     join_handle: Option<std::thread::JoinHandle<()>>,
     main_thread_ends: Option<MainThreadEnds>,
 }
@@ -561,6 +600,7 @@ impl ThreadedUdpSocket {
 
                 socket.set_buffer_sizes(send_buffer_size, recv_buffer_size);
 
+                let port = socket.port();
                 let socket = Arc::new(socket);
 
                 let send = runtime.spawn({
@@ -690,7 +730,7 @@ impl ThreadedUdpSocket {
                     }
                 });
 
-                let _ = startup_tx.send(Ok(()));
+                let _ = startup_tx.send(Ok(port));
 
                 runtime.block_on(async move {
                     futures::future::select(send, receive).await;
@@ -700,10 +740,11 @@ impl ThreadedUdpSocket {
                 });
             })?;
 
-        startup_rx.recv().map_err(io::Error::other)??;
+        let port = startup_rx.recv().map_err(io::Error::other)??;
 
         Ok(Self {
             thread_name,
+            port,
             join_handle: Some(join_handle),
             main_thread_ends: Some(main_thread_ends),
         })
@@ -810,12 +851,13 @@ impl Drop for ThreadedUdpSocket {
 }
 
 impl Sockets {
-    /// Creates sockets for both families without threads; the returned ends play their part.
-    pub(crate) fn fake() -> (Self, SocketThreadEnds, SocketThreadEnds) {
+    /// Creates sockets for both families on `listen_port` without threads; the returned ends play their part.
+    pub(crate) fn fake(listen_port: u16) -> (Self, SocketThreadEnds, SocketThreadEnds) {
         let fake_socket = |addr: SocketAddr| {
             let (main_thread_ends, socket_thread_ends) = channels(addr);
             let socket = ThreadedUdpSocket {
                 thread_name: "fake".to_owned(),
+                port: addr.port(),
                 join_handle: None,
                 main_thread_ends: Some(main_thread_ends),
             };
@@ -828,7 +870,8 @@ impl Sockets {
         let sockets = Self {
             socket_v4: Some(socket_v4),
             socket_v6: Some(socket_v6),
-            ..Self::without_sockets(None, 0)
+            listen_port,
+            ..Self::without_sockets(None)
         };
 
         (sockets, ends_v4, ends_v6)

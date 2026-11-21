@@ -1,8 +1,9 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     fmt,
     hash::Hash,
     iter, mem,
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -34,6 +35,8 @@ pub struct Connections<TId, RId> {
 
     established_by_tunnel_id: HashMap<sanstun::TunnelId, TId, FastRandomState>,
     established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
+    /// The Frostlink connections that validated a path to each remote socket.
+    established_by_remote: HashMap<SocketAddr, BTreeSet<TId>, FastRandomState>,
 
     disconnected_ids: HashMap<TId, Instant, FastRandomState>,
     disconnected_public_keys: HashMap<[u8; 32], Instant, FastRandomState>,
@@ -50,6 +53,7 @@ impl<TId, RId> Default for Connections<TId, RId> {
             closing: Default::default(),
             established_by_tunnel_id: Default::default(),
             established_by_local_ufrag: Default::default(),
+            established_by_remote: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_tunnel_ids: Default::default(),
@@ -76,6 +80,7 @@ where
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.established_by_local_ufrag.remove(ufrag);
         }
+        self.remove_remotes(id);
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
@@ -129,6 +134,7 @@ where
         transmits: &mut VecDeque<Transmit>,
         events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
+        validated_remotes: &mut Vec<(TId, SocketAddr)>,
         now: Instant,
     ) {
         self.reindex();
@@ -156,6 +162,7 @@ where
                 transmits,
                 events,
                 inflight_stun_requests,
+                validated_remotes,
             );
         }
 
@@ -173,6 +180,7 @@ where
                 transmits,
                 &mut VecDeque::new(),
                 inflight_stun_requests,
+                &mut Vec::new(),
             );
 
             // The goodbye may have to wait for a channel binding or a handshake, e.g. when
@@ -253,8 +261,44 @@ where
         if let Some(ufrag) = local_ufrag {
             self.established_by_local_ufrag.insert(ufrag, id);
         }
+        if existing.is_some() {
+            self.remove_remotes(&id);
+        }
 
         existing
+    }
+
+    /// Records that the Frostlink connection `id` validated a path to `remote`.
+    ///
+    /// Returns whether this made `remote` contested, see [`Connections::is_contested`].
+    pub(crate) fn add_remote(&mut self, id: TId, remote: SocketAddr) -> bool {
+        // `id` may have failed and been removed after it validated `remote`.
+        if self.established.get(&id).is_none() {
+            return false;
+        }
+
+        let ids = self.established_by_remote.entry(remote).or_default();
+
+        ids.insert(id) && ids.len() == 2
+    }
+
+    /// Whether more than one Frostlink connection validated a path to `remote`.
+    ///
+    /// A NAT that maps several devices to the same public socket delivers what we send there to
+    /// whichever of them sent last, so no Frostlink connection can rely on a contested `remote`.
+    /// Classic ICE connections neither count towards a contest nor react to one.
+    pub(crate) fn is_contested(&self, remote: SocketAddr) -> bool {
+        self.established_by_remote
+            .get(&remote)
+            .is_some_and(|ids| ids.len() > 1)
+    }
+
+    pub(crate) fn iter_mut_frostlink_by_remote_candidate(
+        &mut self,
+        remote: SocketAddr,
+    ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
+        self.established
+            .filter_mut(move |c| c.agent.is_frostlink() && c.agent.has_remote_candidate(remote))
     }
 
     pub(crate) fn iter_mut_by_relay(
@@ -399,6 +443,7 @@ where
         self.missing_relay = false;
         self.failed.clear();
         self.established_by_tunnel_id.clear();
+        self.established_by_remote.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
@@ -477,6 +522,7 @@ where
                 self.established_by_local_ufrag.remove(ufrag);
                 self.disconnected_ufrags.insert(ufrag.to_owned(), now);
             }
+            self.remove_remotes(&id);
         }
 
         self.disconnected_ids
@@ -487,6 +533,16 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_ufrags
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+    }
+
+    fn remove_remotes(&mut self, id: &TId) {
+        for ids in self.established_by_remote.values_mut() {
+            ids.remove(id);
+        }
+        for _ in self
+            .established_by_remote
+            .extract_if(|_, ids| ids.is_empty())
+        {}
     }
 }
 
@@ -741,6 +797,7 @@ mod tests {
             &mut VecDeque::new(),
             &mut VecDeque::default(),
             &mut InflightStunRequests::default(),
+            &mut Vec::new(),
             now,
         );
     }

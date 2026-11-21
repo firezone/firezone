@@ -25,7 +25,7 @@ use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
-use opentelemetry::metrics::Gauge;
+use opentelemetry::metrics::{Counter, Gauge};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay_client_proto::channel_data::channel_data_packet_buffer;
@@ -110,6 +110,7 @@ pub struct Node<TId, RId> {
 
     connection_count: Gauge<u64>,
     next_connection_count: Instant,
+    contested_addresses: Counter<u64>,
 
     rng: StdRng,
 
@@ -205,6 +206,7 @@ where
             buffered_candidates: Default::default(),
             connection_count: otel_instruments::connection_count(),
             next_connection_count: now,
+            contested_addresses: otel_instruments::contested_addresses(),
             unix_now: now,
             unix_ts,
         }
@@ -221,7 +223,7 @@ where
     /// re-handshaking from the same 3-tuple would collide with the relay's still-live
     /// allocation. `snownet` cannot control which IP / port we are binding to, thus upper
     /// layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
-    pub fn reset(&mut self, now: Instant) {
+    pub fn reset(&mut self, key: StaticKey, now: Instant) {
         self.last_now = now;
 
         self.allocations.restart(now);
@@ -264,11 +266,16 @@ where
 
         self.connections.clear();
 
-        self.interface = new_interface(
-            &mut self.rng,
-            now,
-            self.unix_ts + now.duration_since(self.unix_now),
-        );
+        match key {
+            StaticKey::Keep => {}
+            StaticKey::Rotate => {
+                self.interface = new_interface(
+                    &mut self.rng,
+                    now,
+                    self.unix_ts + now.duration_since(self.unix_now),
+                );
+            }
+        }
 
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }
@@ -553,7 +560,17 @@ where
             return;
         };
 
-        let Some(candidate) = crate::candidate::decode(c.agent.is_frostlink(), &candidate) else {
+        let frostlink = c.agent.is_frostlink();
+        let Some(candidate) = crate::candidate::decode(frostlink, &candidate) else {
+            return;
+        };
+
+        if frostlink && self.connections.is_contested(candidate.addr()) {
+            tracing::debug!(?candidate, "Ignoring candidate at contested address");
+            return;
+        }
+
+        let Ok(c) = self.connections.get_mut(&cid, now) else {
             return;
         };
 
@@ -669,9 +686,19 @@ where
             probes,
         } = batch;
 
+        let contested = self.connections.is_contested(src);
         let (cid, conn) = self
             .connections
             .get_established_mut_by_tunnel_id(tunnel, now)?;
+        let probes = if contested && conn.agent.is_frostlink() {
+            if !probes.is_empty() {
+                tracing::trace!(%src, "Dropping probes from contested address");
+            }
+
+            None
+        } else {
+            Some(probes)
+        };
 
         let packets = conn.commit_decrypted(cid, (dst, src), data, probes, now);
         conn.handle_tunnel_events(
@@ -782,13 +809,18 @@ where
 
         self.connections.clear_relays(gc.removed.into_iter());
 
+        let mut validated_remotes = Vec::new();
         self.connections.handle_timeout(
             &mut self.allocations,
             &mut self.buffered_transmits,
             &mut self.pending_events,
             &mut self.inflight_stun_requests,
+            &mut validated_remotes,
             now,
         );
+        for (cid, remote) in validated_remotes {
+            self.add_remote(cid, remote, now);
+        }
 
         if now >= self.next_connection_count {
             self.next_connection_count = now + CONNECTION_COUNT_INTERVAL;
@@ -1224,6 +1256,12 @@ where
             }
         };
 
+        let handshake_from_contested = match &parsed_packet {
+            sanstun::ReceivedMessage::HandshakeInitiation(_) => self.connections.is_contested(from),
+            sanstun::ReceivedMessage::HandshakeResponse(_) => self.connections.is_contested(from),
+            sanstun::ReceivedMessage::CookieReply(_) => false,
+            sanstun::ReceivedMessage::TransportData(_) => false,
+        };
         let connection = match &parsed_packet {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
             sanstun::ReceivedMessage::HandshakeInitiation(init) => self
@@ -1243,6 +1281,11 @@ where
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
+        if handshake_from_contested && conn.agent.is_frostlink() {
+            tracing::trace!(%from, "Dropping handshake from contested address");
+
+            return ControlFlow::Break(Ok(()));
+        }
         let tunnel = conn.tunnel.id();
 
         let control_flow = conn.decapsulate(
@@ -1268,6 +1311,35 @@ where
             ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
             ControlFlow::Break(Err(e)) => {
                 ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
+            }
+        }
+    }
+
+    /// Records that the Frostlink connection `cid` validated a path to `remote`.
+    ///
+    /// Once that makes `remote` contested, no Frostlink connection uses it until fewer than two
+    /// of those that validated it remain.
+    fn add_remote(&mut self, cid: TId, remote: SocketAddr, now: Instant) {
+        if !self.connections.add_remote(cid, remote) {
+            return;
+        }
+
+        tracing::debug!(%cid, %remote, "Remote address contested by several connections");
+
+        self.contested_addresses.add(1, &[]);
+
+        for (cid, c) in self
+            .connections
+            .iter_mut_frostlink_by_remote_candidate(remote)
+        {
+            let candidates = c
+                .agent
+                .remote_candidates()
+                .filter(|candidate| candidate.addr() == remote)
+                .collect::<Vec<_>>();
+
+            for candidate in candidates {
+                c.remove_remote_candidate(cid, candidate, now);
             }
         }
     }
@@ -1324,6 +1396,9 @@ where
                     for (cid, c) in self.connections.iter_mut() {
                         c.remove_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
+                }
+                relay_client_proto::Event::SocketTaken => {
+                    self.pending_events.push_back(Event::SocketTaken);
                 }
             }
         }
@@ -1518,6 +1593,19 @@ pub enum Event<TId, RId> {
     NoRelays {
         blocked: Vec<RId>,
     },
+
+    /// A relay has an allocation of another device on our socket.
+    ///
+    /// The NAT in front of us maps both of us to the same public socket.
+    /// Upper layers should bind to a different local port and call [`Node::reset`].
+    SocketTaken,
+}
+
+/// What [`Node::reset`] does with our static key when it closes all connections.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StaticKey {
+    Keep,
+    Rotate,
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
@@ -1653,6 +1741,7 @@ where
         transmits: &mut VecDeque<Transmit>,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
+        validated_remotes: &mut Vec<(TId, SocketAddr)>,
     ) where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + Hash + fmt::Display,
@@ -1818,6 +1907,9 @@ where
                         cid,
                         now,
                     );
+                }
+                frostlink::Event::PathValidated { remote, .. } => {
+                    validated_remotes.push((cid, remote));
                 }
             }
         }
@@ -2116,14 +2208,14 @@ where
         cid: TId,
         path: (SocketAddr, SocketAddr),
         data: sanstun::DecryptedBatch<Result<IpPacket>>,
-        probes: sanstun::DecryptedBatch<frostlink::Probe>,
+        probes: Option<sanstun::DecryptedBatch<frostlink::Probe>>,
         now: Instant,
     ) -> Result<sanstun::CommittedBatch<Result<IpPacket>>>
     where
         TId: fmt::Display + Copy,
         RId: Ord + fmt::Display + Copy,
     {
-        if !probes.is_empty() {
+        if let Some(probes) = probes.filter(|p| !p.is_empty()) {
             let probes = self
                 .tunnel
                 .commit_decapsulate(probes, now)
