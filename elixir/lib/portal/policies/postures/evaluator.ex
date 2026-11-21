@@ -12,7 +12,7 @@ defmodule Portal.Policies.Postures.Evaluator do
   holding, which the caller folds into the authorization's expiry.
   """
 
-  alias Portal.Device
+  alias Portal.{ComponentVersions, Device}
   alias Portal.Policies.Postures
   alias Portal.Policies.Postures.{And, Fields, Leaf, Not, Or}
 
@@ -20,7 +20,7 @@ defmodule Portal.Policies.Postures.Evaluator do
           {:ok, DateTime.t() | nil} | {:error, [:postures]}
   def evaluate(nil, %Device{}, %DateTime{}), do: {:ok, nil}
 
-  def evaluate(%Postures{expr: expr}, %Device{type: :client} = device, %DateTime{} = now) do
+  def evaluate(%Postures{expr: expr}, %Device{} = device, %DateTime{} = now) do
     case prune(expr, platform(device), device.posture) do
       nil ->
         {:ok, nil}
@@ -174,7 +174,7 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp earliest(left, right), do: Enum.min([left, right], DateTime)
 
   defp resolve_macro(%Leaf{parsed: :latest} = leaf, device) do
-    %{leaf | parsed: Postures.parse_version(Portal.ComponentVersions.client_version(device))}
+    %{leaf | parsed: Postures.parse_version(ComponentVersions.component_version(component_type(device)))}
   end
 
   defp resolve_macro(leaf, _device), do: leaf
@@ -315,4 +315,10 @@ defmodule Portal.Policies.Postures.Evaluator do
     cutoff = DateTime.shift(now, Duration.negate(duration))
     {DateTime.compare(value, cutoff) == :lt, nil}
   end
+
+  # From the user agent alone, unlike `ComponentVersions.client_version/1`, which reads the actor.
+  defp component_type(%Device{last_seen_user_agent: user_agent}) when is_binary(user_agent),
+    do: ComponentVersions.get_component_type_from_user_agent(user_agent)
+
+  defp component_type(%Device{}), do: :gui
 end
