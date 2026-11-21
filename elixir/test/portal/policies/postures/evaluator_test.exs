@@ -463,6 +463,37 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       assert evaluate(leaf, device(last_seen_user_agent: apple <> latest, last_seen_version: latest)) == {:ok, nil}
       assert evaluate(leaf, device(last_seen_user_agent: apple <> "0.1.0", last_seen_version: "0.1.0")) == @failed
     end
+
+    test "@latest resolves from the user agent as it did for a connected client, whatever the actor on the device" do
+      leaf = leaf("firezone.last_seen_version", "is", "@latest")
+      service_account = %Portal.Actor{type: :service_account}
+
+      for user_agent <- ["macOS/15.6 apple-client/1.0.0", "Android/14 android-client/1.0.0", "Ubuntu/24.04 headless-client/1.0.0", nil],
+          actor <- [nil, service_account],
+          type <- [:client, :gateway] do
+        legacy = Portal.ComponentVersions.client_version(device(last_seen_user_agent: user_agent))
+        subject = device(type: type, actor: actor, last_seen_user_agent: user_agent, last_seen_version: legacy)
+
+        assert evaluate(leaf, subject) == {:ok, nil}
+      end
+    end
+  end
+
+  describe "evaluate/3 device types" do
+    test "a gateway device gets the same result as a client device with the same state" do
+      compliant = intune(compliance_state: "compliant", operating_system: "Windows")
+      noncompliant = intune(compliance_state: "noncompliant", operating_system: "Windows")
+      leaf = leaf("intune.compliance_state", "is", "compliant")
+
+      for posture <- [%{intune: [compliant]}, %{intune: [noncompliant]}, %{}] do
+        client = device(posture: posture)
+        assert evaluate(leaf, %{client | type: :gateway}) == evaluate(leaf, client)
+      end
+
+      assert evaluate(leaf, device(type: :gateway, posture: %{intune: [compliant]})) == {:ok, nil}
+      assert evaluate(leaf, device(type: :gateway, posture: %{intune: [noncompliant]})) == @failed
+      assert evaluate(leaf, device(type: :gateway)) == @failed
+    end
   end
 
   describe "evaluate/3 ips" do
