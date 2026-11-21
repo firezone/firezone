@@ -746,7 +746,8 @@ Relays.render(relays, relay_owner(socket)),
     })
   end
 
-  defp session_attrs(%Portal.Device{} = gateway, session_ref) do
+  @doc false
+  def session_attrs(%Portal.Device{} = gateway, session_ref) do
     %{
       session_ref: session_ref,
       account_id: gateway.account_id,
