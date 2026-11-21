@@ -20,7 +20,7 @@ use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
     collections::BTreeMap,
-    fmt,
+    fmt, iter,
     marker::PhantomData,
     net::IpAddr,
     sync::atomic::{AtomicBool, Ordering},
@@ -47,6 +47,7 @@ pub fn check_invariants(model: &TunnelModel, state: &RealTunnelSystem, portal: &
         &all_model_clients,
         &all_model_gateways,
         state,
+        portal,
     );
     assert_dns_nat(state);
 
@@ -64,7 +65,7 @@ pub fn check_invariants(model: &TunnelModel, state: &RealTunnelSystem, portal: &
         assert_dns_servers_are_valid(model_client, real_client, portal);
         assert_search_domain_is_valid(real_client, portal);
         assert_routes_are_valid(model_client, real_client);
-        assert_resource_list(model_client, real_client);
+        assert_resource_list(*client_id, model_client, real_client, portal);
         assert_dns_resource_record_cache(model_client, real_client);
     }
 }
@@ -75,6 +76,7 @@ fn assert_probes(
     model_clients: &BTreeMap<ClientId, &ModelClient>,
     model_gateways: &BTreeMap<GatewayId, &ModelGateway>,
     state: &RealTunnelSystem,
+    portal: &FakePortal,
 ) {
     let observations = state.probe_observations().collect_vec();
 
@@ -126,7 +128,29 @@ fn assert_probes(
             (TraceRequirement::ExactOrLoss(_), _, _, _) => {}
         }
 
-        match expected.outcome {
+        let rejection = observed_rejection(&trace);
+        let outcome = iter::once(expected.outcome)
+            .chain(expected.alternative)
+            .find(|outcome| outcome.rejection() == rejection);
+
+        let outcome = match (outcome, expected.revoked, rejection) {
+            (Some(outcome), _, _) => outcome,
+            (None, Some(resource), Some(RejectionResponse::Prohibited)) => {
+                assert_rejected(
+                    expected,
+                    &trace,
+                    submitted_request,
+                    RejectionResponse::Prohibited,
+                );
+                assert_asked_for_access_again(expected, resource, model_clients, portal);
+                continue;
+            }
+            (None, Some(_), Some(RejectionResponse::Unreachable)) => expected.outcome,
+            (None, Some(_), None) => expected.outcome,
+            (None, None, _) => expected.outcome,
+        };
+
+        match outcome {
             ExpectedOutcome::Dropped => assert_dropped(expected, &trace),
             ExpectedOutcome::RoundTripCompleted(route, Answer::Echo) => assert_round_trip(
                 expected,
@@ -156,6 +180,39 @@ fn assert_probes(
                 assert_rejected(expected, &trace, submitted_request, response)
             }
         }
+    }
+}
+
+/// The ICMP error the Client received in place of anything receiving the probe.
+fn observed_rejection(trace: &ProbeTrace) -> Option<RejectionResponse> {
+    let ([], [response], []) = (
+        trace.received_requests.as_slice(),
+        trace.received_responses.as_slice(),
+        trace.completed_streams.as_slice(),
+    ) else {
+        return None;
+    };
+
+    rejection_response(&response.packet)
+}
+
+/// Checks that a Client asked the portal for `resource` again after its Gateway rejected the
+/// probe for holding no authorization.
+fn assert_asked_for_access_again(
+    expected: &ExpectedProbe,
+    resource: ResourceId,
+    model_clients: &BTreeMap<ClientId, &ModelClient>,
+    portal: &FakePortal,
+) {
+    if model_clients[&expected.origin]
+        .malicious_behaviour
+        .ignore_no_authorization_events
+    {
+        return;
+    }
+
+    if portal.is_revoked_on_gateway(expected.origin, resource) {
+        tracing::error!(target: "assertions", id = ?expected.id, %resource, "Client did not ask for access again after its Gateway rejected the probe");
     }
 }
 
@@ -827,7 +884,12 @@ fn rejection_response(packet: &IpPacket) -> Option<RejectionResponse> {
     None
 }
 
-fn assert_resource_list(model_client: &ModelClient, real_client: &RealClient) {
+fn assert_resource_list(
+    client: ClientId,
+    model_client: &ModelClient,
+    real_client: &RealClient,
+    portal: &FakePortal,
+) {
     let expected_resources = model_client.expected_resources();
     let actual_resources = &real_client.observed_resource_list;
     let expected_ids = expected_resources
@@ -853,6 +915,15 @@ fn assert_resource_list(model_client: &ModelClient, real_client: &RealClient) {
         };
 
         assert_resource_definition(expected, actual);
+
+        let gateway_may_have_closed = model_client
+            .holds_only_revoked_in_site_of(resource, |held| {
+                portal.is_revoked_on_gateway(client, held)
+            });
+        if gateway_may_have_closed && actual.status() == ResourceStatus::Unknown {
+            continue;
+        }
+
         assert_resource_status(resource, expected.status(), actual.status());
     }
 

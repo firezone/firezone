@@ -370,10 +370,7 @@ impl RealTunnelSystem {
                 for (client_id, client) in &mut self.clients {
                     client.exec_mut(|c| c.state_mut().remove_resource(rid, now));
 
-                    if let Some(gateway) = portal
-                        .authorized_gateway(*client_id, rid)
-                        .and_then(|gid| self.gateways.get_mut(&gid))
-                    {
+                    for gateway in self.gateways.values_mut() {
                         gateway.exec_mut(|g| g.remove_access(client_id, &rid, now));
                     }
                 }
@@ -760,13 +757,10 @@ impl RealTunnelSystem {
                     })
                     .collect::<BTreeMap<_, _>>();
 
-                for gid in portal.gateways_authorized_for(rid) {
+                for gateway in self.gateways.values_mut() {
                     let authorizations = authorizations.clone();
 
-                    self.gateways
-                        .get_mut(&gid)
-                        .unwrap()
-                        .exec_mut(|gateway| gateway.retain_authorizations(authorizations));
+                    gateway.exec_mut(|gateway| gateway.retain_authorizations(authorizations));
                 }
             }
             Transition::ExpirePeerAuthorizations {
@@ -794,14 +788,9 @@ impl RealTunnelSystem {
             }
             Transition::RevokeGatewayAuthorization(rid) => {
                 for client_id in self.clients.keys() {
-                    let Some(gid) = portal.authorized_gateway(*client_id, rid) else {
-                        continue;
-                    };
-
-                    self.gateways
-                        .get_mut(&gid)
-                        .unwrap()
-                        .exec_mut(|g| g.state_mut().remove_access(client_id, &rid, now));
+                    for gateway in self.gateways.values_mut() {
+                        gateway.exec_mut(|g| g.state_mut().remove_access(client_id, &rid, now));
+                    }
                 }
             }
             Transition::RestartClient { client_id, key } => {

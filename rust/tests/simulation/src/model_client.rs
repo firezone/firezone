@@ -74,9 +74,11 @@ pub struct ModelClient {
     #[debug(skip)]
     authorizations: BTreeMap<ResourceId, GatewayId>,
 
-    /// The current record kinds resolved by a connected gateway for each DNS resource domain.
+    /// The record kinds a connected gateway may hold for each DNS resource domain.
+    ///
+    /// Several sets while the model cannot know whether the gateway resolved the domain again.
     #[debug(skip)]
-    dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), BTreeSet<RecordType>>,
+    dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), BTreeSet<BTreeSet<RecordType>>>,
 
     /// The Gateway we prefer per site when asking for access, until our connection to it fails.
     #[debug(skip)]
@@ -463,7 +465,12 @@ impl ModelClient {
 
         // TODO: Remove with classic ICE.
         self.connection_resets.push(now);
-        self.discard_connections(affected);
+
+        for resource in affected {
+            self.authorizations.remove(&resource);
+            self.dns_resource_resolutions
+                .retain(|(candidate, _), _| *candidate != resource);
+        }
     }
 
     /// The Gateway `resource` goes through, if the client holds an authorization for it.
@@ -473,35 +480,6 @@ impl ModelClient {
 
     pub(crate) fn preferred_gateway(&self, site: SiteId) -> Option<GatewayId> {
         self.gateways_by_site.get(&site).copied()
-    }
-
-    /// The Gateway closed the connection, so everything we reached through it is gone.
-    ///
-    /// Only the connection to that Gateway goes; the ICE state towards our peers, which
-    /// `connection_resets` tracks, is untouched.
-    pub(crate) fn close_gateway_connection(
-        &mut self,
-        gateway: GatewayId,
-        resources: &BTreeSet<ResourceId>,
-    ) {
-        // TODO: Remove with classic ICE.
-        self.gateway_send_times.remove(&gateway);
-
-        let affected = resources
-            .iter()
-            .copied()
-            .filter(|resource| self.authorizations.contains_key(resource))
-            .collect();
-
-        self.discard_connections(affected);
-    }
-
-    fn discard_connections(&mut self, affected: Vec<ResourceId>) {
-        for resource in affected {
-            self.authorizations.remove(&resource);
-            self.dns_resource_resolutions
-                .retain(|(candidate, _), _| *candidate != resource);
-        }
     }
 
     pub(crate) fn reset_connections(&mut self, now: Instant) {
@@ -617,6 +595,24 @@ impl ModelClient {
         ResourceStatus::Unknown
     }
 
+    /// Whether every authorization the client holds in the site of `resource` is for a
+    /// `revoked` resource.
+    ///
+    /// Their gateway may have closed the connection then, which leaves the status of the site
+    /// unknown.
+    pub(crate) fn holds_only_revoked_in_site_of(
+        &self,
+        resource: ResourceId,
+        revoked: impl Fn(ResourceId) -> bool,
+    ) -> bool {
+        let site = self.site_for_resource(resource);
+
+        self.authorizations
+            .keys()
+            .filter(|held| self.site_for_resource(**held) == site)
+            .all(|held| revoked(*held))
+    }
+
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {
         match dst {
             IpAddr::V4(_) => self.tunnel_ip4.into(),
@@ -691,8 +687,10 @@ impl ModelClient {
                 |_| true,
             ) {
                 let record_types = resolve(self.gateway_for_resource(resource.id), &query.domain);
-                self.dns_resource_resolutions
-                    .insert((resource.id, query.domain.clone()), record_types);
+                self.dns_resource_resolutions.insert(
+                    (resource.id, query.domain.clone()),
+                    BTreeSet::from([record_types]),
+                );
             }
         }
 
@@ -1255,6 +1253,14 @@ impl ModelClient {
             return BTreeMap::new();
         }
 
+        self.resolve_dns_resource_domains(resource, resolve)
+    }
+
+    fn resolve_dns_resource_domains(
+        &self,
+        resource: ResourceId,
+        resolve: impl Fn(&DomainName) -> BTreeSet<RecordType>,
+    ) -> BTreeMap<DomainName, BTreeSet<RecordType>> {
         self.resolved_domains()
             .filter(|(domain, records)| {
                 self.dns_resource_serves(
@@ -1279,7 +1285,33 @@ impl ModelClient {
     ) {
         for (domain, record_types) in resolutions {
             self.dns_resource_resolutions
-                .insert((resource, domain), record_types);
+                .insert((resource, domain), BTreeSet::from([record_types]));
+        }
+    }
+
+    /// Keeps what the gateways of the `revoked` resources resolve their domains to now, next to
+    /// what they hold.
+    ///
+    /// A gateway that closed the connection over the revocation resolves them again once the
+    /// client reconnects.
+    pub(crate) fn add_possible_dns_resource_resolutions(
+        &mut self,
+        revoked: impl Fn(ResourceId) -> bool,
+        resolve: impl Fn(GatewayId, &DomainName) -> BTreeSet<RecordType>,
+    ) {
+        for (resource, gateway) in self.authorizations.clone() {
+            if !revoked(resource) {
+                continue;
+            }
+
+            let resolutions =
+                self.resolve_dns_resource_domains(resource, |domain| resolve(gateway, domain));
+            for (domain, record_types) in resolutions {
+                self.dns_resource_resolutions
+                    .entry((resource, domain))
+                    .or_default()
+                    .insert(record_types);
+            }
         }
     }
 
@@ -1310,13 +1342,15 @@ impl ModelClient {
             })
     }
 
-    pub(crate) fn dns_resource_resolution(
+    pub(crate) fn dns_resource_resolutions(
         &self,
         resource: ResourceId,
         domain: &DomainName,
-    ) -> Option<&BTreeSet<RecordType>> {
+    ) -> impl Iterator<Item = &BTreeSet<RecordType>> {
         self.dns_resource_resolutions
             .get(&(resource, domain.clone()))
+            .into_iter()
+            .flatten()
     }
 
     fn local_dns_resource_query_has_records(&self, query: &DnsQuery) -> bool {

@@ -155,12 +155,8 @@ impl TunnelModel {
                 for client in self.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(id));
                 }
-                self.expect_gateway_connections_closed(portal, *id);
             }
-            Transition::EditResource(edit) => {
-                self.apply_resource_edit(edit);
-                self.expect_gateway_connections_closed(portal, edit.new.id());
-            }
+            Transition::EditResource(edit) => self.apply_resource_edit(edit),
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
                 members: _,
@@ -262,33 +258,22 @@ impl TunnelModel {
                     seq: *seq,
                     identifier: *identifier,
                 };
-                let (outcome, authorization) = self.verdict(portal, *client_id, &request, None);
-                self.record_probe(
-                    portal,
-                    *probe_id,
-                    *client_id,
-                    request,
-                    now,
-                    outcome,
-                    authorization,
-                );
+                let verdict = self.verdict(portal, *client_id, &request, None);
+                let flow_route = verdict.flow_route();
+                self.record_probe(portal, *probe_id, *client_id, request, now, verdict);
 
-                match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route, _) => {
-                        let flow = IcmpFlow {
-                            client_id: *client_id,
-                            src: *src,
-                            dst: dst.clone(),
-                            identifier: *identifier,
-                            next_seq: Seq(seq.0.wrapping_add(1)),
-                            route,
-                            last_round_trip: now,
-                        };
-                        let previous = self.icmp_flows.insert(*flow_id, flow);
-                        assert!(previous.is_none(), "ICMP flow IDs must be unique");
-                    }
-                    ExpectedOutcome::Dropped => {}
-                    ExpectedOutcome::Rejected { .. } => {}
+                if let Some(route) = flow_route {
+                    let flow = IcmpFlow {
+                        client_id: *client_id,
+                        src: *src,
+                        dst: dst.clone(),
+                        identifier: *identifier,
+                        next_seq: Seq(seq.0.wrapping_add(1)),
+                        route,
+                        last_round_trip: now,
+                    };
+                    let previous = self.icmp_flows.insert(*flow_id, flow);
+                    assert!(previous.is_none(), "ICMP flow IDs must be unique");
                 }
             }
             Transition::SendIcmpPacketOnExistingFlow {
@@ -361,33 +346,22 @@ impl TunnelModel {
                     sport: *sport,
                     dport: *dport,
                 };
-                let (outcome, authorization) = self.verdict(portal, *client_id, &request, None);
-                self.record_probe(
-                    portal,
-                    *probe_id,
-                    *client_id,
-                    request,
-                    now,
-                    outcome,
-                    authorization,
-                );
+                let verdict = self.verdict(portal, *client_id, &request, None);
+                let flow_route = verdict.flow_route();
+                self.record_probe(portal, *probe_id, *client_id, request, now, verdict);
 
-                match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route, _) => {
-                        let flow = UdpFlow {
-                            client_id: *client_id,
-                            src: *src,
-                            dst: dst.clone(),
-                            sport: *sport,
-                            dport: *dport,
-                            route,
-                            last_round_trip: now,
-                        };
-                        let previous = self.udp_flows.insert(*flow_id, flow);
-                        assert!(previous.is_none(), "UDP flow IDs must be unique");
-                    }
-                    ExpectedOutcome::Dropped => {}
-                    ExpectedOutcome::Rejected { .. } => {}
+                if let Some(route) = flow_route {
+                    let flow = UdpFlow {
+                        client_id: *client_id,
+                        src: *src,
+                        dst: dst.clone(),
+                        sport: *sport,
+                        dport: *dport,
+                        route,
+                        last_round_trip: now,
+                    };
+                    let previous = self.udp_flows.insert(*flow_id, flow);
+                    assert!(previous.is_none(), "UDP flow IDs must be unique");
                 }
             }
             Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
@@ -445,11 +419,9 @@ impl TunnelModel {
                     dport: *dport,
                     write_len: None,
                 };
-                let (outcome, authorization) = self.verdict(portal, *client_id, &request, None);
-                let outcome = match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route, _)
-                        if self.serves_tcp(dst, *dport) =>
-                    {
+                let verdict = self.verdict(portal, *client_id, &request, None);
+                let verdict = match (self.serves_tcp(dst, *dport), verdict.flow_route()) {
+                    (true, Some(route)) => {
                         let flow = TcpFlow {
                             client_id: *client_id,
                             src: *src,
@@ -461,23 +433,12 @@ impl TunnelModel {
                         let previous = self.tcp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "TCP flow IDs must be unique");
 
-                        outcome
+                        verdict
                     }
-                    ExpectedOutcome::RoundTripCompleted(route, _) => {
-                        ExpectedOutcome::RoundTripCompleted(route, Answer::Reset)
-                    }
-                    ExpectedOutcome::Dropped => outcome,
-                    ExpectedOutcome::Rejected { .. } => outcome,
+                    (true, None) => verdict,
+                    (false, _) => verdict.answered(|_| Answer::Reset),
                 };
-                self.record_probe(
-                    portal,
-                    *probe_id,
-                    *client_id,
-                    request,
-                    now,
-                    outcome,
-                    authorization,
-                );
+                self.record_probe(portal, *probe_id, *client_id, request, now, verdict);
             }
             Transition::SendTcpData {
                 flow_id,
@@ -496,12 +457,17 @@ impl TunnelModel {
                     dport: flow.dport,
                     write_len: Some(*len),
                 };
-                let (outcome, authorization) =
-                    self.verdict(portal, flow.client_id, &request, Some(flow.route));
-                let outcome = match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route, _)
-                        if route.remote() == flow.route.remote() =>
-                    {
+                let verdict = self
+                    .verdict(portal, flow.client_id, &request, Some(flow.route))
+                    .answered(|route| {
+                        if route.remote() == flow.route.remote() {
+                            Answer::WriteEchoed
+                        } else {
+                            Answer::WriteReset
+                        }
+                    });
+                match verdict.flow_route() {
+                    Some(route) if route.remote() == flow.route.remote() => {
                         self.tcp_flows.insert(
                             *flow_id,
                             TcpFlow {
@@ -509,24 +475,11 @@ impl TunnelModel {
                                 ..flow.clone()
                             },
                         );
-
-                        ExpectedOutcome::RoundTripCompleted(route, Answer::WriteEchoed)
                     }
-                    ExpectedOutcome::RoundTripCompleted(route, _) => {
-                        ExpectedOutcome::RoundTripCompleted(route, Answer::WriteReset)
-                    }
-                    ExpectedOutcome::Dropped => outcome,
-                    ExpectedOutcome::Rejected { .. } => outcome,
-                };
-                self.record_probe(
-                    portal,
-                    *probe_id,
-                    flow.client_id,
-                    request,
-                    now,
-                    outcome,
-                    authorization,
-                );
+                    Some(_) => {}
+                    None => {}
+                }
+                self.record_probe(portal, *probe_id, flow.client_id, request, now, verdict);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in self.clients.values_mut() {
@@ -674,7 +627,6 @@ impl TunnelModel {
                 for client in self.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(resource));
                 }
-                self.expect_gateway_connections_closed(portal, *resource);
             }
             Transition::ExpirePeerAuthorizations {
                 client,
@@ -694,8 +646,8 @@ impl TunnelModel {
                     receiver.reject_peer_pool(*client, *pool, filters);
                 });
             }
-            Transition::RevokeGatewayAuthorization(resource) => {
-                self.expect_gateway_connections_closed(portal, *resource);
+            Transition::RevokeGatewayAuthorization(_) => {
+                self.add_possible_dns_resource_resolutions(portal)
             }
             Transition::RestartClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
@@ -712,6 +664,7 @@ impl TunnelModel {
             Transition::UpdateDnsRecords { domain, records } => {
                 self.global_dns_records
                     .replace(domain.clone(), records.clone());
+                self.add_possible_dns_resource_resolutions(portal);
             }
             Transition::CrashClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
@@ -743,19 +696,25 @@ impl TunnelModel {
         self
     }
 
-    /// A Gateway that revoking `resource` left with nothing closes the connection with a
-    /// `goodbye`, so we expect the Client to reset its state for that Gateway.
-    fn expect_gateway_connections_closed(&mut self, portal: &FakePortal, resource: ResourceId) {
-        for closed in portal.gateway_connections_closed_by(resource) {
-            let Some(client) = self.clients.get_mut(&closed.client) else {
-                continue;
-            };
+    /// Keeps what the Gateways resolve the domains of the resources revoked on them to now,
+    /// next to what they hold.
+    fn add_possible_dns_resource_resolutions(&mut self, portal: &FakePortal) {
+        let gateways = &self.gateways;
+        let records = &self.global_dns_records;
 
-            client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources));
-            for _ in self.tcp_flows.extract_if(.., |_, flow| {
-                flow.client_id == closed.client
-                    && flow.route.remote() == Remote::Gateway(closed.gateway)
-            }) {}
+        for (id, client) in &mut self.clients {
+            client.exec_mut(|client| {
+                client.add_possible_dns_resource_resolutions(
+                    |resource| portal.is_revoked_on_gateway(*id, resource),
+                    |gateway, domain| {
+                        gateways[&gateway]
+                            .inner()
+                            .resolve(domain, records)
+                            .map(|record| record.rtype())
+                            .collect()
+                    },
+                )
+            });
         }
     }
 
@@ -819,7 +778,7 @@ impl TunnelModel {
         request: ProbeRequest,
         sent_at: Instant,
     ) -> ExpectedOutcome {
-        let (outcome, authorization) = match route {
+        let verdict = match route {
             Route::Resource { resource, gateway } => self.resource_verdict(
                 portal,
                 origin,
@@ -842,13 +801,14 @@ impl TunnelModel {
                         Err(_) => None,
                     };
 
-                (
+                Verdict::certain(
                     ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
                     authorization,
                 )
             }
         };
-        self.record_probe(portal, id, origin, request, sent_at, outcome, authorization);
+        let outcome = verdict.outcome;
+        self.record_probe(portal, id, origin, request, sent_at, verdict);
 
         outcome
     }
@@ -862,16 +822,22 @@ impl TunnelModel {
         origin: ClientId,
         request: ProbeRequest,
         sent_at: Instant,
-        outcome: ExpectedOutcome,
-        authorization: Option<Authorization>,
+        verdict: Verdict,
     ) {
+        let Verdict {
+            outcome,
+            alternative,
+            revoked,
+            authorization,
+        } = verdict;
+
         self.record_authorization(origin, authorization);
         self.clients
             .get_mut(&origin)
             .unwrap()
             .exec_mut(|client| client.note_sent(outcome.remote(), sent_at));
 
-        let trace_requirement = self.trace_requirement(portal, origin, outcome, sent_at);
+        let trace_requirement = self.trace_requirement(portal, origin, outcome, revoked, sent_at);
         let previous = self.expected_probes.insert(
             id,
             ExpectedProbe {
@@ -880,6 +846,8 @@ impl TunnelModel {
                 sent_at,
                 request,
                 outcome,
+                alternative,
+                revoked,
                 trace_requirement,
             },
         );
@@ -907,39 +875,39 @@ impl TunnelModel {
         origin: ClientId,
         request: &ProbeRequest,
         established: Option<Route>,
-    ) -> (ExpectedOutcome, Option<Authorization>) {
+    ) -> Verdict {
         let client = self.clients[&origin].inner();
         let (src, dst, protocol) = (request.source(), request.destination(), request.protocol());
 
         if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
-            return (ExpectedOutcome::Dropped, None);
+            return Verdict::certain(ExpectedOutcome::Dropped, None);
         }
         if dst
             .ip_addr()
             .is_some_and(|ip| client.tunnel_ip_for(ip) == ip)
         {
-            return (ExpectedOutcome::Dropped, None);
+            return Verdict::certain(ExpectedOutcome::Dropped, None);
         }
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
-            let connected_gateway = portal.gateway_by_ip(ip).filter(|gateway| {
-                client
-                    .connected_resources()
-                    .any(|resource| client.gateway_for_resource(resource) == Some(*gateway))
-            });
+            let connected_gateway = portal
+                .gateway_by_ip(ip)
+                .filter(|gateway| self.connected_gateways(portal, origin).contains(gateway));
             if let Some(gateway) = connected_gateway {
-                return (gateway_tun_probe_outcome(gateway, protocol), None);
+                return Verdict::certain(gateway_tun_probe_outcome(gateway, protocol), None);
             }
 
-            return self.peer_verdict(portal, origin, ip, protocol);
+            let (outcome, authorization) = self.peer_verdict(portal, origin, ip, protocol);
+
+            return Verdict::certain(outcome, authorization);
         }
 
         let Some(resource) = client.resource_by_dst(src, dst, protocol) else {
-            return (ExpectedOutcome::Dropped, None);
+            return Verdict::certain(ExpectedOutcome::Dropped, None);
         };
         if !client.strict_resource_filter_allows(resource, protocol)
             && !client.malicious_behaviour.ignore_resource_filters
         {
-            return (
+            return Verdict::certain(
                 ExpectedOutcome::Rejected {
                     by: RejectionRemote::Local,
                     response: RejectionResponse::Prohibited,
@@ -948,7 +916,7 @@ impl TunnelModel {
             );
         }
         let Some(gateway) = self.select_gateway(portal, origin, resource) else {
-            return (ExpectedOutcome::Dropped, None);
+            return Verdict::certain(ExpectedOutcome::Dropped, None);
         };
 
         let established = established == Some(Route::Resource { resource, gateway });
@@ -1038,7 +1006,7 @@ impl TunnelModel {
         dst: &Destination,
         protocol: Protocol,
         established: bool,
-    ) -> (ExpectedOutcome, Option<Authorization>) {
+    ) -> Verdict {
         let resolutions = match dst {
             Destination::DomainName { .. } => {
                 let resolver = self.gateways[&gateway].inner();
@@ -1055,27 +1023,37 @@ impl TunnelModel {
             }
             Destination::IpAddr(_) => BTreeMap::new(),
         };
-        let rejection = self.gateway_verdict(
-            portal,
-            origin,
-            gateway,
-            resource,
-            src,
-            dst,
-            protocol,
-            &resolutions,
-            established,
-        );
-        let outcome = match rejection {
-            Some(response) => ExpectedOutcome::Rejected {
-                by: RejectionRemote::Gateway(gateway),
-                response,
-            },
-            None => ExpectedOutcome::RoundTripCompleted(
-                Route::Resource { resource, gateway },
-                Answer::Echo,
-            ),
-        };
+        let mut outcomes = self
+            .gateway_verdict(
+                portal,
+                origin,
+                gateway,
+                resource,
+                src,
+                dst,
+                protocol,
+                &resolutions,
+                established,
+            )
+            .into_iter()
+            .map(|rejection| match rejection {
+                Some(response) => ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response,
+                },
+                None => ExpectedOutcome::RoundTripCompleted(
+                    Route::Resource { resource, gateway },
+                    Answer::Echo,
+                ),
+            });
+        let outcome = outcomes.next().expect("the Gateway to answer");
+        let alternative = outcomes.next();
+        let revoked = (self.clients[&origin]
+            .inner()
+            .gateway_for_resource(resource)
+            .is_some()
+            && portal.is_revoked_on_gateway(origin, resource))
+        .then_some(resource);
 
         let authorization = Authorization::Resource {
             resource,
@@ -1083,7 +1061,12 @@ impl TunnelModel {
             resolutions,
         };
 
-        (outcome, Some(authorization))
+        Verdict {
+            outcome,
+            alternative,
+            revoked,
+            authorization: Some(authorization),
+        }
     }
 
     /// Records the authorization `origin` holds after its packet.
@@ -1129,7 +1112,10 @@ impl TunnelModel {
         Some(gateway)
     }
 
-    /// Why `gateway` rejects a packet from `origin` for `resource`, if it does.
+    /// How `gateway` answers a packet from `origin` for `resource` that it holds the
+    /// authorization for: with a rejection or, for `None`, by forwarding it.
+    ///
+    /// There are two answers where the model cannot know what else the Gateway holds.
     ///
     /// `resolutions` are the records the Gateway resolves the resource's domains to as the
     /// client connects, ahead of the ones the client already holds.
@@ -1147,49 +1133,75 @@ impl TunnelModel {
         protocol: Protocol,
         resolutions: &BTreeMap<DomainName, BTreeSet<RecordType>>,
         established: bool,
-    ) -> Option<RejectionResponse> {
+    ) -> Vec<Option<RejectionResponse>> {
         let client = self.clients[&origin].inner();
-
-        // The gateway checks every CIDR route it still authorizes for the client, so another
-        // CIDR resource on the same gateway can permit traffic the selected resource does not.
-        let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
-            portal.gateway_cidr_authorization_allows(origin, gateway, ip, protocol)
-        });
-
-        // The Gateway lost its authorization while the client still believes it holds one:
-        // it rejects this packet and tells the client to request a new authorization.
-        if client.connected_resources().contains(&resource)
-            && !portal.holds_gateway_authorization(origin, resource)
-            && !allowed_by_another_cidr
-        {
-            return Some(RejectionResponse::Prohibited);
-        }
-
         let is_internet_resource = client.internet_resource() == Some(resource);
 
         if is_internet_resource && dst.ip_addr().is_some_and(is_resource_proxy) {
-            return Some(RejectionResponse::Prohibited);
+            return vec![Some(RejectionResponse::Prohibited)];
         }
         if is_internet_resource && dst.ip_addr().is_some_and(internet_resource_rejects) {
-            return Some(RejectionResponse::Unreachable);
+            return vec![Some(RejectionResponse::Unreachable)];
         }
 
-        if !client.strict_resource_filter_allows(resource, protocol) && !allowed_by_another_cidr {
-            return Some(RejectionResponse::Prohibited);
+        if !client.strict_resource_filter_allows(resource, protocol) {
+            // The gateway checks every CIDR route it authorizes for the client, so another
+            // CIDR resource on the same gateway can permit traffic the selected resource
+            // does not.
+            let permitting = client
+                .all_resources()
+                .into_iter()
+                .filter_map(client::Resource::into_cidr)
+                .filter(|cidr| {
+                    dst.ip_addr().is_some_and(|ip| cidr.address.contains(ip))
+                        && protocol_filter_allows(&cidr.filters, protocol)
+                        && !portal.is_revoked_on_gateway(origin, cidr.id)
+                })
+                .collect::<Vec<_>>();
+
+            if permitting
+                .iter()
+                .any(|cidr| client.gateway_for_resource(cidr.id) == Some(gateway))
+            {
+                return vec![None];
+            }
+
+            // The gateway keeps the authorizations of a client whose connection failed or
+            // that stopped using a resource without closing the connection.
+            if permitting
+                .iter()
+                .any(|cidr| portal.site_for_resource(cidr.id) == portal.site_for_resource(resource))
+            {
+                return vec![Some(RejectionResponse::Prohibited), None];
+            }
+
+            return vec![Some(RejectionResponse::Prohibited)];
         }
 
         let Destination::DomainName { name, .. } = dst else {
-            return None;
+            return vec![None];
         };
         if established {
-            return None;
+            return vec![None];
         }
-        let resolves_for_source = resolutions
-            .get(name)
-            .or_else(|| client.dns_resource_resolution(resource, name))
-            .is_some_and(|records| records.contains(&address_record_type(src)));
+        let record = address_record_type(src);
+        let resolves_for_source = match resolutions.get(name) {
+            Some(records) => BTreeSet::from([records.contains(&record)]),
+            None => client
+                .dns_resource_resolutions(resource, name)
+                .map(|records| records.contains(&record))
+                .collect(),
+        };
 
-        (!resolves_for_source).then_some(RejectionResponse::Unreachable)
+        match (
+            resolves_for_source.contains(&true),
+            resolves_for_source.contains(&false),
+        ) {
+            (true, true) => vec![None, Some(RejectionResponse::Unreachable)],
+            (true, false) => vec![None],
+            (false, true) => vec![Some(RejectionResponse::Unreachable)],
+            (false, false) => vec![Some(RejectionResponse::Unreachable)],
+        }
     }
 
     /// The pool a packet from `origin` to `peer` travels through, which the portal grants
@@ -1228,6 +1240,7 @@ impl TunnelModel {
         portal: &FakePortal,
         origin: ClientId,
         outcome: ExpectedOutcome,
+        revoked: Option<ResourceId>,
         sent_at: Instant,
     ) -> TraceRequirement {
         if portal.frostlink() {
@@ -1248,6 +1261,9 @@ impl TunnelModel {
             Remote::Client(_) => self
                 .can_drop_during_rekey(origin, remote, sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
+            // The probe travels on a new connection if the Gateway closed the old one over
+            // the revocation.
+            Remote::Gateway(_) if revoked.is_some() => Some(KnownLoss::WireGuardRekey),
             Remote::Gateway(_) => self
                 .can_drop_during_rekey(origin, remote, sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
@@ -1387,6 +1403,56 @@ impl TunnelModel {
             self.relays.insert(*rid, new_relay.clone());
             let added = self.network.add_relay(*rid, new_relay);
             debug_assert!(added);
+        }
+    }
+}
+
+/// What the model expects of a packet.
+struct Verdict {
+    outcome: ExpectedOutcome,
+    /// The outcome the model cannot rule out instead, not knowing what the Gateway holds.
+    alternative: Option<ExpectedOutcome>,
+    /// The resource the client believes to hold an authorization for that was revoked on the
+    /// Gateway.
+    revoked: Option<ResourceId>,
+    authorization: Option<Authorization>,
+}
+
+impl Verdict {
+    fn certain(outcome: ExpectedOutcome, authorization: Option<Authorization>) -> Self {
+        Self {
+            outcome,
+            alternative: None,
+            revoked: None,
+            authorization,
+        }
+    }
+
+    /// The route of the flow the packet opens, which takes a certain round trip.
+    fn flow_route(&self) -> Option<Route> {
+        match (self.outcome, self.alternative, self.revoked) {
+            (ExpectedOutcome::RoundTripCompleted(route, _), None, None) => Some(route),
+            (ExpectedOutcome::RoundTripCompleted(..), Some(_), _) => None,
+            (ExpectedOutcome::RoundTripCompleted(..), None, Some(_)) => None,
+            (ExpectedOutcome::Dropped, _, _) => None,
+            (ExpectedOutcome::Rejected { .. }, _, _) => None,
+        }
+    }
+
+    /// Replaces what the destination answers a completed round trip with.
+    fn answered(self, answer: impl Fn(Route) -> Answer) -> Self {
+        let answered = |outcome| match outcome {
+            ExpectedOutcome::RoundTripCompleted(route, _) => {
+                ExpectedOutcome::RoundTripCompleted(route, answer(route))
+            }
+            ExpectedOutcome::Dropped => outcome,
+            ExpectedOutcome::Rejected { .. } => outcome,
+        };
+
+        Self {
+            outcome: answered(self.outcome),
+            alternative: self.alternative.map(answered),
+            ..self
         }
     }
 }

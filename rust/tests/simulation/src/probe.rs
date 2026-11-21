@@ -201,6 +201,15 @@ pub(crate) enum Answer {
 }
 
 impl ExpectedOutcome {
+    /// The ICMP error the Client receives in place of anything receiving the packet.
+    pub(crate) fn rejection(self) -> Option<RejectionResponse> {
+        match self {
+            ExpectedOutcome::Dropped => None,
+            ExpectedOutcome::RoundTripCompleted(..) => None,
+            ExpectedOutcome::Rejected { response, .. } => Some(response),
+        }
+    }
+
     /// The remote the packet reached, if any.
     pub(crate) fn remote(self) -> Option<Remote> {
         match self {
@@ -255,6 +264,13 @@ pub(crate) struct ExpectedProbe {
     pub(crate) sent_at: Instant,
     pub(crate) request: ProbeRequest,
     pub(crate) outcome: ExpectedOutcome,
+    /// The outcome the model cannot rule out instead, not knowing what the Gateway holds.
+    pub(crate) alternative: Option<ExpectedOutcome>,
+    /// The resource that was revoked on the Gateway the probe goes through.
+    ///
+    /// A Gateway that kept the connection rejects the probe as prohibited and the Client asks
+    /// the portal for the resource again.
+    pub(crate) revoked: Option<ResourceId>,
     pub(crate) trace_requirement: TraceRequirement,
 }
 
