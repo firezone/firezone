@@ -181,6 +181,7 @@ config :portal, Portal.Changes.Consumer,
   table_subscriptions: ~w[
     accounts
     account_slugs
+    account_metrics
     actors
     groups
     memberships
@@ -604,6 +605,11 @@ config :portal,
 config :portal,
   flow_logs_api_url: nil,
   flow_logs_upload_interval_secs: 60
+
+config :portal,
+  otlp_metrics_ingest_url: nil,
+  otlp_metrics_export_interval_secs: 60,
+  otel_ingest_jwt_private_key: nil
 
 config :portal, country_code_blocklist: []
 
