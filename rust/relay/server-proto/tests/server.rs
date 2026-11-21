@@ -455,6 +455,65 @@ fn unchanged_throughput_limit_does_not_touch_channel_bindings() {
 }
 
 #[test]
+fn refreshing_a_bound_channel_keeps_its_rate_limiters() {
+    let peer = SocketAddr::from(([198, 51, 100, 2], 50_001));
+    let mut relay = TestRelay::with_allocation();
+    relay
+        .server
+        .set_accounts([(relay.account, Some(limit_5_mbps()))]);
+    relay.channel_bind(peer);
+    assert!(matches!(
+        relay.next_command(),
+        Some(Command::CreateChannelBinding { .. })
+    ));
+
+    let response = relay.channel_bind(peer);
+
+    assert_eq!(response.class(), MessageClass::SuccessResponse);
+    assert_eq!(relay.next_command(), None);
+}
+
+#[test]
+fn refreshing_an_expired_channel_binds_it_again() {
+    let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
+    let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
+    let mut relay = TestRelay::with_allocation();
+    relay.send(
+        REFRESH,
+        [Attribute::Lifetime(
+            Lifetime::new(Duration::from_secs(3600)).unwrap(),
+        )],
+    );
+    relay.channel_bind(peer.into_socket());
+    let Some(Command::CreateChannelBinding {
+        allocation_port, ..
+    }) = relay.next_command()
+    else {
+        panic!("the relay binds the channel");
+    };
+    relay.now += Duration::from_secs(600);
+    relay.server.handle_timeout(relay.now);
+    assert!(matches!(
+        relay.next_command(),
+        Some(Command::DeleteChannelBinding { .. })
+    ));
+
+    let response = relay.channel_bind(peer.into_socket());
+
+    assert_eq!(response.class(), MessageClass::SuccessResponse);
+    assert_eq!(
+        relay.next_command(),
+        Some(Command::CreateChannelBinding {
+            client: relay.client,
+            channel_number: channel,
+            peer,
+            allocation_port,
+            throughput_limit: None,
+        })
+    );
+}
+
+#[test]
 fn userspace_datapath_drops_traffic_above_throughput_limit() {
     let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
     let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
