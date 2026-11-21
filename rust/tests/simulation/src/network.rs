@@ -8,6 +8,7 @@ use std::{
     collections::BTreeMap,
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    ops::RangeBounds,
     time::{Duration, Instant},
 };
 use tracing::Span;
@@ -27,6 +28,8 @@ pub(crate) struct Host<T> {
     // The latency of incoming and outgoing packets.
     latency: Duration,
 
+    link: Option<LinkInterface>,
+
     /// Whether this host is detached from the network (e.g. mid-roam).
     ///
     /// An offline host cannot send.
@@ -40,6 +43,21 @@ pub(crate) struct Host<T> {
     /// We buffer them here because we need also apply our latency on inbound packets.
     #[debug(skip)]
     inbox: BufferedTransmits,
+}
+
+/// A host's interface on a dedicated link to one other host, e.g. a cable between two machines.
+///
+/// Traffic on a link bypasses the NAT devices of both hosts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LinkInterface {
+    pub(crate) ip4: Ipv4Addr,
+    pub(crate) ip6: Ipv6Addr,
+}
+
+impl LinkInterface {
+    fn ips(&self) -> [IpAddr; 2] {
+        [self.ip4.into(), self.ip6.into()]
+    }
 }
 
 /// The filtering behaviour of a host's network edge, per [RFC 4787, section 5](https://datatracker.ietf.org/doc/html/rfc4787#section-5).
@@ -311,6 +329,7 @@ impl<T> Host<T> {
             port,
             span: Span::none(),
             latency,
+            link: None,
             offline: false,
             inbox: BufferedTransmits::default(),
         }
@@ -337,6 +356,22 @@ impl<T> Host<T> {
         };
 
         Some(SocketAddr::new(ip, self.port))
+    }
+
+    pub(crate) fn connect_link(&mut self, link: LinkInterface) {
+        self.link = Some(link);
+    }
+
+    pub(crate) fn unplug_link(&mut self) {
+        self.link = None;
+    }
+
+    pub(crate) fn link_sockets(&self) -> Vec<SocketAddr> {
+        self.link
+            .iter()
+            .flat_map(LinkInterface::ips)
+            .map(|ip| SocketAddr::new(ip, self.port))
+            .collect()
     }
 
     pub(crate) fn update_interface(&mut self, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) {
@@ -426,19 +461,23 @@ where
             span,
             port: self.port,
             latency: self.latency,
+            link: self.link,
             offline: self.offline,
             inbox: self.inbox.clone(),
         }
     }
 }
 
-/// The network: which host each address belongs to and the NAT devices hosts sit behind.
+/// The network: which host each address belongs to, the NAT devices hosts sit behind and the
+/// links between them.
 #[derive(Debug, Clone)]
 pub(crate) struct RoutingTable {
     routes: IpNetworkTable<HostId>,
     nats: BTreeMap<Ipv4Addr, Nat>,
     /// The public address of the NAT device each host sits behind; relays have none.
     attachments: BTreeMap<HostId, Ipv4Addr>,
+    /// The other end of each link interface's link, or `None` once the link is unplugged.
+    links: BTreeMap<IpAddr, Option<IpAddr>>,
 }
 
 impl Default for RoutingTable {
@@ -447,6 +486,7 @@ impl Default for RoutingTable {
             routes: IpNetworkTable::new(),
             nats: BTreeMap::default(),
             attachments: BTreeMap::default(),
+            links: BTreeMap::default(),
         }
     }
 }
@@ -508,6 +548,48 @@ impl RoutingTable {
         true
     }
 
+    pub(crate) fn add_link(
+        &mut self,
+        (a, a_link): (HostId, LinkInterface),
+        (b, b_link): (HostId, LinkInterface),
+    ) {
+        for (a_ip, b_ip) in a_link.ips().into_iter().zip(b_link.ips()) {
+            self.routes.insert(a_ip, a);
+            self.routes.insert(b_ip, b);
+            self.links.insert(a_ip, Some(b_ip));
+            self.links.insert(b_ip, Some(a_ip));
+        }
+    }
+
+    /// Unplugs the link of `host`; the addresses of both ends stay but no longer reach anything.
+    pub(crate) fn unplug_link(&mut self, host: impl Into<HostId>) {
+        let host = host.into();
+        let ends = self
+            .links
+            .iter()
+            .filter(|(end, _)| self.host_by_ip(**end) == Some(host))
+            .flat_map(|(end, other)| iter::once(*end).chain(*other))
+            .collect::<Vec<_>>();
+
+        for end in ends {
+            self.links.insert(end, None);
+        }
+    }
+
+    /// Whether a link connects `a` and `b`.
+    pub(crate) fn linked(&self, a: impl Into<HostId>, b: impl Into<HostId>) -> bool {
+        let (a, b) = (a.into(), b.into());
+
+        self.links.iter().any(|(end, other)| {
+            self.host_by_ip(*end) == Some(a)
+                && other.is_some_and(|other| self.host_by_ip(other) == Some(b))
+        })
+    }
+
+    pub(crate) fn is_link_address(&self, ip: IpAddr) -> bool {
+        self.links.contains_key(&ip)
+    }
+
     pub(crate) fn remove_host<T>(&mut self, host: &Host<T>) {
         let ips = interface_ips(host);
         assert!(!ips.is_empty(), "Node must have at least one network IP");
@@ -542,7 +624,8 @@ impl RoutingTable {
         self.nats[&self.attachments[&id.into()]].edge_config()
     }
 
-    /// Passes a packet through the NAT devices of its sender and its receiver.
+    /// Passes a packet through the NAT devices of its sender and its receiver, or across the link
+    /// between them.
     ///
     /// Returns the receiving host and the packet with the source it sees and the address it is
     /// delivered to, or `None` if the network drops the packet.
@@ -551,6 +634,23 @@ impl RoutingTable {
             .src
             .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
+
+        match (self.links.get(&src.ip()), self.links.get(&dst.ip())) {
+            (None, None) => {}
+            (Some(Some(other)), Some(_)) if *other == dst.ip() => {
+                let host = self.host_by_ip(dst.ip())?;
+
+                return Some((host, transmit));
+            }
+            (Some(_), _) => {
+                tracing::debug!(%src, %dst, "Dropping packet that a link does not carry");
+                return None;
+            }
+            (None, Some(_)) => {
+                tracing::debug!(%src, %dst, "Dropping packet that a link does not carry");
+                return None;
+            }
+        }
 
         let src = match self.nat_of(src.ip()) {
             Some(nat) => nat.egress(src, dst, now),
@@ -626,6 +726,34 @@ impl RoutingTable {
 
     pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
         self.routes.exact_match(ip).copied()
+    }
+}
+
+/// When each link delivered a packet, by sending and receiving host.
+#[derive(Debug, Default)]
+pub(crate) struct LinkTraffic {
+    deliveries: BTreeMap<(HostId, HostId), Vec<Instant>>,
+}
+
+impl LinkTraffic {
+    pub(crate) fn record(&mut self, from: HostId, to: HostId, at: Instant) {
+        self.deliveries.entry((from, to)).or_default().push(at);
+    }
+
+    /// Whether a link delivered packets from `a` to `b` and from `b` to `a` within `window`.
+    pub(crate) fn delivered_both_ways(
+        &self,
+        a: impl Into<HostId>,
+        b: impl Into<HostId>,
+        window: impl RangeBounds<Instant>,
+    ) -> bool {
+        let (a, b) = (a.into(), b.into());
+
+        [(a, b), (b, a)].iter().all(|direction| {
+            self.deliveries
+                .get(direction)
+                .is_some_and(|deliveries| deliveries.iter().any(|at| window.contains(at)))
+        })
     }
 }
 
