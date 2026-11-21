@@ -9,6 +9,9 @@ use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use std::os::fd::RawFd;
 use std::time::{Duration, Instant};
 
+use crate::UTUN_OPT_IFNAME;
+use crate::kern_control::{AF_SYS_CONTROL, CTLIOCGINFO, SYSPROTO_CONTROL, ctl_info, sockaddr_ctl};
+
 const LOCAL: Ipv4Addr = Ipv4Addr::new(169, 254, 33, 1);
 const PEER: Ipv4Addr = Ipv4Addr::new(169, 254, 33, 2);
 
@@ -73,10 +76,10 @@ fn create_utun() -> (RawFd, String) {
     // Safety: a standard `SYSPROTO_CONTROL` utun creation; all pointers are valid and
     // sized, and we assert on every syscall's result.
     unsafe {
-        let fd = libc::socket(libc::PF_SYSTEM, libc::SOCK_DGRAM, libc::SYSPROTO_CONTROL);
+        let fd = libc::socket(libc::PF_SYSTEM, libc::SOCK_DGRAM, SYSPROTO_CONTROL);
         assert!(fd >= 0, "socket(PF_SYSTEM): {}", io::Error::last_os_error());
 
-        let mut info = libc::ctl_info {
+        let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
         };
@@ -84,16 +87,16 @@ fn create_utun() -> (RawFd, String) {
             *dst = src as libc::c_char;
         }
         assert_eq!(
-            libc::ioctl(fd, libc::CTLIOCGINFO, &mut info),
+            libc::ioctl(fd, CTLIOCGINFO, &mut info),
             0,
             "CTLIOCGINFO: {}",
             io::Error::last_os_error()
         );
 
-        let addr = libc::sockaddr_ctl {
-            sc_len: size_of::<libc::sockaddr_ctl>() as u8,
+        let addr = sockaddr_ctl {
+            sc_len: size_of::<sockaddr_ctl>() as u8,
             sc_family: libc::AF_SYSTEM as u8,
-            ss_sysaddr: libc::AF_SYS_CONTROL as u16,
+            ss_sysaddr: AF_SYS_CONTROL as u16,
             sc_id: info.ctl_id,
             sc_unit: 0, // 0 => the kernel picks the next free utun unit
             sc_reserved: [0; 5],
@@ -101,8 +104,8 @@ fn create_utun() -> (RawFd, String) {
         assert_eq!(
             libc::connect(
                 fd,
-                &addr as *const libc::sockaddr_ctl as *const libc::sockaddr,
-                size_of::<libc::sockaddr_ctl>() as libc::socklen_t,
+                &addr as *const sockaddr_ctl as *const libc::sockaddr,
+                size_of::<sockaddr_ctl>() as libc::socklen_t,
             ),
             0,
             "connect(utun_control): {}",
@@ -114,8 +117,8 @@ fn create_utun() -> (RawFd, String) {
         assert_eq!(
             libc::getsockopt(
                 fd,
-                libc::SYSPROTO_CONTROL,
-                libc::UTUN_OPT_IFNAME,
+                SYSPROTO_CONTROL,
+                UTUN_OPT_IFNAME,
                 name.as_mut_ptr() as *mut c_void,
                 &mut len,
             ),

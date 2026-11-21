@@ -8,6 +8,7 @@
 //! when available and fall back to per-packet I/O ([`per_packet`]) otherwise.
 
 mod bulk;
+pub mod kern_control;
 mod per_packet;
 mod per_packet_io;
 mod sys;
@@ -17,6 +18,7 @@ mod tests;
 
 pub use bulk::Device;
 
+use kern_control::SYSPROTO_CONTROL;
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl};
 use std::{io, os::fd::RawFd};
 use tokio::io::Interest;
@@ -33,6 +35,8 @@ const RECV_BUFFER_SIZE: libc::c_int = if cfg!(target_os = "ios") {
     8 * 1024 * 1024
 };
 
+/// From XNU's `bsd/net/if_utun.h`.
+const UTUN_OPT_IFNAME: libc::c_int = 2;
 /// From XNU's `bsd/net/if_utun.h`.
 const UTUN_OPT_SLOT_SIZE: libc::c_int = 21;
 
@@ -112,7 +116,7 @@ impl tun::Tun for Io {
 }
 
 fn name(fd: RawFd) -> io::Result<String> {
-    use libc::{IF_NAMESIZE, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, getsockopt, socklen_t};
+    use libc::{IF_NAMESIZE, getsockopt, socklen_t};
 
     let mut tunnel_name = [0u8; IF_NAMESIZE];
     let mut tunnel_name_len = tunnel_name.len() as socklen_t;
@@ -152,7 +156,7 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
 /// The utun's netif drops any injected packet larger than its slot size.
 /// NetworkExtension does not let us change the slot size, so we coalesce up to whatever it is.
 fn max_coalesced_len(fd: RawFd) -> Option<usize> {
-    let slot_size = match get_sockopt::<u32>(fd, libc::SYSPROTO_CONTROL, UTUN_OPT_SLOT_SIZE) {
+    let slot_size = match get_sockopt::<u32>(fd, SYSPROTO_CONTROL, UTUN_OPT_SLOT_SIZE) {
         Ok(slot_size) => slot_size as usize,
         Err(e) => {
             tracing::debug!(error = %e, "Failed to get `UTUN_OPT_SLOT_SIZE`; not coalescing TCP");
