@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => {
     return { promise, resolve };
   }
 
-  const subscriptions = Array.from({ length: 6 }, () => deferred<() => void>());
+  const subscriptions = Array.from({ length: 7 }, () => deferred<() => void>());
   const listen = subscriptions.map(({ promise }) => vi.fn(() => promise));
 
   return {
@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
       logFilterChanged: { listen: listen[2] },
       logsRecounted: { listen: listen[3] },
       x509CertificateChanged: { listen: listen[4] },
+      resourcesChanged: { listen: listen[6] },
       developerSettingsChanged: {
         listen: vi.fn<
           (

@@ -68,6 +68,7 @@ struct FirezoneApp: App {
         .handlesExternalEvents(
           matching: [AppView.WindowDefinition.main.externalEventMatchString]
         )
+      resourcesWindowScene(store: store)
       settingsScene(store: store)
 
       MenuBarExtra {
@@ -283,9 +284,20 @@ extension DeviceTrustValidationError {
   }
 
   @MainActor
+  func resourcesWindowScene(store: Store) -> some Scene {
+    Window("Resources", id: ResourcesView.windowID) {
+      ResourcesView()
+        .environmentObject(store)
+        .listedInAppSwitcher()
+    }
+    .defaultSize(width: 820, height: 560)
+  }
+
+  @MainActor
   func settingsScene(store: Store) -> some Scene {
     Settings {
       SettingsView(store: store)
+        .listedInAppSwitcher()
     }
   }
 #endif
@@ -298,6 +310,15 @@ extension DeviceTrustValidationError {
     var body: some Scene {
       mainWindowScene(store: store)
       windowOpenerExtra(id: AppView.WindowDefinition.main.identifier)
+    }
+  }
+
+  struct UITestResourcesApp: App {
+    @StateObject var store = uiTestStore()
+
+    var body: some Scene {
+      resourcesWindowScene(store: store)
+      windowOpenerExtra(id: ResourcesView.windowID)
     }
   }
 

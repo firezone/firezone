@@ -15,7 +15,8 @@ use crate::{
     updates,
     view::{
         DeveloperSettingsChanged, GeneralSettingsChanged, LogFilterChanged, LogsRecounted,
-        SessionChanged, SessionViewModel, X509CertificateChanged,
+        ResourceViewModel, ResourcesChanged, SessionChanged, SessionViewModel,
+        X509CertificateChanged,
     },
 };
 use anyhow::{Context, Result, bail};
@@ -112,6 +113,12 @@ impl GuiIntegration for TauriIntegration {
         SessionChanged(session.clone())
             .emit(&self.app)
             .context("Failed to emit `session_changed` event")
+    }
+
+    fn notify_resources_changed(&self, resources: Option<Vec<ResourceViewModel>>) -> Result<()> {
+        ResourcesChanged(resources)
+            .emit(&self.app)
+            .context("Failed to emit `resources_changed` event")
     }
 
     fn notify_settings_changed(
@@ -254,6 +261,13 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
+    fn show_resources_page(&self) -> Result<()> {
+        self.navigate("resources")?;
+        self.set_window_visible(true)?;
+
+        Ok(())
+    }
+
     async fn save_general_settings(&self, settings: &GeneralSettings) -> Result<()> {
         settings::save_general(settings).await?;
 
@@ -306,6 +320,8 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
     };
 
     let general_settings = settings::load_general_settings().unwrap_or_default();
+    #[cfg(debug_assertions)]
+    let general_settings = crate::mock_tunnel::seed_favorites(general_settings);
     let developer_settings = settings::load_developer_settings().unwrap_or_default();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);

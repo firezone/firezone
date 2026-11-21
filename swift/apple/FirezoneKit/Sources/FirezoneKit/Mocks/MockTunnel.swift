@@ -317,6 +317,7 @@
     /// The window a screenshot run shows.
     public enum MockWindow: String {
       case main
+      case resources
       case settings
       case about
 
