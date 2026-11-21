@@ -760,7 +760,8 @@ Relays.render(relays, relay_owner(socket)),
       remote_ip_location_city: gateway.last_seen_remote_ip_location_city,
       remote_ip_location_lat: gateway.last_seen_remote_ip_location_lat,
       remote_ip_location_lon: gateway.last_seen_remote_ip_location_lon,
-      version: gateway.last_seen_version
+      version: gateway.last_seen_version,
+      device_v1: gateway.last_seen_device_v1
     }
   end
 
