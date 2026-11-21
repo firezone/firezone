@@ -1856,7 +1856,8 @@ Relays.render(relays, relay_owner(socket)),
     track_presence(socket)
   end
 
-  defp flow_logs_config do
+  @doc false
+  def flow_logs_config do
     flow_logs_config(Portal.Config.fetch_env!(:portal, :flow_logs_api_url))
   end
 
