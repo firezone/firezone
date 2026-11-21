@@ -99,6 +99,11 @@ pub struct Server<R> {
     /// The instant that rate limiters measure time from.
     rate_limit_epoch: Option<Instant>,
 
+    /// When each client's next authenticated request is due if it sends at [`REQUEST_INTERVAL`].
+    ///
+    /// Only clients with a valid nonce get an entry, so spoofed source addresses cannot grow it.
+    request_budgets: HashMap<ClientSocket, Instant>,
+
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed: u64, // Tracked separately because OTel instruments don't expose their current value :(
     relayed_packet_size_histogram: Histogram<u64>,
@@ -221,6 +226,12 @@ const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
 /// See <https://www.rfc-editor.org/rfc/rfc8656#section-12-14>.
 const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// The sustained rate of authenticated requests a single client may send: 200 per second.
+const REQUEST_INTERVAL: Duration = Duration::from_millis(5);
+
+/// How far a client may run ahead of [`REQUEST_INTERVAL`]: a burst of 1000 requests.
+const REQUEST_BURST: Duration = Duration::from_secs(5);
+
 impl<R> Server<R>
 where
     R: RngExt,
@@ -262,6 +273,7 @@ where
             accounts_by_hash: Default::default(),
             nonces: Nonces::new(rng.random()),
             rate_limit_epoch: None,
+            request_budgets: HashMap::default(),
             rng,
             allocations_up_down_counter,
             responses_counter,
@@ -488,6 +500,12 @@ where
         now: Instant,
         now_utc: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
+        if !self.admit_request(&message, sender, now, now_utc) {
+            tracing::debug!(target: "relay", %sender, "Dropping request: client exceeds its request rate");
+
+            return None;
+        }
+
         let result = match &message {
             ClientMessage::Allocate(request) => {
                 self.handle_allocate_request(request, sender, now, now_utc)
@@ -626,13 +644,18 @@ where
             }
         });
         let allocation_expiries = self.allocations.values().map(|a| a.expires_at);
+        let request_budget_expiries = self.request_budgets.values().copied();
 
         channel_expiries
             .chain(allocation_expiries)
+            .chain(request_budget_expiries)
             .fold(None, |current, next| earliest(current, Some(next)))
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.request_budgets
+            .retain(|_, next_request| *next_request > now);
+
         let expired_allocations = self
             .allocations
             .values()
@@ -1431,6 +1454,36 @@ where
                     throughput_limit,
                 });
         }
+    }
+
+    /// Charges an authenticated request against the sender's budget.
+    ///
+    /// Requests without a valid nonce are always admitted; the normal path rejects them.
+    fn admit_request(
+        &mut self,
+        message: &ClientMessage,
+        sender: ClientSocket,
+        now: Instant,
+        now_utc: SystemTime,
+    ) -> bool {
+        let Some(nonce) = message.nonce() else {
+            return true;
+        };
+
+        if self.nonces.verify(sender, nonce.value(), now_utc).is_err() {
+            return true;
+        }
+
+        let next_request = self.request_budgets.entry(sender).or_insert(now);
+        let due = std::cmp::max(*next_request, now);
+
+        if due - now > REQUEST_BURST {
+            return false;
+        }
+
+        *next_request = due + REQUEST_INTERVAL;
+
+        true
     }
 
     /// Returns nanoseconds on the monotonic clock that rate limiters use.
