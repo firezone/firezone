@@ -84,6 +84,7 @@ impl Session {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         config: SessionConfig,
+        metrics_exporter: otel_metrics_export::Exporter,
     ) -> io::Result<(Self, EventStream)> {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
@@ -95,6 +96,7 @@ impl Session {
                     tcp_socket_factory,
                     udp_socket_factory,
                     config,
+                    metrics_exporter,
                     portal,
                     cmd_rx,
                     resource_list_sender,
