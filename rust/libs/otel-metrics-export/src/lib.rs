@@ -291,7 +291,7 @@ impl Connection {
             host,
             port,
             addresses,
-            TlsConfig::webpki_roots(),
+            tls_config()?,
             self.socket_factory.clone(),
         )
         .await
@@ -300,6 +300,36 @@ impl Connection {
 
         Ok(client)
     }
+}
+
+/// Trusts only the CA in `FIREZONE_METRICS_CA` if it is set, so a metrics endpoint with a
+/// self-signed certificate can be tested.
+#[cfg(debug_assertions)]
+fn tls_config() -> Result<TlsConfig> {
+    use rustls::RootCertStore;
+    use rustls_pki_types::{CertificateDer, pem::PemObject as _};
+
+    let Some(path) = std::env::var_os("FIREZONE_METRICS_CA") else {
+        return Ok(TlsConfig::webpki_roots());
+    };
+
+    let mut roots = RootCertStore::empty();
+    for cert in CertificateDer::pem_file_iter(&path).context("Failed to read metrics CA")? {
+        roots
+            .add(cert.context("Failed to parse metrics CA")?)
+            .context("Invalid metrics CA")?;
+    }
+
+    Ok(TlsConfig::new(roots))
+}
+
+#[cfg(not(debug_assertions))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Debug builds can fail to load a CA"
+)]
+fn tls_config() -> Result<TlsConfig> {
+    Ok(TlsConfig::webpki_roots())
 }
 
 #[cfg(test)]
