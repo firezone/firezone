@@ -2797,7 +2797,8 @@ Relays.render(relays, relay_owner(socket)),
       remote_ip_location_city: client.last_seen_remote_ip_location_city,
       remote_ip_location_lat: client.last_seen_remote_ip_location_lat,
       remote_ip_location_lon: client.last_seen_remote_ip_location_lon,
-      version: client.last_seen_version
+      version: client.last_seen_version,
+      device_v1: client.last_seen_device_v1
     }
     |> Map.merge(attested_attrs)
   end

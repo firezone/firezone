@@ -26,6 +26,11 @@ defmodule PortalAPI.Device.SocketTest do
       assert socket.assigns.client.id
     end
 
+    test "marks the client as last seen on /device/v1", %{encoded_token: encoded_token} do
+      assert {:ok, socket} = connect_device(encoded_token, @range)
+      assert socket.assigns.client.last_seen_device_v1
+    end
+
     test "refuses a connect without a protocol range", %{encoded_token: encoded_token} do
       assert connect_device(encoded_token, %{}) == {:error, :invalid_proto_range}
     end
@@ -129,6 +134,22 @@ defmodule PortalAPI.Device.SocketTest do
       :ok = Portal.PG.join(gateway.id)
 
       assert connect_device(encoded_token, @range, gateway.firezone_id) == {:error, :conflict}
+    end
+
+    test "marks the gateway as last seen on /device/v1, and /gateway clears it", %{
+      account: account,
+      site: site
+    } do
+      encoded_token = gateway_token_fixture(account: account, site: site) |> encode_gateway_token()
+      firezone_id = Ecto.UUID.generate()
+
+      assert {:ok, device_socket} = connect_device(encoded_token, @range, firezone_id)
+      assert device_socket.assigns.client.last_seen_device_v1
+
+      Repo.update_all(where(Portal.Device, id: ^device_socket.assigns.client.id), set: [last_seen_device_v1: true])
+
+      assert {:ok, gateway_socket} = connect_gateway(encoded_token, firezone_id)
+      refute gateway_socket.assigns.gateway.last_seen_device_v1
     end
 
     test "refuses a deleted token", %{account: account, site: site} do
