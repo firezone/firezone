@@ -36,6 +36,27 @@ defmodule PortalAPI.Relay.ChannelTest do
   end
 
   describe "join/3" do
+    test "rejects a malformed stamp_secret" do
+      relay = relay_fixture()
+      token = relay_token_fixture()
+
+      for stamp_secret <- [["x"], %{"a" => "b"}, 1, "", String.duplicate("a", 257)] do
+        assert {:error, %{reason: :invalid_stamp_secret}} =
+                 PortalAPI.Relay.Socket
+                 |> socket("relay:#{relay.id}", %{
+                   token_id: token.id,
+                   relay: relay,
+                   opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+                   opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+                 })
+                 |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{
+                   stamp_secret: stamp_secret
+                 })
+      end
+
+      refute Map.has_key?(Portal.Presence.Relays.list(), relay.id)
+    end
+
     test "tracks presence after join", %{relay: relay} do
       presence = Portal.Presence.Relays.list()
 
