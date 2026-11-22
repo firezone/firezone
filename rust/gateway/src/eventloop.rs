@@ -380,9 +380,7 @@ impl Eventloop {
                         .write_token(&self.flow_logs_dir, token.as_str())
                         .await
                 {
-                    tracing::error!(
-                        "Failed to persist flow-log ingest token for authorization: {e:#}"
-                    );
+                    tracing::error!("Failed to persist flow-log ingest token: {e:#}");
                     return Ok(());
                 }
 
