@@ -69,8 +69,9 @@ pub use unroutable_packet::UnroutablePacket;
 /// The minor versions of the protocol this build speaks with its peers.
 ///
 /// A device declares them when it connects, and the portal only pairs it with
-/// peers that speak one of them.
-pub const PROTOCOL_VERSIONS: RangeInclusive<u32> = 3..=5;
+/// peers that speak one of them. Peers older than 1.4 connect through messages
+/// that `/device/v1` does not carry, so 4 is the lowest.
+pub const PROTOCOL_VERSIONS: RangeInclusive<u32> = 4..=5;
 
 /// The port of the DNS server a device runs on its tunnel addresses for the peers it serves.
 pub const TUN_DNS_PORT: u16 = 53535;
