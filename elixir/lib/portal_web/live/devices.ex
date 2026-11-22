@@ -27,7 +27,7 @@ defmodule PortalWeb.Devices do
       socket
       |> assign(page_title: "Devices")
       |> assign(selected_device: nil)
-      |> assign(unified_devices?: Portal.Features.enabled?(:unified_devices))
+      |> assign(unified_devices?: subject.account.unified_devices == true)
       |> assign(device_site: nil, sites: [])
       |> assign(stale: false)
       |> assign_async(:devices_count, fn -> {:ok, %{devices_count: Database.count_devices(subject)}} end)
@@ -822,25 +822,16 @@ defmodule PortalWeb.Devices do
     @spec put_device_in_site(Device.t(), String.t(), Portal.Authentication.Subject.t()) ::
             {:ok, SiteDevice.t()} | {:error, term()}
     def put_device_in_site(%Device{} = device, site_id, subject) do
-      site =
-        from(s in Site, as: :sites, where: s.id == ^site_id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case site do
-        %Site{} = site ->
+      Safe.transact(fn ->
+        with {:ok, device} <- fetch_device_v1(device, subject),
+             {:ok, site} <- fetch_site(site_id, subject) do
           %SiteDevice{account_id: device.account_id, site_id: site.id, device_id: device.id}
           |> change()
           |> SiteDevice.changeset()
           |> Safe.scoped(subject)
           |> Safe.insert()
-
-        nil ->
-          {:error, :not_found}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+        end
+      end)
     end
 
     @spec remove_device_from_site(Device.t(), Portal.Authentication.Subject.t()) ::
@@ -1284,5 +1275,28 @@ defmodule PortalWeb.Devices do
     defp provider_type_rank(:santa), do: 3
     defp provider_type_rank(:sentinelone), do: 4
     defp provider_type_rank(:sophos), do: 5
+
+    # Only a device last seen on /device/v1 can serve a site.
+    defp fetch_device_v1(device, subject) do
+      from(d in Device, as: :devices, where: d.id == ^device.id and d.last_seen_device_v1, lock: "FOR UPDATE")
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        %Device{} = device -> {:ok, device}
+        nil -> {:error, :not_device_v1}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+
+    defp fetch_site(site_id, subject) do
+      from(s in Site, as: :sites, where: s.id == ^site_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        %Site{} = site -> {:ok, site}
+        nil -> {:error, :not_found}
+        {:error, reason} -> {:error, reason}
+      end
+    end
   end
 end

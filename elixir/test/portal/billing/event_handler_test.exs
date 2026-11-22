@@ -6,6 +6,7 @@ defmodule Portal.Billing.EventHandlerTest do
   alias Portal.Fixture
   alias Portal.Mocks.Stripe
 
+  import Ecto.Query
   import ExUnit.CaptureLog
   import Portal.AccountFixtures
 
@@ -564,6 +565,25 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert log =~ "Ignoring add-on for unknown limit"
       assert Portal.Repo.get!(Portal.Account, account.id).is_disabled == false
+    end
+
+    test "leaves the staff-set unified_devices flag alone", %{account: account, customer: customer} do
+      Portal.Repo.update_all(from(a in Portal.Account, where: a.id == ^account.id), set: [unified_devices: true])
+
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} =
+               EventHandler.handle_event(Stripe.build_event("customer.subscription.updated", subscription))
+
+      assert {:ok, _event} = EventHandler.handle_event(Stripe.build_event("customer.updated", customer))
+
+      assert Portal.Repo.get!(Portal.Account, account.id).unified_devices == true
     end
 
     test "processes plan product and warns on unrecognized product", %{

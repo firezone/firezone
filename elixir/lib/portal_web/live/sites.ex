@@ -43,7 +43,7 @@ defmodule PortalWeb.Sites do
       |> assign(provisioned_gateway_ids: %{})
       |> assign(internet_resource: nil)
       |> assign(internet_site: nil)
-      |> assign(unified_devices?: Portal.Features.enabled?(:unified_devices))
+      |> assign(unified_devices?: socket.assigns.subject.account.unified_devices == true)
       |> assign(site_state_reset_assigns())
       |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 

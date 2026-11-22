@@ -60,6 +60,7 @@ defmodule PortalAPI.Schemas.Account do
                :seats_warning_level,
                :service_accounts_limit_exceeded,
                :sites_limit_exceeded,
+               :unified_devices,
                :updated_at,
                :users_limit_exceeded,
                :warning_last_sent_at

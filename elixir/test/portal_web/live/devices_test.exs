@@ -11,6 +11,7 @@ defmodule PortalWeb.DevicesTest do
     end
   end
 
+  import Ecto.Query, only: [from: 2]
   alias Portal.{Device, Repo}
   alias Portal.Changes.Change
 
@@ -18,7 +19,6 @@ defmodule PortalWeb.DevicesTest do
   import Portal.ActorFixtures
   import Portal.DefenderFixtures
   import Portal.DevicePostureFixtures
-  import Portal.FeaturesFixtures
   import Portal.IntuneFixtures
   import Portal.IruFixtures
   import Portal.SantaFixtures
@@ -1823,8 +1823,9 @@ defmodule PortalWeb.DevicesTest do
     end
 
     test "adds the device to a site", %{conn: conn, account: account, actor: actor} do
-      enable_feature(:unified_devices)
+      put_unified_devices(account, true)
       client = client_fixture(account: account, actor: actor)
+      Repo.update_all(from(d in Device, where: d.id == ^client.id), set: [last_seen_device_v1: true])
       site = internet_site_fixture(account: account)
 
       {:ok, lv, _html} =
@@ -1855,7 +1856,7 @@ defmodule PortalWeb.DevicesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:unified_devices)
+      put_unified_devices(account, true)
       client = client_fixture(account: account, actor: actor)
       site = site_fixture(account: account)
       other_site = site_fixture(account: account)
@@ -1897,6 +1898,45 @@ defmodule PortalWeb.DevicesTest do
       refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
       refute Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: served.id)
       assert Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: unrelated.id)
+    end
+
+    test "does not put a device last seen on /client in a site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      put_unified_devices(account, true)
+      client = client_fixture(account: account, actor: actor)
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      assert has_element?(lv, "#device-site", "Update to the latest Firezone client to route for a site.")
+      assert has_element?(lv, "#device-site-form select[disabled]")
+      assert has_element?(lv, "#device-site-form button[disabled]")
+
+      html = render_hook(lv, "put_device_in_site", %{"site_device" => %{"site_id" => site.id}})
+
+      assert html =~ "Could not add the device to the site."
+      refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
+    end
+
+    test "shows the site section only to accounts with unified_devices set to true", %{conn: conn} do
+      for {value, shown?} <- [{true, true}, {false, false}, {nil, false}] do
+        account = put_unified_devices(account_fixture(), value)
+        actor = admin_actor_fixture(account: account)
+        client = client_fixture(account: account, actor: actor)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/devices/#{client.id}")
+
+        assert has_element?(lv, "#device-site") == shown?
+      end
     end
 
     test "ignores site events without the unified devices feature", %{
