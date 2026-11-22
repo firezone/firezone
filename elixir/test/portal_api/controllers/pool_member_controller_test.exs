@@ -353,6 +353,31 @@ defmodule PortalAPI.PoolMemberControllerTest do
       assert member_ids(pool) == Enum.sort([keep.id, add.id])
     end
 
+    test "rejects a gateway in a patch", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      gateway = gateway_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/resources/#{pool.id}/pool_members", pool_members: %{"add" => [gateway.id]})
+
+      assert json_response(conn, 422) == %{
+               "type" => "about:blank",
+               "status" => 422,
+               "title" => "Unprocessable Content",
+               "detail" => "The request body failed validation.",
+               "validation_errors" => %{"pool_members" => ["#{gateway.id} is not a Client in this account"]}
+             }
+
+      assert member_ids(pool) == []
+    end
+
     test "adding an existing member is a no-op", %{
       conn: conn,
       account: account,

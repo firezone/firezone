@@ -36,9 +36,19 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   socket "/gateway/v2", PortalAPI.Gateway.V2.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false,
+    drainer: {Portal.Endpoint, :socket_drainer, []}
+
+  socket "/gateway/v3", PortalAPI.Gateway.V3.Socket,
     websocket: [
       check_origin: :conn,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
@@ -58,7 +68,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   socket "/client/v2", PortalAPI.Client.V2.Socket,
     websocket: [
@@ -68,7 +78,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   socket "/client/v3", PortalAPI.Client.V3.Socket,
     websocket: [
@@ -78,7 +88,27 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
+    drainer: {Portal.Endpoint, :socket_drainer, []}
+
+  socket "/client/v4", PortalAPI.Client.V4.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false,
     drainer: []
+
+  socket "/device/v1", PortalAPI.Device.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false,
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   socket "/relay", PortalAPI.Relay.Socket,
     websocket: [
@@ -88,7 +118,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(41)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   plug :fetch_user_agent
 

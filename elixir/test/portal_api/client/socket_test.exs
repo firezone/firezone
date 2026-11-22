@@ -1365,6 +1365,21 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.id == existing.id
     end
 
+    test "an unattested connect never resolves a gateway with the same firezone_id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      gateway = gateway_fixture(account: account, firezone_id: "fz-gateway")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-gateway"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.id != gateway.id
+      assert client.type == :client
+    end
+
     test "an unattested connect with no match inserts a new device", %{
       account: account,
       actor: actor,
