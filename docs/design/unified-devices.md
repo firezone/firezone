@@ -1232,20 +1232,16 @@ has 12, phase 4 has 13, phase 5 has 12, phase 5b has 10, phase 6 has 8.
 Changes customers must hear about when the unified binary ships to gateway
 hosts. Collect them here and use them for the release notes and the email.
 
-- **Upstream DNS per device.** Each device now has its own upstream DNS
-  setting. Empty means it uses the account's client setting. Every gateway
-  that existed before this change was set to "this device's own resolvers"
-  (`system`), and new gateways start with it. A gateway host that switches to
-  the new `firezone` binary keeps resolving with its own DNS servers, even when
-  the account sends clients to custom upstreams or DNS over HTTPS. Admins can
-  change the setting per device. Gateways created during the rolling deploy
-  that added the setting can start empty, and then use the account setting
-  until an admin sets them.
-- **Search domain per device.** The same applies to the search domain. Every
-  existing gateway was set to "no search domain", and new gateways start with
-  it, so a gateway host that runs the new binary does not add the account's
-  search domain to its own resolver. Admins can set a search domain per
-  device, or let a device use the account's.
+- **DNS settings per device.** Each device can now have its own DNS
+  settings, in the same format as the account's: upstream resolvers and
+  search domain. When a device has none, it uses the account's. Every gateway
+  that existed before this change was set to its own resolvers and no search
+  domain, and new gateways start that way. A gateway host that switches to the
+  new `firezone` binary keeps resolving with its own DNS servers and does not
+  get the account's search domain, even when the account sends clients to
+  custom upstreams or DNS over HTTPS. Admins can change this per device.
+  Gateways created during the rolling deploy that added the setting can start
+  without settings, and then use the account's until an admin sets them.
 
 ## 4. Decisions taken
 
