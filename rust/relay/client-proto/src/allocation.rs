@@ -889,6 +889,7 @@ impl Allocation {
         for message in channel_refresh_messages {
             self.authenticate_and_queue(message, None, now);
         }
+        self.channel_bindings.schedule_next_refresh(now);
 
         // TODO: Clean up unused channels
     }
@@ -919,14 +920,10 @@ impl Allocation {
             None
         };
 
-        let next_channel_refresh = self
-            .channel_bindings
-            .next_refresh(|number| self.channel_binding_in_flight_by_number(number));
-
         iter::empty()
             .chain(next_refresh)
             .chain(next_keepalive)
-            .chain(next_channel_refresh)
+            .chain(self.channel_bindings.next_refresh)
             .chain(next_timeout)
             .min()
     }
@@ -1601,6 +1598,8 @@ stun_codec::define_attribute_enums!(
 struct ChannelBindings {
     inner: HashMap<u16, Channel, FastRandomState>,
     next_channel: u16,
+    /// No channel is due for a refresh before this.
+    next_refresh: Option<Instant>,
 }
 
 impl Default for ChannelBindings {
@@ -1608,6 +1607,7 @@ impl Default for ChannelBindings {
         Self {
             inner: Default::default(),
             next_channel: Self::FIRST_CHANNEL,
+            next_refresh: None,
         }
     }
 }
@@ -1635,9 +1635,18 @@ impl ChannelBindings {
             return None;
         }
 
+        let peer = channel.peer;
+        let had_activity = !channel.no_activity();
         channel.record_received(now);
 
-        Some((channel.peer, packet.payload()))
+        if !had_activity && let Some(refresh_at) = channel.refresh_at() {
+            self.next_refresh = Some(
+                self.next_refresh
+                    .map_or(refresh_at, |next| next.min(refresh_at)),
+            );
+        }
+
+        Some((peer, packet.payload()))
     }
 
     fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<u16> {
@@ -1688,20 +1697,34 @@ impl ChannelBindings {
         now: Instant,
         is_inflight: impl Fn(u16) -> bool + 's,
     ) -> impl Iterator<Item = (u16, SocketAddr)> + 's {
-        self.inner
-            .iter()
-            .filter(move |(_, channel)| channel.needs_refresh(now))
-            .filter(move |(number, _)| !is_inflight(**number))
-            .map(|(number, channel)| (*number, channel.peer))
+        let any_due = self.next_refresh.is_some_and(|at| now >= at);
+
+        any_due
+            .then(|| {
+                self.inner
+                    .iter()
+                    .filter(move |(_, channel)| channel.needs_refresh(now))
+                    .filter(move |(number, _)| !is_inflight(**number))
+                    .map(|(number, channel)| (*number, channel.peer))
+            })
+            .into_iter()
+            .flatten()
     }
 
-    /// Returns when the next channel is due for a refresh.
-    fn next_refresh(&self, is_inflight: impl Fn(u16) -> bool) -> Option<Instant> {
-        self.inner
-            .iter()
-            .filter(|(number, _)| !is_inflight(**number))
-            .filter_map(|(_, channel)| channel.refresh_at())
-            .min()
+    /// Looks for the next channel that is due for a refresh after `now`.
+    ///
+    /// Must be called after refreshing the channels returned from [`ChannelBindings::channels_to_refresh`].
+    fn schedule_next_refresh(&mut self, now: Instant) {
+        if self.next_refresh.is_none_or(|at| now < at) {
+            return;
+        }
+
+        self.next_refresh = self
+            .inner
+            .values()
+            .filter_map(Channel::refresh_at)
+            .filter(|at| *at > now)
+            .min();
     }
 
     fn connected_channel_to_peer(&self, peer: SocketAddr, now: Instant) -> Option<u16> {
@@ -1745,6 +1768,7 @@ impl ChannelBindings {
 
     fn clear(&mut self) {
         self.inner.clear();
+        self.next_refresh = None;
     }
 }
 
@@ -2032,11 +2056,7 @@ mod tests {
             .try_handle_packet(packet, start + Duration::from_secs(2))
             .unwrap();
 
-        assert_eq!(
-            channel_bindings.next_refresh(|_| false),
-            Some(bound_at + 5 * MINUTE)
-        );
-        assert_eq!(channel_bindings.next_refresh(|_| true), None);
+        assert_eq!(channel_bindings.next_refresh, Some(bound_at + 5 * MINUTE));
     }
 
     #[test]
