@@ -167,7 +167,8 @@ defmodule PortalAPI.ActorController do
     and will not unlink identities.
 
     **Setting `is_disabled` to `true` immediately revokes all of the Actor's
-    active Client tokens and portal sessions.** An Actor cannot disable itself.
+    authorizations, disconnects its Clients, and prevents it from
+    authenticating.** An Actor cannot disable itself.
 
     Admins and API clients can only be changed in the portal, and users can only
     be promoted to admin there.
