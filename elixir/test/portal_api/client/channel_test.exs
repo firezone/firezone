@@ -9428,6 +9428,27 @@ defmodule PortalAPI.Client.ChannelTest do
       v1_gateway_id = v1_gateway.id
       assert_push "resource_created_or_updated", %{id: ^pool_id, devices: [%{client_id: ^v1_gateway_id}]}
     end
+
+    test "does not recompute on the v3 protocol", %{client: client, subject: subject, v1_gateway: v1_gateway} do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      send_flip_after_clearing_resources(socket, v1_gateway)
+
+      assert :sys.get_state(socket.channel_pid).assigns.cache.connectable_resources == []
+      refute_push "resource_created_or_updated", _
+      refute_push "client_device_access_denied", _
+    end
+
+    test "does not recompute for a gateway no pool lists", %{account: account, client: client, subject: subject} do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      send_flip_after_clearing_resources(socket, gateway_fixture(account: account))
+
+      assert :sys.get_state(socket.channel_pid).assigns.cache.connectable_resources == []
+      refute_push "resource_created_or_updated", _
+    end
   end
 
   describe "handle_info/2 :reject_access" do
@@ -10506,4 +10527,19 @@ defmodule PortalAPI.Client.ChannelTest do
     start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
   end
 
+  # A recompute would push every connectable resource again once the cache holds none.
+  defp send_flip_after_clearing_resources(socket, gateway) do
+    :sys.replace_state(socket.channel_pid, fn state ->
+      put_in(state.assigns.cache.connectable_resources, [])
+    end)
+
+    old_gateway = %{gateway | last_seen_device_v1: true}
+
+    send(socket.channel_pid, %Changes.Change{
+      lsn: 200,
+      op: :update,
+      old_struct: old_gateway,
+      struct: %{old_gateway | last_seen_device_v1: false}
+    })
+  end
 end

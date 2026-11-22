@@ -2293,26 +2293,22 @@ Relays.render(relays, relay_owner(socket)),
 
   # NON-SELF DEVICES (members of a pool we have access to)
 
-  # A gateway can be a pool target only while its latest connection is on `/device/v1`.
+  # A gateway can be a pool target only while its latest connection is on `/device/v1`. Only the
+  # v2 protocol names a pool's members, so only a v2 channel with a pool that lists it recomputes.
   defp handle_change(
          %Change{
            op: :update,
            old_struct: %Portal.Device{type: :gateway, last_seen_device_v1: old_device_v1},
-           struct: %Portal.Device{type: :gateway, last_seen_device_v1: device_v1}
+           struct: %Portal.Device{type: :gateway, last_seen_device_v1: device_v1} = device
          },
          socket
        )
        when old_device_v1 != device_v1 do
-    %{cache: old_cache, client: client, subject: subject} = socket.assigns
-
-    {:ok, _added, _removed_ids, cache} =
-      result = Cache.Client.recompute_connectable_resources(old_cache, client, subject)
-
-    for addresses <- Cache.Client.removed_member_addresses(old_cache, cache) do
-      push_device_access_denied(socket, addresses)
+    if protocol_version(socket) < 3 and listed_in_connectable_pool?(socket.assigns.cache, device.id) do
+      recompute_pool_members(socket)
+    else
+      {:noreply, socket}
     end
-
-    push_resource_updates(result, socket)
   end
 
   defp handle_change(
@@ -2400,6 +2396,28 @@ Relays.render(relays, relay_owner(socket)),
   end
 
   defp protocol_version(socket), do: socket.assigns.channel_protocol.protocol_version()
+
+  defp listed_in_connectable_pool?(cache, device_id) do
+    Enum.any?(cache.connectable_resources, fn resource ->
+      case Portal.Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria) do
+        {:ok, device_ids} -> device_id in device_ids
+        :error -> false
+      end
+    end)
+  end
+
+  defp recompute_pool_members(socket) do
+    %{cache: old_cache, client: client, subject: subject} = socket.assigns
+
+    {:ok, _added, _removed_ids, cache} =
+      result = Cache.Client.recompute_connectable_resources(old_cache, client, subject)
+
+    for addresses <- Cache.Client.removed_member_addresses(old_cache, cache) do
+      push_device_access_denied(socket, addresses)
+    end
+
+    push_resource_updates(result, socket)
+  end
 
   # A protocol that adds to what every client gets defines the callback; the others leave it as is.
   defp protocol_extension(socket, callback, value) do
