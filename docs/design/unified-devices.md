@@ -595,6 +595,17 @@ certificate that the portal issues for that key. The certificate says which
 machine connects. The token says who acts. The portal finds the row by the
 certificate and never by the reported `firezone_id`.
 
+**Devices and legacy records.** A row with `type = NULL` is a device: a
+1.7 or later binary enrolled it, and the portal finds it only by its
+certificate. Every 1.7 build connects on `/device/v1`, so `type = NULL` also
+means "1.7 or later". A row with `type = 'client'` or `type = 'gateway'` is a
+legacy record from an older binary, found by `firezone_id` as today. The
+`type` column is legacy, and the docs say so. Nothing new is called a client
+or a gateway: the UI, REST (`/devices`) and docs say device, and the roles in
+one connection are initiator and receiver (6.9). Until this ships,
+`last_seen_device_v1` gates device pools. This step replaces it with
+`type IS NULL` and drops the column in the next deploy.
+
 **Precedence.** A device trust certificate from the customer's CA (MDM) comes
 first. A device that has one presents it, as today. Every other device on the
 new binaries presents its portal certificate. A TLS handshake carries one
@@ -647,10 +658,13 @@ never on a normal connect:
 **Claim rules.** Enrollment decides which row a key gets. This is where a
 takeover is stopped:
 
-- A Gateway token claims only its own row: the bound row of a device-bound
-  token, or the row in the token's site for a site token, as today.
-- A user or service account token claims an existing client row only when its
-  actor is in that row's `device_actors`. Otherwise it gets a new row.
+- A Gateway token adopts only its own legacy gateway record: the bound row of
+  a device-bound token, or the record in the token's site for a site token.
+- A user or service account token adopts a legacy client record only when its
+  actor is in that record's `device_actors`.
+- A legacy record that a key adopts keeps its id and becomes a device
+  (`type = NULL`). When no record passes the rules, the key gets a new device
+  row, and any legacy record stays as it is.
 - A row that already has a certificate cannot be claimed again. Only the old
   key (renewal) or an admin reset of that device can replace it.
 - A row with a portal certificate keeps it when its token changes. A gateway
@@ -672,9 +686,15 @@ client certificates on the API host). The socket checks the certificate,
 finds the row from it, and then checks the token as today. A device trust
 certificate goes through the existing attestation path.
 
-**Old binaries.** `/client` and `/gateway` keep the `firezone_id` lookup until
-the compat window ends. A device that upgrades gets its certificate on its
-first `/device/v1` connect, with the claim rules above.
+**Old binaries.** `/client` and `/gateway` keep the `firezone_id` lookup,
+only over legacy records, until the compat window ends. A host that upgrades
+gets its certificate on its first `/device/v1` connect, with the claim rules
+above. A host that goes back to an older binary gets a new legacy record,
+because a device row is never found by `firezone_id`.
+
+**Release gate.** Turn on `unified_devices` for every account before the first
+1.7 binary ships. `/device/v1` does not check the flag, so this order is what
+keeps device rows out of accounts whose UI does not show them.
 
 **Steps.** In the portal:
 
@@ -1155,13 +1175,17 @@ firezone` and `firezone authenticate`. Depends 3.7.
 
 ### Phase 6: contract
 
-- **6.1 REST: `/clients` and `/sites/:id/gateways` without `type`.**
-  `/clients` returns devices with at least one user; gateways are a site's devices.
-  Deprecation headers. New `/devices`. Depends 2.19.
+- **6.1 REST: `/devices`.** Lists every row, legacy records included, with
+  `type` shown as legacy (`client`, `gateway` or null). `/clients` and
+  `/sites/:id/gateways` stay unchanged and return only legacy records, so a
+  record leaves them when its host upgrades and keeps its id under
+  `/devices`. Site assignment through `/sites/:id/devices` (2.14). Ships last.
 - **6.2 Code: component and version logic by user agent only.** Depends 3.8.
-- **6.3 Code: pool criteria and pickers accept any device; pools never target
-  legacy gateways.** Depends 4.6.
-- **6.4 Migration: drop `devices.type`.** Depends 6.1, 6.2, 6.3.
+- **6.3 Code: pool criteria and pickers accept legacy client records and
+  devices (`type IS NULL`); pools never target legacy gateway records.** Ships
+  with the mTLS identity step. UI and REST say "1.7.0 or later".
+- **6.4 Migration: drop `devices.type`** when no legacy records remain, not on
+  a fixed date. Depends 6.1, 6.2, 6.3.
 - **6.5 Migration: drop `devices.site_id` and its trigger, drop
   `devices.actor_id`.** Depends 2.9 and 2.17 deployed, and no code reads
   `devices.actor_id`: lists, pools, hooks and billing read `device_actors`
@@ -1244,6 +1268,10 @@ hosts. Collect them here and use them for the release notes and the email.
   initiates connections. It then takes over the host's DNS like every client,
   and its own lookups follow the account's DNS settings: upstream resolvers
   and search domain.
+- **REST after an upgrade.** When a host upgrades to 1.7, its record leaves
+  `/clients` or `/sites/{id}/gateways` and shows under `/devices` with the
+  same id. `/devices` lists every device, old and new, so scripts can move to
+  it at any time.
 
 ## 4. Decisions taken
 
