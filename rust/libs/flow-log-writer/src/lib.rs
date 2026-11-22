@@ -145,22 +145,6 @@ where
     )
 }
 
-/// Checks that the gateway can create and durably write to its flow-log spool.
-pub fn check_gateway_spool(spool_root: &Path) -> Result<()> {
-    let responder = spool_root.join("responder");
-    create_dir_secure(&responder).context("Failed to create responder directory")?;
-
-    for path in [spool_root, &responder] {
-        let probe = tempfile::tempdir_in(path)
-            .with_context(|| format!("Failed to create spool probe in {}", path.display()))?;
-        atomicfs::write(probe.path().join("token"), b"probe")
-            .with_context(|| format!("Failed to write spool probe in {}", path.display()))?;
-        probe.close().context("Failed to remove spool probe")?;
-    }
-
-    Ok(())
-}
-
 /// Persists an authorization's ingest token where the uploader expects it.
 ///
 /// The spool path derives from the token's (unverified) `role` and
@@ -766,19 +750,6 @@ fn create_dir_secure(path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn gateway_spool_check_writes_and_removes_its_probe() {
-        let dir = tempfile::tempdir().unwrap();
-        let spool = dir.path().join("spool");
-        check_gateway_spool(&spool).unwrap();
-        assert_eq!(spool.read_dir().unwrap().count(), 1);
-        assert_eq!(spool.join("responder").read_dir().unwrap().count(), 0);
-
-        let blocked = dir.path().join("blocked");
-        std::fs::write(&blocked, b"").unwrap();
-        assert!(check_gateway_spool(&blocked).is_err());
-    }
     use flow_log_spool::deserialize;
     use tracing_subscriber::layer::SubscriberExt as _;
 

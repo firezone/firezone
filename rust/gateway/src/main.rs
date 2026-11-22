@@ -98,7 +98,7 @@ fn main() -> ExitCode {
 
             ExitCode::SUCCESS
         }
-        Err(e) if e.any_is::<EventloopFailed>() || e.any_is::<FlowLogSpoolUnavailable>() => {
+        Err(e) if e.any_is::<EventloopFailed>() => {
             tracing::error!("{e:#}");
 
             let exit_code = if needs_new_token(&e) {
@@ -175,8 +175,6 @@ async fn try_main(cli: Cli) -> Result<()> {
         },
     )
     .context("Failed to set up logging")?;
-
-    flow_log_writer::check_gateway_spool(&flow_logs_dir).context(FlowLogSpoolUnavailable)?;
 
     tracing::info!(
         arch = std::env::consts::ARCH,
@@ -340,10 +338,6 @@ async fn try_main(cli: Cli) -> Result<()> {
 #[derive(thiserror::Error, Debug)]
 #[error("Eventloop failed")]
 struct EventloopFailed;
-
-#[derive(thiserror::Error, Debug)]
-#[error("Flow-log spool at {FLOW_LOGS_DIR} is not writable")]
-struct FlowLogSpoolUnavailable;
 
 /// Returns whether the portal refused our token and will keep refusing it.
 fn needs_new_token(e: &anyhow::Error) -> bool {
