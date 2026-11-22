@@ -10,8 +10,8 @@ use super::tunnel_transition::{DPort, Destination, DnsQuery, Identifier, SPort, 
 use crate::clock::Clock;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
-use crate::tunnel_transition::Transition;
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, StaticSecret};
+use crate::tunnel_transition::{NodeId, Transition};
+use connlib_model::{DeviceId, PublicKey, RelayId, StaticSecret};
 use ip_packet::IpPacket;
 use rand::SeedableRng;
 use rand::distr::SampleString;
@@ -29,7 +29,7 @@ use tunnel_proto::dns::is_subdomain;
 use tunnel_proto::messages::client::{FailReason, ResourceAuthorization};
 use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
-use tunnel_proto::{ClientEvent, GatewayEvent, messages::Interface};
+use tunnel_proto::{DeviceEvent, messages::Interface};
 
 /// The actual system-under-test.
 ///
@@ -37,14 +37,14 @@ use tunnel_proto::{ClientEvent, GatewayEvent, messages::Interface};
 pub struct RealTunnelSystem {
     clock: Clock,
 
-    pub(crate) clients: BTreeMap<ClientId, Host<RealClient>>,
-    pub(crate) gateways: BTreeMap<GatewayId, Host<RealGateway>>,
+    pub(crate) clients: BTreeMap<DeviceId, Host<RealClient>>,
+    pub(crate) gateways: BTreeMap<DeviceId, Host<RealGateway>>,
     relays: BTreeMap<RelayId, Host<RealRelay>>,
 
     /// While set and `now` is before the deadline, this client's messages to the
     /// portal are dropped, simulating a client that has not yet reconnected to
     /// the portal after a roam.
-    client_portal_offline_until: Option<(ClientId, Instant)>,
+    client_portal_offline_until: Option<(DeviceId, Instant)>,
     network: RoutingTable,
     icmp_flows: BTreeMap<FlowId, ResolvedIcmpFlow>,
     udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
@@ -54,7 +54,7 @@ pub struct RealTunnelSystem {
 
 #[derive(Clone, Copy)]
 struct ResolvedIcmpFlow {
-    client_id: ClientId,
+    client_id: DeviceId,
     src: IpAddr,
     dst: IpAddr,
     identifier: Identifier,
@@ -62,7 +62,7 @@ struct ResolvedIcmpFlow {
 
 #[derive(Clone, Copy)]
 struct ResolvedUdpFlow {
-    client_id: ClientId,
+    client_id: DeviceId,
     src: IpAddr,
     dst: IpAddr,
     sport: SPort,
@@ -71,7 +71,7 @@ struct ResolvedUdpFlow {
 
 #[derive(Clone, Copy)]
 struct ResolvedTcpFlow {
-    client_id: ClientId,
+    client_id: DeviceId,
     local: SocketAddr,
     remote: SocketAddr,
 }
@@ -214,7 +214,7 @@ impl RealTunnelSystem {
         &self.dns_nat_observations
     }
 
-    pub(crate) fn gateway(&self, id: GatewayId) -> Option<&RealGateway> {
+    pub(crate) fn gateway(&self, id: DeviceId) -> Option<&RealGateway> {
         Some(self.gateways.get(&id)?.inner())
     }
 
@@ -316,7 +316,7 @@ impl RealTunnelSystem {
 
                         for gateway in self.gateways.values_mut() {
                             gateway.exec_mut(|gateway| {
-                                gateway.state_mut().update_resource(resource.clone())
+                                gateway.state_mut().update_served_resource(resource.clone())
                             });
                         }
                     }
@@ -350,17 +350,16 @@ impl RealTunnelSystem {
                 for authorization in revoked {
                     if let Some(client) = self.clients.get_mut(&authorization.initiator) {
                         client.exec_mut(|c| {
-                            c.state_mut().handle_reject_client_device_access(
-                                authorization.target,
-                                authorization.pool,
-                            )
+                            c.state_mut()
+                                .handle_access_revoked(authorization.target, authorization.pool)
                         });
                     }
                     if let Some(client) = self.clients.get_mut(&authorization.target) {
                         client.exec_mut(|c| {
-                            c.state_mut().handle_reject_client_device_access(
+                            c.state_mut().deauthorize_peer(
                                 authorization.initiator,
                                 authorization.pool,
+                                now,
                             )
                         });
                     }
@@ -516,7 +515,7 @@ impl RealTunnelSystem {
                 {
                     self.clients.get_mut(&client_id).unwrap().exec_mut(|sim| {
                         sim.send_dns_query_for(
-                            domain, r_type, query_id, dns_server, transport, edns,
+                            domain, r_type, query_id, dns_server, transport, edns, now,
                         )
                     });
                 }
@@ -538,6 +537,7 @@ impl RealTunnelSystem {
                         query_id,
                         dns_server,
                         transport,
+                        now,
                     )
                 });
             }
@@ -637,7 +637,9 @@ impl RealTunnelSystem {
                 let now = self.clock.now::<Instant>();
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
-                let added = self.network.add_host(client_id, client, nat_ip4);
+                let added = self
+                    .network
+                    .add_host(HostId::Client(client_id), client, nat_ip4);
                 debug_assert!(added);
                 client.exec_mut(|c| {
                     c.tunnel.inner_mut().reset("roam", now);
@@ -787,9 +789,7 @@ impl RealTunnelSystem {
             }
             Transition::RevokePeerAuthorization { client, peer, pool } => {
                 self.clients.get_mut(&peer).unwrap().exec_mut(|receiver| {
-                    receiver
-                        .state_mut()
-                        .handle_reject_client_device_access(client, pool);
+                    receiver.state_mut().deauthorize_peer(client, pool, now);
                 });
             }
             Transition::RevokeGatewayAuthorization(rid) => {
@@ -837,17 +837,14 @@ impl RealTunnelSystem {
                 let public_key = self.clients[&client_id].inner().state().public_key();
                 for peer in portal.authorized_peers_of(client_id) {
                     self.clients.get_mut(&peer).unwrap().exec_mut(|c| {
-                        c.state_mut().handle_public_key_changed(
-                            ClientOrGatewayId::Client(client_id),
-                            public_key,
-                            now,
-                        )
+                        c.state_mut()
+                            .handle_public_key_changed(client_id, public_key, now)
                     });
                 }
                 for gateway in self.gateways.values_mut() {
                     gateway.exec_mut(|g| {
                         g.state_mut()
-                            .handle_public_key_changed(client_id, public_key.into(), now)
+                            .handle_public_key_changed(client_id, public_key, now)
                     });
                 }
             }
@@ -864,11 +861,8 @@ impl RealTunnelSystem {
                 let public_key = self.gateways[&gateway_id].inner().state().public_key();
                 for client_id in clients {
                     self.clients.get_mut(&client_id).unwrap().exec_mut(|c| {
-                        c.state_mut().handle_public_key_changed(
-                            ClientOrGatewayId::Gateway(gateway_id),
-                            public_key,
-                            now,
-                        )
+                        c.state_mut()
+                            .handle_public_key_changed(gateway_id, public_key, now)
                     });
                 }
             }
@@ -880,25 +874,22 @@ impl RealTunnelSystem {
                 let public_key = PublicKey::from(&StaticSecret::from(key));
 
                 match (recipient, remote) {
-                    (ClientOrGatewayId::Client(client_id), remote) => {
+                    (NodeId::Client(client_id), remote) => {
                         self.clients.get_mut(&client_id).unwrap().exec_mut(|c| {
-                            c.state_mut()
-                                .handle_public_key_changed(remote, public_key, now)
-                        });
-                    }
-                    (
-                        ClientOrGatewayId::Gateway(gateway_id),
-                        ClientOrGatewayId::Client(client_id),
-                    ) => {
-                        self.gateways.get_mut(&gateway_id).unwrap().exec_mut(|g| {
-                            g.state_mut().handle_public_key_changed(
-                                client_id,
-                                public_key.into(),
+                            c.state_mut().handle_public_key_changed(
+                                remote.device_id(),
+                                public_key,
                                 now,
                             )
                         });
                     }
-                    (ClientOrGatewayId::Gateway(_), ClientOrGatewayId::Gateway(_)) => {}
+                    (NodeId::Gateway(gateway_id), NodeId::Client(client_id)) => {
+                        self.gateways.get_mut(&gateway_id).unwrap().exec_mut(|g| {
+                            g.state_mut()
+                                .handle_public_key_changed(client_id, public_key, now)
+                        });
+                    }
+                    (NodeId::Gateway(_), NodeId::Gateway(_)) => {}
                 }
             }
         };
@@ -916,7 +907,7 @@ impl RealTunnelSystem {
     /// portal would, sending what the old tunnel sent on the way out.
     fn replace_client_tunnel(
         &mut self,
-        client_id: ClientId,
+        client_id: DeviceId,
         model: &TunnelModel,
         portal: &FakePortal,
         buffered_transmits: &mut BufferedTransmits,
@@ -1185,8 +1176,8 @@ impl RealTunnelSystem {
 
     fn on_client_event(
         &mut self,
-        src: ClientId,
-        event: ClientEvent,
+        src: DeviceId,
+        event: DeviceEvent,
         model: &TunnelModel,
         portal: &mut FakePortal,
     ) {
@@ -1204,10 +1195,10 @@ impl RealTunnelSystem {
         }
 
         match event {
-            ClientEvent::AddedIceCandidates {
+            DeviceEvent::AddedIceCandidates {
                 candidates,
-                conn_id: ClientOrGatewayId::Gateway(conn_id),
-            } => {
+                conn_id,
+            } if self.gateways.contains_key(&conn_id) => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
                 gateway.exec_mut(|g| {
@@ -1216,10 +1207,10 @@ impl RealTunnelSystem {
                     }
                 });
             }
-            ClientEvent::RemovedIceCandidates {
+            DeviceEvent::RemovedIceCandidates {
                 candidates,
-                conn_id: ClientOrGatewayId::Gateway(conn_id),
-            } => {
+                conn_id,
+            } if self.gateways.contains_key(&conn_id) => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
                 gateway.exec_mut(|g| {
@@ -1228,8 +1219,8 @@ impl RealTunnelSystem {
                     }
                 });
             }
-            ClientEvent::AddedIceCandidates {
-                conn_id: ClientOrGatewayId::Client(conn_id),
+            DeviceEvent::AddedIceCandidates {
+                conn_id,
                 candidates,
             } => {
                 let client = self.clients.get_mut(&conn_id).expect("unknown client");
@@ -1240,8 +1231,8 @@ impl RealTunnelSystem {
                     }
                 });
             }
-            ClientEvent::RemovedIceCandidates {
-                conn_id: ClientOrGatewayId::Client(conn_id),
+            DeviceEvent::RemovedIceCandidates {
+                conn_id,
                 candidates,
             } => {
                 let client = self.clients.get_mut(&conn_id).expect("unknown client");
@@ -1252,7 +1243,7 @@ impl RealTunnelSystem {
                     }
                 });
             }
-            ClientEvent::RequestAccess {
+            DeviceEvent::RequestAccess {
                 resource_ids,
                 ip: None,
                 preferred_gateways,
@@ -1333,7 +1324,7 @@ impl RealTunnelSystem {
                     tracing::error!("{e:#}");
                 }
             }
-            ClientEvent::RequestAccess {
+            DeviceEvent::RequestAccess {
                 resource_ids: pools,
                 ip: Some(ip),
                 ..
@@ -1430,17 +1421,15 @@ impl RealTunnelSystem {
                     );
                 });
             }
-            ClientEvent::NoRelays { excluded_relay_ids } => {
-                let relays = portal.request_relays(
-                    ClientOrGatewayId::Client(src),
-                    &excluded_relay_ids,
-                    &self.relays,
-                    now,
-                );
+            DeviceEvent::NoRelays { excluded_relay_ids } => {
+                let relays = portal.request_relays(src, &excluded_relay_ids, &self.relays, now);
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
             }
-            ClientEvent::DeviceDomainQueried { domain } => {
+            DeviceEvent::ResolveDns(_) => {
+                panic!("Clients in the simulation serve no resources")
+            }
+            DeviceEvent::DeviceDomainQueried { domain } => {
                 // Mimic the portal: every device resolves, access is asked for per flow.
                 let held = model.clients[&src].inner().device_pool_ids();
                 let result = portal.resolve_device_domain(&domain, &held);
@@ -1451,7 +1440,7 @@ impl RealTunnelSystem {
                         .handle_device_domain_resolved(domain, result, now);
                 });
             }
-            ClientEvent::DeviceDomainBrowsed { domain } => {
+            DeviceEvent::DeviceDomainBrowsed { domain } => {
                 let held = model.clients[&src].inner().device_pool_ids();
                 let result = portal.browse_device_domain(&domain, &held);
 
@@ -1461,9 +1450,9 @@ impl RealTunnelSystem {
                         .handle_device_domain_browsed(domain, result, now);
                 });
             }
-            ClientEvent::ResourcesChanged { .. }
-            | ClientEvent::DnsRecordsChanged { .. }
-            | ClientEvent::TunInterfaceUpdated(_) => {
+            DeviceEvent::ResourcesChanged { .. }
+            | DeviceEvent::DnsRecordsChanged { .. }
+            | DeviceEvent::TunInterfaceUpdated(_) => {
                 unreachable!("the client handles local events itself")
             }
         }
@@ -1557,7 +1546,7 @@ fn address_from_destination(
     destination: &Destination,
     state: &RealTunnelSystem,
     src: &IpAddr,
-    client_id: ClientId,
+    client_id: DeviceId,
 ) -> IpAddr {
     match destination {
         Destination::DomainName { resolved_ip, name } => {
@@ -1580,8 +1569,8 @@ fn address_from_destination(
 }
 
 fn deny_device_access(
-    clients: &mut BTreeMap<ClientId, Host<RealClient>>,
-    src: ClientId,
+    clients: &mut BTreeMap<DeviceId, Host<RealClient>>,
+    src: DeviceId,
     ipv4: Option<std::net::Ipv4Addr>,
     ipv6: Option<std::net::Ipv6Addr>,
     reason: FailReason,
@@ -1630,9 +1619,9 @@ fn hkdf(domain: &str, client_key: PublicKey, gateway_key: PublicKey) -> [u8; 32]
 }
 
 fn on_gateway_event(
-    src: GatewayId,
-    event: GatewayEvent,
-    clients: &mut BTreeMap<ClientId, Host<RealClient>>,
+    src: DeviceId,
+    event: DeviceEvent,
+    clients: &mut BTreeMap<DeviceId, Host<RealClient>>,
     gateway: &mut Host<RealGateway>,
     relays: &BTreeMap<RelayId, Host<RealRelay>>,
     portal: &mut FakePortal,
@@ -1640,7 +1629,7 @@ fn on_gateway_event(
     now: Instant,
 ) {
     match event {
-        GatewayEvent::AddedIceCandidates {
+        DeviceEvent::AddedIceCandidates {
             conn_id,
             candidates,
         } => {
@@ -1651,7 +1640,7 @@ fn on_gateway_event(
                 }
             })
         }
-        GatewayEvent::RemovedIceCandidates {
+        DeviceEvent::RemovedIceCandidates {
             conn_id,
             candidates,
         } => {
@@ -1662,7 +1651,7 @@ fn on_gateway_event(
                 }
             })
         }
-        GatewayEvent::ResolveDns(r) => {
+        DeviceEvent::ResolveDns(r) => {
             let client = clients.iter().find_map(|(id, client)| {
                 (client.inner().state().public_key() == r.client_public_key()).then_some(*id)
             });
@@ -1683,15 +1672,17 @@ fn on_gateway_event(
                 }
             })
         }
-        GatewayEvent::NoRelays { excluded_relay_ids } => {
-            let relays = portal.request_relays(
-                ClientOrGatewayId::Gateway(src),
-                &excluded_relay_ids,
-                relays,
-                now,
-            );
+        DeviceEvent::NoRelays { excluded_relay_ids } => {
+            let relays = portal.request_relays(src, &excluded_relay_ids, relays, now);
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
         }
+        // A Gateway reaches no resources itself and its TUN device is configured by the harness.
+        DeviceEvent::RequestAccess { .. }
+        | DeviceEvent::DeviceDomainQueried { .. }
+        | DeviceEvent::DeviceDomainBrowsed { .. }
+        | DeviceEvent::ResourcesChanged { .. }
+        | DeviceEvent::DnsRecordsChanged { .. }
+        | DeviceEvent::TunInterfaceUpdated(_) => {}
     }
 }
 

@@ -55,7 +55,7 @@ pub struct ResolverQuery {
 }
 
 impl ResolverQuery {
-    pub(crate) fn new_gateway(query: tunnel_proto::SiteDnsQuery, started_at: Instant) -> Self {
+    pub(crate) fn new_site(query: tunnel_proto::SiteDnsQuery, started_at: Instant) -> Self {
         let (local, remote, message, transport) = query.into_parts();
 
         Self {
@@ -83,7 +83,7 @@ impl ResolverQuery {
 /// A change in configuration for the resolver task.
 #[derive(Debug)]
 pub enum ResolverControl {
-    /// The system's resolvers changed, which bootstrap the DoH clients.
+    /// The system's resolvers changed. They bootstrap the DoH clients and resolve the queries of peers.
     SystemResolvers(Vec<IpAddr>),
     /// The configured upstreams changed. DoH clients connect ahead of the first query.
     Upstreams(Vec<dns::Upstream>),
@@ -325,8 +325,10 @@ impl Resolver {
     fn handle_control(&mut self, control: ResolverControl) {
         match control {
             ResolverControl::SystemResolvers(resolvers) => {
-                tracing::debug!(servers = ?resolvers, "Re-configuring bootstrap DNS client with new upstreams");
+                tracing::debug!(servers = ?resolvers, "Re-configuring bootstrap DNS client and nameservers with new upstreams");
 
+                self.nameservers
+                    .replace(resolvers.iter().copied().collect());
                 self.bootstrap_dns_client = BootstrapDnsClient::new(
                     self.udp_socket_factory.clone(),
                     self.tcp_socket_factory.clone(),

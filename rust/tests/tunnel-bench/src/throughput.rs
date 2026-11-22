@@ -1,4 +1,4 @@
-//! Per-packet work of a [`ClientTunnel`] / [`GatewayTunnel`] event loop, with real UDP sockets
+//! Per-packet work of a [`Tunnel`] event loop, with real UDP sockets
 //! and the real TUN worker threads over an in-memory device.
 //!
 //! The event loop runs on its own thread, kept busy by the TUN threads and a thread that stands in
@@ -23,9 +23,9 @@ use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 use socket_factory::{PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use tokio::runtime::Runtime;
-use tunnel::{ClientTunnel, GatewayTunnel, Role, TunChannelClosed, Tunnel};
+use tunnel::{TunChannelClosed, Tunnel};
 
-use crate::fixture::{AnyHost, RESOURCES, SIZE, Side, connect};
+use crate::fixture::{Host, RESOURCES, SIZE, Side, connect};
 use crate::measure::Stage;
 use crate::thread_cpu::thread_cpu_times;
 use device::Device;
@@ -236,7 +236,7 @@ struct EventLoop {
 
 impl EventLoop {
     /// Spawns the event loop of a tunnel bound to `socket`, with its TUN workers on `device`.
-    fn spawn(host: AnyHost, socket: SocketAddr, now: Instant, device: &Device) -> Self {
+    fn spawn(host: Host, socket: SocketAddr, now: Instant, device: &Device) -> Self {
         let tcp: Arc<dyn SocketFactory<TcpSocket>> = Arc::new(socket_factory::tcp);
         let udp: Arc<dyn SocketFactory<UdpSocket>> = Arc::new(move |addr| match addr {
             SocketAddr::V4(_) => socket_factory::udp(socket),
@@ -258,25 +258,19 @@ impl EventLoop {
         let handle = runtime.handle().clone();
         let _guard = handle.enter();
         let tun = device.io();
-        let thread = match host {
-            AnyHost::Client(client) => {
-                let mut tunnel =
-                    ClientTunnel::new(tcp, udp, socket.port(), BTreeSet::new(), false, now)
-                        .unwrap();
-                *tunnel.state_mut() = client.into_state();
-                tunnel.set_tun(tun);
-
-                run(tunnel, runtime, now)
-            }
-            AnyHost::Gateway(gateway) => {
-                let mut tunnel =
-                    GatewayTunnel::new(tcp, udp, socket.port(), BTreeSet::new(), now).unwrap();
-                *tunnel.state_mut() = gateway.into_state();
-                tunnel.set_tun(tun);
-
-                run(tunnel, runtime, now)
-            }
-        };
+        let mut tunnel = Tunnel::new(
+            tcp,
+            udp,
+            socket.port(),
+            BTreeSet::new(),
+            false,
+            BTreeSet::new(),
+            now,
+        )
+        .unwrap();
+        *tunnel.state_mut() = host.into_state();
+        tunnel.set_tun(tun);
+        let thread = run(tunnel, runtime, now);
 
         Self {
             thread,
@@ -298,10 +292,7 @@ impl EventLoop {
 }
 
 /// Polls `tunnel` on a thread of its own until its TUN device closes.
-fn run<R>(mut tunnel: Tunnel<R>, runtime: Runtime, now: Instant) -> JoinHandle<()>
-where
-    R: Role + Send + 'static,
-{
+fn run(mut tunnel: Tunnel, runtime: Runtime, now: Instant) -> JoinHandle<()> {
     std::thread::Builder::new()
         .name("fz-eventloop".to_owned())
         .spawn(move || {

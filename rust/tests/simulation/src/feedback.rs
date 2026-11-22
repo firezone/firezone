@@ -21,14 +21,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, IpStack, ResourceId};
+use connlib_model::{DeviceId, IpStack, ResourceId};
 use itertools::Itertools as _;
 use snownet::ConnectionPath;
 use tunnel_proto::dns;
 
 use crate::{
     fake_portal::FakePortal,
-    network::{EdgeConfig, FilterMode, Mapping},
+    network::{EdgeConfig, FilterMode, HostId, Mapping},
     probe::{
         Answer, DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome,
         ExpectedProbe, FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionRemote, Remote,
@@ -108,9 +108,9 @@ pub struct Recorder {
     changes: Vec<(Scope, Change)>,
     recovered: BTreeMap<RouteKey, usize>,
     idled_flows: BTreeMap<FlowId, Duration>,
-    successful_resource_gateways: BTreeMap<ClientResource, GatewayId>,
+    successful_resource_gateways: BTreeMap<ClientResource, DeviceId>,
     current_probe_on_idled_flow: Option<IdleFlowAttempt>,
-    current_dns_queries: Vec<(ClientId, DnsQuery)>,
+    current_dns_queries: Vec<(DeviceId, DnsQuery)>,
     current_tcp_flow: Option<FlowId>,
     tcp_flows_opened: BTreeMap<FlowId, usize>,
 }
@@ -338,7 +338,7 @@ impl Recorder {
     fn record_recovery(
         &mut self,
         model: &TunnelModel,
-        origin: ClientId,
+        origin: DeviceId,
         route: Route,
         path: PathFeedback,
     ) {
@@ -563,9 +563,9 @@ const KINDS: u16 = 26;
 
 #[derive(Clone, Copy)]
 enum Scope {
-    Client(ClientId),
+    Client(DeviceId),
     Resource(ResourceId),
-    Peers(ClientId, ClientId),
+    Peers(DeviceId, DeviceId),
     Everything,
 }
 
@@ -597,12 +597,12 @@ impl Scope {
 /// Keys resource routes by resource rather than gateway, so failing over does not reset them.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum RouteKey {
-    Resource(ClientId, ResourceId),
-    Peer(ClientId, ClientId),
+    Resource(DeviceId, ResourceId),
+    Peer(DeviceId, DeviceId),
 }
 
 impl RouteKey {
-    fn new(origin: ClientId, route: Route) -> Self {
+    fn new(origin: DeviceId, route: Route) -> Self {
         match route {
             Route::Resource { resource, .. } => RouteKey::Resource(origin, resource),
             Route::Peer(peer) => RouteKey::Peer(origin, peer),
@@ -612,7 +612,7 @@ impl RouteKey {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct ClientResource {
-    client: ClientId,
+    client: DeviceId,
     resource: ResourceId,
 }
 
@@ -691,7 +691,7 @@ impl PathFeedback {
 fn remote_path_feedback(
     model: &TunnelModel,
     state: &RealTunnelSystem,
-    origin: ClientId,
+    origin: DeviceId,
     remote: Remote,
 ) -> Option<PathFeedback> {
     let peer = match remote {
@@ -700,14 +700,14 @@ fn remote_path_feedback(
         }
         Remote::Client(peer) => peer,
     };
-    let origin_edge = model.network.edge_config(origin);
-    let remote_edge = model.network.edge_config(peer);
+    let origin_edge = model.network.edge_config(HostId::Client(origin));
+    let remote_edge = model.network.edge_config(HostId::Client(peer));
     let selected = state
         .clients
         .get(&origin)?
         .inner()
         .state()
-        .connection_path(ClientOrGatewayId::Client(peer))?;
+        .connection_path(peer)?;
 
     Some(PathFeedback::new(origin_edge, remote_edge, selected))
 }
@@ -715,17 +715,17 @@ fn remote_path_feedback(
 fn gateway_path_feedback(
     model: &TunnelModel,
     state: &RealTunnelSystem,
-    origin: ClientId,
-    gateway: GatewayId,
+    origin: DeviceId,
+    gateway: DeviceId,
 ) -> Option<PathFeedback> {
-    let origin_edge = model.network.edge_config(origin);
-    let gateway_edge = model.network.edge_config(gateway);
+    let origin_edge = model.network.edge_config(HostId::Client(origin));
+    let gateway_edge = model.network.edge_config(HostId::Gateway(gateway));
     let selected = state
         .clients
         .get(&origin)?
         .inner()
         .state()
-        .connection_path(ClientOrGatewayId::Gateway(gateway))?;
+        .connection_path(gateway)?;
     Some(PathFeedback::new(origin_edge, gateway_edge, selected))
 }
 
@@ -1044,7 +1044,7 @@ fn record_shared_dns_resource_gateway_feedback(model: &TunnelModel) {
             .collect::<Vec<_>>();
 
         for domain in client.dns_records.keys() {
-            let mut stacks_by_gateway = BTreeMap::<GatewayId, Vec<IpStack>>::new();
+            let mut stacks_by_gateway = BTreeMap::<DeviceId, Vec<IpStack>>::new();
             for (gateway, resource) in &resources {
                 if dns::is_subdomain(domain, &resource.address) {
                     stacks_by_gateway

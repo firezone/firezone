@@ -1432,6 +1432,7 @@ dependencies = [
  "flow-log-upload",
  "flow-log-writer",
  "futures",
+ "futures-bounded",
  "logging",
  "opentelemetry",
  "otel-attributes",
@@ -1527,7 +1528,6 @@ checksum = "baf0a07a401f374238ab8e2f11a104d2851bf9ce711ec69804834de8af45c7af"
 name = "connlib-model"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "ip_network",
  "itertools 0.15.0",
  "sanstun",
@@ -9227,11 +9227,13 @@ dependencies = [
  "smallvec",
  "snownet",
  "socket-factory",
+ "socket2",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
  "tun",
  "tunnel-proto",
+ "userspace-forwarder",
 ]
 
 [[package]]
@@ -9588,6 +9590,15 @@ dependencies = [
  "regex",
  "serde",
  "url",
+]
+
+[[package]]
+name = "userspace-forwarder"
+version = "0.1.0"
+dependencies = [
+ "ip-packet",
+ "l3-tcp",
+ "tracing",
 ]
 
 [[package]]

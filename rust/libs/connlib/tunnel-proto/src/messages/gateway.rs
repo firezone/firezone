@@ -4,7 +4,7 @@ use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
     SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
-use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
+use connlib_model::{DeviceId, IceCandidate, RelayId, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, VecSkipError, serde_as};
@@ -109,7 +109,7 @@ pub struct RemoveResource {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct RejectAccess {
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     pub resource_id: ResourceId,
 }
 
@@ -117,7 +117,7 @@ pub struct RejectAccess {
 /// key, e.g. after a crash that sent no `goodbye`.
 #[derive(Debug, Deserialize, Clone)]
 pub struct PublicKeyChanged {
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     pub public_key: Key,
 }
 
@@ -140,7 +140,7 @@ pub enum IngressMessages {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Client {
-    pub id: ClientId,
+    pub id: DeviceId,
     pub public_key: Key,
     pub preshared_key: SecretKey,
     pub ipv4: Ipv4Addr,
@@ -172,7 +172,7 @@ pub struct CreateAuthorization {
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct AccessAuthorizationExpiryUpdated {
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     pub resource_id: ResourceId,
     #[serde_as(as = "DurationSeconds<u64>")]
     pub expires_at: Duration,
@@ -182,7 +182,7 @@ pub struct AccessAuthorizationExpiryUpdated {
 #[derive(Debug, Serialize, Clone, PartialEq)]
 pub struct ClientsIceCandidates {
     /// Client's id the ice candidates are meant for
-    pub client_ids: Vec<ClientId>,
+    pub client_ids: Vec<DeviceId>,
     /// Actual RTC ice candidates
     pub candidates: BTreeSet<IceCandidate>,
 }
@@ -192,7 +192,7 @@ pub struct ClientsIceCandidates {
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientIceCandidates {
     /// Client's id the ice candidates came from
-    pub client_id: ClientId,
+    pub client_id: DeviceId,
     /// Actual RTC ice candidates
     #[serde_as(as = "serde_with::VecSkipError<_>")]
     pub candidates: Vec<IceCandidate>,

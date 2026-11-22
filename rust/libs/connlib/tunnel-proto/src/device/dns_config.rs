@@ -8,7 +8,7 @@ use ip_network::IpNetwork;
 use itertools::Itertools as _;
 
 use crate::{
-    client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
+    device::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
     dns::{self, DNS_PORT},
 };
 

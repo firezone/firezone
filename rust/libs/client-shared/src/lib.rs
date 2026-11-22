@@ -4,15 +4,16 @@
 pub use connlib_model::StaticSecret;
 pub use eventloop::DisconnectError;
 pub use tunnel::TunConfig;
-use tunnel::messages::client::EgressMessages;
-pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
+pub use tunnel::messages::client::ResourceDescription;
+use tunnel::messages::device::EgressMessages;
+pub use tunnel::messages::device::IngressMessages;
 
 use anyhow::Result;
 use connlib_model::{ResourceId, ResourceView};
 use eventloop::{Command, Eventloop};
 use futures::StreamExt;
 use futures::future::{MaybeDone, maybe_done};
-use phoenix_channel::{PhoenixChannel, PublicKeyParam};
+use phoenix_channel::{DeviceProtocol, PhoenixChannel, PublicKeyParam};
 use serde::{Deserialize, Serialize};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::HashSet;
@@ -32,7 +33,16 @@ use crate::eventloop::UserNotification;
 
 mod eventloop;
 
-const PHOENIX_TOPIC: &str = "client";
+/// The channel topic a client joins on the portal.
+pub const PHOENIX_TOPIC: &str = "device";
+
+/// What this build speaks on `/device/v1`, to declare when connecting.
+pub fn device_protocol() -> DeviceProtocol {
+    DeviceProtocol {
+        versions: tunnel::PROTOCOL_VERSIONS,
+        frostlink: tunnel::messages::SnownetCapabilities::LOCAL.frostlink,
+    }
+}
 
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///

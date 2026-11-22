@@ -864,9 +864,9 @@ mod tests {
 
     #[test]
     fn device_pools_list_their_connected_devices() {
-        use connlib_model::{ClientId, DevicePoolResourceView};
+        use connlib_model::{DeviceId, DevicePoolResourceView};
         use std::net::{Ipv4Addr, Ipv6Addr};
-        let alpha = ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111);
+        let alpha = DeviceId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111);
         let alpha_ip = Ipv4Addr::new(100, 64, 0, 1);
         let alpha_ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1]);
         let resources = vec![
@@ -925,11 +925,11 @@ mod tests {
 
     #[test]
     fn devices_submenu_truncates_beyond_inline_limit() {
-        use connlib_model::ClientId;
+        use connlib_model::DeviceId;
         use std::net::{Ipv4Addr, Ipv6Addr};
         let connected_devices: Vec<ConnectedDeviceView> = (0..MAX_DEVICES_INLINE + 3)
             .map(|i| ConnectedDeviceView {
-                id: ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111 + i as u128),
+                id: DeviceId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111 + i as u128),
                 name: format!("Device {i}"),
                 slug: format!("device-{i}"),
                 tun_ipv4: Ipv4Addr::new(100, 64, 0, i as u8),

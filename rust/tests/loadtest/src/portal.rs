@@ -11,7 +11,8 @@
 use anyhow::{Context as _, Result, anyhow, bail};
 use backoff::ExponentialBackoffBuilder;
 use phoenix_channel::{
-    DeviceInfo, Event, LoginUrl, PhoenixChannel, PublicKeyParam, get_user_agent, http_error_body,
+    DeviceInfo, DeviceProtocol, Event, LoginUrl, PhoenixChannel, PublicKeyParam, get_user_agent,
+    http_error_body,
 };
 use secrecy::SecretString;
 use serde::Deserialize;
@@ -59,12 +60,16 @@ pub async fn fetch_relay(
     let token = load_token(token_path)?;
 
     let device_id = uuid::Uuid::new_v4().to_string();
-    let url = LoginUrl::client(
+    let url = LoginUrl::device(
         portal_url.clone(),
         device_id,
         None,
         DeviceInfo::default(),
         None,
+        DeviceProtocol {
+            versions: 3..=5,
+            frostlink: true,
+        },
     )
     .map_err(|e| anyhow!("invalid portal URL: {e:?}"))?;
 
@@ -76,7 +81,7 @@ pub async fn fetch_relay(
         // The portal only accepts connections from recognised clients, so we
         // present the loadtest as a headless-client.
         get_user_agent("headless-client", env!("CARGO_PKG_VERSION")),
-        "client",
+        "device",
         (),
         || ExponentialBackoffBuilder::default().build(),
         socket_factory,

@@ -6,7 +6,7 @@ use std::{
 };
 
 use arbitrary::Unstructured;
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
+use connlib_model::{DeviceId, RelayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::{
     Ipv4Network, Ipv6Network,
@@ -65,8 +65,7 @@ pub struct TunnelGenerator<'a> {
     tunnel_ip6: Ipv6Cursor,
 
     next_site: u64,
-    next_client: u64,
-    next_gateway: u64,
+    next_device: u64,
     next_relay: u64,
     next_resource: u64,
 
@@ -107,8 +106,7 @@ impl<'a> TunnelGenerator<'a> {
             tunnel_ip4: Ipv4Cursor::over(tunnel_proto::IPV4_TUNNEL),
             tunnel_ip6: Ipv6Cursor::over(tunnel_proto::IPV6_TUNNEL),
             next_site: 0,
-            next_client: 0,
-            next_gateway: 0,
+            next_device: 0,
             next_relay: 0,
             next_resource: 0,
             next_key: 0,
@@ -219,18 +217,11 @@ impl<'a> TunnelGenerator<'a> {
         SiteId::from_u128(u128::from(n) << 64)
     }
 
-    pub(super) fn fresh_client_id(&mut self) -> ClientId {
-        let n = self.next_client;
-        self.next_client += 1;
+    pub(super) fn fresh_device_id(&mut self) -> DeviceId {
+        let n = self.next_device;
+        self.next_device += 1;
 
-        ClientId::from_u128(u128::from(n) << 64)
-    }
-
-    pub(super) fn fresh_gateway_id(&mut self) -> GatewayId {
-        let n = self.next_gateway;
-        self.next_gateway += 1;
-
-        GatewayId::from_u128(u128::from(n) << 64)
+        DeviceId::from_u128(u128::from(n) << 64)
     }
 
     pub(super) fn fresh_relay_id(&mut self) -> RelayId {

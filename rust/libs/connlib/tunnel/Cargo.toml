@@ -28,11 +28,13 @@ rand = { workspace = true }
 smallvec = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
+socket2 = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "time"] }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 tunnel-proto = { workspace = true, features = ["telemetry"] }
+userspace-forwarder = { workspace = true }
 
 [dev-dependencies]
 doh-test-server = { workspace = true }

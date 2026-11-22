@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use connlib_model::{ClientOrGatewayId, Site};
+use connlib_model::Site;
 use dns_types::DomainName;
 use itertools::Itertools as _;
 use smallvec::SmallVec;
@@ -26,7 +26,7 @@ use crate::network::Host;
 use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::tunnel_model::TunnelModel;
-use crate::tunnel_transition::{Destination, Seq, Transition};
+use crate::tunnel_transition::{Destination, NodeId, Seq, Transition};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TransitionKind {
@@ -661,21 +661,17 @@ fn weighted_choose(g: &mut TunnelGenerator, opts: &[(TransitionKind, u32)]) -> T
 }
 
 /// The `(recipient, remote)` pairs of nodes that may connect to each other.
-fn key_change_recipients(state: &TunnelModel) -> Vec<(ClientOrGatewayId, ClientOrGatewayId)> {
-    let clients = state.clients.keys().copied().map(ClientOrGatewayId::Client);
-    let gateways = state
-        .gateways
-        .keys()
-        .copied()
-        .map(ClientOrGatewayId::Gateway);
+fn key_change_recipients(state: &TunnelModel) -> Vec<(NodeId, NodeId)> {
+    let clients = state.clients.keys().copied().map(NodeId::Client);
+    let gateways = state.gateways.keys().copied().map(NodeId::Gateway);
 
     clients
         .clone()
         .cartesian_product(clients.chain(gateways.clone()))
         .filter(|(recipient, remote)| recipient != remote)
         .flat_map(|(client, remote)| match remote {
-            ClientOrGatewayId::Client(_) => vec![(client, remote)],
-            ClientOrGatewayId::Gateway(_) => vec![(client, remote), (remote, client)],
+            NodeId::Client(_) => vec![(client, remote)],
+            NodeId::Gateway(_) => vec![(client, remote), (remote, client)],
         })
         .collect()
 }

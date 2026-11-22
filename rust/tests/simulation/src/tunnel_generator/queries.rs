@@ -7,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::{DeviceId, ResourceId};
 use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;
@@ -40,7 +40,7 @@ impl TunnelModel {
     /// Peer authorizations a receiving client can expire while the sender keeps its own.
     pub(crate) fn expirable_peer_authorizations(
         &self,
-    ) -> Vec<(ClientId, ClientId, BTreeSet<ResourceId>)> {
+    ) -> Vec<(DeviceId, DeviceId, BTreeSet<ResourceId>)> {
         let mut expirable = Vec::new();
 
         for (peer, state) in &self.clients {
@@ -113,7 +113,7 @@ impl TunnelModel {
     }
 
     /// Whether the client still sends from `src` and knows where `dst` points.
-    fn can_send(&self, client_id: ClientId, src: IpAddr, dst: &Destination) -> bool {
+    fn can_send(&self, client_id: DeviceId, src: IpAddr, dst: &Destination) -> bool {
         let client = self.clients[&client_id].inner();
         let resolved_domains = match src {
             IpAddr::V4(ip) if ip == client.tunnel_ip4 => client.resolved_v4_domains(),
@@ -129,7 +129,7 @@ impl TunnelModel {
         }
     }
 
-    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network, Vec<Filter>)> {
+    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(DeviceId, Ipv4Network, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -141,7 +141,7 @@ impl TunnelModel {
             .collect()
     }
 
-    pub(crate) fn resolved_v4_domains(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
+    pub(crate) fn resolved_v4_domains(&self) -> Vec<(DeviceId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -156,7 +156,7 @@ impl TunnelModel {
     pub(crate) fn resolved_ip4_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
-    ) -> Vec<(ClientId, Ipv4Addr)> {
+    ) -> Vec<(DeviceId, Ipv4Addr)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -168,7 +168,7 @@ impl TunnelModel {
             .collect()
     }
 
-    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv6Network, Vec<Filter>)> {
+    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<(DeviceId, Ipv6Network, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -180,7 +180,7 @@ impl TunnelModel {
             .collect()
     }
 
-    pub(crate) fn resolved_v6_domains(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
+    pub(crate) fn resolved_v6_domains(&self) -> Vec<(DeviceId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -195,7 +195,7 @@ impl TunnelModel {
     pub(crate) fn resolved_ip6_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
-    ) -> Vec<(ClientId, Ipv6Addr)> {
+    ) -> Vec<(DeviceId, Ipv6Addr)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -235,7 +235,7 @@ impl TunnelModel {
     pub(crate) fn reachable_dns_servers(
         &self,
         portal: &FakePortal,
-    ) -> Vec<(ClientId, dns::Upstream)> {
+    ) -> Vec<(DeviceId, dns::Upstream)> {
         let upstream_do53 = portal.upstream_do53();
 
         self.clients
@@ -269,7 +269,7 @@ impl TunnelModel {
             .collect()
     }
 
-    pub(crate) fn all_domains(&self) -> Vec<(ClientId, DomainName, Vec<RecordType>)> {
+    pub(crate) fn all_domains(&self) -> Vec<(DeviceId, DomainName, Vec<RecordType>)> {
         fn domains_and_rtypes(
             records: &DnsRecords,
         ) -> impl Iterator<Item = (DomainName, Vec<RecordType>)> {
@@ -349,7 +349,7 @@ impl TunnelModel {
     pub(crate) fn dns_resources_on_any_client(
         &self,
         portal: &FakePortal,
-    ) -> Vec<(ClientId, client::DnsResource)> {
+    ) -> Vec<(DeviceId, client::DnsResource)> {
         let dns_resources = portal
             .all_resources()
             .into_iter()
@@ -372,7 +372,7 @@ impl TunnelModel {
             .collect()
     }
 
-    pub(crate) fn connected_gateway_ipv4_ips(&self) -> Vec<(ClientId, Ipv4Network)> {
+    pub(crate) fn connected_gateway_ipv4_ips(&self) -> Vec<(DeviceId, Ipv4Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -390,7 +390,7 @@ impl TunnelModel {
             .collect()
     }
 
-    pub(crate) fn connected_gateway_ipv6_ips(&self) -> Vec<(ClientId, Ipv6Network)> {
+    pub(crate) fn connected_gateway_ipv6_ips(&self) -> Vec<(DeviceId, Ipv6Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -408,7 +408,7 @@ impl TunnelModel {
             .collect()
     }
 
-    pub(crate) fn all_client_ids(&self) -> Vec<ClientId> {
+    pub(crate) fn all_client_ids(&self) -> Vec<DeviceId> {
         self.clients.keys().copied().collect()
     }
 
@@ -430,7 +430,7 @@ impl TunnelModel {
     pub(crate) fn pool_routed_other_client_tun_ips(
         &self,
         portal: &FakePortal,
-    ) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
+    ) -> Vec<(DeviceId, IpAddr, Vec<Filter>)> {
         let online_ips_by_id = self
             .clients
             .iter()

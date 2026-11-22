@@ -16,7 +16,7 @@ use itertools::Itertools as _;
 use logging::err_with_src;
 
 use crate::{
-    client::IpProvider,
+    device::IpProvider,
     dns::pattern::{Candidate, Pattern},
     p2p_control::dns_resource_nat::ProxyIps,
 };

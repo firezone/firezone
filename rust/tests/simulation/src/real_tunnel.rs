@@ -12,11 +12,11 @@ use itertools::Itertools as _;
 use snownet::Transmit;
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::PacketBatch;
-use tunnel::{ClientState, FakeTunnelEnds, ResolverQuery, Role, Tunnel};
+use tunnel::{DeviceEvent, DeviceState, FakeTunnelEnds, ResolverQuery, Tunnel};
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
-pub(crate) struct RealTunnel<R> {
-    inner: Tunnel<R>,
+pub(crate) struct RealTunnel {
+    inner: Tunnel,
     pub(crate) ends: FakeTunnelEnds,
     /// The packets the TUN device reads on the next poll.
     pending_tun_reads: Vec<IpPacket>,
@@ -28,8 +28,8 @@ pub(crate) struct RealTunnel<R> {
     woken_since_idle: Arc<AtomicBool>,
 }
 
-impl<R: Role> RealTunnel<R> {
-    pub(crate) fn new(state: R) -> Self {
+impl RealTunnel {
+    pub(crate) fn new(state: DeviceState) -> Self {
         let (tunnel, ends) = Tunnel::fake(state);
 
         Self {
@@ -42,11 +42,11 @@ impl<R: Role> RealTunnel<R> {
         }
     }
 
-    pub(crate) fn inner(&self) -> &Tunnel<R> {
+    pub(crate) fn inner(&self) -> &Tunnel {
         &self.inner
     }
 
-    pub(crate) fn inner_mut(&mut self) -> &mut Tunnel<R> {
+    pub(crate) fn inner_mut(&mut self) -> &mut Tunnel {
         self.idle = false;
 
         &mut self.inner
@@ -108,7 +108,7 @@ impl<R: Role> RealTunnel<R> {
     /// Handles a deadline that has passed and polls the tunnel once.
     ///
     /// Returns the event it emitted and whether it has more to do at `now`.
-    pub(crate) fn poll_event(&mut self, now: Instant) -> (Option<R::Event>, bool) {
+    pub(crate) fn poll_event(&mut self, now: Instant) -> (Option<DeviceEvent>, bool) {
         self.flush_tun_reads();
 
         if self.alarm.is_some_and(|alarm| alarm <= now) {
@@ -178,9 +178,6 @@ impl<R: Role> RealTunnel<R> {
                 .expect("TUN channel has room");
         }
     }
-}
-
-impl RealTunnel<ClientState> {
     /// Shuts the tunnel down, returning the datagrams it sent on the way out.
     pub(crate) fn shut_down(mut self, now: Instant) -> Vec<Transmit> {
         self.inner_mut().state_mut().shut_down(now);

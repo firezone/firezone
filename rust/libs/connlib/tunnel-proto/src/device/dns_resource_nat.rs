@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Result;
-use connlib_model::{GatewayId, ResourceId};
+use connlib_model::{DeviceId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
@@ -24,12 +24,12 @@ use crate::{
 #[derive(Default)]
 pub struct DnsResourceNat {
     inner: HashMap<
-        (GatewayId, DnsResourceDomainId, ResourceId),
+        (DeviceId, DnsResourceDomainId, ResourceId),
         (DnsResourceDomain, State, IpPacket),
         FastRandomState,
     >,
 
-    assigned_ips_packets: VecDeque<(GatewayId, DnsResourceDomain, ResourceId, IpPacket)>,
+    assigned_ips_packets: VecDeque<(DeviceId, DnsResourceDomain, ResourceId, IpPacket)>,
 }
 
 impl DnsResourceNat {
@@ -40,7 +40,7 @@ impl DnsResourceNat {
     pub fn update(
         &mut self,
         domain: DnsResourceDomain,
-        gid: GatewayId,
+        gid: DeviceId,
         rid: ResourceId,
         proxy_ips: ProxyIps,
         packets_for_domain: VecDeque<IpPacket>,
@@ -200,7 +200,7 @@ impl DnsResourceNat {
     /// created, the packet gets buffered instead.
     pub fn handle_outgoing(
         &mut self,
-        gid: GatewayId,
+        gid: DeviceId,
         domain: &DnsResourceDomain,
         rid: ResourceId,
         packet: IpPacket,
@@ -280,7 +280,7 @@ impl DnsResourceNat {
         }
     }
 
-    pub fn clear_by_gateway(&mut self, gid: &GatewayId) {
+    pub fn clear_by_gateway(&mut self, gid: &DeviceId) {
         for _ in self
             .inner
             .extract_if(|(candidate, _, _), _| candidate == gid)
@@ -296,7 +296,7 @@ impl DnsResourceNat {
 
     pub(crate) fn on_domain_status(
         &mut self,
-        gid: GatewayId,
+        gid: DeviceId,
         domain: DnsResourceDomain,
         res: p2p_control::dns_resource_nat::DomainStatus,
     ) -> impl IntoIterator<Item = IpPacket> {
@@ -329,7 +329,7 @@ impl DnsResourceNat {
         into_iter(Some(nat_state.confirm()))
     }
 
-    pub fn poll_packet(&mut self) -> Option<(GatewayId, DnsResourceDomain, ResourceId, IpPacket)> {
+    pub fn poll_packet(&mut self) -> Option<(DeviceId, DnsResourceDomain, ResourceId, IpPacket)> {
         self.assigned_ips_packets.pop_front()
     }
 }
@@ -865,7 +865,7 @@ mod tests {
 
     const EXAMPLE_COM: DomainNameRef =
         unsafe { DomainNameRef::from_octets_unchecked(b"\x08example\x03com\x00") };
-    const GID: GatewayId = GatewayId::from_u128(1);
+    const GID: DeviceId = DeviceId::from_u128(1);
     const RID: ResourceId = ResourceId::from_u128(2);
     const RID2: ResourceId = ResourceId::from_u128(3);
     fn example_com() -> DnsResourceDomain {

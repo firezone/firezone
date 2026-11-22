@@ -190,6 +190,68 @@ where
     }
 }
 
+/// Creates a TCP segment with its sequence and acknowledgement numbers set, enough to
+/// drive a handshake and a data exchange against a TCP stack.
+#[expect(clippy::too_many_arguments, reason = "TCP headers have many fields.")]
+pub fn tcp_segment<IP>(
+    saddr: IP,
+    daddr: IP,
+    sport: u16,
+    dport: u16,
+    seq: u32,
+    ack: u32,
+    flags: TcpSegmentFlags,
+    payload: &[u8],
+) -> Result<IpPacket>
+where
+    IP: Into<IpAddr>,
+{
+    let TcpSegmentFlags {
+        syn,
+        ack: ack_flag,
+        fin,
+        rst,
+        psh,
+    } = flags;
+
+    let mut tcp_flags = IngotTcpFlags::empty();
+    tcp_flags.set(IngotTcpFlags::SYN, syn);
+    tcp_flags.set(IngotTcpFlags::ACK, ack_flag);
+    tcp_flags.set(IngotTcpFlags::FIN, fin);
+    tcp_flags.set(IngotTcpFlags::RST, rst);
+    tcp_flags.set(IngotTcpFlags::PSH, psh);
+
+    let tcp = Tcp {
+        source: sport,
+        destination: dport,
+        sequence: seq,
+        acknowledgement: ack,
+        data_offset: 5,
+        flags: tcp_flags,
+        window_size: u16::MAX,
+        ..Default::default()
+    };
+
+    match (saddr.into(), daddr.into()) {
+        (IpAddr::V4(src), IpAddr::V4(dst)) => {
+            ipv4_packet(src, dst, 64, IpProtocol::TCP, tcp, payload)
+        }
+        (IpAddr::V6(src), IpAddr::V6(dst)) => {
+            ipv6_packet(src, dst, 64, IpProtocol::TCP, tcp, payload)
+        }
+        _ => bail!(IpVersionMismatch),
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TcpSegmentFlags {
+    pub syn: bool,
+    pub ack: bool,
+    pub fin: bool,
+    pub rst: bool,
+    pub psh: bool,
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TcpFlags {
     pub syn: bool,
@@ -240,6 +302,71 @@ pub fn icmp_dest_unreachable_network(original_packet: &IpPacket) -> Result<IpPac
         crate::icmpv4::DestUnreachableHeader::Network,
         crate::icmpv6::DestUnreachableCode::Address,
     )
+}
+
+pub fn icmp_dest_unreachable_port(original_packet: &IpPacket) -> Result<IpPacket> {
+    icmp_dest_unreachable(
+        original_packet,
+        crate::icmpv4::DestUnreachableHeader::Port,
+        crate::icmpv6::DestUnreachableCode::Port,
+    )
+}
+
+pub fn icmp_dest_unreachable_host(original_packet: &IpPacket) -> Result<IpPacket> {
+    icmp_dest_unreachable(
+        original_packet,
+        crate::icmpv4::DestUnreachableHeader::Host,
+        crate::icmpv6::DestUnreachableCode::Address,
+    )
+}
+
+/// An ICMP time-exceeded error from the router at `from`, quoting `original_packet`.
+pub fn icmp_time_exceeded(original_packet: &IpPacket, from: IpAddr) -> Result<IpPacket> {
+    anyhow::ensure!(
+        original_packet.icmp_error()?.is_none(),
+        "Cannot generate an ICMP error in response to another ICMP error"
+    );
+
+    let src = original_packet.source();
+
+    match (from, src) {
+        (IpAddr::V4(from), IpAddr::V4(src)) => {
+            let payload = original_packet.packet();
+            let header_len = original_packet
+                .ipv4_header()
+                .context("Not an IPv4 packet")?
+                .header_len();
+            let len = std::cmp::min(payload.len(), header_len + 8);
+
+            icmpv4_packet(
+                from,
+                src,
+                64,
+                crate::Icmpv4Type::TimeExceeded(
+                    crate::icmpv4::TimeExceededCode::TTL_EXCEEDED_IN_TRANSIT,
+                ),
+                &payload[..len],
+            )
+        }
+        (IpAddr::V6(from), IpAddr::V6(src)) => {
+            const MAX_ICMP_ERROR_PAYLOAD_LEN: usize =
+                MAX_IP_SIZE - Ipv6HeaderSlice::LEN - crate::Icmpv6Slice::HEADER_LEN;
+
+            let payload = original_packet.packet();
+            let len = std::cmp::min(payload.len(), MAX_ICMP_ERROR_PAYLOAD_LEN);
+
+            icmpv6_packet(
+                from,
+                src,
+                64,
+                crate::Icmpv6Type::TimeExceeded(
+                    crate::icmpv6::TimeExceededCode::HOP_LIMIT_EXCEEDED,
+                ),
+                &payload[..len],
+            )
+        }
+        _ => bail!("Invalid IP packet: Inconsistent IP address versions"),
+    }
 }
 
 fn icmp_dest_unreachable(

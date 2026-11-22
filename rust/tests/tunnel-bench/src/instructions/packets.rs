@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use crate::callgrind;
-use crate::fixture::{AnyHost, Host, Resource, connect, tun_batches};
+use crate::fixture::{Host, Resource, connect, tun_batches};
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::PacketBatch;
 
@@ -24,7 +24,7 @@ pub enum Direction {
 /// Packets for one side of an established connection to handle, as the TUN device reads them or
 /// the socket receives them from the other side.
 pub struct Packets {
-    host: AnyHost,
+    host: Host,
     inputs: VecDeque<Input>,
     now: Instant,
 }
@@ -86,19 +86,11 @@ impl Packets {
     /// Hands the inputs to the event loop as fast as it takes them, until `count` packets came
     /// out of it.
     fn send(&mut self, count: usize) {
-        match &mut self.host {
-            AnyHost::Client(host) => send(host, &mut self.inputs, count, self.now),
-            AnyHost::Gateway(host) => send(host, &mut self.inputs, count, self.now),
-        }
+        send(&mut self.host, &mut self.inputs, count, self.now);
     }
 }
 
-fn send<R: tunnel::Role>(
-    host: &mut Host<R>,
-    inputs: &mut VecDeque<Input>,
-    count: usize,
-    now: Instant,
-) {
+fn send(host: &mut Host, inputs: &mut VecDeque<Input>, count: usize, now: Instant) {
     let mut delivered = 0;
 
     while delivered < count {

@@ -59,7 +59,7 @@ impl GatewayOnClient {
             IpAddr::V4(_) => self.gateway_tun.v4.into(),
             IpAddr::V6(_) => self.gateway_tun.v6.into(),
         };
-        let new_dst_port = crate::gateway::TUN_DNS_PORT;
+        let new_dst_port = crate::TUN_DNS_PORT;
 
         SocketAddr::new(new_dst_ip, new_dst_port)
     }

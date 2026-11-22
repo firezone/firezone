@@ -1,6 +1,6 @@
 use crate::expiring_map::ExpiringMap;
 use crate::p2p_control::no_authorization::{self, NoAuthorization};
-use connlib_model::ClientId;
+use connlib_model::DeviceId;
 use ip_packet::IpPacket;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -8,13 +8,13 @@ use std::time::{Duration, Instant};
 /// Limits authorization rejection events per client and destination IP.
 #[derive(Default)]
 pub(crate) struct AuthorizationRejections {
-    recently_notified: ExpiringMap<(ClientId, IpAddr), ()>,
+    recently_notified: ExpiringMap<(DeviceId, IpAddr), ()>,
 }
 
 impl AuthorizationRejections {
     pub(crate) fn on_rejected(
         &mut self,
-        client: ClientId,
+        client: DeviceId,
         rejection: NoAuthorization,
         now: Instant,
     ) -> Option<IpPacket> {
@@ -57,7 +57,7 @@ mod tests {
     fn retries_on_rejected_traffic(milliseconds: u64, expected: bool) {
         let mut rejections = AuthorizationRejections::default();
         let now = Instant::now();
-        let client = ClientId::from_u128(1);
+        let client = DeviceId::from_u128(1);
         let rejection = rejection("10.0.0.1", 443);
 
         assert!(rejections.on_rejected(client, rejection, now).is_some());
@@ -72,8 +72,8 @@ mod tests {
     fn limits_each_client_and_ip_independently_of_ports() {
         let mut rejections = AuthorizationRejections::default();
         let now = Instant::now();
-        let client = ClientId::from_u128(1);
-        let other_client = ClientId::from_u128(2);
+        let client = DeviceId::from_u128(1);
+        let other_client = DeviceId::from_u128(2);
         let first = rejection("10.0.0.1", 443);
         let other_port = rejection("10.0.0.1", 80);
         let other_ip = rejection("10.0.0.2", 443);

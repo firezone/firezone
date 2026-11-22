@@ -155,12 +155,12 @@ Where no rule fits, apply the principle.
   A look-alike encodes your assumption about the dependency, which is what the test should check.
 - For a deterministic RNG, use a seeded `StdRng`.
   Write your own only when the test depends on its exact output.
-- For connlib behaviour that only matters in the context of packet flow, extend the `tunnel` target of the [fuzzer](tests/fuzz) (a new `Transition`, sampling a new input) instead of writing unit tests that construct `ClientState` or `GatewayState`.
+- For connlib behaviour that only matters in the context of packet flow, extend the `tunnel` target of the [fuzzer](tests/fuzz) (a new `Transition`, sampling a new input) instead of writing unit tests that construct `DeviceState`.
   Self-contained unit tests for small components and wire formats are fine.
 
 ## Architecture
 
-- State components such as `ClientState` and `GatewayState` are sans-IO: no IO, no reading of the clock or the environment, no spawned tasks, no `.await` and no platform-specific code.
+- State components such as `DeviceState` are sans-IO: no IO, no reading of the clock or the environment, no spawned tasks, no `.await` and no platform-specific code.
   Inputs, including the current time, are passed in; outputs are returned or emitted as events.
 - `Tunnel` and the event-loops are glue only.
   Logic belongs on the state component, even if that means a bit of duplication between Client and Gateway.
