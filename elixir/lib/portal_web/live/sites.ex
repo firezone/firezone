@@ -62,7 +62,7 @@ defmodule PortalWeb.Sites do
       {:noreply,
        socket
        |> merge_state(:site_panel, %{
-         tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens, socket.assigns.unified_devices?),
+         tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
          view: :gateways,
          confirm_delete_site: false,
          expanded_gateway_id: nil
@@ -122,7 +122,7 @@ defmodule PortalWeb.Sites do
     {:noreply,
      socket
      |> merge_state(:site_panel, %{
-       tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens, socket.assigns.unified_devices?),
+       tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
        view: :edit_site,
        confirm_delete_site: false
      })
@@ -187,7 +187,7 @@ defmodule PortalWeb.Sites do
       selected_site: site,
       site_panel:
         Map.merge(base_site_panel_state(), %{
-          tab: parse_panel_tab(params, gateway_tokens, socket.assigns.unified_devices?),
+          tab: parse_panel_tab(params, gateway_tokens),
           devices: load_site_devices(site.id, socket.assigns.unified_devices?, socket.assigns.subject),
           gateways: gateways,
           total_gateway_count: total_gateway_count,
@@ -1465,7 +1465,7 @@ defmodule PortalWeb.Sites do
   defp close_add_devices(socket) do
     socket
     |> cancel_async(:device_search)
-    |> merge_state(:site_panel, %{view: :gateways, tab: :devices})
+    |> merge_state(:site_panel, %{view: :gateways, tab: :gateways})
     |> assign(devices_picker: nil)
   end
 
@@ -1519,14 +1519,13 @@ defmodule PortalWeb.Sites do
   defp parse_site_tab("resources"), do: :resources
   defp parse_site_tab("gateways"), do: :gateways
   defp parse_site_tab("tokens"), do: :tokens
-  defp parse_site_tab("devices"), do: :devices
   defp parse_site_tab(_), do: :gateways
 
-  defp parse_panel_tab(params, gateway_tokens, unified_devices?) do
-    case params |> Map.get("tab", "gateways") |> parse_site_tab() do
-      :devices when not unified_devices? -> :gateways
-      tab -> sanitize_panel_tab(tab, gateway_tokens)
-    end
+  defp parse_panel_tab(params, gateway_tokens) do
+    params
+    |> Map.get("tab", "gateways")
+    |> parse_site_tab()
+    |> sanitize_panel_tab(gateway_tokens)
   end
 
   # The Legacy tokens tab is hidden when a site has no legacy tokens.

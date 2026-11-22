@@ -753,6 +753,7 @@ defmodule PortalWeb.Resources.Components do
   attr :device_search_recently_seen, :boolean, default: false
   attr :device_search_loading, :boolean, default: false
   attr :unavailable, :map, default: %{}, doc: "Why a listed device cannot be picked, by device id"
+  attr :notes, :map, default: %{}, doc: "A warning shown on a listed device that can still be picked, by device id"
 
   def device_picker(assigns) do
     ~H"""
@@ -833,7 +834,11 @@ defmodule PortalWeb.Resources.Components do
             ]}
           >
             <li :for={device <- @device_search_results.devices} class="min-w-0">
-              <.device_chip device={device} unavailable={Map.get(@unavailable, device.id)} />
+              <.device_chip
+                device={device}
+                unavailable={Map.get(@unavailable, device.id)}
+                note={Map.get(@notes, device.id)}
+              />
             </li>
           </ul>
           <div
@@ -941,6 +946,7 @@ defmodule PortalWeb.Resources.Components do
   attr :device, Portal.Device, required: true
   attr :selected, :boolean, default: false
   attr :unavailable, :string, default: nil
+  attr :note, :string, default: nil
 
   defp device_chip(assigns) do
     ~H"""
@@ -972,6 +978,9 @@ defmodule PortalWeb.Resources.Components do
         </p>
         <p :if={@unavailable} class="text-[10px] text-warning truncate" title={@unavailable}>
           {@unavailable}
+        </p>
+        <p :if={@note && is_nil(@unavailable)} class="text-[10px] text-warning truncate" title={@note}>
+          {@note}
         </p>
       </div>
       <Core.popover class="relative z-10 shrink-0 flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading cursor-help transition-colors">

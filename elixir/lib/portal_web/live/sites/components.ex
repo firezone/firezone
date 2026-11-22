@@ -226,6 +226,10 @@ defmodule PortalWeb.Sites.Components do
           gateway_actions_open_id={@gateway_actions_open_id}
           rotated_gateway_token={@rotated_gateway_token}
           device_tokens={@device_tokens}
+          unified_devices?={@unified_devices?}
+          account={@account}
+          devices={@devices}
+          confirm_remove_device_id={@confirm_remove_device_id}
         />
 
         <.site_resources_tab
@@ -233,13 +237,6 @@ defmodule PortalWeb.Sites.Components do
           site={@site}
           account={@account}
           resources={@resources}
-        />
-
-        <.site_devices_tab
-          :if={@unified_devices? and @tab == :devices}
-          account={@account}
-          devices={@devices}
-          confirm_remove_device_id={@confirm_remove_device_id}
         />
 
         <.site_tokens_tab
@@ -271,6 +268,28 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <div class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0">
       <button
+        :if={@unified_devices?}
+        id="site-panel-devices-tab"
+        phx-click="switch_panel_tab"
+        phx-value-tab="devices"
+        class={[
+          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+          if(@tab == :gateways,
+            do: "border-brand text-brand",
+            else: "border-transparent text-body hover:text-heading hover:border-border-strong"
+          )
+        ]}
+      >
+        Devices
+        <span class={[
+          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
+          if(@tab == :gateways, do: "bg-brand-wash text-heading", else: "bg-raised text-subtle")
+        ]}>
+          {@total_count + @device_count}
+        </span>
+      </button>
+      <button
+        :if={not @unified_devices?}
         phx-click="switch_panel_tab"
         phx-value-tab="gateways"
         class={[
@@ -317,27 +336,6 @@ defmodule PortalWeb.Sites.Components do
         </span>
       </button>
       <button
-        :if={@unified_devices?}
-        id="site-panel-devices-tab"
-        phx-click="switch_panel_tab"
-        phx-value-tab="devices"
-        class={[
-          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-          if(@tab == :devices,
-            do: "border-brand text-brand",
-            else: "border-transparent text-body hover:text-heading hover:border-border-strong"
-          )
-        ]}
-      >
-        Devices
-        <span class={[
-          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-          if(@tab == :devices, do: "bg-brand-wash text-heading", else: "bg-raised text-subtle")
-        ]}>
-          {@device_count}
-        </span>
-      </button>
-      <button
         :if={@gateway_tokens != []}
         phx-click="switch_panel_tab"
         phx-value-tab="tokens"
@@ -362,19 +360,19 @@ defmodule PortalWeb.Sites.Components do
           <Core.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
         </Form.button>
         <Form.button
-          :if={@tab == :resources and @site.managed_by == :account}
-          phx-click="add_resource"
-          size="xs"
-        >
-          <Core.icon name="ri-add-line" class="w-3 h-3" /> Add resource
-        </Form.button>
-        <Form.button
-          :if={@unified_devices? and @tab == :devices}
+          :if={@unified_devices? and @tab == :gateways}
           id="site-add-devices-button"
           phx-click="open_add_devices"
           size="xs"
         >
           <Core.icon name="ri-add-line" class="w-3 h-3" /> Add devices
+        </Form.button>
+        <Form.button
+          :if={@tab == :resources and @site.managed_by == :account}
+          phx-click="add_resource"
+          size="xs"
+        >
+          <Core.icon name="ri-add-line" class="w-3 h-3" /> Add resource
         </Form.button>
         <Form.button
           :if={@tab == :gateways and not @show_all_gateways}
@@ -427,6 +425,10 @@ defmodule PortalWeb.Sites.Components do
   attr :gateway_actions_open_id, :string, default: nil
   attr :rotated_gateway_token, :map, default: nil
   attr :device_tokens, :map, default: %{}
+  attr :unified_devices?, :boolean, default: false
+  attr :account, :any, default: nil
+  attr :devices, :list, default: []
+  attr :confirm_remove_device_id, :string, default: nil
 
   def site_gateways_tab(assigns) do
     assigns =
@@ -476,6 +478,7 @@ defmodule PortalWeb.Sites.Components do
                 <p class="font-mono text-sm font-medium text-heading truncate group-hover:text-brand transition-colors">
                   {gateway.name}
                 </p>
+                <Core.badge :if={@unified_devices?} type="neutral" size="xs">Gateway</Core.badge>
                 <Core.badge
                   :if={legacy_connected?(gateway, @legacy_token_ids)}
                   type="warning"
@@ -750,9 +753,71 @@ defmodule PortalWeb.Sites.Components do
             </div>
           </div>
         </li>
+        <li
+          :for={device <- @devices}
+          id={"site-device-#{device.id}"}
+          class={[
+            "border-b border-border transition-colors",
+            if(@confirm_remove_device_id == device.id, do: "bg-error-light", else: "")
+          ]}
+        >
+          <div class="flex items-center gap-3 px-5 py-3">
+            <Core.ping_icon
+              color={if device.online?, do: "success", else: "danger"}
+              title={if device.online?, do: "Online", else: "Offline"}
+            />
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
+              <PortalWeb.Devices.Components.device_os_icon device={device} />
+            </div>
+            <div class="flex-1 min-w-0">
+              <Navigation.link
+                navigate={~p"/#{@account}/devices/#{device.id}"}
+                class="block font-mono text-sm font-medium text-heading truncate hover:text-brand transition-colors"
+              >
+                {device.name}
+              </Navigation.link>
+              <p class="text-xs text-subtle mt-0.5 truncate">
+                {PortalWeb.Devices.Components.os_name_and_version(device.last_seen_user_agent)}
+                <span :if={device.last_seen_remote_ip} class="font-mono">
+                  {device.last_seen_remote_ip}
+                </span>
+              </p>
+              <p :if={not device.online?} class="text-xs text-warning mt-0.5">
+                {offline_note(device)}
+              </p>
+            </div>
+            <Form.button
+              :if={@confirm_remove_device_id != device.id}
+              type="button"
+              size="xs"
+              phx-click="remove_site_device"
+              phx-value-id={device.id}
+            >
+              Remove from site
+            </Form.button>
+            <div
+              :if={@confirm_remove_device_id == device.id}
+              class="flex items-center gap-2 shrink-0"
+            >
+              <span class="text-xs text-error">Stop routing for this site?</span>
+              <Form.button type="button" phx-click="cancel_remove_site_device" size="xs">
+                Cancel
+              </Form.button>
+              <Form.button
+                type="button"
+                style="danger"
+                size="xs"
+                phx-click="confirm_remove_site_device"
+                phx-value-id={device.id}
+              >
+                Remove
+              </Form.button>
+            </div>
+          </div>
+        </li>
       </ul>
       <div
-        :if={@gateways == [] and @total_gateway_count == 0}
+        :if={@gateways == [] and @total_gateway_count == 0 and @devices == []}
         class="flex flex-col items-center justify-center gap-3 py-16"
       >
         <p class="text-sm text-subtle">No gateways deployed to this site.</p>
@@ -817,87 +882,6 @@ defmodule PortalWeb.Sites.Components do
     """
   end
 
-  attr :account, :any, required: true
-  attr :devices, :list, required: true
-  attr :confirm_remove_device_id, :string, default: nil
-
-  def site_devices_tab(assigns) do
-    ~H"""
-    <div id="site-devices" class="flex-1 overflow-y-auto">
-      <p class="px-5 py-3 text-xs text-subtle border-b border-border">
-        Devices other than gateways that route traffic for this site.
-      </p>
-      <ul>
-        <li
-          :for={device <- @devices}
-          id={"site-device-#{device.id}"}
-          class={[
-            "border-b border-border transition-colors",
-            if(@confirm_remove_device_id == device.id, do: "bg-error-light", else: "")
-          ]}
-        >
-          <div class="flex items-center gap-3 px-5 py-3">
-            <Core.ping_icon
-              color={if device.online?, do: "success", else: "danger"}
-              title={if device.online?, do: "Online", else: "Offline"}
-            />
-            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
-              <PortalWeb.Devices.Components.device_os_icon device={device} />
-            </div>
-            <div class="flex-1 min-w-0">
-              <Navigation.link
-                navigate={~p"/#{@account}/devices/#{device.id}"}
-                class="block font-mono text-sm font-medium text-heading truncate hover:text-brand transition-colors"
-              >
-                {device.name}
-              </Navigation.link>
-              <p class="text-xs text-subtle mt-0.5 truncate">
-                {PortalWeb.Devices.Components.os_name_and_version(device.last_seen_user_agent)}
-                <span :if={device.last_seen_remote_ip} class="font-mono">
-                  {device.last_seen_remote_ip}
-                </span>
-              </p>
-            </div>
-            <Form.button
-              :if={@confirm_remove_device_id != device.id}
-              type="button"
-              size="xs"
-              phx-click="remove_site_device"
-              phx-value-id={device.id}
-            >
-              Remove from site
-            </Form.button>
-            <div
-              :if={@confirm_remove_device_id == device.id}
-              class="flex items-center gap-2 shrink-0"
-            >
-              <span class="text-xs text-error">Stop routing for this site?</span>
-              <Form.button type="button" phx-click="cancel_remove_site_device" size="xs">
-                Cancel
-              </Form.button>
-              <Form.button
-                type="button"
-                style="danger"
-                size="xs"
-                phx-click="confirm_remove_site_device"
-                phx-value-id={device.id}
-              >
-                Remove
-              </Form.button>
-            </div>
-          </div>
-        </li>
-      </ul>
-      <div :if={@devices == []} class="flex flex-col items-center justify-center gap-3 py-16">
-        <p class="text-sm text-subtle">No other devices route for this site.</p>
-        <Form.button phx-click="open_add_devices" size="xs">
-          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add devices
-        </Form.button>
-      </div>
-    </div>
-    """
-  end
-
   attr :site, :any, required: true
   attr :picker, :map, required: true
 
@@ -923,6 +907,7 @@ defmodule PortalWeb.Sites.Components do
             device_search_recently_seen={@picker.device_search_recently_seen?}
             device_search_loading={@picker.device_search_loading?}
             unavailable={unavailable_reasons(@picker.device_search_results)}
+            notes={offline_notes(@picker.device_search_results)}
           />
         </div>
         <Form.panel_footer>
@@ -944,6 +929,18 @@ defmodule PortalWeb.Sites.Components do
 
   defp add_devices_label(1), do: "Add 1 device"
   defp add_devices_label(count), do: "Add #{count} devices"
+
+  defp offline_notes(%{devices: devices}) do
+    for device <- devices, not device.online?, into: %{}, do: {device.id, offline_note(device)}
+  end
+
+  defp offline_notes(_results), do: %{}
+
+  defp offline_note(%{last_seen_at: nil}),
+    do: "Offline, never seen. It routes for this site once it connects."
+
+  defp offline_note(%{last_seen_at: last_seen_at}),
+    do: "Offline, last seen #{PortalWeb.Format.relative_datetime(last_seen_at)}. It routes for this site once it connects."
 
   defp unavailable_reasons(%{unavailable: unavailable}) do
     Map.new(unavailable, fn

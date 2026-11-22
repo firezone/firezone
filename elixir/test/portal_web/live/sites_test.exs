@@ -1932,7 +1932,7 @@ defmodule PortalWeb.SitesTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/sites/#{site.id}?tab=devices")
+        |> live(~p"/#{account}/sites/#{site.id}")
 
       refute has_element?(lv, "#site-panel-devices-tab")
       refute has_element?(lv, "#site-add-devices-button")
@@ -1969,7 +1969,7 @@ defmodule PortalWeb.SitesTest do
       %{account: put_unified_devices(account, true)}
     end
 
-    test "lists the devices that route for the site, apart from gateways", %{
+    test "lists gateways and other devices in one Devices tab", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1982,17 +1982,55 @@ defmodule PortalWeb.SitesTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/sites/#{site.id}?tab=devices")
+        |> live(~p"/#{account}/sites/#{site.id}")
 
-      assert has_element?(lv, "#site-panel-devices-tab", "1")
+      assert has_element?(lv, "#site-panel-devices-tab", "2")
+      refute has_element?(lv, "button[phx-value-tab='gateways']")
+      assert has_element?(lv, "#site-add-devices-button")
+      assert has_element?(lv, "button[phx-click='deploy_gateway']", "Deploy gateway")
       assert has_element?(lv, "#site-device-#{client.id}", client.name)
       assert has_element?(lv, "#site-device-#{client.id} button", "Remove from site")
-      refute has_element?(lv, "#site-device-#{gateway.id}")
 
-      lv |> element("button[phx-value-tab='gateways']") |> render_click()
       html = render_click(lv, "show_all_gateways")
       assert html =~ gateway.name
-      refute html =~ "Remove from site"
+      assert has_element?(lv, "li:not([id]) span", "Gateway")
+      render_click(lv, "toggle_gateway_actions", %{"id" => gateway.id})
+      assert has_element?(lv, "button[phx-click='delete_gateway'][phx-value-id='#{gateway.id}']")
+      refute has_element?(lv, "button[phx-click='remove_site_device'][phx-value-id='#{gateway.id}']")
+
+      render_click(lv, "show_online_gateways")
+      assert has_element?(lv, "#site-device-#{client.id}")
+    end
+
+    test "warns that an offline device routes once it connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      three_days_ago = DateTime.add(DateTime.utc_now(), -3, :day)
+      in_site = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, in_site)
+      offline = device_v1_client_fixture(account, actor, "pick-offline")
+
+      Repo.update_all(from(d in Device, where: d.id in ^[in_site.id, offline.id]),
+        set: [last_seen_at: three_days_ago]
+      )
+
+      note = "Offline, last seen 3 days ago. It routes for this site once it connects."
+      lv = open_add_devices(conn, actor, account, site)
+      search_devices(lv, "pick-")
+
+      assert has_element?(lv, "button[aria-label='Add #{offline.name}']")
+      assert render(lv) =~ note
+
+      lv |> element("button[aria-label='Add #{offline.name}']") |> render_click()
+      render_async(lv)
+      lv |> form("#site-add-devices-form") |> render_submit()
+
+      assert Enum.sort(site_device_ids(site)) == Enum.sort([in_site.id, offline.id])
+      assert has_element?(lv, "#site-device-#{offline.id}", note)
+      assert has_element?(lv, "#site-device-#{in_site.id}", note)
     end
 
     test "offers devices last seen on /device/v1 and says why others cannot be picked", %{
@@ -2107,7 +2145,7 @@ defmodule PortalWeb.SitesTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/sites/#{site.id}?tab=devices")
+        |> live(~p"/#{account}/sites/#{site.id}")
 
       lv |> element("#site-device-#{client.id} button", "Remove from site") |> render_click()
       html = lv |> element("#site-device-#{client.id} button", "Remove") |> render_click()
@@ -2134,7 +2172,7 @@ defmodule PortalWeb.SitesTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/sites/#{site.id}?tab=devices")
+        |> live(~p"/#{account}/sites/#{site.id}")
 
       html = render_click(lv, "confirm_remove_site_device", %{"id" => gateway.id})
       assert html =~ "Could not remove the device from the site."
@@ -2218,7 +2256,7 @@ defmodule PortalWeb.SitesTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(actor)
-      |> live(~p"/#{account}/sites/#{site.id}?tab=devices")
+      |> live(~p"/#{account}/sites/#{site.id}")
 
     lv |> element("#site-add-devices-button") |> render_click()
     assert has_element?(lv, "#site-add-devices-form")
