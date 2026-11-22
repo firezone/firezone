@@ -130,12 +130,12 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
   def where_members(query, criteria, scope), do: where(query, ^members(criteria, scope))
 
   @doc """
-  The devices, bound as `:devices`, that any pool may hold: every client, and a gateway whose
-  latest connection was on `/device/v1`.
+  The devices, bound as `:devices`, that any pool may hold: legacy client records, and devices
+  enrolled by a 1.7 or later binary, which have no `type`.
   """
   @spec targets() :: Ecto.Query.dynamic_expr()
   def targets do
-    dynamic([devices: d], d.type == :client or (d.type == :gateway and d.last_seen_device_v1))
+    dynamic([devices: d], d.type == :client or is_nil(d.type))
   end
 
   @doc "The condition `where_members/3` adds, to combine the members of several pools."
