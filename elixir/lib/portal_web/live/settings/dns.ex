@@ -1,5 +1,6 @@
 defmodule PortalWeb.Settings.DNS do
   use PortalWeb, :live_view
+  alias PortalWeb.Settings
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
@@ -122,7 +123,7 @@ defmodule PortalWeb.Settings.DNS do
           {"ri-computer-line", "System DNS", "Use the device's default DNS resolvers."}
 
         :secure ->
-          provider = doh_provider_label(dns.doh_provider)
+          provider = Settings.Components.doh_provider_label(dns.doh_provider)
           {"ri-lock-line", "Secure DNS", "DNS-over-HTTPS via #{provider}."}
 
         :custom ->
@@ -165,12 +166,6 @@ defmodule PortalWeb.Settings.DNS do
     """
   end
 
-  defp doh_provider_label(:google), do: "Google Public DNS"
-  defp doh_provider_label(:cloudflare), do: "Cloudflare DNS"
-  defp doh_provider_label(:quad9), do: "Quad9 DNS"
-  defp doh_provider_label(:opendns), do: "OpenDNS"
-  defp doh_provider_label(_), do: "Unknown"
-
   attr :form, :any, required: true
 
   defp dns_form(assigns) do
@@ -210,196 +205,14 @@ defmodule PortalWeb.Settings.DNS do
             use Firezone's internal DNS. All other queries will use the resolvers configured here.
           </p>
           <.inputs_for :let={config_form} field={@form[:config]}>
-            <.inputs_for :let={dns_form} field={config_form[:clients_upstream_dns]}>
-              <div class="grid gap-3 grid-cols-3 mb-6">
-                <div>
-                  <Form.input
-                    id="dns-type--system"
-                    type="radio_button_group"
-                    field={dns_form[:type]}
-                    value="system"
-                    checked={"#{dns_form[:type].value}" == "system"}
-                    required
-                  />
-                  <label
-                    for="dns-type--system"
-                    class={[
-                      "flex flex-col h-full p-3 border rounded cursor-pointer transition-all",
-                      "peer-checked:border-brand peer-checked:bg-raised",
-                      "border-border hover:border-border-emphasis"
-                    ]}
-                  >
-                    <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-                      <Core.icon name="ri-computer-line" class="w-4 h-4 shrink-0" /> System
-                    </span>
-                    <span class="text-xs text-body my-auto">
-                      Use the device's default DNS resolvers.
-                    </span>
-                  </label>
-                </div>
-
-                <div>
-                  <Form.input
-                    id="dns-type--secure"
-                    type="radio_button_group"
-                    field={dns_form[:type]}
-                    value="secure"
-                    checked={"#{dns_form[:type].value}" == "secure"}
-                    required
-                  />
-                  <label
-                    for="dns-type--secure"
-                    class={[
-                      "flex flex-col h-full p-3 border rounded cursor-pointer transition-all",
-                      "peer-checked:border-brand peer-checked:bg-raised",
-                      "border-border hover:border-border-emphasis"
-                    ]}
-                  >
-                    <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-                      <Core.icon name="ri-lock-line" class="w-4 h-4 shrink-0" /> Secure
-                    </span>
-                    <span class="text-xs text-body my-auto">
-                      Use DNS-over-HTTPS from trusted providers.
-                    </span>
-                  </label>
-                </div>
-
-                <div>
-                  <Form.input
-                    id="dns-type--custom"
-                    type="radio_button_group"
-                    field={dns_form[:type]}
-                    value="custom"
-                    checked={"#{dns_form[:type].value}" == "custom"}
-                    required
-                  />
-                  <label
-                    for="dns-type--custom"
-                    class={[
-                      "flex flex-col h-full p-3 border rounded cursor-pointer transition-all",
-                      "peer-checked:border-brand peer-checked:bg-raised",
-                      "border-border hover:border-border-emphasis"
-                    ]}
-                  >
-                    <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-                      <Core.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" /> Custom
-                    </span>
-                    <span class="text-xs text-body my-auto">
-                      Configure your own DNS server addresses.
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              <div :if={"#{dns_form[:type].value}" == "secure"} class="space-y-3">
-                <label
-                  for={dns_form[:doh_provider].id}
-                  class="block text-xs font-medium text-body mb-1.5"
-                >
-                  DNS-over-HTTPS Provider
-                </label>
-                <Form.input
-                  type="select"
-                  field={dns_form[:doh_provider]}
-                  options={[
-                    {"Google Public DNS", :google},
-                    {"Cloudflare DNS", :cloudflare},
-                    {"Quad9 DNS", :quad9},
-                    {"OpenDNS", :opendns}
-                  ]}
-                />
-                <p class="mt-1.5 text-xs text-subtle">
-                  Secure DNS is only supported on recent Clients. See the
-                  <Navigation.website_link path="/kb/deploy/dns" fragment="secure-dns">
-                    DNS configuration documentation
-                  </Navigation.website_link>
-                  for supported client versions.
-                </p>
-              </div>
-
-              <div :if={"#{dns_form[:type].value}" == "custom"} class="space-y-4">
-                <p
-                  :if={not Enum.empty?(dns_form[:addresses].value || [])}
-                  class="text-xs text-body"
-                >
-                  Upstream resolvers will be used by devices when the Firezone Client is signed in, in the order listed below.
-                </p>
-                <p
-                  :if={Enum.empty?(dns_form[:addresses].value || [])}
-                  class="text-xs text-body"
-                >
-                  No upstream resolvers configured. Click <strong>Add Resolver</strong> to add one.
-                </p>
-
-                <.inputs_for :let={address_form} field={dns_form[:addresses]}>
-                  <input
-                    type="hidden"
-                    name="account[config][clients_upstream_dns][addresses_sort][]"
-                    value={address_form.index}
-                  />
-                  <div>
-                    <label
-                      for={address_form[:address].id}
-                      class="block text-xs font-medium text-body mb-1.5"
-                    >
-                      IP Address
-                    </label>
-                    <div class="flex gap-2 items-start">
-                      <div class="flex-1">
-                        <Form.input
-                          field={address_form[:address]}
-                          placeholder="E.g. 1.1.1.1"
-                          phx-debounce="300"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        name="account[config][clients_upstream_dns][addresses_drop][]"
-                        value={address_form.index}
-                        phx-click={JS.dispatch("change")}
-                        class="flex items-center justify-center w-9 h-9 rounded text-error hover:bg-raised transition-colors shrink-0"
-                      >
-                        <Core.icon name="ri-delete-bin-line" class="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </.inputs_for>
-
-                <Core.error :for={{msg, _opts} <- dns_form[:addresses].errors}>
-                  {msg}
-                </Core.error>
-
-                <input
-                  type="hidden"
-                  name="account[config][clients_upstream_dns][addresses_drop][]"
-                />
-
-                <Form.button
-                  :if={Enum.count(dns_form[:addresses].value || []) < 8}
-                  type="button"
-                  name="account[config][clients_upstream_dns][addresses_sort][]"
-                  value="new"
-                  phx-click={JS.dispatch("change")}
-                  size="xs"
-                  icon="ri-add-line"
-                >
-                  Add Resolver
-                </Form.button>
-                <p
-                  :if={Enum.count(dns_form[:addresses].value || []) >= 8}
-                  class="text-xs text-subtle"
-                >
-                  Maximum of 8 upstream resolvers reached.
-                </p>
-
-                <p class="text-xs text-subtle">
-                  <strong>Note:</strong>
-                  It is highly recommended to specify <strong>both</strong>
-                  IPv4 and IPv6 addresses when adding upstream resolvers. Otherwise, Clients without
-                  IPv4 or IPv6 connectivity may not be able to resolve DNS queries.
-                </p>
-              </div>
-            </.inputs_for>
+            <Settings.Components.upstream_dns_fields
+              field={config_form[:clients_upstream_dns]}
+              options={[
+                {"system", "ri-computer-line", "System", "Use the device's default DNS resolvers."},
+                {"secure", "ri-lock-line", "Secure", "Use DNS-over-HTTPS from trusted providers."},
+                {"custom", "ri-settings-3-line", "Custom", "Configure your own DNS server addresses."}
+              ]}
+            />
           </.inputs_for>
         </div>
       </div>

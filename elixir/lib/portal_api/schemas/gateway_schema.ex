@@ -37,6 +37,7 @@ defmodule PortalAPI.Schemas.Gateway do
                :proto_range,
                :provisioned_token,
                :type,
+               :upstream_dns,
                :updated_at,
                :verified_at
              ]}

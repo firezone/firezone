@@ -513,6 +513,21 @@ defmodule PortalAPI.GatewayControllerTest do
       assert conn |> get("/sites/#{site.id}/gateways/#{gateway.id}") |> json_response(404)
     end
 
+    test "renders the same gateway whatever its upstream DNS", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      gateway = gateway_fixture(account: account, site: site)
+      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+      before = conn |> get("/sites/#{site.id}/gateways/#{gateway.id}") |> json_response(200)
+
+      Repo.update_all(where(Portal.Device, id: ^gateway.id), set: [upstream_dns: %Portal.UpstreamDNS{type: :system}])
+
+      assert conn |> get("/sites/#{site.id}/gateways/#{gateway.id}") |> json_response(200) == before
+    end
+
     test "returns a single gateway", %{
       conn: conn,
       account: account,

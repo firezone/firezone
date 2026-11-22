@@ -292,6 +292,38 @@ defmodule PortalAPI.Device.ServeOnlyTest do
     end
   end
 
+  describe "upstream DNS" do
+    test "is the gateway's own resolvers in init, whatever the account uses", %{account: account, token: token} do
+      account
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.put_embed(:config, %{clients_upstream_dns: %{type: :secure, doh_provider: :google}})
+      |> Repo.update!()
+
+      assert Repo.get_by!(Portal.Account, id: account.id).config.clients_upstream_dns.type == :secure
+
+      join_gateway(token)
+
+      assert_push "init", %{interface: interface}
+      assert interface.upstream_do53 == []
+      assert interface.upstream_doh == []
+      assert interface.upstream_dns == []
+    end
+
+    test "pushes config_changed when an admin sets it for the gateway", %{token: token} do
+      socket = join_gateway(token)
+      assert_push "init", _
+
+      gateway = socket.assigns.client
+      custom = %Portal.UpstreamDNS{type: :custom, addresses: [%Portal.UpstreamDNS.Address{address: "9.9.9.9"}]}
+      send(socket.channel_pid, change(:update, gateway, %{gateway | upstream_dns: custom}))
+
+      assert_push "config_changed", %{interface: interface}
+      assert interface.upstream_do53 == [%{ip: "9.9.9.9"}]
+      assert interface.upstream_dns == [%{protocol: :ip_port, address: "9.9.9.9:53"}]
+      assert interface.upstream_doh == []
+    end
+  end
+
   describe "a second connection" do
     test "is refused on /gateway while it is connected", %{token: token} do
       socket = join_gateway(token)

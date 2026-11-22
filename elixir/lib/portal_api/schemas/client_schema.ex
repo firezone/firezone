@@ -22,7 +22,8 @@ defmodule PortalAPI.Schemas.Client do
                :online?,
                :proto_range,
                :provisioned_token,
-               :type
+               :type,
+               :upstream_dns
              ]}
     OpenApiSpex.schema(%{
       title: "Client",

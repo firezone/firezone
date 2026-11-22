@@ -1850,6 +1850,12 @@ Relays.render(relays, relay_owner(socket)),
     Protocol.push(socket, "init", protocol_extension(socket, :extend_init, payload))
   end
 
+  defp push_interface(socket) do
+    client = %{socket.assigns.client | account: socket.assigns.subject.account}
+    :ok = Protocol.push(socket, "config_changed", %{interface: Views.Interface.render(client)})
+    socket
+  end
+
   defp reinitialize_client(socket) do
     relays = Relays.select(relay_owner(socket))
     socket = Relays.cache(socket, relays)
@@ -2046,9 +2052,7 @@ Relays.render(relays, relay_owner(socket)),
     socket = assign(socket, subject: subject)
 
     if old_account.config != account.config do
-      client = %{socket.assigns.client | account: account}
-      payload = %{interface: Views.Interface.render(client)}
-      :ok = Protocol.push(socket, "config_changed", payload)
+      push_interface(socket)
     end
 
     if Portal.Account.device_posture_enabled?(old_account) != Portal.Account.device_posture_enabled?(account) do
@@ -2112,10 +2116,15 @@ Relays.render(relays, relay_owner(socket)),
     socket = assign(socket, :client, updated_client)
 
     socket =
-      if old_client.ipv4 != client.ipv4 or old_client.ipv6 != client.ipv6 do
-        reinitialize_client(socket)
-      else
-        socket
+      cond do
+        old_client.ipv4 != client.ipv4 or old_client.ipv6 != client.ipv6 ->
+          reinitialize_client(socket)
+
+        old_client.upstream_dns != client.upstream_dns ->
+          push_interface(socket)
+
+        true ->
+          socket
       end
 
     # Changes in client verification can affect the list of allowed resources

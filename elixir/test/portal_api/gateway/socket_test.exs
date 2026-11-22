@@ -139,6 +139,34 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert token_id == token.id
     end
 
+    test "creates a new gateway that uses its own resolvers" do
+      token = gateway_token_fixture()
+      encoded_token = encode_gateway_token(token)
+
+      assert {:ok, socket} =
+               connect(Socket, connect_attrs(token: encoded_token),
+                 connect_info: build_connect_info(token: encoded_token)
+               )
+
+      assert Repo.get_by!(Portal.Device, id: socket.assigns.gateway.id).upstream_dns ==
+               %Portal.UpstreamDNS{type: :system}
+    end
+
+    test "leaves a pre-created gateway on the account setting" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      subject = subject_fixture(account: account, actor: %{type: :api_client, account: account})
+      assert {:ok, gateway, _token, encoded_token} = Portal.Devices.provision_gateway(site, "precreated", subject)
+
+      assert {:ok, socket} =
+               connect(Socket, connect_attrs(token: encoded_token),
+                 connect_info: build_connect_info(token: encoded_token)
+               )
+
+      assert socket.assigns.gateway.id == gateway.id
+      assert Repo.get_by!(Portal.Device, id: gateway.id).upstream_dns == nil
+    end
+
     test "creates a new gateway" do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
