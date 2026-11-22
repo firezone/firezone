@@ -56,6 +56,8 @@ defmodule PortalWeb.Sites.Components do
   attr :deploy_state, :map, required: true
   attr :resource_form_state, :map, required: true
   attr :edit_state, :map, required: true
+  attr :unified_devices?, :boolean, default: false
+  attr :devices_picker, :map, default: nil
 
   def site_panel(assigns) do
     assigns =
@@ -120,6 +122,7 @@ defmodule PortalWeb.Sites.Components do
           gateways={@gateways}
           resources={@resources}
           resources_counts={@resources_counts}
+          unified_devices?={@unified_devices?}
         />
 
         <.site_deploy_view
@@ -140,6 +143,12 @@ defmodule PortalWeb.Sites.Components do
         />
 
         <.site_edit_view :if={@view == :edit_site} site={@site} form={@form} />
+
+        <.site_add_devices_view
+          :if={@unified_devices? and @view == :add_devices and not is_nil(@devices_picker)}
+          site={@site}
+          picker={@devices_picker}
+        />
       </div>
     </div>
     """
@@ -184,6 +193,7 @@ defmodule PortalWeb.Sites.Components do
   attr :gateways, :list, required: true
   attr :resources, :list, required: true
   attr :resources_counts, :map, required: true
+  attr :unified_devices?, :boolean, default: false
 
   def site_overview_view(assigns) do
     assigns = assign(assigns, assigns.panel)
@@ -199,6 +209,8 @@ defmodule PortalWeb.Sites.Components do
           resource_count={length(@resources)}
           gateway_tokens={@gateway_tokens}
           confirm_revoke_all_tokens={@confirm_revoke_all_tokens}
+          unified_devices?={@unified_devices?}
+          device_count={length(@devices)}
         />
 
         <.site_gateways_tab
@@ -223,6 +235,13 @@ defmodule PortalWeb.Sites.Components do
           resources={@resources}
         />
 
+        <.site_devices_tab
+          :if={@unified_devices? and @tab == :devices}
+          account={@account}
+          devices={@devices}
+          confirm_remove_device_id={@confirm_remove_device_id}
+        />
+
         <.site_tokens_tab
           :if={@tab == :tokens}
           site={@site}
@@ -245,6 +264,8 @@ defmodule PortalWeb.Sites.Components do
   attr :resource_count, :integer, required: true
   attr :gateway_tokens, :list, required: true
   attr :confirm_revoke_all_tokens, :boolean, required: true
+  attr :unified_devices?, :boolean, default: false
+  attr :device_count, :integer, default: 0
 
   def site_panel_tabs(assigns) do
     ~H"""
@@ -296,6 +317,27 @@ defmodule PortalWeb.Sites.Components do
         </span>
       </button>
       <button
+        :if={@unified_devices?}
+        id="site-panel-devices-tab"
+        phx-click="switch_panel_tab"
+        phx-value-tab="devices"
+        class={[
+          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+          if(@tab == :devices,
+            do: "border-brand text-brand",
+            else: "border-transparent text-body hover:text-heading hover:border-border-strong"
+          )
+        ]}
+      >
+        Devices
+        <span class={[
+          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
+          if(@tab == :devices, do: "bg-brand-wash text-heading", else: "bg-raised text-subtle")
+        ]}>
+          {@device_count}
+        </span>
+      </button>
+      <button
         :if={@gateway_tokens != []}
         phx-click="switch_panel_tab"
         phx-value-tab="tokens"
@@ -325,6 +367,14 @@ defmodule PortalWeb.Sites.Components do
           size="xs"
         >
           <Core.icon name="ri-add-line" class="w-3 h-3" /> Add resource
+        </Form.button>
+        <Form.button
+          :if={@unified_devices? and @tab == :devices}
+          id="site-add-devices-button"
+          phx-click="open_add_devices"
+          size="xs"
+        >
+          <Core.icon name="ri-add-line" class="w-3 h-3" /> Add devices
         </Form.button>
         <Form.button
           :if={@tab == :gateways and not @show_all_gateways}
@@ -766,6 +816,143 @@ defmodule PortalWeb.Sites.Components do
     </div>
     """
   end
+
+  attr :account, :any, required: true
+  attr :devices, :list, required: true
+  attr :confirm_remove_device_id, :string, default: nil
+
+  def site_devices_tab(assigns) do
+    ~H"""
+    <div id="site-devices" class="flex-1 overflow-y-auto">
+      <p class="px-5 py-3 text-xs text-subtle border-b border-border">
+        Devices other than gateways that route traffic for this site.
+      </p>
+      <ul>
+        <li
+          :for={device <- @devices}
+          id={"site-device-#{device.id}"}
+          class={[
+            "border-b border-border transition-colors",
+            if(@confirm_remove_device_id == device.id, do: "bg-error-light", else: "")
+          ]}
+        >
+          <div class="flex items-center gap-3 px-5 py-3">
+            <Core.ping_icon
+              color={if device.online?, do: "success", else: "danger"}
+              title={if device.online?, do: "Online", else: "Offline"}
+            />
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
+              <PortalWeb.Devices.Components.device_os_icon device={device} />
+            </div>
+            <div class="flex-1 min-w-0">
+              <Navigation.link
+                navigate={~p"/#{@account}/devices/#{device.id}"}
+                class="block font-mono text-sm font-medium text-heading truncate hover:text-brand transition-colors"
+              >
+                {device.name}
+              </Navigation.link>
+              <p class="text-xs text-subtle mt-0.5 truncate">
+                {PortalWeb.Devices.Components.os_name_and_version(device.last_seen_user_agent)}
+                <span :if={device.last_seen_remote_ip} class="font-mono">
+                  {device.last_seen_remote_ip}
+                </span>
+              </p>
+            </div>
+            <Form.button
+              :if={@confirm_remove_device_id != device.id}
+              type="button"
+              size="xs"
+              phx-click="remove_site_device"
+              phx-value-id={device.id}
+            >
+              Remove from site
+            </Form.button>
+            <div
+              :if={@confirm_remove_device_id == device.id}
+              class="flex items-center gap-2 shrink-0"
+            >
+              <span class="text-xs text-error">Stop routing for this site?</span>
+              <Form.button type="button" phx-click="cancel_remove_site_device" size="xs">
+                Cancel
+              </Form.button>
+              <Form.button
+                type="button"
+                style="danger"
+                size="xs"
+                phx-click="confirm_remove_site_device"
+                phx-value-id={device.id}
+              >
+                Remove
+              </Form.button>
+            </div>
+          </div>
+        </li>
+      </ul>
+      <div :if={@devices == []} class="flex flex-col items-center justify-center gap-3 py-16">
+        <p class="text-sm text-subtle">No other devices route for this site.</p>
+        <Form.button phx-click="open_add_devices" size="xs">
+          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add devices
+        </Form.button>
+      </div>
+    </div>
+    """
+  end
+
+  attr :site, :any, required: true
+  attr :picker, :map, required: true
+
+  def site_add_devices_view(assigns) do
+    ~H"""
+    <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
+      <Form.panel_header title="Add devices" close_event="close_add_devices" />
+      <form
+        id="site-add-devices-form"
+        phx-submit="add_devices_submit"
+        class="flex flex-col flex-1 min-h-0 overflow-hidden"
+      >
+        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+          <p class="text-xs text-subtle">
+            Picked devices route traffic for {@site.name}. A device can route for one site, and
+            only on the latest Firezone client.
+          </p>
+          <PortalWeb.Resources.Components.device_picker
+            selected_devices={@picker.selected_devices}
+            device_search={@picker.device_search}
+            device_search_results={@picker.device_search_results}
+            device_search_online_only={@picker.device_search_online_only?}
+            device_search_recently_seen={@picker.device_search_recently_seen?}
+            device_search_loading={@picker.device_search_loading?}
+            unavailable={unavailable_reasons(@picker.device_search_results)}
+          />
+        </div>
+        <Form.panel_footer>
+          <Form.panel_footer_button type="button" phx-click="close_add_devices">
+            Cancel
+          </Form.panel_footer_button>
+          <Form.panel_footer_button
+            type="submit"
+            style="primary"
+            disabled={@picker.selected_devices == []}
+          >
+            {add_devices_label(length(@picker.selected_devices))}
+          </Form.panel_footer_button>
+        </Form.panel_footer>
+      </form>
+    </div>
+    """
+  end
+
+  defp add_devices_label(1), do: "Add 1 device"
+  defp add_devices_label(count), do: "Add #{count} devices"
+
+  defp unavailable_reasons(%{unavailable: unavailable}) do
+    Map.new(unavailable, fn
+      {id, {:site, site_name}} -> {id, "Routes for #{site_name}"}
+      {id, :outdated} -> {id, "Update to the latest Firezone client to route for a site"}
+    end)
+  end
+
+  defp unavailable_reasons(_results), do: %{}
 
   attr :site, :any, required: true
   attr :gateway_tokens, :list, required: true
