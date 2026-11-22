@@ -603,12 +603,12 @@ one, and the portal certificate when it does not.
 
 **Keys.** The device creates a key on first enrollment and never exports it:
 
-| Platform | Key store |
-|---|---|
-| Windows | TPM 2.0 through CNG (Platform Crypto Provider) |
-| macOS (Apple silicon and T2), iOS | Secure Enclave, P-256 |
-| Android | Keystore or StrongBox |
-| Linux with a TPM or vTPM | TPM 2.0 |
+| Platform                                                               | Key store                                       |
+| ---------------------------------------------------------------------- | ----------------------------------------------- |
+| Windows                                                                | TPM 2.0 through CNG (Platform Crypto Provider)  |
+| macOS (Apple silicon and T2), iOS                                      | Secure Enclave, P-256                           |
+| Android                                                                | Keystore or StrongBox                           |
+| Linux with a TPM or vTPM                                               | TPM 2.0                                         |
 | Linux without a TPM (Docker, Kubernetes, VMs without vTPM), older Macs | Software key in the state directory or keychain |
 
 The portal records `hardware` or `software` for each device. A software key
@@ -1232,16 +1232,18 @@ has 12, phase 4 has 13, phase 5 has 12, phase 5b has 10, phase 6 has 8.
 Changes customers must hear about when the unified binary ships to gateway
 hosts. Collect them here and use them for the release notes and the email.
 
-- **DNS settings per device.** Each device can now have its own DNS
-  settings, in the same format as the account's: upstream resolvers and
-  search domain. When a device has none, it uses the account's. Every gateway
-  that existed before this change was set to its own resolvers and no search
-  domain, and new gateways start that way. A gateway host that switches to the
-  new `firezone` binary keeps resolving with its own DNS servers and does not
-  get the account's search domain, even when the account sends clients to
-  custom upstreams or DNS over HTTPS. Admins can change this per device.
-  Gateways created during the rolling deploy that added the setting can start
-  without settings, and then use the account's until an admin sets them.
+- **DNS for the resources a device serves.** A device always resolves the
+  DNS resources it serves with the host's own DNS servers, as gateways do
+  today. The account's DNS settings never change this. A gateway host that
+  switches to the new `firezone` binary keeps resolving resources the same
+  way. If the host's DNS servers change, for example after a network change,
+  the device uses the new ones without a restart.
+- **DNS for the device's own lookups.** A device that only serves, such as a
+  host that connects with a gateway token, does not take over the host's DNS.
+  When a host connects with a user or service account token, it also
+  initiates connections. It then takes over the host's DNS like every client,
+  and its own lookups follow the account's DNS settings: upstream resolvers
+  and search domain.
 
 ## 4. Decisions taken
 
