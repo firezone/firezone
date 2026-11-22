@@ -208,9 +208,9 @@ pub fn write_token(spool_root: &Path, token: &str) -> Result<()> {
         .context("Token is not a JWT (no payload segment)")?;
     let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(payload)
-        .context("Token payload is not base64url")?;
-    let claims =
-        serde_json::from_slice::<Claims>(&json).context("Token payload is not valid JSON")?;
+        .map_err(|_| anyhow::anyhow!("Token payload is not base64url"))?;
+    let claims = serde_json::from_slice::<Claims>(&json)
+        .map_err(|_| anyhow::anyhow!("Token payload does not contain valid claims"))?;
 
     // The token is portal-issued but its signature is not verified here, so never
     // trust a claim as a path component without validating it first.
