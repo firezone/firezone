@@ -22,7 +22,6 @@ defmodule Portal.Device do
     last_seen_remote_ip_location_lat
     last_seen_remote_ip_location_lon
     last_seen_version
-    last_seen_device_v1
     last_seen_at
     last_attested_at
     token_id
@@ -32,7 +31,7 @@ defmodule Portal.Device do
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
-          type: :client | :gateway,
+          type: :client | :gateway | nil,
           # nil for pre-created gateways until they first connect and report one
           firezone_id: String.t() | nil,
           name: String.t(),
@@ -53,7 +52,6 @@ defmodule Portal.Device do
           last_seen_remote_ip_location_lat: float() | nil,
           last_seen_remote_ip_location_lon: float() | nil,
           last_seen_version: String.t() | nil,
-          last_seen_device_v1: boolean(),
           last_seen_at: DateTime.t() | nil,
           token_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
@@ -79,6 +77,8 @@ defmodule Portal.Device do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
+    # Legacy: a client or gateway record from a binary older than 1.7. A device that a 1.7 or
+    # later binary enrolled has no type.
     field :type, Ecto.Enum, values: [:client, :gateway]
 
     field :firezone_id, :string
@@ -138,8 +138,6 @@ defmodule Portal.Device do
     field :last_seen_remote_ip_location_lat, :float
     field :last_seen_remote_ip_location_lon, :float
     field :last_seen_version, :string
-    # Whether the latest connection used `/device/v1`, which every new device feature requires.
-    field :last_seen_device_v1, :boolean, default: false
     field :last_seen_at, :utc_datetime_usec
     field :token_id, :binary_id
 

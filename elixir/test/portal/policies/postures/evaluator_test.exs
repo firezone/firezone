@@ -464,18 +464,31 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       assert evaluate(leaf, device(last_seen_user_agent: apple <> "0.1.0", last_seen_version: "0.1.0")) == @failed
     end
 
-    test "@latest resolves from the user agent as it did for a connected client, whatever the actor on the device" do
+    test "@latest resolves to the headless release for a service account, whatever the user agent" do
+      Portal.Config.put_env_override(:portal, Portal.ComponentVersions,
+        fetch_from_url: false,
+        versions: [apple: "1.0.0", android: "1.0.0", gateway: "1.0.0", gui: "1.0.0", headless: "2.0.0"]
+      )
+
       leaf = leaf("firezone.last_seen_version", "is", "@latest")
       service_account = %Portal.Actor{type: :service_account}
 
-      for user_agent <- ["macOS/15.6 apple-client/1.0.0", "Android/14 android-client/1.0.0", "Ubuntu/24.04 headless-client/1.0.0", nil],
-          actor <- [nil, service_account],
-          type <- [:client, :gateway] do
-        legacy = Portal.ComponentVersions.client_version(device(last_seen_user_agent: user_agent))
-        subject = device(type: type, actor: actor, last_seen_user_agent: user_agent, last_seen_version: legacy)
-
+      for user_agent <- ["macOS/15.6 apple-client/2.0.0", "connlib/2.0.0", nil], type <- [:client, nil] do
+        subject = device(type: type, actor: service_account, last_seen_user_agent: user_agent, last_seen_version: "2.0.0")
         assert evaluate(leaf, subject) == {:ok, nil}
       end
+    end
+
+    test "@latest resolves to the gateway release for a gateway" do
+      Portal.Config.put_env_override(:portal, Portal.ComponentVersions,
+        fetch_from_url: false,
+        versions: [apple: "1.0.0", android: "1.0.0", gateway: "2.0.0", gui: "1.0.0", headless: "1.0.0"]
+      )
+
+      leaf = leaf("firezone.last_seen_version", "is", "@latest")
+
+      assert evaluate(leaf, device(type: :gateway, last_seen_version: "2.0.0")) == {:ok, nil}
+      assert evaluate(leaf, device(type: :gateway, last_seen_version: "1.0.0")) == @failed
     end
   end
 

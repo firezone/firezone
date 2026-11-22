@@ -18,7 +18,6 @@ defmodule PortalAPI.Device.Socket do
          {:ok, proto_range} <- proto_range(attrs) do
       {:ok,
        assign(socket,
-         client: %{socket.assigns.client | last_seen_device_v1: true},
          proto_range: proto_range,
          iceless_capable: Map.get(attrs, "frostlink") == "true"
        )}

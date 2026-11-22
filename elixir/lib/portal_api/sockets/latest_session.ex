@@ -80,7 +80,6 @@ defmodule PortalAPI.Sockets.LatestSession do
         remote_ip_location_lat: attrs[:remote_ip_location_lat],
         remote_ip_location_lon: attrs[:remote_ip_location_lon],
         version: attrs[:version],
-        device_v1: attrs[:device_v1],
         last_seen_at: connected_at({attrs, metadata})
       }
     end)
@@ -157,7 +156,6 @@ defmodule PortalAPI.Sockets.LatestSession do
       remote_ip_location_lat: :float,
       remote_ip_location_lon: :float,
       version: :string,
-      device_v1: :boolean,
       last_seen_at: :utc_datetime_usec
     }
 
@@ -296,7 +294,6 @@ defmodule PortalAPI.Sockets.LatestSession do
           last_seen_remote_ip_location_lat: dynamic([d, v], v.remote_ip_location_lat),
           last_seen_remote_ip_location_lon: dynamic([d, v], v.remote_ip_location_lon),
           last_seen_version: dynamic([d, v], v.version),
-          last_seen_device_v1: dynamic([d, v], coalesce(v.device_v1, d.last_seen_device_v1)),
           last_seen_at: dynamic([d, v], v.last_seen_at),
           token_id: dynamic([d, v], v.token_id)
         ]

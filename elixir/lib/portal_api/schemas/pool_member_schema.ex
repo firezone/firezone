@@ -33,7 +33,6 @@ defmodule PortalAPI.Schemas.PoolMember do
                :last_attested_device_serial,
                :last_attested_device_uuid,
                :last_attested_mdm_device_id,
-               :last_seen_device_v1,
                :last_seen_remote_ip,
                :last_seen_remote_ip_location_city,
                :last_seen_remote_ip_location_lat,

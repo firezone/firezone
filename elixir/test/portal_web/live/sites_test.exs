@@ -7,8 +7,10 @@ defmodule PortalWeb.SitesTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
+  import Portal.PolicyAuthorizationFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
+  import Portal.SubjectFixtures
   import Portal.TokenFixtures
 
   setup do
@@ -1920,6 +1922,350 @@ defmodule PortalWeb.SitesTest do
         assert site_snapshot(account) == before
       end
     end
+  end
+
+  describe "site devices without the unified devices feature" do
+    test "shows no devices tab or controls", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      client = device_v1_client_fixture(account, actor, "pick-ready")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      refute has_element?(lv, "#site-panel-devices-tab")
+      refute has_element?(lv, "#site-add-devices-button")
+      refute has_element?(lv, "#site-devices")
+
+      render_hook(lv, "open_add_devices", %{})
+      refute has_element?(lv, "#site-add-devices-form")
+
+      render_hook(lv, "add_device", %{"device_id" => client.id})
+      render_hook(lv, "add_devices_submit", %{})
+      assert site_device_ids(site) == []
+    end
+  end
+
+  describe "site devices per account" do
+    test "show only on accounts with unified_devices set to true", %{conn: conn} do
+      for {value, shown?} <- [{true, true}, {false, false}, {nil, false}] do
+        account = put_unified_devices(account_fixture(), value)
+        actor = admin_actor_fixture(account: account)
+        site = site_fixture(account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/sites/#{site.id}")
+
+        assert has_element?(lv, "#site-panel-devices-tab") == shown?
+      end
+    end
+  end
+
+  describe "site devices" do
+    setup %{account: account} do
+      %{account: put_unified_devices(account, true)}
+    end
+
+    test "lists gateways and other devices in one Devices tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      client = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, client)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert has_element?(lv, "#site-panel-devices-tab", "2")
+      refute has_element?(lv, "button[phx-value-tab='gateways']")
+      assert has_element?(lv, "#site-add-devices-button")
+      assert has_element?(lv, "button[phx-click='deploy_gateway']", "Deploy gateway")
+      assert has_element?(lv, "#site-device-#{client.id}", client.name)
+      assert has_element?(lv, "#site-device-#{client.id} button", "Remove from site")
+
+      html = render_click(lv, "show_all_gateways")
+      assert html =~ gateway.name
+      assert has_element?(lv, "li:not([id]) span", "Gateway")
+      render_click(lv, "toggle_gateway_actions", %{"id" => gateway.id})
+      assert has_element?(lv, "button[phx-click='delete_gateway'][phx-value-id='#{gateway.id}']")
+      refute has_element?(lv, "button[phx-click='remove_site_device'][phx-value-id='#{gateway.id}']")
+
+      render_click(lv, "show_online_gateways")
+      assert has_element?(lv, "#site-device-#{client.id}")
+    end
+
+    test "warns that an offline device routes once it connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      three_days_ago = DateTime.add(DateTime.utc_now(), -3, :day)
+      in_site = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, in_site)
+      offline = device_v1_client_fixture(account, actor, "pick-offline")
+
+      Repo.update_all(from(d in Device, where: d.id in ^[in_site.id, offline.id]),
+        set: [last_seen_at: three_days_ago]
+      )
+
+      note = "Offline, last seen 3 days ago. It routes for this site once it connects."
+      lv = open_add_devices(conn, actor, account, site)
+      search_devices(lv, "pick-")
+
+      assert has_element?(lv, "button[aria-label='Add #{offline.name}']")
+      assert render(lv) =~ note
+
+      lv |> element("button[aria-label='Add #{offline.name}']") |> render_click()
+      render_async(lv)
+      lv |> form("#site-add-devices-form") |> render_submit()
+
+      assert Enum.sort(site_device_ids(site)) == Enum.sort([in_site.id, offline.id])
+      assert has_element?(lv, "#site-device-#{offline.id}", note)
+      assert has_element?(lv, "#site-device-#{in_site.id}", note)
+    end
+
+    test "offers devices last seen on /device/v1 and says why others cannot be picked", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
+      ready = device_v1_client_fixture(account, actor, "pick-ready")
+      legacy_client = client_fixture(account: account, actor: actor, name: "pick-legacy-client")
+      legacy_gateway = gateway_fixture(account: account, site: other_site, name: "pick-legacy-gateway")
+      elsewhere = device_v1_client_fixture(account, actor, "pick-elsewhere")
+      put_in_site!(other_site, elsewhere)
+
+      lv = open_add_devices(conn, actor, account, site)
+      search_devices(lv, "pick-")
+
+      assert has_element?(lv, "button[aria-label='Add #{ready.name}']")
+
+      for device <- [legacy_client, legacy_gateway, elsewhere] do
+        assert has_element?(lv, "[aria-disabled='true']", device.name)
+        refute has_element?(lv, "button[aria-label='Add #{device.name}']")
+      end
+
+      assert has_element?(
+               lv,
+               "[aria-disabled='true']",
+               "Update to the latest Firezone client to route for a site"
+             )
+
+      assert has_element?(lv, "[aria-disabled='true']", "Routes for #{other_site.name}")
+    end
+
+    test "adds every picked device to the site", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      first = device_v1_client_fixture(account, actor, "pick-first")
+      second = device_v1_client_fixture(account, actor, "pick-second")
+
+      lv = open_add_devices(conn, actor, account, site)
+      search_devices(lv, "pick-")
+      lv |> element("button[aria-label='Add #{first.name}']") |> render_click()
+      render_async(lv)
+      lv |> element("button[aria-label='Add #{second.name}']") |> render_click()
+      render_async(lv)
+
+      html = lv |> form("#site-add-devices-form") |> render_submit()
+
+      assert html =~ "2 devices added to the site."
+      assert Enum.sort(site_device_ids(site)) == Enum.sort([first.id, second.id])
+      assert has_element?(lv, "#site-device-#{first.id}", first.name)
+      assert has_element?(lv, "#site-device-#{second.id}", second.name)
+    end
+
+    test "ignores a device that cannot be picked", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      legacy = client_fixture(account: account, actor: actor, name: "pick-legacy")
+
+      lv = open_add_devices(conn, actor, account, site)
+      render_hook(lv, "add_device", %{"device_id" => legacy.id})
+      render_hook(lv, "add_device", %{"device_id" => "not-a-uuid"})
+      render_hook(lv, "add_devices_submit", %{})
+
+      assert site_device_ids(site) == []
+    end
+
+    test "adds none of the picked devices when one can no longer be added", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      ready = device_v1_client_fixture(account, actor, "pick-ready")
+      downgraded = device_v1_client_fixture(account, actor, "pick-downgraded")
+
+      lv = open_add_devices(conn, actor, account, site)
+      render_hook(lv, "add_device", %{"device_id" => ready.id})
+      render_hook(lv, "add_device", %{"device_id" => downgraded.id})
+
+      Repo.update_all(from(d in Device, where: d.id == ^downgraded.id), set: [type: :client])
+
+      html = lv |> form("#site-add-devices-form") |> render_submit()
+
+      assert html =~ "Could not add the devices."
+      assert site_device_ids(site) == []
+    end
+
+    test "removes a device from the site with its authorizations for the site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
+      client = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, client)
+
+      served =
+        policy_authorization_fixture(
+          account: account,
+          gateway: client,
+          resource: resource_fixture(account: account, site: site)
+        )
+
+      unrelated =
+        policy_authorization_fixture(
+          account: account,
+          gateway: client,
+          resource: resource_fixture(account: account, site: other_site)
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      lv |> element("#site-device-#{client.id} button", "Remove from site") |> render_click()
+      html = lv |> element("#site-device-#{client.id} button", "Remove") |> render_click()
+
+      assert html =~ "Device removed from the site."
+      refute has_element?(lv, "#site-device-#{client.id}")
+      assert site_device_ids(site) == []
+      refute Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: served.id)
+      assert Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: unrelated.id)
+      assert Repo.get_by(Device, account_id: account.id, id: client.id)
+    end
+
+    test "does not remove a gateway or a device of another site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      elsewhere = device_v1_client_fixture(account, actor, "pick-elsewhere")
+      put_in_site!(other_site, elsewhere)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      html = render_click(lv, "confirm_remove_site_device", %{"id" => gateway.id})
+      assert html =~ "Could not remove the device from the site."
+
+      render_click(lv, "confirm_remove_site_device", %{"id" => elsewhere.id})
+
+      assert site_device_ids(site) == [gateway.id]
+      assert site_device_ids(other_site) == [elsewhere.id]
+    end
+
+    test "adds devices to the Internet site", %{conn: conn, account: account, actor: actor} do
+      site = internet_site_fixture(account: account)
+      client = device_v1_client_fixture(account, actor, "pick-internet")
+
+      lv = open_add_devices(conn, actor, account, site)
+      search_devices(lv, "pick-")
+      lv |> element("button[aria-label='Add #{client.name}']") |> render_click()
+      render_async(lv)
+      html = lv |> form("#site-add-devices-form") |> render_submit()
+
+      assert html =~ "1 device added to the site."
+      assert site_device_ids(site) == [client.id]
+    end
+
+    test "deleting the site keeps its devices other than gateways", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      client = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, client)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "delete_site")
+
+      refute Repo.get_by(Device, account_id: account.id, id: gateway.id)
+      assert Repo.get_by(Device, account_id: account.id, id: client.id)
+      refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
+    end
+
+    test "only admins can change the devices of a site", %{account: account, actor: actor} do
+      site = site_fixture(account: account)
+      ready = device_v1_client_fixture(account, actor, "pick-ready")
+      in_site = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, in_site)
+      user = actor_fixture(account: account, type: :account_user)
+      subject = subject_fixture(account: account, actor: user)
+
+      assert {:error, _} = PortalWeb.Sites.Database.add_devices_to_site(site, [ready.id], subject)
+      assert {:error, _} = PortalWeb.Sites.Database.remove_device_from_site(site, in_site.id, subject)
+      assert site_device_ids(site) == [in_site.id]
+    end
+  end
+
+  defp device_v1_client_fixture(account, actor, name) do
+    client = client_fixture(account: account, actor: actor, name: name)
+    Repo.update_all(from(d in Device, where: d.id == ^client.id), set: [type: nil])
+    %{client | type: nil}
+  end
+
+  defp put_in_site!(site, device) do
+    Repo.insert!(%Portal.SiteDevice{account_id: site.account_id, site_id: site.id, device_id: device.id})
+  end
+
+  defp site_device_ids(site) do
+    Repo.all(
+      from(sd in Portal.SiteDevice,
+        where: sd.account_id == ^site.account_id and sd.site_id == ^site.id,
+        select: sd.device_id
+      )
+    )
+  end
+
+  defp open_add_devices(conn, actor, account, site) do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/sites/#{site.id}")
+
+    lv |> element("#site-add-devices-button") |> render_click()
+    assert has_element?(lv, "#site-add-devices-form")
+    lv
+  end
+
+  defp search_devices(lv, term) do
+    lv |> element("#site-add-devices-form input[name='device_search']") |> render_change(%{"device_search" => term})
+    render_async(lv)
   end
 
   defp site_snapshot(account) do

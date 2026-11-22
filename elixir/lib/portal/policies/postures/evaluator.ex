@@ -173,8 +173,12 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp earliest(other, nil), do: other
   defp earliest(left, right), do: Enum.min([left, right], DateTime)
 
+  defp resolve_macro(%Leaf{parsed: :latest} = leaf, %Device{type: :gateway}) do
+    %{leaf | parsed: Postures.parse_version(ComponentVersions.gateway_version())}
+  end
+
   defp resolve_macro(%Leaf{parsed: :latest} = leaf, device) do
-    %{leaf | parsed: Postures.parse_version(ComponentVersions.component_version(component_type(device)))}
+    %{leaf | parsed: Postures.parse_version(ComponentVersions.client_version(device))}
   end
 
   defp resolve_macro(leaf, _device), do: leaf
@@ -315,10 +319,4 @@ defmodule Portal.Policies.Postures.Evaluator do
     cutoff = DateTime.shift(now, Duration.negate(duration))
     {DateTime.compare(value, cutoff) == :lt, nil}
   end
-
-  # From the user agent alone, unlike `ComponentVersions.client_version/1`, which reads the actor.
-  defp component_type(%Device{last_seen_user_agent: user_agent}) when is_binary(user_agent),
-    do: ComponentVersions.get_component_type_from_user_agent(user_agent)
-
-  defp component_type(%Device{}), do: :gui
 end
