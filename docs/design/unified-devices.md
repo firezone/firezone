@@ -1055,6 +1055,19 @@ firezone` and `firezone authenticate`. Depends 3.7.
   the machine; nav and page copy. Depends 2.21.
 - **6.8 Remove legacy socket adapters** after the compat window. Separate
   decision, far later.
+- **6.9 Code: role names in internal code.** A device is what a thing is.
+  Its role in one connection is "initiator" or "receiver", the same words as
+  the `initiating_device_id` and `receiving_device_id` columns and
+  `Routing.select_receiver`. Internal code that says "client" or "gateway" for
+  a role changes to these words, for example `PolicyAuthorization`'s `:client`
+  and `:gateway` associations, `Cache.Client` and `Cache.Gateway`, and
+  `connected_gateways_in_site`. "Responder" stays a flow log word: the side
+  that answers a network flow, which is not always the receiver of the
+  authorization. The legacy sockets and their wire fields (`client_id`,
+  `gateway_id`), the REST paths and the `type` enum keep their names. These are
+  renames only, with no change between nodes, so they ship in any deploy. Do
+  them in one pass after the feature work and before 6.4, so they do not
+  conflict with open feature PRs.
 
 ## 3a. Deploy points and releases
 
