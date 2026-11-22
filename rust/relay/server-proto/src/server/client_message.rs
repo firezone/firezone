@@ -103,16 +103,6 @@ impl ClientMessage<'_> {
             ClientMessage::CreatePermission(request) => request.username(),
         }
     }
-
-    pub fn nonce(&self) -> Option<&Nonce> {
-        match self {
-            ClientMessage::ChannelData(_) | ClientMessage::Binding(_) => None,
-            ClientMessage::Allocate(request) => request.nonce(),
-            ClientMessage::Refresh(request) => request.nonce(),
-            ClientMessage::ChannelBind(request) => request.nonce(),
-            ClientMessage::CreatePermission(request) => request.nonce(),
-        }
-    }
 }
 
 #[derive(Debug)]

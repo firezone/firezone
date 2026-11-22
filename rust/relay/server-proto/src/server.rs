@@ -507,12 +507,6 @@ where
         now: Instant,
         now_utc: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
-        if !self.admit_request(&message, sender, now, now_utc) {
-            tracing::debug!(target: "relay", %sender, "Dropping request: client exceeds its request rate");
-
-            return None;
-        }
-
         let result = match &message {
             ClientMessage::Allocate(request) => {
                 self.handle_allocate_request(request, sender, now, now_utc)
@@ -524,7 +518,7 @@ where
                 self.handle_channel_bind_request(request, sender, now, now_utc)
             }
             ClientMessage::CreatePermission(request) => {
-                self.handle_create_permission_request(request, sender, now_utc)
+                self.handle_create_permission_request(request, sender, now, now_utc)
             }
             ClientMessage::Binding(request) => {
                 self.handle_binding_request(request, sender);
@@ -731,7 +725,7 @@ where
         now: Instant,
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let verified_username = self.verify_auth(sender, request, now_utc)?;
+        let verified_username = self.verify_auth(sender, request, now, now_utc)?;
         let username = verified_username.username;
 
         if let Some(allocation) = self.allocations.get(&sender) {
@@ -858,7 +852,7 @@ where
         now: Instant,
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let verified_username = self.verify_auth(sender, request, now_utc)?;
+        let verified_username = self.verify_auth(sender, request, now, now_utc)?;
         let username = verified_username.username;
 
         // TODO: Verify that this is the correct error code.
@@ -920,7 +914,7 @@ where
         now: Instant,
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let verified_username = self.verify_auth(sender, request, now_utc)?;
+        let verified_username = self.verify_auth(sender, request, now, now_utc)?;
         let username = verified_username.username;
 
         let Some(allocation) = self.allocations.get(&sender) else {
@@ -1064,9 +1058,10 @@ where
         &mut self,
         request: &CreatePermission,
         sender: ClientSocket,
+        now: Instant,
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request, now_utc)?.username;
+        let username = self.verify_auth(sender, request, now, now_utc)?.username;
 
         if let Some(peer) = request
             .peer_addresses()
@@ -1168,6 +1163,7 @@ where
         &mut self,
         sender: ClientSocket,
         request: &(impl StunRequest + ProtectedRequest),
+        now: Instant,
         now_utc: SystemTime,
     ) -> Result<VerifiedUsername, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
@@ -1198,6 +1194,8 @@ where
 
             error_response
         })?;
+
+        self.charge_request_budget(sender, now);
 
         let allocation_key = message_integrity
             .verify(&self.auth_secret, username.name(), now_utc)
@@ -1463,34 +1461,11 @@ where
         }
     }
 
-    /// Charges an authenticated request against the sender's budget.
-    ///
-    /// Requests without a valid nonce are always admitted; the normal path rejects them.
-    fn admit_request(
-        &mut self,
-        message: &ClientMessage,
-        sender: ClientSocket,
-        now: Instant,
-        now_utc: SystemTime,
-    ) -> bool {
-        let Some(nonce) = message.nonce() else {
-            return true;
-        };
-
-        if self.nonces.verify(sender, nonce.value(), now_utc).is_err() {
-            return true;
-        }
-
+    /// Charges a request with a valid nonce against the sender's budget.
+    fn charge_request_budget(&mut self, sender: ClientSocket, now: Instant) {
         let next_request = self.request_budgets.entry(sender).or_insert(now);
-        let due = std::cmp::max(*next_request, now);
 
-        if due - now > REQUEST_BURST {
-            return false;
-        }
-
-        *next_request = due + REQUEST_INTERVAL;
-
-        true
+        *next_request = std::cmp::max(*next_request, now) + REQUEST_INTERVAL;
     }
 
     /// Whether the sender has used up its burst; never creates an entry, so spoofed senders cost nothing.
