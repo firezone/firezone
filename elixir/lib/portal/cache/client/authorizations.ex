@@ -2,7 +2,7 @@ defmodule Portal.Cache.Client.Authorizations do
   @moduledoc """
     Loads a client's authorizations into two `Portal.Cache.Authorizations` caches when its channel
     joins: inbound, where the client is the receiving device, and outbound, where it is the
-    initiating device and the receiving device is another client.
+    initiating device and the receiving device is another client or a pool target.
   """
 
   alias Portal.{Cache, Device}
@@ -60,10 +60,20 @@ defmodule Portal.Cache.Client.Authorizations do
         as: :receiving_device
       )
       |> where([policy_authorizations: pa], pa.account_id == ^client.account_id)
+      # A gateway on `/device/v1` can be a pool target too.
       |> where(
         [policy_authorizations: pa, receiving_device: d],
         pa.receiving_device_id == ^client.id or
-          (pa.initiating_device_id == ^client.id and d.type == :client)
+          (pa.initiating_device_id == ^client.id and
+             (d.type == :client or
+                exists(
+                  from(r in Portal.Resource,
+                    where:
+                      r.account_id == parent_as(:policy_authorizations).account_id and
+                        r.id == parent_as(:policy_authorizations).resource_id and
+                        r.type == :device_pool
+                  )
+                )))
       )
       |> where([policy_authorizations: pa], pa.expires_at > ^now)
       # Longest-expiring first so the per-pair last-one-wins reduction is deterministic.

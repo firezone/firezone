@@ -10,13 +10,31 @@ defmodule PortalAPI.Device.V1.Channel do
   initiating side gets `access_revoked`. `connection` says whether the pair skips ICE, or which
   ICE role a side has.
 
+  A device that connected with a Gateway token only serves: its channel builds no client
+  state, its `init` holds no resources, and every message that would start a connection is
+  refused. It still accepts one as a device pool target.
+
   The shared client code speaks `/client/v3`; `encode/3` turns what it pushes into this protocol.
   """
   use PortalAPI, :channel
-  alias PortalAPI.Channel.Authorizations
+  alias PortalAPI.Channel.{Authorizations, Durability, Protocol, Relays, Session}
   alias PortalAPI.Client.Channel.Shared
   alias PortalAPI.Gateway.Views
-  alias Portal.{Cache, Changes.Change, PG, Presence, Resource, Site, SiteDevice, Telemetry}
+
+  alias Portal.{
+    Cache,
+    Changes.Change,
+    Device,
+    PG,
+    Presence,
+    PubSub,
+    Resource,
+    SchemaHelpers,
+    Site,
+    SiteDevice,
+    Telemetry
+  }
+
   alias __MODULE__.Database
 
   require Logger
@@ -25,6 +43,11 @@ defmodule PortalAPI.Device.V1.Channel do
 
   @ref_salt "device_authorization_ref"
   @ref_max_age_seconds 60
+
+  @prune_authorizations_cache_every :timer.minutes(1)
+
+  # Like on `/gateway`, so relay credentials stay the same across reconnects.
+  @relay_credentials_expire_at ~U[2038-01-01 00:00:00Z]
 
   @impl true
   def join("device", _payload, socket) do
@@ -40,9 +63,12 @@ defmodule PortalAPI.Device.V1.Channel do
   @impl true
   defdelegate terminate(reason, socket), to: Shared
 
+  @impl true
+  def handle_info(:after_join, %{assigns: %{subject: %{actor: %{type: :legacy_gateway}}}} = socket),
+    do: serve_only_after_join(socket)
+
   # The sites were read at join, before the shared code subscribed to changes. Read them again so a
   # change committed in between is not lost.
-  @impl true
   def handle_info(:after_join, socket) do
     case Shared.handle_info(:after_join, socket) do
       {:noreply, socket} ->
@@ -76,6 +102,21 @@ defmodule PortalAPI.Device.V1.Channel do
     {:noreply, socket}
   end
 
+  # Every `/device/v1` binary handles a peer's new key, whatever version it reports.
+  def handle_info({:public_key_changed, type, device_id, public_key}, socket) do
+    payload =
+      case type do
+        :client -> %{client_id: device_id, public_key: public_key}
+        :gateway -> %{gateway_id: device_id, public_key: public_key}
+      end
+
+    Protocol.push(socket, "public_key_changed", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info(%Change{} = change, %{assigns: %{subject: %{actor: %{type: :legacy_gateway}}}} = socket),
+    do: Session.apply_change(socket, socket.assigns.client, change, &serve_only_change/2)
+
   # The shared handler drops a change it has seen; the device reacts only to a fresh one.
   def handle_info(%Change{lsn: lsn} = change, socket) do
     fresh? = lsn > Map.get(socket.assigns, :last_lsn, 0)
@@ -85,6 +126,9 @@ defmodule PortalAPI.Device.V1.Channel do
       result -> result
     end
   end
+
+  def handle_info(message, %{assigns: %{subject: %{actor: %{type: :legacy_gateway}}}} = socket),
+    do: serve_only_info(message, socket)
 
   def handle_info(message, socket), do: Shared.handle_info(message, socket)
 
@@ -129,6 +173,9 @@ defmodule PortalAPI.Device.V1.Channel do
 
     {:noreply, socket}
   end
+
+  def handle_in(event, payload, %{assigns: %{subject: %{actor: %{type: :legacy_gateway}}}} = socket),
+    do: serve_only_in(event, payload, socket)
 
   def handle_in("request_access", payload, socket) when is_map(payload) do
     payload =
@@ -239,6 +286,195 @@ defmodule PortalAPI.Device.V1.Channel do
 
   @doc false
   def extend_presence_meta(_socket, meta), do: Map.put(meta, :device_v1, true)
+
+  defp serve_only_after_join(socket) do
+    device = socket.assigns.client
+
+    # Subscribe before reading any state so no change committed after the reads is missed.
+    :ok = PubSub.Changes.subscribe(device.account_id)
+    account = Database.fetch_account!(device.account_id)
+
+    if account.is_disabled do
+      Session.disconnect(socket)
+    else
+      Process.send_after(self(), :prune_authorizations_cache, @prune_authorizations_cache_every)
+
+      socket =
+        socket
+        |> assign(
+          subject: %{socket.assigns.subject | account: account},
+          served_site_ids: Database.served_site_ids(device),
+          authorizations_cache: Cache.Gateway.hydrate(device),
+          outbound_authorizations_cache: %{},
+          pending_authorizations: %{}
+        )
+        |> serve_only_track_presence()
+
+      with {:noreply, socket} <- serve_only_register(socket) do
+        :ok = Presence.Relays.subscribe()
+        relays = Relays.select(serve_only_relay_owner(socket))
+        socket = Relays.cache(socket, relays)
+        serve_only_init(socket, relays)
+
+        :ok = PortalAPI.Sockets.notify_public_key_changed(device, socket.assigns[:previous_public_key])
+
+        {:noreply, socket}
+      end
+    end
+  end
+
+  defp serve_only_info(:register, socket), do: serve_only_register(socket)
+  defp serve_only_info(:track_presence, socket), do: {:noreply, serve_only_track_presence(socket)}
+
+  defp serve_only_info({:DOWN, _ref, :process, pid, _reason}, socket) do
+    case Session.monitored(socket, pid) do
+      :pg_scope -> serve_only_register(socket)
+      :presence -> {:noreply, serve_only_track_presence(socket)}
+      nil -> {:noreply, socket}
+    end
+  end
+
+  defp serve_only_info({:check_relay_presence, ref}, socket),
+    do: Relays.check(socket, ref, serve_only_relay_owner(socket))
+
+  # First wins, like on `/gateway`: a connection that joins the device's group after this one is
+  # told to close.
+  defp serve_only_info({_ref, :join, device_id, pids}, %{assigns: %{client: %{id: device_id}}} = socket) do
+    for pid <- pids, pid != self() do
+      Logger.info("Disconnecting duplicate gateway connection", gateway_id: device_id)
+      send(pid, :duplicate_connection)
+    end
+
+    {:noreply, socket}
+  end
+
+  defp serve_only_info(:duplicate_connection, socket), do: Session.close_transport(socket)
+
+  defp serve_only_info(message, socket) do
+    if serving_message?(message) do
+      Shared.handle_info(message, socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp serving_message?(:disconnect), do: true
+  defp serving_message?({:disconnect, _session_ref}), do: true
+  defp serving_message?(:prune_authorizations_cache), do: true
+  defp serving_message?({:reject_access, %Portal.PolicyAuthorization{}}), do: true
+  defp serving_message?({:confirm_authz_durability, _authz_id}), do: true
+  defp serving_message?({:confirm_session_durability, _session_ref}), do: true
+  defp serving_message?({:authz_durability_timeout, _authorization, _generation}), do: true
+  defp serving_message?({:session_durability_timeout, _session_ref}), do: true
+  defp serving_message?(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: "presences:relays" <> _}), do: true
+  defp serving_message?(_message), do: false
+
+  defp serve_only_in("set_snownet_capabilities", payload, socket),
+    do: Shared.handle_in("set_snownet_capabilities", payload, socket)
+
+  defp serve_only_in("no_relays", payload, socket),
+    do: Relays.no_relays(socket, payload, serve_only_relay_owner(socket))
+
+  defp serve_only_in(_event, _payload, socket), do: {:reply, {:error, %{reason: :unauthorized}}, socket}
+
+  defp serve_only_change(
+         %Change{op: :update, old_struct: %Device{} = old_device, struct: %Device{id: id} = device},
+         %{assigns: %{client: %{id: id} = current}} = socket
+       ) do
+    socket = assign(socket, :client, Device.merge_broadcast(current, device))
+
+    if old_device.ipv4 != device.ipv4 or old_device.ipv6 != device.ipv6 do
+      relays = Relays.select(serve_only_relay_owner(socket))
+      socket = Relays.cache(socket, relays)
+      serve_only_init(socket, relays)
+      {:noreply, serve_only_track_presence(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp serve_only_change(%Change{op: :update, struct: %Portal.Account{} = account}, socket) do
+    account = SchemaHelpers.merge_broadcast(socket.assigns.subject.account, account)
+    {:noreply, assign(socket, :subject, %{socket.assigns.subject | account: account})}
+  end
+
+  defp serve_only_change(change, socket), do: {:noreply, served_change(change, socket)}
+
+  # A Gateway token joins its token and device groups like on `/gateway`, so a revoke and a second
+  # connection of the same gateway reach this channel. Its session goes to the gateway queue, which
+  # writes no user for the device.
+  defp serve_only_register(socket) do
+    case Session.monitor_pg_scope(socket) do
+      {:joined, socket, previous_pid} ->
+        device_id = socket.assigns.client.id
+        :ok = PG.join(device_id)
+        :ok = PG.join(socket.assigns.token_id)
+        {_ref, _members} = PG.monitor(device_id)
+        serve_only_register_session(socket, previous_pid)
+
+      result ->
+        result
+    end
+  end
+
+  defp serve_only_register_session(socket, nil) do
+    Portal.Queue.enqueue(
+      Portal.Queue.name(:gateway_session_queue),
+      PortalAPI.Gateway.Channel.Shared.session_attrs(socket.assigns.client, socket.assigns.session_ref),
+      metadata: %{timestamp: DateTime.utc_now()}
+    )
+
+    {:noreply, Durability.arm_session(socket)}
+  end
+
+  # A token deleted while the scope was down missed its PG disconnect.
+  defp serve_only_register_session(socket, _previous_pid) do
+    if Database.token_exists?(socket.assigns.client.account_id, socket.assigns.token_id) do
+      {:noreply, socket}
+    else
+      Shared.handle_info(:disconnect, socket)
+    end
+  end
+
+  defp serve_only_track_presence(socket) do
+    range = socket.assigns.proto_range
+
+    meta =
+      extend_presence_meta(socket, %{
+        site_ids: socket.assigns.served_site_ids,
+        capabilities: [],
+        proto_min: range.min,
+        proto_max: range.max
+      })
+
+    Session.track_presence(socket, socket.assigns.client, socket.assigns.token_id, meta)
+  end
+
+  defp serve_only_init(socket, relays) do
+    %{subject: subject, client: device} = socket.assigns
+
+    payload = %{
+      flow_logs: Shared.flow_logs_config(),
+      account_slug: subject.account.slug,
+      actor_name: subject.actor.name,
+      resources: [],
+      authorizations: PortalAPI.Client.Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
+      relays: Relays.render(relays, serve_only_relay_owner(socket)),
+      interface: PortalAPI.Client.Views.Interface.render(%{device | account: subject.account})
+    }
+
+    Protocol.push(socket, "init", extend_init(socket, payload))
+  end
+
+  defp serve_only_relay_owner(socket) do
+    device = socket.assigns.client
+
+    %{
+      device: device,
+      location: {device.last_seen_remote_ip_location_lat, device.last_seen_remote_ip_location_lon},
+      expires_at: @relay_credentials_expire_at
+    }
+  end
 
   defp served_view(socket) do
     device = socket.assigns.client
@@ -476,6 +712,18 @@ defmodule PortalAPI.Device.V1.Channel do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
+
+    def fetch_account!(id) do
+      from(a in Portal.Account, where: a.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.one!()
+    end
+
+    def token_exists?(account_id, id) do
+      from(t in Portal.DeviceToken, where: t.account_id == ^account_id, where: t.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
 
     def served_site_ids(device) do
       from(sd in Portal.SiteDevice,

@@ -11,6 +11,7 @@ defmodule PortalWeb.DevicesTest do
     end
   end
 
+  import Ecto.Query, only: [from: 2]
   alias Portal.{Device, Repo}
   alias Portal.Changes.Change
 
@@ -18,7 +19,6 @@ defmodule PortalWeb.DevicesTest do
   import Portal.ActorFixtures
   import Portal.DefenderFixtures
   import Portal.DevicePostureFixtures
-  import Portal.FeaturesFixtures
   import Portal.IntuneFixtures
   import Portal.IruFixtures
   import Portal.SantaFixtures
@@ -1823,8 +1823,9 @@ defmodule PortalWeb.DevicesTest do
     end
 
     test "adds the device to a site", %{conn: conn, account: account, actor: actor} do
-      enable_feature(:unified_devices)
+      put_unified_devices(account, true)
       client = client_fixture(account: account, actor: actor)
+      Repo.update_all(from(d in Device, where: d.id == ^client.id), set: [type: nil])
       site = internet_site_fixture(account: account)
 
       {:ok, lv, _html} =
@@ -1855,7 +1856,7 @@ defmodule PortalWeb.DevicesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:unified_devices)
+      put_unified_devices(account, true)
       client = client_fixture(account: account, actor: actor)
       site = site_fixture(account: account)
       other_site = site_fixture(account: account)
@@ -1899,6 +1900,45 @@ defmodule PortalWeb.DevicesTest do
       assert Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: unrelated.id)
     end
 
+    test "does not put a device last seen on /client in a site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      put_unified_devices(account, true)
+      client = client_fixture(account: account, actor: actor)
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      assert has_element?(lv, "#device-site", "Update to the latest Firezone client to route for a site.")
+      assert has_element?(lv, "#device-site-form select[disabled]")
+      assert has_element?(lv, "#device-site-form button[disabled]")
+
+      html = render_hook(lv, "put_device_in_site", %{"site_device" => %{"site_id" => site.id}})
+
+      assert html =~ "Could not add the device to the site."
+      refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
+    end
+
+    test "shows the site section only to accounts with unified_devices set to true", %{conn: conn} do
+      for {value, shown?} <- [{true, true}, {false, false}, {nil, false}] do
+        account = put_unified_devices(account_fixture(), value)
+        actor = admin_actor_fixture(account: account)
+        client = client_fixture(account: account, actor: actor)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/devices/#{client.id}")
+
+        assert has_element?(lv, "#device-site") == shown?
+      end
+    end
+
     test "ignores site events without the unified devices feature", %{
       conn: conn,
       account: account,
@@ -1915,6 +1955,406 @@ defmodule PortalWeb.DevicesTest do
       render_hook(lv, "put_device_in_site", %{"site_device" => %{"site_id" => site.id}})
 
       refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
+    end
+  end
+
+  describe "unified devices list" do
+    setup %{account: account, actor: actor} do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, token: :single_owner)
+      client = client_fixture(account: account, actor: actor)
+      %{site: site, gateway: gateway, client: client}
+    end
+
+    test "lists only clients without the flag", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      gateway: gateway,
+      client: client
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      assert has_element?(lv, "#device-#{client.id}")
+      refute has_element?(lv, "#device-#{gateway.id}")
+      refute has_element?(lv, "th", "Routes for")
+      refute has_element?(lv, "#devices-site_id")
+      refute has_element?(lv, "#devices-has_users-toggle")
+    end
+
+    test "ignores a site filter in the URL without the flag", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site,
+      client: client
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices?#{%{"devices_filter[site_id]" => site.id}}")
+
+      assert has_element?(lv, "#device-#{client.id}")
+    end
+
+    test "does not open a gateway panel without the flag", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      gateway: gateway
+    } do
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      assert to == ~p"/#{account}/devices"
+      assert flash["error"] == "Device does not exist."
+    end
+
+    test "lists gateways with their label and site", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site,
+      gateway: gateway,
+      client: client
+    } do
+      put_unified_devices(account, true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      assert has_element?(lv, "th", "Routes for")
+      assert has_element?(lv, "#device-#{gateway.id}", "Gateway")
+      assert has_element?(lv, "#device-#{gateway.id} a[href='/#{account.slug}/sites/#{site.id}']", site.name)
+      assert has_element?(lv, "#device-#{client.id}")
+      refute has_element?(lv, "#device-#{client.id}", "Gateway")
+      refute has_element?(lv, "#device-#{client.id} a[href='/#{account.slug}/sites/#{site.id}']")
+      assert render_async(lv) =~ ~r/>\s*2\s*<\/span>\s*<span[^>]*>\s*Total/
+    end
+
+    test "shows the site of a client that routes for one", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site,
+      client: client
+    } do
+      put_unified_devices(account, true)
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: client.id})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      assert has_element?(lv, "#device-#{client.id} a[href='/#{account.slug}/sites/#{site.id}']", site.name)
+    end
+
+    test "filters by the site a device routes for", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site,
+      gateway: gateway,
+      client: client
+    } do
+      put_unified_devices(account, true)
+      other_site = site_fixture(account: account)
+      other_gateway = gateway_fixture(account: account, site: other_site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices?#{%{"devices_filter[site_id]" => site.id}}")
+
+      assert has_element?(lv, "#devices-site_id option[value='#{site.id}']", site.name)
+      assert has_element?(lv, "#devices-site_id option[value='#{other_site.id}']", other_site.name)
+      assert has_element?(lv, "#device-#{gateway.id}")
+      refute has_element?(lv, "#device-#{other_gateway.id}")
+      refute has_element?(lv, "#device-#{client.id}")
+    end
+
+    test "filters for devices with users, which leaves out gateways", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      gateway: gateway,
+      client: client
+    } do
+      put_unified_devices(account, true)
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{account}/devices?#{%{"devices_filter[has_users]" => "true"}}")
+
+      assert has_element?(lv, "#devices-has_users-toggle")
+      assert has_element?(lv, "#device-#{client.id}")
+      refute has_element?(lv, "#device-#{gateway.id}")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{account}/devices?#{%{"devices_filter[has_users]" => "false"}}")
+
+      assert has_element?(lv, "#device-#{client.id}")
+      assert has_element?(lv, "#device-#{gateway.id}")
+    end
+
+    test "counts gateways as online", %{conn: conn, account: account, actor: actor, gateway: gateway, client: client} do
+      put_unified_devices(account, true)
+      :ok = Portal.Presence.Devices.Account.track(gateway)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices?#{%{"devices_filter[presence]" => "online"}}")
+
+      assert has_element?(lv, "#device-#{gateway.id}")
+      refute has_element?(lv, "#device-#{client.id}")
+    end
+
+    test "shows what applies to a gateway in its panel", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site,
+      gateway: gateway
+    } do
+      put_unified_devices(account, true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      assert has_element?(lv, "#device-panel h2", gateway.slug)
+      assert has_element?(lv, "#device-panel", "Gateway")
+      assert has_element?(lv, "#gateway-site a[href='/#{account.slug}/sites/#{site.id}']", site.name)
+      assert has_element?(lv, "#gateway-site", "Last connected with gateway token")
+      assert has_element?(lv, "#device-panel", "Rename gateway")
+      assert has_element?(lv, "#device-panel", "Rotate token")
+      assert has_element?(lv, "#device-panel", "Delete gateway")
+      assert has_element?(lv, "#device-panel", "Remote IP")
+      assert has_element?(lv, "#device-panel", gateway.last_seen_version)
+
+      refute has_element?(lv, "#device-panel button", "Verify")
+      refute has_element?(lv, "#device-panel", "Trust level")
+      refute has_element?(lv, "#device-panel [phx-value-tab='posture']")
+      refute has_element?(lv, "#device-panel", "Reported by Client")
+      refute has_element?(lv, "#device-panel button", "Edit")
+      refute has_element?(lv, "#device-site-form")
+    end
+
+    test "ignores client-only events for a gateway", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site,
+      gateway: gateway
+    } do
+      put_unified_devices(account, true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      render_click(lv, "verify_device")
+      render_click(lv, "remove_device_from_site")
+
+      gateway = Repo.get_by!(Device, account_id: account.id, id: gateway.id)
+      assert is_nil(gateway.verified_at)
+      assert Repo.get_by(Portal.SiteDevice, account_id: account.id, site_id: site.id, device_id: gateway.id)
+    end
+
+    test "sends the edit route of a gateway back to its panel", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      gateway: gateway
+    } do
+      put_unified_devices(account, true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      render_patch(lv, ~p"/#{account}/devices/#{gateway.id}/edit")
+      assert_patch(lv, ~p"/#{account}/devices/#{gateway.id}")
+      refute has_element?(lv, "#device-edit-form")
+    end
+
+    test "renames a gateway as the Sites page does", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      gateway: gateway
+    } do
+      put_unified_devices(account, true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      render_click(lv, "rename_gateway")
+      assert has_element?(lv, "#rename-gateway-#{gateway.id}")
+
+      html = render_submit(lv, "save_gateway_name", %{"name" => "  edge-nyc-1 "})
+      assert html =~ "Gateway renamed."
+      refute has_element?(lv, "#rename-gateway-#{gateway.id}")
+      assert has_element?(lv, "#device-panel", "edge-nyc-1")
+
+      assert Repo.get_by!(Device, account_id: account.id, id: gateway.id).name == "edge-nyc-1"
+
+      render_click(lv, "rename_gateway")
+      html = render_submit(lv, "save_gateway_name", %{"name" => "   "})
+      assert html =~ "Failed to rename gateway."
+      assert Repo.get_by!(Device, account_id: account.id, id: gateway.id).name == "edge-nyc-1"
+    end
+
+    test "rotates a gateway token as the Sites page does", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      gateway: gateway
+    } do
+      put_unified_devices(account, true)
+      token = Repo.get_by!(Portal.DeviceToken, account_id: account.id, device_id: gateway.id)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      html = render_click(lv, "rotate_gateway_token")
+      assert html =~ "Rotate this gateway&#39;s token?"
+
+      html = render_click(lv, "cancel_rotate_gateway_token")
+      refute html =~ "Rotate this gateway&#39;s token?"
+
+      render_click(lv, "rotate_gateway_token")
+      html = render_click(lv, "confirm_rotate_gateway_token")
+      assert html =~ "Token rotated."
+      assert html =~ "New gateway token"
+      assert html =~ "The expiring token keeps working"
+      assert has_element?(lv, "[data-copy-to-clipboard-target='gateway-token-reveal-#{gateway.id}-code']")
+      refute has_element?(lv, "#device-panel button", "Rotate token")
+
+      assert html =~
+               "Last connected with expiring gateway token - Replacement provisioned, but never used"
+
+      assert Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: token.id).rotated_at
+
+      html = render_click(lv, "dismiss_rotated_gateway_token")
+      refute html =~ "Copy it now"
+    end
+
+    test "deletes a gateway as the Sites page does", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      gateway: gateway
+    } do
+      put_unified_devices(account, true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      html = render_click(lv, "confirm_delete_device")
+      assert html =~ "Delete this gateway?"
+      refute html =~ "disable the owning actor"
+
+      html = render_click(lv, "delete_device")
+      assert html =~ "Gateway deleted."
+      assert_patch(lv, ~p"/#{account}/devices")
+
+      refute Repo.get_by(Device, account_id: account.id, id: gateway.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, device_id: gateway.id)
+      refute has_element?(lv, "#device-#{gateway.id}")
+    end
+
+    test "shows gateway changes as they happen", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site,
+      gateway: gateway
+    } do
+      put_unified_devices(account, true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      refute has_element?(lv, "#devices-reload-btn")
+
+      new_gateway = gateway_fixture(account: account, site: site)
+      send(lv.pid, %Change{op: :insert, struct: new_gateway})
+
+      assert has_element?(lv, "#devices-reload-btn")
+      render_click(lv, "reload", %{"table_id" => "devices"})
+      render_async(lv)
+      assert has_element?(lv, "#device-#{new_gateway.id}", "Gateway")
+
+      Repo.delete!(gateway)
+      send(lv.pid, %Change{op: :delete, old_struct: gateway})
+
+      assert has_element?(lv, "#devices-reload-btn")
+      render_click(lv, "reload", %{"table_id" => "devices"})
+      render_async(lv)
+      refute has_element?(lv, "#device-#{gateway.id}")
+    end
+
+    test "ignores gateway changes without the flag", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      new_gateway = gateway_fixture(account: account, site: site)
+      send(lv.pid, %Change{op: :insert, struct: new_gateway})
+      send(lv.pid, %Change{op: :delete, old_struct: new_gateway})
+
+      refute has_element?(lv, "#devices-reload-btn")
+      refute has_element?(lv, "#device-#{new_gateway.id}")
+    end
+
+    test "shows nothing new to another account without the flag", %{
+      conn: conn,
+      account: account
+    } do
+      put_unified_devices(account, true)
+
+      other_account = account_fixture()
+      other_actor = admin_actor_fixture(account: other_account)
+      other_gateway = gateway_fixture(account: other_account)
+      other_client = client_fixture(account: other_account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(other_actor)
+        |> live(~p"/#{other_account}/devices")
+
+      assert has_element?(lv, "#device-#{other_client.id}")
+      refute has_element?(lv, "#device-#{other_gateway.id}")
+      refute has_element?(lv, "th", "Routes for")
+      refute has_element?(lv, "#devices-site_id")
+      refute has_element?(lv, "#devices-has_users-toggle")
     end
   end
 end

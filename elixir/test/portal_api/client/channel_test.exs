@@ -15,6 +15,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
   import Portal.MembershipFixtures
+  import Portal.MetricsFixtures
   import Portal.PolicyFixtures
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
@@ -657,7 +658,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["*"])
+      account_metrics_fixture(account, ["*"])
       socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
 
       assert_push "init", init
@@ -673,7 +674,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["*"])
+      account_metrics_fixture(account, ["*"])
       socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
       assert_push "init", _init_payload
       assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
@@ -702,7 +703,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
-      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["b"])
+      account_metrics_fixture(account, ["b"])
       socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
 
       assert_push "init", _init_payload
@@ -723,7 +724,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert claims["device_version"] == version
       assert claims["metrics"] == ["b"]
 
-      {:ok, _patterns} = Portal.Ops.set_plan_metrics(Portal.Billing.plan_type(account), ["a"])
+      plan_metrics_fixture(Portal.Billing.plan_type(account), ["a"])
       send(socket.channel_pid, :refresh_metrics_token)
 
       assert_push "metrics_config", %{patterns: ["a", "b"], token: token}
@@ -740,15 +741,13 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _init_payload
       assert_push "metrics_config", %{token: nil}
 
-      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["a"])
-      metrics = Repo.get!(Portal.AccountMetrics, account.id)
+      metrics = account_metrics_fixture(account, ["a"])
       send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: metrics})
 
       assert_push "metrics_config", %{token: token, patterns: ["a"]}
       assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["a"]
 
-      {:ok, _patterns} = Portal.Ops.set_account_metrics(account.id, ["b"])
-      updated = Repo.get!(Portal.AccountMetrics, account.id)
+      updated = account_metrics_fixture(account, ["b"])
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 101,
@@ -760,7 +759,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "metrics_config", %{token: token, patterns: ["b"]}
       assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["b"]
 
-      :ok = Portal.Ops.remove_account_metrics(account.id)
+      Repo.delete!(updated)
       send(socket.channel_pid, %Changes.Change{lsn: 102, op: :delete, old_struct: updated})
 
       assert_push "metrics_config", %{token: nil, patterns: []}
@@ -9492,6 +9491,19 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "join/3 with a gateway in a listed pool" do
+    test "lists no gateway", %{account: account, client: client, group: group, subject: subject} do
+      subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
+      pool_resource = device_pool_resource_fixture(account: account, devices: [gateway_fixture(account: account)])
+      policy_fixture(account: account, group: group, resource: pool_resource)
+
+      join_channel(client, subject)
+      assert_push "init", %{resources: resources}
+
+      assert %{devices: []} = Enum.find(resources, &(&1.id == pool_resource.id))
+    end
+  end
+
   describe "handle_info/2 :reject_access" do
     # Same eviction semantics as the gateway channel's :reject_access handler —
     # see `PortalAPI.Gateway.ChannelTest` for branch-by-branch coverage of
@@ -10567,5 +10579,6 @@ defmodule PortalAPI.Client.ChannelTest do
     while_down.()
     start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
   end
+
 
 end

@@ -38,7 +38,7 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
 
   @subject_attrs %{"actor_id" => :actor_id, "account_id" => :account_id}
 
-  @doc "The criteria that hold every client device in the account."
+  @doc "The criteria that hold every client in the account and every gateway last seen on `/device/v1`."
   @spec all_devices() :: t()
   def all_devices do
     %__MODULE__{provider: :device, field: :account_id, op: :eq, value: {:subject, :account_id}}
@@ -128,6 +128,15 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
   """
   @spec where_members(Ecto.Query.t(), t(), scope()) :: Ecto.Query.t()
   def where_members(query, criteria, scope), do: where(query, ^members(criteria, scope))
+
+  @doc """
+  The devices, bound as `:devices`, that any pool may hold: legacy client records, and devices
+  enrolled by a 1.7 or later binary, which have no `type`.
+  """
+  @spec targets() :: Ecto.Query.dynamic_expr()
+  def targets do
+    dynamic([devices: d], d.type == :client or is_nil(d.type))
+  end
 
   @doc "The condition `where_members/3` adds, to combine the members of several pools."
   @spec members(t(), scope()) :: Ecto.Query.dynamic_expr()

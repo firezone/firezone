@@ -54,6 +54,17 @@ defmodule Portal.PresenceTest do
       assert id == gateway.id
     end
 
+    test "does not fetch a gateway connected on /device/v1 for reuse_connection" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+
+      :ok = Presence.Devices.connect(gateway, Ecto.UUID.generate(), %{site_ids: [site.id], device_v1: true})
+
+      assert Presence.Devices.fetch_gateway(account.id, gateway.id, site.id) == {:error, :offline}
+      assert [_gateway] = Presence.Devices.connected_gateways_in_site(account.id, site.id)
+    end
+
     test "places a gateway loaded without its site by the site it connects with" do
       account = account_fixture()
       site = site_fixture(account: account)

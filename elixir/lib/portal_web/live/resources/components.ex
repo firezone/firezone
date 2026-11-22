@@ -752,6 +752,8 @@ defmodule PortalWeb.Resources.Components do
   attr :device_search_online_only, :boolean, default: false
   attr :device_search_recently_seen, :boolean, default: false
   attr :device_search_loading, :boolean, default: false
+  attr :unavailable, :map, default: %{}, doc: "Why a listed device cannot be picked, by device id"
+  attr :notes, :map, default: %{}, doc: "A warning shown on a listed device that can still be picked, by device id"
 
   def device_picker(assigns) do
     ~H"""
@@ -832,7 +834,11 @@ defmodule PortalWeb.Resources.Components do
             ]}
           >
             <li :for={device <- @device_search_results.devices} class="min-w-0">
-              <.device_chip device={device} />
+              <.device_chip
+                device={device}
+                unavailable={Map.get(@unavailable, device.id)}
+                note={Map.get(@notes, device.id)}
+              />
             </li>
           </ul>
           <div
@@ -939,18 +945,20 @@ defmodule PortalWeb.Resources.Components do
 
   attr :device, Portal.Device, required: true
   attr :selected, :boolean, default: false
+  attr :unavailable, :string, default: nil
+  attr :note, :string, default: nil
 
   defp device_chip(assigns) do
     ~H"""
-    <div class={[
-      "relative flex items-center gap-2 px-2.5 py-1.5 w-full rounded border transition-colors",
-      if(@selected,
-        do: "border-brand bg-brand-muted",
-        else: "border-border bg-raised hover:border-border-emphasis hover:bg-surface"
-      )
-    ]}>
+    <div
+      class={[
+        "relative flex items-center gap-2 px-2.5 py-1.5 w-full rounded border transition-colors",
+        device_chip_class(@selected, @unavailable)
+      ]}
+      aria-disabled={@unavailable && "true"}
+    >
       <button
-        :if={not @selected}
+        :if={not @selected and is_nil(@unavailable)}
         type="button"
         phx-click="add_device"
         phx-value-device_id={@device.id}
@@ -967,6 +975,12 @@ defmodule PortalWeb.Resources.Components do
         </p>
         <p :if={device_owner(@device)} class="text-[10px] text-subtle truncate">
           {device_owner(@device)}
+        </p>
+        <p :if={@unavailable} class="text-[10px] text-warning truncate" title={@unavailable}>
+          {@unavailable}
+        </p>
+        <p :if={@note && is_nil(@unavailable)} class="text-[10px] text-warning truncate" title={@note}>
+          {@note}
         </p>
       </div>
       <Core.popover class="relative z-10 shrink-0 flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading cursor-help transition-colors">
@@ -996,6 +1010,10 @@ defmodule PortalWeb.Resources.Components do
     </div>
     """
   end
+
+  defp device_chip_class(true, _unavailable), do: "border-brand bg-brand-muted"
+  defp device_chip_class(false, nil), do: "border-border bg-raised hover:border-border-emphasis hover:bg-surface"
+  defp device_chip_class(false, _unavailable), do: "border-border bg-raised opacity-60 cursor-not-allowed"
 
   defp device_owner(%{actor: %Portal.Actor{} = actor}), do: actor.email || actor.name
   defp device_owner(_device), do: nil
@@ -2290,7 +2308,7 @@ defmodule PortalWeb.Resources.Components do
 
     def get_device(device_id, subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> where([devices: d], d.id == ^device_id)
       |> Safe.scoped(subject)
       |> Safe.one()
@@ -2335,7 +2353,7 @@ defmodule PortalWeb.Resources.Components do
 
         query =
           from(d in Device, as: :devices)
-          |> where([devices: d], d.type == :client)
+          |> where(^Resource.DeviceMembershipCriteria.targets())
           |> where([devices: d], d.id not in ^Enum.map(selected_devices, & &1.id))
           |> filter_device_search(search_term)
           |> filter_online_only(online_only?, online_ids)
@@ -2483,7 +2501,7 @@ defmodule PortalWeb.Resources.Components do
         |> Enum.uniq()
 
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> where([devices: d], d.id in ^ids)
       |> Safe.scoped(subject)
       |> Safe.all()

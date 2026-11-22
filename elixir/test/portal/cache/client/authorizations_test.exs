@@ -7,6 +7,7 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
   import Portal.PolicyAuthorizationFixtures
+  import Portal.ResourceFixtures
 
   import Ecto.UUID, only: [dump!: 1]
 
@@ -149,6 +150,19 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
       policy_authorization_fixture(account: account, client: initiating_client)
 
       assert Authorizations.hydrate(initiating_client) == {%{}, %{}}
+    end
+
+    test "loads an authorization to a gateway through a pool" do
+      account = account_fixture()
+      initiating_client = client_fixture(account: account)
+      gateway = gateway_fixture(account: account)
+      pool = all_devices_pool_resource_fixture(account: account)
+
+      policy_authorization =
+        policy_authorization_fixture(account: account, client: initiating_client, gateway: gateway, resource: pool)
+
+      assert {%{}, outbound} = Authorizations.hydrate(initiating_client)
+      assert Map.keys(outbound) == [{dump!(gateway.id), dump!(policy_authorization.resource_id)}]
     end
 
     test "keeps inbound authorizations out of the outbound cache" do

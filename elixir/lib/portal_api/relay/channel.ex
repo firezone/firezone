@@ -6,7 +6,8 @@ defmodule PortalAPI.Relay.Channel do
   require Logger
 
   @impl true
-  def join("relay", %{"stamp_secret" => stamp_secret} = payload, socket) do
+  def join("relay", %{"stamp_secret" => stamp_secret} = payload, socket)
+      when is_binary(stamp_secret) and byte_size(stamp_secret) in 1..256 do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
@@ -29,6 +30,10 @@ defmodule PortalAPI.Relay.Channel do
 
       {:ok, socket}
     end
+  end
+
+  def join("relay", _payload, _socket) do
+    {:error, %{reason: :invalid_stamp_secret}}
   end
 
   # On an abnormal exit, drain the whole WebSocket instead of just letting the

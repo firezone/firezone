@@ -103,7 +103,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     socket =
       assign(socket,
-        authorizations_cache: Cache.Gateway.hydrate(socket.assigns.gateway),
+        authorizations_cache: Cache.Gateway.hydrate(socket.assigns.gateway, device_pools: false),
         iceless_capable: false
       )
 
@@ -203,6 +203,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     {:noreply, socket}
   end
+
+  # Only a `/device/v1` connection of the same gateway can be a pool target. With no reply, the
+  # initiator times out as it would for an offline target.
+  def handle_info({:authorize, _from, %{resource: %Cache.Cacheable.Resource{type: :device_pool}}}, socket),
+    do: {:noreply, socket}
 
   # The initiator is told only once the gateway echoes the ref, after it has the authorization.
   def handle_info({:authorize, {channel_pid, ref}, request}, socket) do
@@ -746,7 +751,8 @@ Relays.render(relays, relay_owner(socket)),
     })
   end
 
-  defp session_attrs(%Portal.Device{} = gateway, session_ref) do
+  @doc false
+  def session_attrs(%Portal.Device{} = gateway, session_ref) do
     %{
       session_ref: session_ref,
       account_id: gateway.account_id,
