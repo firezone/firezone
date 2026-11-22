@@ -83,7 +83,8 @@ defmodule PortalAPI.Device.ServeOnlyTest do
       assert meta.token_id == token.id
       refute meta.actor_id
 
-      assert {:ok, _gateway} = Presence.Devices.fetch_gateway(account.id, device_id, site.id)
+      assert [%{id: ^device_id}] = Presence.Devices.connected_gateways_in_site(account.id, site.id)
+      assert Presence.Devices.fetch_gateway(account.id, device_id, site.id) == {:error, :offline}
     end
 
     test "writes its session to the gateway queue and no user for the device", %{token: token} do
@@ -147,6 +148,16 @@ defmodule PortalAPI.Device.ServeOnlyTest do
   end
 
   describe "serving" do
+    test "is told a peer's new key whatever version it reports", %{token: token} do
+      socket = join_gateway(token)
+      assert_push "init", _
+      peer_id = Ecto.UUID.generate()
+
+      send(socket.channel_pid, {:public_key_changed, :client, peer_id, "new-key"})
+
+      assert_push "public_key_changed", %{device_id: ^peer_id, public_key: "new-key"}
+    end
+
     test "a client on /client/v3 reaches a resource through it", %{
       account: account,
       site: site,
