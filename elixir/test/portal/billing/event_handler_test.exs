@@ -6,7 +6,6 @@ defmodule Portal.Billing.EventHandlerTest do
   alias Portal.Fixture
   alias Portal.Mocks.Stripe
 
-  import Ecto.Query
   import ExUnit.CaptureLog
   import Portal.AccountFixtures
 
@@ -568,7 +567,8 @@ defmodule Portal.Billing.EventHandlerTest do
     end
 
     test "leaves the staff-set unified_devices flag alone", %{account: account, customer: customer} do
-      Portal.Repo.update_all(from(a in Portal.Account, where: a.id == ^account.id), set: [unified_devices: true])
+      account = put_unified_devices(account, true)
+      assert account.metadata.stripe.customer_id == "cus_existing123"
 
       {product, _price, subscription} =
         Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
@@ -583,7 +583,12 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = EventHandler.handle_event(Stripe.build_event("customer.updated", customer))
 
-      assert Portal.Repo.get!(Portal.Account, account.id).unified_devices == true
+      assert {:ok, _account} =
+               Database.update_account_by_id(account.id, %{metadata: %{stripe: %{customer_id: "cus_other"}}})
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.metadata.unified_devices == true
+      assert updated.metadata.stripe.customer_id == "cus_other"
     end
 
     test "processes plan product and warns on unrecognized product", %{

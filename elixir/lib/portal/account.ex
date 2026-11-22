@@ -104,9 +104,6 @@ defmodule Portal.Account do
     # Set by Ops Admins only. Prevents account admins from modifying account settings.
     field :lock_enabled_at, :utc_datetime_usec
 
-    # Set by staff only. Turns on adding devices to sites; nil means off.
-    field :unified_devices, :boolean
-
     # Usage against `limits`, computed by the REST API when it renders the account.
     field :limit_usage, :map, virtual: true
 
@@ -174,6 +171,11 @@ defmodule Portal.Account do
   defp account_feature_enabled?(account, feature) do
     Map.fetch!(account.features || %Portal.Accounts.Features{}, feature) || false
   end
+
+  @doc "Whether staff turned on adding devices to sites for this account."
+  @spec unified_devices?(t()) :: boolean()
+  def unified_devices?(%__MODULE__{metadata: %{unified_devices: true}}), do: true
+  def unified_devices?(%__MODULE__{}), do: false
 
   # Every slug an account uses is kept in account_slugs so that old slugs keep
   # redirecting and no other account can take them. Runs inside the insert or
@@ -293,6 +295,8 @@ defmodule Portal.Account.Metadata do
   embedded_schema do
     field :marketing_attribution, :map
     field :region_transfer, :map
+    # Set by staff only, never cast, so Stripe and admins cannot change it. nil means off.
+    field :unified_devices, :boolean
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 

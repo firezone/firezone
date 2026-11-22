@@ -27,7 +27,7 @@ defmodule PortalWeb.Devices do
       socket
       |> assign(page_title: "Devices")
       |> assign(selected_device: nil)
-      |> assign(unified_devices?: subject.account.unified_devices == true)
+      |> assign(unified_devices?: Portal.Account.unified_devices?(subject.account))
       |> assign(device_site: nil, sites: [])
       |> assign(stale: false)
       |> assign_async(:devices_count, fn -> {:ok, %{devices_count: Database.count_devices(subject)}} end)
