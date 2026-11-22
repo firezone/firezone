@@ -4,7 +4,6 @@ defmodule Portal.AccountFixtures do
   """
 
   import Ecto.Changeset
-  import Ecto.Query, only: [from: 2]
   alias Portal.Repo
 
   @doc """
@@ -161,13 +160,10 @@ defmodule Portal.AccountFixtures do
   Sets the staff-only `unified_devices` flag on an account, the way staff do.
   """
   def put_unified_devices(%Portal.Account{} = account, value) do
-    {1, _} =
-      Repo.update_all(
-        from(a in Portal.Account, where: a.id == ^account.id),
-        set: [unified_devices: value]
-      )
-
-    %{account | unified_devices: value}
+    account
+    |> change()
+    |> put_embed(:metadata, %{unified_devices: value})
+    |> Repo.update!()
   end
 
   @doc """
