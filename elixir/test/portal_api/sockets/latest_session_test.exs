@@ -61,21 +61,6 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
       assert device.token_id == token.id
     end
 
-    test "writes whether the session used /device/v1", %{client: client, token: token} do
-      upsert(client |> attested_entry(token) |> Map.put(:device_v1, true))
-      assert Repo.get_by!(Portal.Device, id: client.id).last_seen_device_v1
-
-      upsert(client |> attested_entry(token) |> Map.put(:device_v1, false))
-      refute Repo.get_by!(Portal.Device, id: client.id).last_seen_device_v1
-    end
-
-    test "keeps the stored /device/v1 flag for an entry without one", %{client: client, token: token} do
-      upsert(client |> attested_entry(token) |> Map.put(:device_v1, true))
-      upsert(attested_entry(client, token))
-
-      assert Repo.get_by!(Portal.Device, id: client.id).last_seen_device_v1
-    end
-
     test "persists a tokenless X.509 session without treating it as revoked", %{
       client: client,
       token: token

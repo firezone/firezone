@@ -9374,80 +9374,16 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
-  describe "handle_info/2 for a gateway in a listed pool" do
-    setup %{account: account, group: group, subject: subject} do
+  describe "join/3 with a gateway in a listed pool" do
+    test "lists no gateway", %{account: account, client: client, group: group, subject: subject} do
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
-      v1_gateway = gateway_fixture(account: account)
-      Repo.update!(Ecto.Changeset.change(v1_gateway, last_seen_device_v1: true))
-      legacy_gateway = gateway_fixture(account: account)
-
-      pool_resource =
-        device_pool_resource_fixture(account: account, devices: [v1_gateway, legacy_gateway])
-
+      pool_resource = device_pool_resource_fixture(account: account, devices: [gateway_fixture(account: account)])
       policy_fixture(account: account, group: group, resource: pool_resource)
 
-      %{subject: subject, v1_gateway: v1_gateway, pool_resource: pool_resource}
-    end
-
-    test "lists only the gateway on /device/v1", %{
-      client: client,
-      subject: subject,
-      v1_gateway: v1_gateway,
-      pool_resource: pool_resource
-    } do
       join_channel(client, subject)
       assert_push "init", %{resources: resources}
 
-      v1_gateway_id = v1_gateway.id
-      assert %{devices: [%{client_id: ^v1_gateway_id}]} = Enum.find(resources, &(&1.id == pool_resource.id))
-    end
-
-    test "drops the gateway when it reconnects on /gateway", %{
-      client: client,
-      subject: subject,
-      v1_gateway: v1_gateway,
-      pool_resource: pool_resource
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-
-      old_gateway = %{v1_gateway | last_seen_device_v1: true}
-      gateway = Repo.update!(Ecto.Changeset.change(old_gateway, last_seen_device_v1: false))
-
-      send(socket.channel_pid, %Changes.Change{lsn: 200, op: :update, old_struct: old_gateway, struct: gateway})
-
-      ipv4 = Portal.Types.INET.to_string(v1_gateway.ipv4)
-      pool_id = pool_resource.id
-
-      assert_push "client_device_access_denied", %{ipv4: ^ipv4, reason: :forbidden}
-      assert_push "resource_created_or_updated", %{id: ^pool_id, devices: []}
-
-      Repo.update!(Ecto.Changeset.change(gateway, last_seen_device_v1: true))
-      send(socket.channel_pid, %Changes.Change{lsn: 201, op: :update, old_struct: gateway, struct: old_gateway})
-
-      v1_gateway_id = v1_gateway.id
-      assert_push "resource_created_or_updated", %{id: ^pool_id, devices: [%{client_id: ^v1_gateway_id}]}
-    end
-
-    test "does not recompute on the v3 protocol", %{client: client, subject: subject, v1_gateway: v1_gateway} do
-      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      send_flip_after_clearing_resources(socket, v1_gateway)
-
-      assert :sys.get_state(socket.channel_pid).assigns.cache.connectable_resources == []
-      refute_push "resource_created_or_updated", _
-      refute_push "client_device_access_denied", _
-    end
-
-    test "does not recompute for a gateway no pool lists", %{account: account, client: client, subject: subject} do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-
-      send_flip_after_clearing_resources(socket, gateway_fixture(account: account))
-
-      assert :sys.get_state(socket.channel_pid).assigns.cache.connectable_resources == []
-      refute_push "resource_created_or_updated", _
+      assert %{devices: []} = Enum.find(resources, &(&1.id == pool_resource.id))
     end
   end
 
@@ -10527,19 +10463,5 @@ defmodule PortalAPI.Client.ChannelTest do
     start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
   end
 
-  # A recompute would push every connectable resource again once the cache holds none.
-  defp send_flip_after_clearing_resources(socket, gateway) do
-    :sys.replace_state(socket.channel_pid, fn state ->
-      put_in(state.assigns.cache.connectable_resources, [])
-    end)
 
-    old_gateway = %{gateway | last_seen_device_v1: true}
-
-    send(socket.channel_pid, %Changes.Change{
-      lsn: 200,
-      op: :update,
-      old_struct: old_gateway,
-      struct: %{old_gateway | last_seen_device_v1: false}
-    })
-  end
 end

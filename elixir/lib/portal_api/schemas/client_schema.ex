@@ -9,7 +9,6 @@ defmodule PortalAPI.Schemas.Client do
              for: Portal.Device,
              internal: [
                :account_id,
-               :last_seen_device_v1,
                :actor,
                :attested?,
                :attested_until,
