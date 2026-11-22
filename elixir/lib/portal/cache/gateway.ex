@@ -13,15 +13,18 @@ defmodule Portal.Cache.Gateway do
     Fetches relevant policy_authorizations from the DB and transforms them into the cache format.
     When more than one non-expired authorization exists for a pair, the longest-expiring one is
     kept to minimize unnecessary access churn.
+
+    With `device_pools: false`, authorizations through a device pool are left out, for a channel
+    that cannot be a pool target.
   """
-  @spec hydrate(Device.t()) :: Cache.Authorizations.t()
-  def hydrate(gateway) do
+  @spec hydrate(Device.t(), Keyword.t()) :: Cache.Authorizations.t()
+  def hydrate(gateway, opts \\ []) do
     OpenTelemetry.Tracer.with_span "Portal.Cache.hydrate_policy_authorizations",
       attributes: %{
         gateway_id: gateway.id,
         account_id: gateway.account_id
       } do
-      Database.all_gateway_policy_authorizations_for_cache!(gateway)
+      Database.all_gateway_policy_authorizations_for_cache!(gateway, Keyword.get(opts, :device_pools, true))
       |> Enum.reduce(%{}, fn {id, client_id, resource_id, expires_at}, cache ->
         Cache.Authorizations.put_longest(cache, id, client_id, resource_id, expires_at)
       end)
@@ -32,13 +35,14 @@ defmodule Portal.Cache.Gateway do
     alias Portal.Safe
     import Ecto.Query
 
-    def all_gateway_policy_authorizations_for_cache!(%{account_id: _, id: _} = gateway) do
+    def all_gateway_policy_authorizations_for_cache!(%{account_id: _, id: _} = gateway, device_pools?) do
       now = DateTime.utc_now()
 
       from(f in Portal.PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: f], f.account_id == ^gateway.account_id)
       |> where([policy_authorizations: f], f.receiving_device_id == ^gateway.id)
       |> where([policy_authorizations: f], f.expires_at > ^now)
+      |> where_device_pools(device_pools?)
       # Longest-expiring first so the per-pair last-one-wins reduction is deterministic.
       |> order_by([policy_authorizations: f], desc: f.expires_at)
       |> select(
@@ -47,6 +51,23 @@ defmodule Portal.Cache.Gateway do
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    defp where_device_pools(query, true), do: query
+
+    defp where_device_pools(query, false) do
+      where(
+        query,
+        [],
+        not exists(
+          from(r in Portal.Resource,
+            where:
+              r.account_id == parent_as(:policy_authorizations).account_id and
+                r.id == parent_as(:policy_authorizations).resource_id and
+                r.type == :device_pool
+          )
+        )
+      )
     end
   end
 end
