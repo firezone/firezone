@@ -577,6 +577,127 @@ B3 and B4 test every pair with a legacy peer: the device initiates to a
 gateway, a client initiates to the serving device, and client to client with
 a pool target. In each, the legacy side gets the payloads it gets today.
 
+### Device identity with mTLS (2026-11-21)
+
+**Blocks the release of the unified binary.** The connect parameters freeze
+with the first release, so this ships before it.
+
+Problem: a device reports its own `firezone_id`, and the portal trusts it
+(GHSA-2gj4-h7fw-gcp5). A lookup that finds a row by `firezone_id` alone lets
+one credential land on another device's row. For example, a laptop can take
+the row of a gateway and serve its site. This is also why a gateway host
+cannot change from its Gateway token to a service account token today: the
+client path finds only `type: :client` rows, so the host gets a new row and
+loses its site, pools and DNS setting.
+
+Fix: every device on the new binaries has a key that it holds, and a
+certificate that the portal issues for that key. The certificate says which
+machine connects. The token says who acts. The portal finds the row by the
+certificate and never by the reported `firezone_id`.
+
+**Precedence.** A device trust certificate from the customer's CA (MDM) comes
+first. A device that has one presents it, as today. Every other device on the
+new binaries presents its portal certificate. A TLS handshake carries one
+client certificate, so the device presents the MDM certificate when it has
+one, and the portal certificate when it does not.
+
+**Keys.** The device creates a key on first enrollment and never exports it:
+
+| Platform | Key store |
+|---|---|
+| Windows | TPM 2.0 through CNG (Platform Crypto Provider) |
+| macOS (Apple silicon and T2), iOS | Secure Enclave, P-256 |
+| Android | Keystore or StrongBox |
+| Linux with a TPM or vTPM | TPM 2.0 |
+| Linux without a TPM (Docker, Kubernetes, VMs without vTPM), older Macs | Software key in the state directory or keychain |
+
+The portal records `hardware` or `software` for each device. A software key
+still stops a takeover, but a copy of the file clones the identity. Later, a
+CSR can carry a hardware attestation (TPM, App Attest, Managed Device
+Attestation, Android Key Attestation) that proves the key cannot leave the
+device. Policies can then require a hardware key without device trust.
+
+On Apple, the existing device trust path does the work. rustls presents the
+certificate and asks Swift for each handshake signature through the FFI
+`sign` callback (`client-ffi`, `X509Identity.swift`), which calls
+`SecKeyCreateSignature`. The new parts create the key in the Secure Enclave
+(`kSecAttrTokenIDSecureEnclave`, readable after first unlock, this device
+only, in the keychain group that the app and the Network Extension share) and
+sign the CSR through the same callback. On Linux and Windows,
+`x509-keystore` already gives signatures to the keystore.
+
+**`POST /device/v1/enroll`.** The device sends its credential and a CSR, and
+the portal returns a certificate. The device calls it only in these cases,
+never on a normal connect:
+
+1. First enrollment: the device has a credential and no certificate (a new
+   install, an upgrade from an old binary, or a wiped state directory).
+2. Renewal: at about two thirds of the certificate lifetime, a new CSR for the
+   same key. The current certificate authenticates it over mTLS, so renewal
+   needs no sign-in and no token.
+3. Re-enrollment: the portal refused the certificate (the device was deleted,
+   an admin reset its identity, or the certificate expired or was revoked).
+   The device enrolls again with its credential, and the claim rules decide
+   the row.
+4. Linking: on a device with an MDM certificate, the enroll request uses mTLS
+   with that certificate. The portal adds the new key to the row that the
+   MDM certificate identifies, so the device keeps its row if it leaves
+   management.
+
+**Claim rules.** Enrollment decides which row a key gets. This is where a
+takeover is stopped:
+
+- A Gateway token claims only its own row: the bound row of a device-bound
+  token, or the row in the token's site for a site token, as today.
+- A user or service account token claims an existing client row only when its
+  actor is in that row's `device_actors`. Otherwise it gets a new row.
+- A row that already has a certificate cannot be claimed again. Only the old
+  key (renewal) or an admin reset of that device can replace it.
+- A row with a portal certificate keeps it when its token changes. A gateway
+  host that changes to a service account token keeps its row, site, pools
+  and DNS setting, and then acts as the service account.
+
+**Certificates.** A device CA run by the portal, one per region, with its
+private key in the cloud key service, not in an application secret. The
+certificate names the device id as a URI in the SAN, and the account. Its
+lifetime is short enough that revocation is rarely needed, and long enough
+that a device that stays offline for a long time can still renew (to decide,
+about 30 to 90 days). Deleting a device or resetting its identity revokes its
+certificate through the CRL and OCSP checks that exist now. The CA accepts
+P-256 and RSA CSRs.
+
+**Connect.** The `/device/v1` socket takes a client certificate in the TLS
+handshake, on a host that accepts mTLS (the device trust host, or optional
+client certificates on the API host). The socket checks the certificate,
+finds the row from it, and then checks the token as today. A device trust
+certificate goes through the existing attestation path.
+
+**Old binaries.** `/client` and `/gateway` keep the `firezone_id` lookup until
+the compat window ends. A device that upgrades gets its certificate on its
+first `/device/v1` connect, with the claim rules above.
+
+**Steps.** In the portal:
+
+- the device CA and its keys;
+- the enroll endpoint with the claim rules;
+- the certificate lookup on the `/device/v1` socket;
+- revocation on device delete and identity reset;
+- an admin "Reset identity" action on the device panel;
+- `hardware` or `software` on the device panel.
+
+In Rust:
+
+- key creation per platform;
+- the CSR;
+- the enroll and renewal flows;
+- the certificate in the connect handshake.
+
+Open:
+
+- the mTLS host for gateways that use `api.firezone.dev` today;
+- the certificate lifetime;
+- whether a hardware key is shown to admins before attestation exists.
+
 ### Phase 0: prep, no behaviour change
 
 - **0.1 Audit: duplicate `firezone_id`.** Done 2026-10-22; figures kept privately. Read-only query listing devices that
