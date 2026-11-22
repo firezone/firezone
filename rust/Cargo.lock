@@ -2228,7 +2228,7 @@ dependencies = [
  "ip_network",
  "l3-tcp",
  "logging",
- "rand 0.10.3",
+ "rand 0.10.4",
  "tokio",
  "tracing",
  "tun",
@@ -2294,7 +2294,7 @@ dependencies = [
  "hashbrown 0.17.0",
  "jiff",
  "octseq",
- "rand 0.10.3",
+ "rand 0.10.4",
  "serde",
 ]
 
@@ -2696,7 +2696,7 @@ dependencies = [
  "parking_lot",
  "phoenix-channel",
  "png 0.18.1",
- "rand 0.10.3",
+ "rand 0.10.4",
  "reqwest",
  "rustls",
  "sadness-generator",
@@ -2794,7 +2794,7 @@ dependencies = [
  "known-dirs",
  "logging",
  "phoenix-channel",
- "rand 0.10.3",
+ "rand 0.10.4",
  "reqwest",
  "rustls",
  "secrecy",
@@ -2879,7 +2879,7 @@ dependencies = [
  "otel-azure-export",
  "otel-instruments",
  "phoenix-channel",
- "rand 0.10.3",
+ "rand 0.10.4",
  "relay-server-proto",
  "rustls",
  "secrecy",
@@ -3205,7 +3205,7 @@ dependencies = [
  "clap",
  "ip-packet",
  "libc",
- "rand 0.10.3",
+ "rand 0.10.4",
  "relay-server-proto",
  "seeded-rng",
  "sha2 0.11.1",
@@ -3762,7 +3762,7 @@ dependencies = [
  "idna",
  "ipnet",
  "jni 0.22.4",
- "rand 0.10.3",
+ "rand 0.10.4",
  "thiserror 2.0.21",
  "tinyvec",
  "tokio",
@@ -3782,7 +3782,7 @@ dependencies = [
  "jni 0.22.4",
  "once_cell",
  "prefix-trie",
- "rand 0.10.3",
+ "rand 0.10.4",
  "ring",
  "thiserror 2.0.21",
  "tinyvec",
@@ -3807,7 +3807,7 @@ dependencies = [
  "ndk-context",
  "once_cell",
  "parking_lot",
- "rand 0.10.3",
+ "rand 0.10.4",
  "resolv-conf",
  "smallvec",
  "system-configuration",
@@ -4740,7 +4740,7 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "ip-packet",
- "rand 0.10.3",
+ "rand 0.10.4",
  "tracing",
 ]
 
@@ -6017,7 +6017,7 @@ dependencies = [
  "libc",
  "logging",
  "os_info",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rustls",
  "rustls-native-certs",
  "secrecy",
@@ -6424,9 +6424,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
+checksum = "8f6fa277c67e6ea590466f04c3fe82cb509f0864fe470643e5570de9514a9b11"
 dependencies = [
  "chacha20",
  "getrandom 0.4.2",
@@ -6607,7 +6607,7 @@ dependencies = [
  "hex-display",
  "is",
  "logging",
- "rand 0.10.3",
+ "rand 0.10.4",
  "ringbuffer",
  "smallvec",
  "stun_codec",
@@ -6634,7 +6634,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "secrecy",
  "serde",
  "sha2 0.11.1",
@@ -6952,7 +6952,7 @@ dependencies = [
  "blake2",
  "chacha20",
  "hmac 0.13.0",
- "rand 0.10.3",
+ "rand 0.10.4",
  "ring",
  "subtle",
  "tracing",
@@ -7093,7 +7093,7 @@ name = "seeded-rng"
 version = "0.1.0"
 dependencies = [
  "fastrand",
- "rand 0.10.3",
+ "rand 0.10.4",
 ]
 
 [[package]]
@@ -7535,7 +7535,7 @@ dependencies = [
  "itertools 0.15.0",
  "jiff",
  "l3-tcp",
- "rand 0.10.3",
+ "rand 0.10.4",
  "relay-server-proto",
  "secrecy",
  "serde_json",
@@ -7630,7 +7630,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "prefetch",
- "rand 0.10.3",
+ "rand 0.10.4",
  "relay-client-proto",
  "ringbuffer",
  "sanstun",
@@ -8418,7 +8418,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
- "rand 0.10.3",
+ "rand 0.10.4",
  "sentry",
  "serde",
  "serde_json",
@@ -8440,7 +8440,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -9223,7 +9223,7 @@ dependencies = [
  "otel-instruments",
  "prefetch",
  "quinn-udp",
- "rand 0.10.3",
+ "rand 0.10.4",
  "smallvec",
  "snownet",
  "socket-factory",
@@ -9248,7 +9248,7 @@ dependencies = [
  "ip-packet",
  "libc",
  "mimalloc",
- "rand 0.10.3",
+ "rand 0.10.4",
  "relay-server-proto",
  "seeded-rng",
  "serde_json",
@@ -9305,7 +9305,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rangemap",
  "ringbuffer",
  "sanstun",
