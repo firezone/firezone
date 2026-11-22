@@ -1241,6 +1241,11 @@ hosts. Collect them here and use them for the release notes and the email.
   change the setting per device. Gateways created during the rolling deploy
   that added the setting can start empty, and then use the account setting
   until an admin sets them.
+- **Search domain per device.** The same applies to the search domain. Every
+  existing gateway was set to "no search domain", and new gateways start with
+  it, so a gateway host that runs the new binary does not add the account's
+  search domain to its own resolver. Admins can set a search domain per
+  device, or let a device use the account's.
 
 ## 4. Decisions taken
 
