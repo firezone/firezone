@@ -115,8 +115,6 @@ fn window_config() -> WindowConfig {
         .with_app_id("firezone-client-gui")
         .with_icon(LaunchConfig::window_icon(WINDOW_ICON))
         .with_decorations(false)
-        .with_transparency(true)
-        .with_background(Color::TRANSPARENT)
         .with_resizable(false)
 }
 

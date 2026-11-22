@@ -250,16 +250,14 @@ pub(crate) fn app() -> impl IntoElement {
         Page::ColorPalette => pages::color_palette().into_element(),
     };
 
-    // A 1px frame of `border_strong` around the rounded window.
+    // A 1px frame of `border_strong` around the window.
     rect()
         .expanded()
-        .corner_radius(8.)
         .background(p.border_strong)
         .padding(1.)
         .child(
             rect()
                 .expanded()
-                .corner_radius(7.)
                 .overflow(Overflow::Clip)
                 .background(p.surface)
                 .color(p.body)
