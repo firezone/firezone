@@ -22,7 +22,7 @@ use anyhow::{Context, Result};
 use drop_events_whose_message_contains::DropEventsWhoseMessageContains;
 use sentry_tracing::EventFilter;
 use tracing::{Subscriber, subscriber::DefaultGuard};
-use tracing_log::LogTracer;
+use tracing_log::{LogTracer, NormalizeEvent as _};
 use tracing_subscriber::{
     EnvFilter, Layer, Registry,
     filter::{ParseError, Targets},
@@ -105,14 +105,35 @@ pub fn setup_bootstrap() -> Result<DefaultGuard> {
     reason = "This is the alternative function."
 )]
 pub fn init(subscriber: impl Subscriber + Send + Sync + 'static) -> Result<()> {
-    tracing::subscriber::set_global_default(subscriber).context("Could not set global default")?;
-    // Tungstenite's protocol traces include raw frames and their credentials.
-    LogTracer::builder()
-        .ignore_crate("tungstenite::protocol")
-        .init()
-        .context("Failed to init LogTracer")?;
+    tracing::subscriber::set_global_default(subscriber.with(DropWebSocketPayloadTraces))
+        .context("Could not set global default")?;
+    LogTracer::init().context("Failed to init LogTracer")?;
 
     Ok(())
+}
+
+struct DropWebSocketPayloadTraces;
+
+impl<S: Subscriber> Layer<S> for DropWebSocketPayloadTraces {
+    fn event_enabled(
+        &self,
+        event: &tracing::Event<'_>,
+        _: tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        if *event.metadata().level() != tracing::Level::TRACE {
+            return true;
+        }
+
+        let Some(metadata) = event.normalized_metadata() else {
+            return true;
+        };
+
+        // These modules trace complete WebSocket messages and frames, including credentials.
+        !matches!(
+            metadata.target(),
+            "tungstenite::protocol" | "tungstenite::protocol::frame"
+        )
+    }
 }
 
 /// Constructs an opinionated [`EnvFilter`] with some crates already silenced.
@@ -296,4 +317,59 @@ where
             Level::WARN,
             &["ignoring response from", "because it does not match name_server"],
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tracing_log::log::{self, Log as _};
+
+    #[test]
+    fn drops_websocket_payload_traces_and_keeps_other_diagnostics() {
+        let capture = CapturingWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(capture.clone())
+            .with_max_level(tracing::Level::TRACE)
+            .finish()
+            .with(DropWebSocketPayloadTraces);
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let tracer = LogTracer::new();
+
+        for (level, target, message) in [
+            (
+                log::Level::Trace,
+                "tungstenite::protocol",
+                "message payload",
+            ),
+            (
+                log::Level::Trace,
+                "tungstenite::protocol::frame",
+                "frame payload",
+            ),
+            (
+                log::Level::Debug,
+                "tungstenite::protocol",
+                "close diagnostic",
+            ),
+            (
+                log::Level::Trace,
+                "tungstenite::protocol::frame::frame",
+                "frame header",
+            ),
+        ] {
+            tracer.log(
+                &log::Record::builder()
+                    .level(level)
+                    .target(target)
+                    .args(format_args!("{message}"))
+                    .build(),
+            );
+        }
+
+        let logs = capture.lines();
+        assert!(!logs.contains("message payload"), "{logs}");
+        assert!(!logs.contains("frame payload"), "{logs}");
+        assert!(logs.contains("close diagnostic"), "{logs}");
+        assert!(logs.contains("frame header"), "{logs}");
+    }
 }
