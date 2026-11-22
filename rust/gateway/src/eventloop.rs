@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, mem};
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::mpsc;
 use tunnel::messages::gateway::{
     Authorization, ClientIceCandidates, ClientsIceCandidates, EgressMessages, IngressMessages,
     InitGateway, PublicKeyChanged, RejectAccess,
@@ -35,8 +35,6 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 /// How long we allow a DNS resolution via hickory.
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
-const FLOW_LOG_TOKEN_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
-
 pub struct Eventloop {
     clock: Clock,
     // Tunnel is `Option` because we need to take ownership on shutdown.
@@ -46,7 +44,7 @@ pub struct Eventloop {
 
     /// Flow-log spool root.
     flow_logs_dir: std::path::PathBuf,
-    flow_log_token_write: Arc<Semaphore>,
+    flow_log_token_writer: flow_log_writer::TokenWriter,
 
     /// The `--flow-logs` flag.
     local_flow_logs: bool,
@@ -114,7 +112,7 @@ impl Eventloop {
             tun_device_manager,
             resolver: dns_resolver()?,
             flow_logs_dir,
-            flow_log_token_write: Arc::new(Semaphore::new(1)),
+            flow_log_token_writer: flow_log_writer::TokenWriter::default(),
             local_flow_logs,
             account_slug,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
@@ -376,20 +374,16 @@ impl Eventloop {
             IngressMessages::CreateAuthorization(msg) => {
                 let token = &msg.flow_logs_ingest_token;
 
-                if token.claims().uploads_enabled {
-                    let dir = self.flow_logs_dir.clone();
-                    let token = token.clone();
-                    if let Err(e) =
-                        write_flow_log_token(self.flow_log_token_write.clone(), move || {
-                            flow_log_writer::write_token(&dir, token.as_str())
-                        })
+                if token.claims().uploads_enabled
+                    && let Err(e) = self
+                        .flow_log_token_writer
+                        .write_token(&self.flow_logs_dir, token.as_str())
                         .await
-                    {
-                        tracing::error!(
-                            "Failed to persist flow-log ingest token for authorization: {e:#}"
-                        );
-                        return Ok(());
-                    }
+                {
+                    tracing::error!(
+                        "Failed to persist flow-log ingest token for authorization: {e:#}"
+                    );
+                    return Ok(());
                 }
 
                 tunnel.state_mut().create_authorization(
@@ -598,30 +592,6 @@ impl Eventloop {
     }
 }
 
-async fn write_flow_log_token(
-    write_slot: Arc<Semaphore>,
-    write: impl FnOnce() -> Result<()> + Send + 'static,
-) -> Result<()> {
-    let permit = write_slot
-        .try_acquire_owned()
-        .context("Previous flow-log token write is still running")?;
-    let mut task = tokio::task::spawn_blocking(move || {
-        // A running filesystem call can outlive the timeout.
-        let _permit = permit;
-        write()
-    });
-
-    match tokio::time::timeout(FLOW_LOG_TOKEN_WRITE_TIMEOUT, &mut task).await {
-        Ok(result) => result.context("Flow-log token write task failed")??,
-        Err(_) => {
-            task.abort();
-            anyhow::bail!("Flow-log token write timed out after {FLOW_LOG_TOKEN_WRITE_TIMEOUT:?}");
-        }
-    }
-
-    Ok(())
-}
-
 /// Performs a single recursive DNS lookup against the upstream resolver, recording
 /// its duration with `dns.question.type` and `dns.response.code` attributes.
 async fn resolve_record(
@@ -760,34 +730,4 @@ async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .map(|ips| ips.iter().collect())
         .unwrap_or_default()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn timed_out_token_write_keeps_its_slot_until_it_finishes() {
-        let write_slot = Arc::new(Semaphore::new(1));
-        let (started, waiting_for_start) = tokio::sync::oneshot::channel();
-        let (release, wait_for_release) = std::sync::mpsc::channel();
-        let write = tokio::spawn(write_flow_log_token(write_slot.clone(), move || {
-            let _ = started.send(());
-            let _ = wait_for_release.recv();
-            Ok(())
-        }));
-
-        waiting_for_start.await.unwrap();
-        let error = write.await.unwrap().unwrap_err();
-        assert!(error.to_string().contains("timed out"));
-
-        let error = write_flow_log_token(write_slot.clone(), || panic!("write overlapped"))
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("still running"));
-
-        release.send(()).unwrap();
-        drop(write_slot.acquire().await.unwrap());
-        write_flow_log_token(write_slot, || Ok(())).await.unwrap();
-    }
 }

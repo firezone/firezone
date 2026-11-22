@@ -63,6 +63,7 @@ use std::{
     hash::{Hash as _, Hasher as _},
     path::{Path, PathBuf},
     sync::{
+        Arc,
         atomic::{AtomicU64, Ordering},
         mpsc,
     },
@@ -73,6 +74,7 @@ use std::{
 use anyhow::{Context as _, ErrorExt as _, Result};
 use base64::Engine as _;
 use flow_log_spool::serialize;
+use tokio::sync::Semaphore;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -143,6 +145,55 @@ where
             handle: Some(handle),
         },
     )
+}
+
+/// Persists authorization tokens with a five-second deadline and one write in flight.
+pub struct TokenWriter {
+    write_slot: Arc<Semaphore>,
+}
+
+impl Default for TokenWriter {
+    fn default() -> Self {
+        Self {
+            write_slot: Arc::new(Semaphore::new(1)),
+        }
+    }
+}
+
+impl TokenWriter {
+    /// Persists a token where the uploader expects it. Requires a Tokio runtime.
+    pub async fn write_token(&self, spool_root: &Path, token: &str) -> Result<()> {
+        let spool_root = spool_root.to_owned();
+        let token = token.to_owned();
+        self.write(move || write_token(&spool_root, &token)).await?;
+
+        Ok(())
+    }
+
+    async fn write(&self, write: impl FnOnce() -> Result<()> + Send + 'static) -> Result<()> {
+        const TIMEOUT: Duration = Duration::from_secs(5);
+
+        let permit = self
+            .write_slot
+            .clone()
+            .try_acquire_owned()
+            .context("Previous flow-log token write is still running")?;
+        let mut task = tokio::task::spawn_blocking(move || {
+            // A running filesystem call can outlive the timeout.
+            let _permit = permit;
+            write()
+        });
+
+        match tokio::time::timeout(TIMEOUT, &mut task).await {
+            Ok(result) => result.context("Flow-log token write task failed")??,
+            Err(_) => {
+                task.abort();
+                anyhow::bail!("Flow-log token write timed out after {TIMEOUT:?}");
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// Persists an authorization's ingest token where the uploader expects it.
@@ -756,6 +807,38 @@ mod tests {
     const AUTHZ_ID: &str = "11111111-1111-1111-1111-111111111111";
     /// Pinned so the tests do not depend on the volume they run on.
     const CLUSTER: u64 = 4096;
+
+    #[tokio::test]
+    async fn timed_out_token_write_keeps_its_slot_until_it_finishes() {
+        let writer = Arc::new(TokenWriter::default());
+        let (started, waiting_for_start) = tokio::sync::oneshot::channel();
+        let (release, wait_for_release) = mpsc::channel();
+        let stalled_writer = writer.clone();
+        let write = tokio::spawn(async move {
+            stalled_writer
+                .write(move || {
+                    let _ = started.send(());
+                    let _ = wait_for_release.recv();
+                    Ok(())
+                })
+                .await
+        });
+
+        waiting_for_start.await.unwrap();
+        let error = write.await.unwrap().unwrap_err();
+        assert!(error.to_string().contains("timed out"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let token = token_for(AUTHZ_ID);
+        let error = writer.write_token(dir.path(), &token).await.unwrap_err();
+        assert!(error.to_string().contains("still running"));
+
+        release.send(()).unwrap();
+        drop(writer.write_slot.acquire().await.unwrap());
+        writer.write_token(dir.path(), &token).await.unwrap();
+        let token_path = dir.path().join("responder").join(AUTHZ_ID).join("token");
+        assert_eq!(std::fs::read_to_string(token_path).unwrap(), token);
+    }
 
     #[test]
     fn spools_start_and_end_reports_sharing_a_stem() {
