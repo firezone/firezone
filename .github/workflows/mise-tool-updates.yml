@@ -1,0 +1,126 @@
+---
+name: Mise tool updates
+run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
+# Proposes each tool pinned in a `mise.toml` that has a newer release as its
+# own bot PR, like Dependabot does for other ecosystems. A newer release
+# updates the open PR instead of opening another one.
+"on":
+  schedule:
+    - cron: "23 5 * * 1" # weekly, Monday 05:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mise-tool-updates
+
+jobs:
+  outdated:
+    runs-on: ubuntu-24.04
+    outputs:
+      tools: ${{ steps.outdated.outputs.tools }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      - id: outdated
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Deliberate pins, as `<config root> <tool>`.
+          skip=(
+            "rust/tests/fuzz rust"          # Must match the eBPF toolchain in `rust/relay/server/build.rs`.
+            "rust github:gungraun/gungraun" # Must match the `gungraun` crate in `rust/Cargo.toml`.
+          )
+
+          tools=$(for root in . $(mise config get -f mise.toml monorepo.config_roots | jq -r '.[]'); do
+            # Only `mise.toml` pins: mise does not lock tools from `.tool-versions`.
+            (cd "$root" && mise outdated --bump --json | jq -c --arg file "$PWD/mise.toml" --arg root "$root" '
+              to_entries[]
+              | select(.value.source.path == $file and .value.bump != null and .value.bump != .value.requested)
+              | (.key | sub("^[^:]+:"; "") | split("/") | last) as $name
+              | (if $root == "." then "" else "\($root)/" end) as $dir
+              | {
+                  root: $root,
+                  tool: .key,
+                  from: .value.requested,
+                  to: .value.bump,
+                  branch: "chore/mise-\($dir | rtrimstr("/") | gsub("/"; "-") | if . == "" then "root" end)-\($name | ascii_downcase)",
+                  title: ("build(deps): bump \($name) from \(.value.requested) to \(.value.bump)"
+                    | if length > 64 then "build(deps): bump \($name)" end),
+                  body: ([
+                    "Bumps `\(.key)` in `\($dir)mise.toml` from \(.value.requested) to \(.value.bump).",
+                    .value.release_url // empty
+                  ] | join("\n\n"))
+                }')
+          done | jq -sc --arg skip "$(printf '%s\n' "${skip[@]}")" '
+            map(select("\(.root) \(.tool)" | IN($skip | split("\n")[]) | not))
+          ')
+
+          jq . <<<"$tools"
+          echo "tools=$tools" >>"$GITHUB_OUTPUT"
+
+  propose:
+    name: propose-${{ matrix.branch }}
+    needs: [outdated]
+    if: ${{ needs.outdated.outputs.tools != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.outdated.outputs.tools) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      - name: Bump the pin and its lock entry
+        working-directory: ${{ matrix.root }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOL: ${{ matrix.tool }}
+          FROM: ${{ matrix.from }}
+          TO: ${{ matrix.to }}
+        run: |
+          set -euo pipefail
+
+          # Rewrites the first `"$FROM"` from the tool's key onwards, which
+          # covers both `key = { version = ... }` and a `[tools."key"]` table.
+          awk -v key="$TOOL" -v from="\"$FROM\"" -v to="\"$TO\"" '
+            !found && (index($0, "\"" key "\"") || $1 == key) { found = 1 }
+            found && !done && (i = index($0, from)) {
+              $0 = substr($0, 1, i - 1) to substr($0, i + length(from))
+              done = 1
+            }
+            { print }
+            END { exit !done }
+          ' mise.toml >"$RUNNER_TEMP/mise.toml"
+          mv "$RUNNER_TEMP/mise.toml" mise.toml
+
+          if [ -f mise.lock ]; then
+            mise lock "$TOOL"
+          fi
+
+          git diff
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          repositories: ${{ github.repository }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: firezone/actions/create-pull-request@f92afb7395591f2205bdcfd42b975c8dcf51bb6b # main
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: ${{ matrix.branch }}
+          title: ${{ matrix.title }}
+          body: ${{ matrix.body }}
+          paths: |
+            ${{ matrix.root }}/mise.toml
+            ${{ matrix.root }}/mise.lock
+          reviewers: firezone/engineering
