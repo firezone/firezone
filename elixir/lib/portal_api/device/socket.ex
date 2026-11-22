@@ -29,9 +29,10 @@ defmodule PortalAPI.Device.Socket do
   @impl true
   defdelegate id(socket), to: PortalAPI.Client.Socket
 
+  # A Gateway connect can create or move the gateway, so a bad range is refused first.
   defp connect_device(attrs, socket, connect_info) do
     if gateway_token?(attrs, connect_info) do
-      connect_gateway(attrs, socket, connect_info)
+      with {:ok, _range} <- proto_range(attrs), do: connect_gateway(attrs, socket, connect_info)
     else
       PortalAPI.Client.Socket.connect(attrs, socket, connect_info)
     end

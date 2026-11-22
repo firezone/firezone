@@ -142,10 +142,12 @@ defmodule Portal.Presence do
       |> Enum.any?(fn %{metas: metas} -> Enum.any?(metas, &(Map.get(&1, :actor_id) == actor_id)) end)
     end
 
-    # Only for the deprecated `reuse_connection`, which a `/device/v1` device does not handle.
+    # Only for the deprecated `reuse_connection`, which no `/device/v1` device handles, a gateway
+    # token on it included.
     def fetch_gateway(account_id, gateway_id, site_id) do
       with false <- is_nil(site_id),
            %{metas: [%{type: :gateway} = meta | _]} <- __MODULE__.Account.get(account_id, gateway_id),
+           false <- Map.get(meta, :device_v1, false),
            true <- site_id in meta.site_ids do
         {:ok, from_meta(gateway_id, account_id, meta)}
       else

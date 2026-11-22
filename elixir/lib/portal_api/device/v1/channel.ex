@@ -102,6 +102,18 @@ defmodule PortalAPI.Device.V1.Channel do
     {:noreply, socket}
   end
 
+  # Every `/device/v1` binary handles a peer's new key, whatever version it reports.
+  def handle_info({:public_key_changed, type, device_id, public_key}, socket) do
+    payload =
+      case type do
+        :client -> %{client_id: device_id, public_key: public_key}
+        :gateway -> %{gateway_id: device_id, public_key: public_key}
+      end
+
+    Protocol.push(socket, "public_key_changed", payload)
+    {:noreply, socket}
+  end
+
   def handle_info(%Change{} = change, %{assigns: %{subject: %{actor: %{type: :legacy_gateway}}}} = socket),
     do: Session.apply_change(socket, socket.assigns.client, change, &serve_only_change/2)
 
@@ -349,7 +361,6 @@ defmodule PortalAPI.Device.V1.Channel do
   defp serving_message?(:disconnect), do: true
   defp serving_message?({:disconnect, _session_ref}), do: true
   defp serving_message?(:prune_authorizations_cache), do: true
-  defp serving_message?({:public_key_changed, _type, _device_id, _public_key}), do: true
   defp serving_message?({:reject_access, %Portal.PolicyAuthorization{}}), do: true
   defp serving_message?({:confirm_authz_durability, _authz_id}), do: true
   defp serving_message?({:confirm_session_durability, _session_ref}), do: true
