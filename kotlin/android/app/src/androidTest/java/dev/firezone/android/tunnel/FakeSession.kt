@@ -59,6 +59,10 @@ class FakeSession(
         commands.trySend("setInternetResourceState=$active")
     }
 
+    override fun setForceRelayedConnections(enabled: Boolean) {
+        commands.trySend("setForceRelayedConnections=$enabled")
+    }
+
     suspend fun awaitCommand(command: String) {
         while (true) {
             // Skip the commands the service sends on its own, such as the initial resource state.

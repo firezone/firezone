@@ -13,7 +13,7 @@ run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
   workflow_dispatch:
     inputs:
       target:
-        description: "A single fuzz target to work on, e.g. 'tunnel-proto'. Leave empty for every target in rust/tests/fuzz/targets.json."
+        description: "A single fuzz target to work on, e.g. 'tunnel'. Leave empty for every target in rust/tests/fuzz/targets.json."
         required: false
         type: string
         default: ""
@@ -119,12 +119,12 @@ jobs:
         run: sudo sysctl -w kernel.core_pattern=core
       - name: Fuzz for new coverage
         # AFL's time budget excludes corpus calibration, which grows with the
-        # corpus until the next minimization. tunnel-proto's slow executions
+        # corpus until the next minimization. tunnel's slow executions
         # stop its workers within their first queue cycle, so it gets a longer
         # budget and a timeout that leaves calibration plenty of room.
-        timeout-minutes: ${{ matrix.fuzz-target == 'tunnel-proto' && 300 || 60 }}
+        timeout-minutes: ${{ matrix.fuzz-target == 'tunnel' && 300 || 60 }}
         env:
-          FUZZ_SECONDS: ${{ matrix.fuzz-target == 'tunnel-proto' && 7200 || 1800 }}
+          FUZZ_SECONDS: ${{ matrix.fuzz-target == 'tunnel' && 7200 || 1800 }}
         run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} --workers "$(nproc)" --seconds "$FUZZ_SECONDS"
       - name: Keep what reaches new edges
         if: ${{ !cancelled() }}

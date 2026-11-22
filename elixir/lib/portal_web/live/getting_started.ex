@@ -1336,7 +1336,17 @@ defmodule PortalWeb.GettingStarted do
       devices =
         from(d in Device, as: :devices)
         |> where([devices: d], d.type == :client)
-        |> where([devices: d], d.actor_id == ^subject.actor.id)
+        |> where(
+          [devices: d],
+          exists(
+            from(da in Portal.DeviceActor,
+              where:
+                da.account_id == parent_as(:devices).account_id and
+                  da.device_id == parent_as(:devices).id and
+                  da.actor_id == ^subject.actor.id
+            )
+          )
+        )
         |> where([devices: d], d.id in ^ids)
         |> Safe.scoped(subject)
         |> Safe.all()

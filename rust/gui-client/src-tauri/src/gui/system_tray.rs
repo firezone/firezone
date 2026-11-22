@@ -444,7 +444,7 @@ mod tests {
     use anyhow::Result;
     use std::str::FromStr as _;
 
-    use builder::INTERNET_RESOURCE_DESCRIPTION;
+    use builder::{COPY_ADDRESS, INTERNET_RESOURCE_DESCRIPTION};
 
     impl Menu {
         fn checkable<E: Into<Option<Event>>, S: Into<String>>(
@@ -637,7 +637,7 @@ mod tests {
                     .separator()
                     .disabled("Resource")
                     .copyable("172.172.0.0/16")
-                    .copyable("172.172.0.0/16")
+                    .item(Event::Copy("172.172.0.0/16".to_owned()), COPY_ADDRESS)
                     .checkable(
                         Event::AddFavorite(
                             ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6").unwrap(),
@@ -659,8 +659,8 @@ mod tests {
                     )
                     .separator()
                     .disabled("Resource")
-                    .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
+                    .item(Event::Copy("gitlab.mycorp.com".to_owned()), COPY_ADDRESS)
                     .checkable(
                         Event::AddFavorite(
                             ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd").unwrap(),
@@ -719,8 +719,8 @@ mod tests {
                     )
                     .separator()
                     .disabled("Resource")
-                    .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
+                    .item(Event::Copy("gitlab.mycorp.com".to_owned()), COPY_ADDRESS)
                     .checkable(
                         Event::RemoveFavorite(ResourceId::from_str(
                             "03000143-e25e-45c7-aafb-144990e57dcd",
@@ -754,7 +754,7 @@ mod tests {
                         .separator()
                         .disabled("Resource")
                         .copyable("172.172.0.0/16")
-                        .copyable("172.172.0.0/16")
+                        .item(Event::Copy("172.172.0.0/16".to_owned()), COPY_ADDRESS)
                         .checkable(
                             Event::AddFavorite(ResourceId::from_str(
                                 "73037362-715d-4a83-a749-f18eadd970e6",
@@ -803,7 +803,7 @@ mod tests {
                     .separator()
                     .disabled("Resource")
                     .copyable("172.172.0.0/16")
-                    .copyable("172.172.0.0/16")
+                    .item(Event::Copy("172.172.0.0/16".to_owned()), COPY_ADDRESS)
                     .checkable(
                         Event::AddFavorite(ResourceId::from_str(
                             "73037362-715d-4a83-a749-f18eadd970e6",
@@ -825,8 +825,8 @@ mod tests {
                     )
                     .separator()
                     .disabled("Resource")
-                    .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
+                    .item(Event::Copy("gitlab.mycorp.com".to_owned()), COPY_ADDRESS)
                     .checkable(
                         Event::AddFavorite(ResourceId::from_str(
                             "03000143-e25e-45c7-aafb-144990e57dcd",

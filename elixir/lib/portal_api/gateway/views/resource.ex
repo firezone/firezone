@@ -10,6 +10,8 @@ defmodule PortalAPI.Gateway.Views.Resource do
     render_resource(resource)
   end
 
+  def render_filters(filters), do: Enum.flat_map(filters, &render_filter/1)
+
   defp render_resource(%{type: :internet} = resource) do
     %{
       id: resource.id,
@@ -23,7 +25,7 @@ defmodule PortalAPI.Gateway.Views.Resource do
       type: :dns,
       address: resource.address,
       name: resource.name,
-      filters: Enum.flat_map(resource.filters, &render_filter/1)
+      filters: render_filters(resource.filters)
     }
   end
 
@@ -33,7 +35,7 @@ defmodule PortalAPI.Gateway.Views.Resource do
       type: :cidr,
       address: resource.address,
       name: resource.name,
-      filters: Enum.flat_map(resource.filters, &render_filter/1)
+      filters: render_filters(resource.filters)
     }
   end
 
@@ -47,7 +49,7 @@ defmodule PortalAPI.Gateway.Views.Resource do
       type: :cidr,
       address: address,
       name: resource.name,
-      filters: Enum.flat_map(resource.filters, &render_filter/1)
+      filters: render_filters(resource.filters)
     }
   end
 

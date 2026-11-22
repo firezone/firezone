@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 pub mod http_health_check;
+pub mod max_partition_time;
 
 mod dns_control;
 mod network_changes;

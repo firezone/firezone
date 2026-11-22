@@ -2,6 +2,7 @@
 //! path selection. Bucket field order is the comparison priority;
 //! variants of each axis are declared best-first.
 
+use std::cmp::Reverse;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -44,6 +45,10 @@ pub(crate) struct PairScore {
     /// first: a tier-based preliminary primary must be refinable by the first
     /// real measurement, never treated as the best just because it has no RTT.
     pub(crate) rtt: Duration,
+    /// `(min, max)` of the two candidates' priorities, higher first. Both peers
+    /// compute the same value for a pair, so they agree on its rank. Only
+    /// breaks ties between pairs whose RTTs are a wash-out.
+    pub(crate) priority: Reverse<(u32, u32)>,
 }
 
 pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
@@ -71,6 +76,11 @@ pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> P
             },
         },
         rtt: state.rtt.map(|rtt| rtt.smoothed).unwrap_or(Duration::MAX),
+        priority: {
+            let (local, remote) = state.priorities;
+
+            Reverse((local.min(remote), local.max(remote)))
+        },
     }
 }
 

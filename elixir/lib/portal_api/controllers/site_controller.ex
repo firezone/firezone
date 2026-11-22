@@ -307,6 +307,7 @@ defmodule PortalAPI.SiteController do
 
     defp delete_site_gateways(site, subject) do
       from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :gateway)
       |> join(:inner, [devices: d], sd in SiteDevice,
         on: sd.account_id == d.account_id and sd.device_id == d.id,
         as: :site_device

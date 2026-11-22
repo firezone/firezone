@@ -607,6 +607,86 @@ defmodule Portal.TelemetryTest do
     end
   end
 
+  describe "flow_log_upload_denied/2" do
+    test "emits the bucket and the reporter role" do
+      test_pid = self()
+      handler_id = "test-flow-logs-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :flow_logs, :upload_denied],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      assert :ok = Portal.Telemetry.flow_log_upload_denied(:account, :responder)
+
+      assert_receive {[:portal, :flow_logs, :upload_denied], %{count: 1},
+                      %{bucket: :account, role: :responder}}
+    end
+
+    test "accepts an IP denial only with an unknown role" do
+      assert :ok = Portal.Telemetry.flow_log_upload_denied(:ip, :unknown)
+
+      assert_raise FunctionClauseError, fn ->
+        Portal.Telemetry.flow_log_upload_denied(:ip, :initiator)
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        Portal.Telemetry.flow_log_upload_denied(:device, :unknown)
+      end
+    end
+  end
+
+  describe "flow_log_upload_unauthorized/1" do
+    test "emits the reason" do
+      test_pid = self()
+      handler_id = "test-flow-logs-unauthorized-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :flow_logs, :upload_unauthorized],
+        fn event, measurements, metadata, _config ->
+          if self() == test_pid, do: send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      assert :ok = Portal.Telemetry.flow_log_upload_unauthorized(:unknown_account)
+
+      assert_receive {[:portal, :flow_logs, :upload_unauthorized], %{count: 1},
+                      %{reason: :unknown_account}}
+    end
+  end
+
+  describe "handle_flow_log_metric/4" do
+    test "returns :ok for an unauthorized upload" do
+      assert :ok =
+               Portal.Telemetry.handle_flow_log_metric(
+                 [:portal, :flow_logs, :upload_unauthorized],
+                 %{count: 1},
+                 %{reason: :expired},
+                 @config
+               )
+    end
+
+    test "returns :ok for a denied upload" do
+      assert :ok =
+               Portal.Telemetry.handle_flow_log_metric(
+                 [:portal, :flow_logs, :upload_denied],
+                 %{count: 1},
+                 %{bucket: :device, role: :initiator},
+                 @config
+               )
+    end
+  end
+
   describe "handle_ice_candidates_metric/4" do
     test "returns :ok for a received event" do
       assert :ok =

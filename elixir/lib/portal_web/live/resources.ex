@@ -16,6 +16,12 @@ defmodule PortalWeb.Resources do
 
   @device_search_refill_threshold 5
 
+  @form_events ~w[change_resource_form submit_resource_form]
+
+  @selected_resource_events ~w[
+    open_grant_form submit_grant disable_policy enable_policy remove_group_access delete_resource
+  ]
+
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
 
@@ -58,6 +64,7 @@ defmodule PortalWeb.Resources do
         ],
         loader: &load_resources/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -154,6 +161,10 @@ defmodule PortalWeb.Resources do
      |> assign(filter_site: filter_site, selected_resource: nil, selected_groups: [])
      |> assign(resource_state_assigns(socket))}
   end
+
+  defp stale_event?(event, %{resource_form: %{form: nil}}) when event in @form_events, do: true
+  defp stale_event?(event, %{selected_resource: nil}) when event in @selected_resource_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp resource_state_assigns(socket, overrides \\ []) do
     [
@@ -1584,7 +1595,7 @@ defmodule PortalWeb.Resources do
     alias Portal.Resource
     alias Portal.Policy
     alias Portal.PolicyAuthorization
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Actor
     alias Portal.Device
     alias Portal.Site
@@ -1721,9 +1732,8 @@ defmodule PortalWeb.Resources do
         end
 
       from(c in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> where([devices: d], d.id in ^device_ids)
-      |> preload(:actor)
       |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
@@ -1731,7 +1741,9 @@ defmodule PortalWeb.Resources do
           []
 
         devices ->
-          Portal.Presence.Devices.preload_presence(devices)
+          devices
+          |> Portal.Devices.put_latest_actor(subject)
+          |> Portal.Presence.Devices.preload_presence()
       end
     end
 
@@ -1814,7 +1826,7 @@ defmodule PortalWeb.Resources do
 
     defp count_criteria_devices(criteria, subject) do
       from(d in Portal.Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> Resource.DeviceMembershipCriteria.where_members(
         criteria,
         Resource.DeviceMembershipCriteria.scope(criteria, subject)
@@ -1892,7 +1904,7 @@ defmodule PortalWeb.Resources do
         on: g.id == p.group_id and g.account_id == p.account_id,
         as: :groups
       )
-      |> join(:inner, [policy_authorizations: pa], t in ClientToken,
+      |> join(:inner, [policy_authorizations: pa], t in DeviceToken,
         on: t.id == pa.token_id and t.account_id == pa.account_id,
         as: :tokens
       )

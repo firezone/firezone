@@ -22,7 +22,8 @@
         # In the latter case `**/*.{ex,exs}` will be used.
         #
         included: [
-          "lib/"
+          "lib/",
+          "ops/lib/"
           # "test/"
         ],
         excluded: [

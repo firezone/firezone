@@ -16,7 +16,7 @@ anyhow = { workspace = true }
 arbitrary = { workspace = true, optional = true, features = ["derive"] }
 bufferpool = { workspace = true }
 incremental-inet-checksum = { workspace = true }
-ingot = { workspace = true }
+ingot = { workspace = true, features = ["alloc"] }
 prefetch = { workspace = true }
 proptest = { workspace = true, optional = true }
 thiserror = { workspace = true }

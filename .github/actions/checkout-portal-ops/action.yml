@@ -1,0 +1,49 @@
+name: "Check out portal-ops"
+description: >-
+  Checks out the latest main of the private ops dashboard (firezone/portal-ops) at
+  elixir/ops, where mix.exs compiles it in. Does nothing without the bot key, such as
+  on fork pull requests.
+
+inputs:
+  client-id:
+    description: "Client ID of the Firezone bot GitHub App"
+    required: true
+  private-key:
+    description: "Private key of the Firezone bot GitHub App"
+    required: false
+    default: ""
+
+outputs:
+  sha:
+    description: "The checked out portal-ops commit, empty when skipped"
+    value: ${{ steps.sha.outputs.sha }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create a token for portal-ops
+      if: ${{ inputs.private-key != '' }}
+      id: app-token
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: firezone
+        repositories: portal-ops
+        permission-contents: read
+
+    - name: Check out portal-ops
+      if: ${{ inputs.private-key != '' }}
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: firezone/portal-ops
+        ref: main
+        path: elixir/ops
+        token: ${{ steps.app-token.outputs.token }}
+        persist-credentials: false
+
+    - name: Record the portal-ops commit
+      if: ${{ inputs.private-key != '' }}
+      id: sha
+      shell: bash
+      run: echo "sha=$(git -C elixir/ops rev-parse HEAD)" >> "$GITHUB_OUTPUT"

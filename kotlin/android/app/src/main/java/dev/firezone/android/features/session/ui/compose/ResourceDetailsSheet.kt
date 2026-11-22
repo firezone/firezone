@@ -93,24 +93,34 @@ private fun NonInternetResourceDetails(
     Column {
         val context = LocalContext.current
 
-        val displayAddress = resource.addressDescription ?: resource.address
-        val addressUri = remember(resource.addressDescription) { resource.addressDescription?.toUri() }
-        val isUrl = addressUri?.scheme != null
+        resource.addressDescription?.takeIf { it.isNotEmpty() }?.let { description ->
+            val descriptionUri = remember(description) { description.toUri() }
+            val isUrl = descriptionUri.scheme?.lowercase() in listOf("http", "https")
 
-        DetailSection(label = "Address") {
-            Text(
-                text = displayAddress.orEmpty(),
-                color = if (isUrl) Color.Blue else MaterialTheme.colorScheme.onSurface,
-                fontStyle = if (isUrl) FontStyle.Italic else FontStyle.Normal,
-                modifier =
-                    Modifier.clickable {
-                        if (isUrl) {
-                            addressUri?.let { CustomTabsIntent.Builder().build().launchUrl(context, it) }
-                        } else if (displayAddress != null) {
-                            ClipboardUtils.copyToClipboard(context, "Address", displayAddress)
-                        }
-                    },
-            )
+            DetailSection(label = "Description") {
+                Text(
+                    text = description,
+                    color = if (isUrl) Color.Blue else MaterialTheme.colorScheme.onSurface,
+                    fontStyle = if (isUrl) FontStyle.Italic else FontStyle.Normal,
+                    modifier =
+                        Modifier.clickable {
+                            if (isUrl) {
+                                CustomTabsIntent.Builder().build().launchUrl(context, descriptionUri)
+                            } else {
+                                ClipboardUtils.copyToClipboard(context, "Description", description)
+                            }
+                        },
+                )
+            }
+        }
+
+        resource.address?.let { address ->
+            DetailSection(label = "Address") {
+                Text(
+                    text = address,
+                    modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Address", address) },
+                )
+            }
         }
 
         OutlinedButton(

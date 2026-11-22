@@ -140,6 +140,44 @@ defmodule Portal.Azure.ManagedIdentityTest do
     end
   end
 
+  describe "another identity" do
+    test "fetches a token for the given client ID" do
+      test_pid = self()
+
+      Req.Test.expect(ManagedIdentity, fn conn ->
+        send(test_pid, {:imds_request, URI.decode_query(conn.query_string)})
+        Req.Test.json(conn, %{"access_token" => "ops_token", "expires_on" => System.system_time(:second) + 3600})
+      end)
+
+      opts = ManagedIdentity.put_database_token([username: "portal-ops", password: "stale"], "ops-client-id")
+
+      assert opts[:password] == "ops_token"
+      assert_received {:imds_request, %{"client_id" => "ops-client-id", "resource" => @database_resource}}
+    end
+
+    test "is cached apart from the default identity" do
+      server = start_token_cache()
+      test_pid = self()
+
+      Req.Test.stub(ManagedIdentity, fn conn ->
+        %{"client_id" => client_id} = URI.decode_query(conn.query_string)
+        send(test_pid, {:imds_request, client_id})
+        Req.Test.json(conn, %{"access_token" => "token-" <> client_id, "expires_on" => System.system_time(:second) + 3600})
+      end)
+
+      Req.Test.allow(ManagedIdentity, self(), server)
+
+      assert ManagedIdentity.database_access_token!() == "token-test-azure-client-id"
+      assert ManagedIdentity.database_access_token!("ops-client-id") == "token-ops-client-id"
+      assert ManagedIdentity.database_access_token!() == "token-test-azure-client-id"
+      assert ManagedIdentity.database_access_token!("ops-client-id") == "token-ops-client-id"
+
+      assert_received {:imds_request, "test-azure-client-id"}
+      assert_received {:imds_request, "ops-client-id"}
+      refute_received {:imds_request, _client_id}
+    end
+  end
+
   describe "put_database_token/1" do
     test "replaces the connection password with a fresh token" do
       Req.Test.expect(ManagedIdentity, fn conn ->

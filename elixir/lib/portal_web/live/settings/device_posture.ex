@@ -14,6 +14,8 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   @types ~w[intune iru defender santa sentinelone sophos]
 
+  @form_events ~w[validate start_verification reset_verification submit]
+
   @coming_soon_providers [
     %{
       type: "crowdstrike",
@@ -105,7 +107,8 @@ defmodule PortalWeb.Settings.DevicePosture do
        feedback_sent?: false,
        feedback_error: nil
      )
-     |> init_if_connected()}
+     |> init_if_connected()
+     |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)}
   end
 
   def handle_params(_params, _url, %{assigns: %{live_action: :select_type}} = socket) do
@@ -340,7 +343,10 @@ defmodule PortalWeb.Settings.DevicePosture do
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,
              PortalWeb.OIDC.verification_state_type(verification_type),
-             %{verification_ref: verification_ref}
+             %{
+               verification_ref: verification_ref,
+               session: PortalWeb.OIDC.verification_session(socket.assigns.subject)
+             }
            ),
          {:ok, uri} <-
            PortalWeb.OIDC.build_verification_uri(
@@ -1242,7 +1248,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
               <Core.icon
-                name={if @provider.is_disabled, do: "ri-play-line", else: "ri-pause-line"}
+                name={if @provider.is_disabled, do: "ri-play-circle-line", else: "ri-pause-circle-line"}
                 class="w-3.5 h-3.5 shrink-0"
               />
               {if @provider.is_disabled, do: "Enable", else: "Disable"}
@@ -2151,6 +2157,9 @@ defmodule PortalWeb.Settings.DevicePosture do
     do: Portal.Account.device_posture_enabled?(socket.assigns.subject.account)
 
   defp index_path(socket), do: ~p"/#{socket.assigns.account}/settings/device_posture"
+
+  defp stale_event?(event, %{form: nil}) when event in @form_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defmodule Database do
     import Ecto.Query

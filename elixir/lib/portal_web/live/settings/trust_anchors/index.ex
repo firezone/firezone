@@ -12,6 +12,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   @max_trust_anchors 10
   @max_trust_anchor_certificates 20
 
+  @selected_trust_anchor_events ~w[validate_edit update_trust_anchor delete_trust_anchor]
+
   defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, TrustAnchor}
@@ -165,6 +167,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         max_file_size: @max_upload_size,
         auto_upload: true
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -1572,4 +1575,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     do: "Too many files selected (max #{@max_upload_entries})."
 
   defp upload_error_to_string(_reason), do: "Could not upload file."
+
+  defp stale_event?(event, %{selected_trust_anchor: nil}) when event in @selected_trust_anchor_events,
+    do: true
+
+  defp stale_event?(_event, _assigns), do: false
 end

@@ -10,6 +10,16 @@ defmodule Portal.Workers.DeleteAccountTest do
   import Portal.ActorFixtures
 
   describe "perform/1" do
+    test "queues the delete of the account's profile photos" do
+      Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
+      scheduled_deletion_at = DateTime.utc_now() |> DateTime.add(-1, :day) |> DateTime.truncate(:second)
+      account = update_account(account_fixture(), is_disabled: true, scheduled_deletion_at: scheduled_deletion_at)
+
+      assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
+
+      assert_enqueued(worker: Portal.Avatars.DeleteAccount, args: %{account_id: account.id})
+    end
+
     test "deletes account and enqueues AccountDeletionCompleted job with admin emails" do
       now = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(now, 7, :day)

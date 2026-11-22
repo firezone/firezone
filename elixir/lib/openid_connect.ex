@@ -7,6 +7,10 @@ defmodule OpenIDConnect do
   """
   alias OpenIDConnect.Document
   alias OpenIDConnect.Document.Cache
+  alias Portal.Req.Bounded
+
+  @max_response_bytes 1024 * 1024
+  @timeout :timer.seconds(10)
 
   @typedoc """
   URL to a [OpenID Discovery Document](https://openid.net/specs/openid-connect-discovery-1_0.html) endpoint.
@@ -199,14 +203,13 @@ defmodule OpenIDConnect do
       |> maybe_put_client_secret(config)
       |> Map.merge(params)
 
-    request =
-      req_opts
-      |> Keyword.merge(form: form_params, retry: retry_option())
-      |> Req.new()
-
     with {:ok, document} <- Document.fetch_document(discovery_document_uri, req_opts),
          {:ok, %{status: status, body: body}} when status in 200..299 <-
-           Req.post(request, url: document.token_endpoint) do
+           request(req_opts,
+             method: :post,
+             url: document.token_endpoint,
+             form: form_params
+           ) do
       {:ok, decode_body(body)}
     else
       {:ok, %{status: status, body: body}} -> {:error, {status, decode_body(body)}}
@@ -487,21 +490,27 @@ defmodule OpenIDConnect do
 
     headers = [{"Authorization", "Bearer #{access_token}"}]
 
-    request =
-      req_opts
-      |> Keyword.merge(headers: headers, retry: retry_option())
-      |> Req.new()
-
     with {:ok, document} <- Document.fetch_document(discovery_document_uri, req_opts),
          true <- not is_nil(document.userinfo_endpoint),
          {:ok, %{status: status, body: body}} when status in 200..299 <-
-           Req.get(request, url: document.userinfo_endpoint) do
+           request(req_opts, url: document.userinfo_endpoint, headers: headers) do
       {:ok, decode_body(body)}
     else
       {:ok, %{status: status, body: body}} -> {:error, {status, decode_body(body)}}
       false -> {:error, :userinfo_endpoint_is_not_implemented}
       other -> other
     end
+  end
+
+  defp request(req_opts, options) do
+    req_opts
+    |> Keyword.merge(options)
+    |> Keyword.merge(
+      retry: retry_option(),
+      max_body_bytes: @max_response_bytes,
+      timeout: @timeout
+    )
+    |> Bounded.request()
   end
 
   defp decode_body(nil), do: nil

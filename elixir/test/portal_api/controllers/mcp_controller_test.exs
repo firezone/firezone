@@ -233,6 +233,37 @@ defmodule PortalAPI.MCPControllerTest do
       assert json_response(conn, 401)
     end
 
+    test "rejects a token while its auth provider is disabled", %{conn: conn, actor: actor} do
+      {token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(account: actor.account, actor: actor)
+
+      Portal.EmailOTP.AuthProvider
+      |> Portal.Repo.get_by!(account_id: actor.account_id, id: token.auth_provider_id)
+      |> Ecto.Changeset.change(is_disabled: true)
+      |> Portal.Repo.update!()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
+    test "rejects a token with no auth provider", %{conn: conn, actor: actor} do
+      {token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(account: actor.account, actor: actor)
+
+      token |> Ecto.Changeset.change(auth_provider_id: nil) |> Portal.Repo.update!()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
     test "answers GET with 405", %{conn: conn, actor: actor} do
       conn = conn |> authorize_mcp_conn(actor) |> get("/mcp")
 

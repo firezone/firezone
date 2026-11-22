@@ -35,6 +35,10 @@ defmodule PortalWeb.SentinelConsentController do
 
   @invalid_response_error "The consent response was missing or invalid."
 
+  @consent_declined_error "Admin consent was declined in Microsoft Entra."
+
+  @consent_failed_error "Microsoft Entra did not grant admin consent. Please try again."
+
   @proof_failed_error "Firezone could not verify your Microsoft Entra tenant after consent. Please try again."
 
   @session_lost_error "This browser lost the consent session before the tenant check finished. Please start the consent again."
@@ -52,12 +56,12 @@ defmodule PortalWeb.SentinelConsentController do
         handle_tenant_proof(conn, params, verification)
 
       _ ->
-        render_declined(conn, error_message(params))
+        render_declined(conn, @invalid_response_error)
     end
   end
 
-  def callback(conn, params) do
-    render_declined(conn, error_message(params))
+  def callback(conn, _params) do
+    render_declined(conn, @invalid_response_error)
   end
 
   # Entra reports a failed consent with `admin_consent=True` and an `error` in
@@ -191,13 +195,15 @@ defmodule PortalWeb.SentinelConsentController do
     render(conn, :declined, error: error)
   end
 
-  defp error_message(%{"error_description" => description})
-       when is_binary(description) and description != "" do
-    description
-  end
+  defp error_message(%{"error" => "access_denied"}), do: @consent_declined_error
 
-  defp error_message(%{"error" => error}) when is_binary(error) and error != "" do
-    error
+  defp error_message(%{"error" => error} = params) when is_binary(error) and error != "" do
+    Logger.info("Sentinel admin consent error",
+      error: error,
+      error_description: params["error_description"]
+    )
+
+    @consent_failed_error
   end
 
   defp error_message(_params), do: @invalid_response_error

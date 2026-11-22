@@ -1,6 +1,8 @@
 defmodule Portal.Workers.DeleteExpiredPolicyAuthorizations do
   @moduledoc """
-  Oban worker that deletes expired policy authorizations.
+  Oban worker that deletes expired policy authorizations and the ones of
+  disabled actors. The actor change hook deletes the latter when the actor is
+  disabled; this also catches authorizations still queued at that time.
   """
 
   use Oban.Worker,
@@ -20,20 +22,36 @@ defmodule Portal.Workers.DeleteExpiredPolicyAuthorizations do
   end
 
   def perform(_job) do
-    {count, nil} = Database.delete_expired_policy_authorizations()
+    {expired, nil} = Database.delete_expired_policy_authorizations()
 
-    Logger.info("Deleted #{count} expired policy authorizations")
+    Logger.info("Deleted #{expired} expired policy authorizations")
+
+    {disabled, nil} = Database.delete_disabled_actor_policy_authorizations()
+
+    Logger.info("Deleted #{disabled} policy authorizations of disabled actors")
 
     :ok
   end
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, PolicyAuthorization}
+    alias Portal.{Actor, DeviceToken, PolicyAuthorization, Safe}
 
     def delete_expired_policy_authorizations do
       from(pa in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: pa], pa.expires_at <= ^DateTime.utc_now())
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    def delete_disabled_actor_policy_authorizations do
+      from(pa in PolicyAuthorization,
+        join: t in DeviceToken,
+        on: t.account_id == pa.account_id and t.id == pa.token_id,
+        join: a in Actor,
+        on: a.account_id == t.account_id and a.id == t.actor_id,
+        where: a.is_disabled
+      )
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

@@ -34,3 +34,6 @@ features = [
     # `SystemParametersInfoW` to turn the desktop's animations off
     "Win32_UI_WindowsAndMessaging",
 ]
+
+[lints]
+workspace = true

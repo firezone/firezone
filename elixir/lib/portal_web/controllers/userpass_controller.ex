@@ -154,9 +154,7 @@ defmodule PortalWeb.UserpassController do
 
       :gui_client ->
         attrs = %{
-          type: :client,
           secret_nonce: params["nonce"],
-          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
@@ -167,9 +165,7 @@ defmodule PortalWeb.UserpassController do
 
       :headless_client ->
         attrs = %{
-          type: :client,
           secret_nonce: "",
-          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
