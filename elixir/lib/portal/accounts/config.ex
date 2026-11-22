@@ -2,11 +2,6 @@ defmodule Portal.Accounts.Config do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @type t :: %__MODULE__{
-          search_domain: String.t() | nil,
-          clients_upstream_dns: Portal.UpstreamDNS.t() | nil
-        }
-
   @primary_key false
   embedded_schema do
     field :search_domain, :string

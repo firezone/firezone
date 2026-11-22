@@ -2280,9 +2280,6 @@ defmodule PortalWeb.DevicesTest do
 
       refute Repo.get_by(Device, account_id: account.id, id: gateway.id)
       refute Repo.get_by(Portal.DeviceToken, account_id: account.id, device_id: gateway.id)
-
-      # The table reloads in an async task.
-      render_async(lv)
       refute has_element?(lv, "#device-#{gateway.id}")
     end
 
@@ -2378,126 +2375,76 @@ defmodule PortalWeb.DevicesTest do
       refute has_element?(lv, "#device-dns")
     end
 
-    test "shows a client on the account's settings", %{conn: conn, account: account, actor: actor} do
+    test "shows the account default for a client", %{conn: conn, account: account, actor: actor} do
       put_unified_devices(account, true)
-      put_account_dns(account, %{search_domain: "example.com", clients_upstream_dns: %{type: :secure, doh_provider: :quad9}})
+      put_account_dns(account, %{type: :secure, doh_provider: :quad9})
       client = client_fixture(account: account, actor: actor) |> put_device_v1()
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/devices/#{client.id}")
 
-      assert has_element?(lv, "#device-dns-source--account[checked]")
-
-      assert has_element?(
-               lv,
-               "#device-dns label[for='device-dns-source--account']",
-               "DNS over HTTPS with Quad9 DNS, search domain example.com."
-             )
-
-      assert has_element?(lv, "#device-dns label[for='device-dns-source--custom']", "Custom for this device")
-      refute has_element?(lv, "#device-dns #dns-type--system")
+      assert has_element?(lv, "#device-dns #dns-type--default[checked]")
+      assert has_element?(lv, "#device-dns label[for='dns-type--default']", "DNS over HTTPS with Quad9 DNS.")
+      assert has_element?(lv, "#device-dns label[for='dns-type--system']", "This device's own resolvers")
+      assert has_element?(lv, "#device-dns label[for='dns-type--custom']", "Custom")
+      assert has_element?(lv, "#device-dns label[for='dns-type--secure']", "Secure (DNS over HTTPS)")
     end
 
-    test "shows a gateway on its own default config", %{conn: conn, account: account, actor: actor} do
+    test "shows a gateway on its own resolvers", %{conn: conn, account: account, actor: actor} do
       put_unified_devices(account, true)
       gateway = gateway_fixture(account: account, token: :single_owner) |> put_device_v1()
-      put_device_config(gateway, Portal.Accounts.Config.default_config())
+      put_device_dns(gateway, %Portal.UpstreamDNS{type: :system})
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/devices/#{gateway.id}")
 
-      assert has_element?(lv, "#device-dns-source--custom[checked]")
       assert has_element?(lv, "#device-dns #dns-type--system[checked]")
-      assert has_element?(lv, "#device-dns input[name='device[config][search_domain]']")
     end
 
-    test "custom starts from a copy of the account's settings", %{conn: conn, account: account, actor: actor} do
-      put_unified_devices(account, true)
-      put_account_dns(account, %{search_domain: "example.com", clients_upstream_dns: %{type: :secure, doh_provider: :quad9}})
-      client = client_fixture(account: account, actor: actor) |> put_device_v1()
-      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/devices/#{client.id}")
-
-      lv |> element("#device-dns-form") |> render_change(%{device: %{config_source: "custom"}})
-
-      assert has_element?(lv, "#device-dns #dns-type--secure[checked]")
-      assert has_element?(lv, "#device-dns input[name='device[config][search_domain]'][value='example.com']")
-
-      assert lv |> element("#device-dns-form") |> render_submit() =~ "DNS settings saved."
-
-      assert %Portal.Accounts.Config{search_domain: "example.com", clients_upstream_dns: %{type: :secure, doh_provider: :quad9}} =
-               device_config(client)
-    end
-
-    test "saves both choices", %{conn: conn, account: account, actor: actor} do
+    test "saves each option", %{conn: conn, account: account, actor: actor} do
       put_unified_devices(account, true)
       client = client_fixture(account: account, actor: actor) |> put_device_v1()
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/devices/#{client.id}")
 
-      html =
-        submit_dns(lv, %{
-          config_source: "custom",
-          config: %{
-            search_domain: "corp.example.com",
-            clients_upstream_dns: %{type: "custom", addresses: %{"0" => %{address: "9.9.9.9"}, "1" => %{address: "2620:fe::fe"}}}
-          }
-        })
+      assert submit_dns(lv, %{type: "custom", addresses: %{"0" => %{address: "9.9.9.9"}, "1" => %{address: "2620:fe::fe"}}}) =~
+               "DNS settings saved."
 
-      assert html =~ "DNS settings saved."
-      assert %Portal.Accounts.Config{search_domain: "corp.example.com", clients_upstream_dns: dns} = device_config(client)
-      assert %Portal.UpstreamDNS{type: :custom, addresses: addresses} = dns
+      assert %Portal.UpstreamDNS{type: :custom, addresses: addresses} = device_dns(client)
       assert Enum.map(addresses, & &1.address) == ["9.9.9.9", "2620:fe::fe"]
-      assert has_element?(lv, "#device-dns-source--custom[checked]")
+      assert has_element?(lv, "#device-dns #dns-type--custom[checked]")
 
-      submit_dns(lv, %{
-        config_source: "custom",
-        config: %{search_domain: "", clients_upstream_dns: %{type: "secure", doh_provider: "cloudflare"}}
-      })
+      submit_dns(lv, %{type: "secure", doh_provider: "cloudflare"})
+      assert %Portal.UpstreamDNS{type: :secure, doh_provider: :cloudflare} = device_dns(client)
 
-      assert %Portal.Accounts.Config{search_domain: nil, clients_upstream_dns: %{type: :secure, doh_provider: :cloudflare}} =
-               device_config(client)
+      submit_dns(lv, %{type: "system"})
+      assert %Portal.UpstreamDNS{type: :system} = device_dns(client)
 
-      submit_dns(lv, %{config_source: "account"})
-      assert device_config(client) == nil
-      assert has_element?(lv, "#device-dns-source--account[checked]")
-      refute has_element?(lv, "#device-dns #dns-type--system")
+      submit_dns(lv, %{type: "default"})
+      assert device_dns(client) == nil
+      assert has_element?(lv, "#device-dns #dns-type--default[checked]")
     end
 
-    test "saves a gateway back to the account's settings", %{conn: conn, account: account, actor: actor} do
+    test "saves a gateway back to the account default", %{conn: conn, account: account, actor: actor} do
       put_unified_devices(account, true)
       gateway = gateway_fixture(account: account, token: :single_owner) |> put_device_v1()
-      put_device_config(gateway, Portal.Accounts.Config.default_config())
+      put_device_dns(gateway, %Portal.UpstreamDNS{type: :system})
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/devices/#{gateway.id}")
 
-      assert submit_dns(lv, %{config_source: "account"}) =~ "DNS settings saved."
-      assert device_config(gateway) == nil
+      assert submit_dns(lv, %{type: "default"}) =~ "DNS settings saved."
+      assert device_dns(gateway) == nil
     end
 
-    test "shows the account settings validation errors", %{conn: conn, account: account, actor: actor} do
+    test "shows custom resolver errors", %{conn: conn, account: account, actor: actor} do
       put_unified_devices(account, true)
       client = client_fixture(account: account, actor: actor) |> put_device_v1()
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/devices/#{client.id}")
 
-      html =
-        lv
-        |> element("#device-dns-form")
-        |> render_change(%{device: %{config_source: "custom", config: %{clients_upstream_dns: %{type: "custom"}}}})
-
+      html = lv |> element("#device-dns-form") |> render_change(%{device: %{upstream_dns: %{type: "custom"}}})
       assert html =~ "must have at least one custom resolver"
 
-      html =
-        submit_dns(lv, %{
-          config_source: "custom",
-          config: %{search_domain: "bad..example.com", clients_upstream_dns: %{type: "system"}}
-        })
-
-      assert html =~ "must not contain consecutive dots"
+      html = submit_dns(lv, %{type: "custom", addresses: %{"0" => %{address: "not-an-ip"}}})
+      assert html =~ "must be a valid IP address"
       refute html =~ "DNS settings saved."
 
-      html =
-        submit_dns(lv, %{
-          config_source: "custom",
-          config: %{clients_upstream_dns: %{type: "custom", addresses: %{"0" => %{address: "not-an-ip"}}}}
-        })
-
-      assert html =~ "must be a valid IP address"
-
-      assert device_config(client) == nil
+      html = submit_dns(lv, %{type: "custom", addresses: %{"0" => %{address: "1.1.1.1"}, "1" => %{address: "1.1.1.1"}}})
+      assert html =~ "all addresses must be unique"
+      assert device_dns(client) == nil
     end
 
     test "a non-admin cannot save", %{account: account, actor: actor} do
@@ -2505,14 +2452,10 @@ defmodule PortalWeb.DevicesTest do
       user = actor_fixture(account: account, type: :account_user)
       subject = subject_fixture(account: account, actor: user)
 
-      changeset =
-        PortalWeb.Devices.Database.change_config(client, account.config, %{
-          "config_source" => "custom",
-          "config" => %{"clients_upstream_dns" => %{"type" => "system"}}
-        })
+      changeset = PortalWeb.Devices.Database.change_upstream_dns(client, %{"upstream_dns" => %{"type" => "system"}})
 
       assert {:error, :unauthorized} = PortalWeb.Devices.Database.update_device(changeset, subject)
-      assert device_config(client) == nil
+      assert device_dns(client) == nil
     end
   end
 
@@ -2521,23 +2464,23 @@ defmodule PortalWeb.DevicesTest do
     %{device | last_seen_device_v1: true}
   end
 
-  defp put_device_config(device, config) do
+  defp put_device_dns(device, upstream_dns) do
     device
     |> Ecto.Changeset.change()
-    |> Ecto.Changeset.put_embed(:config, config)
+    |> Ecto.Changeset.put_embed(:upstream_dns, upstream_dns)
     |> Repo.update!()
   end
 
-  defp put_account_dns(account, config) do
+  defp put_account_dns(account, upstream_dns) do
     account
-    |> Ecto.Changeset.cast(%{config: config}, [])
+    |> Ecto.Changeset.cast(%{config: %{clients_upstream_dns: upstream_dns}}, [])
     |> Ecto.Changeset.cast_embed(:config)
     |> Repo.update!()
   end
 
-  defp submit_dns(lv, params) do
-    lv |> element("#device-dns-form") |> render_submit(%{device: params})
+  defp submit_dns(lv, upstream_dns) do
+    lv |> element("#device-dns-form") |> render_submit(%{device: %{upstream_dns: upstream_dns}})
   end
 
-  defp device_config(device), do: Repo.get_by!(Device, id: device.id).config
+  defp device_dns(device), do: Repo.get_by!(Device, id: device.id).upstream_dns
 end

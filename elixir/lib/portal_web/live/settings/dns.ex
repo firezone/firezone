@@ -171,7 +171,51 @@ defmodule PortalWeb.Settings.DNS do
   defp dns_form(assigns) do
     ~H"""
     <.form id="dns-form" for={@form} phx-submit={:submit} phx-change={:change}>
-      <Settings.Components.dns_config_fields field={@form[:config]} />
+      <div class="space-y-8">
+        <div>
+          <h3 class="text-[10px] font-semibold uppercase tracking-widest text-subtle mb-4">
+            Search Domain
+          </h3>
+          <.inputs_for :let={config_form} field={@form[:config]}>
+            <label
+              for={config_form[:search_domain].id}
+              class="block text-xs font-medium text-body mb-1.5"
+            >
+              Search Domain
+            </label>
+            <Form.input
+              field={config_form[:search_domain]}
+              placeholder="E.g. example.com"
+              phx-debounce="300"
+            />
+            <p class="mt-1.5 text-xs text-subtle">
+              Enter a valid FQDN to append to single-label DNS queries. The resulting FQDN will be
+              used to match against DNS Resources in your account, or forwarded to the upstream
+              resolvers if no match is found.
+            </p>
+          </.inputs_for>
+        </div>
+
+        <div>
+          <h3 class="text-[10px] font-semibold uppercase tracking-widest text-subtle mb-4">
+            Upstream Resolvers
+          </h3>
+          <p class="mb-4 text-xs text-body">
+            Queries for Resources will <strong>always</strong>
+            use Firezone's internal DNS. All other queries will use the resolvers configured here.
+          </p>
+          <.inputs_for :let={config_form} field={@form[:config]}>
+            <Settings.Components.upstream_dns_fields
+              field={config_form[:clients_upstream_dns]}
+              options={[
+                {"system", "ri-computer-line", "System", "Use the device's default DNS resolvers."},
+                {"secure", "ri-lock-line", "Secure", "Use DNS-over-HTTPS from trusted providers."},
+                {"custom", "ri-settings-3-line", "Custom", "Configure your own DNS server addresses."}
+              ]}
+            />
+          </.inputs_for>
+        </div>
+      </div>
     </.form>
     """
   end

@@ -713,49 +713,32 @@ defmodule PortalWeb.Devices.Components do
   attr :form, :any, required: true
 
   def device_dns_section(assigns) do
-    assigns =
-      assign(assigns,
-        account_summary: Settings.Components.dns_config_summary(assigns.account.config),
-        custom?: not is_nil(Ecto.Changeset.get_field(assigns.form.source, :config))
-      )
+    account_dns = Portal.Accounts.Config.ensure_defaults(assigns.account.config).clients_upstream_dns
+    assigns = assign(assigns, :account_dns, Settings.Components.upstream_dns_summary(account_dns))
 
     ~H"""
     <div id="device-dns" class="px-5 pt-4 pb-3 border-b border-border">
       <.section_heading title="DNS" />
+      <p class="mb-3 text-xs text-subtle">
+        Resolvers for queries that do not match a resource.
+      </p>
       <.form
         for={@form}
         id="device-dns-form"
         phx-change="change_device_dns"
         phx-submit="submit_device_dns"
       >
-        <div class="grid gap-3 grid-cols-2 mb-6">
-          <div :for={
-            {source, label, description} <- [
-              {"account", "Use the account's DNS settings", "#{@account_summary}."},
-              {"custom", "Custom for this device", "Set the DNS for this device only."}
-            ]
-          }>
-            <Form.input
-              id={"device-dns-source--#{source}"}
-              type="radio_button_group"
-              name={@form.name <> "[config_source]"}
-              value={source}
-              checked={(source == "custom") == @custom?}
-            />
-            <label
-              for={"device-dns-source--#{source}"}
-              class={[
-                "flex flex-col h-full p-3 border rounded cursor-pointer transition-all",
-                "peer-checked:border-brand peer-checked:bg-raised",
-                "border-border hover:border-border-emphasis"
-              ]}
-            >
-              <span class="text-sm font-semibold text-heading mb-1">{label}</span>
-              <span class="text-xs text-body my-auto">{description}</span>
-            </label>
-          </div>
-        </div>
-        <Settings.Components.dns_config_fields :if={@custom?} field={@form[:config]} />
+        <Settings.Components.upstream_dns_fields
+          field={@form[:upstream_dns]}
+          options={[
+            {"default", "ri-building-line", "Account default", "#{@account_dns}."},
+            {"system", "ri-computer-line", "This device's own resolvers",
+             "Use the resolvers set on this device."},
+            {"custom", "ri-settings-3-line", "Custom", "Use DNS servers you list."},
+            {"secure", "ri-lock-line", "Secure (DNS over HTTPS)",
+             "Use DNS over HTTPS from a trusted provider."}
+          ]}
+        />
         <div class="mt-4 flex justify-end">
           <Form.button type="submit" size="sm" style="primary">Save</Form.button>
         </div>

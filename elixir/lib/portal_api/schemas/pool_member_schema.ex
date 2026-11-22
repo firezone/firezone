@@ -46,7 +46,7 @@ defmodule PortalAPI.Schemas.PoolMember do
                :provisioned_token,
                :public_key,
                :type,
-               :config,
+               :upstream_dns,
                :updated_at,
                :verified_at
              ]}

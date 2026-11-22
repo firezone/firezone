@@ -52,21 +52,14 @@ defmodule PortalAPI.PoolMemberControllerTest do
       assert Enum.map(data, & &1["id"]) |> Enum.sort() == Enum.sort([client1.id, client2.id])
     end
 
-    test "renders the same members whatever their DNS config", %{conn: conn, account: account, actor: api_actor} do
+    test "renders the same members whatever their upstream DNS", %{conn: conn, account: account, actor: api_actor} do
       client = client_fixture(account: account)
       pool = device_pool_resource_fixture(account: account, devices: [client])
       conn = conn |> authorize_conn(api_actor) |> put_req_header("content-type", "application/json")
       before = conn |> get("/resources/#{pool.id}/pool_members") |> json_response(200)
 
       Repo.update_all(where(Portal.Device, id: ^client.id),
-        set: [
-          config: %Portal.Accounts.Config{
-            clients_upstream_dns: %Portal.UpstreamDNS{
-              type: :custom,
-              addresses: [%Portal.UpstreamDNS.Address{address: "9.9.9.9"}]
-            }
-          }
-        ]
+        set: [upstream_dns: %Portal.UpstreamDNS{type: :custom, addresses: [%Portal.UpstreamDNS.Address{address: "9.9.9.9"}]}]
       )
 
       assert conn |> get("/resources/#{pool.id}/pool_members") |> json_response(200) == before

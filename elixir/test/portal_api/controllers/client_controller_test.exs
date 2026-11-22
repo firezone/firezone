@@ -465,17 +465,12 @@ defmodule PortalAPI.ClientControllerTest do
       assert Map.has_key?(data, "hostname")
     end
 
-    test "renders the same client whatever its DNS config", %{conn: conn, actor: actor, client: client} do
+    test "renders the same client whatever its upstream DNS", %{conn: conn, actor: actor, client: client} do
       conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
       before = conn |> get(~p"/clients/#{client.id}") |> json_response(200)
 
       Portal.Repo.update_all(where(Portal.Device, id: ^client.id),
-        set: [
-          config: %Portal.Accounts.Config{
-            search_domain: "example.com",
-            clients_upstream_dns: %Portal.UpstreamDNS{type: :secure, doh_provider: :quad9}
-          }
-        ]
+        set: [upstream_dns: %Portal.UpstreamDNS{type: :secure, doh_provider: :quad9}]
       )
 
       assert conn |> get(~p"/clients/#{client.id}") |> json_response(200) == before

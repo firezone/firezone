@@ -2120,7 +2120,7 @@ Relays.render(relays, relay_owner(socket)),
         old_client.ipv4 != client.ipv4 or old_client.ipv6 != client.ipv6 ->
           reinitialize_client(socket)
 
-        old_client.config != client.config ->
+        old_client.upstream_dns != client.upstream_dns ->
           push_interface(socket)
 
         true ->
