@@ -345,6 +345,7 @@ defmodule PortalWeb.Devices.Components do
               account={@account}
               site={@site_assignment.site}
               sites={@site_assignment.sites}
+              device_v1?={@device.last_seen_device_v1}
             />
             <.device_section account={@account} device={@device} />
             <.device_certificate_section
@@ -612,6 +613,7 @@ defmodule PortalWeb.Devices.Components do
   attr :account, :any, required: true
   attr :site, :any, default: nil
   attr :sites, :list, default: []
+  attr :device_v1?, :boolean, default: false
 
   def device_site_section(assigns) do
     assigns = assign(assigns, :form, to_form(%{"site_id" => ""}, as: :site_device))
@@ -635,8 +637,11 @@ defmodule PortalWeb.Devices.Components do
         </Form.button>
       </div>
       <div :if={is_nil(@site)}>
-        <p class="mb-2 text-xs text-subtle">
+        <p :if={@device_v1?} class="mb-2 text-xs text-subtle">
           This device serves the resources of the site you add it to.
+        </p>
+        <p :if={not @device_v1?} class="mb-2 text-xs text-warning">
+          Update to the latest Firezone client to route for a site.
         </p>
         <.form
           for={@form}
@@ -649,8 +654,9 @@ defmodule PortalWeb.Devices.Components do
             type="select"
             prompt="Select a site"
             options={Enum.map(@sites, &{&1.name, &1.id})}
+            disabled={not @device_v1?}
           />
-          <Form.button type="submit" size="sm" style="primary">
+          <Form.button type="submit" size="sm" style="primary" disabled={not @device_v1?}>
             Add to site
           </Form.button>
         </.form>

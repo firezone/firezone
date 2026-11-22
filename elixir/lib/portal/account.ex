@@ -104,6 +104,9 @@ defmodule Portal.Account do
     # Set by Ops Admins only. Prevents account admins from modifying account settings.
     field :lock_enabled_at, :utc_datetime_usec
 
+    # Set by staff only. Turns on adding devices to sites; nil means off.
+    field :unified_devices, :boolean
+
     # Usage against `limits`, computed by the REST API when it renders the account.
     field :limit_usage, :map, virtual: true
 

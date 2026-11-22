@@ -7,7 +7,6 @@ defmodule PortalWeb.SitesTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
-  import Portal.FeaturesFixtures
   import Portal.PolicyAuthorizationFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
@@ -1948,10 +1947,26 @@ defmodule PortalWeb.SitesTest do
     end
   end
 
+  describe "site devices per account" do
+    test "show only on accounts with unified_devices set to true", %{conn: conn} do
+      for {value, shown?} <- [{true, true}, {false, false}, {nil, false}] do
+        account = put_unified_devices(account_fixture(), value)
+        actor = admin_actor_fixture(account: account)
+        site = site_fixture(account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/sites/#{site.id}")
+
+        assert has_element?(lv, "#site-panel-devices-tab") == shown?
+      end
+    end
+  end
+
   describe "site devices" do
-    setup do
-      enable_feature(:unified_devices)
-      :ok
+    setup %{account: account} do
+      %{account: put_unified_devices(account, true)}
     end
 
     test "lists the devices that route for the site, apart from gateways", %{
