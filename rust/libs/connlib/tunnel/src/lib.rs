@@ -201,7 +201,8 @@ impl Tunnel {
 impl Tunnel {
     /// Creates the tunnel of a device.
     ///
-    /// `nameservers` resolve the site DNS queries of the peers the device serves.
+    /// `nameservers` resolve the DNS queries of the peers the device serves until
+    /// [`Tunnel::update_system_resolvers`] replaces them.
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,

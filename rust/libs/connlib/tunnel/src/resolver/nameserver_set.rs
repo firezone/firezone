@@ -51,6 +51,21 @@ impl NameserverSet {
         }
     }
 
+    /// Replaces the nameservers and evaluates the new ones.
+    ///
+    /// Measurements of nameservers that stay in the set are kept, so queries
+    /// do not fail while the new ones are evaluated.
+    pub fn replace(&mut self, nameservers: BTreeSet<IpAddr>) {
+        if self.inner == nameservers {
+            return;
+        }
+
+        self.nameserver_by_rtt
+            .retain(|_, nameserver| nameservers.contains(nameserver));
+        self.inner = nameservers;
+        self.evaluate();
+    }
+
     pub fn evaluate(&mut self) {
         if self.inner.is_empty() {
             return;
@@ -174,6 +189,54 @@ mod tests {
         std::future::poll_fn(|cx| set.poll(cx)).await;
 
         assert!(set.fastest().is_some());
+    }
+
+    #[tokio::test]
+    async fn replace_keeps_measurements_of_remaining_nameservers() {
+        let kept = IpAddr::from(Ipv4Addr::new(192, 0, 2, 1));
+        let removed = IpAddr::from(Ipv4Addr::new(192, 0, 2, 2));
+        let mut set = NameserverSet::new(
+            BTreeSet::from([kept, removed]),
+            Arc::new(socket_factory::tcp),
+            Arc::new(socket_factory::udp),
+        );
+        set.nameserver_by_rtt
+            .insert(Duration::from_millis(1), removed);
+        set.nameserver_by_rtt.insert(Duration::from_millis(2), kept);
+
+        set.replace(BTreeSet::from([kept, Ipv4Addr::new(192, 0, 2, 3).into()]));
+
+        assert_eq!(set.fastest(), Some(kept));
+    }
+
+    #[tokio::test]
+    async fn replace_with_same_nameservers_does_not_evaluate() {
+        let nameserver = IpAddr::from(Ipv4Addr::new(192, 0, 2, 1));
+        let mut set = NameserverSet::new(
+            BTreeSet::from([nameserver]),
+            Arc::new(socket_factory::tcp),
+            Arc::new(socket_factory::udp),
+        );
+
+        set.replace(BTreeSet::from([nameserver]));
+
+        assert!(set.queries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn replace_with_no_nameservers_clears_fastest() {
+        let nameserver = IpAddr::from(Ipv4Addr::new(192, 0, 2, 1));
+        let mut set = NameserverSet::new(
+            BTreeSet::from([nameserver]),
+            Arc::new(socket_factory::tcp),
+            Arc::new(socket_factory::udp),
+        );
+        set.nameserver_by_rtt
+            .insert(Duration::from_millis(1), nameserver);
+
+        set.replace(BTreeSet::new());
+
+        assert!(set.fastest().is_none());
     }
 
     #[tokio::test]
