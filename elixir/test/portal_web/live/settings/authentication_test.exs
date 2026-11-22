@@ -681,18 +681,16 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     } do
       Mocks.GitHub.stub()
 
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/authentication/github/new")
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/authentication/github/new")
 
       lv |> element("#verify-button") |> render_click()
 
       assert_push_event(lv, "open_url", %{url: url})
       %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
-      callback_conn = get(build_conn(), ~p"/auth/oidc/callback", %{"state" => state, "code" => "c"})
-      get(build_conn(), redirected_to(callback_conn))
+      callback_conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "c"})
+      get(recycle(callback_conn), redirected_to(callback_conn))
 
       refute_received {:github_token_request, _params}
 
@@ -708,10 +706,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     } do
       Mocks.GitHub.stub()
 
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/authentication/github/new")
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/authentication/github/new")
 
       lv |> element("#verify-button") |> render_click()
 
@@ -720,13 +716,13 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       %{"state" => state, "prompt" => "select_account"} = URI.decode_query(query)
 
       callback_conn =
-        get(build_conn(), ~p"/auth/oidc/callback", %{
+        get(conn, ~p"/auth/oidc/callback", %{
           "state" => state,
           "code" => "c",
           "iss" => "https://github.com/login/oauth"
         })
 
-      get(build_conn(), redirected_to(callback_conn))
+      get(recycle(callback_conn), redirected_to(callback_conn))
 
       html = render(lv)
       assert html =~ "Verified"
@@ -2568,6 +2564,13 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         auth_provider: provider.auth_provider
       )
 
+      {oauth_token, _access, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(
+          account: account,
+          actor: actor,
+          auth_provider: provider.auth_provider
+        )
+
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
@@ -2588,6 +2591,34 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert row_text =~ "0"
       assert row_text =~ "client"
       assert row_text =~ "portal"
+
+      refute Repo.get_by(Portal.OAuthToken, id: oauth_token.id)
+    end
+
+    test "offers to revoke a provider that only has OAuth tokens", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+
+      {oauth_token, _access, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(
+          account: account,
+          actor: actor,
+          auth_provider: provider.auth_provider
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      lv |> request_confirm("revoke", provider.id)
+      lv |> confirm_action("revoke_sessions", provider.id)
+
+      assert render(lv) =~ "have been revoked"
+      refute Repo.get_by(Portal.OAuthToken, id: oauth_token.id)
     end
   end
 
@@ -4518,30 +4549,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   end
 
   # =============================================================================
-  # DB Helper Edge Cases
-  # =============================================================================
-
-  describe "Database helper edge cases" do
-    test "revoke_sessions_for_provider handles nil provider", %{actor: actor} do
-      alias PortalWeb.Settings.Authentication.Database
-
-      # Build a proper subject from the actor
-      {:ok, subject} =
-        Portal.Authentication.build_subject(
-          %Portal.PortalSession{actor_id: actor.id, account_id: actor.account_id},
-          %Portal.Authentication.Context{
-            type: :portal,
-            user_agent: "test",
-            remote_ip: {127, 0, 0, 1}
-          }
-        )
-
-      # Should return {:ok, 0} for nil provider
-      assert {:ok, 0} = Database.revoke_sessions_for_provider(nil, subject)
-    end
-  end
-
-  # =============================================================================
   # Successful PubSub Verification Tests
   # =============================================================================
 
@@ -5069,6 +5076,38 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       assert html =~
                "Unable to fetch discovery document: DNS lookup failed. Please verify the provider domain."
+    end
+  end
+
+  describe "events queued after the panel closes" do
+    test "ignores submit_provider", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/google/new")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/settings/authentication")
+
+      render_click(lv, "submit_provider", %{})
+
+      assert render(lv) =~ "Authentication"
+    end
+
+    for event <- ["delete_provider", "toggle_provider", "revoke_sessions"] do
+      test "ignores #{event} for a deleted provider", %{conn: conn, account: account, actor: actor} do
+        provider = google_provider_fixture(account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication")
+
+        render_click(lv, "delete_provider", %{"id" => provider.id})
+        render_click(lv, unquote(event), %{"id" => provider.id})
+
+        refute render(lv) =~ provider.name
+      end
     end
   end
 end

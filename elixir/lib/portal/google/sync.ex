@@ -113,6 +113,14 @@ defmodule Portal.Google.Sync do
       google_directory_id: directory.id
     )
 
+    %{account_id: directory.account_id, directory_id: directory.id}
+    |> Google.Avatars.new()
+    |> Oban.insert()
+    |> case do
+      {:ok, _job} -> :ok
+      {:error, reason} -> Logger.warning("Failed to queue profile photo sync", google_directory_id: directory.id, reason: inspect(reason))
+    end
+
     {:ok, _job} =
       %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
       |> Google.Subscriptions.new()
@@ -959,7 +967,7 @@ defmodule Portal.Google.Sync do
       given_name: Map.get(user, "name", %{}) |> Map.get("givenName"),
       family_name: Map.get(user, "name", %{}) |> Map.get("familyName"),
       preferred_username: primary_email,
-      picture: Map.get(user, "thumbnailPhotoUrl"),
+      directory_picture: Map.get(user, "thumbnailPhotoUrl"),
       disabled: user["suspended"] == true or user["archived"] == true
     }
   end
@@ -1043,7 +1051,7 @@ defmodule Portal.Google.Sync do
     alias Portal.Safe
 
     @issuer "https://accounts.google.com"
-    @identity_fields ~w[idp_id email name given_name family_name preferred_username picture]a
+    @identity_fields ~w[idp_id email name given_name family_name preferred_username directory_picture]a
 
     def issuer, do: @issuer
 

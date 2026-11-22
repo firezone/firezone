@@ -1078,7 +1078,7 @@ struct ProviderMessageCodableTests {
   func valuelessCasesRoundTrip() throws {
     let cases: [ProviderMessage] = [
       .signOut, .clearLogs, .getLogFolderSize, .exportLogs, .getEncodedFirezoneId,
-      .drainFlowLogs, .getStatus,
+      .drainFlowLogs, .getStatus, .manualReset,
     ]
 
     for message in cases {
@@ -1109,6 +1109,17 @@ struct ProviderMessageCodableTests {
       #expect(enabled == true)
     } else {
       Issue.record("Expected .setInternetResourceEnabled, got \(decoded)")
+    }
+  }
+
+  @Test("setForceRelayedConnections round-trips through JSON")
+  func setForceRelayedConnectionsRoundTrip() throws {
+    let decoded = try roundTrip(.setForceRelayedConnections(true))
+
+    if case .setForceRelayedConnections(let enabled) = decoded {
+      #expect(enabled == true)
+    } else {
+      Issue.record("Expected .setForceRelayedConnections, got \(decoded)")
     }
   }
 

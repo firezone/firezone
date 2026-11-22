@@ -110,6 +110,18 @@ defmodule Portal.LoggerFiltersTest do
       end
     end
 
+    test "relevels TLS received on the clear HTTP port to info" do
+      event = clear_channel_tls_event("Connection that looks like TLS received on a clear channel")
+
+      assert %{level: :info} = LoggerFilters.relevel_expected_client_errors(event, nil)
+    end
+
+    test "leaves other Bandit connection warnings at warning" do
+      event = clear_channel_tls_event("some other warning")
+
+      assert LoggerFilters.relevel_expected_client_errors(event, nil) == :ignore
+    end
+
     test "leaves terminations of other labeled processes at error" do
       event =
         termination_event(
@@ -183,6 +195,17 @@ defmodule Portal.LoggerFiltersTest do
            reason: reason
          }},
       meta: %{domain: [:otp]}
+    }
+  end
+
+  defp clear_channel_tls_event(message) do
+    %{
+      level: :warning,
+      msg: {:string, message},
+      meta: %{
+        domain: [:elixir, :bandit],
+        mfa: {Bandit.InitialHandler, :handle_connection, 2}
+      }
     }
   end
 

@@ -14,6 +14,7 @@ defmodule Portal.Changes.Hooks.AuthProviders do
       ) do
     Database.delete_client_tokens_for_provider(account_id, provider_id)
     Database.delete_portal_sessions_for_provider(account_id, provider_id)
+    Database.delete_oauth_credentials_for_provider(account_id, provider_id)
 
     :ok
   end
@@ -29,6 +30,7 @@ defmodule Portal.Changes.Hooks.AuthProviders do
     else
       Database.delete_client_tokens_for_provider(account_id, provider_id)
       Database.delete_portal_sessions_for_provider(account_id, provider_id)
+      Database.delete_oauth_credentials_for_provider(account_id, provider_id)
 
       :ok
     end
@@ -41,16 +43,18 @@ defmodule Portal.Changes.Hooks.AuthProviders do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
+    alias Portal.OAuthAuthorizationCode
+    alias Portal.OAuthToken
     alias Portal.PortalSession
     alias Portal.Safe
 
     # Delete all GUI client tokens for a provider and disconnect their sockets
     # Service Account tokens do not have an auth provider set and will not be affected
     def delete_client_tokens_for_provider(account_id, provider_id) do
-      # The ClientTokens hook will handle disconnecting sockets
-      from(c in ClientToken,
-        where: c.account_id == ^account_id and c.auth_provider_id == ^provider_id
+      # The DeviceTokens hook will handle disconnecting sockets
+      from(t in DeviceToken,
+        where: t.account_id == ^account_id and t.auth_provider_id == ^provider_id
       )
       |> Safe.unscoped()
       |> Safe.delete_all()
@@ -63,6 +67,16 @@ defmodule Portal.Changes.Hooks.AuthProviders do
       )
       |> Safe.unscoped()
       |> Safe.delete_all()
+    end
+
+    def delete_oauth_credentials_for_provider(account_id, provider_id) do
+      for schema <- [OAuthAuthorizationCode, OAuthToken] do
+        from(t in schema,
+          where: t.account_id == ^account_id and t.auth_provider_id == ^provider_id
+        )
+        |> Safe.unscoped()
+        |> Safe.delete_all()
+      end
     end
   end
 end

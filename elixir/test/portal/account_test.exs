@@ -241,6 +241,29 @@ defmodule Portal.AccountTest do
     end
   end
 
+  describe "unified_devices?/1" do
+    test "is on only when metadata says true" do
+      assert Account.unified_devices?(%Account{metadata: %Account.Metadata{unified_devices: true}})
+      refute Account.unified_devices?(%Account{metadata: %Account.Metadata{unified_devices: false}})
+      refute Account.unified_devices?(%Account{metadata: %Account.Metadata{}})
+      refute Account.unified_devices?(%Account{metadata: nil})
+    end
+
+    test "cannot be set through the metadata changeset" do
+      changeset = Account.Metadata.changeset(%Account.Metadata{}, %{unified_devices: true})
+      refute Ecto.Changeset.changed?(changeset, :unified_devices)
+    end
+
+    test "is not in the REST API account" do
+      account = %Account{id: Ecto.UUID.generate(), metadata: %Account.Metadata{unified_devices: true}}
+      encoded = PortalAPI.JSON.Encoder.encode(%PortalAPI.Schemas.Account.Schema{}, account)
+
+      refute Map.has_key?(encoded, :metadata)
+      refute inspect(encoded) =~ "unified_devices"
+      refute inspect(PortalAPI.Schemas.Account.Schema.schema()) =~ "unified_devices"
+    end
+  end
+
   describe "iceless_enabled?/1" do
     test "returns true when the account feature flag is set" do
       account = %Account{features: %Portal.Accounts.Features{iceless: true}}

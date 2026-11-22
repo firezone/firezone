@@ -42,7 +42,7 @@ defmodule Portal.DefenderFixtures do
     device_attrs = %{
       account_id: provider.account_id,
       posture_provider_id: provider.id,
-      defender_id: Map.get(attrs, :defender_id, Ecto.UUID.generate()),
+      defender_id: Map.get(attrs, :defender_id, Base.encode16(:crypto.strong_rand_bytes(20), case: :lower)),
       computer_dns_name: Map.get(attrs, :computer_dns_name, "machine#{unique}.contoso.com"),
       entra_device_id: Map.get(attrs, :entra_device_id, Ecto.UUID.generate()),
       entra_joined: Map.get(attrs, :entra_joined, true),

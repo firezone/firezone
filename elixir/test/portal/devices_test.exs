@@ -11,7 +11,7 @@ defmodule Portal.DevicesTest do
 
   alias Portal.Device
   alias Portal.Devices
-  alias Portal.GatewayToken
+  alias Portal.DeviceToken
   alias Portal.SiteDevice
 
   describe "provision_gateway/3" do
@@ -21,7 +21,7 @@ defmodule Portal.DevicesTest do
       subject =
         subject_fixture(account: account, actor: %{type: :api_client, account: account})
 
-      assert {:ok, %Device{} = gateway, %GatewayToken{} = token, encoded_token} =
+      assert {:ok, %Device{} = gateway, %DeviceToken{} = token, encoded_token} =
                Devices.provision_gateway(site, "edge-nyc-1", subject)
 
       assert gateway.name == "edge-nyc-1"
@@ -42,10 +42,10 @@ defmodule Portal.DevicesTest do
       assert is_binary(encoded_token)
     end
 
-    # Regression: the Device insert and the GatewayToken insert are
+    # Regression: the Device insert and the DeviceToken insert are
     # authorized separately - Safe.permit/3 lets an account_user insert a
     # Device (clients create their own row on first connect) but not a
-    # GatewayToken. Before both writes shared a transaction, the Device
+    # DeviceToken. Before both writes shared a transaction, the Device
     # was committed and then the token insert returned :unauthorized,
     # leaving a tokenless Gateway behind while the caller saw a 401.
     test "leaves no gateway behind when the caller cannot mint a token" do
@@ -63,7 +63,7 @@ defmodule Portal.DevicesTest do
              ) == 0
 
       assert Repo.aggregate(
-               from(t in GatewayToken, where: t.account_id == ^account.id),
+               from(t in DeviceToken, where: t.account_id == ^account.id),
                :count
              ) == 0
 
@@ -189,6 +189,31 @@ defmodule Portal.DevicesTest do
 
       assert String.length(numbered) == 63
       assert String.ends_with?(numbered, "-2")
+    end
+  end
+
+  describe "put_latest_actor/2" do
+    test "puts the actor who connected most recently, or nil when nobody has" do
+      account = account_fixture()
+      first = actor_fixture(account: account)
+      latest = actor_fixture(account: account)
+      device = client_fixture(account: account, actor: first)
+      gateway = gateway_fixture(account: account)
+
+      Repo.insert!(%Portal.DeviceActor{
+        account_id: account.id,
+        device_id: device.id,
+        actor_id: latest.id,
+        first_seen_at: DateTime.utc_now(),
+        last_seen_at: DateTime.add(DateTime.utc_now(), 1, :minute)
+      })
+
+      subject = admin_subject_fixture(account: account)
+
+      assert [%Device{actor_id: actor_id, actor: %Portal.Actor{id: actor_id}}, %Device{actor_id: nil, actor: nil}] =
+               Devices.put_latest_actor([device, gateway], subject)
+
+      assert actor_id == latest.id
     end
   end
 

@@ -190,7 +190,7 @@ defmodule PortalWeb.ServiceAccountsTest do
           name: "CI Service Account"
         )
 
-      assert Portal.Repo.get_by(Portal.ClientToken, actor_id: service_account.id)
+      assert Portal.Repo.get_by(Portal.DeviceToken, actor_id: service_account.id)
       assert html =~ "CI Service Account"
       assert html =~ "Token Created"
     end
@@ -220,7 +220,7 @@ defmodule PortalWeb.ServiceAccountsTest do
           name: "Tokenless SA"
         )
 
-      refute Portal.Repo.get_by(Portal.ClientToken, actor_id: service_account.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, actor_id: service_account.id)
       assert html =~ "Tokenless SA"
       refute html =~ "Token Created"
     end
@@ -621,8 +621,31 @@ defmodule PortalWeb.ServiceAccountsTest do
       render_click(lv, "delete_token", %{"id" => token.id})
 
       html = render(lv)
-      refute Portal.Repo.get_by(Portal.ClientToken, id: token.id)
+      refute Portal.Repo.get_by(Portal.DeviceToken, id: token.id)
       assert html =~ "No tokens."
+    end
+
+    test "delete_token does not delete a token of another actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account)
+      gateway_token = gateway_token_fixture(account: account)
+
+      other_token =
+        client_token_fixture(account: account, actor: service_account_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+      render_click(lv, "delete_token", %{"id" => gateway_token.id})
+      render_click(lv, "delete_token", %{"id" => other_token.id})
+
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
+      assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: other_token.id)
     end
   end
 
@@ -641,6 +664,8 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       html = render_click(lv, "confirm_disable_actor")
       assert html =~ "Disable"
+      assert html =~ "Disabling this actor will immediately disconnect all its Clients."
+      assert html =~ "Its sessions and tokens are paused, not revoked."
 
       html = render_click(lv, "cancel_disable_actor")
       refute html =~ "Service account disabled successfully"
@@ -1260,6 +1285,39 @@ defmodule PortalWeb.ServiceAccountsTest do
       html = render_async(lv)
       assert html =~ "ci-renamed"
       refute html =~ other.name
+    end
+  end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"open_actor_edit_form", %{}},
+          {"cancel_actor_edit_form", %{}},
+          {"validate", %{"actor" => %{"name" => "Late"}}},
+          {"save", %{"actor" => %{"name" => "Late"}}},
+          {"create_service_account", %{"actor" => %{"name" => "Late"}, "token_expiration" => ""}},
+          {"create_token", %{"token_expiration" => :expiration}},
+          {"delete_token", %{"id" => :token_id}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        service_account = service_account_fixture(account: account)
+        token = client_token_fixture(account: account, actor: service_account)
+        expiration = Date.utc_today() |> Date.add(30) |> Date.to_iso8601()
+        ids = %{token_id: token.id, expiration: expiration}
+
+        {:ok, lv, _html} =
+          conn |> authorize_conn(actor) |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/service_accounts")
+
+        params = Map.new(unquote(Macro.escape(params)), fn {k, v} -> {k, Map.get(ids, v, v)} end)
+        render_click(lv, unquote(event), params)
+
+        assert render(lv) =~ service_account.name
+        assert Repo.get_by(Actor, account_id: account.id, id: service_account.id).name == service_account.name
+        refute Repo.get_by(Actor, account_id: account.id, name: "Late")
+        assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+      end
     end
   end
 end

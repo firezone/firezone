@@ -229,8 +229,10 @@ defmodule PortalWeb.OIDC do
   end
 
   def verify_token(provider, id_token, verifier) do
-    with {:ok, config} <- config_for_provider(provider) do
-      OpenIDConnect.verify(config, id_token, nonce: nonce(verifier))
+    with {:ok, config} <- config_for_provider(provider),
+         {:ok, claims} <- OpenIDConnect.verify(config, id_token, nonce: nonce(verifier)),
+         :ok <- verify_provider_issuer(claims, provider) do
+      {:ok, claims}
     end
   end
 
@@ -463,6 +465,35 @@ defmodule PortalWeb.OIDC do
 
     Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-state", state, max_age: max_age)
   end
+
+  @doc """
+  Returns the portal session a settings verification is bound to. It goes into
+  the signed state, and `verification_session_matches?/2` checks it on every
+  request that completes the verification.
+  """
+  def verification_session(%Portal.Authentication.Subject{
+        account: %Portal.Account{id: account_id},
+        credential: %Portal.Authentication.Credential.PortalSession{id: session_id}
+      }) do
+    %{account_id: account_id, session_id: session_id}
+  end
+
+  @doc """
+  Returns true when the request carries the portal session the verification
+  was started from.
+  """
+  def verification_session_matches?(%Plug.Conn{} = conn, %{
+        account_id: account_id,
+        session_id: session_id
+      })
+      when is_binary(account_id) and is_binary(session_id) do
+    case PortalWeb.Cookie.Session.fetch(conn, account_id) do
+      %PortalWeb.Cookie.Session{session_id: ^session_id} -> true
+      _ -> false
+    end
+  end
+
+  def verification_session_matches?(_conn, _session), do: false
 
   @doc """
   Returns the signed state type for a verification provider type.
@@ -1053,6 +1084,13 @@ defmodule PortalWeb.OIDC do
       _ -> {:error, {:invalid_jwt, "token was issued by another tenant"}}
     end
   end
+
+  # Discovery documents with a tenant template accept any tenant's issuer.
+  defp verify_provider_issuer(%{"iss" => issuer}, %{issuer: issuer}) when is_binary(issuer),
+    do: :ok
+
+  defp verify_provider_issuer(_claims, _provider),
+    do: {:error, {:invalid_jwt, "token was issued by another issuer"}}
 
   defp verify_entra_principal_claims(%{"oid" => principal_id} = claims)
        when is_binary(principal_id) do

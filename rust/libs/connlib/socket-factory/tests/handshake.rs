@@ -1,5 +1,7 @@
 //! Integration tests for [`socket_factory::UdpSocket::handshake`], exercising it through its public API.
 
+#![allow(clippy::unwrap_used)]
+
 #[cfg(target_os = "linux")]
 use std::net::{IpAddr, Ipv4Addr};
 

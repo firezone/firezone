@@ -38,6 +38,8 @@ defmodule PortalAPI.JSON do
   defp encode_with(struct, fun) when is_function(fun, 1), do: encode_with(struct, fun.(struct))
   defp encode_with(struct, schema), do: PortalAPI.JSON.Encoder.encode(struct(schema), struct)
 
+  # Schema names derive from application structs, not request parameters.
+  # sobelow_skip ["DOS.ModuleConcat"]
   defp schema_for(%struct_module{}) do
     ["Portal" | parts] = Module.split(struct_module)
     schema = Module.concat([PortalAPI.Schemas, Enum.join(parts), Schema])

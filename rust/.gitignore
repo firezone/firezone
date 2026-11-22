@@ -1,3 +1,4 @@
 target/
 *.pem
+!otel-ingest-proxy/tests/fixtures/*.pem
 loadtest.toml

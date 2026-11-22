@@ -32,6 +32,11 @@ defmodule PortalWeb.Authentication do
     do: take_non_empty(params, @sign_in_params ++ @analytics_params)
 
   @doc """
+  Returns the non-empty campaign parameters, so they survive a redirect.
+  """
+  def take_analytics_params(params), do: take_non_empty(params, @analytics_params)
+
+  @doc """
   Returns true when the params represent a client sign-in flow.
   """
   def client_sign_in?(%{"as" => as}) when as in ["client", "gui-client", "headless-client"],

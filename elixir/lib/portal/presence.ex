@@ -32,7 +32,9 @@ defmodule Portal.Presence do
         ipv6: device.ipv6 && device.ipv6.address,
         public_key: device.public_key,
         psk_base: device.psk_base,
-        site_id: loaded_site_id(device),
+        site_ids: loaded_site_ids(device),
+        proto_min: device.proto_range && device.proto_range.min,
+        proto_max: device.proto_range && device.proto_range.max,
         version: device.last_seen_version,
         user_agent: device.last_seen_user_agent,
         remote_ip: device.last_seen_remote_ip,
@@ -100,34 +102,26 @@ defmodule Portal.Presence do
       end)
     end
 
-    @doc "How many gateways are connected to each site, keyed by site id."
+    @doc "How many devices serve each site, keyed by site id."
     def online_gateway_counts(account_id) do
       account_id
       |> __MODULE__.Account.list()
-      |> Enum.reduce(%{}, fn
-        {_id, %{metas: [%{type: :gateway, site_id: site_id} | _]}}, acc ->
-          Map.update(acc, site_id, 1, &(&1 + 1))
-
-        _client, acc ->
-          acc
+      |> Enum.reduce(%{}, fn {_id, %{metas: [meta | _]}}, acc ->
+        Enum.reduce(meta.site_ids, acc, &Map.update(&2, &1, 1, fn count -> count + 1 end))
       end)
     end
 
-    @doc "The ids of the gateways connected to each site, keyed by site id."
+    @doc "The ids of the devices that serve each site, keyed by site id."
     @spec online_gateway_ids_by_site(Ecto.UUID.t()) :: %{Ecto.UUID.t() => MapSet.t(Ecto.UUID.t())}
     def online_gateway_ids_by_site(account_id) do
       account_id
       |> __MODULE__.Account.list()
-      |> Enum.reduce(%{}, fn
-        {id, %{metas: [%{type: :gateway, site_id: site_id} | _]}}, acc ->
-          Map.update(acc, site_id, MapSet.new([id]), &MapSet.put(&1, id))
-
-        _client, acc ->
-          acc
+      |> Enum.reduce(%{}, fn {id, %{metas: [meta | _]}}, acc ->
+        Enum.reduce(meta.site_ids, acc, &Map.update(&2, &1, MapSet.new([id]), fn ids -> MapSet.put(ids, id) end))
       end)
     end
 
-    @doc "The ids of the sites with at least one gateway connected."
+    @doc "The ids of the sites with at least one device serving them."
     def online_site_ids(account_id) do
       account_id |> online_gateway_counts() |> Map.keys() |> MapSet.new()
     end
@@ -148,20 +142,23 @@ defmodule Portal.Presence do
       |> Enum.any?(fn %{metas: metas} -> Enum.any?(metas, &(Map.get(&1, :actor_id) == actor_id)) end)
     end
 
+    # Only for the deprecated `reuse_connection`, which no `/device/v1` device handles, a gateway
+    # token on it included.
     def fetch_gateway(account_id, gateway_id, site_id) do
-      case __MODULE__.Account.get(account_id, gateway_id) do
-        %{metas: [%{type: :gateway, site_id: ^site_id} = meta | _]} when not is_nil(site_id) ->
-          {:ok, from_meta(gateway_id, account_id, meta)}
-
-        _offline_or_not_a_gateway ->
-          {:error, :offline}
+      with false <- is_nil(site_id),
+           %{metas: [%{type: :gateway} = meta | _]} <- __MODULE__.Account.get(account_id, gateway_id),
+           false <- Map.get(meta, :device_v1, false),
+           true <- site_id in meta.site_ids do
+        {:ok, from_meta(gateway_id, account_id, meta)}
+      else
+        _offline_or_not_a_gateway_in_site -> {:error, :offline}
       end
     end
 
-    @doc "The gateways connected to `site_id`."
+    @doc "The connected devices that serve `site_id`."
     def connected_gateways_in_site(account_id, site_id) do
-      for {id, %{metas: [%{type: :gateway, site_id: ^site_id} = meta | _]}} <-
-            __MODULE__.Account.list(account_id),
+      for {id, %{metas: [meta | _]}} <- __MODULE__.Account.list(account_id),
+          site_id in meta.site_ids,
           do: from_meta(id, account_id, meta)
     end
 
@@ -172,6 +169,7 @@ defmodule Portal.Presence do
         type: meta.type,
         psk_base: meta.psk_base,
         online?: true,
+        proto_range: Portal.Version.proto_range_from_meta(meta),
         public_key: meta.public_key,
         last_seen_version: meta.version,
         last_seen_remote_ip: normalize_ip(meta.remote_ip),
@@ -180,9 +178,18 @@ defmodule Portal.Presence do
       }
     end
 
-    defp loaded_site_id(%Device{site: %Portal.Site{id: id}}), do: id
-    defp loaded_site_id(%Device{site_device: %Portal.SiteDevice{site_id: id}}), do: id
-    defp loaded_site_id(_device), do: nil
+    @doc """
+    What a connected device can do. `:tun` means it has a TUN interface, so it
+    can initiate and be a device pool target. Meta from a node without the key
+    gets the legacy default for its kind.
+    """
+    def capabilities(%{capabilities: capabilities}) when is_list(capabilities), do: capabilities
+    def capabilities(%{type: :client}), do: [:tun]
+    def capabilities(_meta), do: []
+
+    defp loaded_site_ids(%Device{site: %Portal.Site{id: id}}), do: [id]
+    defp loaded_site_ids(%Device{site_device: %Portal.SiteDevice{site_id: id}}), do: [id]
+    defp loaded_site_ids(_device), do: []
 
     defp normalize_ip(%Postgrex.INET{} = inet), do: inet
     defp normalize_ip(tuple) when is_tuple(tuple), do: %Postgrex.INET{address: tuple}
@@ -239,18 +246,21 @@ defmodule Portal.Presence do
         find_by_address(account_id, :ipv6, ipv6_tuple)
       end
 
-      # Both kinds share this topic and both hold tunnel addresses, so the
-      # lookup says which kind it wants rather than trusting the address to
-      # belong to only one.
+      def topic(account_id), do: "presences:account_devices:" <> account_id
+
+      # Every device holds tunnel addresses, so the lookup asks for one that
+      # can be a device pool target rather than trusting the address alone.
+      # A gateway on `/device/v1` tracks no capabilities but can be one too.
       defp find_by_address(account_id, key, address) do
         account_id
         |> list()
         |> Enum.find_value(fn {device_id, %{metas: [meta | _]}} ->
-          if meta.type == :client and Map.get(meta, key) == address, do: {device_id, meta}
+          if pool_target?(meta) and Map.get(meta, key) == address,
+            do: {device_id, meta}
         end)
       end
 
-      def topic(account_id), do: "presences:account_devices:" <> account_id
+      defp pool_target?(meta), do: :tun in Devices.capabilities(meta) or Map.get(meta, :device_v1, false)
     end
   end
 

@@ -154,6 +154,31 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
+  def region_transfer_started_email(account, recipients, destination_region) do
+    default_email()
+    |> subject("Firezone Account Transfer in Progress")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :region_transfer_started,
+      account: account,
+      destination_region: destination_region
+    )
+  end
+
+  def region_transfer_completed_email(account, recipients, region) do
+    default_email()
+    |> subject("Firezone Account Transfer Complete")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :region_transfer_completed,
+      account: account,
+      region: region,
+      sign_in_url: url(~p"/#{account}"),
+      auth_url: String.trim_trailing(url(~p"/"), "/"),
+      api_url: Portal.Config.fetch_env!(:portal, :api_external_url)
+    )
+  end
+
   def account_deletion_completed_email(account, recipients) do
     default_email()
     |> subject("Firezone Account Deletion Complete")

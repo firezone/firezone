@@ -491,22 +491,29 @@ defmodule PortalWeb.Components.Core do
   end
 
   @doc """
-  Renders a user avatar from either its identity picture or its gravatar.
+  Renders an actor's stored profile photo, or a user icon when it has none.
   """
+  attr :account, :any, required: true
   attr :actor, :any, required: true
-  attr :size, :integer, required: true
-  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
+  attr :class, :string, default: "w-6 h-6"
 
   def avatar(assigns) do
     ~H"""
-    <img src={build_gravatar_url(@actor, @size)} {@rest} />
+    <img
+      :if={@actor.avatar_identity_id}
+      src={
+        ~p"/#{@account}/avatars/#{@actor.avatar_identity_id}?#{[v: Portal.Avatars.version(@actor.avatar_etag)]}"
+      }
+      alt=""
+      class={["rounded-full object-cover bg-neutral-100", @class]}
+    />
+    <span
+      :if={is_nil(@actor.avatar_identity_id)}
+      class={["inline-flex items-center justify-center rounded-full bg-neutral-100", @class]}
+    >
+      <.icon name="ri-user-line" class="w-4 h-4 text-neutral-600" />
+    </span>
     """
-  end
-
-  defp build_gravatar_url(actor, size) do
-    email = actor.email
-    hash = Base.encode16(:crypto.hash(:md5, email), case: :lower)
-    "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=retro"
   end
 
   @doc """
@@ -1188,6 +1195,7 @@ defmodule PortalWeb.Components.Core do
 
   attr :size, :string, default: "md", values: ~w[xs sm md lg xl]
   attr :variant, :string, default: "plain", values: ~w[plain circle square]
+  attr :icon_class, :string, default: nil, doc: "extra classes for the icon, e.g. responsive sizes"
   attr :rest, :global
 
   def provider_icon(assigns) do
@@ -1203,7 +1211,7 @@ defmodule PortalWeb.Components.Core do
     assigns =
       assigns
       |> assign(:icon_spec, icon_spec)
-      |> assign(:icon_class, icon_class)
+      |> assign(:icon_class, [icon_class, assigns.icon_class])
       |> assign(:wrapper_class, provider_icon_variant(assigns.variant, assigns.size))
 
     ~H"""

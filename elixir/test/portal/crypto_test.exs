@@ -218,6 +218,28 @@ defmodule Portal.CryptoTest do
       end
     end
 
+    test "user friendly encoder picks every symbol with equal probability" do
+      alphabet = String.graphemes("abcdefghijkmnopqrstuvwxyz123456789")
+      symbols = for _ <- 1..20_000, do: random_token(6, encoder: :user_friendly)
+
+      frequencies =
+        symbols
+        |> Enum.flat_map(&String.graphemes/1)
+        |> Enum.frequencies()
+
+      assert Enum.sort(Map.keys(frequencies)) == Enum.sort(alphabet)
+
+      expected = 20_000 * 6 / length(alphabet)
+
+      chi_square =
+        Enum.reduce(frequencies, 0.0, fn {_symbol, observed}, acc ->
+          acc + :math.pow(observed - expected, 2) / expected
+        end)
+
+      # The 1e-9 critical value of the chi-square distribution with 33 degrees of freedom is about 110.
+      assert chi_square < 110
+    end
+
     test "default generator is binary" do
       token1 = random_token(16)
       token2 = random_token(16, generator: :binary)

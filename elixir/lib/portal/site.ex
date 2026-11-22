@@ -25,7 +25,6 @@ defmodule Portal.Site do
 
     has_many :site_devices, Portal.SiteDevice, references: :id
     has_many :gateways, through: [:site_devices, :device]
-    has_many :gateway_tokens, Portal.GatewayToken, references: :id
     has_many :resources, Portal.Resource, references: :id
 
     timestamps()

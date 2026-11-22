@@ -32,6 +32,18 @@ defmodule Portal.LoggerFilters do
     end
   end
 
+  # A client sent a TLS handshake to the plain HTTP port, e.g. a scanner or a misconfigured proxy.
+  def relevel_expected_client_errors(
+        %{
+          level: :warning,
+          meta: %{mfa: {Bandit.InitialHandler, :handle_connection, 2}},
+          msg: {:string, "Connection that looks like TLS received on a clear channel"}
+        } = event,
+        _extra
+      ) do
+    %{event | level: :info}
+  end
+
   def relevel_expected_client_errors(_event, _extra), do: :ignore
 
   defp expected_client_error?(%{

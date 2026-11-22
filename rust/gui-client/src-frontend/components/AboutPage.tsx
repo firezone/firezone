@@ -1,8 +1,22 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import React from "react";
+import React, { useState } from "react";
 import logo from "../logo.png";
 
-export default function AboutPage() {
+const DEVELOPER_SETTINGS_UNLOCK_CLICKS = 7;
+
+interface Props {
+  unlockDeveloperSettings: () => void;
+}
+
+export default function AboutPage({ unlockDeveloperSettings }: Props) {
+  const [logoClicks, setLogoClicks] = useState(0);
+
+  const clickLogo = () => {
+    const clicks = logoClicks + 1;
+    setLogoClicks(clicks);
+    if (clicks === DEVELOPER_SETTINGS_UNLOCK_CLICKS) unlockDeveloperSettings();
+  };
+
   const openDocumentation = () => {
     openUrl("https://www.firezone.dev/kb?utm_source=product").catch((error) =>
       console.error("Failed to open documentation URL", error)
@@ -18,7 +32,9 @@ export default function AboutPage() {
   return (
     <div className="flex min-h-full items-center justify-center bg-page p-6">
       <div className="flex w-full max-w-sm flex-col items-center text-center">
-        <img alt="Firezone Logo" className="mb-6 h-20 w-20" src={logo} />
+        <button className="mb-6" onClick={clickLogo} type="button">
+          <img alt="Firezone Logo" className="h-20 w-20" src={logo} />
+        </button>
         <p className="mb-1 text-body">Version</p>
         <p className="mb-6 text-lg font-bold text-heading">
           {__APP_VERSION__} (

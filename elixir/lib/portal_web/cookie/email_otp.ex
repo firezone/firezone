@@ -15,12 +15,11 @@ defmodule PortalWeb.Cookie.EmailOTP do
 
   @cookie_key "email_otp"
   @cookie_options [
-    sign: true,
+    encrypt: true,
     max_age: 15 * 60,
     same_site: "Lax",
     secure: Portal.Config.fetch_env!(:portal, :cookie_secure),
-    http_only: true,
-    signing_salt: Portal.Config.fetch_env!(:portal, :cookie_signing_salt)
+    http_only: true
   ]
 
   def put(conn, %__MODULE__{} = cookie) do
@@ -32,10 +31,10 @@ defmodule PortalWeb.Cookie.EmailOTP do
   end
 
   @doc """
-  Fetches email OTP state from the signed cookie.
+  Fetches email OTP state from the encrypted cookie.
   """
   def fetch(conn) do
-    conn = Plug.Conn.fetch_cookies(conn, signed: [@cookie_key])
+    conn = Plug.Conn.fetch_cookies(conn, encrypted: [@cookie_key])
     from_binary(conn.cookies[@cookie_key])
   end
 
@@ -46,11 +45,7 @@ defmodule PortalWeb.Cookie.EmailOTP do
   def fetch_state(conn) do
     case fetch(conn) do
       %__MODULE__{} = cookie ->
-        %{
-          "actor_id" => cookie.actor_id,
-          "one_time_passcode_id" => cookie.passcode_id,
-          "email" => cookie.email
-        }
+        %{"email" => cookie.email}
 
       nil ->
         %{}
@@ -69,25 +64,16 @@ defmodule PortalWeb.Cookie.EmailOTP do
 
   # sobelow_skip ["Misc.BinToTerm"]
   defp from_binary(binary) when is_binary(binary) do
-    {actor_id, passcode_id, email, context_type} =
-      case :erlang.binary_to_term(binary, [:safe]) do
-        {actor_id, passcode_id, email, context_type}
-        when context_type in [:portal, :oauth, :gui_client, :headless_client] ->
-          {actor_id, passcode_id, email, context_type}
-
-        # Cookies issued before context was bound to the OTP flow can safely be
-        # treated as portal-only. A verification request that asks for a client
-        # credential will be rejected as a context switch.
-        {actor_id, passcode_id, email} ->
-          {actor_id, passcode_id, email, :portal}
-      end
-
-    %__MODULE__{
-      actor_id: Ecto.UUID.load!(actor_id),
-      passcode_id: Ecto.UUID.load!(passcode_id),
-      email: email,
-      context_type: context_type
-    }
+    case :erlang.binary_to_term(binary, [:safe]) do
+      {actor_id, passcode_id, email, context_type}
+      when context_type in [:portal, :oauth, :gui_client, :headless_client] ->
+        %__MODULE__{
+          actor_id: Ecto.UUID.load!(actor_id),
+          passcode_id: Ecto.UUID.load!(passcode_id),
+          email: email,
+          context_type: context_type
+        }
+    end
   rescue
     _ -> nil
   end

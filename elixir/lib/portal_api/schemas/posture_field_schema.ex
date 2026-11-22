@@ -39,8 +39,8 @@ defmodule PortalAPI.Schemas.PostureField do
           type: :array,
           items: %Schema{type: :string, enum: Enum.map(Fields.platforms(), &Atom.to_string/1)},
           description:
-            "Platforms the field applies to. A leaf on this field is skipped for a device on " <>
-              "any other platform."
+            "Platforms the field applies to. A leaf on this field is skipped when the device's " <>
+              "provider records place it on any other platform."
         },
         rows_supported: %Schema{
           example: true,

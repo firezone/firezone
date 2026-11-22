@@ -507,23 +507,11 @@ defmodule Portal.PolicyAuthorizationTest do
       refute Repo.get_by(PolicyAuthorization, id: authorization.id)
     end
 
-    test "deleting the actor deletes the authorizations of their devices", %{
-      account: account,
-      owner: owner,
-      member: member,
-      initiator: initiator,
-      pool: pool
-    } do
-      inbound =
-        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: member)
-
-      outbound =
-        policy_authorization_fixture(account: account, resource: pool, client: member, gateway: initiator)
-
+    test "deleting the actor keeps their devices", %{owner: owner, member: member} do
       Repo.delete!(owner)
 
-      refute Repo.get_by(PolicyAuthorization, id: inbound.id)
-      refute Repo.get_by(PolicyAuthorization, id: outbound.id)
+      assert %Portal.Device{actor_id: nil} = Repo.get_by!(Portal.Device, account_id: member.account_id, id: member.id)
+      refute Repo.get_by(Portal.DeviceActor, account_id: member.account_id, device_id: member.id)
     end
 
     test "deleting the group deletes its memberships, and the authorizations they granted", %{

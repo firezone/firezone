@@ -13,9 +13,27 @@ defmodule Portal.Billing.EventHandler do
   @subscription_events ["created", "resumed"]
   # Self-serve plans. Moving between them is not a new enrollment.
   @enrollment_plans [:team, :business]
+  @region_transfer_reason "Region transfer in progress"
 
   def handle_event(%{"object" => "event"} = event) do
     process_event_with_lock(event)
+  end
+
+  @doc """
+  Applies the subscription that a region transfer created to the account,
+  without waiting for its webhook. The account stays disabled.
+  """
+  def sync_region_transfer_subscription(account_id, subscription) do
+    with_current_account(subscription["customer"], fn
+      %Portal.Account{id: ^account_id, is_disabled: true, disabled_reason: @region_transfer_reason} ->
+        with {:ok, attrs} <- build_subscription_update_attrs(subscription),
+             {:ok, account} <- Database.update_account_by_id(account_id, attrs) do
+          Billing.evaluate_account_limits(account)
+        end
+
+      _account ->
+        {:error, :not_in_transfer}
+    end)
   end
 
   @doc """
@@ -112,6 +130,12 @@ defmodule Portal.Billing.EventHandler do
     {:skip, :no_customer_id}
   end
 
+  # Each finalized invoice is its own event rather than a newer state of the
+  # same object, and invoices can finalize in the same second.
+  defp check_chronological_order(_customer_id, _event_created, "invoice.finalized", _event_id) do
+    :ok
+  end
+
   defp check_chronological_order(customer_id, event_created, event_type, event_id) do
     case ProcessedEvents.get_latest_for_stripe_customer(customer_id, event_type) do
       nil ->
@@ -167,6 +191,9 @@ defmodule Portal.Billing.EventHandler do
 
       "customer.subscription." <> sub_event when sub_event in @subscription_events ->
         handle_subscription_active(event_data)
+
+      "invoice.finalized" ->
+        Billing.YCDeal.enforce_cap(event_data)
 
       _ ->
         handle_unknown_event(event_type, event_data)
@@ -356,7 +383,8 @@ defmodule Portal.Billing.EventHandler do
          {:ok, add_ons} <- fetch_add_ons(add_on_items) do
       %{"name" => product_name, "metadata" => product_metadata} = product_info
 
-      subscription_trialing? = not is_nil(trial_end) and status in ["trialing", "paused"]
+      subscription_trialing? =
+        not is_nil(trial_end) and status in ["trialing", "paused"]
 
       stripe_metadata = %{
         "subscription_id" => subscription_id,
@@ -657,8 +685,7 @@ defmodule Portal.Billing.EventHandler do
 
     %Portal.Site{
       account_id: account.id,
-      managed_by: :account,
-      gateway_tokens: []
+      managed_by: :account
     }
     |> cast(attrs, [:name])
     |> validate_required([:name])
@@ -941,6 +968,14 @@ defmodule Portal.Billing.EventHandler do
       |> Safe.one()
       |> case do
         %Account{} = account ->
+          # Only RegionTransfer.enable/2 ends a region transfer. The webhooks
+          # of the new subscription in the destination and of the canceled one
+          # in the source must not.
+          attrs =
+            if account.is_disabled and account.disabled_reason == "Region transfer in progress",
+              do: Map.drop(attrs, [:is_disabled, :disabled_reason]),
+              else: attrs
+
           account
           |> cast(attrs, [:name, :legal_name, :slug, :is_disabled, :disabled_reason])
           |> cast_embed(:limits)

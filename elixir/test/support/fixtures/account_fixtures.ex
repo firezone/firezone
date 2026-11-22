@@ -157,6 +157,16 @@ defmodule Portal.AccountFixtures do
   end
 
   @doc """
+  Sets the staff-only `unified_devices` flag on an account, the way staff do.
+  """
+  def put_unified_devices(%Portal.Account{} = account, value) do
+    account
+    |> change()
+    |> put_embed(:metadata, %{unified_devices: value})
+    |> Repo.update!()
+  end
+
+  @doc """
   Fetch an account by id.
   """
   def fetch_account!(account_id) do
