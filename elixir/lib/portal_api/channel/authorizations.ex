@@ -2,11 +2,11 @@ defmodule PortalAPI.Channel.Authorizations do
   @moduledoc """
   Policy authorizations a device's channel holds, shared by Clients and Gateways.
   """
-  import Phoenix.Channel, only: [push: 3]
   import Phoenix.Socket, only: [assign: 3]
 
   alias Portal.{Account, Cache, Device, Telemetry}
   alias PortalAPI.Channel.Durability
+  alias PortalAPI.Channel.Protocol
 
   @doc """
   Accepts an authorization on the receiver's channel: records the grant, caches the
@@ -63,7 +63,12 @@ defmodule PortalAPI.Channel.Authorizations do
     case Cache.Authorizations.delete(socket.assigns.authorizations_cache, id, initiating_device_id, resource_id) do
       {:ok, expires_at_unix, authorizations_cache} ->
         if expires_at_unix > DateTime.to_unix(DateTime.utc_now(), :second) do
-          push(socket, "reject_access", %{client_id: initiating_device_id, resource_id: resource_id})
+          Protocol.push(
+            socket,
+            "reject_access",
+            %{client_id: initiating_device_id, resource_id: resource_id},
+            :inbound
+          )
         end
 
         {:noreply, assign(socket, :authorizations_cache, authorizations_cache)}

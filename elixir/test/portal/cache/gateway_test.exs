@@ -8,9 +8,28 @@ defmodule Portal.Cache.GatewayTest do
   import Portal.DeviceFixtures
   import Portal.IdentityFixtures
   import Portal.PolicyAuthorizationFixtures
+  import Portal.ResourceFixtures
   import Portal.SiteFixtures
 
   import Ecto.UUID, only: [dump!: 1]
+
+  describe "hydrate/2" do
+    test "leaves out authorizations through a device pool with device_pools: false" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      pool = all_devices_pool_resource_fixture(account: account)
+
+      through_pool = policy_authorization_fixture(account: account, gateway: gateway, resource: pool)
+      to_resource = policy_authorization_fixture(account: account, gateway: gateway, site: site)
+
+      pool_key = {dump!(through_pool.initiating_device_id), dump!(pool.id)}
+      resource_key = {dump!(to_resource.initiating_device_id), dump!(to_resource.resource_id)}
+
+      assert gateway |> Cache.Gateway.hydrate() |> Map.keys() |> Enum.sort() == Enum.sort([pool_key, resource_key])
+      assert gateway |> Cache.Gateway.hydrate(device_pools: false) |> Map.keys() == [resource_key]
+    end
+  end
 
   describe "hydrate/1" do
     test "returns an empty cache when there are no policy_authorizations" do

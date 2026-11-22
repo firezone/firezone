@@ -3,6 +3,7 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
   import Portal.Changes.Hooks.Devices
   import Portal.AccountFixtures
   import Portal.DeviceFixtures
+  import Portal.ResourceFixtures
   alias Portal.Changes.Change
   alias Portal.Device
   alias Portal.PubSub
@@ -57,6 +58,17 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
       }
 
       assert deleted_gateway.id == gateway.id
+    end
+
+    test "removes the gateway from the pools that list it" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account, devices: [gateway])
+
+      assert :ok = on_delete(0, %{"id" => gateway.id, "type" => "gateway", "account_id" => account.id})
+
+      assert Repo.get_by!(Portal.Resource, id: pool.id).device_membership_criteria ==
+               Portal.Resource.DeviceMembershipCriteria.devices([])
     end
   end
 end
