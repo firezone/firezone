@@ -40,8 +40,11 @@ use tracing_subscriber::{
 };
 
 use crate::{
-    assertions::check_invariants, clock::Clock, real_relay_system::RealRelaySystem,
-    real_tunnel_system::RealTunnelSystem, relay_generator::RelayGenerator,
+    assertions::check_invariants,
+    clock::Clock,
+    real_relay_system::{RealRelaySystem, check_settled},
+    real_tunnel_system::RealTunnelSystem,
+    relay_generator::RelayGenerator,
     tunnel_generator::TunnelGenerator,
 };
 
@@ -116,7 +119,8 @@ pub fn run_relay(data: &[u8], now: Instant) {
     let mut model = generator.model();
 
     let mut system = RealRelaySystem::new(&model, now);
-    system.check(&model);
+    let settled = system.settle(&model);
+    check_settled(&model, &settled);
     model.settle();
 
     for applied in 0..MAX_RELAY_TRANSITIONS {
@@ -138,11 +142,13 @@ pub fn run_relay(data: &[u8], now: Instant) {
             continue;
         }
 
-        system.check(&model);
+        let settled = system.settle(&model);
+        check_settled(&model, &settled);
         model.settle();
     }
 
-    system.check(&model);
+    let settled = system.settle(&model);
+    check_settled(&model, &settled);
 }
 
 /// Initializes a subscriber that panics on error events.

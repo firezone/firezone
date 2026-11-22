@@ -3,7 +3,8 @@
 //! [`Allocation`] and the relay's `Server` are both sans-IO. They sit on the network of the
 //! tunnel simulation: each is a [`Host`], and their datagrams travel through
 //! [`BufferedTransmits`]. The client exchanges data with the peers of the [`RelayModel`] through
-//! the relay, which [`RealRelaySystem::check`] holds against what the model expects.
+//! the relay. [`RealRelaySystem::settle`] reports what the system looks like once it settled,
+//! which [`check_settled`] holds against what the model expects.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -106,6 +107,48 @@ struct RealAllocation {
     confirmed_channels: BTreeSet<u16>,
 }
 
+/// What the system looked like once it settled, and what happened since it last did.
+pub(crate) struct Settled {
+    relay_addresses: BTreeSet<SocketAddr>,
+    relay_addresses_changed: bool,
+    /// The peers whose data arrived in both directions.
+    relayed: BTreeSet<SocketAddr>,
+}
+
+/// Holds what the system looked like once it settled against what the model expects.
+pub(crate) fn check_settled(model: &RelayModel, settled: &Settled) {
+    assert!(
+        model.disrupted() || !settled.relay_addresses_changed,
+        "The client's relay addresses changed although nothing disrupted relaying"
+    );
+
+    if model.must_relay() {
+        let (ip4, ip6) = model.relay.interfaces(model.relay.stack);
+
+        assert_eq!(
+            Vec::from_iter(settled.relay_addresses.iter().map(|a| a.ip())),
+            Vec::from_iter(
+                iter::empty()
+                    .chain(ip4.map(IpAddr::from))
+                    .chain(ip6.map(IpAddr::from))
+            ),
+            "The client does not hold one relay address per address family of the relay"
+        );
+    }
+
+    assert_eq!(
+        settled.relayed,
+        BTreeSet::from_iter(
+            model
+                .connections
+                .keys()
+                .copied()
+                .filter(|p| model.can_relay(*p))
+        ),
+        "The client does not relay data to and from every peer it is connected to"
+    );
+}
+
 /// Where a data message is going.
 #[derive(Clone, Copy)]
 enum Direction {
@@ -180,49 +223,28 @@ impl RealRelaySystem {
         }
     }
 
-    /// Lets the system settle and checks it against the model.
-    pub(crate) fn check(&mut self, model: &RelayModel) {
-        self.settle(model);
+    /// Lets the system settle, then exchanges data once over every connection.
+    pub(crate) fn settle(&mut self, model: &RelayModel) -> Settled {
+        self.run_until_settled(model);
         self.interference = Interference::default();
 
-        let changed = self
+        let relay_addresses_changed = self
             .client
             .exec_mut(|c| mem::take(&mut c.relay_addresses_changed));
-        assert!(
-            model.disrupted() || !changed,
-            "The client's relay addresses changed although nothing disrupted relaying"
-        );
-
-        if model.must_relay() {
-            let (ip4, ip6) = model.relay.interfaces(model.relay.stack);
-
-            assert_eq!(
-                Vec::from_iter(self.client.inner().relay_addresses.iter().map(|a| a.ip())),
-                Vec::from_iter(
-                    iter::empty()
-                        .chain(ip4.map(IpAddr::from))
-                        .chain(ip6.map(IpAddr::from))
-                ),
-                "The client does not hold one relay address per address family of the relay"
-            );
-        }
+        let relay_addresses = self.client.inner().relay_addresses.clone();
 
         // Has the client bind the channels that it lacks.
         self.heartbeat(model);
-        self.settle(model);
+        self.run_until_settled(model);
 
-        assert_eq!(
-            self.exchange(model),
-            BTreeSet::from_iter(
-                model
-                    .connections
-                    .keys()
-                    .copied()
-                    .filter(|p| model.can_relay(*p))
-            ),
-            "The client does not relay data to and from every peer it is connected to"
-        );
+        let relayed = self.exchange(model);
         self.injected_data.clear();
+
+        Settled {
+            relay_addresses,
+            relay_addresses_changed,
+            relayed,
+        }
     }
 
     /// Exchanges data over every connection. The established ones must relay it unless the
@@ -494,7 +516,7 @@ impl RealRelaySystem {
     ///
     /// Time only passes for the network and for retransmissions; everything else waits for
     /// `advance`.
-    fn settle(&mut self, model: &RelayModel) {
+    fn run_until_settled(&mut self, model: &RelayModel) {
         let deadline = self.clock.now::<Instant>() + MAX_SETTLE;
         let mut allocations = 0;
 
@@ -822,8 +844,9 @@ mod tests {
         let model = RelayGenerator::new(&[]).model();
         let mut system = RealRelaySystem::new(&model, Instant::now());
 
-        system.check(&model);
+        let settled = system.settle(&model);
 
-        assert_eq!(system.client.inner().relay_addresses.len(), 2);
+        check_settled(&model, &settled);
+        assert_eq!(settled.relay_addresses.len(), 2);
     }
 }
