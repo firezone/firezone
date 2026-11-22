@@ -83,7 +83,8 @@ defmodule PortalAPI.Device.ServeOnlyTest do
       assert meta.token_id == token.id
       refute meta.actor_id
 
-      assert {:ok, _gateway} = Presence.Devices.fetch_gateway(account.id, device_id, site.id)
+      assert [%{id: ^device_id}] = Presence.Devices.connected_gateways_in_site(account.id, site.id)
+      assert Presence.Devices.fetch_gateway(account.id, device_id, site.id) == {:error, :offline}
     end
 
     test "writes its session to the gateway queue and no user for the device", %{token: token} do
