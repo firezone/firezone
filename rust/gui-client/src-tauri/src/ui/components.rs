@@ -697,10 +697,13 @@ fn scrollbar(context: ScrollBarContext) -> Element {
         return rect().into();
     }
 
-    let (viewport, content) = (context.viewport_size.height, context.content_size.height);
+    let (viewport, content) = (
+        context.viewport_size.height as f32,
+        context.content_size.height as f32,
+    );
     let track = viewport - 2. * ARROW;
     let thumb = (track * viewport / content).max(20.);
-    let progress = (-context.scroll_position.y / (content - viewport)).clamp(0., 1.);
+    let progress = (context.scroll_position.y as f32 / (content - viewport)).clamp(0., 1.);
     let arrow = |path: &str| {
         let svg = format!(
             r#"<svg viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg"><path d="{path}" fill="currentColor"/></svg>"#

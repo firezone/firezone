@@ -55,12 +55,12 @@ pub(crate) struct FreyaIntegration {
 
 /// The GUI thread, which runs Freya's event loop.
 #[derive(Clone)]
-struct Gui(LaunchProxy);
+struct Gui(LaunchHandle);
 
 impl Gui {
     /// Runs `f` on the GUI thread.
     ///
-    /// Requires `Send` because the closure crosses threads, which `LaunchProxy` does not check.
+    /// Requires `Send` because the closure crosses threads, which `LaunchHandle` does not check.
     fn post(&self, f: impl FnOnce(&mut RendererContext) + Send + 'static) {
         drop(self.0.post_callback(f));
     }
@@ -314,7 +314,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let tray_tx = ctlr_tx.clone();
-    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<LaunchProxy>();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<LaunchHandle>();
 
     let ui = Ui::new(
         ui::Requests {
@@ -432,7 +432,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
     });
 
     // Building the event loop ourselves turns a missing display into an error rather than a panic.
-    let event_loop = EventLoop::<NativeEvent>::with_user_event()
+    let event_loop = EventLoop::builder()
         .build()
         .context("Failed to start the GUI event loop")?;
     let launch_config = ui::FONTS

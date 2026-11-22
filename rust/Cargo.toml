@@ -146,8 +146,8 @@ flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }
 flow-tracker = { path = "libs/connlib/flow-tracker" }
 foldhash = "0.2.0"
-freya = { version = "=0.6.0-alpha.1", default-features = false, features = ["winit", "gpu", "accessibility", "platform-text-gamma"] }
-freya-testing = "=0.6.0-alpha.1"
+freya = { version = "=0.6.0-alpha.2", default-features = false, features = ["winit", "gpu", "accessibility", "platform-text-gamma"] }
+freya-testing = "=0.6.0-alpha.2"
 frostlink = { path = "libs/connlib/frostlink" }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
