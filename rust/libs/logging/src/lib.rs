@@ -106,7 +106,11 @@ pub fn setup_bootstrap() -> Result<DefaultGuard> {
 )]
 pub fn init(subscriber: impl Subscriber + Send + Sync + 'static) -> Result<()> {
     tracing::subscriber::set_global_default(subscriber).context("Could not set global default")?;
-    LogTracer::init().context("Failed to init LogTracer")?;
+    // Tungstenite's protocol traces include raw frames and their credentials.
+    LogTracer::builder()
+        .ignore_crate("tungstenite::protocol")
+        .init()
+        .context("Failed to init LogTracer")?;
 
     Ok(())
 }

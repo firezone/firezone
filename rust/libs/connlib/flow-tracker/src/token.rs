@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use serde::Deserialize;
 
@@ -10,13 +10,19 @@ use serde::Deserialize;
 /// verified because only the portal and the ingest API hold the key.
 /// Internally reference-counted: cloning is a refcount bump, so the token can
 /// be recorded into per-packet flow data without copying it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct IngestToken(Arc<IngestTokenInner>);
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 struct IngestTokenInner {
     raw: String,
     claims: IngestTokenClaims,
+}
+
+impl fmt::Debug for IngestToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("IngestToken([REDACTED])")
+    }
 }
 
 impl IngestToken {
@@ -55,23 +61,23 @@ fn parse_ingest_token_claims(token: &str) -> Result<IngestTokenClaims, String> {
 
     let header = URL_SAFE_NO_PAD
         .decode(header)
-        .map_err(|e| format!("ingest token header is not base64url: {e}"))?;
+        .map_err(|_| "ingest token header is not base64url")?;
     let header = serde_json::from_slice::<JwtHeader>(&header)
-        .map_err(|e| format!("ingest token header is invalid: {e}"))?;
+        .map_err(|_| "ingest token header is invalid")?;
 
     if header.alg != "HS256" {
-        return Err(format!("ingest token alg is not HS256: {}", header.alg));
+        return Err("ingest token alg is not HS256".to_owned());
     }
 
     let payload = URL_SAFE_NO_PAD
         .decode(payload)
-        .map_err(|e| format!("ingest token payload is not base64url: {e}"))?;
+        .map_err(|_| "ingest token payload is not base64url")?;
     let claims = serde_json::from_slice::<IngestTokenClaims>(&payload)
-        .map_err(|e| format!("ingest token claims are invalid: {e}"))?;
+        .map_err(|_| "ingest token claims are invalid")?;
 
     let signature = URL_SAFE_NO_PAD
         .decode(signature)
-        .map_err(|e| format!("ingest token signature is not base64url: {e}"))?;
+        .map_err(|_| "ingest token signature is not base64url")?;
 
     if signature.is_empty() {
         return Err("ingest token signature is empty".to_owned());
@@ -154,6 +160,13 @@ mod tests {
 
     fn parse_ingest_token(token: &str) -> Result<IngestToken, serde_json::Error> {
         serde_json::from_str::<IngestToken>(&format!("\"{token}\""))
+    }
+
+    #[test]
+    fn redacts_ingest_token_in_debug_output() {
+        let token = parse_ingest_token(TEST_INGEST_TOKEN).unwrap();
+
+        assert_eq!(format!("{token:?}"), "IngestToken([REDACTED])");
     }
 
     #[test]

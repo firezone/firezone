@@ -41,7 +41,7 @@ use socket_factory::{SocketFactory, TcpSocket};
 
 mod ingest;
 
-use ingest::{IngestClient, body_string, ingest_endpoint, retry_after};
+use ingest::{IngestClient, ingest_endpoint, retry_after};
 
 /// Default flows per upload when the portal doesn't specify one.
 const DEFAULT_BATCH_SIZE: usize = 1_000;
@@ -370,8 +370,9 @@ fn token_expiry(token: &str) -> Result<u64> {
     let payload = token.split('.').nth(1).context("Token is not a JWT")?;
     let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(payload)
-        .context("Failed to decode token payload")?;
-    let claims = serde_json::from_slice::<Claims>(&json).context("Failed to parse token claims")?;
+        .map_err(|_| anyhow::anyhow!("Failed to decode token payload"))?;
+    let claims = serde_json::from_slice::<Claims>(&json)
+        .map_err(|_| anyhow::anyhow!("Failed to parse token claims"))?;
 
     Ok(claims.exp)
 }
@@ -752,8 +753,7 @@ async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Re
             }
             ResponseAction::Redirect => client.follow_redirect(&response).await?,
             ResponseAction::Defer => {
-                let body = body_string(&response);
-                tracing::info!(%status, %body, "Flow-log upload rejected; keeping the batch");
+                tracing::info!(%status, "Flow-log upload rejected; keeping the batch");
                 return Ok(BatchOutcome::Spooled);
             }
         }
