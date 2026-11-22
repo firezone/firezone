@@ -134,18 +134,6 @@ defmodule PortalAPI.Device.ServeOnlyTest do
       refute_push "access_denied", _
       assert Process.alive?(socket.channel_pid)
     end
-
-    test "accepts a request that targets the device through a pool", %{account: account, token: token} do
-      socket = join_gateway(token)
-      assert_push "init", _
-
-      pool = device_pool_resource_fixture(account: account)
-      initiator = client_fixture(account: account) |> fetch_device!()
-      send(socket.channel_pid, {:authorize, {self(), make_ref()}, authorize_request(initiator, pool)})
-
-      pool_id = pool.id
-      assert_push "authorize_peer", %{target: %{type: :device, pool_id: ^pool_id}}
-    end
   end
 
   describe "serving" do
@@ -202,6 +190,18 @@ defmodule PortalAPI.Device.ServeOnlyTest do
       device_id = device_socket.assigns.client.id
       site_id = site.id
       assert_push "authorization_created", %{gateway_id: ^device_id, site_id: ^site_id}
+    end
+
+    test "accepts a request that targets it through a pool", %{account: account, token: token} do
+      socket = join_gateway(token)
+      assert_push "init", _
+
+      pool = device_pool_resource_fixture(account: account, devices: [socket.assigns.client])
+      initiator = client_fixture(account: account) |> fetch_device!()
+      send(socket.channel_pid, {:authorize, {self(), make_ref()}, authorize_request(initiator, pool)})
+
+      pool_id = pool.id
+      assert_push "authorize_peer", %{target: %{type: :device, pool_id: ^pool_id}}
     end
 
     test "a client on /client/v3 reaches it through a listed pool", %{account: account, token: token} do

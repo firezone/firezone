@@ -38,7 +38,7 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
 
   @subject_attrs %{"actor_id" => :actor_id, "account_id" => :account_id}
 
-  @doc "The criteria that hold every client device in the account."
+  @doc "The criteria that hold every client in the account and every gateway last seen on `/device/v1`."
   @spec all_devices() :: t()
   def all_devices do
     %__MODULE__{provider: :device, field: :account_id, op: :eq, value: {:subject, :account_id}}
