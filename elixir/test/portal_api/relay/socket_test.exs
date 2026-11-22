@@ -130,6 +130,44 @@ defmodule PortalAPI.Relay.SocketTest do
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :missing_ip}
     end
 
+    test "returns error when an IP is malformed" do
+      connect_info = build_connect_info()
+
+      for {key, value} <- [
+            {"ipv4", ["x"]},
+            {"ipv4", "not-an-ip"},
+            {"ipv4", "2001:db8::1"},
+            {"ipv6", %{"a" => "b"}},
+            {"ipv6", "100.64.1.1"}
+          ] do
+        attrs = %{"token" => encode_relay_token(relay_token_fixture()), key => value}
+        assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_ip}
+      end
+    end
+
+    test "returns error when the port is malformed" do
+      connect_info = build_connect_info()
+
+      for port <- [0, 65_536, "abc", "3478x", ["3478"]] do
+        attrs = %{
+          "token" => encode_relay_token(relay_token_fixture()),
+          "ipv4" => "100.64.1.1",
+          "port" => port
+        }
+        assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_port}
+      end
+    end
+
+    test "parses the port from a query string" do
+      token = relay_token_fixture()
+      encrypted_secret = encode_relay_token(token)
+
+      attrs = %{"token" => encrypted_secret, "ipv4" => "100.64.1.1", "port" => "3479"}
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.relay.port == 3479
+    end
+
     test "rate limits repeated connection attempts from same IP and token" do
       token = relay_token_fixture()
       encrypted_secret = encode_relay_token(token)

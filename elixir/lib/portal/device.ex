@@ -190,9 +190,11 @@ defmodule Portal.Device do
     |> validate_length(:firezone_id, max: 255)
     |> validate_length(:hostname, min: 3, max: 255)
     |> assoc_constraint(:account)
-    |> validate_type_fields()
+    |> validate_identifiers()
+    |> validate_type_rules()
     |> check_constraint(:type, name: :devices_type_check)
-    |> unique_firezone_id_constraint()
+    |> unique_constraint(:firezone_id, name: :devices_account_id_client_firezone_id_index)
+    |> unique_constraint(:firezone_id, name: :devices_account_id_firezone_id_index)
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)
@@ -238,38 +240,34 @@ defmodule Portal.Device do
 
   def latest_session_columns, do: @latest_session_columns
 
-  defp validate_type_fields(changeset) do
+  defp validate_identifiers(changeset) do
+    changeset
+    |> validate_length(:device_serial, max: 255)
+    |> validate_length(:device_uuid, max: 255)
+    |> validate_length(:identifier_for_vendor, max: 255)
+    |> validate_length(:firebase_installation_id, max: 255)
+    |> validate_length(:last_attested_device_serial, max: 255)
+    |> validate_length(:last_attested_device_uuid, max: 255)
+    |> validate_length(:last_attested_mdm_device_id, max: 255)
+    |> validate_length(:last_attested_cert_serial, max: 255)
+    |> validate_length(:last_attested_cert_fingerprint, max: 255)
+    # Bounded so an absurd distinguished name cannot push the index row it
+    # shares with the certificate serial past what a btree entry holds.
+    |> validate_length(:last_attested_cert_issuer, max: 1024, count: :bytes)
+    |> unique_constraint(:last_attested_mdm_device_id,
+      name: :devices_account_id_last_attested_mdm_device_id_index
+    )
+    |> unique_constraint(:last_attested_cert_serial,
+      name: :devices_account_id_cert_issuer_serial_index
+    )
+  end
+
+  # Rules of the legacy device types; they go with the type column.
+  defp validate_type_rules(changeset) do
     case get_field(changeset, :type) do
-      :client ->
-        changeset
-        |> validate_client_firezone_id()
-        |> validate_length(:device_serial, max: 255)
-        |> validate_length(:device_uuid, max: 255)
-        |> validate_length(:identifier_for_vendor, max: 255)
-        |> validate_length(:firebase_installation_id, max: 255)
-        |> validate_length(:last_attested_device_serial, max: 255)
-        |> validate_length(:last_attested_device_uuid, max: 255)
-        |> validate_length(:last_attested_mdm_device_id, max: 255)
-        |> validate_length(:last_attested_cert_serial, max: 255)
-        |> validate_length(:last_attested_cert_fingerprint, max: 255)
-        # Bounded so an absurd distinguished name cannot push the index row it
-        # shares with the certificate serial past what a btree entry holds.
-        |> validate_length(:last_attested_cert_issuer, max: 1024, count: :bytes)
-        |> unique_constraint(:last_attested_mdm_device_id,
-          name: :devices_account_id_last_attested_mdm_device_id_index
-        )
-        |> unique_constraint(:last_attested_cert_serial,
-          name: :devices_account_id_cert_issuer_serial_index
-        )
-
-      :gateway ->
-        changeset
-        |> validate_length(:device_serial, max: 255)
-        |> validate_length(:device_uuid, max: 255)
-        |> validate_gateway_verification()
-
-      _ ->
-        changeset
+      :client -> validate_client_firezone_id(changeset)
+      :gateway -> validate_gateway_verification(changeset)
+      _ -> changeset
     end
   end
 
@@ -304,19 +302,6 @@ defmodule Portal.Device do
       "" -> nil
       hostname -> hostname
     end)
-  end
-
-  defp unique_firezone_id_constraint(changeset) do
-    case get_field(changeset, :type) do
-      :client ->
-        unique_constraint(changeset, :firezone_id, name: :devices_account_id_client_firezone_id_index)
-
-      :gateway ->
-        unique_constraint(changeset, :firezone_id, name: :devices_account_id_firezone_id_index)
-
-      _ ->
-        changeset
-    end
   end
 
   # Gateway device helpers

@@ -1,6 +1,6 @@
 defmodule Portal.Devices.Posture do
   @moduledoc """
-  Finds the posture provider rows that describe a client device.
+  Finds the posture provider rows that describe a device.
 
   A row is matched on the strongest identifier it shares with the device:
 
@@ -19,7 +19,7 @@ defmodule Portal.Devices.Posture do
   the Intune row that led to it.
 
   A Sophos endpoint that reports no serial, which is common on Linux, matches
-  no client device.
+  no device.
 
   A reinstall or re-enrollment leaves the old record in the provider, so only
   the most recently seen record of each provider counts for a serial.
@@ -40,11 +40,10 @@ defmodule Portal.Devices.Posture do
   reads `rows_by_type/1`, which leaves out disabled providers.
   """
   @spec match(Device.t()) :: [match()]
-  def match(%Device{type: :client} = device), do: device |> match_all(:all) |> Map.get(device.id, [])
-  def match(_device), do: []
+  def match(%Device{} = device), do: device |> match_all(:all) |> Map.get(device.id, [])
 
   @doc """
-  The matched rows of many client devices of one account, keyed by device id.
+  The matched rows of many devices of one account, keyed by device id.
 
   One statement joins the devices to every provider table on the identifiers
   of the ladder, and to Defender through the Intune row, so a batch of a
@@ -56,7 +55,7 @@ defmodule Portal.Devices.Posture do
 
   def match_all(devices, providers) when is_list(devices) do
     keys_by_id =
-      for %Device{type: :client} = device <- devices, match_keys(device) != [], into: %{} do
+      for %Device{} = device <- devices, match_keys(device) != [], into: %{} do
         {device.id, match_keys(device)}
       end
 
@@ -137,7 +136,7 @@ defmodule Portal.Devices.Posture do
     )
   end
 
-  @doc "The identifiers a client device is matched on, which are the keys its channel listens under."
+  @doc "The identifiers a device is matched on, which are the keys its channel listens under."
   @spec device_keys(Device.t()) :: [key()]
   def device_keys(%Device{} = device) do
     keys(for {rung, value} <- match_keys(device), do: {key_kind(rung), value})
