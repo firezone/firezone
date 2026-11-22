@@ -19,6 +19,7 @@ defmodule PortalWeb.OIDCController do
                                   :pending_verification_timeout,
                                   5_000
                                 )
+  @unbound_verification_error "Finish verification in the browser where you are signed in to Firezone, then try again."
   @sign_up_provider_types ~w[google github]
   @sign_in_provider_types ~w[google github okta entra oidc]
   @sign_up_workspace_error "Signing up with a Google Workspace account needs a Workspace administrator. Sign in as an administrator and allow read-only access to your organization's domains."
@@ -78,7 +79,12 @@ defmodule PortalWeb.OIDCController do
     # RFC 9207 issuer of the authorization response; checked for GitHub and Google verification.
     iss = params["iss"]
 
-    case parse_callback_state(state) do
+    {conn, parsed_state} = parse_callback_state(conn, state)
+
+    case parsed_state do
+      :unbound_verification ->
+        handle_unbound_verification(conn)
+
       {:oidc_verification, lv_pid_string} ->
         handle_oidc_verification(conn, code, iss, lv_pid_string)
 
@@ -117,7 +123,12 @@ defmodule PortalWeb.OIDCController do
   end
 
   def callback(conn, %{"state" => state, "error" => _error} = params) do
-    case parse_callback_state(state) do
+    {conn, parsed_state} = parse_callback_state(conn, state)
+
+    case parsed_state do
+      :unbound_verification ->
+        handle_unbound_verification(conn)
+
       {:entra_auth_provider, lv_pid_string, verification_ref} ->
         handle_entra_admin_consent_error(
           conn,
@@ -191,7 +202,12 @@ defmodule PortalWeb.OIDCController do
   end
 
   def callback(conn, %{"state" => state, "admin_consent" => "True"} = params) do
-    case parse_callback_state(state) do
+    {conn, parsed_state} = parse_callback_state(conn, state)
+
+    case parsed_state do
+      :unbound_verification ->
+        handle_unbound_verification(conn)
+
       {:entra_auth_provider, lv_pid_string, verification_ref} ->
         handle_entra_admin_consent(
           conn,
@@ -352,6 +368,7 @@ defmodule PortalWeb.OIDCController do
          :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, params) do
+      :ok = Portal.Avatars.Picture.enqueue(identity)
       conn = Cookie.LastUsedProvider.put(conn, provider.id)
       signed_in(conn, context_type, account, identity, session_or_token, provider, tokens, params)
     else
@@ -413,7 +430,7 @@ defmodule PortalWeb.OIDCController do
 
     error = authorization_error_message(reason)
     log_sign_in_redirect_error(account.id, error)
-    path = error_path_for_context(account, params, error)
+    path = error_path_for_context(account, params)
 
     conn
     |> put_flash(:error, error)
@@ -789,6 +806,8 @@ defmodule PortalWeb.OIDCController do
          :ok <- check_admin(identity, context_type),
          :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, identity, provider, params) do
+      :ok = Portal.Avatars.Picture.enqueue(identity)
+
       {:ok,
        %{
          conn: conn,
@@ -941,7 +960,6 @@ defmodule PortalWeb.OIDCController do
       account_id: identity.account_id,
       actor_id: identity.actor_id,
       auth_provider_id: provider.id,
-      identity_id: identity.id,
       expires_at: expires_at
     }
 
@@ -1258,8 +1276,7 @@ defmodule PortalWeb.OIDCController do
       |> request_pending_verification()
       |> verify_oidc_callback(code, iss, lv_pid_string)
 
-    token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
-    redirect(conn, to: ~p"/verification/oidc?result=#{token}")
+    redirect_with_oidc_verification_result(conn, result)
   end
 
   defp handle_google_auth_provider_verification(conn, code, iss, lv_pid_string, verification_ref) do
@@ -1288,8 +1305,7 @@ defmodule PortalWeb.OIDCController do
         verification_ref: verification_ref
       })
 
-    token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
-    redirect(conn, to: ~p"/verification/oidc?result=#{token}")
+    redirect_with_oidc_verification_result(conn, result)
   end
 
   defp handle_google_directory_sync_verification(
@@ -1499,7 +1515,16 @@ defmodule PortalWeb.OIDCController do
   defp google_directory_sync_api_error(status, body),
     do: token_exchange_error_message(status, body)
 
+  defp handle_unbound_verification(conn) do
+    redirect_with_oidc_verification_result(conn, %{
+      ok: false,
+      error: @unbound_verification_error,
+      lv_pid: nil
+    })
+  end
+
   defp redirect_with_oidc_verification_result(conn, result) do
+    result = Map.put(result, :session, conn.assigns[:verification_session])
     token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
@@ -1625,7 +1650,8 @@ defmodule PortalWeb.OIDCController do
         %{
           silent: silent?,
           tenant_id: tenant_id,
-          verification_ref: verification_ref
+          verification_ref: verification_ref,
+          session: conn.assigns.verification_session
         }
       )
 
@@ -1824,6 +1850,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp redirect_with_entra_verification_result(conn, result) do
+    result = Map.put(result, :session, conn.assigns[:verification_session])
     token = Phoenix.Token.sign(PortalWeb.Endpoint, "entra-verification-result", result)
     redirect(conn, to: ~p"/verification/entra?result=#{token}")
   end
@@ -1976,10 +2003,25 @@ defmodule PortalWeb.OIDCController do
     "Verification failed. Please try again."
   end
 
-  defp parse_callback_state(state) do
+  # Settings verifications carry the LiveView pid. They finish only in a browser
+  # that holds the portal session that started them.
+  defp parse_callback_state(conn, state) do
     case PortalWeb.OIDC.verify_verification_state(state) do
-      {:ok, verified_state} -> parse_verified_callback_state(verified_state)
-      _ -> :authentication
+      {:ok, %{lv_pid: lv_pid} = verified_state} when not is_nil(lv_pid) ->
+        session = verified_state[:session]
+
+        if PortalWeb.OIDC.verification_session_matches?(conn, session) do
+          {assign(conn, :verification_session, session),
+           parse_verified_callback_state(verified_state)}
+        else
+          {conn, :unbound_verification}
+        end
+
+      {:ok, verified_state} ->
+        {conn, parse_verified_callback_state(verified_state)}
+
+      _ ->
+        {conn, :authentication}
     end
   end
 
@@ -2131,7 +2173,7 @@ defmodule PortalWeb.OIDCController do
   defp redirect_with_error_context(conn, error) do
     {account_id, account_slug, original_params} = fetch_error_context(conn)
     log_sign_in_redirect_error(account_id, error)
-    redirect_for_error(conn, error, error_path_for_context(account_slug, original_params, error))
+    redirect_for_error(conn, error, error_path_for_context(account_slug, original_params))
   end
 
   defp log_sign_in_redirect_error(nil, _error), do: :ok
@@ -2146,18 +2188,12 @@ defmodule PortalWeb.OIDCController do
   defp error_path("", _params), do: ~p"/sign_in"
   defp error_path(account, params), do: ~p"/#{account}/sign_in?#{sanitize(params)}"
 
-  defp error_path_for_context(account, params, error) do
+  defp error_path_for_context(account, params) do
     if client_context?(params) and account != "" do
-      ~p"/#{account}/sign_in/client_auth_error?#{client_error_params(params, error)}"
+      ~p"/#{account}/sign_in/client_auth_error?#{sanitize(params)}"
     else
       error_path(account, params)
     end
-  end
-
-  defp client_error_params(params, error) do
-    params
-    |> sanitize()
-    |> Map.put("error", error)
   end
 
   defp sanitize(params) do

@@ -1300,6 +1300,24 @@ defmodule Portal.BillingTest do
       assert Portal.Billing.count_monthly_active_users(account) == 1
     end
 
+    test "counts each actor seen on a device", %{account: account} do
+      owner = actor_fixture(type: :account_user, account: account)
+      other = actor_fixture(type: :account_user, account: account)
+      client = client_fixture(account: account, actor: owner)
+      client_session_fixture(account: account, actor: owner, client: client)
+      now = DateTime.utc_now()
+
+      Repo.insert!(%Portal.DeviceActor{
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: other.id,
+        first_seen_at: now,
+        last_seen_at: now
+      })
+
+      assert Portal.Billing.count_monthly_active_users(account) == 2
+    end
+
     test "excludes users not seen in last month", %{account: account} do
       actor1 = actor_fixture(type: :account_user, account: account)
       actor2 = actor_fixture(type: :account_user, account: account)
@@ -1311,17 +1329,12 @@ defmodule Portal.BillingTest do
       # Actor2 seen more than a month ago
       client2 = client_fixture(account: account, actor: actor2)
 
-      session =
-        client_session_fixture(
-          account: account,
-          actor: actor2,
-          client: client2
-        )
-
-      # Backdate the session to more than a month ago
-      session
-      |> Ecto.Changeset.change(last_seen_at: DateTime.add(DateTime.utc_now(), -35, :day))
-      |> Repo.update!()
+      client_session_fixture(
+        account: account,
+        actor: actor2,
+        client: client2,
+        inserted_at: DateTime.add(DateTime.utc_now(), -35, :day)
+      )
 
       assert Portal.Billing.count_monthly_active_users(account) == 1
     end

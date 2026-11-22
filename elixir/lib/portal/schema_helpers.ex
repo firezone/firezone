@@ -1,25 +1,34 @@
 defmodule Portal.SchemaHelpers do
+  defmodule CastError do
+    defexception [:schema, :fields]
+
+    @impl true
+    def message(%{schema: schema, fields: fields}) do
+      "could not cast #{inspect(schema)} from replicated data, invalid fields: #{inspect(fields)}"
+    end
+  end
+
   @doc """
   Converts a map of string params to a schema struct with values casted.
   Uses Ecto changesets for robust casting that handles all Ecto features.
+
+  Raises `Portal.SchemaHelpers.CastError` when any value does not cast, so a
+  struct with fields silently reset to their defaults is never returned.
   """
   def struct_from_params(schema_module, params) do
-    # Get schema metadata
     fields = schema_module.__schema__(:fields)
     embeds = schema_module.__schema__(:embeds)
 
-    # Build a minimal changeset module dynamically
-    changeset_fn = fn struct, attrs ->
-      struct
-      |> Ecto.Changeset.cast(attrs, fields -- embeds)
+    changeset =
+      schema_module
+      |> struct()
+      |> Ecto.Changeset.cast(params, fields -- embeds)
       |> cast_all_embeds(schema_module, embeds)
-    end
 
-    # Apply the changeset
-    schema_module
-    |> struct()
-    |> changeset_fn.(params)
-    |> Ecto.Changeset.apply_changes()
+    case invalid_fields(changeset, params, fields) do
+      [] when changeset.valid? -> Ecto.Changeset.apply_changes(changeset)
+      invalid -> raise CastError, schema: schema_module, fields: invalid
+    end
   end
 
   @doc """
@@ -49,6 +58,16 @@ defmodule Portal.SchemaHelpers do
         loaded -> Map.replace!(struct, assoc, loaded)
       end
     end)
+  end
+
+  defp invalid_fields(changeset, params, fields) do
+    unchanged_toast = Enum.filter(fields, &(Map.get(params, Atom.to_string(&1)) == :unchanged_toast))
+
+    changeset
+    |> Ecto.Changeset.traverse_errors(& &1)
+    |> Map.keys()
+    |> Enum.concat(unchanged_toast)
+    |> Enum.uniq()
   end
 
   # Cast all embedded fields

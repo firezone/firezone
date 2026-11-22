@@ -284,6 +284,18 @@ defmodule Portal.Policies.EvaluatorTest do
     end
   end
 
+  describe "any device" do
+    test "evaluates a gateway's conditions like a client's" do
+      conditions = [%{property: :client_verified, operator: :is, values: ["true"]}]
+
+      assert ensure_conforms(conditions, %Portal.Device{type: :gateway, verified_at: DateTime.utc_now()}, nil) ==
+               {:ok, nil}
+
+      assert ensure_conforms(conditions, %Portal.Device{type: :gateway, verified_at: nil}, nil) ==
+               {:error, [:client_verified]}
+    end
+  end
+
   describe "fetch_conformation_expiration/3 with client_verified" do
     test "is with values [\"true\"] returns ok when device is verified" do
       verified_client = %Portal.Device{type: :client, verified_at: DateTime.utc_now()}
@@ -309,18 +321,16 @@ defmodule Portal.Policies.EvaluatorTest do
       assert fetch_conformation_expiration(condition, unverified_client, nil) == :error
     end
 
-    test "is with values other than [\"true\"] always returns ok" do
+    test "requires a verified device for any stored values" do
       verified_client = %Portal.Device{type: :client, verified_at: DateTime.utc_now()}
       unverified_client = %Portal.Device{type: :client, verified_at: nil}
 
-      condition = %{
-        property: :client_verified,
-        operator: :is,
-        values: ["false"]
-      }
+      for values <- [["false"], ["1"], ["0"], [], nil] do
+        condition = %{property: :client_verified, operator: :is, values: values}
 
-      assert fetch_conformation_expiration(condition, verified_client, nil) == {:ok, nil}
-      assert fetch_conformation_expiration(condition, unverified_client, nil) == {:ok, nil}
+        assert fetch_conformation_expiration(condition, verified_client, nil) == {:ok, nil}
+        assert fetch_conformation_expiration(condition, unverified_client, nil) == :error
+      end
     end
   end
 
@@ -1052,9 +1062,33 @@ defmodule Portal.Policies.EvaluatorTest do
 
     test "requires the current connection to have attested", ctx do
       policy = %{require_attestation: true, conditions: [], postures: nil}
+      attested_until = DateTime.add(DateTime.utc_now(), 1, :hour)
 
-      assert ensure_policy_conforms(policy, %{ctx.verified | attested?: true}, nil) == {:ok, nil}
+      assert ensure_policy_conforms(policy, %{ctx.verified | attested?: true, attested_until: attested_until}, nil) == {:ok, attested_until}
       assert ensure_policy_conforms(policy, %{ctx.verified | attested?: false}, nil) == {:error, [:device_attested]}
+    end
+
+    test "requires the attesting certificate to still be valid", ctx do
+      policy = %{require_attestation: true, conditions: [], postures: nil}
+      expired = DateTime.add(DateTime.utc_now(), -1, :second)
+
+      assert ensure_policy_conforms(policy, %{ctx.verified | attested?: true, attested_until: expired}, nil) == {:error, [:device_attested]}
+      assert ensure_policy_conforms(policy, %{ctx.verified | attested?: true, attested_until: nil}, nil) == {:error, [:device_attested]}
+    end
+
+    test "expires with the attesting certificate when it ends first", ctx do
+      always = Enum.map(~w[M T W R F S U], &"#{&1}/00:00-23:59/UTC")
+      timed = %{property: :current_utc_datetime, operator: :is_in_day_of_week_time_ranges, values: always}
+      policy = %{require_attestation: true, conditions: [timed], postures: nil}
+      client = %{ctx.verified | attested?: true}
+
+      assert {:ok, %DateTime{} = window_end} = ensure_policy_conforms(%{policy | require_attestation: false}, client, nil)
+
+      sooner = DateTime.add(DateTime.utc_now(), 1, :second)
+      assert ensure_policy_conforms(policy, %{client | attested_until: sooner}, nil) == {:ok, sooner}
+
+      later = DateTime.add(DateTime.utc_now(), 2, :day)
+      assert ensure_policy_conforms(policy, %{client | attested_until: later}, nil) == {:ok, window_end}
     end
 
     test "ignores past attestation of the device row", ctx do
@@ -1069,6 +1103,23 @@ defmodule Portal.Policies.EvaluatorTest do
       client = %{ctx.verified | attested?: false, verified_at: nil, posture: %{}}
 
       assert ensure_policy_conforms(policy, client, nil) == {:error, [:device_attested, :client_verified, :postures]}
+    end
+
+    test "gives a gateway device the same result as a client device with the same state", ctx do
+      attested_until = DateTime.add(DateTime.utc_now(), 1, :hour)
+
+      clients = [
+        ctx.verified,
+        %{ctx.verified | verified_at: nil},
+        %{ctx.verified | posture: %{intune: [ctx.stale]}},
+        %{ctx.verified | posture: %{}},
+        %{ctx.verified | attested?: true, attested_until: attested_until}
+      ]
+
+      for require_attestation <- [false, true], client <- clients do
+        policy = %{require_attestation: require_attestation, conditions: [ctx.condition], postures: ctx.postures}
+        assert ensure_policy_conforms(policy, %{client | type: :gateway}, nil) == ensure_policy_conforms(policy, client, nil)
+      end
     end
   end
 end

@@ -57,14 +57,6 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
-      http_test_server_image:
-        required: false
-        type: string
-        default: "ghcr.io/firezone/debug/http-test-server"
-      http_test_server_tag:
-        required: false
-        type: string
-        default: ${{ github.sha }}
 
 jobs:
   collect-images:
@@ -83,8 +75,6 @@ jobs:
       CLIENT_TAG: ${{ inputs.client_tag }}
       ELIXIR_IMAGE: ${{ inputs.elixir_image }}
       ELIXIR_TAG: ${{ inputs.elixir_tag }}
-      HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
-      HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/ghcr-docker-login
@@ -96,7 +86,7 @@ jobs:
         # anchors and env interpolation). The build-only `*-router` services have
         # no `image:` and are skipped here; they are built once in the next step.
         # Callers that only exercise part of the project scope this via
-        # `pull_services`, so they don't pull images that aren't published for them.
+        # `pull_services`, so they don't pull images they don't use.
         run: |
           retry docker compose pull ${{ inputs.pull_services }}
       - name: Add DNS tools to the client image

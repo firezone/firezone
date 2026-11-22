@@ -273,7 +273,7 @@ defmodule PortalAPI.PoolMemberController do
 
     def list_devices(subject, opts \\ []) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^DeviceMembershipCriteria.targets())
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -334,7 +334,8 @@ defmodule PortalAPI.PoolMemberController do
     end
 
     defp existing_client_device_ids(device_ids, subject) do
-      from(d in Device, where: d.id in ^device_ids and d.type == :client, select: d.id)
+      from(d in Device, as: :devices, where: d.id in ^device_ids, select: d.id)
+      |> where(^DeviceMembershipCriteria.targets())
       |> Safe.scoped(subject)
       |> Safe.all()
     end

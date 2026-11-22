@@ -10,9 +10,12 @@
 
 use is::CandidateKind;
 
+/// A host candidate's local preference travels in [`is::Candidate::prio`], see [`from_frostlink`].
 pub(crate) fn to_frostlink(c: &is::Candidate) -> frostlink::Candidate {
     match c.kind() {
-        CandidateKind::Host => frostlink::Candidate::host(c.addr()),
+        CandidateKind::Host => {
+            frostlink::Candidate::host(c.addr()).with_local_preference((c.prio() >> 8) as u16)
+        }
         CandidateKind::ServerReflexive => {
             frostlink::Candidate::server_reflexive(c.addr(), c.local())
         }
@@ -24,12 +27,24 @@ pub(crate) fn to_frostlink(c: &is::Candidate) -> frostlink::Candidate {
 /// Inverse of [`to_frostlink`]: rebuilds the str0m `Candidate` the rest of
 /// snownet works with when decoding a Frostlink candidate off the wire.
 pub(crate) fn from_frostlink(c: &frostlink::Candidate) -> Option<is::Candidate> {
-    let candidate = match *c {
-        frostlink::Candidate::Host(addr) => is::Candidate::host(addr, "udp"),
-        frostlink::Candidate::ServerReflexive { addr, local } => {
+    let candidate = match c.address() {
+        frostlink::Address::Host(addr) => is::Candidate::host(addr, "udp").map(|_| {
+            is::Candidate::from_parts(
+                String::new(),
+                1,
+                is::Protocol::Udp,
+                c.priority(),
+                addr,
+                CandidateKind::Host,
+                None,
+                None,
+                None,
+            )
+        }),
+        frostlink::Address::ServerReflexive { addr, local } => {
             is::Candidate::server_reflexive(addr, local, "udp")
         }
-        frostlink::Candidate::PeerReflexive(addr) => Ok(is::Candidate::from_parts(
+        frostlink::Address::PeerReflexive(addr) => Ok(is::Candidate::from_parts(
             String::new(),
             1,
             is::Protocol::Udp,
@@ -40,7 +55,7 @@ pub(crate) fn from_frostlink(c: &frostlink::Candidate) -> Option<is::Candidate> 
             None,
             None,
         )),
-        frostlink::Candidate::Relayed { addr, local } => is::Candidate::relayed(addr, local, "udp"),
+        frostlink::Address::Relayed { addr, local } => is::Candidate::relayed(addr, local, "udp"),
     };
 
     candidate.ok()
@@ -129,9 +144,19 @@ mod tests {
             let sdp = encode(true, &original);
             let decoded = decode(true, &sdp).expect("frostlink round-trip");
 
-            // The path agent keys off addr/kind/base, so that is what must survive.
+            // The frostlink agent keys off addr/kind/base, so that is what must survive.
             assert_eq!(to_frostlink(&decoded), to_frostlink(&original));
         }
+    }
+
+    #[test]
+    fn frostlink_host_priority_survives_signalling() {
+        let original = frostlink::Candidate::host(addr()).with_local_preference(u16::MAX);
+
+        let signalled = encode(true, &from_frostlink(&original).unwrap());
+        let received = to_frostlink(&decode(true, &signalled).unwrap());
+
+        assert_eq!(received.priority(), original.priority());
     }
 
     #[test]

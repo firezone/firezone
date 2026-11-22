@@ -80,6 +80,23 @@ defmodule Portal.ClientTest do
       assert client.hostname == nil
     end
 
+    test "rejects a firezone_id another actor's client in the account holds" do
+      account = account_fixture()
+      first = client_fixture(account: account, firezone_id: "fid-shared")
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               insert_client(account, actor_fixture(account: account), %{
+                 name: "Second",
+                 firezone_id: first.firezone_id
+               })
+
+      assert %{firezone_id: ["has already been taken"]} = errors_on(changeset)
+      elsewhere = account_fixture()
+
+      assert {:ok, _client} =
+               insert_client(elsewhere, actor_fixture(account: elsewhere), %{name: "Elsewhere", firezone_id: "fid-shared"})
+    end
+
     test "rejects duplicate hostname within the same account for clients" do
       account = account_fixture()
       actor = actor_fixture(account: account)

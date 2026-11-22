@@ -222,6 +222,8 @@ defmodule Portal.Crypto.Ocsp do
     _error -> {:error, :invalid}
   end
 
+  # SHA-1 identifies the issuer in OCSP CertIDs; response signatures authenticate it.
+  # sobelow_skip ["Crypto.WeakHash"]
   defp sha1(bytes), do: :crypto.hash(:sha, bytes)
 
   # OCSP timestamps are GeneralizedTime, always four-digit year and always UTC,

@@ -47,6 +47,7 @@ pub(crate) enum Icon {
     Certificate,
     Check,
     Close,
+    Code,
     Database,
     DeleteBin,
     Home,
@@ -65,6 +66,7 @@ pub(crate) fn icon(icon: Icon, size: f32, color: Color) -> SvgViewer {
         Icon::Certificate => include_bytes!("../../assets/icons/certificate-line.svg"),
         Icon::Check => include_bytes!("../../assets/icons/checkbox-circle-line.svg"),
         Icon::Close => include_bytes!("../../assets/icons/close-line.svg"),
+        Icon::Code => include_bytes!("../../assets/icons/code-s-slash-line.svg"),
         Icon::Database => include_bytes!("../../assets/icons/database-2-line.svg"),
         Icon::DeleteBin => include_bytes!("../../assets/icons/delete-bin-line.svg"),
         Icon::Home => include_bytes!("../../assets/icons/home-line.svg"),
@@ -248,12 +250,28 @@ pub(crate) fn setting_row(
         .into()
 }
 
+/// A labelled row with a switch, sized like the rows with a text field.
 pub(crate) fn toggle(
     label: &'static str,
     checked: bool,
     managed: bool,
-    mut on_change: impl FnMut(bool) + 'static,
+    on_change: impl FnMut(bool) + 'static,
 ) -> Element {
+    setting_row(
+        label,
+        managed,
+        true,
+        switch(label, checked, managed, on_change),
+        None,
+    )
+}
+
+pub(crate) fn switch(
+    label: &'static str,
+    checked: bool,
+    managed: bool,
+    mut on_change: impl FnMut(bool) + 'static,
+) -> Rect {
     let p = pal();
     let thumb = rect()
         .width(Size::px(16.))
@@ -263,7 +281,7 @@ pub(crate) fn toggle(
         .shadow((0., 1., 3., 0., Color::from_argb(26, 0, 0, 0)))
         .shadow((0., 1., 2., -1., Color::from_argb(26, 0, 0, 0)))
         .margin((0., 0., 0., if checked { 14. } else { 0. }));
-    let switch = rect()
+    rect()
         .width(Size::px(36.))
         .height(Size::px(20.))
         .padding((0., 3.))
@@ -277,9 +295,7 @@ pub(crate) fn toggle(
         .a11y_builder(move |node| node.set_toggled(accesskit::Toggled::from(checked)))
         .maybe(managed, |r| r.opacity(0.4))
         .maybe(!managed, |r| r.on_press(move |_| on_change(!checked)))
-        .child(thumb);
-
-    setting_row(label, managed, true, switch, None)
+        .child(thumb)
 }
 
 /// A closed box that opens the list of its options under itself.
@@ -589,6 +605,7 @@ pub(crate) fn sidebar(
     mut page: State<Page>,
     current: Page,
     device_trust: bool,
+    developer: bool,
 ) -> impl IntoElement {
     let p = pal();
     let item = |with: Icon, label: &'static str, target: Page| {
@@ -629,6 +646,7 @@ pub(crate) fn sidebar(
         )
         .child(item(Icon::Database, "Diagnostics", Page::Diagnostics))
         .child(item(Icon::Information, "About", Page::About))
+        .maybe_child(developer.then(|| item(Icon::Code, "Developer", Page::Developer)))
         .maybe_child(cfg!(debug_assertions).then(|| {
             rect()
                 .width(Size::fill())

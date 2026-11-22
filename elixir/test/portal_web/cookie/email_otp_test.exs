@@ -45,34 +45,55 @@ defmodule PortalWeb.Cookie.EmailOTPTest do
       assert EmailOTP.fetch(conn) == nil
     end
 
-    test "treats legacy cookies without a context as portal-only", %{conn: conn} do
-      actor_id = Ecto.UUID.generate()
-      passcode_id = Ecto.UUID.generate()
-      email = "test@example.com"
-
-      legacy_cookie =
-        {Ecto.UUID.dump!(actor_id), Ecto.UUID.dump!(passcode_id), email}
+    test "ignores cookies that are signed but not encrypted", %{conn: conn} do
+      value =
+        {Ecto.UUID.dump!(Ecto.UUID.generate()), Ecto.UUID.dump!(Ecto.UUID.generate()),
+         "test@example.com", :portal}
         |> :erlang.term_to_binary()
 
       conn =
         conn
-        |> Plug.Conn.put_resp_cookie(@cookie_key, legacy_cookie,
-          sign: true,
-          signing_salt: Portal.Config.fetch_env!(:portal, :cookie_signing_salt)
-        )
+        |> Plug.Conn.put_resp_cookie(@cookie_key, value, sign: true)
         |> recycle_conn()
 
-      assert %EmailOTP{
-               actor_id: ^actor_id,
-               passcode_id: ^passcode_id,
-               email: ^email,
-               context_type: :portal
-             } = EmailOTP.fetch(conn)
+      assert EmailOTP.fetch(conn) == nil
+    end
+
+    test "stores the cookie contents in a form only the server can read", %{conn: conn} do
+      actor_id = Ecto.UUID.generate()
+      passcode_id = Ecto.UUID.generate()
+      email = "test@example.com"
+
+      cookie = %EmailOTP{
+        actor_id: actor_id,
+        passcode_id: passcode_id,
+        email: email,
+        context_type: :portal
+      }
+
+      raw_value = EmailOTP.put(conn, cookie).resp_cookies[@cookie_key].value
+
+      decoded_segments =
+        raw_value
+        |> String.split(".")
+        |> Enum.flat_map(fn segment ->
+          case Base.url_decode64(segment, padding: false) do
+            {:ok, decoded} -> [decoded]
+            :error -> []
+          end
+        end)
+
+      assert decoded_segments != []
+
+      for segment <- decoded_segments,
+          value <- [Ecto.UUID.dump!(actor_id), Ecto.UUID.dump!(passcode_id), email] do
+        assert :binary.match(segment, value) == :nomatch
+      end
     end
   end
 
   describe "fetch_state/1" do
-    test "returns map format for live_session compatibility", %{conn: conn} do
+    test "returns only the email for the live_session", %{conn: conn} do
       actor_id = Ecto.UUID.generate()
       passcode_id = Ecto.UUID.generate()
       email = "test@example.com"
@@ -91,11 +112,7 @@ defmodule PortalWeb.Cookie.EmailOTPTest do
 
       result = EmailOTP.fetch_state(conn)
 
-      assert result == %{
-               "actor_id" => actor_id,
-               "one_time_passcode_id" => passcode_id,
-               "email" => email
-             }
+      assert result == %{"email" => email}
     end
 
     test "returns empty map when cookie is not present", %{conn: conn} do

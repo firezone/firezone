@@ -15,13 +15,19 @@ defmodule Portal.Routing do
   @relays_per_device 2
 
   @type location :: {float() | nil, float() | nil}
-  @type initiator :: %{account_id: Ecto.UUID.t(), version: String.t() | nil, location: location()}
+  @type initiator :: %{
+          required(:account_id) => Ecto.UUID.t(),
+          required(:device_id) => Ecto.UUID.t(),
+          required(:version) => String.t() | nil,
+          required(:location) => location(),
+          optional(:proto_range) => Portal.Version.proto_range() | nil
+        }
 
   @doc """
   The online device that serves `resource` for `initiator`.
 
-  Only devices in the resource's site whose version is compatible with the
-  initiator's are considered, and any of `preferred_ids` among them are chosen
+  Only devices in the resource's site, other than the initiator, whose version
+  is compatible with the initiator's are considered, and any of `preferred_ids` among them are chosen
   over the rest. Then the nearest, then the newest.
   """
   @spec select_receiver(Cacheable.Resource.t(), initiator(), [Ecto.UUID.t()]) ::
@@ -32,9 +38,12 @@ defmodule Portal.Routing do
   def select_receiver(%Cacheable.Resource{site: site} = resource, initiator, preferred_ids) do
     site_id = Ecto.UUID.load!(site.id)
 
-    online = Presence.Devices.connected_gateways_in_site(initiator.account_id, site_id)
+    online =
+      initiator.account_id
+      |> Presence.Devices.connected_gateways_in_site(site_id)
+      |> Enum.reject(&(&1.id == initiator.device_id))
 
-    case compatible_devices(online, resource, initiator.version) do
+    case compatible_devices(online, resource, initiator) do
       [] when online == [] ->
         {:error, :offline}
 
@@ -104,26 +113,24 @@ defmodule Portal.Routing do
     end
   end
 
-  defp compatible_devices(devices, _resource, nil), do: devices
+  defp compatible_devices(devices, resource, initiator) do
+    case {Map.get(initiator, :proto_range), initiator.version} do
+      {nil, nil} ->
+        devices
 
-  defp compatible_devices(devices, resource, initiator_version) do
-    case Version.parse(initiator_version) do
-      {:ok, version} -> Enum.filter(devices, &compatible_version?(&1, resource, version))
-      :error -> []
+      {nil, version} ->
+        range = Portal.Version.legacy_proto_range(:client, version)
+        Enum.filter(devices, &compatible?(&1, resource, range))
+
+      {range, _version} ->
+        Enum.filter(devices, &compatible?(&1, resource, range))
     end
   end
 
-  defp compatible_version?(%Device{last_seen_version: nil}, _resource, _version), do: false
+  defp compatible?(%Device{last_seen_version: nil}, _resource, _range), do: false
 
-  defp compatible_version?(%Device{last_seen_version: device_version}, resource, version) do
-    case Version.parse(device_version) do
-      {:ok, parsed} ->
-        Version.match?(parsed, ">= #{version.major}.#{version.minor - 1}.0") and
-          Version.match?(parsed, "< #{version.major}.#{version.minor + 2}.0") and
-          not is_nil(Resource.adapt_resource_for_version(resource, device_version))
-
-      :error ->
-        false
-    end
+  defp compatible?(%Device{} = device, resource, range) do
+    Portal.Version.compatible?(range, device.proto_range) and
+      not is_nil(Resource.adapt_resource_for_version(resource, device.last_seen_version))
   end
 end

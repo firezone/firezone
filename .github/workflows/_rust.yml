@@ -51,11 +51,6 @@ jobs:
       - run: cargo fmt -- --check
       - run: mise run deny
         shell: bash
-      # cargo-shear does not compile the workspace; it runs `cargo metadata` and
-      # parses sources, so it piggy-backs on the toolchain already set up here.
-      - run: cargo shear
-        name: cargo shear
-        shell: bash
 
   test:
     name: test-${{ matrix.runs-on }}

@@ -433,7 +433,7 @@ html[data-theme="system"] .theme-check-system {
   --badge-admin-bg: oklch(77.69% 0.1549 56.87);
 
   /* Icons */
-  --icon-bg: oklch(92.88% 0.0126 255.51);
+  --icon-bg: var(--surface-overlay);
 
   /* Side Navbar */
   --brand-wash: oklch(77.69% 0.154 56.87 / 25%);

@@ -28,12 +28,6 @@ defmodule Portal.Actor do
     has_many :identities, Portal.ExternalIdentity, references: :id
     has_many :pending_identities, Portal.PendingIdentity, references: :id
 
-    has_many :clients, Portal.Device,
-      where: [type: :client],
-      preload_order: [desc: :inserted_at],
-      references: :id
-
-    has_many :client_tokens, Portal.ClientToken, references: :id
     has_many :one_time_passcodes, Portal.OneTimePasscode, references: :id
     has_many :memberships, Portal.Membership, on_replace: :delete, references: :id
     has_many :groups, through: [:memberships, :group]
@@ -41,7 +35,9 @@ defmodule Portal.Actor do
     embeds_one :preferences, Portal.Actor.Preferences, on_replace: :update
 
     field :last_seen_at, :utc_datetime_usec, virtual: true
-    field :identity_count, :integer, virtual: true
+    field :avatar_identity_id, :binary_id, virtual: true
+    field :avatar_etag, :string, virtual: true
+    field :identity_issuers, {:array, :string}, virtual: true, default: []
     field :is_disabled, :boolean, default: false, read_after_writes: true
 
     belongs_to :directory, Portal.Directory, foreign_key: :created_by_directory_id

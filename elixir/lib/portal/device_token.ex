@@ -1,7 +1,7 @@
 defmodule Portal.DeviceToken do
   @moduledoc """
-  A credential a device connects with. Gateway tokens are copied here while
-  `gateway_tokens` stays the source; nothing reads this table yet.
+  A credential a device connects with. Gateway tokens are owned by the
+  account's legacy Gateway actor.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -12,9 +12,13 @@ defmodule Portal.DeviceToken do
 
   @type t :: %__MODULE__{}
 
+  # How long a rotated device-bound token stays valid after rotation, unless
+  # the replacement token is used first
+  @rotation_grace_hours 4
+
   schema "device_tokens" do
     belongs_to :account, Portal.Account, primary_key: true
-    field :id, :binary_id, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
 
     belongs_to :actor, Portal.Actor
     belongs_to :auth_provider, Portal.AuthProvider
@@ -27,6 +31,21 @@ defmodule Portal.DeviceToken do
     field :expires_at, :utc_datetime_usec
     field :rotated_at, :utc_datetime_usec
 
+    # Used only during creation
+    field :secret_nonce, :string, virtual: true, redact: true
+    field :secret_fragment, :string, virtual: true, redact: true
+
+    # Populated on fetch-for-verification: the id of this token's rotated
+    # sibling, if a rotation is pending confirmation
+    field :rotated_sibling_id, :binary_id, virtual: true
+
+    # Client token lists: the device that last connected with the token (see
+    # devices.token_id), its auth provider and whether it is online
+    field :last_used_device, :any, virtual: true
+    field :auth_provider_name, :string, virtual: true
+    field :auth_provider_type, :string, virtual: true
+    field :online?, :boolean, virtual: true
+
     timestamps()
   end
 
@@ -38,6 +57,10 @@ defmodule Portal.DeviceToken do
     |> assoc_constraint(:device)
     |> assoc_constraint(:site)
     |> check_constraint(:site_id, name: :device_tokens_device_or_site)
+    |> check_constraint(:expires_at, name: :device_tokens_unbound_expires)
     |> unique_constraint(:device_id, name: :device_tokens_device_rotated_state_index)
   end
+
+  @spec rotation_grace_hours() :: pos_integer()
+  def rotation_grace_hours, do: @rotation_grace_hours
 end

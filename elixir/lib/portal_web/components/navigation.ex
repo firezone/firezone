@@ -129,7 +129,7 @@ defmodule PortalWeb.Components.Navigation do
         <.dropdown id="user-menu">
           <:button>
             <span class="sr-only">Open user menu</span>
-            <Core.avatar actor={@subject.actor} size={25} class="rounded-full" />
+            <Core.avatar account={@subject.account} actor={@subject.actor} />
           </:button>
           <:dropdown>
             <.subject_dropdown subject={@subject} />

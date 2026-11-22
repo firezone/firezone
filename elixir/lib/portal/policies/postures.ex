@@ -45,6 +45,7 @@ defmodule Portal.Policies.Postures do
   @max_string_bytes 1024
   @max_regex_bytes 256
   @regex_match_limit 10_000
+  @regex_flags "iu"
 
   @no_value_operators ~w[exists does_not_exist is_empty is_not_empty]a
   @list_operators ~w[is_in is_not_in contains_any_of contains_all_of is_in_cidr is_not_in_cidr]a
@@ -118,14 +119,20 @@ defmodule Portal.Policies.Postures do
   @spec depth(t()) :: non_neg_integer()
   def depth(%__MODULE__{expr: expr}), do: node_depth(expr)
 
-  @doc "Runs a regex with a bounded amount of backtracking. A blown budget is a miss."
-  @spec safe_match?(String.t(), String.t()) :: boolean()
-  def safe_match?(source, subject) do
-    {:ok, regex} = Regex.compile(source)
-
-    case :re.run(subject, Regex.re_pattern(regex), [{:match_limit, @regex_match_limit}, {:capture, :none}]) do
-      :match -> true
-      _nomatch_or_error -> false
+  @doc "Runs a case-insensitive regex with a bounded amount of backtracking."
+  @spec regex_match(String.t(), String.t()) :: :match | :nomatch | :error
+  def regex_match(source, subject) do
+    with true <- String.valid?(subject),
+         {:ok, regex} <- Regex.compile(source, @regex_flags),
+         result when result in [:match, :nomatch] <-
+           :re.run(subject, Regex.re_pattern(regex), [
+             {:match_limit, @regex_match_limit},
+             {:capture, :none},
+             :report_errors
+           ]) do
+      result
+    else
+      _error -> :error
     end
   end
 
@@ -303,7 +310,7 @@ defmodule Portal.Policies.Postures do
 
   defp parse_scalar(type, op, value, at) when type in [:string, :enum_string] and op in @regex_operators do
     with {:ok, source} <- bounded_string(value, @max_regex_bytes, at),
-         {:ok, _regex} <- Regex.compile(source) do
+         {:ok, _regex} <- Regex.compile(source, @regex_flags) do
       {:ok, source}
     else
       {:error, {reason, _position}} -> error(at, "invalid regex, #{reason}")
@@ -390,6 +397,7 @@ defmodule Portal.Policies.Postures do
       not is_binary(value) -> error(at, "must be a string")
       value == "" -> error(at, "must not be empty")
       not String.valid?(value) -> error(at, "must be valid UTF-8")
+      String.contains?(value, <<0>>) -> error(at, "must not contain NUL characters")
       byte_size(value) > max_bytes -> error(at, "must be at most #{max_bytes} bytes")
       true -> {:ok, value}
     end

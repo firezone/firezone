@@ -93,10 +93,70 @@ defmodule Portal.Changes.Hooks.MembershipsTest do
         "group_id" => group.id
       }
 
+      Repo.delete!(membership)
+
       assert :ok == on_delete(0, old_data)
       refute Repo.get_by(PolicyAuthorization, id: leaving_pa.id)
       assert Repo.get_by(PolicyAuthorization, id: staying_pa.id)
       assert Repo.get_by(PolicyAuthorization, id: other_pa.id)
+    end
+
+    test "deletes the authorizations toward a deleted actor's devices through the group's pools" do
+      account = account_fixture()
+      group = group_fixture(account: account)
+      leaver = actor_fixture(account: account)
+      membership = membership_fixture(account: account, actor: leaver, group: group)
+      initiator = client_fixture(account: account)
+      kept_device = client_fixture(account: account, actor: leaver)
+      pool = actor_group_pool_resource_fixture(account: account, group: group)
+      leaving_pa = policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: kept_device)
+
+      Repo.delete!(leaver)
+
+      assert :ok ==
+               on_delete(0, %{
+                 "id" => membership.id,
+                 "account_id" => account.id,
+                 "actor_id" => leaver.id,
+                 "group_id" => group.id
+               })
+
+      assert Repo.get_by(Portal.Device, account_id: account.id, id: kept_device.id)
+      refute Repo.get_by(PolicyAuthorization, id: leaving_pa.id)
+    end
+
+    test "keeps the authorizations toward a device another of its actors keeps in the group" do
+      account = account_fixture()
+      group = group_fixture(account: account)
+      leaver = actor_fixture(account: account)
+      stayer = actor_fixture(account: account)
+      membership = membership_fixture(account: account, actor: leaver, group: group)
+      membership_fixture(account: account, actor: stayer, group: group)
+      initiator = client_fixture(account: account)
+      shared = client_fixture(account: account, actor: leaver)
+      now = DateTime.utc_now()
+
+      Repo.insert!(%Portal.DeviceActor{
+        account_id: account.id,
+        device_id: shared.id,
+        actor_id: stayer.id,
+        first_seen_at: now,
+        last_seen_at: now
+      })
+
+      pool = actor_group_pool_resource_fixture(account: account, group: group)
+      kept = policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: shared)
+      Repo.delete!(membership)
+
+      assert :ok ==
+               on_delete(0, %{
+                 "id" => membership.id,
+                 "account_id" => account.id,
+                 "actor_id" => leaver.id,
+                 "group_id" => group.id
+               })
+
+      assert Repo.get_by(PolicyAuthorization, id: kept.id)
     end
 
     test "keeps the authorizations of pools that do not follow the group" do

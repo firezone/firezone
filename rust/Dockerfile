@@ -29,10 +29,6 @@ COPY ./docker-init-relay.sh ./docker-init.sh
 FROM runtime_base AS runtime_firezone-headless-client
 COPY ./docker-init-client.sh ./docker-init.sh
 
-# HTTP test server specific runtime base image
-FROM runtime_base AS runtime_http-test-server
-COPY ./docker-init-http-test-server.sh ./docker-init.sh
-
 # Funnel package specific base image back into `runtime`
 ARG PACKAGE
 FROM runtime_${PACKAGE} AS runtime
@@ -62,7 +58,7 @@ COPY ${PACKAGE} .
 FROM runtime AS dev
 
 ARG PACKAGE
-ARG RUST_VERSION="1.99.1" # Keep in sync with `rust-toolchain.toml`
+ARG RUST_VERSION="1.100.0" # Keep in sync with `rust-toolchain.toml`
 
 WORKDIR /app
 

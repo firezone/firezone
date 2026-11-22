@@ -19,8 +19,15 @@ defmodule Portal.Release do
       )
 
     {:ok, _, _} = do_migration(Portal.Repo, manual)
+
+    # The private ops dashboard's database, when the dashboard is compiled in.
+    if Code.ensure_loaded?(PortalOps.Repo) do
+      {:ok, _, _} = Ecto.Migrator.with_repo(PortalOps.Repo, &Ecto.Migrator.run(&1, :up, all: true))
+    end
   end
 
+  # Release operators execute trusted seed scripts shipped with the application.
+  # sobelow_skip ["RCE.Compile"]
   def seed(directory \\ seed_script_path(@otp_app)) do
     IO.puts("Starting #{@otp_app} app..")
     {:ok, _} = Application.ensure_all_started(@otp_app)

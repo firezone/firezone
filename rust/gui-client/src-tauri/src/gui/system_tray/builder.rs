@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
+pub const COPY_ADDRESS: &str = "Copy address";
 
 /// A menu that can either be assigned to the system tray directly or used as a submenu in another menu.
 ///
@@ -101,11 +102,12 @@ fn resource_header(res: &ResourceView) -> Item {
         return copyable(&res.pastable());
     }
 
-    let Ok(url) = Url::parse(address_description) else {
-        return copyable(address_description);
-    };
-
-    item(Event::Url(url), format!("<{address_description}>"))
+    match Url::parse(address_description) {
+        Ok(url) if matches!(url.scheme(), "http" | "https") => {
+            item(Event::Url(url), format!("<{address_description}>"))
+        }
+        Ok(_) | Err(_) => copyable(address_description),
+    }
 }
 
 impl Menu {
@@ -161,10 +163,12 @@ impl Menu {
     }
 
     fn resource_body(self, resource: &ResourceView) -> Self {
+        let address = resource.pastable();
+
         self.separator()
             .disabled("Resource")
-            .copyable(resource.name())
-            .copyable(resource.pastable().as_ref())
+            .copyable(&address)
+            .item(Event::Copy(address.into_owned()), COPY_ADDRESS)
     }
 
     pub(crate) fn resource_description(mut self, resource: &ResourceView) -> Self {
@@ -206,5 +210,50 @@ pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(event: E, title: S) 
         title: title.into(),
         checked: None,
         icon: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use connlib_model::{DnsResourceView, ResourceStatus};
+
+    fn resource(description: &str) -> ResourceView {
+        ResourceView::Dns(DnsResourceView {
+            id: ResourceId::from_u128(1),
+            address: "git.example.com".to_owned(),
+            name: "Git".to_owned(),
+            address_description: Some(description.to_owned()),
+            sites: vec![],
+            status: ResourceStatus::Unknown,
+        })
+    }
+
+    #[test]
+    fn web_description_is_a_link() {
+        let description = "https://git.example.com/";
+
+        assert_eq!(
+            resource_header(&resource(description)),
+            item(
+                Event::Url(description.parse().unwrap()),
+                format!("<{description}>")
+            )
+        );
+    }
+
+    #[test]
+    fn other_description_is_copied() {
+        for description in [
+            "ssh://git.example.com",
+            "file:///etc/hosts",
+            "note: read-only",
+            "Git",
+        ] {
+            assert_eq!(
+                resource_header(&resource(description)),
+                copyable(description)
+            );
+        }
     }
 }

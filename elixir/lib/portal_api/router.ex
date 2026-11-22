@@ -186,7 +186,8 @@ defmodule PortalAPI.Router do
     resources "/defender_posture_providers", DefenderPostureProviderController,
       only: [:index, :show, :update, :delete]
 
-    resources "/defender_devices", DefenderDeviceController, only: [:index, :show]
+    resources "/defender_devices", DefenderDeviceController, only: [:index]
+    get "/defender_devices/:defender_device", DefenderDeviceController, :show
 
     resources "/santa_posture_providers", SantaPostureProviderController,
       only: [:index, :show, :update, :delete]
@@ -232,6 +233,10 @@ defmodule PortalAPI.Router do
     scope "/stripe", Stripe do
       post "/webhooks", WebhookController, :handle_webhook
     end
+
+    scope "/yc", YC do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
   end
 
   # Webhook auth failures log a warning from code that has no conn, so the
@@ -251,7 +256,11 @@ defmodule PortalAPI.Router do
 
   def redirect_to_rest_api_url(%Plug.Conn{} = conn, _opts) do
     rest_api_url = Portal.Config.get_env(:portal, :rest_api_url)
-    flow_api_host = URI.parse(Portal.Config.get_env(:portal, :flow_logs_api_url)).host
+    flow_api_host =
+      case Portal.Config.get_env(:portal, :flow_logs_api_url) do
+        nil -> nil
+        url -> URI.parse(url).host
+      end
 
     if rest_api_url && conn.host != flow_api_host do
       redirect_to_canonical_host(conn, URI.parse(rest_api_url))

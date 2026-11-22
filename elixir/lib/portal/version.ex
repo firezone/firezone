@@ -133,26 +133,73 @@ defmodule Portal.Version do
 
   def supports_public_key_changed?(%Device{type: :client} = client) do
     case ComponentVersions.get_component_type_from_user_agent(client.last_seen_user_agent) do
-      :apple -> Version.compare(client.last_seen_version, "1.5.24") != :lt
+      :apple -> Version.compare(client.last_seen_version, "1.5.25") != :lt
       :gui -> Version.compare(client.last_seen_version, "1.5.21") != :lt
       :headless -> Version.compare(client.last_seen_version, "1.5.16") != :lt
-      :android -> Version.compare(client.last_seen_version, "1.5.18") != :lt
+      :android -> Version.compare(client.last_seen_version, "1.5.19") != :lt
     end
   end
 
-  # Two clients can only establish a peer-to-peer connection if they share the
-  # same major.minor — this lets us evolve snownet's wire format on a minor cadence
-  # without breaking running deployments mid-rollout.
-  def same_minor_version?(nil, _), do: false
-  def same_minor_version?(_, nil), do: false
+  @typedoc "The protocol minors (of major 1) a device can talk to."
+  @type proto_range :: %{min: non_neg_integer(), max: non_neg_integer()}
 
-  def same_minor_version?(version_a, version_b)
-      when is_binary(version_a) and is_binary(version_b) do
-    with {:ok, a} <- Version.parse(version_a),
-         {:ok, b} <- Version.parse(version_b) do
-      a.major == b.major and a.minor == b.minor
+  @doc """
+  The range a legacy device speaks, from its version: a client speaks exactly
+  its own minor, a gateway one minor either side. These are today's rules.
+  """
+  @spec legacy_proto_range(:client | :gateway, String.t() | nil) :: proto_range() | nil
+  def legacy_proto_range(_role, nil), do: nil
+
+  def legacy_proto_range(role, version) when is_binary(version) do
+    case Version.parse(version) do
+      {:ok, %Version{major: 1, minor: minor}} -> legacy_range(role, minor)
+      _ -> nil
+    end
+  end
+
+  @doc "The range a device states with `proto_min` and `proto_max`, if both are valid."
+  @spec declared_proto_range(map()) :: proto_range() | nil
+  def declared_proto_range(%{"proto_min" => min, "proto_max" => max}) do
+    with {:ok, min} <- parse_minor(min),
+         {:ok, max} <- parse_minor(max),
+         true <- min <= max do
+      %{min: min, max: max}
     else
-      _ -> false
+      _ -> nil
     end
   end
+
+  def declared_proto_range(_params), do: nil
+
+  @doc "The range a presence meta carries, or the legacy range its version implies."
+  @spec proto_range_from_meta(map()) :: proto_range() | nil
+  def proto_range_from_meta(%{proto_min: min, proto_max: max})
+      when is_integer(min) and is_integer(max),
+      do: %{min: min, max: max}
+
+  def proto_range_from_meta(meta) do
+    legacy_proto_range(Map.get(meta, :type), Map.get(meta, :version))
+  end
+
+  @doc "Whether two ranges share a minor."
+  @spec compatible?(proto_range() | nil, proto_range() | nil) :: boolean()
+  def compatible?(%{min: a_min, max: a_max}, %{min: b_min, max: b_max}),
+    do: a_min <= b_max and b_min <= a_max
+
+  def compatible?(_range, _other), do: false
+
+  defp legacy_range(:client, minor), do: %{min: minor, max: minor}
+  defp legacy_range(:gateway, minor), do: %{min: max(minor - 1, 0), max: minor + 1}
+  defp legacy_range(_role, _minor), do: nil
+
+  defp parse_minor(value) when is_integer(value) and value >= 0, do: {:ok, value}
+
+  defp parse_minor(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {minor, ""} when minor >= 0 -> {:ok, minor}
+      _ -> :error
+    end
+  end
+
+  defp parse_minor(_value), do: :error
 end

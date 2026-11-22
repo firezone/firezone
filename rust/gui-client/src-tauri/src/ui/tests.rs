@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 
 use super::*;
 use crate::{
-    settings::{ControlPlane, SignInSettingsViewModel},
+    settings::{ControlPlane, DeveloperSettingsViewModel, SignInSettingsViewModel},
     view::X509DetailField,
 };
 
@@ -18,6 +18,10 @@ fn screenshots() {
             ("light", PreferredTheme::Light),
             ("dark", PreferredTheme::Dark),
         ] {
+            if screen.light_only && theme == PreferredTheme::Dark {
+                continue;
+            }
+
             let mut window = Window::open(page, theme, screen.view_model.clone());
             if let Some((label, value)) = screen.input {
                 window.fill(label, value);
@@ -218,6 +222,24 @@ fn the_sidebar_navigates_and_shows_device_trust_with_a_certificate() {
 }
 
 #[test]
+fn seven_clicks_on_the_logo_unlock_the_developer_settings() {
+    let mut window = Window::open(Page::About, PreferredTheme::Light, ViewModel::default());
+
+    for _ in 0..6 {
+        window.click_named("Firezone Logo");
+    }
+
+    assert!(window.no_request());
+
+    window.click_named("Firezone Logo");
+
+    assert!(matches!(
+        window.next_request(),
+        ControllerRequest::SetDeveloperSettingsUnlocked(true)
+    ));
+}
+
+#[test]
 fn signing_in_asks_the_controller() {
     let mut window = Window::open(
         Page::Overview,
@@ -236,6 +258,7 @@ fn signing_in_asks_the_controller() {
 #[derive(Default)]
 struct Screen {
     view_model: ViewModel,
+    light_only: bool,
     click: Option<&'static str>,
     input: Option<(&'static str, &'static str)>,
 }
@@ -390,6 +413,21 @@ fn screens() -> Vec<(&'static str, Page, Screen)> {
             },
         ),
         ("about", Page::About, Screen::default()),
+        (
+            "developer-settings",
+            Page::Developer,
+            Screen {
+                view_model: ViewModel {
+                    developer_settings: Some(DeveloperSettingsViewModel {
+                        unlocked: true,
+                        force_relayed_connections: false,
+                    }),
+                    ..Default::default()
+                },
+                light_only: true,
+                ..Default::default()
+            },
+        ),
     ]
 }
 

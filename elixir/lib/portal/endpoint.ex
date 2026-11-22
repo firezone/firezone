@@ -19,6 +19,7 @@ defmodule Portal.Endpoint do
   @ssl_opts Plug.SSL.init([])
 
   plug Portal.Health
+  plug :close_when_draining
   plug :apply_forwarded_headers
   plug :redirect_to_https
   # Runs before dispatch so it also covers the WebSocket routes, which the
@@ -41,6 +42,20 @@ defmodule Portal.Endpoint do
       |> then(&%{&1 | remote_ip: Portal.Types.IP.unmap(&1.remote_ip)})
     else
       Enum.reduce(@proxy_headers, conn, &Plug.Conn.delete_req_header(&2, &1))
+    end
+  end
+
+  # A client keeps sending requests on an open HTTP/1.1 connection, which stays
+  # on this node after the load balancer or the host moves new connections away.
+  # While draining, close each connection after its response, so the client's
+  # next request opens a new connection to a node that stays up. HTTP/2 does not
+  # allow this header, and a WebSocket upgrade must keep its connection.
+  def close_when_draining(%Plug.Conn{} = conn, _opts) do
+    if Plug.Conn.get_http_protocol(conn) == :"HTTP/1.1" and not websocket_upgrade?(conn) and
+         Portal.Health.draining?() do
+      Plug.Conn.put_resp_header(conn, "connection", "close")
+    else
+      conn
     end
   end
 
@@ -90,6 +105,14 @@ defmodule Portal.Endpoint do
   """
   def real_ip_opts do
     @real_ip_opts
+  end
+
+  @doc """
+  Drainer options for every socket behind this endpoint. On shutdown, sockets close
+  100 at a time every 100ms, so that devices do not all reconnect at once.
+  """
+  def socket_drainer do
+    [batch_size: 100, batch_interval: 100, shutdown: :timer.seconds(60)]
   end
 
   def external_trusted_proxies do

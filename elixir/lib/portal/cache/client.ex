@@ -424,30 +424,31 @@ defmodule Portal.Cache.Client do
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
+  def add_policy(cache, %Policy{is_disabled: true}, _client, _subject) do
+    {:ok, [], [], cache}
+  end
+
   def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
     policy = Portal.Cache.Cacheable.to_cache(policy)
 
-    if Map.has_key?(cache.memberships, policy.group_id) do
-      # Add policy to the cache
+    with true <- Map.has_key?(cache.memberships, policy.group_id),
+         {:ok, cache} <- put_policy_resource(cache, policy.resource_id, resource_id, subject) do
       cache = %{cache | policies: Map.put(cache.policies, policy.id, policy)}
-
-      # Maybe add resource to the cache if we don't already have it
-      cache =
-        if Map.has_key?(cache.resources, policy.resource_id) do
-          cache
-        else
-          # Need to fetch the resource from the DB
-          {:ok, resource} = Database.fetch_resource_by_id(resource_id, subject)
-          resource = Database.preload_site(resource)
-
-          resource = Portal.Cache.Cacheable.to_cache(resource)
-
-          %{cache | resources: Map.put(cache.resources, resource.id, resource)}
-        end
-
       recompute_connectable_resources(cache, client, subject)
     else
-      {:ok, [], [], cache}
+      _ -> {:ok, [], [], cache}
+    end
+  end
+
+  # A replayed insert can name a resource that has since been deleted.
+  defp put_policy_resource(cache, resource_id_bytes, resource_id, subject) do
+    if Map.has_key?(cache.resources, resource_id_bytes) do
+      {:ok, cache}
+    else
+      with {:ok, resource} <- Database.fetch_resource_by_id(resource_id, subject) do
+        resource = Portal.Cache.Cacheable.to_cache(resource)
+        {:ok, %{cache | resources: Map.put(cache.resources, resource.id, resource)}}
+      end
     end
   end
 
@@ -583,13 +584,13 @@ defmodule Portal.Cache.Client do
   end
 
   @doc """
-    Reacts to an update of a non-self client device. If the device is a member of any
+    Reacts to an update of a non-self device. If the device is a member of any
     connectable pool and its addresses changed, returns the affected pool resources for
     the channel to push as `resource_created_or_updated`.
   """
   @spec handle_member_device_update(t(), Portal.Device.t(), Authentication.Subject.t()) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
-  def handle_member_device_update(cache, %Portal.Device{type: :client} = device, _subject) do
+  def handle_member_device_update(cache, %Portal.Device{} = device, _subject) do
     did_bytes = dump!(device.id)
     new_ipv4 = device.ipv4.address
     new_ipv6 = device.ipv6.address
@@ -626,7 +627,7 @@ defmodule Portal.Cache.Client do
   end
 
   @doc """
-    Reacts to deletion of a non-self client device. Removes the device from every pool
+    Reacts to deletion of a non-self device. Removes the device from every pool
     it was a member of, recomputes affected pools' addresses, and returns the device's
     last-known addresses so the channel can push `client_device_access_denied`.
 
@@ -635,7 +636,7 @@ defmodule Portal.Cache.Client do
   """
   @spec handle_member_device_delete(t(), Portal.Device.t()) ::
           {:ok, denied_addresses(), [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
-  def handle_member_device_delete(cache, %Portal.Device{type: :client} = device) do
+  def handle_member_device_delete(cache, %Portal.Device{} = device) do
     did_bytes = dump!(device.id)
     addresses = Map.get(cache.device_addresses, did_bytes)
 
@@ -902,6 +903,7 @@ defmodule Portal.Cache.Client do
 
   defmodule Database do
     import Ecto.Query
+    alias Portal.Resource.DeviceMembershipCriteria
     alias Portal.Safe
 
     def all_policies_for_actor_id!(actor_id, subject) do
@@ -988,10 +990,6 @@ defmodule Portal.Cache.Client do
       end
     end
 
-    def preload_site(resource) do
-      Safe.preload(resource, :site)
-    end
-
     def get_site_by_id(site_id, subject) when is_binary(site_id) do
       id = Ecto.UUID.load!(site_id)
 
@@ -1001,14 +999,15 @@ defmodule Portal.Cache.Client do
     end
 
     @doc """
-      The `{ipv4_tuple, ipv6_tuple}` of every listed device that is a client of the account,
+      The `{ipv4_tuple, ipv6_tuple}` of every listed device of the account that a pool may hold,
       keyed by device id bytes.
     """
     def all_client_addresses([], _subject), do: %{}
 
     def all_client_addresses(device_ids, subject) do
       from(d in Portal.Device, as: :devices)
-      |> where([devices: d], d.type == :client and d.id in ^device_ids)
+      |> where([devices: d], d.id in ^device_ids)
+      |> where(^DeviceMembershipCriteria.targets())
       |> select([devices: d], {d.id, d.ipv4, d.ipv6})
       |> Safe.scoped(subject)
       |> Safe.all()

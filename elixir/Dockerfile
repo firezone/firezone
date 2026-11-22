@@ -1,6 +1,10 @@
 ARG ELIXIR_VERSION="1.20.5"
 ARG ERLANG_VERSION="29.1.2"
 ARG ALPINE_VERSION="3.24.4"
+# `compiler` builds the public portal. `ops-compiler` adds the private ops dashboard
+# (firezone/portal-ops), which CI checks out at ./ops before building the portal-ops
+# image.
+ARG COMPILER="compiler"
 
 FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VERSION} AS compiler
 
@@ -59,7 +63,17 @@ RUN mix compile --force
 # i.e. an environment with deps + assets + beams compiled but no release built,
 # so mix tasks (test, ecto.migrate, etc.) can run against it.
 
-FROM compiler AS builder
+# Only built for the portal-ops image. mix.exs compiles ops/lib when it exists. The
+# ops database migrations go where `Portal.Release.migrate/1` finds them.
+FROM compiler AS ops-compiler
+
+COPY ops ops
+RUN if [ -d ops/priv/migrations ]; then \
+      mkdir -p priv/ops_repo && cp -R ops/priv/migrations priv/ops_repo/migrations; \
+    fi
+RUN mix compile
+
+FROM ${COMPILER} AS builder
 
 COPY rel rel
 

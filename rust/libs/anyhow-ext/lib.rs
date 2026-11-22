@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 pub use anyhow::*;
 
 pub trait ErrorExt {

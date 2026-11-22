@@ -1,36 +1,32 @@
 defmodule Portal.OTLPTest do
   use ExUnit.Case, async: true
 
-  alias Portal.OTLP
+  @endpoint "https://ingest.test/v1/metrics"
+  @req_opts [plug: {Req.Test, Portal.OTLP}, retry_delay: 0, max_retries: 4]
 
-  @collector "http://10.0.0.1:4318"
-  @traces "https://otlp.example.com/v1/traces"
-  @auth {:headers, []}
+  test "retries a failed DNS lookup" do
+    Req.Test.expect(Portal.OTLP, &Req.Test.transport_error(&1, :nxdomain))
+    Req.Test.expect(Portal.OTLP, &Plug.Conn.send_resp(&1, 200, ""))
 
-  describe "trace_processors/3" do
-    test "returns no processors without endpoints" do
-      assert OTLP.trace_processors(nil, nil, @auth) == []
-    end
+    assert Portal.OTLP.post(@endpoint, "", {:headers, []}, @req_opts) == :ok
+  end
 
-    test "exports to the collector" do
-      assert OTLP.trace_processors(@collector, nil, @auth) == [
-               {:otel_batch_processor, %{exporter: {:opentelemetry_exporter, %{}}}}
-             ]
-    end
+  test "retries a retryable status" do
+    Req.Test.expect(Portal.OTLP, &Plug.Conn.send_resp(&1, 503, ""))
+    Req.Test.expect(Portal.OTLP, &Plug.Conn.send_resp(&1, 200, ""))
 
-    test "exports to the traces endpoint" do
-      assert OTLP.trace_processors(nil, @traces, @auth) == [
-               {:otel_batch_processor,
-                %{exporter: {OTLP.TracesExporter, %{endpoint: @traces, auth: @auth}}}}
-             ]
-    end
+    assert Portal.OTLP.post(@endpoint, "", {:headers, []}, @req_opts) == :ok
+  end
 
-    test "exports to the collector first, then the traces endpoint" do
-      assert OTLP.trace_processors(@collector, @traces, @auth) == [
-               {:otel_batch_processor, %{exporter: {:opentelemetry_exporter, %{}}}},
-               {:otel_batch_processor,
-                %{exporter: {OTLP.TracesExporter, %{endpoint: @traces, auth: @auth}}}}
-             ]
-    end
+  test "gives up after the last retry" do
+    Req.Test.expect(Portal.OTLP, 5, &Req.Test.transport_error(&1, :nxdomain))
+
+    assert Portal.OTLP.post(@endpoint, "", {:headers, []}, @req_opts) == :failed_retryable
+  end
+
+  test "does not retry a client error" do
+    Req.Test.expect(Portal.OTLP, &Plug.Conn.send_resp(&1, 400, ""))
+
+    assert Portal.OTLP.post(@endpoint, "", {:headers, []}, @req_opts) == :failed_not_retryable
   end
 end

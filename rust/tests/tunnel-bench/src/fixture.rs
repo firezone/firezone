@@ -14,8 +14,8 @@ use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
 use dns_types::{Query, RecordType, Response};
 use ip_packet::{Ecn, IpPacket};
 use rand::{SeedableRng as _, rngs::StdRng};
-use relay_proto::auth::AccountId;
-use relay_proto::{AllocationPort, ChannelData, ClientSocket, Command, PeerSocket};
+use relay_server_proto::auth::AccountId;
+use relay_server_proto::{AllocationPort, ChannelData, ClientSocket, Command, PeerSocket};
 use snownet::{RelaySocket, Transmit};
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::PacketBatch;
@@ -814,7 +814,7 @@ fn packet(src: IpAddr, dst: IpAddr, sport: u16, dport: u16) -> IpPacket {
 
 /// A TURN relay on [`RELAY_SOCKET`], run by the relay's own sans-IO state.
 struct Relay {
-    server: relay_proto::Server<StdRng>,
+    server: relay_server_proto::Server<StdRng>,
     /// The ports of its allocations.
     allocations: BTreeSet<u16>,
     /// When it started, by the simulated and the system clock.
@@ -823,7 +823,7 @@ struct Relay {
 
 impl Relay {
     fn new(now: Instant) -> Self {
-        let mut server = relay_proto::Server::new(
+        let mut server = relay_server_proto::Server::new(
             IpAddr::V4(*RELAY_SOCKET.ip()),
             StdRng::seed_from_u64(0),
             RELAY_SOCKET.port(),
@@ -848,9 +848,10 @@ impl Relay {
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
-            relay_proto::auth::hash_account_id(&AccountId::from(Uuid::nil()))
+            relay_server_proto::auth::hash_account_id(&AccountId::from(Uuid::nil()))
         );
-        let password = relay_proto::auth::generate_password(self.server.auth_secret(), &username);
+        let password =
+            relay_server_proto::auth::generate_password(self.server.auth_secret(), &username);
 
         BTreeSet::from([(
             RelayId::from_u128(6),

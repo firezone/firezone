@@ -14,6 +14,7 @@ auto_install = false
 # `matching_regex` skips the npm tarballs the release also carries, so every
 # platform gets the bare binary; `bin` gives it a name the shim can use.
 "github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
+"aqua:sigstore/cosign" = { version = "3.1.4", os = ["linux"] }
 
 [tools."github:bencherdev/bencher"]
 version = "0.6.13"
@@ -39,17 +40,6 @@ run = "rustup toolchain install nightly-2026-10-17 --profile minimal --component
 # =============================================================================
 # Individual checks (matching CI)
 # =============================================================================
-
-[tasks.workspace-crates]
-description = "List the name and directory of every crate in the workspace, as JSON"
-shell = "bash -c"
-hide = true
-run = '''
-set -euo pipefail
-
-cargo metadata --format-version=1 --no-deps |
-  jq -ce '[.packages[] | {name, dir: (.manifest_path | sub("/Cargo.toml$"; "") + "/")}]'
-'''
 
 [tasks.mobile-test-packages]
 description = "Print `-p` flags for `client-ffi` and every workspace crate it depends on for the given target"
@@ -85,10 +75,6 @@ run = "cargo clippy --all-targets --all-features"
 [tasks.doc]
 description = "Build documentation (CI check)"
 run = "cargo doc --all-features --no-deps --document-private-items"
-
-[tasks.shear]
-description = "Check for unused dependencies (CI check)"
-run = "cargo shear"
 
 [tasks.deny]
 description = "Check licenses and security advisories (CI check)"
@@ -140,14 +126,12 @@ echo "Done: perf-client.data${gateway:+ perf-gateway.data} perf-sched.data perf-
 """
 
 [tasks.setup-perf-env]
-description = "Apply the kernel sysctls for connlib perf benchmarking (larger socket + backlog buffers)."
+description = "Apply the kernel sysctls for connlib perf benchmarking (larger backlog buffers)."
 raw = true
 run = """
 set -u
 
 echo "Applying kernel sysctls ..."
-sudo sysctl -w net.core.wmem_max=2097152          # 2 MB, caps connlib's UDP sndbuf
-sudo sysctl -w net.core.rmem_max=16777216         # 16 MB, caps connlib's UDP rcvbuf = the RcvbufErr we measure
 sudo sysctl -w net.core.netdev_max_backlog=100000 # matches the netem limit
 sudo sysctl -w net.core.netdev_budget=5000        # drain more per softirq poll
 
@@ -185,7 +169,3 @@ echo "  grep MHz /proc/cpuinfo | sort -u"
 [tasks.check]
 description = "Run all CI static analysis checks"
 depends = ["fmt-check", "clippy", "doc", "deny"]
-
-[tasks.check-all]
-description = "Run all CI static analysis checks including unused dependencies"
-depends = ["fmt-check", "clippy", "doc", "shear", "deny"]

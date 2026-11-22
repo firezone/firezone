@@ -13,7 +13,7 @@ tracing = { workspace = true }
 tun = { workspace = true }
 
 [dev-dependencies]
-ingot = { workspace = true }
+ingot = { workspace = true, features = ["alloc"] }
 
 [lints]
 workspace = true

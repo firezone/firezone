@@ -19,6 +19,7 @@ defmodule Portal.Repo.Seeds do
     Defender,
     ExternalIdentity,
     Device,
+    DeviceActor,
     FlowLog,
     PolicyAuthorization,
     Google,
@@ -36,7 +37,6 @@ defmodule Portal.Repo.Seeds do
     SessionLog,
     Sophos,
     Site,
-    ClientToken,
     Userpass,
     X509
   }
@@ -170,22 +170,39 @@ defmodule Portal.Repo.Seeds do
       for d <- 1..@load_devices_per_actor do
         n = index * @load_devices_per_actor + d
 
-        %{
-          account_id: account.id,
-          actor_id: actor.id,
-          type: :client,
-          name: "Load device #{n}",
-          firezone_id: "load-device-#{n}",
-          slug: "load-device-#{n}",
-          ipv4: {100, 80 + div(n, 65_536), rem(div(n, 256), 256), rem(n, 256)},
-          ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x18 + div(n, 65_536), rem(n, 65_536)},
-          inserted_at: now,
-          updated_at: now
-        }
+        {actor.id,
+         %{
+           id: Ecto.UUID.generate(),
+           account_id: account.id,
+           type: :client,
+           name: "Load device #{n}",
+           firezone_id: "load-device-#{n}",
+           slug: "load-device-#{n}",
+           ipv4: {100, 80 + div(n, 65_536), rem(div(n, 256), 256), rem(n, 256)},
+           ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x18 + div(n, 65_536), rem(n, 65_536)},
+           inserted_at: now,
+           updated_at: now
+         }}
       end
     end)
     |> Enum.chunk_every(5_000)
-    |> Enum.each(&Repo.insert_all(Device, &1))
+    |> Enum.each(fn devices ->
+      Repo.insert_all(Device, Enum.map(devices, &elem(&1, 1)), timeout: :infinity)
+
+      Repo.insert_all(
+        DeviceActor,
+        Enum.map(devices, fn {actor_id, device} ->
+          %{
+            account_id: account.id,
+            device_id: device.id,
+            actor_id: actor_id,
+            first_seen_at: now,
+            last_seen_at: now
+          }
+        end),
+        timeout: :infinity
+      )
+    end)
 
     {:ok, all_devices} =
       create_resource(
@@ -279,7 +296,7 @@ defmodule Portal.Repo.Seeds do
     # Find the latest gateway token for the site
     gateway_token =
       Repo.one!(
-        from(t in Portal.GatewayToken,
+        from(t in Portal.DeviceToken,
           where: t.site_id == ^site_id and t.account_id == ^site.account_id,
           order_by: [desc: t.inserted_at],
           limit: 1
@@ -300,7 +317,7 @@ defmodule Portal.Repo.Seeds do
         last_seen_remote_ip_location_lon: location_lon,
         last_seen_version: version,
         last_seen_at: DateTime.utc_now(),
-        gateway_token_id: gateway_token.id
+        token_id: gateway_token.id
       )
       |> Repo.update!()
 
@@ -308,7 +325,7 @@ defmodule Portal.Repo.Seeds do
   end
 
   # Helper function to create client directly without context module
-  defp create_client(attrs, subject, client_token_id, user_agent) do
+  defp create_client(attrs, subject, token_id, user_agent) do
     # Extract version from user agent (e.g., "macOS/14.6 apple-client/1.4.1" -> "1.4.1")
     version =
       user_agent |> String.split("/") |> List.last() |> String.split(" ") |> List.first()
@@ -334,7 +351,6 @@ defmodule Portal.Repo.Seeds do
       )
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, subject.account.id)
-      |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
       |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
       |> Device.changeset()
       |> Safe.unscoped()
@@ -361,11 +377,23 @@ defmodule Portal.Repo.Seeds do
         last_seen_remote_ip_location_lon: location_lon,
         last_seen_version: version,
         last_seen_at: DateTime.utc_now(),
-        client_token_id: client_token_id
+        token_id: token_id
       )
       |> Repo.update!()
 
+    insert_device_actor(client, subject.actor.id, client.last_seen_at)
+
     {:ok, client}
+  end
+
+  defp insert_device_actor(device, actor_id, seen_at) do
+    Repo.insert!(%DeviceActor{
+      account_id: device.account_id,
+      device_id: device.id,
+      actor_id: actor_id,
+      first_seen_at: seen_at,
+      last_seen_at: seen_at
+    })
   end
 
   defp create_seed_policy_authorization(
@@ -697,7 +725,7 @@ defmodule Portal.Repo.Seeds do
        resource_row(name: "Old staging DB", address: "10.0.0.55"), nil},
       {60 * 5, admin_subj, "policies", :update, policy_b, policy_b_updated},
       {60 * 6, admin_subj, "sites", :insert, nil, site_row(name: "us-east-2")},
-      {60 * 8, admin_subj, "gateway_tokens", :insert, nil,
+      {60 * 8, admin_subj, "device_tokens", :insert, nil,
        gateway_token_row(name: "us-east-2 provisioning")},
       {60 * 12, admin_subj, "api_tokens", :insert, nil,
        api_token_row(name: "terraform-ci")},
@@ -2517,7 +2545,6 @@ defmodule Portal.Repo.Seeds do
       )
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, account.id)
-      |> Ecto.Changeset.put_change(:actor_id, member.person.actor.id)
       |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(member.person.actor))
       |> Device.changeset()
       |> Safe.unscoped()
@@ -2558,6 +2585,7 @@ defmodule Portal.Repo.Seeds do
       ] ++ attested
     )
     |> Repo.update!()
+    |> tap(&insert_device_actor(&1, member.person.actor.id, member.last_active_at))
   end
 
   defp fleet_user_agent(member) do
@@ -2855,12 +2883,18 @@ defmodule Portal.Repo.Seeds do
     unprivileged_actor_email = "firezone-unprivileged-1@localhost.local"
     admin_actor_email = "firezone@localhost.local"
 
+    # The password is set on insert. A later password change makes the
+    # Changes consumer delete the actor's client tokens, including the ones
+    # created below.
+    password_hash = Crypto.hash(:argon2, "Firezone1234")
+
     {:ok, unprivileged_actor} =
       %Actor{
         account_id: account.id,
         type: :account_user,
         name: "Firezone Unprivileged",
         email: unprivileged_actor_email,
+        password_hash: password_hash,
         allow_email_otp_sign_in: true
       }
       |> Repo.insert()
@@ -2888,6 +2922,7 @@ defmodule Portal.Repo.Seeds do
         type: :account_admin_user,
         name: "Firezone Admin",
         email: admin_actor_email,
+        password_hash: password_hash,
         allow_email_otp_sign_in: true
       })
 
@@ -2905,19 +2940,6 @@ defmodule Portal.Repo.Seeds do
         type: :service_account,
         name: "CI Pool Member Actor"
       })
-
-    # Set password on actors (no identity needed for userpass/email)
-    password_hash = Crypto.hash(:argon2, "Firezone1234")
-
-    unprivileged_actor =
-      unprivileged_actor
-      |> Ecto.Changeset.change(password_hash: password_hash)
-      |> Repo.update!()
-
-    admin_actor =
-      admin_actor
-      |> Ecto.Changeset.change(password_hash: password_hash)
-      |> Repo.update!()
 
     # Create separate OIDC identity (different issuer)
     {:ok, _admin_actor_oidc_identity} =
@@ -2970,7 +2992,7 @@ defmodule Portal.Repo.Seeds do
       }
 
       {:ok, token} =
-        Repo.insert(%ClientToken{
+        Repo.insert(%Portal.DeviceToken{
           auth_provider_id: userpass_provider.id,
           account_id: account.id,
           actor_id: identity.actor_id,
@@ -3015,7 +3037,6 @@ defmodule Portal.Repo.Seeds do
           )
           |> Ecto.Changeset.put_change(:type, :client)
           |> Ecto.Changeset.put_change(:account_id, subject.account.id)
-          |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
           |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
           |> Device.changeset()
           |> Safe.unscoped()
@@ -3041,9 +3062,10 @@ defmodule Portal.Repo.Seeds do
           last_seen_remote_ip_location_lon: location_lon,
           last_seen_version: version,
           last_seen_at: DateTime.utc_now(),
-          client_token_id: token.id
+          token_id: token.id
         )
         |> Repo.update!()
+        |> insert_device_actor(subject.actor.id, DateTime.utc_now())
       end
     end
 
@@ -3051,34 +3073,23 @@ defmodule Portal.Repo.Seeds do
     other_unprivileged_actor_email = "other-unprivileged-1@localhost.local"
     other_admin_actor_email = "other@localhost.local"
 
-    {:ok, other_unprivileged_actor} =
+    {:ok, _other_unprivileged_actor} =
       Repo.insert(%Actor{
         account_id: other_account.id,
         type: :account_user,
         name: "Other Unprivileged",
-        email: other_unprivileged_actor_email
+        email: other_unprivileged_actor_email,
+        password_hash: password_hash
       })
 
-    {:ok, other_admin_actor} =
+    {:ok, _other_admin_actor} =
       Repo.insert(%Actor{
         account_id: other_account.id,
         type: :account_admin_user,
         name: "Other Admin",
-        email: other_admin_actor_email
+        email: other_admin_actor_email,
+        password_hash: password_hash
       })
-
-    # Set password on other_account actors (no identity needed for userpass/email)
-    password_hash = Crypto.hash(:argon2, "Firezone1234")
-
-    _other_unprivileged_actor =
-      other_unprivileged_actor
-      |> Ecto.Changeset.change(password_hash: password_hash)
-      |> Repo.update!()
-
-    _other_admin_actor =
-      other_admin_actor
-      |> Ecto.Changeset.change(password_hash: password_hash)
-      |> Repo.update!()
 
     {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
 
@@ -3094,7 +3105,7 @@ defmodule Portal.Repo.Seeds do
 
     # Create client token for unprivileged actor so policy authorizations can reference it
     {:ok, unprivileged_client_token} =
-      Repo.insert(%ClientToken{
+      Repo.insert(%Portal.DeviceToken{
         auth_provider_id: userpass_provider.id,
         account_id: account.id,
         actor_id: unprivileged_actor.id,
@@ -3107,7 +3118,7 @@ defmodule Portal.Repo.Seeds do
 
     # Create client token for admin actor so we can create client sessions
     {:ok, admin_client_token} =
-      Repo.insert(%ClientToken{
+      Repo.insert(%Portal.DeviceToken{
         auth_provider_id: userpass_provider.id,
         account_id: account.id,
         actor_id: admin_actor.id,
@@ -3151,7 +3162,7 @@ defmodule Portal.Repo.Seeds do
     }
 
     primary_client_token =
-      %ClientToken{
+      %Portal.DeviceToken{
         id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
         account_id: primary_client_actor.account_id,
         actor_id: primary_client_actor.id,
@@ -3162,7 +3173,7 @@ defmodule Portal.Repo.Seeds do
       |> Repo.insert!()
 
     pool_member_token =
-      %ClientToken{
+      %Portal.DeviceToken{
         id: "fe2bf22d-0986-433a-85ed-a8f37c90a34b",
         account_id: pool_member_actor.account_id,
         actor_id: pool_member_actor.id,
@@ -3580,33 +3591,23 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Repo.insert!()
 
+    legacy_gateway_actor =
+      %Portal.Actor{account_id: site.account_id, type: :legacy_gateway, name: "Legacy Gateway"}
+      |> Ecto.Changeset.change()
+      |> Portal.Actor.changeset()
+      |> Repo.insert!()
+
     # Create gateway token with static values
     gateway_token =
-      %Portal.GatewayToken{
+      %Portal.DeviceToken{
         id: "2274560b-e97b-45e4-8b34-679c7617e98d",
         account_id: site.account_id,
+        actor_id: legacy_gateway_actor.id,
         site_id: site.id,
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
       }
       |> Repo.insert!()
-
-    # The copy the app writes beside every gateway token.
-    legacy_gateway_actor =
-      %Portal.Actor{account_id: gateway_token.account_id, type: :legacy_gateway, name: "Legacy Gateway"}
-      |> Ecto.Changeset.change()
-      |> Portal.Actor.changeset()
-      |> Repo.insert!()
-
-    Repo.insert!(%Portal.DeviceToken{
-      account_id: gateway_token.account_id,
-      id: gateway_token.id,
-      actor_id: legacy_gateway_actor.id,
-      site_id: gateway_token.site_id,
-      secret_salt: gateway_token.secret_salt,
-      secret_hash: gateway_token.secret_hash,
-      inserted_at: gateway_token.inserted_at
-    })
 
     gateway_encoded_token = Authentication.encode_fragment!(gateway_token)
 

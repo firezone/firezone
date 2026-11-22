@@ -216,8 +216,8 @@ pub(crate) fn check_log_filter(log_filter: &str) -> Result<(), String> {
 
 /// Asks where to save the exported logs, [`None`] if the user cancels.
 pub(crate) async fn pick_log_export() -> Option<ControllerRequest> {
-    let now = chrono::Local::now();
-    let datetime_string = now.format("%Y_%m_%d-%H-%M");
+    let now = jiff::Zoned::now();
+    let datetime_string = now.strftime("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
     let filename = stem.with_extension("zip");
 

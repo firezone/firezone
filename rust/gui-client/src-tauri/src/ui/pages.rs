@@ -1,12 +1,14 @@
 mod about;
 mod color_palette;
+mod developer_settings;
 mod device_trust;
 mod diagnostics;
 mod general_settings;
 mod overview;
 
-pub(crate) use about::about;
+pub(crate) use about::About;
 pub(crate) use color_palette::color_palette;
+pub(crate) use developer_settings::developer_settings;
 pub(crate) use device_trust::device_trust;
 pub(crate) use diagnostics::Diagnostics;
 pub(crate) use general_settings::GeneralSettings;

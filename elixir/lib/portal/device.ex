@@ -24,15 +24,14 @@ defmodule Portal.Device do
     last_seen_version
     last_seen_at
     last_attested_at
-    client_token_id
-    gateway_token_id
+    token_id
   ]a
 
   @latest_session_columns Enum.map(@latest_session_fields, &Atom.to_string/1)
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
-          type: :client | :gateway,
+          type: :client | :gateway | nil,
           # nil for pre-created gateways until they first connect and report one
           firezone_id: String.t() | nil,
           name: String.t(),
@@ -41,7 +40,9 @@ defmodule Portal.Device do
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
+          proto_range: Portal.Version.proto_range() | nil,
           attested?: boolean(),
+          attested_until: DateTime.t() | nil,
           firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
           last_seen_user_agent: String.t() | nil,
@@ -52,8 +53,7 @@ defmodule Portal.Device do
           last_seen_remote_ip_location_lon: float() | nil,
           last_seen_version: String.t() | nil,
           last_seen_at: DateTime.t() | nil,
-          client_token_id: Ecto.UUID.t() | nil,
-          gateway_token_id: Ecto.UUID.t() | nil,
+          token_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t() | nil,
           device_serial: String.t() | nil,
@@ -77,6 +77,8 @@ defmodule Portal.Device do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
+    # Legacy: a client or gateway record from a binary older than 1.7. A device that a 1.7 or
+    # later binary enrolled has no type.
     field :type, Ecto.Enum, values: [:client, :gateway]
 
     field :firezone_id, :string
@@ -96,7 +98,10 @@ defmodule Portal.Device do
     field :firebase_installation_id, :string
 
     # Client-only
-    belongs_to :actor, Portal.Actor
+    # Who uses a device is in device_actors. A connection sets these to the
+    # actor of its token, and pages set them to the most recent user.
+    field :actor_id, :binary_id, virtual: true
+    field :actor, :any, virtual: true
     field :hostname, :string
 
     # Device trust. Enforced client-only today, but gateways may adopt
@@ -122,10 +127,6 @@ defmodule Portal.Device do
     has_one :site_device, Portal.SiteDevice, foreign_key: :device_id, references: :id
     has_one :site, through: [:site_device, :site]
 
-    has_many :gateway_tokens, Portal.GatewayToken,
-      foreign_key: :device_id,
-      references: :id
-
     # Latest-session fields, written by the connect flush. The flush probes
     # the token columns' referents and fails entries whose token was deleted;
     # the FKs nilify on token delete so the columns never dangle.
@@ -138,19 +139,22 @@ defmodule Portal.Device do
     field :last_seen_remote_ip_location_lon, :float
     field :last_seen_version, :string
     field :last_seen_at, :utc_datetime_usec
-    field :client_token_id, :binary_id
-    field :gateway_token_id, :binary_id
+    field :token_id, :binary_id
 
     # Virtual fields
     # The token minted with a Gateway, carried only on the provisioning response.
     field :provisioned_token, :any, virtual: true
     field :online?, :boolean, virtual: true, default: false
+    field :proto_range, :map, virtual: true
 
     # Whether THIS connection proved possession of an MDM-issued certificate.
     # Live connection state, unlike last_attested_at, which is the row's
     # point-in-time history. Policy conditions read this, so it must describe
     # the session being evaluated and never the device's past.
     field :attested?, :boolean, virtual: true, default: false
+
+    # When the certificate that attested THIS connection expires.
+    field :attested_until, :utc_datetime_usec, virtual: true
 
     # Posture provider rows matched to this device, by provider type. Live
     # connection state loaded at connect, read by policy postures.
@@ -184,11 +188,11 @@ defmodule Portal.Device do
     |> validate_length(:firezone_id, max: 255)
     |> validate_length(:hostname, min: 3, max: 255)
     |> assoc_constraint(:account)
-    |> assoc_constraint(:actor)
-    |> validate_type_fields()
+    |> validate_identifiers()
+    |> validate_type_rules()
     |> check_constraint(:type, name: :devices_type_check)
-    |> check_constraint(:actor_id, name: :device_type_client_fields)
-    |> unique_firezone_id_constraint()
+    |> unique_constraint(:firezone_id, name: :devices_account_id_client_firezone_id_index)
+    |> unique_constraint(:firezone_id, name: :devices_account_id_firezone_id_index)
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)
@@ -221,6 +225,9 @@ defmodule Portal.Device do
     (or NULL) for the seconds between connect and flush. Taking the broadcast
     struct wholesale would drop this connection's public key, silently breaking
     every payload derived from it.
+
+    `actor_id` is preserved too: a connection acts as the actor of its token,
+    whatever actor the row last recorded.
   """
   def merge_broadcast(%__MODULE__{id: id} = current, %__MODULE__{id: id} = broadcast) do
     Portal.SchemaHelpers.merge_broadcast(current, broadcast, @latest_session_fields)
@@ -231,39 +238,34 @@ defmodule Portal.Device do
 
   def latest_session_columns, do: @latest_session_columns
 
-  defp validate_type_fields(changeset) do
+  defp validate_identifiers(changeset) do
+    changeset
+    |> validate_length(:device_serial, max: 255)
+    |> validate_length(:device_uuid, max: 255)
+    |> validate_length(:identifier_for_vendor, max: 255)
+    |> validate_length(:firebase_installation_id, max: 255)
+    |> validate_length(:last_attested_device_serial, max: 255)
+    |> validate_length(:last_attested_device_uuid, max: 255)
+    |> validate_length(:last_attested_mdm_device_id, max: 255)
+    |> validate_length(:last_attested_cert_serial, max: 255)
+    |> validate_length(:last_attested_cert_fingerprint, max: 255)
+    # Bounded so an absurd distinguished name cannot push the index row it
+    # shares with the certificate serial past what a btree entry holds.
+    |> validate_length(:last_attested_cert_issuer, max: 1024, count: :bytes)
+    |> unique_constraint(:last_attested_mdm_device_id,
+      name: :devices_account_id_last_attested_mdm_device_id_index
+    )
+    |> unique_constraint(:last_attested_cert_serial,
+      name: :devices_account_id_cert_issuer_serial_index
+    )
+  end
+
+  # Rules of the legacy device types; they go with the type column.
+  defp validate_type_rules(changeset) do
     case get_field(changeset, :type) do
-      :client ->
-        changeset
-        |> validate_required([:actor_id])
-        |> validate_client_firezone_id()
-        |> validate_length(:device_serial, max: 255)
-        |> validate_length(:device_uuid, max: 255)
-        |> validate_length(:identifier_for_vendor, max: 255)
-        |> validate_length(:firebase_installation_id, max: 255)
-        |> validate_length(:last_attested_device_serial, max: 255)
-        |> validate_length(:last_attested_device_uuid, max: 255)
-        |> validate_length(:last_attested_mdm_device_id, max: 255)
-        |> validate_length(:last_attested_cert_serial, max: 255)
-        |> validate_length(:last_attested_cert_fingerprint, max: 255)
-        # Bounded so an absurd distinguished name cannot push the index row it
-        # shares with the certificate serial past what a btree entry holds.
-        |> validate_length(:last_attested_cert_issuer, max: 1024, count: :bytes)
-        |> unique_constraint(:last_attested_mdm_device_id,
-          name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
-        )
-        |> unique_constraint(:last_attested_cert_serial,
-          name: :devices_account_id_cert_issuer_serial_actor_id_index
-        )
-
-      :gateway ->
-        changeset
-        |> validate_length(:device_serial, max: 255)
-        |> validate_length(:device_uuid, max: 255)
-        |> validate_gateway_verification()
-
-      _ ->
-        changeset
+      :client -> validate_client_firezone_id(changeset)
+      :gateway -> validate_gateway_verification(changeset)
+      _ -> changeset
     end
   end
 
@@ -298,18 +300,6 @@ defmodule Portal.Device do
       "" -> nil
       hostname -> hostname
     end)
-  end
-
-  defp unique_firezone_id_constraint(changeset) do
-    case get_field(changeset, :type) do
-      :client ->
-        unique_constraint(changeset, :firezone_id,
-          name: :devices_account_id_actor_id_firezone_id_index
-        )
-
-      _ ->
-        changeset
-    end
   end
 
   # Gateway device helpers

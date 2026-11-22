@@ -10,13 +10,15 @@ test = [] # APIs only exposed for testing.
 
 [dependencies]
 anyhow = { workspace = true }
-known-dirs = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "net", "rt", "time"] }
 tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+known-dirs = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = { workspace = true }

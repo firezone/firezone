@@ -37,8 +37,7 @@ async fn no_packet_loops_udp() {
     let socket = factory
         .bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)))
         .unwrap()
-        .into_perf()
-        .unwrap();
+        .into_perf();
 
     // Send a STUN request.
     let packet = bufferpool::Bytes::copied_from(

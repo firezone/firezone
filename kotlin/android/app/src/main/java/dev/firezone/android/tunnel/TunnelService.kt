@@ -132,10 +132,14 @@ class TunnelService : VpnService() {
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
 
+    // Not persisted, so it lasts as long as this service and is re-applied to every session it opens.
+    private val _forceRelayedConnections = MutableStateFlow(false)
+
     // A `StateFlow` replays its current value to every new collector, so a newly bound session screen catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
+    val forceRelayedConnections: StateFlow<Boolean> = _forceRelayedConnections.asStateFlow()
 
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
@@ -398,8 +402,13 @@ class TunnelService : VpnService() {
         sendTunnelCommand(TunnelCommand.SetDns(dnsList))
     }
 
-    fun reset() {
-        sendTunnelCommand(TunnelCommand.Reset)
+    fun reset(reason: String) {
+        sendTunnelCommand(TunnelCommand.Reset(reason))
+    }
+
+    fun setForceRelayedConnections(enabled: Boolean) {
+        _forceRelayedConnections.value = enabled
+        sendTunnelCommand(TunnelCommand.SetForceRelayedConnections(enabled))
     }
 
     private fun connect() {
@@ -481,6 +490,9 @@ class TunnelService : VpnService() {
                                 // the device, and the portal decides whether to accept it.
                                 tlsIdentity = certificate?.tlsIdentity,
                             ).use { (session, events) ->
+                                if (_forceRelayedConnections.value) {
+                                    session.setForceRelayedConnections(true)
+                                }
                                 startNetworkMonitoring()
                                 startLogCleanup()
                                 startFeatureFlagPoll()
@@ -682,7 +694,13 @@ class TunnelService : VpnService() {
             val fd: Int,
         ) : TunnelCommand()
 
-        data object Reset : TunnelCommand()
+        data class Reset(
+            val reason: String,
+        ) : TunnelCommand()
+
+        data class SetForceRelayedConnections(
+            val enabled: Boolean,
+        ) : TunnelCommand()
     }
 
     sealed class StopReason {
@@ -771,7 +789,11 @@ class TunnelService : VpnService() {
                             }
 
                             is TunnelCommand.Reset -> {
-                                session.reset("roam")
+                                session.reset(command.reason)
+                            }
+
+                            is TunnelCommand.SetForceRelayedConnections -> {
+                                session.setForceRelayedConnections(command.enabled)
                             }
                         }
                     }

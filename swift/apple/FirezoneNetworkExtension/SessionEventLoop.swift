@@ -8,6 +8,7 @@ enum SessionCommand {
   case setAdditionalHostCandidates([String])
   case setDns([String])
   case reset(String)
+  case setForceRelayedConnections(Bool)
 }
 
 /// Hands a session to exactly one owner.
@@ -94,6 +95,9 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
 
     case .reset(let reason):
       session.reset(reason: reason)
+
+    case .setForceRelayedConnections(let enabled):
+      session.setForceRelayedConnections(enabled: enabled)
     }
   }
 

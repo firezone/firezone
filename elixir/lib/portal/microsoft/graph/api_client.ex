@@ -293,6 +293,32 @@ defmodule Portal.Microsoft.Graph.APIClient do
   end
 
   @doc """
+  Sends up to 20 GET requests in one JSON batch. Returns each path's response
+  as `%{path => %{"status" => status, "body" => body}}`. Graph base64-encodes
+  a body that is not JSON, such as a photo.
+  """
+  def batch_get(access_token, paths) when is_list(paths) and length(paths) <= 20 do
+    indexed = Enum.with_index(paths, 1)
+    requests = Enum.map(indexed, fn {path, index} -> %{id: Integer.to_string(index), method: "GET", url: path} end)
+
+    case Req.post(
+           "#{endpoint()}/v1.0/$batch",
+           [headers: [{"Authorization", "Bearer #{access_token}"}], json: %{requests: requests}] ++
+             req_opts()
+         ) do
+      {:ok, %Req.Response{status: 200, body: %{"responses" => responses}}} ->
+        by_id = Map.new(responses, &{&1["id"], &1})
+        {:ok, Map.new(indexed, fn {path, index} -> {path, Map.get(by_id, Integer.to_string(index), %{})} end)}
+
+      {:ok, %Req.Response{} = response} ->
+        {:error, {:batch_request_failed, response.status, response.body}}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc """
   Fetches users from Microsoft Graph API with a limit of 1.
   This is used to verify the Directory.Read.All permission is granted and working.
   """

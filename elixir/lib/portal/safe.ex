@@ -342,6 +342,16 @@ defmodule Portal.Safe do
   end
 
   @doc """
+  A stream over a raw SQL statement, for `COPY ... TO STDOUT` (enumerate it)
+  and `COPY ... FROM STDIN` (collect into it). Must run inside `transact/2`.
+  """
+  @spec sql_stream(Unscoped.t(), String.t(), list()) :: Enum.t()
+  # sobelow_skip ["SQL.Stream"]
+  def sql_stream(%Unscoped{repo: repo}, sql, params) when is_binary(sql) and is_list(params) do
+    Ecto.Adapters.SQL.stream(repo, sql, params)
+  end
+
+  @doc """
   Runs a function inside a database transaction without subject scoping.
 
   The function must return `{:ok, value}` or `{:error, reason}`; an error
@@ -864,7 +874,16 @@ defmodule Portal.Safe do
   end
 
   # Ahead of the wildcard grants below, so this type gets nothing it is not
-  # given here.
+  # given here: a Gateway reads its Site and registers, updates and moves itself.
+  def permit(:read, Portal.Site, :legacy_gateway), do: :ok
+
+  def permit(action, Portal.Device, :legacy_gateway) when action in [:read, :insert, :update],
+    do: :ok
+
+  # A gateway connecting with another site's token moves there.
+  def permit(:update_all, Portal.SiteDevice, :legacy_gateway), do: :ok
+  def permit(:delete_all, Portal.PolicyAuthorization, :legacy_gateway), do: :ok
+
   def permit(_action, _schema, :legacy_gateway), do: {:error, :unauthorized}
 
   # Account permissions
@@ -882,8 +901,6 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Group, :account_user), do: :ok
   def permit(_action, Portal.ExternalIdentity, :account_admin_user), do: :ok
   def permit(_action, Portal.ExternalIdentity, :api_client), do: :ok
-  def permit(_action, Portal.ClientToken, :account_admin_user), do: :ok
-  def permit(_action, Portal.ClientToken, :api_client), do: :ok
   def permit(_action, Portal.APIToken, :account_admin_user), do: :ok
 
   # OAuth grants and codes are created by a person going through the browser
@@ -891,6 +908,7 @@ defmodule Portal.Safe do
   def permit(_action, Portal.OAuthGrant, :account_admin_user), do: :ok
   def permit(_action, Portal.OAuthAuthorizationCode, :account_admin_user), do: :ok
   def permit(:read, Portal.OAuthToken, :account_admin_user), do: :ok
+  def permit(:delete_all, Portal.OAuthToken, :account_admin_user), do: :ok
   def permit(_action, Portal.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Directory, :api_client), do: :ok
   def permit(_action, Portal.AuthProvider, :account_admin_user), do: :ok
@@ -964,6 +982,8 @@ defmodule Portal.Safe do
   # Device permissions (union of Client + Gateway); non-admin actors can
   # insert because clients create their own device row at first connect
   def permit(_action, Portal.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.DeviceActor, :account_admin_user), do: :ok
+  def permit(:read, Portal.DeviceActor, :api_client), do: :ok
   def permit(_action, Portal.Device, :api_client), do: :ok
   def permit(:read, Portal.Device, :account_user), do: :ok
   def permit(:insert, Portal.Device, :account_user), do: :ok
@@ -978,12 +998,13 @@ defmodule Portal.Safe do
 
   # Site permissions
   def permit(_action, Portal.Site, :account_admin_user), do: :ok
+  def permit(_action, Portal.SiteDevice, :account_admin_user), do: :ok
   def permit(_action, Portal.Site, :api_client), do: :ok
   def permit(:read, Portal.Site, _), do: :ok
 
-  # GatewayToken permissions
-  def permit(_action, Portal.GatewayToken, :account_admin_user), do: :ok
-  def permit(_action, Portal.GatewayToken, :api_client), do: :ok
+  # DeviceToken permissions
+  def permit(_action, Portal.DeviceToken, :account_admin_user), do: :ok
+  def permit(_action, Portal.DeviceToken, :api_client), do: :ok
 
   # Resource permissions
   def permit(_action, Portal.Resource, :account_admin_user), do: :ok

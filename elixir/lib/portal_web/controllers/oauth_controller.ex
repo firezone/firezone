@@ -29,8 +29,7 @@ defmodule PortalWeb.OAuthController do
   def start(conn, params) do
     # Resolved before sign-in on purpose. A bad client or redirect URI is the
     # caller's mistake, so saying so now beats making someone authenticate
-    # first. It also caches the client's metadata, which is what lets sign-in
-    # name the app it is being asked to connect.
+    # first. Nothing is cached until the signed-in consent screen.
     case OAuth.validate_client(params) do
       {:ok, client, _redirect_uri} -> choose_account(conn, params, client)
       {:error, error, description} -> render_error(conn, error, description)
@@ -83,7 +82,9 @@ defmodule PortalWeb.OAuthController do
     # sign-in page the person never asked for.
     case PortalWeb.Accounts.get_by_id_or_slug(slug) do
       %Portal.Account{} = account ->
-        redirect(conn, to: ~p"/#{account}/oauth/authorize?#{Map.take(params, @authorize_params)}")
+        conn
+        |> PortalWeb.Cookie.OAuthClient.put(client)
+        |> redirect(to: ~p"/#{account}/oauth/authorize?#{Map.take(params, @authorize_params)}")
 
       nil ->
         render_chooser(conn, params, client, "No account found for \"#{slug}\".")
@@ -97,7 +98,11 @@ defmodule PortalWeb.OAuthController do
       PortalWeb.Cookie.RecentAccounts.fetch(conn)
 
     case Database.get_accounts_by_ids(account_ids) do
-      [account] -> redirect(conn, to: ~p"/#{account}/oauth/authorize?#{query}")
+      [account] ->
+        conn
+        |> PortalWeb.Cookie.OAuthClient.put(client)
+        |> redirect(to: ~p"/#{account}/oauth/authorize?#{query}")
+
       accounts -> render_chooser(conn, params, client, nil, accounts)
     end
   end

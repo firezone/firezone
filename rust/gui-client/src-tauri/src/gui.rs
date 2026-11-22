@@ -9,8 +9,8 @@ use crate::{
     launch_lock::{self, FirstInstance, LaunchLock},
     logging::FileCount,
     settings::{
-        self, AdvancedSettings, GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel,
-        MdmSettings, SignInSettings,
+        self, AdvancedSettings, DeveloperSettings, DeveloperSettingsViewModel, GeneralSettings,
+        GeneralSettingsViewModel, LogFilterViewModel, MdmSettings, SignInSettings,
     },
     ui::{self, Page, Ui, ViewModel},
     updates,
@@ -151,6 +151,16 @@ impl GuiIntegration for FreyaIntegration {
         Ok(())
     }
 
+    fn notify_developer_settings_changed(
+        &self,
+        settings: DeveloperSettingsViewModel,
+    ) -> Result<()> {
+        self.gui
+            .update(move |view_model| view_model.developer_settings = Some(settings));
+
+        Ok(())
+    }
+
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
         let file_count = file_count.clone();
         self.gui
@@ -255,6 +265,12 @@ impl GuiIntegration for FreyaIntegration {
 
         Ok(())
     }
+
+    async fn save_developer_settings(&self, settings: DeveloperSettings) -> Result<()> {
+        settings::save_developer(settings).await?;
+
+        Ok(())
+    }
 }
 
 pub struct RunConfig {
@@ -294,6 +310,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
     };
 
     let general_settings = settings::load_general_settings().unwrap_or_default();
+    let developer_settings = settings::load_developer_settings().unwrap_or_default();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let tray_tx = ctlr_tx.clone();
@@ -324,9 +341,8 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         // The checker always runs; the controller enforces the `checkForUpdates`
         // MDM policy once it receives the authoritative settings over IPC.
         tokio::spawn(async move {
-            if let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await {
-                tracing::error!("Error in updates::checker_task: {error:#}");
-            }
+            let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await;
+            tracing::error!("Error in updates::checker_task: {error:#}");
         });
 
         if config.smoke_test {
@@ -404,6 +420,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
             integration,
             ctlr_rx,
             general_settings,
+            developer_settings,
             legacy_advanced_settings_path,
             reloader,
             config.telemetry_allowed,

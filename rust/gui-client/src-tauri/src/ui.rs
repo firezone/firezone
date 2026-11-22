@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use crate::{
     controller::ControllerRequest,
     logging::FileCount,
-    settings::{GeneralSettingsViewModel, LogFilterViewModel},
+    settings::{DeveloperSettingsViewModel, GeneralSettingsViewModel, LogFilterViewModel},
     view::{ClientSettingsForm, SessionViewModel, X509Certificate},
 };
 
@@ -41,6 +41,7 @@ pub(crate) struct ViewModel {
     pub(crate) log_filter: Option<LogFilterViewModel>,
     pub(crate) log_count: Option<FileCount>,
     pub(crate) certificate: Option<X509Certificate>,
+    pub(crate) developer_settings: Option<DeveloperSettingsViewModel>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +51,7 @@ pub(crate) enum Page {
     DeviceTrust,
     Diagnostics,
     About,
+    Developer,
     ColorPalette,
 }
 
@@ -65,7 +67,7 @@ pub(crate) struct Ui {
 }
 
 /// What the About page says the client was built from.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(crate) struct Build {
     pub(crate) version: &'static str,
     pub(crate) git_sha: &'static str,
@@ -148,6 +150,18 @@ impl Requests {
         None
     }
 
+    fn reset_connlib(&self) {
+        self.send(ControllerRequest::ResetConnlib);
+    }
+
+    fn set_developer_settings_unlocked(&self, unlocked: bool) {
+        self.send(ControllerRequest::SetDeveloperSettingsUnlocked(unlocked));
+    }
+
+    fn set_force_relayed_connections(&self, enabled: bool) {
+        self.send(ControllerRequest::SetForceRelayedConnections(enabled));
+    }
+
     fn clear_logs(&self) {
         let tx = self.tx.clone();
 
@@ -195,6 +209,9 @@ pub(crate) fn app() -> impl IntoElement {
 
     let p = pal();
     let view_model = ui.view_model.read().clone();
+    let developer_unlocked = view_model
+        .developer_settings
+        .is_some_and(|settings| settings.unlocked);
     let current = match *ui.page.read() {
         Page::Overview => Page::Overview,
         Page::Settings => Page::Settings,
@@ -202,6 +219,8 @@ pub(crate) fn app() -> impl IntoElement {
         Page::DeviceTrust => Page::DeviceTrust,
         Page::Diagnostics => Page::Diagnostics,
         Page::About => Page::About,
+        Page::Developer if !developer_unlocked => Page::About,
+        Page::Developer => Page::Developer,
         Page::ColorPalette if !cfg!(debug_assertions) => Page::Overview,
         Page::ColorPalette => Page::ColorPalette,
     };
@@ -211,6 +230,7 @@ pub(crate) fn app() -> impl IntoElement {
         Page::DeviceTrust => "Device Trust",
         Page::Diagnostics => "Diagnostics",
         Page::About => "About",
+        Page::Developer => "Developer",
         Page::ColorPalette => "Colour Palette",
     };
     let content = match current {
@@ -222,7 +242,11 @@ pub(crate) fn app() -> impl IntoElement {
             log_filter: view_model.log_filter,
         }
         .into_element(),
-        Page::About => pages::about(ui.build).into_element(),
+        Page::About => pages::About(ui.build).into_element(),
+        Page::Developer => {
+            pages::developer_settings(view_model.developer_settings.unwrap_or_default())
+                .into_element()
+        }
         Page::ColorPalette => pages::color_palette().into_element(),
     };
 
@@ -253,6 +277,7 @@ pub(crate) fn app() -> impl IntoElement {
                             ui.page,
                             current,
                             view_model.certificate.is_some(),
+                            developer_unlocked,
                         ))
                         .child(
                             rect()

@@ -752,6 +752,8 @@ defmodule PortalWeb.Resources.Components do
   attr :device_search_online_only, :boolean, default: false
   attr :device_search_recently_seen, :boolean, default: false
   attr :device_search_loading, :boolean, default: false
+  attr :unavailable, :map, default: %{}, doc: "Why a listed device cannot be picked, by device id"
+  attr :notes, :map, default: %{}, doc: "A warning shown on a listed device that can still be picked, by device id"
 
   def device_picker(assigns) do
     ~H"""
@@ -832,7 +834,11 @@ defmodule PortalWeb.Resources.Components do
             ]}
           >
             <li :for={device <- @device_search_results.devices} class="min-w-0">
-              <.device_chip device={device} />
+              <.device_chip
+                device={device}
+                unavailable={Map.get(@unavailable, device.id)}
+                note={Map.get(@notes, device.id)}
+              />
             </li>
           </ul>
           <div
@@ -939,18 +945,20 @@ defmodule PortalWeb.Resources.Components do
 
   attr :device, Portal.Device, required: true
   attr :selected, :boolean, default: false
+  attr :unavailable, :string, default: nil
+  attr :note, :string, default: nil
 
   defp device_chip(assigns) do
     ~H"""
-    <div class={[
-      "relative flex items-center gap-2 px-2.5 py-1.5 w-full rounded border transition-colors",
-      if(@selected,
-        do: "border-brand bg-brand-muted",
-        else: "border-border bg-raised hover:border-border-emphasis hover:bg-surface"
-      )
-    ]}>
+    <div
+      class={[
+        "relative flex items-center gap-2 px-2.5 py-1.5 w-full rounded border transition-colors",
+        device_chip_class(@selected, @unavailable)
+      ]}
+      aria-disabled={@unavailable && "true"}
+    >
       <button
-        :if={not @selected}
+        :if={not @selected and is_nil(@unavailable)}
         type="button"
         phx-click="add_device"
         phx-value-device_id={@device.id}
@@ -967,6 +975,12 @@ defmodule PortalWeb.Resources.Components do
         </p>
         <p :if={device_owner(@device)} class="text-[10px] text-subtle truncate">
           {device_owner(@device)}
+        </p>
+        <p :if={@unavailable} class="text-[10px] text-warning truncate" title={@unavailable}>
+          {@unavailable}
+        </p>
+        <p :if={@note && is_nil(@unavailable)} class="text-[10px] text-warning truncate" title={@note}>
+          {@note}
         </p>
       </div>
       <Core.popover class="relative z-10 shrink-0 flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading cursor-help transition-colors">
@@ -996,6 +1010,10 @@ defmodule PortalWeb.Resources.Components do
     </div>
     """
   end
+
+  defp device_chip_class(true, _unavailable), do: "border-brand bg-brand-muted"
+  defp device_chip_class(false, nil), do: "border-border bg-raised hover:border-border-emphasis hover:bg-surface"
+  defp device_chip_class(false, _unavailable), do: "border-border bg-raised opacity-60 cursor-not-allowed"
 
   defp device_owner(%{actor: %Portal.Actor{} = actor}), do: actor.email || actor.name
   defp device_owner(_device), do: nil
@@ -1562,7 +1580,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
                 >
-                  <Core.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
+                  <Core.icon name="ri-pause-circle-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
                 </button>
                 <button
                   :if={row.policy_is_disabled}
@@ -1571,7 +1589,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
                 >
-                  <Core.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
+                  <Core.icon name="ri-play-circle-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
                 </button>
                 <button
                   type="button"
@@ -2290,13 +2308,18 @@ defmodule PortalWeb.Resources.Components do
 
     def get_device(device_id, subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> where([devices: d], d.id == ^device_id)
-      |> preload(:actor)
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
-        %Device{} = device -> device |> List.wrap() |> Portal.Presence.Devices.preload_presence() |> hd()
+        %Device{} = device ->
+          device
+          |> List.wrap()
+          |> Portal.Devices.put_latest_actor(subject)
+          |> Portal.Presence.Devices.preload_presence()
+          |> hd()
+
         other -> other
       end
     end
@@ -2330,11 +2353,7 @@ defmodule PortalWeb.Resources.Components do
 
         query =
           from(d in Device, as: :devices)
-          |> where([devices: d], d.type == :client)
-          |> join(:inner, [devices: d], a in assoc(d, :actor),
-            on: a.account_id == d.account_id,
-            as: :actors
-          )
+          |> where(^Resource.DeviceMembershipCriteria.targets())
           |> where([devices: d], d.id not in ^Enum.map(selected_devices, & &1.id))
           |> filter_device_search(search_term)
           |> filter_online_only(online_only?, online_ids)
@@ -2393,10 +2412,8 @@ defmodule PortalWeb.Resources.Components do
         on: p.id == d.id and p.account_id == d.account_id,
         as: :page
       )
-      |> join(:inner, [devices: d], a in assoc(d, :actor), on: a.account_id == d.account_id, as: :actors)
       |> order_by([page: p], desc: p.online, desc_nulls_last: p.last_seen_at, asc: p.id)
       |> select([devices: d, page: p], {d, p.total})
-      |> preload([actors: a], actor: a)
       |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
@@ -2405,7 +2422,13 @@ defmodule PortalWeb.Resources.Components do
 
         rows ->
           {devices, totals} = Enum.unzip(rows)
-          {Enum.map(devices, &%{&1 | online?: &1.id in online_ids}), List.first(totals, 0)}
+
+          devices =
+            devices
+            |> Portal.Devices.put_latest_actor(subject)
+            |> Enum.map(&%{&1 | online?: &1.id in online_ids})
+
+          {devices, List.first(totals, 0)}
       end
     end
 
@@ -2443,10 +2466,18 @@ defmodule PortalWeb.Resources.Components do
 
     defp device_search_filter(pattern) do
       dynamic(
-        [devices: d, actors: a],
+        [devices: d],
         ilike(d.name, ^pattern) or
-          ilike(a.name, ^pattern) or
-          ilike(coalesce(a.email, ""), ^pattern) or
+          exists(
+            from(da in Portal.DeviceActor,
+              join: a in Portal.Actor,
+              on: a.account_id == da.account_id and a.id == da.actor_id,
+              where:
+                da.account_id == parent_as(:devices).account_id and
+                  da.device_id == parent_as(:devices).id and
+                  (ilike(a.name, ^pattern) or ilike(coalesce(a.email, ""), ^pattern))
+            )
+          ) or
           ilike(type(d.id, :string), ^pattern) or
           ilike(type(d.ipv4, :string), ^pattern) or
           ilike(type(d.ipv6, :string), ^pattern) or
@@ -2470,7 +2501,7 @@ defmodule PortalWeb.Resources.Components do
         |> Enum.uniq()
 
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> where([devices: d], d.id in ^ids)
       |> Safe.scoped(subject)
       |> Safe.all()
