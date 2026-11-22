@@ -36,7 +36,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   socket "/gateway/v2", PortalAPI.Gateway.V2.Socket,
     websocket: [
@@ -46,7 +46,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   # Client sockets take `:uri` so device trust can tell a connect on the
   # mutual-TLS origin from one on the plain API origin.
@@ -58,7 +58,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   socket "/client/v2", PortalAPI.Client.V2.Socket,
     websocket: [
@@ -68,7 +68,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   socket "/client/v3", PortalAPI.Client.V3.Socket,
     websocket: [
@@ -78,7 +78,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   socket "/device/v1", PortalAPI.Device.Socket,
     websocket: [
@@ -88,7 +88,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(37)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   socket "/relay", PortalAPI.Relay.Socket,
     websocket: [
@@ -98,7 +98,7 @@ defmodule PortalAPI.Endpoint do
       timeout: :timer.seconds(41)
     ],
     longpoll: false,
-    drainer: []
+    drainer: {Portal.Endpoint, :socket_drainer, []}
 
   plug :fetch_user_agent
 
