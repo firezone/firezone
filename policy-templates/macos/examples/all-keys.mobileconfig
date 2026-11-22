@@ -37,6 +37,10 @@
 		      <key>accountSlug</key>
 		      <string>acme_corp</string>
 
+		      <!-- Code-signing identifiers of the only apps that may use the tunnel. Unset lets every app use it. -->
+		      <key>allowedApplications</key>
+		      <string>com.apple.Safari,com.google.Chrome</string>
+
 		      <!-- The WebSocket URL of the Firezone control plane. -->
 		      <key>apiURL</key>
 		      <string>wss://api.firezone.dev</string>

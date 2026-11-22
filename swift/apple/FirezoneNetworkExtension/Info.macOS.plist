@@ -43,6 +43,8 @@
     <dict>
       <key>com.apple.networkextension.packet-tunnel</key>
       <string>$(PRODUCT_MODULE_NAME).PacketTunnelProvider</string>
+      <key>com.apple.networkextension.filter-data</key>
+      <string>$(PRODUCT_MODULE_NAME).FilterDataProvider</string>
     </dict>
   </dict>
   <key>NSSystemExtensionUsageDescription</key>

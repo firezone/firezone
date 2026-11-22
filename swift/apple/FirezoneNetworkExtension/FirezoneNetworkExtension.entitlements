@@ -6,6 +6,7 @@
 	<array>
     <!-- "-systemextension" is needed for standalone distribution -->
 		<string>packet-tunnel-provider$(PACKET_TUNNEL_PROVIDER_SUFFIX)</string>
+		<string>content-filter-provider$(PACKET_TUNNEL_PROVIDER_SUFFIX)</string>
 	</array>
 	<key>com.apple.security.application-groups</key>
 	<array>
