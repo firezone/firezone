@@ -1,22 +1,34 @@
 defmodule PortalWeb.Devices do
   use PortalWeb, :live_view
   alias PortalWeb.Devices.Components, as: DeviceComponents
-  alias Portal.{Presence.Devices, ComponentVersions}
+  alias Portal.Presence.Devices
   alias Portal.Changes.Change
   alias Portal.Device
   alias Portal.PubSub
+  alias PortalWeb.Sites
   alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   @edit_form_events ~w[change_device_edit_form submit_device_edit_form cancel_device_edit_form]
 
+  @gateway_events ~w[
+    rename_gateway cancel_rename_gateway save_gateway_name rotate_gateway_token
+    cancel_rotate_gateway_token confirm_rotate_gateway_token dismiss_rotated_gateway_token
+  ]
+
+  @client_only_events ~w[
+    verify_device unverify_device confirm_unverify_device open_device_edit_form
+    change_device_edit_form submit_device_edit_form put_device_in_site remove_device_from_site
+  ]
+
   @selected_device_events ~w[
     change_policy_authorizations_page open_device_edit_form verify_device unverify_device delete_device
     put_device_in_site remove_device_from_site
-  ]
+  ] ++ @gateway_events
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
+    unified_devices? = Portal.Account.unified_devices?(subject.account)
 
     if connected?(socket) do
       :ok = Devices.Account.subscribe(subject.account.id)
@@ -27,8 +39,8 @@ defmodule PortalWeb.Devices do
       socket
       |> assign(page_title: "Devices")
       |> assign(selected_device: nil)
-      |> assign(unified_devices?: Portal.Account.unified_devices?(subject.account))
-      |> assign(device_site: nil, sites: [])
+      |> assign(unified_devices?: unified_devices?)
+      |> assign(device_site: nil, sites: [], gateway_panel: base_gateway_panel())
       |> assign(stale: false)
       |> assign_async(:devices_count, fn -> {:ok, %{devices_count: Database.count_devices(subject)}} end)
       |> assign(
@@ -41,6 +53,7 @@ defmodule PortalWeb.Devices do
         device_certificate: nil,
         posture_providers_connected?: false,
         serials_by_device: %{},
+        sites_by_device: %{},
         devices: [],
         devices_metadata: %Portal.Repo.OffsetPaginator.Metadata{}
       )
@@ -54,6 +67,7 @@ defmodule PortalWeb.Devices do
           {:devices, :inserted_at},
           {:devices, :last_seen_user_agent}
         ],
+        hide_filters: if(unified_devices?, do: [], else: [:site_id, :has_users]),
         loader: &load_devices/2
       )
       |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
@@ -70,7 +84,7 @@ defmodule PortalWeb.Devices do
 
       device ->
         page = parse_page(params)
-        tab = parse_device_tab(Map.get(params, "tab", "overview"))
+        tab = device_tab(device, parse_device_tab(Map.get(params, "tab", "overview")))
 
         {policy_authorizations, has_next} =
           Database.list_policy_authorizations_for_device(device, socket.assigns.subject, page)
@@ -90,7 +104,8 @@ defmodule PortalWeb.Devices do
            posture_providers_connected?:
              Database.posture_providers_connected?(socket.assigns.subject)
          )
-         |> assign_site_assignment(device)}
+         |> assign_site_assignment(device)
+         |> assign_gateway_panel(device)}
     end
   end
 
@@ -100,6 +115,9 @@ defmodule PortalWeb.Devices do
     case Database.get_device_for_panel(id, socket.assigns.subject) do
       nil ->
         redirect_to_devices_index(socket, "Device does not exist.")
+
+      %Device{type: :gateway} = gateway ->
+        {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{gateway.id}"))}
 
       device ->
         changeset = Database.change_device(device)
@@ -136,16 +154,43 @@ defmodule PortalWeb.Devices do
 
   defp assign_site_assignment(socket, _device), do: socket
 
+  defp assign_gateway_panel(%{assigns: %{device_site: %Portal.Site{} = site}} = socket, %Device{type: :gateway} = gateway) do
+    subject = socket.assigns.subject
+    legacy_tokens = Portal.Devices.list_gateway_tokens_for_site(site.id, subject)
+
+    assign(socket,
+      gateway_panel: %{
+        base_gateway_panel()
+        | device_tokens: load_gateway_tokens(gateway, site, subject),
+          legacy_token_ids: MapSet.new(legacy_tokens, & &1.id)
+      }
+    )
+  end
+
+  defp assign_gateway_panel(socket, _device), do: assign(socket, gateway_panel: base_gateway_panel())
+
+  defp load_gateway_tokens(gateway, site, subject) do
+    site.id
+    |> Portal.Devices.list_gateway_tokens_for_devices_in_site(subject)
+    |> Enum.filter(&(&1.device_id == gateway.id))
+    |> Enum.group_by(& &1.device_id)
+  end
+
   defp load_devices(subject, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
     with {:ok, devices, metadata} <- Database.list_devices(subject, list_opts) do
-      {:ok,
-       %{
-         devices: devices,
-         devices_metadata: metadata,
-         serials_by_device: Database.serial_index(devices, subject)
-       }}
+      assigns = %{
+        devices: devices,
+        devices_metadata: metadata,
+        serials_by_device: Database.serial_index(devices, subject)
+      }
+
+      if Portal.Account.unified_devices?(subject.account) do
+        {:ok, Map.put(assigns, :sites_by_device, Database.sites_by_device(devices, subject))}
+      else
+        {:ok, assigns}
+      end
     end
   end
 
@@ -205,7 +250,13 @@ defmodule PortalWeb.Devices do
                   {device.id}
                 </div>
               </div>
+              <Core.badge :if={@unified_devices? and device.type == :gateway} type="neutral" size="xs">
+                Gateway
+              </Core.badge>
             </div>
+          </:col>
+          <:col :let={device} :if={@unified_devices?} label="Routes for" class="w-40">
+            <DeviceComponents.site_chip account={@account} site={Map.get(@sites_by_device, device.id)} />
           </:col>
           <:col :let={device} label="Owner">
             <DeviceComponents.actor_name_and_role
@@ -221,7 +272,7 @@ defmodule PortalWeb.Devices do
           <:col :let={device} field={{:devices, :last_seen_version}} label="Version" class="w-32">
             <DeviceComponents.version
               current={device.last_seen_version}
-              latest={ComponentVersions.client_version(device)}
+              latest={DeviceComponents.latest_version(device)}
             />
           </:col>
           <:col :let={device} label="Status" class="w-28">
@@ -280,6 +331,7 @@ defmodule PortalWeb.Devices do
         site_assignment={
           if @unified_devices?, do: %{site: @device_site, sites: @sites}, else: nil
         }
+        gateway_panel={@gateway_panel}
       />
     </div>
     """
@@ -303,6 +355,16 @@ defmodule PortalWeb.Devices do
   defp stale_event?(event, %{device_panel: %{edit_form: nil}}) when event in @edit_form_events, do: true
   defp stale_event?(event, %{selected_device: nil}) when event in @selected_device_events, do: true
   defp stale_event?(_event, _assigns), do: false
+
+  defp base_gateway_panel do
+    %{
+      device_tokens: %{},
+      legacy_token_ids: MapSet.new(),
+      rename_gateway_id: nil,
+      confirm_rotate_gateway_id: nil,
+      rotated_gateway_token: nil
+    }
+  end
 
   defp base_device_assigns do
     [
@@ -373,6 +435,11 @@ defmodule PortalWeb.Devices do
       if socket.assigns.policy_authorizations_expanded_id == id, do: nil, else: id
 
     {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
+  end
+
+  def handle_event(event, _params, %{assigns: %{selected_device: %Device{type: :gateway}}} = socket)
+      when event in @client_only_events do
+    {:noreply, socket}
   end
 
   def handle_event(
@@ -519,6 +586,24 @@ defmodule PortalWeb.Devices do
     end
   end
 
+  def handle_event("delete_device", _params, %{assigns: %{selected_device: %Device{type: :gateway}}} = socket) do
+    case delete_gateway(socket.assigns) do
+      {count, _} when is_integer(count) and count > 0 ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Gateway deleted.")
+         |> merge_state(:device_confirm, delete?: false)
+         |> LiveTable.reload_live_table!("devices")
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
+
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to delete gateway.")
+         |> merge_state(:device_confirm, delete?: false)}
+    end
+  end
+
   def handle_event("delete_device", _params, socket) do
     device = socket.assigns.selected_device
 
@@ -536,6 +621,102 @@ defmodule PortalWeb.Devices do
     end
   end
 
+  def handle_event(event, params, %{assigns: %{selected_device: %Device{type: :gateway}, device_site: %Portal.Site{}}} = socket)
+      when event in @gateway_events do
+    handle_gateway_event(event, params, socket)
+  end
+
+  def handle_event(event, _params, socket) when event in @gateway_events, do: {:noreply, socket}
+
+  defp handle_gateway_event("rename_gateway", _params, socket) do
+    {:noreply,
+     merge_state(socket, :gateway_panel,
+       rename_gateway_id: socket.assigns.selected_device.id,
+       confirm_rotate_gateway_id: nil
+     )}
+  end
+
+  defp handle_gateway_event("cancel_rename_gateway", _params, socket) do
+    {:noreply, merge_state(socket, :gateway_panel, rename_gateway_id: nil)}
+  end
+
+  defp handle_gateway_event("save_gateway_name", %{"name" => name}, socket)
+       when not is_nil(socket.assigns.gateway_panel.rename_gateway_id) do
+    %{selected_device: device, device_site: site, subject: subject} = socket.assigns
+
+    with {:ok, gateway} <- Portal.Devices.fetch_gateway(device.id, site, subject),
+         {:ok, renamed} <- Portal.Devices.rename_gateway(gateway, name, subject) do
+      {:noreply,
+       socket
+       |> put_flash(:success, "Gateway renamed.")
+       |> assign(selected_device: %{device | name: renamed.name, updated_at: renamed.updated_at})
+       |> merge_state(:gateway_panel, rename_gateway_id: nil)
+       |> LiveTable.reload_live_table!("devices")}
+    else
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to rename gateway.")
+         |> merge_state(:gateway_panel, rename_gateway_id: nil)}
+    end
+  end
+
+  defp handle_gateway_event("save_gateway_name", _params, socket), do: {:noreply, socket}
+
+  defp handle_gateway_event("rotate_gateway_token", _params, socket) do
+    {:noreply,
+     merge_state(socket, :gateway_panel,
+       confirm_rotate_gateway_id: socket.assigns.selected_device.id,
+       rename_gateway_id: nil
+     )}
+  end
+
+  defp handle_gateway_event("cancel_rotate_gateway_token", _params, socket) do
+    {:noreply, merge_state(socket, :gateway_panel, confirm_rotate_gateway_id: nil)}
+  end
+
+  defp handle_gateway_event("confirm_rotate_gateway_token", _params, socket) do
+    %{selected_device: device, device_site: site, subject: subject} = socket.assigns
+
+    with {:ok, gateway} <- Portal.Devices.fetch_gateway(device.id, site, subject),
+         {:ok, _token, encoded_token} <- Portal.Devices.rotate_gateway_token(gateway, subject) do
+      prior_tokens = Map.get(socket.assigns.gateway_panel.device_tokens, gateway.id, [])
+      device_tokens = load_gateway_tokens(gateway, site, subject)
+
+      replaced_unused? =
+        Sites.Components.replaced_unused_token?(prior_tokens, Map.get(device_tokens, gateway.id, []))
+
+      {:noreply,
+       socket
+       |> put_flash(:success, "Token rotated.")
+       |> merge_state(:gateway_panel,
+         confirm_rotate_gateway_id: nil,
+         rotated_gateway_token: %{
+           gateway_id: gateway.id,
+           encoded: encoded_token,
+           replaced_unused: replaced_unused?
+         },
+         device_tokens: device_tokens
+       )}
+    else
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to rotate token.")
+         |> merge_state(:gateway_panel, confirm_rotate_gateway_id: nil)}
+    end
+  end
+
+  defp handle_gateway_event("dismiss_rotated_gateway_token", _params, socket) do
+    {:noreply, merge_state(socket, :gateway_panel, rotated_gateway_token: nil)}
+  end
+
+  defp delete_gateway(%{device_site: %Portal.Site{} = site} = assigns) do
+    Portal.Devices.delete_gateway_by_id(assigns.selected_device.id, site, assigns.subject)
+  end
+
+  defp delete_gateway(_assigns), do: {:error, :no_site}
+
   defp assign_updated_selected_device(socket, updated_client) do
     selected_device = %{
       socket.assigns.selected_device
@@ -551,6 +732,9 @@ defmodule PortalWeb.Devices do
   defp parse_device_tab("overview"), do: :overview
   defp parse_device_tab(_), do: :overview
 
+  defp device_tab(%Device{type: :gateway}, :posture), do: :overview
+  defp device_tab(_device, tab), do: tab
+
   defp parse_page(params) do
     case Integer.parse(Map.get(params, "page", "1")) do
       {n, ""} when n >= 1 -> n
@@ -565,7 +749,13 @@ defmodule PortalWeb.Devices do
      |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
-  def handle_info(%Change{op: :insert, struct: %Device{type: :client}} = change, socket) do
+  def handle_info(%Change{struct: %Device{type: :gateway}}, %{assigns: %{unified_devices?: false}} = socket),
+    do: {:noreply, socket}
+
+  def handle_info(%Change{old_struct: %Device{type: :gateway}}, %{assigns: %{unified_devices?: false}} = socket),
+    do: {:noreply, socket}
+
+  def handle_info(%Change{op: :insert, struct: %Device{}} = change, socket) do
     {:noreply,
      socket
      |> update(:devices_count, fn
@@ -575,7 +765,7 @@ defmodule PortalWeb.Devices do
      |> mark_stale_if_unreflected(change)}
   end
 
-  def handle_info(%Change{op: :delete, old_struct: %Device{type: :client}} = change, socket) do
+  def handle_info(%Change{op: :delete, old_struct: %Device{}} = change, socket) do
     {:noreply,
      socket
      |> update(:devices_count, fn
@@ -585,12 +775,9 @@ defmodule PortalWeb.Devices do
      |> mark_stale_if_unreflected(change)}
   end
 
-  def handle_info(%Change{struct: %Device{type: :client}} = change, socket) do
+  def handle_info(%Change{struct: %Device{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
-
-  def handle_info(%Change{struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
-  def handle_info(%Change{old_struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
 
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_devices:" <> _account_id} = event,
@@ -630,8 +817,8 @@ defmodule PortalWeb.Devices do
     alias Portal.SiteDevice
 
     def count_devices(subject) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      subject
+      |> page_query()
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
@@ -639,6 +826,7 @@ defmodule PortalWeb.Devices do
     def list_devices(subject, opts \\ []) do
       {preload, opts} = Keyword.pop(opts, :preload, [])
       {filter, opts} = Keyword.pop(opts, :filter, [])
+      filter = drop_unified_filters(filter, subject)
       {order_by, opts} = Keyword.pop(opts, :order_by, [])
       {page_opts, _opts} = Keyword.pop(opts, :page, [])
 
@@ -662,19 +850,39 @@ defmodule PortalWeb.Devices do
       end
     end
 
-    defp page_query(_subject) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+    defp page_query(subject) do
+      if Portal.Account.unified_devices?(subject.account) do
+        from(d in Device, as: :devices)
+      else
+        from(d in Device, as: :devices)
+        |> where([devices: d], d.type == :client)
+      end
+    end
+
+    defp drop_unified_filters(filter, subject) do
+      if Portal.Account.unified_devices?(subject.account) do
+        filter
+      else
+        Keyword.drop(filter, [:site_id, :has_users])
+      end
+    end
+
+    defp listed_online_ids(subject) do
+      if Portal.Account.unified_devices?(subject.account) do
+        Devices.online_ids(subject.account.id)
+      else
+        Devices.online_ids(subject.account.id, :client)
+      end
     end
 
     defp maybe_filter_by_presence(base_query, presence, subject) do
       case presence do
         "online" ->
-          ids = Devices.online_ids(subject.account.id, :client)
+          ids = listed_online_ids(subject)
           where(base_query, [devices: d], d.id in ^ids)
 
         "offline" ->
-          ids = Devices.online_ids(subject.account.id, :client)
+          ids = listed_online_ids(subject)
           where(base_query, [devices: d], d.id not in ^ids)
 
         _ ->
@@ -776,14 +984,14 @@ defmodule PortalWeb.Devices do
             Portal.Device.t() | nil
     def get_device_for_panel(id, subject) do
       device =
-        from(c in Device, as: :devices)
-        |> where([devices: d], d.type == :client)
+        subject
+        |> page_query()
         |> where([devices: d], d.id == ^id)
         |> Safe.scoped(subject)
         |> Safe.one()
 
       case device do
-        %Device{type: :client} ->
+        %Device{} ->
           [device] |> Portal.Devices.put_latest_actor(subject) |> Devices.preload_presence() |> List.first()
 
         _ ->
@@ -804,6 +1012,27 @@ defmodule PortalWeb.Devices do
       |> case do
         {:error, _} -> nil
         site -> site
+      end
+    end
+
+    @spec sites_by_device([Device.t()], Portal.Authentication.Subject.t()) :: %{
+            Ecto.UUID.t() => Site.t()
+          }
+    def sites_by_device(devices, subject) do
+      device_ids = Enum.map(devices, & &1.id)
+
+      from(s in Site, as: :sites)
+      |> join(:inner, [sites: s], sd in SiteDevice,
+        on: sd.account_id == s.account_id and sd.site_id == s.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.device_id in ^device_ids)
+      |> select([sites: s, site_device: sd], {sd.device_id, s})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> %{}
+        rows -> Map.new(rows)
       end
     end
 
@@ -900,9 +1129,58 @@ defmodule PortalWeb.Devices do
             {"Offline", "offline"}
           ],
           fun: &filter_by_presence/2
+        },
+        %Portal.Repo.Filter{
+          name: :site_id,
+          title: "Site",
+          type: {:string, :select},
+          values: &list_sites/1,
+          fun: &filter_by_site/2
+        },
+        %Portal.Repo.Filter{
+          name: :has_users,
+          title: "Has users",
+          type: :boolean,
+          fun: &filter_by_has_users/2
         }
       ]
     end
+
+    def filter_by_site(queryable, site_id) do
+      case Ecto.UUID.cast(site_id) do
+        {:ok, site_id} ->
+          {queryable,
+           dynamic(
+             [devices: devices],
+             exists(
+               from(sd in SiteDevice,
+                 where:
+                   sd.account_id == parent_as(:devices).account_id and
+                     sd.device_id == parent_as(:devices).id and sd.site_id == ^site_id
+               )
+             )
+           )}
+
+        :error ->
+          {queryable, dynamic(false)}
+      end
+    end
+
+    def filter_by_has_users(queryable, true) do
+      {queryable,
+       dynamic(
+         [devices: devices],
+         exists(
+           from(da in Portal.DeviceActor,
+             where:
+               da.account_id == parent_as(:devices).account_id and
+                 da.device_id == parent_as(:devices).id
+           )
+         )
+       )}
+    end
+
+    def filter_by_has_users(queryable, false), do: {queryable, nil}
 
     def filter_by_search_fts(queryable, search_term) do
       {queryable,

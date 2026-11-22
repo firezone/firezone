@@ -2,6 +2,7 @@ defmodule PortalWeb.Devices.Components do
   use PortalWeb, :component_library
   alias PortalWeb.Components.Core
   alias Portal.ComponentVersions
+  alias PortalWeb.Sites
 
   def actor_show_url(account, actor, return_to \\ nil)
 
@@ -145,6 +146,30 @@ defmodule PortalWeb.Devices.Components do
     """
   end
 
+  def latest_version(%Portal.Device{type: :gateway}), do: ComponentVersions.gateway_version()
+  def latest_version(device), do: ComponentVersions.client_version(device)
+
+  attr :account, :any, required: true
+  attr :site, :any, default: nil
+
+  def site_chip(%{site: nil} = assigns) do
+    ~H"""
+    <span class="text-xs text-subtle">-</span>
+    """
+  end
+
+  def site_chip(assigns) do
+    ~H"""
+    <Navigation.link
+      navigate={~p"/#{@account}/sites/#{@site.id}"}
+      class="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded border border-border bg-raised text-xs text-body hover:text-heading hover:border-border-strong transition-colors"
+    >
+      <Core.icon name="ri-map-pin-line" class="w-3 h-3 shrink-0 text-subtle" />
+      <span class="truncate">{@site.name}</span>
+    </Navigation.link>
+    """
+  end
+
   defp outdated_version?(current, latest) when is_binary(current) and is_binary(latest) do
     with {:ok, current_version} <- Version.parse(current),
          {:ok, latest_version} <- Version.parse(latest) do
@@ -170,6 +195,7 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :site_assignment, :map, default: nil
+  attr :gateway_panel, :map, default: nil
 
   def device_panel(assigns) do
     assigns =
@@ -212,6 +238,7 @@ defmodule PortalWeb.Devices.Components do
           policy_authorizations_has_next={@policy_authorizations_has_next}
           policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
           site_assignment={@site_assignment}
+          gateway_panel={@gateway_panel}
         />
       </div>
     </div>
@@ -310,6 +337,7 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :site_assignment, :map, default: nil
+  attr :gateway_panel, :map, default: nil
 
   def device_details_view(assigns) do
     ~H"""
@@ -328,6 +356,7 @@ defmodule PortalWeb.Devices.Components do
               selected={@tab == :authorizations}
             />
             <.device_tab
+              :if={@device.type != :gateway}
               tab="posture"
               label="Posture"
               selected={@tab == :posture}
@@ -340,14 +369,21 @@ defmodule PortalWeb.Devices.Components do
               account={@account}
               device_pools={@device_pools}
             />
+            <.gateway_site_section
+              :if={@device.type == :gateway}
+              account={@account}
+              device={@device}
+              site={@site_assignment.site}
+              gateway_panel={@gateway_panel}
+            />
             <.device_site_section
-              :if={@site_assignment}
+              :if={@site_assignment && @device.type != :gateway}
               account={@account}
               site={@site_assignment.site}
               sites={@site_assignment.sites}
               device_v1?={@device.last_seen_device_v1}
             />
-            <.device_section account={@account} device={@device} />
+            <.device_section :if={@device.type != :gateway} account={@account} device={@device} />
             <.device_certificate_section
               :if={@device.last_attested_cert_fingerprint}
               device={@device}
@@ -356,7 +392,7 @@ defmodule PortalWeb.Devices.Components do
             <.device_network_section device={@device} />
           </div>
           <.device_posture_tab
-            :if={@tab == :posture}
+            :if={@tab == :posture and @device.type != :gateway}
             account={@account}
             posture={@posture}
             providers_connected?={@posture_providers_connected?}
@@ -375,6 +411,8 @@ defmodule PortalWeb.Devices.Components do
           device={@device}
           confirm_delete_device={@confirm_delete_device}
           confirm_unverify_device={@confirm_unverify_device}
+          gateway_panel={@gateway_panel}
+          site={@site_assignment && @site_assignment.site}
         />
       </div>
     </div>
@@ -541,12 +579,13 @@ defmodule PortalWeb.Devices.Components do
           <div class="flex items-center gap-2">
             <h2 class="text-sm font-semibold text-heading truncate">{@device.slug}</h2>
             <.device_status_badge device={@device} />
+            <Core.badge :if={@device.type == :gateway} type="neutral" size="xs">Gateway</Core.badge>
           </div>
           <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@device.id}</p>
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <Form.button phx-click="open_device_edit_form" size="xs">
+          <Form.button :if={@device.type != :gateway} phx-click="open_device_edit_form" size="xs">
             <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </Form.button>
           <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
@@ -660,6 +699,49 @@ defmodule PortalWeb.Devices.Components do
             Add to site
           </Form.button>
         </.form>
+      </div>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :device, :any, required: true
+  attr :site, :any, default: nil
+  attr :gateway_panel, :map, required: true
+
+  def gateway_site_section(assigns) do
+    ~H"""
+    <div id="gateway-site" class="px-5 pt-4 pb-3 border-b border-border">
+      <.section_heading title="Site" />
+      <p :if={is_nil(@site)} class="text-xs text-subtle">This gateway is not in a site.</p>
+      <div :if={@site} class="space-y-3">
+        <Navigation.link
+          navigate={~p"/#{@account}/sites/#{@site.id}"}
+          class="text-sm font-medium text-heading hover:text-brand truncate transition-colors"
+        >
+          {@site.name}
+        </Navigation.link>
+        <dl>
+          <.device_detail_row label="Token">
+            <span class="text-xs text-body">
+              {Sites.Components.gateway_token_status(
+                @device,
+                Map.get(@gateway_panel.device_tokens, @device.id),
+                @gateway_panel.legacy_token_ids
+              )}
+            </span>
+          </.device_detail_row>
+        </dl>
+        <div class="space-y-2">
+          <Sites.Components.gateway_token_controls
+            gateway={@device}
+            device_tokens={@gateway_panel.device_tokens}
+            legacy_token_ids={@gateway_panel.legacy_token_ids}
+            rotated_gateway_token={@gateway_panel.rotated_gateway_token}
+            rename_gateway_id={@gateway_panel.rename_gateway_id}
+            confirm_rotate_gateway_id={@gateway_panel.confirm_rotate_gateway_id}
+          />
+        </div>
       </div>
     </div>
     """
@@ -1054,6 +1136,20 @@ defmodule PortalWeb.Devices.Components do
   attr :device, :any, required: true
   attr :confirm_delete_device, :boolean, default: false
   attr :confirm_unverify_device, :boolean, default: false
+  attr :gateway_panel, :map, default: nil
+  attr :site, :any, default: nil
+
+  def device_sidebar(%{device: %{type: :gateway}} = assigns) do
+    ~H"""
+    <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
+      <.device_details_card device={@device} />
+      <div :if={@site} class="border-t border-border"></div>
+      <.gateway_actions :if={@site} device={@device} gateway_panel={@gateway_panel} />
+      <div :if={@site} class="border-t border-border"></div>
+      <.device_danger_zone :if={@site} confirm_delete_device={@confirm_delete_device} gateway? />
+    </div>
+    """
+  end
 
   def device_sidebar(assigns) do
     ~H"""
@@ -1106,7 +1202,7 @@ defmodule PortalWeb.Devices.Components do
             <Core.relative_datetime datetime={@device.last_attested_at} />
           </span>
         </.device_detail_row>
-        <.device_detail_row label="Trust level">
+        <.device_detail_row :if={@device.type != :gateway} label="Trust level">
           <:info>
             <Core.popover class="flex" placement="left">
               <:target>
@@ -1118,10 +1214,7 @@ defmodule PortalWeb.Devices.Components do
           <.device_verified_status device={@device} />
         </.device_detail_row>
         <.device_detail_row label="Version">
-          <.version
-            current={@device.last_seen_version}
-            latest={ComponentVersions.client_version(@device)}
-          />
+          <.version current={@device.last_seen_version} latest={latest_version(@device)} />
         </.device_detail_row>
         <.device_detail_row label="Last Seen">
           <span class="text-xs text-body">
@@ -1200,7 +1293,42 @@ defmodule PortalWeb.Devices.Components do
     """
   end
 
+  attr :device, :any, required: true
+  attr :gateway_panel, :map, required: true
+
+  def gateway_actions(assigns) do
+    action =
+      Sites.Components.token_action(
+        assigns.gateway_panel.device_tokens,
+        assigns.device,
+        assigns.gateway_panel.legacy_token_ids
+      )
+
+    revealed? = match?(%{gateway_id: id} when id == assigns.device.id, assigns.gateway_panel.rotated_gateway_token)
+
+    assigns = assign(assigns, action: action, revealed?: revealed?)
+
+    ~H"""
+    <section>
+      <.section_heading title="Actions" />
+      <div class="space-y-1.5">
+        <Form.action_button icon="ri-pencil-line" phx-click="rename_gateway">
+          Rename gateway
+        </Form.action_button>
+        <Form.action_button
+          :if={not @revealed?}
+          icon={Sites.Components.token_action_icon(@action)}
+          phx-click="rotate_gateway_token"
+        >
+          {Sites.Components.token_action_label(@action)}
+        </Form.action_button>
+      </div>
+    </section>
+    """
+  end
+
   attr :confirm_delete_device, :boolean, default: false
+  attr :gateway?, :boolean, default: false
 
   def device_danger_zone(assigns) do
     ~H"""
@@ -1214,16 +1342,16 @@ defmodule PortalWeb.Devices.Components do
         phx-click="confirm_delete_device"
         class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
       >
-        <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete device
+        <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete {if @gateway?, do: "gateway", else: "device"}
       </button>
       <div
         :if={@confirm_delete_device}
         class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
       >
-        <p class="text-xs font-medium text-error mb-1">
-          Delete this device?
+        <p class={["text-xs font-medium text-error", if(@gateway?, do: "mb-3", else: "mb-1")]}>
+          Delete this {if @gateway?, do: "gateway", else: "device"}?
         </p>
-        <p class="text-xs text-error/70 mb-3">
+        <p :if={not @gateway?} class="text-xs text-error/70 mb-3">
           This won't prevent the owner from signing in again; to block access, disable the owning actor instead.
         </p>
         <div class="flex items-center gap-1.5">

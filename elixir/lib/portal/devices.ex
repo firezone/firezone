@@ -90,6 +90,39 @@ defmodule Portal.Devices do
     end
   end
 
+  @doc "The Gateway `id` in `site`."
+  @spec fetch_gateway(Ecto.UUID.t(), Site.t(), Authentication.Subject.t()) ::
+          {:ok, Device.t()} | {:error, :not_found} | {:error, :unauthorized}
+  defdelegate fetch_gateway(id, site, subject), to: Database
+
+  @doc "Renames `gateway`, validating only the name so a Gateway that never connected can be renamed too."
+  @spec rename_gateway(Device.t(), String.t(), Authentication.Subject.t()) ::
+          {:ok, Device.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  defdelegate rename_gateway(gateway, name, subject), to: Database
+
+  @doc "Mints a new single-owner token for `gateway` and returns it with its encoded secret."
+  @spec rotate_gateway_token(Device.t(), Authentication.Subject.t()) ::
+          {:ok, DeviceToken.t(), binary()} | {:error, term()}
+  def rotate_gateway_token(%Device{} = gateway, %Authentication.Subject{} = subject) do
+    with {:ok, token} <- Authentication.rotate_gateway_token(gateway, subject) do
+      {:ok, %{token | secret_fragment: nil}, Authentication.encode_fragment!(token)}
+    end
+  end
+
+  @doc "Deletes the Gateway `id` in `site`, with its single-owner tokens."
+  @spec delete_gateway_by_id(Ecto.UUID.t(), Site.t(), Authentication.Subject.t()) ::
+          {non_neg_integer(), nil} | {:error, :unauthorized}
+  defdelegate delete_gateway_by_id(id, site, subject), to: Database
+
+  @doc "The single-owner tokens of the Gateways in the site `site_id`."
+  @spec list_gateway_tokens_for_devices_in_site(Ecto.UUID.t(), Authentication.Subject.t()) ::
+          [DeviceToken.t()]
+  defdelegate list_gateway_tokens_for_devices_in_site(site_id, subject), to: Database
+
+  @doc "The legacy tokens of the site `site_id`, newest first."
+  @spec list_gateway_tokens_for_site(Ecto.UUID.t(), Authentication.Subject.t()) :: [DeviceToken.t()]
+  defdelegate list_gateway_tokens_for_site(site_id, subject), to: Database
+
   @doc """
   Takes `device` out of the site it serves, with the authorizations toward it for
   that site's resources.
@@ -163,6 +196,73 @@ defmodule Portal.Devices do
       from(sd in Portal.SiteDevice, where: sd.device_id == ^device.id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
+    end
+
+    def fetch_gateway(id, site, subject) do
+      result =
+        from(d in Device, as: :devices)
+        |> where([devices: d], d.id == ^id and d.type == :gateway)
+        |> join(:inner, [devices: d], sd in Portal.SiteDevice,
+          on: sd.account_id == d.account_id and sd.device_id == d.id,
+          as: :site_device
+        )
+        |> where([site_device: sd], sd.site_id == ^site.id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        gateway -> {:ok, gateway}
+      end
+    end
+
+    def rename_gateway(gateway, name, subject) do
+      # Device.changeset/1 requires firezone_id, which deploy-created
+      # gateways don't have until first connect, so validate only the name
+      gateway
+      |> Ecto.Changeset.cast(%{name: name}, [:name])
+      |> Portal.Changeset.trim_change([:name])
+      |> Ecto.Changeset.validate_required([:name])
+      |> Ecto.Changeset.validate_length(:name, min: 1, max: 255)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def delete_gateway_by_id(id, site, subject) do
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.id == ^id and d.type == :gateway)
+      |> join(:inner, [devices: d], sd in Portal.SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.site_id == ^site.id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+    end
+
+    def list_gateway_tokens_for_devices_in_site(site_id, subject) do
+      from(t in Portal.DeviceToken, as: :gateway_tokens)
+      |> join(:inner, [gateway_tokens: t], d in Device,
+        on: d.account_id == t.account_id and d.id == t.device_id,
+        as: :devices
+      )
+      |> where([devices: d], d.type == :gateway)
+      |> join(:inner, [devices: d], sd in Portal.SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.site_id == ^site_id)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    def list_gateway_tokens_for_site(site_id, subject) do
+      from(t in Portal.DeviceToken, as: :gateway_tokens)
+      |> where([gateway_tokens: t], t.site_id == ^site_id)
+      |> order_by([gateway_tokens: t], desc: t.inserted_at)
+      |> Safe.scoped(subject)
+      |> Safe.all()
     end
 
     # Repo.transact/1 rolls the transaction back when fun returns

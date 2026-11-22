@@ -181,7 +181,7 @@ defmodule PortalWeb.Sites do
         end
       end
 
-    gateway_tokens = Database.list_gateway_tokens_for_site(site.id, socket.assigns.subject)
+    gateway_tokens = Portal.Devices.list_gateway_tokens_for_site(site.id, socket.assigns.subject)
 
     [
       selected_site: site,
@@ -536,7 +536,7 @@ defmodule PortalWeb.Sites do
 
   defp load_device_tokens(site_id, subject) do
     site_id
-    |> Database.list_gateway_tokens_for_devices_in_site(subject)
+    |> Portal.Devices.list_gateway_tokens_for_devices_in_site(subject)
     |> Enum.group_by(& &1.device_id)
   end
 
@@ -798,8 +798,8 @@ defmodule PortalWeb.Sites do
     gateway_id = socket.assigns.site_panel.rename_gateway_id
 
     with {:ok, gateway} <-
-           Database.fetch_gateway(gateway_id, socket.assigns.selected_site, subject),
-         {:ok, _gateway} <- Database.rename_gateway(gateway, name, subject) do
+           Portal.Devices.fetch_gateway(gateway_id, socket.assigns.selected_site, subject),
+         {:ok, _gateway} <- Portal.Devices.rename_gateway(gateway, name, subject) do
       {gateways, total_gateway_count} =
         load_panel_gateways(
           socket.assigns.selected_site.id,
@@ -837,16 +837,13 @@ defmodule PortalWeb.Sites do
     subject = socket.assigns.subject
 
     with {:ok, gateway} <-
-           Database.fetch_gateway(gateway_id, socket.assigns.selected_site, subject),
-         {:ok, _token, encoded_token} <- Database.rotate_gateway_token(gateway, subject) do
+           Portal.Devices.fetch_gateway(gateway_id, socket.assigns.selected_site, subject),
+         {:ok, _token, encoded_token} <- Portal.Devices.rotate_gateway_token(gateway, subject) do
       prior_tokens = Map.get(socket.assigns.site_panel.device_tokens, gateway_id, [])
       device_tokens = load_device_tokens(socket.assigns.selected_site.id, subject)
 
-      # An active token existed before but no rotated sibling remains: the
-      # never-used token was replaced outright rather than put in grace
       replaced_unused? =
-        Enum.any?(prior_tokens, &is_nil(&1.rotated_at)) and
-          not Enum.any?(Map.get(device_tokens, gateway_id, []), & &1.rotated_at)
+        SiteComponents.replaced_unused_token?(prior_tokens, Map.get(device_tokens, gateway_id, []))
 
       {:noreply,
        socket
@@ -886,7 +883,7 @@ defmodule PortalWeb.Sites do
   end
 
   def handle_event("confirm_delete_gateway", %{"id" => gateway_id}, socket) do
-    case Database.delete_gateway_by_id(
+    case Portal.Devices.delete_gateway_by_id(
            gateway_id,
            socket.assigns.selected_site,
            socket.assigns.subject
@@ -1180,7 +1177,7 @@ defmodule PortalWeb.Sites do
          ) do
       {count, _} when count > 0 ->
         tokens =
-          Database.list_gateway_tokens_for_site(
+          Portal.Devices.list_gateway_tokens_for_site(
             socket.assigns.selected_site.id,
             socket.assigns.subject
           )
@@ -1812,69 +1809,6 @@ defmodule PortalWeb.Sites do
       Portal.Devices.provision_gateway(site, nil, subject)
     end
 
-    @spec rename_gateway(Device.t(), String.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Device.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
-    def rename_gateway(gateway, name, subject) do
-      # Device.changeset/1 requires firezone_id, which deploy-created
-      # gateways don't have until first connect — validate only the name
-      gateway
-      |> Ecto.Changeset.cast(%{name: name}, [:name])
-      |> Portal.Changeset.trim_change([:name])
-      |> Ecto.Changeset.validate_required([:name])
-      |> Ecto.Changeset.validate_length(:name, min: 1, max: 255)
-      |> Safe.scoped(subject)
-      |> Safe.update()
-    end
-
-    @spec fetch_gateway(Ecto.UUID.t(), Site.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Device.t()} | {:error, :not_found} | {:error, :unauthorized}
-    def fetch_gateway(id, site, subject) do
-      result =
-        from(d in Device, as: :devices)
-        |> where([devices: d], d.id == ^id and d.type == :gateway)
-        |> join(:inner, [devices: d], sd in SiteDevice,
-          on: sd.account_id == d.account_id and sd.device_id == d.id,
-          as: :site_device
-        )
-        |> where([site_device: sd], sd.site_id == ^site.id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        gateway -> {:ok, gateway}
-      end
-    end
-
-    @spec rotate_gateway_token(Device.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, DeviceToken.t(), binary()} | {:error, term()}
-    def rotate_gateway_token(gateway, subject) do
-      with {:ok, token} <- Portal.Authentication.rotate_gateway_token(gateway, subject) do
-        {:ok, %{token | secret_fragment: nil}, Portal.Authentication.encode_fragment!(token)}
-      end
-    end
-
-    @spec list_gateway_tokens_for_devices_in_site(
-            Ecto.UUID.t(),
-            Portal.Authentication.Subject.t()
-          ) :: [DeviceToken.t()]
-    def list_gateway_tokens_for_devices_in_site(site_id, subject) do
-      from(t in DeviceToken, as: :gateway_tokens)
-      |> join(:inner, [gateway_tokens: t], d in Device,
-        on: d.account_id == t.account_id and d.id == t.device_id,
-        as: :devices
-      )
-      |> where([devices: d], d.type == :gateway)
-      |> join(:inner, [devices: d], sd in SiteDevice,
-        on: sd.account_id == d.account_id and sd.device_id == d.id,
-        as: :site_device
-      )
-      |> where([site_device: sd], sd.site_id == ^site_id)
-      |> Safe.scoped(subject)
-      |> Safe.all()
-    end
-
     @spec list_provisioned_gateway_ids_by_site(
             [Ecto.UUID.t()],
             Portal.Authentication.Subject.t()
@@ -1904,31 +1838,6 @@ defmodule PortalWeb.Sites do
     def delete_gateway(gateway, subject) do
       Safe.scoped(gateway, subject)
       |> Safe.delete()
-    end
-
-    @spec delete_gateway_by_id(Ecto.UUID.t(), Site.t(), Portal.Authentication.Subject.t()) ::
-            {non_neg_integer(), nil} | {:error, :unauthorized}
-    def delete_gateway_by_id(id, site, subject) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.id == ^id and d.type == :gateway)
-      |> join(:inner, [devices: d], sd in SiteDevice,
-        on: sd.account_id == d.account_id and sd.device_id == d.id,
-        as: :site_device
-      )
-      |> where([site_device: sd], sd.site_id == ^site.id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
-    end
-
-    @spec list_gateway_tokens_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [
-            DeviceToken.t()
-          ]
-    def list_gateway_tokens_for_site(site_id, subject) do
-      from(t in DeviceToken, as: :gateway_tokens)
-      |> where([gateway_tokens: t], t.site_id == ^site_id)
-      |> order_by([gateway_tokens: t], desc: t.inserted_at)
-      |> Safe.scoped(subject)
-      |> Safe.all()
     end
 
     @spec delete_gateway_token_by_id(Ecto.UUID.t(), Site.t(), Portal.Authentication.Subject.t()) ::
