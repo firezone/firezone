@@ -91,6 +91,20 @@ defmodule Portal.Devices do
   end
 
   @doc """
+  Takes `device` out of the site it serves, with the authorizations toward it for
+  that site's resources.
+  """
+  @spec remove_from_site(Device.t(), Authentication.Subject.t()) :: {:ok, Device.t()} | {:error, term()}
+  def remove_from_site(%Device{} = device, %Authentication.Subject{} = subject) do
+    Database.transact(fn ->
+      with {deleted, _} when is_integer(deleted) <- Database.delete_site_authorizations(device, subject),
+           {count, _} when is_integer(count) <- Database.delete_site_device(device, subject) do
+        {:ok, device}
+      end
+    end)
+  end
+
+  @doc """
   Puts the actor who connected each device most recently, from
   `device_actors`, in its `actor` and `actor_id`. A device nobody has
   connected from gets `nil`.
@@ -127,6 +141,28 @@ defmodule Portal.Devices do
         {:error, _} -> %{}
         rows -> Map.new(rows)
       end
+    end
+
+    def delete_site_authorizations(device, subject) do
+      from(pa in Portal.PolicyAuthorization, as: :policy_authorizations)
+      |> join(:inner, [policy_authorizations: pa], r in Portal.Resource,
+        on: r.account_id == pa.account_id and r.id == pa.resource_id,
+        as: :resources
+      )
+      |> join(:inner, [resources: r], sd in Portal.SiteDevice,
+        on: sd.account_id == r.account_id and sd.site_id == r.site_id,
+        as: :site_device
+      )
+      |> where([policy_authorizations: pa], pa.receiving_device_id == ^device.id)
+      |> where([site_device: sd], sd.device_id == ^device.id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+    end
+
+    def delete_site_device(device, subject) do
+      from(sd in Portal.SiteDevice, where: sd.device_id == ^device.id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
     end
 
     # Repo.transact/1 rolls the transaction back when fun returns

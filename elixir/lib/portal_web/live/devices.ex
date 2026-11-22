@@ -843,19 +843,10 @@ defmodule PortalWeb.Devices do
       end
     end
 
-    # Authorizations toward the device for its site's resources go with it.
     @spec remove_device_from_site(Device.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Device.t()} | {:error, term()}
     def remove_device_from_site(%Device{} = device, subject) do
-      Safe.transact(fn ->
-        with {deleted, _} when is_integer(deleted) <- delete_site_authorizations(device, subject),
-             {count, _} when is_integer(count) <-
-               from(sd in SiteDevice, where: sd.device_id == ^device.id)
-               |> Safe.scoped(subject)
-               |> Safe.delete_all() do
-          {:ok, device}
-        end
-      end)
+      Portal.Devices.remove_from_site(device, subject)
     end
 
     @spec list_device_pools(Portal.Device.t(), Portal.Authentication.Subject.t()) ::
@@ -1293,21 +1284,5 @@ defmodule PortalWeb.Devices do
     defp provider_type_rank(:santa), do: 3
     defp provider_type_rank(:sentinelone), do: 4
     defp provider_type_rank(:sophos), do: 5
-
-    defp delete_site_authorizations(device, subject) do
-      from(pa in PolicyAuthorization, as: :policy_authorizations)
-      |> join(:inner, [policy_authorizations: pa], r in Resource,
-        on: r.account_id == pa.account_id and r.id == pa.resource_id,
-        as: :resources
-      )
-      |> join(:inner, [resources: r], sd in SiteDevice,
-        on: sd.account_id == r.account_id and sd.site_id == r.site_id,
-        as: :site_device
-      )
-      |> where([policy_authorizations: pa], pa.receiving_device_id == ^device.id)
-      |> where([site_device: sd], sd.device_id == ^device.id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
-    end
   end
 end
