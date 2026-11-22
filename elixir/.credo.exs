@@ -100,6 +100,7 @@
           #
           {Credo.Check.Design.TagTODO, [exit_status: 0]},
           {Credo.Check.Design.TagFIXME, []},
+          {Credo.Check.Design.DuplicatedCode, []},
 
           #
           ## Readability Checks
@@ -185,7 +186,6 @@
           #
           {Credo.Check.Consistency.MultiAliasImportRequireUse, []},
           {Credo.Check.Consistency.UnusedVariableNames, []},
-          {Credo.Check.Design.DuplicatedCode, []},
           {Credo.Check.Design.SkipTestWithoutComment, []},
           {Credo.Check.Readability.AliasAs, []},
           {Credo.Check.Readability.BlockPipe, []},
