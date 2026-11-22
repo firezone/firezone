@@ -424,17 +424,38 @@ fn request_budgets_are_per_client() {
 }
 
 #[test]
-fn requests_with_a_stale_nonce_are_always_answered() {
+fn requests_with_a_stale_nonce_do_not_use_the_budget() {
+    let mut relay = TestRelay::with_allocation();
+    relay.nonce = Nonce::new("0:00".to_owned()).unwrap();
+
+    let stale = (0..2000)
+        .filter(|_| {
+            relay
+                .send(REFRESH, [])
+                .get_attribute::<ErrorCode>()
+                .unwrap()
+                .code()
+                == StaleNonce::CODEPOINT
+        })
+        .count();
+
+    assert_eq!(stale, 2000);
+}
+
+#[test]
+fn clients_over_budget_get_no_response_to_any_stun_message() {
     let mut relay = TestRelay::with_allocation();
     while relay.try_send(REFRESH, []).is_some() {}
 
-    relay.nonce = Nonce::new("0:00".to_owned()).unwrap();
-    let response = relay.send(REFRESH, []);
+    let mut allocate =
+        Message::<Attribute>::new(MessageClass::Request, ALLOCATE, TransactionId::new([0; 12]));
+    allocate.add_attribute(RequestedTransport::new(UDP_TRANSPORT));
+    let bytes = MessageEncoder::new().encode_into_bytes(allocate).unwrap();
+    relay
+        .server
+        .handle_client_input(&bytes, relay.client, relay.now, relay.now_utc);
 
-    assert_eq!(
-        response.get_attribute::<ErrorCode>().unwrap().code(),
-        StaleNonce::CODEPOINT
-    );
+    assert_eq!(relay.server.next_command(), None);
 }
 
 #[test]

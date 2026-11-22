@@ -462,6 +462,13 @@ where
             return None;
         }
 
+        // STUN messages start with 0 to 3; drop them from clients over budget before we spend anything on them.
+        if bytes.first().is_some_and(|b| *b <= 3) && self.is_over_request_budget(sender, now) {
+            tracing::debug!(target: "relay", %sender, "Dropping STUN message: client exceeds its request rate");
+
+            return None;
+        }
+
         match client_message::decode(bytes) {
             Ok(Ok(message)) => {
                 return self.handle_client_message(message, sender, now, now_utc);
@@ -1484,6 +1491,13 @@ where
         *next_request = due + REQUEST_INTERVAL;
 
         true
+    }
+
+    /// Whether the sender has used up its burst; never creates an entry, so spoofed senders cost nothing.
+    fn is_over_request_budget(&self, sender: ClientSocket, now: Instant) -> bool {
+        self.request_budgets
+            .get(&sender)
+            .is_some_and(|next_request| next_request.saturating_duration_since(now) > REQUEST_BURST)
     }
 
     /// Returns nanoseconds on the monotonic clock that rate limiters use.
