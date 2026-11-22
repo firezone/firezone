@@ -381,7 +381,7 @@ defmodule PortalWeb.Devices.Components do
               account={@account}
               site={@site_assignment.site}
               sites={@site_assignment.sites}
-              device_v1?={@device.last_seen_device_v1}
+              device_v1?={is_nil(@device.type)}
             />
             <.device_section :if={@device.type != :gateway} account={@account} device={@device} />
             <.device_certificate_section

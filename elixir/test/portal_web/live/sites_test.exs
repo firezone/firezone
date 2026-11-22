@@ -2110,7 +2110,7 @@ defmodule PortalWeb.SitesTest do
       render_hook(lv, "add_device", %{"device_id" => ready.id})
       render_hook(lv, "add_device", %{"device_id" => downgraded.id})
 
-      Repo.update_all(from(d in Device, where: d.id == ^downgraded.id), set: [last_seen_device_v1: false])
+      Repo.update_all(from(d in Device, where: d.id == ^downgraded.id), set: [type: :client])
 
       html = lv |> form("#site-add-devices-form") |> render_submit()
 
@@ -2235,8 +2235,8 @@ defmodule PortalWeb.SitesTest do
 
   defp device_v1_client_fixture(account, actor, name) do
     client = client_fixture(account: account, actor: actor, name: name)
-    Repo.update_all(from(d in Device, where: d.id == ^client.id), set: [last_seen_device_v1: true])
-    %{client | last_seen_device_v1: true}
+    Repo.update_all(from(d in Device, where: d.id == ^client.id), set: [type: nil])
+    %{client | type: nil}
   end
 
   defp put_in_site!(site, device) do

@@ -1825,7 +1825,7 @@ defmodule PortalWeb.DevicesTest do
     test "adds the device to a site", %{conn: conn, account: account, actor: actor} do
       put_unified_devices(account, true)
       client = client_fixture(account: account, actor: actor)
-      Repo.update_all(from(d in Device, where: d.id == ^client.id), set: [last_seen_device_v1: true])
+      Repo.update_all(from(d in Device, where: d.id == ^client.id), set: [type: nil])
       site = internet_site_fixture(account: account)
 
       {:ok, lv, _html} =

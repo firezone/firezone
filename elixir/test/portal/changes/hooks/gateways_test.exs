@@ -3,7 +3,6 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
   import Portal.Changes.Hooks.Devices
   import Portal.AccountFixtures
   import Portal.DeviceFixtures
-  import Portal.PolicyAuthorizationFixtures
   import Portal.ResourceFixtures
   alias Portal.Changes.Change
   alias Portal.Device

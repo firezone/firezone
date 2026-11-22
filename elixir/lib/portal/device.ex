@@ -31,7 +31,7 @@ defmodule Portal.Device do
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
-          type: :client | :gateway,
+          type: :client | :gateway | nil,
           # nil for pre-created gateways until they first connect and report one
           firezone_id: String.t() | nil,
           name: String.t(),
@@ -77,6 +77,8 @@ defmodule Portal.Device do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
+    # Legacy: a client or gateway record from a binary older than 1.7. A device that a 1.7 or
+    # later binary enrolled has no type.
     field :type, Ecto.Enum, values: [:client, :gateway]
 
     field :firezone_id, :string

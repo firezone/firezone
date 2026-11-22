@@ -1327,7 +1327,7 @@ defmodule PortalWeb.Devices do
               via: :intune | nil
             }
           ]
-    def list_posture_for_device(%Device{type: :client} = device, subject) do
+    def list_posture_for_device(%Device{type: type} = device, subject) when type != :gateway do
       providers_by_id = subject |> list_posture_providers() |> Map.new(&{&1.id, &1})
 
       device
@@ -1554,9 +1554,9 @@ defmodule PortalWeb.Devices do
     defp provider_type_rank(:sentinelone), do: 4
     defp provider_type_rank(:sophos), do: 5
 
-    # Only a device last seen on /device/v1 can serve a site.
+    # Only a device from a 1.7 or later binary, which has no type, can serve a site.
     defp fetch_device_v1(device, subject) do
-      from(d in Device, as: :devices, where: d.id == ^device.id and d.last_seen_device_v1, lock: "FOR UPDATE")
+      from(d in Device, as: :devices, where: d.id == ^device.id and is_nil(d.type), lock: "FOR UPDATE")
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do

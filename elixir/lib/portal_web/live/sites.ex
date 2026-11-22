@@ -1626,7 +1626,7 @@ defmodule PortalWeb.Sites do
     @spec list_site_devices(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [Device.t()]
     def list_site_devices(site_id, subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type != :gateway)
+      |> where([devices: d], d.type == :client or is_nil(d.type))
       |> join(:inner, [devices: d], sd in SiteDevice,
         on: sd.account_id == d.account_id and sd.device_id == d.id,
         as: :site_device
@@ -1717,7 +1717,7 @@ defmodule PortalWeb.Sites do
     def remove_device_from_site(site, device_id, subject) do
       Safe.transact(fn ->
         from(d in Device, as: :devices)
-        |> where([devices: d], d.id == ^device_id and d.type != :gateway)
+        |> where([devices: d], d.id == ^device_id and (d.type == :client or is_nil(d.type)))
         |> join(:inner, [devices: d], sd in SiteDevice,
           on: sd.account_id == d.account_id and sd.device_id == d.id,
           as: :site_device
@@ -1958,10 +1958,11 @@ defmodule PortalWeb.Sites do
       end
     end
 
-    # Only a device last seen on /device/v1 can serve a site, and it serves one at most.
+    # Only a device from a 1.7 or later binary, which has no type, can serve a site, and it
+    # serves one at most.
     defp selectable_devices_query(device_ids) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.id in ^device_ids and d.last_seen_device_v1)
+      |> where([devices: d], d.id in ^device_ids and is_nil(d.type))
       |> where(
         [devices: d],
         not exists(
@@ -1997,7 +1998,7 @@ defmodule PortalWeb.Sites do
       page_query =
         query
         |> order_by([devices: d, site_device: sd],
-          desc: d.last_seen_device_v1 and is_nil(sd.site_id),
+          desc: is_nil(d.type) and is_nil(sd.site_id),
           desc: d.id in ^online_ids,
           desc_nulls_last: d.last_seen_at,
           asc: d.id
@@ -2007,7 +2008,7 @@ defmodule PortalWeb.Sites do
         |> select([devices: d, site_device: sd], %{
           id: d.id,
           account_id: d.account_id,
-          selectable: d.last_seen_device_v1 and is_nil(sd.site_id),
+          selectable: is_nil(d.type) and is_nil(sd.site_id),
           online: d.id in ^online_ids,
           last_seen_at: d.last_seen_at,
           total: over(count(d.id))
@@ -2057,8 +2058,8 @@ defmodule PortalWeb.Sites do
     end
 
     defp unavailable_reason(_device, site_name) when is_binary(site_name), do: {:site, site_name}
-    defp unavailable_reason(%Device{last_seen_device_v1: false}, nil), do: :outdated
-    defp unavailable_reason(_device, nil), do: nil
+    defp unavailable_reason(%Device{type: nil}, nil), do: nil
+    defp unavailable_reason(_device, nil), do: :outdated
 
     defp filter_device_search(query, search_term) when search_term in [nil, ""], do: query
 

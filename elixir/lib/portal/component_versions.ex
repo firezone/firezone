@@ -27,7 +27,7 @@ defmodule Portal.ComponentVersions do
     ComponentVersions.component_version(:gateway)
   end
 
-  def client_version(%Device{type: :client} = client) do
+  def client_version(%Device{type: type} = client) when type != :gateway do
     client
     |> get_component_type()
     |> component_version()
@@ -52,16 +52,17 @@ defmodule Portal.ComponentVersions do
   end
 
   def get_component_type(%Device{
-        type: :client,
+        type: type,
         actor: %Portal.Actor{type: :service_account}
-      }),
+      })
+      when type != :gateway,
       do: :headless
 
-  def get_component_type(%Device{type: :client, last_seen_user_agent: ua})
-      when is_binary(ua),
+  def get_component_type(%Device{type: type, last_seen_user_agent: ua})
+      when type != :gateway and is_binary(ua),
       do: get_component_type_from_user_agent(ua)
 
-  def get_component_type(%Device{type: :client}), do: :gui
+  def get_component_type(%Device{type: type}) when type != :gateway, do: :gui
 
   def get_component_type_from_user_agent(user_agent) when is_binary(user_agent) do
     cond do
