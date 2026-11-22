@@ -48,7 +48,11 @@ defmodule Portal.Health do
     send_resp(conn, status_code, JSON.encode!(body))
   end
 
-  defp draining? do
+  @doc """
+  Whether the host is taking this node out of service. The host sets this
+  before it stops the container, while the node still serves requests.
+  """
+  def draining? do
     Portal.Config.fetch_env!(:portal, Portal.Health)[:draining_file_path]
     |> File.exists?()
   end

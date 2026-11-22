@@ -566,6 +566,31 @@ defmodule Portal.Billing.EventHandlerTest do
       assert Portal.Repo.get!(Portal.Account, account.id).is_disabled == false
     end
 
+    test "leaves the staff-set unified_devices flag alone", %{account: account, customer: customer} do
+      account = put_unified_devices(account, true)
+      assert account.metadata.stripe.customer_id == "cus_existing123"
+
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} =
+               EventHandler.handle_event(Stripe.build_event("customer.subscription.updated", subscription))
+
+      assert {:ok, _event} = EventHandler.handle_event(Stripe.build_event("customer.updated", customer))
+
+      assert {:ok, _account} =
+               Database.update_account_by_id(account.id, %{metadata: %{stripe: %{customer_id: "cus_other"}}})
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.metadata.unified_devices == true
+      assert updated.metadata.stripe.customer_id == "cus_other"
+    end
+
     test "processes plan product and warns on unrecognized product", %{
       account: account,
       customer: customer

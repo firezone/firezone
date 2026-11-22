@@ -119,6 +119,17 @@ defmodule Portal.Cache.Authorizations do
   def has_client?(%{}, _client_id), do: false
 
   @doc """
+    Return the ids of the resources the given client_id is authorized for.
+  """
+  @spec resource_ids_for_client(t(), String.t()) :: [Ecto.UUID.t()]
+  def resource_ids_for_client(%{} = cache, client_id) when is_binary(client_id) do
+    case Ecto.UUID.dump(client_id) do
+      {:ok, cid_bytes} -> for {{^cid_bytes, rid}, _entry} <- cache, do: load!(rid)
+      :error -> []
+    end
+  end
+
+  @doc """
     Return a list of all `{client_id, resource_id}` pairs matching the given resource ID.
   """
   @spec all_pairs_for_resource(t(), Ecto.UUID.t()) :: [{Ecto.UUID.t(), Ecto.UUID.t()}]

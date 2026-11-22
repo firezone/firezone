@@ -1732,7 +1732,7 @@ defmodule PortalWeb.Resources do
         end
 
       from(c in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> where([devices: d], d.id in ^device_ids)
       |> Safe.scoped(subject)
       |> Safe.all()
@@ -1826,7 +1826,7 @@ defmodule PortalWeb.Resources do
 
     defp count_criteria_devices(criteria, subject) do
       from(d in Portal.Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> Resource.DeviceMembershipCriteria.where_members(
         criteria,
         Resource.DeviceMembershipCriteria.scope(criteria, subject)

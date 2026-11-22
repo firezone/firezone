@@ -13,7 +13,7 @@ defmodule PortalAPI.Plugs.RescueRouterErrorsTest do
   test "unknown routes and unmounted sockets return 404 instead of redirecting", %{conn: conn} do
     Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
 
-    for path <- ["/nope", "/client/v1/websocket", "/client/v4/websocket", "/gateway/v3/websocket"] do
+    for path <- ["/nope", "/client/v1/websocket", "/client/v99/websocket", "/gateway/v99/websocket"] do
       response = get(%{conn | host: "api.firezone.dev"}, path)
       assert json_response(response, 404)["status"] == 404
       assert get_resp_header(response, "location") == []

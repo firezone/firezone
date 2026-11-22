@@ -15,6 +15,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
   import Portal.MembershipFixtures
+  import Portal.MetricsFixtures
   import Portal.PolicyFixtures
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
@@ -30,6 +31,7 @@ defmodule PortalAPI.Client.ChannelTest do
     socket_module =
       case channel do
         PortalAPI.Client.V2.Channel -> PortalAPI.Client.V2.Socket
+        PortalAPI.Client.V4.Channel -> PortalAPI.Client.V4.Socket
         PortalAPI.Client.V3.Channel -> PortalAPI.Client.V3.Socket
         PortalAPI.Client.Channel -> PortalAPI.Client.Socket
       end
@@ -481,6 +483,20 @@ defmodule PortalAPI.Client.ChannelTest do
       assert is_number(online_at)
     end
 
+    test "tracks a legacy client as serving no site and having a TUN interface", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      assert %{metas: [meta]} = Map.fetch!(Presence.Devices.Account.list(account.id), client.id)
+      assert meta.site_ids == []
+      assert meta.capabilities == [:tun]
+      assert meta.proto_min == meta.proto_max
+    end
+
     test "after_join enqueues the session and a flush persists it", %{
       client: client,
       subject: subject
@@ -635,6 +651,121 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "init", %{account_slug: account_slug}
       assert account_slug == account.slug
+    end
+
+    test "sends no metrics config on older channels", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      account_metrics_fixture(account, ["*"])
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+
+      assert_push "init", init
+      refute Map.has_key?(init, :metrics)
+      refute_push "metrics_config", _payload
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      refute_push "metrics_config", _payload
+    end
+
+    test "sends no metrics token without an ingest URL", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      account_metrics_fixture(account, ["*"])
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+    end
+
+    test "sends no metrics token while the account exports no metrics", %{
+      client: client,
+      subject: subject
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+      assert_push "init", init
+      refute Map.has_key?(init, :metrics)
+      assert_push "metrics_config", %{token: nil, export_interval_secs: 60, patterns: []}
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      assert_push "metrics_config", %{token: nil, patterns: []}
+    end
+
+    test "sends a metrics token after init and refreshes it", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      account_metrics_fixture(account, ["b"])
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+
+      assert_push "init", _init_payload
+
+      assert_push "metrics_config", %{
+        endpoint: "https://otlp.example.com/v1/metrics",
+        export_interval_secs: 60,
+        patterns: ["b"],
+        token: token
+      }
+
+      claims = JOSE.JWT.peek_payload(token).fields
+      assert {:ok, version} = Portal.Version.fetch_version(subject.context.user_agent)
+      assert claims["account_id"] == account.id
+      assert claims["account_slug"] == account.slug
+      assert claims["device_id"] == client.id
+      assert claims["device_type"] == "client"
+      assert claims["device_version"] == version
+      assert claims["metrics"] == ["b"]
+
+      plan_metrics_fixture(Portal.Billing.plan_type(account), ["a"])
+      send(socket.channel_pid, :refresh_metrics_token)
+
+      assert_push "metrics_config", %{patterns: ["a", "b"], token: token}
+      assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["a", "b"]
+    end
+
+    test "pushes the metrics config when the account's metric patterns change", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{token: nil}
+
+      metrics = account_metrics_fixture(account, ["a"])
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: metrics})
+
+      assert_push "metrics_config", %{token: token, patterns: ["a"]}
+      assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["a"]
+
+      updated = account_metrics_fixture(account, ["b"])
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 101,
+        op: :update,
+        old_struct: metrics,
+        struct: updated
+      })
+
+      assert_push "metrics_config", %{token: token, patterns: ["b"]}
+      assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["b"]
+
+      Repo.delete!(updated)
+      send(socket.channel_pid, %Changes.Change{lsn: 102, op: :delete, old_struct: updated})
+
+      assert_push "metrics_config", %{token: nil, patterns: []}
+
+      send(socket.channel_pid, %Changes.Change{lsn: 102, op: :delete, old_struct: updated})
+      refute_push "metrics_config", _payload
     end
 
     test "sends actor name in init message", %{
@@ -9360,6 +9491,19 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "join/3 with a gateway in a listed pool" do
+    test "lists no gateway", %{account: account, client: client, group: group, subject: subject} do
+      subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
+      pool_resource = device_pool_resource_fixture(account: account, devices: [gateway_fixture(account: account)])
+      policy_fixture(account: account, group: group, resource: pool_resource)
+
+      join_channel(client, subject)
+      assert_push "init", %{resources: resources}
+
+      assert %{devices: []} = Enum.find(resources, &(&1.id == pool_resource.id))
+    end
+  end
+
   describe "handle_info/2 :reject_access" do
     # Same eviction semantics as the gateway channel's :reject_access handler —
     # see `PortalAPI.Gateway.ChannelTest` for branch-by-branch coverage of
@@ -10435,5 +10579,6 @@ defmodule PortalAPI.Client.ChannelTest do
     while_down.()
     start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
   end
+
 
 end
