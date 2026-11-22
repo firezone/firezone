@@ -142,6 +142,7 @@ defmodule PortalAPI.Device.SocketTest do
       encoded_token = gateway_token_fixture(account: account, site: site) |> encode_gateway_token()
 
       assert connect_device(encoded_token, %{}) == {:error, :invalid_proto_range}
+      assert Repo.aggregate(where(Portal.Device, account_id: ^account.id, type: :gateway), :count) == 0
     end
 
     test "connects a client token signed with the device salt as a client" do

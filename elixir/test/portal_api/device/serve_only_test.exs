@@ -148,6 +148,16 @@ defmodule PortalAPI.Device.ServeOnlyTest do
   end
 
   describe "serving" do
+    test "is told a peer's new key whatever version it reports", %{token: token} do
+      socket = join_gateway(token)
+      assert_push "init", _
+      peer_id = Ecto.UUID.generate()
+
+      send(socket.channel_pid, {:public_key_changed, :client, peer_id, "new-key"})
+
+      assert_push "public_key_changed", %{device_id: ^peer_id, public_key: "new-key"}
+    end
+
     test "a client on /client/v3 reaches a resource through it", %{
       account: account,
       site: site,
