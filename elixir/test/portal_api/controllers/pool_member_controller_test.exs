@@ -353,6 +353,55 @@ defmodule PortalAPI.PoolMemberControllerTest do
       assert member_ids(pool) == Enum.sort([keep.id, add.id])
     end
 
+    test "adds a gateway on /device/v1 and lists it", %{conn: conn, account: account, actor: api_actor} do
+      gateway = gateway_fixture(account: account)
+      Repo.update!(Ecto.Changeset.change(gateway, last_seen_device_v1: true))
+      pool = device_pool_resource_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/resources/#{pool.id}/pool_members", pool_members: %{"add" => [gateway.id]})
+
+      assert %{"data" => %{"device_ids" => [id]}} = json_response(conn, 200)
+      assert id == gateway.id
+      assert member_ids(pool) == [gateway.id]
+
+      conn =
+        build_conn()
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources/#{pool.id}/pool_members")
+
+      assert %{"data" => [%{"id" => ^id}]} = json_response(conn, 200)
+    end
+
+    test "rejects a gateway on /gateway as a device that is not a Client", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      gateway = gateway_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/resources/#{pool.id}/pool_members", pool_members: %{"add" => [gateway.id]})
+
+      assert json_response(conn, 422) == %{
+               "type" => "about:blank",
+               "status" => 422,
+               "title" => "Unprocessable Content",
+               "detail" => "The request body failed validation.",
+               "validation_errors" => %{"pool_members" => ["#{gateway.id} is not a Client in this account"]}
+             }
+
+      assert member_ids(pool) == []
+    end
+
     test "adding an existing member is a no-op", %{
       conn: conn,
       account: account,

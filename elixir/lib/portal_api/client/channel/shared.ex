@@ -947,11 +947,13 @@ defmodule PortalAPI.Client.Channel.Shared do
   #     stuck waiting), or
   #   - initiator and target are on different minor versions — snownet's wire
   #     format may change on a minor cadence, so cross-minor pairs are unsafe.
+  # A `/device/v1` target always handles `authorize_peer`, and a gateway's version is not a client's.
   defp check_peer_compatibility(target_meta, socket) do
     target_user_agent = Map.get(target_meta, :user_agent)
     target_version = Map.get(target_meta, :version)
 
-    if Portal.Version.supports_device_access?(target_user_agent, target_version) and
+    if (Map.get(target_meta, :device_v1, false) or
+          Portal.Version.supports_device_access?(target_user_agent, target_version)) and
          Portal.Version.compatible?(proto_range(socket), Portal.Version.proto_range_from_meta(target_meta)) do
       :ok
     else
@@ -2289,13 +2291,35 @@ Relays.render(relays, relay_owner(socket)),
     push_resource_updates(result, socket)
   end
 
-  # NON-SELF CLIENT DEVICES (members of a pool we have access to)
+  # NON-SELF DEVICES (members of a pool we have access to)
+
+  # A gateway can be a pool target only while its latest connection is on `/device/v1`.
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Portal.Device{type: :gateway, last_seen_device_v1: old_device_v1},
+           struct: %Portal.Device{type: :gateway, last_seen_device_v1: device_v1}
+         },
+         socket
+       )
+       when old_device_v1 != device_v1 do
+    %{cache: old_cache, client: client, subject: subject} = socket.assigns
+
+    {:ok, _added, _removed_ids, cache} =
+      result = Cache.Client.recompute_connectable_resources(old_cache, client, subject)
+
+    for addresses <- Cache.Client.removed_member_addresses(old_cache, cache) do
+      push_device_access_denied(socket, addresses)
+    end
+
+    push_resource_updates(result, socket)
+  end
 
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Portal.Device{type: :client},
-           struct: %Portal.Device{type: :client} = device
+           old_struct: %Portal.Device{},
+           struct: %Portal.Device{} = device
          },
          socket
        ) do
@@ -2308,7 +2332,7 @@ Relays.render(relays, relay_owner(socket)),
   end
 
   defp handle_change(
-         %Change{op: :delete, old_struct: %Portal.Device{type: :client} = device},
+         %Change{op: :delete, old_struct: %Portal.Device{} = device},
          socket
        ) do
     {:ok, denied, added, removed_ids, cache} =
@@ -2934,6 +2958,7 @@ Relays.render(relays, relay_owner(socket)),
 
   defmodule Database do
     import Ecto.Query, only: [from: 2, dynamic: 1]
+    alias Portal.Resource.DeviceMembershipCriteria
 
     def x509_session_enabled?(auth_provider_id, actor_id) do
       from(auth_provider in Portal.X509.AuthProvider,
@@ -3011,12 +3036,13 @@ Relays.render(relays, relay_owner(socket)),
     end
 
     @doc """
-      Fetches the client device in the subject's account that answers at `slug`.
+      Fetches the device a pool may hold in the subject's account that answers at `slug`.
       Returns `{:error, :not_found}` for a miss or unauthorized read.
     """
     def get_device_by_slug(slug, subject) when is_binary(slug) do
       from(d in Portal.Device,
-        where: d.type == :client,
+        as: :devices,
+        where: ^DeviceMembershipCriteria.targets(),
         where: d.slug == ^slug
       )
       |> Portal.Safe.scoped(subject)
@@ -3047,17 +3073,18 @@ Relays.render(relays, relay_owner(socket)),
     end
 
     @doc """
-      The slugs of up to `limit` client devices that pools with any of these criteria hold
+      The slugs of up to `limit` devices that pools with any of these criteria hold
       when `subject` asks, most recently seen first, and how many devices they hold in all.
     """
     def member_slugs(criteria, limit, subject) do
       in_any_pool =
         Enum.reduce(criteria, dynamic(false), fn criteria, in_any_pool ->
-          scope = Portal.Resource.DeviceMembershipCriteria.scope(criteria, subject)
-          dynamic(^in_any_pool or ^Portal.Resource.DeviceMembershipCriteria.members(criteria, scope))
+          scope = DeviceMembershipCriteria.scope(criteria, subject)
+          dynamic(^in_any_pool or ^DeviceMembershipCriteria.members(criteria, scope))
         end)
 
-      members = from(d in Portal.Device, as: :devices, where: d.type == :client, where: ^in_any_pool)
+      members =
+        from(d in Portal.Device, as: :devices, where: ^DeviceMembershipCriteria.targets(), where: ^in_any_pool)
 
       slugs =
         from(d in members,
@@ -3082,7 +3109,7 @@ Relays.render(relays, relay_owner(socket)),
     end
 
     @doc """
-      Fetches a client device by its tunnel IPv4 or IPv6 within the subject's account.
+      Fetches a device a pool may hold by its tunnel IPv4 or IPv6 within the subject's account.
     """
     def get_device_by_address({:ipv4, ipv4_tuple}, subject) do
       fetch_device_by_inet(:ipv4, %Postgrex.INET{address: ipv4_tuple}, subject)
@@ -3097,13 +3124,15 @@ Relays.render(relays, relay_owner(socket)),
         case family do
           :ipv4 ->
             from(d in Portal.Device,
-              where: d.type == :client,
+              as: :devices,
+              where: ^DeviceMembershipCriteria.targets(),
               where: d.ipv4 == ^inet
             )
 
           :ipv6 ->
             from(d in Portal.Device,
-              where: d.type == :client,
+              as: :devices,
+              where: ^DeviceMembershipCriteria.targets(),
               where: d.ipv6 == ^inet
             )
         end

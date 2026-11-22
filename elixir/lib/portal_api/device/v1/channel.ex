@@ -11,7 +11,8 @@ defmodule PortalAPI.Device.V1.Channel do
   ICE role a side has.
 
   A device that connected with a Gateway token only serves: its channel builds no client
-  state, its `init` holds no resources, and every message that would reach a peer is refused.
+  state, its `init` holds no resources, and every message that would start a connection is
+  refused. It still accepts one as a device pool target.
 
   The shared client code speaks `/client/v3`; `encode/3` turns what it pushes into this protocol.
   """
@@ -523,8 +524,7 @@ defmodule PortalAPI.Device.V1.Channel do
   defp served?(socket, %Resource{site_id: site_id}), do: site_id in socket.assigns.served_site_ids
 
   # A pool targets the device itself, not a site it serves.
-  defp serves?(socket, %Cache.Cacheable.Resource{type: :device_pool}),
-    do: socket.assigns.subject.actor.type != :legacy_gateway
+  defp serves?(_socket, %Cache.Cacheable.Resource{type: :device_pool}), do: true
 
   defp serves?(socket, %Cache.Cacheable.Resource{site: %{id: site_id}}),
     do: Ecto.UUID.load!(site_id) in socket.assigns.served_site_ids

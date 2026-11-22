@@ -2290,7 +2290,7 @@ defmodule PortalWeb.Resources.Components do
 
     def get_device(device_id, subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> where([devices: d], d.id == ^device_id)
       |> Safe.scoped(subject)
       |> Safe.one()
@@ -2335,7 +2335,7 @@ defmodule PortalWeb.Resources.Components do
 
         query =
           from(d in Device, as: :devices)
-          |> where([devices: d], d.type == :client)
+          |> where(^Resource.DeviceMembershipCriteria.targets())
           |> where([devices: d], d.id not in ^Enum.map(selected_devices, & &1.id))
           |> filter_device_search(search_term)
           |> filter_online_only(online_only?, online_ids)
@@ -2483,7 +2483,7 @@ defmodule PortalWeb.Resources.Components do
         |> Enum.uniq()
 
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> where([devices: d], d.id in ^ids)
       |> Safe.scoped(subject)
       |> Safe.all()

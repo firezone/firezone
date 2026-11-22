@@ -134,7 +134,7 @@ defmodule PortalAPI.Device.ServeOnlyTest do
       assert Process.alive?(socket.channel_pid)
     end
 
-    test "drops a request that targets the device through a pool", %{account: account, token: token} do
+    test "accepts a request that targets the device through a pool", %{account: account, token: token} do
       socket = join_gateway(token)
       assert_push "init", _
 
@@ -142,7 +142,8 @@ defmodule PortalAPI.Device.ServeOnlyTest do
       initiator = client_fixture(account: account) |> fetch_device!()
       send(socket.channel_pid, {:authorize, {self(), make_ref()}, authorize_request(initiator, pool)})
 
-      refute_push "authorize_peer", _
+      pool_id = pool.id
+      assert_push "authorize_peer", %{target: %{type: :device, pool_id: ^pool_id}}
     end
   end
 
@@ -190,6 +191,82 @@ defmodule PortalAPI.Device.ServeOnlyTest do
       device_id = device_socket.assigns.client.id
       site_id = site.id
       assert_push "authorization_created", %{gateway_id: ^device_id, site_id: ^site_id}
+    end
+
+    test "a client on /client/v3 reaches it through a listed pool", %{account: account, token: token} do
+      device_socket = join_gateway(token)
+      assert_push "init", _
+      device = device_socket.assigns.client
+
+      pool = device_pool_resource_fixture(account: account, devices: [device])
+      {initiator, initiator_socket} = join_pool_initiator(account, pool)
+
+      push(initiator_socket, "request_access", %{
+        "resource_ids" => [pool.id],
+        "ipv4" => Portal.Types.INET.to_string(device.ipv4)
+      })
+
+      assert_push "authorize_peer", payload
+      assert payload.peer.id == initiator.id
+      pool_id = pool.id
+      assert %{type: :device, pool_id: ^pool_id} = payload.target
+      assert payload.connection == %{type: :ice, role: :controlled}
+
+      reply_ref = push(device_socket, "peer_authorized", %{"ref" => payload.ref})
+      assert_reply reply_ref, :ok
+
+      device_id = device.id
+      initiator_id = initiator.id
+
+      assert_push "client_device_access_authorized", %{
+        client_id: ^device_id,
+        resource_id: ^pool_id,
+        ice_role: :controlling
+      }
+
+      push(initiator_socket, "new_client_ice_candidates", %{"candidates" => ["a"], "client_id" => device_id})
+      assert_push "ice_candidates", %{device_id: ^initiator_id, candidates: ["a"]}
+
+      push(device_socket, "broadcast_ice_candidates", %{"candidates" => ["b"], "device_ids" => [initiator_id]})
+      assert_push "client_ice_candidates", %{client_id: ^device_id, candidates: ["b"]}
+
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
+      pa = Repo.get_by!(Portal.PolicyAuthorization, receiving_device_id: device_id)
+      Repo.delete!(pa)
+      send(device_socket.channel_pid, change(:delete, pa, nil))
+
+      assert_push "deauthorize_peer", %{device_id: ^initiator_id, resource_id: ^pool_id}
+    end
+
+    test "an All devices pool holds it", %{account: account, token: token} do
+      device_socket = join_gateway(token)
+      assert_push "init", _
+      device = device_socket.assigns.client
+
+      pool = all_devices_pool_resource_fixture(account: account)
+      {_initiator, initiator_socket} = join_pool_initiator(account, pool)
+
+      push(initiator_socket, "request_access", %{
+        "resource_ids" => [pool.id],
+        "ipv4" => Portal.Types.INET.to_string(device.ipv4)
+      })
+
+      pool_id = pool.id
+      assert_push "authorize_peer", %{target: %{type: :device, pool_id: ^pool_id}}
+    end
+
+    test "an All devices pool does not hold a gateway on /gateway", %{account: account, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+      :ok = Presence.Devices.connect(gateway, Ecto.UUID.generate(), %{site_ids: [site.id]})
+
+      pool = all_devices_pool_resource_fixture(account: account)
+      {_initiator, initiator_socket} = join_pool_initiator(account, pool)
+
+      ipv4 = Portal.Types.INET.to_string(gateway.ipv4)
+      push(initiator_socket, "request_access", %{"resource_ids" => [pool.id], "ipv4" => ipv4})
+
+      assert_push "client_device_access_denied", %{ipv4: ^ipv4, reason: :forbidden}
+      refute_push "client_device_access_authorized", _
     end
 
     test "pushes served_sites_changed when its site assignment is deleted", %{token: token} do
@@ -276,6 +353,19 @@ defmodule PortalAPI.Device.ServeOnlyTest do
     {:ok, socket} = connect_gateway(token)
     {:ok, _reply, socket} = subscribe_and_join(socket, PortalAPI.Device.V1.Channel, "device")
     socket
+  end
+
+  defp join_pool_initiator(account, pool) do
+    group = group_fixture(account: account)
+    actor = actor_fixture(account: account)
+    membership_fixture(account: account, actor: actor, group: group)
+    policy_fixture(account: account, group: group, resource: pool)
+
+    subject =
+      subject_fixture(account: account, actor: actor, type: :client, user_agent: "iOS/18.0 apple-client/1.5.16")
+
+    initiator = client_fixture(account: account, actor: actor) |> fetch_device!()
+    {initiator, join_client(initiator, subject)}
   end
 
   defp join_client(client, subject) do

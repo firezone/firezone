@@ -9374,6 +9374,62 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 for a gateway in a listed pool" do
+    setup %{account: account, group: group, subject: subject} do
+      subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
+      v1_gateway = gateway_fixture(account: account)
+      Repo.update!(Ecto.Changeset.change(v1_gateway, last_seen_device_v1: true))
+      legacy_gateway = gateway_fixture(account: account)
+
+      pool_resource =
+        device_pool_resource_fixture(account: account, devices: [v1_gateway, legacy_gateway])
+
+      policy_fixture(account: account, group: group, resource: pool_resource)
+
+      %{subject: subject, v1_gateway: v1_gateway, pool_resource: pool_resource}
+    end
+
+    test "lists only the gateway on /device/v1", %{
+      client: client,
+      subject: subject,
+      v1_gateway: v1_gateway,
+      pool_resource: pool_resource
+    } do
+      join_channel(client, subject)
+      assert_push "init", %{resources: resources}
+
+      v1_gateway_id = v1_gateway.id
+      assert %{devices: [%{client_id: ^v1_gateway_id}]} = Enum.find(resources, &(&1.id == pool_resource.id))
+    end
+
+    test "drops the gateway when it reconnects on /gateway", %{
+      client: client,
+      subject: subject,
+      v1_gateway: v1_gateway,
+      pool_resource: pool_resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      old_gateway = %{v1_gateway | last_seen_device_v1: true}
+      gateway = Repo.update!(Ecto.Changeset.change(old_gateway, last_seen_device_v1: false))
+
+      send(socket.channel_pid, %Changes.Change{lsn: 200, op: :update, old_struct: old_gateway, struct: gateway})
+
+      ipv4 = Portal.Types.INET.to_string(v1_gateway.ipv4)
+      pool_id = pool_resource.id
+
+      assert_push "client_device_access_denied", %{ipv4: ^ipv4, reason: :forbidden}
+      assert_push "resource_created_or_updated", %{id: ^pool_id, devices: []}
+
+      Repo.update!(Ecto.Changeset.change(gateway, last_seen_device_v1: true))
+      send(socket.channel_pid, %Changes.Change{lsn: 201, op: :update, old_struct: gateway, struct: old_gateway})
+
+      v1_gateway_id = v1_gateway.id
+      assert_push "resource_created_or_updated", %{id: ^pool_id, devices: [%{client_id: ^v1_gateway_id}]}
+    end
+  end
+
   describe "handle_info/2 :reject_access" do
     # Same eviction semantics as the gateway channel's :reject_access handler —
     # see `PortalAPI.Gateway.ChannelTest` for branch-by-branch coverage of

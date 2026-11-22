@@ -635,6 +635,20 @@ defmodule PortalWeb.ResourcesTest do
       assert id == own.id
     end
 
+    test "device picker search lists gateways on /device/v1 and leaves out the others", %{
+      account: account,
+      actor: actor
+    } do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      v1_gateway = gateway_fixture(account: account, name: "Picker Gateway V1")
+      Repo.update!(Ecto.Changeset.change(v1_gateway, last_seen_device_v1: true))
+      gateway_fixture(account: account, name: "Picker Gateway Legacy")
+
+      assert %{devices: [%{id: id}], total: 1} = Database.search_devices("Picker Gateway", subject, [])
+      assert id == v1_gateway.id
+    end
+
     test "device picker search filters by online and recently seen", %{account: account, actor: actor} do
       subject = admin_subject_fixture(account: account, actor: actor)
 

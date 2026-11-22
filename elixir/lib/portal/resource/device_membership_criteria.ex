@@ -129,6 +129,15 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
   @spec where_members(Ecto.Query.t(), t(), scope()) :: Ecto.Query.t()
   def where_members(query, criteria, scope), do: where(query, ^members(criteria, scope))
 
+  @doc """
+  The devices, bound as `:devices`, that any pool may hold: every client, and a gateway whose
+  latest connection was on `/device/v1`.
+  """
+  @spec targets() :: Ecto.Query.dynamic_expr()
+  def targets do
+    dynamic([devices: d], d.type == :client or (d.type == :gateway and d.last_seen_device_v1))
+  end
+
   @doc "The condition `where_members/3` adds, to combine the members of several pools."
   @spec members(t(), scope()) :: Ecto.Query.dynamic_expr()
   def members(%__MODULE__{provider: :device, field: :id, op: :in, value: {:literal, ids}}, _scope) do
