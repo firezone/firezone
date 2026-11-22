@@ -390,7 +390,7 @@ defmodule PortalAPI.Device.V1.Channel do
         serve_only_init(socket, relays)
         {:noreply, serve_only_track_presence(socket)}
 
-      old_device.upstream_dns != device.upstream_dns ->
+      old_device.config != device.config ->
         interface = PortalAPI.Client.Views.Interface.render(%{socket.assigns.client | account: socket.assigns.subject.account})
         :ok = Protocol.push(socket, "config_changed", %{interface: interface})
         {:noreply, socket}

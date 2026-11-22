@@ -181,7 +181,7 @@ defmodule PortalAPI.Gateway.Connection do
       Portal.Crypto.random_token(5, encoder: :user_friendly)
     end)
     |> put_change(:type, :gateway)
-    |> put_embed(:upstream_dns, %Portal.UpstreamDNS{type: :system})
+    |> put_embed(:config, Portal.Accounts.Config.default_config())
     |> put_change(:account_id, site.account_id)
     |> Portal.Devices.put_free_slug(site.account_id, nil)
     |> put_assoc(:site_device, Portal.Devices.site_device_changeset(site))

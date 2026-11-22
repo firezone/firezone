@@ -9,7 +9,8 @@ defmodule PortalAPI.Client.Views.Interface do
   }
 
   def render(%Device{} = client) do
-    dns_config = client.upstream_dns || Map.get(client.account.config, :clients_upstream_dns)
+    config = client.config || client.account.config
+    dns_config = Map.get(config, :clients_upstream_dns)
 
     {upstream_do53, upstream_doh, upstream_dns} =
       case dns_config do
@@ -31,7 +32,7 @@ defmodule PortalAPI.Client.Views.Interface do
       end
 
     %{
-      search_domain: client.account.config.search_domain,
+      search_domain: config.search_domain,
       upstream_do53: upstream_do53,
       upstream_doh: upstream_doh,
       ipv4: client.ipv4,

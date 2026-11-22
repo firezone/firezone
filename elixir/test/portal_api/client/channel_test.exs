@@ -93,7 +93,7 @@ defmodule PortalAPI.Client.ChannelTest do
     params =
       %{client | public_key: nil, token_id: nil, last_seen_version: nil}
       |> Map.from_struct()
-      |> Map.update!(:upstream_dns, &(&1 && Ecto.embedded_dump(&1, :json)))
+      |> Map.update!(:config, &(&1 && Ecto.embedded_dump(&1, :json)))
 
     Portal.SchemaHelpers.struct_from_params(Portal.Device, params)
   end
@@ -2888,20 +2888,22 @@ defmodule PortalAPI.Client.ChannelTest do
       assert ipv4 == new_ipv4.address
     end
 
-    test "for client upstream DNS updates pushes config_changed with the device's setting", %{
+    test "for client DNS config updates pushes config_changed with the device's config", %{
       client: client,
       subject: subject
     } do
       socket = join_channel(client, subject)
       assert_push "init", _
 
-      secure = %Portal.UpstreamDNS{type: :secure, doh_provider: :cloudflare}
+      secure = %Portal.Accounts.Config{
+        clients_upstream_dns: %Portal.UpstreamDNS{type: :secure, doh_provider: :cloudflare}
+      }
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
         op: :update,
         old_struct: broadcast_struct(client),
-        struct: broadcast_struct(%{client | upstream_dns: secure})
+        struct: broadcast_struct(%{client | config: secure})
       })
 
       assert_push "config_changed", payload
@@ -2910,7 +2912,7 @@ defmodule PortalAPI.Client.ChannelTest do
                interface: %{
                  ipv4: client.ipv4,
                  ipv6: client.ipv6,
-                 search_domain: "example.com",
+                 search_domain: nil,
                  upstream_dns: [],
                  upstream_do53: [],
                  upstream_doh: [%{url: "https://cloudflare-dns.com/dns-query"}]
@@ -2920,11 +2922,13 @@ defmodule PortalAPI.Client.ChannelTest do
       send(socket.channel_pid, %Changes.Change{
         lsn: 101,
         op: :update,
-        old_struct: broadcast_struct(%{client | upstream_dns: secure}),
+        old_struct: broadcast_struct(%{client | config: secure}),
         struct: broadcast_struct(client)
       })
 
-      assert_push "config_changed", %{interface: %{upstream_doh: [], upstream_do53: [_, _, _]}}
+      assert_push "config_changed", %{
+        interface: %{search_domain: "example.com", upstream_doh: [], upstream_do53: [_, _, _]}
+      }
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 102,

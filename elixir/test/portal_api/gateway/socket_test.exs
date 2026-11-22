@@ -139,7 +139,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert token_id == token.id
     end
 
-    test "creates a new gateway that uses its own resolvers" do
+    test "creates a new gateway with the default DNS config" do
       token = gateway_token_fixture()
       encoded_token = encode_gateway_token(token)
 
@@ -148,8 +148,8 @@ defmodule PortalAPI.Gateway.SocketTest do
                  connect_info: build_connect_info(token: encoded_token)
                )
 
-      assert Repo.get_by!(Portal.Device, id: socket.assigns.gateway.id).upstream_dns ==
-               %Portal.UpstreamDNS{type: :system}
+      assert Repo.get_by!(Portal.Device, id: socket.assigns.gateway.id).config ==
+               Portal.Accounts.Config.default_config()
     end
 
     test "leaves a pre-created gateway on the account setting" do
@@ -164,7 +164,7 @@ defmodule PortalAPI.Gateway.SocketTest do
                )
 
       assert socket.assigns.gateway.id == gateway.id
-      assert Repo.get_by!(Portal.Device, id: gateway.id).upstream_dns == nil
+      assert Repo.get_by!(Portal.Device, id: gateway.id).config == nil
     end
 
     test "creates a new gateway" do

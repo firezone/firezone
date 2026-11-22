@@ -292,11 +292,14 @@ defmodule PortalAPI.Device.ServeOnlyTest do
     end
   end
 
-  describe "upstream DNS" do
-    test "is the gateway's own resolvers in init, whatever the account uses", %{account: account, token: token} do
+  describe "DNS config" do
+    test "is the default config in init, whatever the account uses", %{account: account, token: token} do
       account
       |> Ecto.Changeset.change()
-      |> Ecto.Changeset.put_embed(:config, %{clients_upstream_dns: %{type: :secure, doh_provider: :google}})
+      |> Ecto.Changeset.put_embed(:config, %{
+        search_domain: "example.com",
+        clients_upstream_dns: %{type: :secure, doh_provider: :google}
+      })
       |> Repo.update!()
 
       assert Repo.get_by!(Portal.Account, id: account.id).config.clients_upstream_dns.type == :secure
@@ -307,6 +310,7 @@ defmodule PortalAPI.Device.ServeOnlyTest do
       assert interface.upstream_do53 == []
       assert interface.upstream_doh == []
       assert interface.upstream_dns == []
+      assert interface.search_domain == nil
     end
 
     test "pushes config_changed when an admin sets it for the gateway", %{token: token} do
@@ -314,13 +318,21 @@ defmodule PortalAPI.Device.ServeOnlyTest do
       assert_push "init", _
 
       gateway = socket.assigns.client
-      custom = %Portal.UpstreamDNS{type: :custom, addresses: [%Portal.UpstreamDNS.Address{address: "9.9.9.9"}]}
-      send(socket.channel_pid, change(:update, gateway, %{gateway | upstream_dns: custom}))
+      custom = %Portal.Accounts.Config{
+        search_domain: "corp.example.com",
+        clients_upstream_dns: %Portal.UpstreamDNS{
+          type: :custom,
+          addresses: [%Portal.UpstreamDNS.Address{address: "9.9.9.9"}]
+        }
+      }
+
+      send(socket.channel_pid, change(:update, gateway, %{gateway | config: custom}))
 
       assert_push "config_changed", %{interface: interface}
       assert interface.upstream_do53 == [%{ip: "9.9.9.9"}]
       assert interface.upstream_dns == [%{protocol: :ip_port, address: "9.9.9.9:53"}]
       assert interface.upstream_doh == []
+      assert interface.search_domain == "corp.example.com"
     end
   end
 

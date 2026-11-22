@@ -174,9 +174,9 @@ defmodule PortalWeb.Devices do
 
   defp assign_gateway_panel(socket, _device), do: assign(socket, gateway_panel: base_gateway_panel())
 
-  # Only a device last seen on /device/v1 reads its own upstream DNS.
+  # Only a device last seen on /device/v1 reads its own DNS config.
   defp assign_dns_form(%{assigns: %{unified_devices?: true}} = socket, %Device{last_seen_device_v1: true} = device),
-    do: assign(socket, dns_form: to_form(Database.change_upstream_dns(device)))
+    do: assign(socket, dns_form: to_form(Database.change_config(device, socket.assigns.account.config)))
 
   defp assign_dns_form(socket, _device), do: assign(socket, dns_form: nil)
 
@@ -534,7 +534,7 @@ defmodule PortalWeb.Devices do
   def handle_event("change_device_dns", %{"device" => attrs}, socket) do
     form =
       socket.assigns.selected_device
-      |> Database.change_upstream_dns(attrs)
+      |> Database.change_config(socket.assigns.account.config, attrs)
       |> to_form(action: :validate)
 
     {:noreply, assign(socket, dns_form: form)}
@@ -542,11 +542,11 @@ defmodule PortalWeb.Devices do
 
   def handle_event("submit_device_dns", %{"device" => attrs}, socket) do
     device = socket.assigns.selected_device
-    changeset = Database.change_upstream_dns(device, attrs)
+    changeset = Database.change_config(device, socket.assigns.account.config, attrs)
 
     case Database.update_device(changeset, socket.assigns.subject) do
       {:ok, updated} ->
-        device = %{device | upstream_dns: updated.upstream_dns, updated_at: updated.updated_at}
+        device = %{device | config: updated.config, updated_at: updated.updated_at}
 
         {:noreply,
          socket
@@ -982,18 +982,22 @@ defmodule PortalWeb.Devices do
       |> Portal.Device.changeset()
     end
 
-    @spec change_upstream_dns(Portal.Device.t(), map()) :: Ecto.Changeset.t()
-    def change_upstream_dns(device, attrs \\ %{}) do
-      # "default" clears the override, so the device follows the account.
-      attrs =
-        case attrs do
-          %{"upstream_dns" => %{"type" => "default"}} -> Map.put(attrs, "upstream_dns", nil)
-          attrs -> attrs
-        end
+    # "account" clears the device config. "custom" starts from a copy of the account's.
+    @spec change_config(Portal.Device.t(), Portal.Accounts.Config.t() | nil, map()) :: Ecto.Changeset.t()
+    def change_config(device, account_config, attrs \\ %{}) do
+      case attrs do
+        %{"config_source" => "account"} ->
+          device |> change() |> put_embed(:config, nil)
 
-      device
-      |> cast(attrs, [])
-      |> cast_embed(:upstream_dns, with: &Portal.UpstreamDNS.changeset/2)
+        %{"config" => _config} ->
+          device |> cast(attrs, []) |> cast_embed(:config, with: &Portal.Accounts.Config.changeset/2)
+
+        %{"config_source" => "custom"} when is_nil(device.config) ->
+          device |> change() |> put_embed(:config, Portal.Accounts.Config.ensure_defaults(account_config))
+
+        _attrs ->
+          change(device)
+      end
       |> Portal.Device.changeset()
     end
 

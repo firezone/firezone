@@ -83,10 +83,8 @@ defmodule PortalAPI.Device.SocketTest do
       refute Map.has_key?(socket.assigns, :gateway)
 
       assert Repo.get_by!(Portal.SiteDevice, device_id: socket.assigns.client.id).site_id == site.id
-      assert socket.assigns.client.upstream_dns == %Portal.UpstreamDNS{type: :system}
-
-      assert Repo.get_by!(Portal.Device, id: socket.assigns.client.id).upstream_dns ==
-               %Portal.UpstreamDNS{type: :system}
+      assert socket.assigns.client.config == Portal.Accounts.Config.default_config()
+      assert Repo.get_by!(Portal.Device, id: socket.assigns.client.id).config == Portal.Accounts.Config.default_config()
     end
 
     test "connects a device-bound token signed with the device salt to its gateway", %{
