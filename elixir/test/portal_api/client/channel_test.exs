@@ -90,12 +90,10 @@ defmodule PortalAPI.Client.ChannelTest do
   # latest-session columns still hold what the last flush persisted, and virtual
   # fields and associations are not in the row at all.
   defp broadcast_struct(client) do
-    params =
-      %{client | public_key: nil, token_id: nil, last_seen_version: nil}
-      |> Map.from_struct()
-      |> Map.update!(:upstream_dns, &(&1 && Ecto.embedded_dump(&1, :json)))
-
-    Portal.SchemaHelpers.struct_from_params(Portal.Device, params)
+    Portal.SchemaHelpers.struct_from_params(
+      Portal.Device,
+      Map.from_struct(%{client | public_key: nil, token_id: nil, last_seen_version: nil})
+    )
   end
 
   # Mirrors Socket.connect's apply_session: the connection snapshot lives on
@@ -2886,55 +2884,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert client_id == client.id
       assert ipv4 == new_ipv4.address
-    end
-
-    test "for client upstream DNS updates pushes config_changed with the device's setting", %{
-      client: client,
-      subject: subject
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-
-      secure = %Portal.UpstreamDNS{type: :secure, doh_provider: :cloudflare}
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 100,
-        op: :update,
-        old_struct: broadcast_struct(client),
-        struct: broadcast_struct(%{client | upstream_dns: secure})
-      })
-
-      assert_push "config_changed", payload
-
-      assert payload == %{
-               interface: %{
-                 ipv4: client.ipv4,
-                 ipv6: client.ipv6,
-                 search_domain: "example.com",
-                 upstream_dns: [],
-                 upstream_do53: [],
-                 upstream_doh: [%{url: "https://cloudflare-dns.com/dns-query"}]
-               }
-             }
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 101,
-        op: :update,
-        old_struct: broadcast_struct(%{client | upstream_dns: secure}),
-        struct: broadcast_struct(client)
-      })
-
-      assert_push "config_changed", %{interface: %{upstream_doh: [], upstream_do53: [_, _, _]}}
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 102,
-        op: :update,
-        old_struct: broadcast_struct(client),
-        struct: broadcast_struct(%{client | name: "Renamed"})
-      })
-
-      :sys.get_state(socket.channel_pid)
-      refute_push "config_changed", _
     end
 
     test "for client updates keeps this connection's session state", %{

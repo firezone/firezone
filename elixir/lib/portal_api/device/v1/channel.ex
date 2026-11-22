@@ -383,20 +383,13 @@ defmodule PortalAPI.Device.V1.Channel do
        ) do
     socket = assign(socket, :client, Device.merge_broadcast(current, device))
 
-    cond do
-      old_device.ipv4 != device.ipv4 or old_device.ipv6 != device.ipv6 ->
-        relays = Relays.select(serve_only_relay_owner(socket))
-        socket = Relays.cache(socket, relays)
-        serve_only_init(socket, relays)
-        {:noreply, serve_only_track_presence(socket)}
-
-      old_device.upstream_dns != device.upstream_dns ->
-        interface = PortalAPI.Client.Views.Interface.render(%{socket.assigns.client | account: socket.assigns.subject.account})
-        :ok = Protocol.push(socket, "config_changed", %{interface: interface})
-        {:noreply, socket}
-
-      true ->
-        {:noreply, socket}
+    if old_device.ipv4 != device.ipv4 or old_device.ipv6 != device.ipv6 do
+      relays = Relays.select(serve_only_relay_owner(socket))
+      socket = Relays.cache(socket, relays)
+      serve_only_init(socket, relays)
+      {:noreply, serve_only_track_presence(socket)}
+    else
+      {:noreply, socket}
     end
   end
 

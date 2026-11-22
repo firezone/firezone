@@ -71,7 +71,6 @@ defmodule Portal.Device do
           last_attested_cert_issuer: binary() | nil,
           last_attested_at: DateTime.t() | nil,
           verified_at: DateTime.t() | nil,
-          upstream_dns: Portal.UpstreamDNS.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -123,9 +122,6 @@ defmodule Portal.Device do
     # `attested?` presence attribute).
     field :last_attested_at, :utc_datetime_usec
     field :verified_at, :utc_datetime_usec
-
-    # nil follows the account's clients_upstream_dns.
-    embeds_one :upstream_dns, Portal.UpstreamDNS, on_replace: :update
 
     # Gateway-only
     has_one :site_device, Portal.SiteDevice, foreign_key: :device_id, references: :id

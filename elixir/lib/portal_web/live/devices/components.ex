@@ -2,7 +2,6 @@ defmodule PortalWeb.Devices.Components do
   use PortalWeb, :component_library
   alias PortalWeb.Components.Core
   alias Portal.ComponentVersions
-  alias PortalWeb.Settings
   alias PortalWeb.Sites
 
   def actor_show_url(account, actor, return_to \\ nil)
@@ -197,7 +196,6 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :site_assignment, :map, default: nil
   attr :gateway_panel, :map, default: nil
-  attr :dns_form, :any, default: nil
 
   def device_panel(assigns) do
     assigns =
@@ -241,7 +239,6 @@ defmodule PortalWeb.Devices.Components do
           policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
           site_assignment={@site_assignment}
           gateway_panel={@gateway_panel}
-          dns_form={@dns_form}
         />
       </div>
     </div>
@@ -341,7 +338,6 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :site_assignment, :map, default: nil
   attr :gateway_panel, :map, default: nil
-  attr :dns_form, :any, default: nil
 
   def device_details_view(assigns) do
     ~H"""
@@ -387,7 +383,6 @@ defmodule PortalWeb.Devices.Components do
               sites={@site_assignment.sites}
               device_v1?={@device.last_seen_device_v1}
             />
-            <.device_dns_section :if={@dns_form} account={@account} form={@dns_form} />
             <.device_section :if={@device.type != :gateway} account={@account} device={@device} />
             <.device_certificate_section
               :if={@device.last_attested_cert_fingerprint}
@@ -705,44 +700,6 @@ defmodule PortalWeb.Devices.Components do
           </Form.button>
         </.form>
       </div>
-    </div>
-    """
-  end
-
-  attr :account, :any, required: true
-  attr :form, :any, required: true
-
-  def device_dns_section(assigns) do
-    account_dns = Portal.Accounts.Config.ensure_defaults(assigns.account.config).clients_upstream_dns
-    assigns = assign(assigns, :account_dns, Settings.Components.upstream_dns_summary(account_dns))
-
-    ~H"""
-    <div id="device-dns" class="px-5 pt-4 pb-3 border-b border-border">
-      <.section_heading title="DNS" />
-      <p class="mb-3 text-xs text-subtle">
-        Resolvers for queries that do not match a resource.
-      </p>
-      <.form
-        for={@form}
-        id="device-dns-form"
-        phx-change="change_device_dns"
-        phx-submit="submit_device_dns"
-      >
-        <Settings.Components.upstream_dns_fields
-          field={@form[:upstream_dns]}
-          options={[
-            {"default", "ri-building-line", "Account default", "#{@account_dns}."},
-            {"system", "ri-computer-line", "This device's own resolvers",
-             "Use the resolvers set on this device."},
-            {"custom", "ri-settings-3-line", "Custom", "Use DNS servers you list."},
-            {"secure", "ri-lock-line", "Secure (DNS over HTTPS)",
-             "Use DNS over HTTPS from a trusted provider."}
-          ]}
-        />
-        <div class="mt-4 flex justify-end">
-          <Form.button type="submit" size="sm" style="primary">Save</Form.button>
-        </div>
-      </.form>
     </div>
     """
   end

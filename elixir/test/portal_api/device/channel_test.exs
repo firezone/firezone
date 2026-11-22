@@ -441,21 +441,6 @@ defmodule PortalAPI.Device.ChannelTest do
     end
   end
 
-  describe "handle_info/2 upstream DNS changes" do
-    test "pushes config_changed with the device's own setting", %{device: device, subject: subject} do
-      socket = join_channel(device, subject)
-      assert_push "init", %{interface: %{upstream_doh: []}}
-
-      secure = %Portal.UpstreamDNS{type: :secure, doh_provider: :quad9}
-      send(socket.channel_pid, change(:update, device, %{device | upstream_dns: secure}))
-
-      assert_push "config_changed", %{interface: interface}
-      assert interface.upstream_doh == [%{url: "https://dns.quad9.net/dns-query"}]
-      assert interface.upstream_do53 == []
-      assert interface.ipv4 == device.ipv4
-    end
-  end
-
   describe "encode/3" do
     test "takes the site from the legacy key when the version does not support sites" do
       site_id = Ecto.UUID.generate()

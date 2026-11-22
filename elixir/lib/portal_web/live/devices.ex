@@ -11,8 +11,6 @@ defmodule PortalWeb.Devices do
 
   @edit_form_events ~w[change_device_edit_form submit_device_edit_form cancel_device_edit_form]
 
-  @dns_form_events ~w[change_device_dns submit_device_dns]
-
   @gateway_events ~w[
     rename_gateway cancel_rename_gateway save_gateway_name rotate_gateway_token
     cancel_rotate_gateway_token confirm_rotate_gateway_token dismiss_rotated_gateway_token
@@ -26,7 +24,7 @@ defmodule PortalWeb.Devices do
   @selected_device_events ~w[
     change_policy_authorizations_page open_device_edit_form verify_device unverify_device delete_device
     put_device_in_site remove_device_from_site
-  ] ++ @gateway_events ++ @dns_form_events
+  ] ++ @gateway_events
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
@@ -43,7 +41,6 @@ defmodule PortalWeb.Devices do
       |> assign(selected_device: nil)
       |> assign(unified_devices?: unified_devices?)
       |> assign(device_site: nil, sites: [], gateway_panel: base_gateway_panel())
-      |> assign(dns_form: nil)
       |> assign(stale: false)
       |> assign_async(:devices_count, fn -> {:ok, %{devices_count: Database.count_devices(subject)}} end)
       |> assign(
@@ -108,8 +105,7 @@ defmodule PortalWeb.Devices do
              Database.posture_providers_connected?(socket.assigns.subject)
          )
          |> assign_site_assignment(device)
-         |> assign_gateway_panel(device)
-         |> assign_dns_form(device)}
+         |> assign_gateway_panel(device)}
     end
   end
 
@@ -142,8 +138,7 @@ defmodule PortalWeb.Devices do
        selected_device: nil,
        device_pools: [],
        device_posture: [],
-       device_certificate: nil,
-       dns_form: nil
+       device_certificate: nil
      )
      |> assign(base_device_assigns())}
   end
@@ -173,12 +168,6 @@ defmodule PortalWeb.Devices do
   end
 
   defp assign_gateway_panel(socket, _device), do: assign(socket, gateway_panel: base_gateway_panel())
-
-  # Only a device last seen on /device/v1 reads its own upstream DNS.
-  defp assign_dns_form(%{assigns: %{unified_devices?: true}} = socket, %Device{last_seen_device_v1: true} = device),
-    do: assign(socket, dns_form: to_form(Database.change_upstream_dns(device)))
-
-  defp assign_dns_form(socket, _device), do: assign(socket, dns_form: nil)
 
   defp load_gateway_tokens(gateway, site, subject) do
     site.id
@@ -343,7 +332,6 @@ defmodule PortalWeb.Devices do
           if @unified_devices?, do: %{site: @device_site, sites: @sites}, else: nil
         }
         gateway_panel={@gateway_panel}
-        dns_form={@dns_form}
       />
     </div>
     """
@@ -366,7 +354,6 @@ defmodule PortalWeb.Devices do
 
   defp stale_event?(event, %{device_panel: %{edit_form: nil}}) when event in @edit_form_events, do: true
   defp stale_event?(event, %{selected_device: nil}) when event in @selected_device_events, do: true
-  defp stale_event?(event, %{dns_form: nil}) when event in @dns_form_events, do: true
   defp stale_event?(_event, _assigns), do: false
 
   defp base_gateway_panel do
@@ -528,37 +515,6 @@ defmodule PortalWeb.Devices do
          merge_state(socket, :device_panel,
            edit_form: to_form(Map.put(changeset, :action, :validate))
          )}
-    end
-  end
-
-  def handle_event("change_device_dns", %{"device" => attrs}, socket) do
-    form =
-      socket.assigns.selected_device
-      |> Database.change_upstream_dns(attrs)
-      |> to_form(action: :validate)
-
-    {:noreply, assign(socket, dns_form: form)}
-  end
-
-  def handle_event("submit_device_dns", %{"device" => attrs}, socket) do
-    device = socket.assigns.selected_device
-    changeset = Database.change_upstream_dns(device, attrs)
-
-    case Database.update_device(changeset, socket.assigns.subject) do
-      {:ok, updated} ->
-        device = %{device | upstream_dns: updated.upstream_dns, updated_at: updated.updated_at}
-
-        {:noreply,
-         socket
-         |> put_flash(:success, "DNS settings saved.")
-         |> assign(selected_device: device)
-         |> assign_dns_form(device)}
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, dns_form: to_form(changeset, action: :validate))}
-
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Could not save the DNS settings.")}
     end
   end
 
@@ -982,23 +938,8 @@ defmodule PortalWeb.Devices do
       |> Portal.Device.changeset()
     end
 
-    @spec change_upstream_dns(Portal.Device.t(), map()) :: Ecto.Changeset.t()
-    def change_upstream_dns(device, attrs \\ %{}) do
-      # "default" clears the override, so the device follows the account.
-      attrs =
-        case attrs do
-          %{"upstream_dns" => %{"type" => "default"}} -> Map.put(attrs, "upstream_dns", nil)
-          attrs -> attrs
-        end
-
-      device
-      |> cast(attrs, [])
-      |> cast_embed(:upstream_dns, with: &Portal.UpstreamDNS.changeset/2)
-      |> Portal.Device.changeset()
-    end
-
     @spec update_device(Ecto.Changeset.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Portal.Device.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+            {:ok, Portal.Device.t()} | {:error, Ecto.Changeset.t()}
     def update_device(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->

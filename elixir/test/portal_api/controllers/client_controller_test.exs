@@ -1,6 +1,5 @@
 defmodule PortalAPI.ClientControllerTest do
   use PortalAPI.ConnCase, async: true
-  import Ecto.Query, only: [where: 2]
   alias Portal.Device
 
   import Portal.AccountFixtures
@@ -463,17 +462,6 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["firezone_id"] == client.firezone_id
       assert data["online"] == false
       assert Map.has_key?(data, "hostname")
-    end
-
-    test "renders the same client whatever its upstream DNS", %{conn: conn, actor: actor, client: client} do
-      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
-      before = conn |> get(~p"/clients/#{client.id}") |> json_response(200)
-
-      Portal.Repo.update_all(where(Portal.Device, id: ^client.id),
-        set: [upstream_dns: %Portal.UpstreamDNS{type: :secure, doh_provider: :quad9}]
-      )
-
-      assert conn |> get(~p"/clients/#{client.id}") |> json_response(200) == before
     end
 
     test "renders the nil UUID as actor_id for a client whose users were all deleted", %{
