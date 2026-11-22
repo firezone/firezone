@@ -602,9 +602,10 @@ means "1.7 or later". A row with `type = 'client'` or `type = 'gateway'` is a
 legacy record from an older binary, found by `firezone_id` as today. The
 `type` column is legacy, and the docs say so. Nothing new is called a client
 or a gateway: the UI, REST (`/devices`) and docs say device, and the roles in
-one connection are initiator and receiver (6.9). Until this ships,
-`last_seen_device_v1` gates device pools. This step replaces it with
-`type IS NULL` and drops the column in the next deploy.
+one connection are initiator and receiver (6.9). Device pools target
+`type = 'client' OR type IS NULL`. Until this step writes the first null,
+that is only legacy client records, so a gateway on a pre-release 1.7 build
+cannot join a pool. `last_seen_device_v1` is gone.
 
 **Precedence.** A device trust certificate from the customer's CA (MDM) comes
 first. A device that has one presents it, as today. Every other device on the
@@ -1182,8 +1183,8 @@ firezone` and `firezone authenticate`. Depends 3.7.
   `/devices`. Site assignment through `/sites/:id/devices` (2.14). Ships last.
 - **6.2 Code: component and version logic by user agent only.** Depends 3.8.
 - **6.3 Code: pool criteria and pickers accept legacy client records and
-  devices (`type IS NULL`); pools never target legacy gateway records.** Ships
-  with the mTLS identity step. UI and REST say "1.7.0 or later".
+  devices (`type IS NULL`); pools never target legacy gateway records.** Done
+  early, with `last_seen_device_v1` removed. UI and REST say "1.7.0 or later".
 - **6.4 Migration: drop `devices.type`** when no legacy records remain, not on
   a fixed date. Depends 6.1, 6.2, 6.3.
 - **6.5 Migration: drop `devices.site_id` and its trigger, drop
