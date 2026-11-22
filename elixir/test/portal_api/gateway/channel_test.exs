@@ -1971,6 +1971,43 @@ assert site_ids == [site.id]
       refute reply.use_iceless
     end
 
+    test "drops an :authorize request for a device pool", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      pool = all_devices_pool_resource_fixture(account: account)
+
+      send(
+        socket.channel_pid,
+        {:authorize, {self(), make_ref()},
+         %{
+           initiator: Map.take(client, [:id, :name, :slug, :public_key, :ipv4, :ipv6]),
+           subject: %{},
+           resource: to_cache(pool),
+           policy_authorization_id: Ecto.UUID.generate(),
+           expires_at: DateTime.add(DateTime.utc_now(), 30, :second),
+           preshared_key: "PSK",
+           ice_credentials: %{
+             initiator: %{username: "A", password: "B"},
+             receiver: %{username: "C", password: "D"}
+           },
+           responder_token: "TOKEN",
+           initiator_iceless_capable: false
+         }}
+      )
+
+      state = :sys.get_state(socket.channel_pid)
+      assert state.assigns.authorizations_cache == %{}
+      refute_push "authorize_flow", _
+      refute_receive {:authorized, _ref, _reply}
+    end
+
     test "ignores DOWN messages from unrelated processes", %{
       gateway: gateway,
       site: site,

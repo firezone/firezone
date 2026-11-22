@@ -584,13 +584,13 @@ defmodule Portal.Cache.Client do
   end
 
   @doc """
-    Reacts to an update of a non-self client device. If the device is a member of any
+    Reacts to an update of a non-self device. If the device is a member of any
     connectable pool and its addresses changed, returns the affected pool resources for
     the channel to push as `resource_created_or_updated`.
   """
   @spec handle_member_device_update(t(), Portal.Device.t(), Authentication.Subject.t()) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
-  def handle_member_device_update(cache, %Portal.Device{type: :client} = device, _subject) do
+  def handle_member_device_update(cache, %Portal.Device{} = device, _subject) do
     did_bytes = dump!(device.id)
     new_ipv4 = device.ipv4.address
     new_ipv6 = device.ipv6.address
@@ -627,7 +627,7 @@ defmodule Portal.Cache.Client do
   end
 
   @doc """
-    Reacts to deletion of a non-self client device. Removes the device from every pool
+    Reacts to deletion of a non-self device. Removes the device from every pool
     it was a member of, recomputes affected pools' addresses, and returns the device's
     last-known addresses so the channel can push `client_device_access_denied`.
 
@@ -636,7 +636,7 @@ defmodule Portal.Cache.Client do
   """
   @spec handle_member_device_delete(t(), Portal.Device.t()) ::
           {:ok, denied_addresses(), [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
-  def handle_member_device_delete(cache, %Portal.Device{type: :client} = device) do
+  def handle_member_device_delete(cache, %Portal.Device{} = device) do
     did_bytes = dump!(device.id)
     addresses = Map.get(cache.device_addresses, did_bytes)
 
@@ -903,6 +903,7 @@ defmodule Portal.Cache.Client do
 
   defmodule Database do
     import Ecto.Query
+    alias Portal.Resource.DeviceMembershipCriteria
     alias Portal.Safe
 
     def all_policies_for_actor_id!(actor_id, subject) do
@@ -998,14 +999,15 @@ defmodule Portal.Cache.Client do
     end
 
     @doc """
-      The `{ipv4_tuple, ipv6_tuple}` of every listed device that is a client of the account,
+      The `{ipv4_tuple, ipv6_tuple}` of every listed device of the account that a pool may hold,
       keyed by device id bytes.
     """
     def all_client_addresses([], _subject), do: %{}
 
     def all_client_addresses(device_ids, subject) do
       from(d in Portal.Device, as: :devices)
-      |> where([devices: d], d.type == :client and d.id in ^device_ids)
+      |> where([devices: d], d.id in ^device_ids)
+      |> where(^DeviceMembershipCriteria.targets())
       |> select([devices: d], {d.id, d.ipv4, d.ipv6})
       |> Safe.scoped(subject)
       |> Safe.all()

@@ -250,6 +250,7 @@ defmodule PortalAPI.Client.Socket do
         last_seen_remote_ip_location_lat: subject.context.remote_ip_location_lat,
         last_seen_remote_ip_location_lon: subject.context.remote_ip_location_lon,
         last_seen_version: version,
+        last_seen_device_v1: false,
         last_seen_at: DateTime.utc_now()
     }
   end

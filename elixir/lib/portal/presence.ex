@@ -142,10 +142,12 @@ defmodule Portal.Presence do
       |> Enum.any?(fn %{metas: metas} -> Enum.any?(metas, &(Map.get(&1, :actor_id) == actor_id)) end)
     end
 
-    # Only for the deprecated `reuse_connection`, which a `/device/v1` device does not handle.
+    # Only for the deprecated `reuse_connection`, which no `/device/v1` device handles, a gateway
+    # token on it included.
     def fetch_gateway(account_id, gateway_id, site_id) do
       with false <- is_nil(site_id),
            %{metas: [%{type: :gateway} = meta | _]} <- __MODULE__.Account.get(account_id, gateway_id),
+           false <- Map.get(meta, :device_v1, false),
            true <- site_id in meta.site_ids do
         {:ok, from_meta(gateway_id, account_id, meta)}
       else
@@ -244,18 +246,21 @@ defmodule Portal.Presence do
         find_by_address(account_id, :ipv6, ipv6_tuple)
       end
 
+      def topic(account_id), do: "presences:account_devices:" <> account_id
+
       # Every device holds tunnel addresses, so the lookup asks for one that
       # can be a device pool target rather than trusting the address alone.
+      # A gateway on `/device/v1` tracks no capabilities but can be one too.
       defp find_by_address(account_id, key, address) do
         account_id
         |> list()
         |> Enum.find_value(fn {device_id, %{metas: [meta | _]}} ->
-          if :tun in Devices.capabilities(meta) and Map.get(meta, key) == address,
+          if pool_target?(meta) and Map.get(meta, key) == address,
             do: {device_id, meta}
         end)
       end
 
-      def topic(account_id), do: "presences:account_devices:" <> account_id
+      defp pool_target?(meta), do: :tun in Devices.capabilities(meta) or Map.get(meta, :device_v1, false)
     end
   end
 

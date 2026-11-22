@@ -54,6 +54,26 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:error, {:rate_limit, _}} = connect(Socket, attrs, connect_info: info)
     end
 
+    test "marks a device as not last seen on /device/v1" do
+      Portal.Config.put_env_override(:portal, PortalAPI.Sockets.RateLimit,
+        refill_rate: 100_000,
+        capacity: 100_000
+      )
+
+      token = client_token_fixture() |> encode_token()
+      attrs = connect_attrs(token: token)
+      info = build_connect_info(token: token)
+
+      assert {:ok, first} = connect(Socket, attrs, connect_info: info)
+      Repo.get_by!(Portal.Device, id: first.assigns.client.id)
+      |> Ecto.Changeset.change(last_seen_device_v1: true)
+      |> Repo.update!()
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: info)
+      assert socket.assigns.client.id == first.assigns.client.id
+      refute socket.assigns.client.last_seen_device_v1
+    end
+
     test "returns error when token is missing" do
       connect_info = build_connect_info()
       assert connect(Socket, %{}, connect_info: connect_info) == {:error, :missing_token}
