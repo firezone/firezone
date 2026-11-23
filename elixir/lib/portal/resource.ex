@@ -495,23 +495,6 @@ defmodule Portal.Resource do
   # Utility functions moved from Portal.Resources
 
   @doc """
-    Matches a fully-qualified domain name against a DNS-style wildcard pattern.
-
-    Supports the same wildcard tokens that `:dns` resource addresses are validated
-    against:
-
-      * `**` — zero or more labels (with dots)
-      * `*`  — zero or more characters within a single label (no dots)
-      * `?`  — exactly one character within a single label (no dots)
-
-    Comparison is case-insensitive, mirroring DNS semantics.
-  """
-  @spec matches_dns_pattern?(String.t(), String.t()) :: boolean()
-  def matches_dns_pattern?(pattern, fqdn) when is_binary(pattern) and is_binary(fqdn) do
-    Regex.match?(pattern_to_regex(pattern), String.downcase(fqdn))
-  end
-
-  @doc """
     This does two things:
     1. Filters out resources that are not compatible with the given client or gateway version.
     2. Converts DNS resource addresses back to the pre-1.2.0 format if the client or gateway version is < 1.2.0.
@@ -578,21 +561,6 @@ defmodule Portal.Resource do
 
   defp map_resource_address([], acc),
     do: {:cont, acc}
-
-  # sobelow_skip ["DOS.Regex"]
-  defp pattern_to_regex(pattern) do
-    body =
-      ~r/\*\*|\*|\?|[^*?]+/
-      |> Regex.scan(String.downcase(pattern))
-      |> Enum.map_join(fn
-        ["**"] -> ".*"
-        ["*"] -> "[^.]*"
-        ["?"] -> "[^.]"
-        [literal] -> Regex.escape(literal)
-      end)
-
-    Regex.compile!("\\A" <> body <> "\\z")
-  end
 
   defmodule Database do
     import Ecto.Query
