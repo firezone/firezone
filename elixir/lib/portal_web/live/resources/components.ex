@@ -6,6 +6,9 @@ defmodule PortalWeb.Resources.Components do
 
   alias PortalWeb.Devices.Components, as: DeviceComponents
 
+  alias PortalWeb.Settings
+  alias Phoenix.LiveView.AsyncResult
+
   alias __MODULE__.Database
   alias PortalWeb.Format
 
@@ -1030,28 +1033,6 @@ defmodule PortalWeb.Resources.Components do
     |> Enum.reject(fn {_label, value} -> value in [nil, ""] end)
   end
 
-  attr :open, :boolean, required: true
-  slot :inner_block, required: true
-
-  def panel_shell(assigns) do
-    ~H"""
-    <div
-      id="resource-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@open, do: "translate-x-0", else: "translate-x-full")
-      ]}
-      phx-window-keydown="handle_keydown"
-      phx-key="Escape"
-    >
-      {render_slot(@inner_block)}
-    </div>
-    """
-  end
-
   attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :resource, :any, default: nil
@@ -1062,190 +1043,376 @@ defmodule PortalWeb.Resources.Components do
     assigns = assign(assigns, assigns.form_state)
 
     ~H"""
-    <div class="flex flex-col h-full overflow-hidden">
-      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-sm font-semibold text-heading">
-            {if @panel_view == :new_form, do: "Add Resource", else: "Edit Resource"}
-          </h2>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_resource_form" />
-        </div>
+    <Form.panel_header
+      title={if @panel_view == :new_form, do: "Add a resource", else: "Edit #{@resource.name}"}
+      close_event="cancel_resource_form"
+    >
+      <:leading>
+        <Core.icon name="ri-server-line" class="w-4 h-4 text-muted" />
+      </:leading>
+    </Form.panel_header>
+    <.form
+      id="resource-form"
+      for={@resource_form}
+      phx-submit="submit_resource_form"
+      phx-change="change_resource_form"
+      class="flex flex-col flex-1 min-h-0 overflow-hidden"
+    >
+      <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        <.resource_type_picker form={@resource_form} resource={@resource} />
+
+        <.resource_core_fields form={@resource_form} resource={@resource} />
+
+        <Settings.Components.skeleton
+          :if={@resource_form_devices_load == :loading}
+          id="resource-form-devices-loading"
+          rows={2}
+          class="-mx-6"
+        />
+        <p :if={@resource_form_devices_load == :failed} id="resource-form-devices-error" class="text-xs text-muted">
+          Could not load the devices of this resource. Close the form and try again.
+        </p>
+
+        <.resource_pool_members_section
+          :if={@resource_form_devices_load == :ok and to_string(@resource_form[:type].value) == "device_pool"}
+          form={@resource_form}
+          subject={@subject}
+          selected_devices={@resource_form_selected_devices}
+          pool_counts={@resource_form_pool_counts}
+        />
+
+        <.resource_device_pool_section
+          :if={
+            @resource_form_devices_load == :ok and to_string(@resource_form[:type].value) == "device_pool" and
+              pool_members(@resource_form) == :listed
+          }
+          selected_devices={@resource_form_selected_devices}
+          device_search={@resource_form_device_search}
+          device_search_results={@resource_form_device_search_results}
+          device_search_online_only={@resource_form_device_search_online_only}
+          device_search_recently_seen={@resource_form_device_search_recently_seen}
+          device_search_loading={@resource_form_device_search_loading}
+        />
+
+        <.resource_dns_ip_stack_section
+          :if={"#{@resource_form[:type].value}" == "dns"}
+          form={@resource_form}
+        />
+
+        <.resource_traffic_restrictions_section
+          resource={@resource}
+          form={@resource_form}
+          active_protocols={@resource_form_active_protocols}
+          filters_dropdown_open={@resource_form_filters_dropdown_open}
+          filter_ports={@filter_ports}
+          filter_errors={@filter_errors}
+        />
+
+        <.resource_site_selector
+          :if={not @resource_form_unified_devices?}
+          form={@resource_form}
+          sites={@resource_form_sites}
+        />
+
+        <.resource_served_by_section
+          :if={@resource_form_devices_load == :ok and @resource_form_unified_devices?}
+          form={@resource_form}
+          sites={@resource_form_sites}
+          served_by={@resource_form_served_by}
+          served_devices={@resource_form_served_devices}
+          served_device_search={@resource_form_served_device_search}
+          served_device_results={@resource_form_served_device_results}
+        />
       </div>
-      <.form
-        id="resource-form"
-        for={@resource_form}
-        phx-submit="submit_resource_form"
-        phx-change="change_resource_form"
-        class="flex flex-col flex-1 min-h-0 overflow-hidden"
-      >
-        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <.resource_type_picker form={@resource_form} resource={@resource} />
 
-          <.resource_core_fields form={@resource_form} resource={@resource} />
+      <Form.panel_footer>
+        <Form.panel_footer_button type="button" phx-click="cancel_resource_form">
+          Cancel
+        </Form.panel_footer_button>
+        <Form.panel_footer_button type="submit" style="primary" disabled={@resource_form_devices_load != :ok}>
+          {if @panel_view == :new_form, do: "Create resource", else: "Save changes"}
+        </Form.panel_footer_button>
+      </Form.panel_footer>
+    </.form>
+    """
+  end
 
-          <.resource_pool_members_section
-            :if={to_string(@resource_form[:type].value) == "device_pool"}
-            form={@resource_form}
-            subject={@subject}
-            selected_devices={@resource_form_selected_devices}
-            pool_counts={@resource_form_pool_counts}
+  @doc """
+  Where a resource's traffic goes: through one site, or through devices picked here.
+  Picking devices puts the resource on the site made of exactly those devices, and
+  makes that site when there is none.
+  """
+  attr :form, :any, required: true
+  attr :sites, :list, required: true
+  attr :served_by, :string, required: true
+  attr :served_devices, :list, required: true
+  attr :served_device_search, :string, default: ""
+  attr :served_device_results, :list, default: []
+
+  def resource_served_by_section(assigns) do
+    ~H"""
+    <div :if={to_string(@form[:type].value) != "device_pool"} id="resource-served-by">
+      <span class="block text-[11px] font-semibold tracking-[.12em] uppercase text-muted mb-2">
+        Served by
+      </span>
+      <div role="radiogroup" class="flex items-center gap-0 mb-3 border border-rule w-fit">
+        <button
+          :for={{value, icon, label} <- [{"site", "ri-route-line", "A site"}, {"devices", "ri-computer-line", "Devices"}]}
+          type="button"
+          role="radio"
+          id={"resource-served-by--#{value}"}
+          aria-checked={to_string(@served_by == value)}
+          phx-click="set_served_by"
+          phx-value-served_by={value}
+          class={[
+            "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors",
+            @served_by == value && "bg-fg text-bg",
+            @served_by != value && "text-muted hover:text-fg hover:bg-hover"
+          ]}
+        >
+          <Core.icon name={icon} class="w-3.5 h-3.5" /> {label}
+        </button>
+      </div>
+
+      <div :if={@served_by == "site"}>
+        <Form.input
+          field={@form[:site_id]}
+          type="select"
+          options={Enum.map(@sites, fn s -> {s.name, s.id} end)}
+          prompt="Select a Site"
+          required
+        />
+      </div>
+
+      <div :if={@served_by == "devices"} id="resource-served-devices" class="space-y-2">
+        <p class="text-xs text-muted">
+          Traffic goes through one of these devices. Firezone puts them in a site for you.
+        </p>
+        <ul :if={@served_devices != []} class="flex flex-wrap gap-1.5">
+          <li
+            :for={device <- @served_devices}
+            id={"served-device-#{device.id}"}
+            class="inline-flex items-center gap-1.5 border border-fg px-2 py-0.5 text-xs text-fg"
+          >
+            <span class={presence_dot_class(device.online?)}></span>
+            {device.name}
+            <button
+              type="button"
+              phx-click="remove_served_device"
+              phx-value-device_id={device.id}
+              aria-label={"Remove #{device.name}"}
+              class="text-muted hover:text-fg"
+            >
+              <Core.icon name="ri-close-line" class="w-3 h-3" />
+            </button>
+          </li>
+        </ul>
+        <div class="relative">
+          <Core.icon
+            name="ri-search-line"
+            class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none"
           />
-
-          <.resource_device_pool_section
-            :if={
-              to_string(@resource_form[:type].value) == "device_pool" and
-                pool_members(@resource_form) == :listed
-            }
-            selected_devices={@resource_form_selected_devices}
-            device_search={@resource_form_device_search}
-            device_search_results={@resource_form_device_search_results}
-            device_search_online_only={@resource_form_device_search_online_only}
-            device_search_recently_seen={@resource_form_device_search_recently_seen}
-            device_search_loading={@resource_form_device_search_loading}
+          <input
+            type="text"
+            name="served_device_search"
+            value={@served_device_search}
+            placeholder="Search devices"
+            phx-change="search_served_devices"
+            phx-debounce="300"
+            autocomplete="off"
+            data-1p-ignore
+            class="w-full pl-8 pr-3 py-1.5 text-sm border border-rule bg-bg text-fg placeholder:text-faint outline-none focus:border-fg"
           />
-
-          <.resource_dns_ip_stack_section
-            :if={"#{@resource_form[:type].value}" == "dns"}
-            form={@resource_form}
-          />
-
-          <.resource_traffic_restrictions_section
-            resource={@resource}
-            form={@resource_form}
-            active_protocols={@resource_form_active_protocols}
-            filters_dropdown_open={@resource_form_filters_dropdown_open}
-            filter_ports={@filter_ports}
-            filter_errors={@filter_errors}
-          />
-
-          <.resource_site_selector form={@resource_form} sites={@resource_form_sites} />
         </div>
+        <ul class="max-h-56 overflow-y-auto border border-hair divide-y divide-hair">
+          <li :for={%{device: device, site_name: site_name} <- @served_device_results}>
+            <button
+              type="button"
+              phx-click="add_served_device"
+              phx-value-device_id={device.id}
+              aria-label={"Add #{device.name}"}
+              class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-hover"
+            >
+              <span class={presence_dot_class(device.online?)}></span>
+              <span class="flex-1 min-w-0 truncate text-fg">{device.name}</span>
+              <span :if={device.type == :gateway} class="text-xs text-muted">Gateway</span>
+              <span :if={site_name} class="text-xs text-muted truncate">Routes for {site_name}</span>
+              <Core.icon name="ri-add-line" class="w-3.5 h-3.5 text-muted" />
+            </button>
+          </li>
+          <li :if={@served_device_results == []} class="px-3 py-4 text-xs text-muted text-center">
+            No devices found
+          </li>
+        </ul>
+        <p class="text-xs text-faint">
+          Only gateways and devices on the latest Firezone client can serve resources.
+        </p>
+      </div>
 
-        <Form.panel_footer>
-          <Form.panel_footer_button type="button" phx-click="cancel_resource_form">
-            Cancel
-          </Form.panel_footer_button>
-          <Form.panel_footer_button type="submit" style="primary">
-            {if @panel_view == :new_form, do: "Create Resource", else: "Save Changes"}
-          </Form.panel_footer_button>
-        </Form.panel_footer>
-      </.form>
+      <p :for={msg <- Enum.map(@form[:site_id].errors, &Core.translate_error/1)} class="mt-2 text-xs text-attn">
+        {msg}
+      </p>
     </div>
     """
   end
 
+  @doc "Classes for a presence dot: filled when online, a hollow ring when not."
+  @spec presence_dot_class(boolean()) :: String.t()
+  def presence_dot_class(true), do: "inline-block w-[7px] h-[7px] rounded-full shrink-0 bg-fg"
+  def presence_dot_class(_online?), do: "inline-block w-[7px] h-[7px] rounded-full shrink-0 ring-[1.5px] ring-inset ring-faint"
+
   attr :account, :any, required: true
   attr :resource, :any, required: true
-  attr :pool_member_ids, :list, default: []
-  attr :pool_devices, :list, default: []
+  attr :pool_devices, AsyncResult, required: true
   attr :devices_expanded_id, :string, default: nil
   attr :online_ids, :any, default: %MapSet{}
   attr :online_site_ids, :any, default: %MapSet{}
   attr :pool_group_ids, :any, default: nil
-  attr :groups, :list, default: []
-  attr :policy_authorizations, :list, default: []
-  attr :policy_authorizations_page, :integer, default: 1
-  attr :policy_authorizations_has_next, :boolean, default: false
+  attr :access, AsyncResult, required: true
+  attr :route_devices, AsyncResult, required: true
+  attr :policy_authorizations, AsyncResult, required: true
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :panel_view, :atom, required: true
   attr :tab, :atom, default: :groups
   attr :grant_state, :map, required: true
+  attr :people_state, :map, required: true
   attr :ui_state, :map, required: true
 
   def resource_details_panel(assigns) do
-    assigns = assign(assigns, assigns.ui_state)
+    assigns =
+      assigns
+      |> assign(assigns.ui_state)
+      |> assign(
+        pool_member_ids: async_ok(assigns.pool_devices, &Enum.map(&1, fn device -> device.id end)),
+        groups_count: async_ok(assigns.access, &(length(&1.groups) + length(&1.people))),
+        devices_count: async_ok(assigns.pool_devices, &length/1)
+      )
 
     ~H"""
-    <div class="flex flex-col h-full overflow-hidden">
-      <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
-        <div class="flex items-center gap-4">
-          <%!-- Left: name + status + address --%>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <h2 class="text-sm font-semibold text-heading truncate">
-                {@resource.name}
-              </h2>
-              <.resource_status_badge
-                resource={@resource}
-                online_site_ids={@online_site_ids}
-                pool_member_ids={@pool_member_ids}
-                online_ids={@online_ids}
-                pool_group_ids={@pool_group_ids}
-              />
-            </div>
-            <p
-              :if={@resource.type not in [:internet, :device_pool]}
-              class="font-mono text-xs text-subtle mt-0.5 truncate"
-            >
-              {@resource.address}
-            </p>
-            <p
-              :if={@resource.type == :device_pool}
-              class="text-xs italic text-subtle mt-0.5 truncate"
-            >
-              Multiple Addresses
-            </p>
+    <div class="shrink-0 px-6 py-4 border-b border-rule">
+      <div class="flex items-start gap-4">
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <Core.icon name={resource_icon(@resource)} class="w-5 h-5 text-muted shrink-0" />
+            <h2 class="text-lg font-bold text-fg truncate">
+              {@resource.name}
+            </h2>
+            <.resource_status_badge
+              resource={@resource}
+              online_site_ids={@online_site_ids}
+              pool_member_ids={@pool_member_ids}
+              online_ids={@online_ids}
+              pool_group_ids={@pool_group_ids}
+            />
           </div>
-          <%!-- Right: actions --%>
-          <div class="flex items-center gap-1.5 shrink-0">
-            <Form.button
-              :if={not @confirm_delete_resource && @resource.type != :internet}
-              phx-click="open_edit_form"
-              size="sm"
-              icon="ri-pencil-line"
-            >
-              Edit
-            </Form.button>
-            <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-          </div>
+          <p
+            :if={@resource.type not in [:internet, :device_pool]}
+            class="font-mono text-xs text-muted mt-1 truncate"
+          >
+            {@resource.address}
+          </p>
+          <p :if={@resource.type == :internet} class="font-mono text-xs text-muted mt-1">
+            0.0.0.0/0, ::/0
+          </p>
+          <p :if={@resource.type == :device_pool} class="text-xs text-muted mt-1 truncate">
+            Multiple Addresses
+          </p>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <Form.button
+            :if={not @confirm_delete_resource && @resource.type != :internet}
+            phx-click={Page.instant("Edit " <> @resource.name, size: "xl") |> JS.push("open_edit_form")}
+            size="sm"
+            icon="ri-pencil-line"
+          >
+            Edit
+          </Form.button>
+          <Form.icon_button
+            icon="ri-close-line"
+            title="Close (Esc)"
+            phx-click={Page.close_modal({:closest, "[data-modal-layer]"}, "close_panel")}
+          />
         </div>
       </div>
-      <div class="flex flex-1 min-h-0 divide-x divide-border">
-        <div class="flex-1 flex flex-col overflow-hidden">
-          <.resource_tabs
-            resource={@resource}
-            tab={@tab}
-            groups_count={length(@groups)}
-            devices_count={length(@pool_devices)}
-            panel_view={@panel_view}
-          />
+    </div>
+    <div class="flex flex-1 min-h-0 divide-x divide-hair">
+      <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <.resource_tabs
+          resource={@resource}
+          tab={@tab}
+          groups_count={@groups_count}
+          devices_count={@devices_count}
+          panel_view={@panel_view}
+        />
+        <.async_result :let={devices} :if={@tab == :devices} assign={@pool_devices}>
+          <:loading>
+            <Settings.Components.skeleton id="resource-devices-loading" rows={3} />
+          </:loading>
+          <:failed>
+            <.load_error id="resource-devices-error">Could not load the pool members.</.load_error>
+          </:failed>
           <.resource_devices_tab
-            :if={@tab == :devices}
             account={@account}
-            devices={@pool_devices}
+            devices={devices}
             online_ids={@online_ids}
             online_site_ids={@online_site_ids}
             expanded_id={@devices_expanded_id}
           />
+        </.async_result>
+        <.async_result :let={access} :if={@tab == :groups && @panel_view == :list} assign={@access}>
+          <:loading>
+            <Settings.Components.skeleton id="resource-access-loading" rows={3} />
+          </:loading>
+          <:failed>
+            <.load_error id="resource-access-error">Could not load who can reach this resource.</.load_error>
+          </:failed>
           <.resource_access_list
-            :if={@tab == :groups && @panel_view == :list}
             account={@account}
-            groups={@groups}
+            groups={access.groups}
+            people={access.people}
+            hits={access.hits}
+            people_state={@people_state}
             ui_state={@ui_state}
           />
-          <.resource_grant_form
-            :if={@tab == :groups && @panel_view == :grant_form}
-            account={@account}
-            resource={@resource}
-            grant_state={@grant_state}
-          />
+        </.async_result>
+        <.resource_grant_form
+          :if={@tab == :groups && @panel_view == :grant_form}
+          account={@account}
+          resource={@resource}
+          grant_state={@grant_state}
+        />
+        <.resource_people_form
+          :if={@tab == :groups && @panel_view == :people_form}
+          state={@people_state}
+        />
+        <.async_result
+          :let={authorizations}
+          :if={@tab == :authorizations and @policy_authorizations != %AsyncResult{}}
+          assign={@policy_authorizations}
+        >
+          <:loading>
+            <Settings.Components.skeleton id="resource-authorizations-loading" rows={3} />
+          </:loading>
+          <:failed>
+            <.load_error id="resource-authorizations-error">Could not load the authorizations.</.load_error>
+          </:failed>
           <.resource_policy_authorizations_tab
-            :if={@tab == :authorizations}
-            policy_authorizations={@policy_authorizations}
-            page={@policy_authorizations_page}
-            has_next={@policy_authorizations_has_next}
+            policy_authorizations={authorizations.rows}
+            page={authorizations.page}
+            has_next={authorizations.has_next}
             expanded_id={@policy_authorizations_expanded_id}
             account={@account}
             resource={@resource}
           />
-        </div>
-        <.resource_sidebar
-          account={@account}
-          resource={@resource}
-          online_site_ids={@online_site_ids}
-          ui_state={@ui_state}
-        />
+        </.async_result>
       </div>
+      <.resource_sidebar
+        account={@account}
+        resource={@resource}
+        online_site_ids={@online_site_ids}
+        route_devices={@route_devices}
+        ui_state={@ui_state}
+      />
     </div>
     """
   end
@@ -1258,80 +1425,49 @@ defmodule PortalWeb.Resources.Components do
 
   def resource_tabs(assigns) do
     ~H"""
-    <div
-      role="tablist"
-      class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
-    >
-      <button
+    <div role="tablist" class="flex items-end gap-5 px-6 border-b border-rule shrink-0">
+      <.resource_tab
         :if={lists_devices?(@resource)}
-        role="tab"
-        aria-selected={@tab == :devices}
-        phx-click="switch_resource_tab"
-        phx-value-tab="devices"
-        class={[
-          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-          if(@tab == :devices,
-            do: "border-brand text-brand",
-            else: "border-transparent text-body hover:text-heading"
-          )
-        ]}
+        tab={:devices}
+        current={@tab}
+        icon="ri-computer-line"
+        count={@devices_count}
       >
         Pool Members
-        <span class={[
-          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-          if(@tab == :devices,
-            do: "bg-brand-wash text-heading",
-            else: "bg-raised text-subtle"
-          )
-        ]}>
-          {@devices_count}
-        </span>
-      </button>
-      <button
-        role="tab"
-        aria-selected={@tab == :groups}
-        phx-click="switch_resource_tab"
-        phx-value-tab="groups"
-        class={[
-          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-          if(@tab == :groups,
-            do: "border-brand text-brand",
-            else: "border-transparent text-body hover:text-heading"
-          )
-        ]}
-      >
-        Groups
-        <span class={[
-          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-          if(@tab == :groups,
-            do: "bg-brand-wash text-heading",
-            else: "bg-raised text-subtle"
-          )
-        ]}>
-          {@groups_count}
-        </span>
-      </button>
-      <button
-        role="tab"
-        aria-selected={@tab == :authorizations}
-        phx-click="switch_resource_tab"
-        phx-value-tab="authorizations"
-        class={[
-          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-          if(@tab == :authorizations,
-            do: "border-brand text-brand",
-            else: "border-transparent text-body hover:text-heading"
-          )
-        ]}
-      >
+      </.resource_tab>
+      <.resource_tab tab={:groups} current={@tab} icon="ri-shield-user-line" count={@groups_count}>
+        Who can reach it
+      </.resource_tab>
+      <.resource_tab tab={:authorizations} current={@tab} icon="ri-history-line">
         Authorizations
-      </button>
-      <div :if={@tab == :groups && @panel_view == :list} class="ml-auto pb-2 flex items-center">
-        <Form.button phx-click="open_grant_form" size="xs" icon="ri-add-line">
-          Grant access
-        </Form.button>
-      </div>
+      </.resource_tab>
     </div>
+    """
+  end
+
+  attr :tab, :atom, required: true
+  attr :current, :atom, required: true
+  attr :icon, :string, required: true
+  attr :count, :integer, default: nil
+  slot :inner_block, required: true
+
+  defp resource_tab(assigns) do
+    ~H"""
+    <button
+      role="tab"
+      aria-selected={to_string(@tab == @current)}
+      phx-click="switch_resource_tab"
+      phx-value-tab={@tab}
+      class={[
+        "flex items-center gap-1.5 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors",
+        @tab == @current && "border-fg text-fg",
+        @tab != @current && "border-transparent text-muted hover:text-fg"
+      ]}
+    >
+      <Core.icon name={@icon} class="w-3.5 h-3.5" />
+      {render_slot(@inner_block)}
+      <span :if={@count} class="tabular-nums text-muted">{@count}</span>
+    </button>
     """
   end
 
@@ -1488,130 +1624,311 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :groups, :list, default: []
+  attr :people, :list, default: []
+  attr :hits, :map, default: %{}
+  attr :people_state, :map, required: true
   attr :ui_state, :map, required: true
 
   def resource_access_list(assigns) do
-    assigns = assign(assigns, assigns.ui_state)
+    assigns =
+      assigns
+      |> assign(assigns.ui_state)
+      |> assign(confirm_revoke_person_id: assigns.people_state.confirm_revoke_id)
 
     ~H"""
-    <div class="flex-1 overflow-y-auto">
-      <ul>
-        <li
-          :for={row <- @groups}
-          class={[
-            "border-b border-border transition-colors",
-            if(@group_actions_open_id == row.group.id, do: "relative z-20", else: "")
-          ]}
-        >
-          <div
-            :if={@confirm_remove_group_id == row.group.id}
-            class="flex items-center justify-between gap-2 px-4 py-2.5 bg-raised"
+    <div class="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+      <section id="resource-access-groups">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+            <Core.icon name="ri-group-line" class="w-3.5 h-3.5" /> Groups
+          </h3>
+          <Form.button phx-click="open_grant_form" size="xs" icon="ri-add-line">
+            Grant access to a group
+          </Form.button>
+        </div>
+        <ul class="border-t border-rule">
+          <li
+            :for={row <- @groups}
+            id={"resource-access-group-#{row.group.id}"}
+            class={[
+              "border-b border-hair",
+              @group_actions_open_id == row.group.id && "relative z-20"
+            ]}
           >
-            <span class="text-xs text-body truncate">
-              Remove <span class="font-medium text-heading">{row.group.name}</span>'s access?
-              <span class="block text-subtle">
-                All group members will immediately lose access.
+            <div
+              :if={@confirm_remove_group_id == row.group.id}
+              class="flex items-center justify-between gap-2 py-2.5 bg-attn-wash px-2"
+            >
+              <span class="text-xs text-fg truncate">
+                Remove <span class="font-medium">{row.group.name}</span>'s access?
+                <span class="block text-muted">
+                  All group members will immediately lose access.
+                </span>
               </span>
-            </span>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <Form.button type="button" phx-click="cancel_remove_group" size="xs">
-                Cancel
-              </Form.button>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <Form.button type="button" phx-click="cancel_remove_group" size="xs">
+                  Cancel
+                </Form.button>
+                <Form.button
+                  type="button"
+                  phx-click="remove_group_access"
+                  phx-value-group_id={row.group.id}
+                  style="danger"
+                  size="xs"
+                >
+                  Remove
+                </Form.button>
+              </div>
+            </div>
+            <div
+              :if={@confirm_remove_group_id != row.group.id}
+              class="flex items-center gap-2 hover:bg-hover"
+            >
+              <Navigation.link
+                navigate={~p"/#{@account}/policies/#{row.policy_id}"}
+                class={[
+                  "flex items-center gap-3 py-2.5 pl-1 flex-1 min-w-0",
+                  row.policy_is_disabled && "opacity-50 hover:opacity-75"
+                ]}
+              >
+                <Core.provider_icon provider={Core.provider_type_from_group(row)} size="sm" variant="circle" />
+                <div class="flex-1 min-w-0">
+                  <p class="flex items-center gap-2 text-sm font-medium text-fg truncate">
+                    {row.group.name}
+                    <Core.badge :if={row.policy_is_disabled} type="neutral" size="xs">
+                      disabled
+                    </Core.badge>
+                  </p>
+                  <p :if={Map.get(row, :conditions, []) != []} class="text-xs text-muted truncate">
+                    {conditions_summary(row.conditions)}
+                  </p>
+                </div>
+                <span class="text-xs text-muted tabular-nums whitespace-nowrap" title="Hits in the last 7 days">
+                  {Map.get(@hits, row.policy_id, 0)} hits
+                </span>
+              </Navigation.link>
+              <div class="relative shrink-0 pr-1">
+                <button
+                  type="button"
+                  phx-click="toggle_group_actions"
+                  phx-value-group_id={row.group.id}
+                  class="flex items-center justify-center w-6 h-6 text-muted hover:text-fg hover:bg-hover transition-colors"
+                  title="More actions"
+                >
+                  <Core.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
+                </button>
+                <div
+                  :if={@group_actions_open_id == row.group.id}
+                  phx-click-away="close_group_actions"
+                  class="absolute right-0 top-full mt-1 w-40 border border-rule bg-bg shadow-lg z-10 py-1"
+                >
+                  <Navigation.link
+                    navigate={~p"/#{@account}/groups/#{row.group.id}"}
+                    class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-fg hover:bg-hover transition-colors"
+                  >
+                    <Core.icon name="ri-group-line" class="w-3.5 h-3.5 shrink-0" /> Go to Group
+                  </Navigation.link>
+                  <button
+                    :if={!row.policy_is_disabled}
+                    type="button"
+                    phx-click="disable_policy"
+                    phx-value-group_id={row.group.id}
+                    class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-fg hover:bg-hover transition-colors"
+                  >
+                    <Core.icon name="ri-pause-circle-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
+                  </button>
+                  <button
+                    :if={row.policy_is_disabled}
+                    type="button"
+                    phx-click="enable_policy"
+                    phx-value-group_id={row.group.id}
+                    class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-fg hover:bg-hover transition-colors"
+                  >
+                    <Core.icon name="ri-play-circle-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="confirm_remove_group"
+                    phx-value-group_id={row.group.id}
+                    class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-attn hover:bg-hover transition-colors"
+                  >
+                    <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
+                  </button>
+                </div>
+              </div>
+            </div>
+          </li>
+        </ul>
+        <p :if={@groups == []} class="py-4 text-sm text-muted">
+          No groups have access yet.
+        </p>
+      </section>
+
+      <section id="resource-access-people">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+            <Core.icon name="ri-user-line" class="w-3.5 h-3.5" /> People
+          </h3>
+          <Form.button id="give-people-access-button" phx-click="open_people_form" size="xs" icon="ri-user-add-line">
+            Give people access
+          </Form.button>
+        </div>
+        <ul class="border-t border-rule">
+          <li
+            :for={actor <- @people}
+            id={"resource-access-person-#{actor.id}"}
+            class="flex items-center gap-3 py-2.5 pl-1 border-b border-hair"
+          >
+            <Core.icon
+              name={if actor.type == :service_account, do: "ri-robot-2-line", else: "ri-user-line"}
+              class="w-4 h-4 text-muted shrink-0"
+            />
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-fg truncate">{actor.name}</p>
+              <p :if={actor.email} class="text-xs text-muted truncate">{actor.email}</p>
+            </div>
+            <div :if={@confirm_revoke_person_id == actor.id} class="flex items-center gap-1.5 shrink-0">
+              <span class="text-xs text-attn">Remove access?</span>
+              <Form.button type="button" phx-click="cancel_revoke_person" size="xs">Cancel</Form.button>
               <Form.button
                 type="button"
-                phx-click="remove_group_access"
-                phx-value-group_id={row.group.id}
+                phx-click="revoke_person"
+                phx-value-actor_id={actor.id}
                 style="danger"
                 size="xs"
               >
                 Remove
               </Form.button>
             </div>
-          </div>
-          <div
-            :if={@confirm_remove_group_id != row.group.id}
-            class="flex items-center gap-1 pr-4 hover:bg-raised group/item"
-          >
-            <Navigation.link
-              navigate={~p"/#{@account}/policies/#{row.policy_id}"}
-              class={[
-                "flex items-center gap-3 px-5 py-3 flex-1 min-w-0",
-                row.policy_is_disabled && "opacity-50 hover:opacity-75"
-              ]}
+            <button
+              :if={@confirm_revoke_person_id != actor.id}
+              type="button"
+              phx-click="confirm_revoke_person"
+              phx-value-actor_id={actor.id}
+              aria-label={"Remove access for #{actor.name}"}
+              class="flex items-center gap-1 text-xs text-muted hover:text-attn shrink-0"
             >
-              <Core.provider_icon provider={Core.provider_type_from_group(row)} size="sm" variant="circle" />
-              <div class="flex-1 min-w-0 flex items-center gap-2">
-                <p class="text-sm font-medium text-heading group-hover/item:text-brand transition-colors truncate">
-                  {row.group.name}
-                </p>
-                <span
-                  :if={row.policy_is_disabled}
-                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle"
-                >
-                  disabled
-                </span>
-              </div>
-            </Navigation.link>
-            <div class="relative shrink-0">
-              <button
-                type="button"
-                phx-click="toggle_group_actions"
-                phx-value-group_id={row.group.id}
-                class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
-                title="More actions"
-              >
-                <Core.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
-              </button>
-              <div
-                :if={@group_actions_open_id == row.group.id}
-                phx-click-away="close_group_actions"
-                class="absolute right-0 top-full mt-1 w-40 rounded-md border border-border bg-elevated shadow-lg z-10 py-1"
-              >
-                <Navigation.link
-                  navigate={~p"/#{@account}/groups/#{row.group.id}"}
-                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
-                >
-                  <Core.icon name="ri-group-line" class="w-3.5 h-3.5 shrink-0" /> Go to Group
-                </Navigation.link>
-                <button
-                  :if={!row.policy_is_disabled}
-                  type="button"
-                  phx-click="disable_policy"
-                  phx-value-group_id={row.group.id}
-                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
-                >
-                  <Core.icon name="ri-pause-circle-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
-                </button>
-                <button
-                  :if={row.policy_is_disabled}
-                  type="button"
-                  phx-click="enable_policy"
-                  phx-value-group_id={row.group.id}
-                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
-                >
-                  <Core.icon name="ri-play-circle-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
-                </button>
-                <button
-                  type="button"
-                  phx-click="confirm_remove_group"
-                  phx-value-group_id={row.group.id}
-                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-error hover:bg-raised transition-colors"
-                >
-                  <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
-                </button>
-              </div>
-            </div>
-          </div>
-        </li>
-      </ul>
-      <div
-        :if={@groups == []}
-        class="flex items-center justify-center h-32 text-sm text-subtle"
-      >
-        No groups have access yet.
-      </div>
+              <Core.icon name="ri-close-line" class="w-3.5 h-3.5" /> Remove
+            </button>
+          </li>
+        </ul>
+        <p :if={@people == []} class="py-4 text-sm text-muted">
+          Nobody has direct access.
+        </p>
+      </section>
     </div>
     """
+  end
+
+  attr :state, :map, required: true
+
+  def resource_people_form(assigns) do
+    assigns = assign(assigns, :selected_ids, MapSet.new(assigns.state.selected, & &1.id))
+
+    ~H"""
+    <div class="flex items-center gap-2 px-6 py-2.5 border-b border-hair shrink-0">
+      <button
+        type="button"
+        phx-click="close_people_form"
+        class="flex items-center justify-center w-5 h-5 text-muted hover:text-fg"
+        title="Back"
+      >
+        <Core.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
+      </button>
+      <span class="text-xs font-semibold text-fg">Give people access</span>
+    </div>
+    <form
+      id="people-grant-form"
+      phx-submit="submit_people_grant"
+      phx-change="search_people"
+      class="flex-1 flex flex-col overflow-hidden"
+    >
+      <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        <p class="text-xs text-muted">
+          Pick people or service accounts. They can reach this resource without a group.
+        </p>
+        <ul :if={@state.selected != []} id="people-grant-selected" class="flex flex-wrap gap-1.5">
+          <li
+            :for={actor <- @state.selected}
+            class="inline-flex items-center gap-1.5 border border-fg px-2 py-0.5 text-xs text-fg"
+          >
+            {actor.name}
+            <button
+              type="button"
+              phx-click="toggle_grant_person"
+              phx-value-actor_id={actor.id}
+              aria-label={"Unselect #{actor.name}"}
+              class="text-muted hover:text-fg"
+            >
+              <Core.icon name="ri-close-line" class="w-3 h-3" />
+            </button>
+          </li>
+        </ul>
+        <div class="relative">
+          <Core.icon
+            name="ri-search-line"
+            class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none"
+          />
+          <input
+            type="text"
+            name="people_search"
+            value={@state.search}
+            placeholder="Search by name or email"
+            phx-debounce="300"
+            autocomplete="off"
+            data-1p-ignore
+            class="w-full pl-8 pr-3 py-1.5 text-sm border border-rule bg-bg text-fg placeholder:text-faint outline-none focus:border-fg"
+          />
+        </div>
+        <ul class="border border-hair divide-y divide-hair">
+          <li :for={actor <- @state.results}>
+            <button
+              type="button"
+              phx-click="toggle_grant_person"
+              phx-value-actor_id={actor.id}
+              aria-pressed={to_string(MapSet.member?(@selected_ids, actor.id))}
+              class={[
+                "flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-hover",
+                MapSet.member?(@selected_ids, actor.id) && "bg-hover"
+              ]}
+            >
+              <Core.icon
+                name={
+                  if MapSet.member?(@selected_ids, actor.id),
+                    do: "ri-checkbox-line",
+                    else: "ri-checkbox-blank-line"
+                }
+                class="w-4 h-4 text-muted"
+              />
+              <span class="flex-1 min-w-0 truncate text-fg">{actor.name}</span>
+              <span class="text-xs text-muted truncate">
+                {if actor.type == :service_account, do: "Service account", else: actor.email}
+              </span>
+            </button>
+          </li>
+          <li :if={@state.results == []} class="px-3 py-4 text-xs text-muted text-center">
+            Nobody found
+          </li>
+        </ul>
+        <p :if={@state.error} class="text-xs text-attn">{@state.error}</p>
+      </div>
+      <Form.panel_footer>
+        <Form.panel_footer_button type="button" phx-click="close_people_form">
+          Cancel
+        </Form.panel_footer_button>
+        <Form.panel_footer_button type="submit" style="primary" disabled={@state.selected == []}>
+          Give access
+        </Form.panel_footer_button>
+      </Form.panel_footer>
+    </form>
+    """
+  end
+
+  defp conditions_summary(conditions) do
+    conditions
+    |> Enum.map(&PolicyComponents.condition_short_label(&1.property))
+    |> Enum.uniq()
+    |> Enum.join(" · ")
   end
 
   attr :account, :any, required: true
@@ -1920,7 +2237,7 @@ defmodule PortalWeb.Resources.Components do
                     {if row.actor, do: row.actor.name, else: "—"}
                   </td>
                   <td class="px-4 py-2 text-body">
-                    {if row.group, do: row.group.name, else: "(deleted group)"}
+                    {authorization_group_label(row.group, "(deleted group)")}
                   </td>
                   <td class="px-4 py-2 text-subtle">
                     <Core.relative_datetime datetime={row.authorization.inserted_at} />
@@ -1991,7 +2308,7 @@ defmodule PortalWeb.Resources.Components do
                           navigate={~p"/#{@account}/policies/#{row.authorization.policy_id}"}
                           class="text-brand hover:underline"
                         >
-                          {if row.group, do: row.group.name, else: "Everyone"} → {@resource.name}
+                          {authorization_group_label(row.group, "Everyone")} → {@resource.name}
                         </Navigation.link>
                       </div>
                     </div>
@@ -2028,26 +2345,52 @@ defmodule PortalWeb.Resources.Components do
   attr :account, :any, required: true
   attr :resource, :any, required: true
   attr :online_site_ids, :any, default: %MapSet{}
+  attr :route_devices, AsyncResult, required: true
   attr :ui_state, :map, required: true
 
   def resource_sidebar(assigns) do
     assigns = assign(assigns, assigns.ui_state)
 
     ~H"""
-    <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
+    <div class="w-1/3 shrink-0 overflow-y-auto px-5 py-4 space-y-6">
+      <section id="resource-route">
+        <h3 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted mb-2">
+          <Core.icon name="ri-route-line" class="w-3.5 h-3.5" /> How traffic gets there
+        </h3>
+        <div class="mb-2"><.route_chip account={@account} resource={@resource} /></div>
+        <p :if={@resource.type == :device_pool} class="text-xs text-muted">
+          No site. Traffic goes from the user's device straight to a device in this pool.
+        </p>
+        <p :if={@resource.type != :device_pool and not is_nil(@resource.site)} class="text-xs text-muted">
+          Traffic goes through one of the devices of this site.
+        </p>
+        <p :if={@resource.type != :device_pool and is_nil(@resource.site)} class="text-xs text-attn">
+          {nil_site_label(@resource)}
+        </p>
+        <.async_result :let={route_devices} assign={@route_devices}>
+          <:loading>
+            <div id="route-devices-loading" aria-hidden="true" class="mt-2 space-y-2 animate-pulse">
+              <div :for={width <- ~w[w-32 w-24 w-28]} class={["h-2 bg-hair", width]}></div>
+            </div>
+          </:loading>
+          <:failed>
+            <p id="route-devices-error" class="mt-2 text-xs text-muted">Could not load the devices.</p>
+          </:failed>
+          <.route_device_list account={@account} resource={@resource} route_devices={route_devices} />
+        </.async_result>
+      </section>
+
       <section>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-          Details
+        <h3 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted mb-2">
+          <Core.icon name="ri-information-line" class="w-3.5 h-3.5" /> Details
         </h3>
         <dl class="space-y-2.5">
           <div>
-            <dt class="text-[10px] text-subtle mb-0.5">Resource ID</dt>
-            <dd class="font-mono text-[11px] text-body break-all font-medium">
-              {@resource.id}
-            </dd>
+            <dt class="text-xs text-muted">Resource ID</dt>
+            <dd class="font-mono text-xs text-fg break-all">{@resource.id}</dd>
           </div>
           <div>
-            <dt class="text-[10px] text-subtle mb-0.5">Type</dt>
+            <dt class="text-xs text-muted mb-0.5">Type</dt>
             <dd>
               <span class={ResourceType.type_badge_class(@resource.type)}>
                 {ResourceType.resource_type_label(@resource.type)}
@@ -2055,10 +2398,9 @@ defmodule PortalWeb.Resources.Components do
             </dd>
           </div>
           <div :if={@resource.type == :dns}>
-            <dt class="text-[10px] text-subtle mb-0.5">IP Stack</dt>
-            <dd class="text-xs text-body font-medium">
+            <dt class="text-xs text-muted">IP Stack</dt>
+            <dd class="text-xs text-fg">
               {case @resource.ip_stack do
-                :dual -> "Dual-stack (A + AAAA)"
                 :ipv4_only -> "IPv4 only (A)"
                 :ipv6_only -> "IPv6 only (AAAA)"
                 _ -> "Dual-stack (A + AAAA)"
@@ -2066,102 +2408,64 @@ defmodule PortalWeb.Resources.Components do
             </dd>
           </div>
           <div :if={@resource.type not in [:internet, :device_pool]}>
-            <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
-            <dd class="font-mono text-xs text-body font-medium break-all">
-              {@resource.address}
-            </dd>
+            <dt class="text-xs text-muted">Address</dt>
+            <dd class="font-mono text-xs text-fg break-all">{@resource.address}</dd>
           </div>
           <div :if={@resource.type == :device_pool}>
-            <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
-            <dd class="text-xs italic text-subtle">Multiple Addresses</dd>
+            <dt class="text-xs text-muted">Address</dt>
+            <dd class="text-xs text-muted">Multiple Addresses</dd>
           </div>
           <div>
-            <dt class="text-[10px] text-subtle mb-0.5">Description</dt>
-            <dd class={[
-              "text-xs font-medium",
-              if(@resource.address_description,
-                do: "text-body",
-                else: "text-subtle italic"
-              )
-            ]}>
+            <dt class="text-xs text-muted">Description</dt>
+            <dd class={["text-xs", (@resource.address_description && "text-fg") || "text-muted"]}>
               {@resource.address_description || "No Address Description"}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-muted">Site</dt>
+            <dd class="text-xs">
+              <Navigation.link
+                :if={@resource.site}
+                navigate={~p"/#{@account}/sites/#{@resource.site}"}
+                class="text-fg underline"
+              >
+                {@resource.site.name}
+              </Navigation.link>
+              <span :if={is_nil(@resource.site)} class="text-muted">{nil_site_label(@resource)}</span>
             </dd>
           </div>
         </dl>
       </section>
-      <div :if={@resource.type != :internet} class="border-t border-border"></div>
+
       <section :if={@resource.type != :internet}>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-          Traffic Restrictions
+        <h3 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted mb-2">
+          <Core.icon name="ri-filter-3-line" class="w-3.5 h-3.5" /> Traffic Restrictions
         </h3>
-        <p
-          :if={@resource.filters == []}
-          class="text-xs text-subtle italic"
-        >
-          None — all protocols/ports permitted
+        <p :if={@resource.filters == []} class="text-xs text-muted">
+          None. All protocols and ports are allowed.
         </p>
         <ul :if={@resource.filters != []} class="space-y-1">
-          <li
-            :for={filter <- @resource.filters}
-            class="text-xs font-mono text-body"
-          >
+          <li :for={filter <- @resource.filters} class="text-xs font-mono text-fg">
             {format_filter(filter)}
           </li>
         </ul>
       </section>
-      <div class="border-t border-border"></div>
-      <section>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-          Infrastructure
-        </h3>
-        <dl class="space-y-2.5">
-          <div>
-            <dt class="text-[10px] text-subtle mb-1">Site</dt>
-            <%= if @resource.site do %>
-              <dd class="flex items-center gap-1.5 flex-wrap text-body font-medium">
-                <Navigation.link
-                  navigate={~p"/#{@account}/sites/#{@resource.site}"}
-                  class="text-xs underline font-medium text-body hover:text-heading transition-colors"
-                >
-                  {@resource.site.name}
-                </Navigation.link>
-                <span
-                  :if={resource_online?(@resource, @online_site_ids)}
-                  class="relative flex items-center justify-center w-1.5 h-1.5"
-                >
-                  <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-success">
-                  </span>
-                  <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-success">
-                  </span>
-                </span>
-              </dd>
-            <% else %>
-              <dd class="text-xs italic text-subtle">{nil_site_label(@resource)}</dd>
-            <% end %>
-          </div>
-        </dl>
-      </section>
-      <div class="border-t border-border"></div>
+
       <section :if={@resource.type != :internet}>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
-          Danger Zone
+        <h3 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-attn mb-2">
+          <Core.icon name="ri-alarm-warning-line" class="w-3.5 h-3.5" /> Danger Zone
         </h3>
         <button
           :if={not @confirm_delete_resource}
           type="button"
           phx-click="confirm_delete_resource"
-          class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
+          class="w-full flex items-center gap-2 px-3 py-2 border border-attn text-xs text-attn hover:bg-attn-wash transition-colors"
         >
           <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete resource
         </button>
-        <div
-          :if={@confirm_delete_resource}
-          class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
-        >
-          <p class="text-xs font-medium text-error mb-1">
-            Delete this resource?
-          </p>
-          <p class="text-xs text-error/70 mb-3">
+        <div :if={@confirm_delete_resource} class="px-3 py-2.5 border border-attn bg-attn-wash">
+          <p class="text-xs font-medium text-attn mb-1">Delete this resource?</p>
+          <p class="text-xs text-fg mb-3">
             All Policies associated with this Resource will also be deleted and all devices will immediately lose access.
           </p>
           <div class="flex items-center gap-1.5">
@@ -2194,6 +2498,103 @@ defmodule PortalWeb.Resources.Components do
     |> to_form(as: :policy)
   end
 
+  @doc "The Remix icon for a resource's type."
+  @spec resource_icon(map()) :: String.t()
+  def resource_icon(%{type: :dns}), do: "ri-global-line"
+  def resource_icon(%{type: :ip}), do: "ri-map-pin-2-line"
+  def resource_icon(%{type: :cidr}), do: "ri-node-tree"
+  def resource_icon(%{type: :device_pool}), do: "ri-computer-line"
+  def resource_icon(%{type: :internet}), do: "ri-earth-line"
+  def resource_icon(_resource), do: "ri-server-line"
+
+  @doc "What a device pool's address column says: which devices it reaches."
+  @spec pool_address_label(map()) :: String.t()
+  def pool_address_label(resource), do: pool_kind_label(pool_kind(resource))
+
+  @doc """
+  The route of a resource: an outlined "via <Site>" chip that links to the site, or a
+  dashed "direct" chip for a device pool, which has no site.
+  """
+  attr :account, :any, required: true
+  attr :resource, :any, required: true
+  attr :pool_member_ids, :list, default: []
+  attr :pool_group_ids, :any, default: nil
+  attr :online_ids, :any, default: %MapSet{}
+
+  def route_chip(%{resource: %{type: :device_pool}} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :health,
+        pool_health(assigns.resource, assigns.pool_member_ids, assigns.pool_group_ids, assigns.online_ids)
+      )
+
+    ~H"""
+    <span class="inline-flex items-center gap-2 whitespace-nowrap">
+      <span
+        data-route="direct"
+        class="inline-flex items-center gap-1 border border-dashed border-rule px-2 py-px text-xs text-fg"
+      >
+        <Core.icon name="ri-arrow-left-right-line" class="w-3 h-3 text-muted" /> direct
+      </span>
+      <span :if={@health} class={["text-xs", elem(@health, 0) && "text-attn", !elem(@health, 0) && "text-muted"]}>
+        {elem(@health, 1)}
+      </span>
+    </span>
+    """
+  end
+
+  def route_chip(%{resource: %{site: %Portal.Site{} = site}} = assigns) do
+    assigns = assign(assigns, :site, site)
+
+    ~H"""
+    <Navigation.link
+      navigate={~p"/#{@account}/sites/#{@site}"}
+      data-route="site"
+      class="inline-flex items-center gap-1 max-w-full border border-rule px-2 py-px text-xs text-fg whitespace-nowrap hover:bg-fg hover:text-bg transition-colors"
+    >
+      <Core.icon name="ri-route-line" class="w-3 h-3 shrink-0" />
+      <span class="truncate">via {@site.name}</span>
+    </Navigation.link>
+    """
+  end
+
+  def route_chip(assigns) do
+    ~H"""
+    <span
+      data-route="none"
+      class="inline-flex items-center gap-1 border border-attn px-2 py-px text-xs text-attn whitespace-nowrap"
+    >
+      <Core.icon name="ri-error-warning-line" class="w-3 h-3" /> No site
+    </span>
+    """
+  end
+
+  # {needs_attention?, label} for a pool, shown next to its direct chip.
+  defp pool_health(resource, member_ids, group_ids, online_ids) do
+    cond do
+      pool_group_missing?(resource, group_ids) ->
+        {true, "Group deleted"}
+
+      pool_kind(resource) != :listed ->
+        nil
+
+      member_ids == [] ->
+        {true, "No devices"}
+
+      true ->
+        {false, "#{Enum.count(member_ids, &MapSet.member?(online_ids, &1))} of #{length(member_ids)} online"}
+    end
+  end
+
+  @doc "How a policy's group shows in authorization lists; direct access hides its group."
+  @spec authorization_group_label(map() | nil, String.t()) :: String.t()
+  def authorization_group_label(nil, fallback), do: fallback
+
+  def authorization_group_label(group, _fallback) do
+    if PortalWeb.DirectAccess.direct_group?(group), do: "Direct access", else: group.name
+  end
+
   @spec resource_online?(map(), MapSet.t()) :: boolean()
   def resource_online?(%{site_id: site_id}, online_site_ids) do
     MapSet.member?(online_site_ids, site_id)
@@ -2217,14 +2618,22 @@ defmodule PortalWeb.Resources.Components do
           }
         } = assigns
       ) do
-    online = Enum.count(assigns.pool_member_ids, &MapSet.member?(assigns.online_ids, &1))
-    assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
+    member_ids = assigns.pool_member_ids || []
+    online = Enum.count(member_ids, &MapSet.member?(assigns.online_ids, &1))
+    assigns = assign(assigns, online: online, total: length(member_ids))
 
     ~H"""
-    <Core.status_badge :if={@total == 0} style={:warning}>
+    <span
+      :if={is_nil(@pool_member_ids)}
+      id="resource-status-loading"
+      aria-hidden="true"
+      class="inline-block h-2 w-16 bg-hair animate-pulse"
+    >
+    </span>
+    <Core.status_badge :if={@pool_member_ids && @total == 0} style={:warning}>
       No devices
     </Core.status_badge>
-    <Core.status_badge :if={@total > 0} style={if @online > 0, do: :success, else: :neutral}>
+    <Core.status_badge :if={@pool_member_ids && @total > 0} style={if @online > 0, do: :success, else: :neutral}>
       {@online} / {@total} online
     </Core.status_badge>
     """
@@ -2270,6 +2679,59 @@ defmodule PortalWeb.Resources.Components do
   defp pool_kind_label(:all_devices), do: "All devices"
   defp pool_kind_label(:actor_group), do: "Group's devices"
   defp pool_kind_label(:listed), do: "Static list"
+
+  attr :account, :any, required: true
+  attr :resource, :any, required: true
+  attr :route_devices, :list, required: true
+
+  defp route_device_list(assigns) do
+    assigns = assign(assigns, shown_devices: Enum.take(assigns.route_devices, 8))
+
+    ~H"""
+    <ul :if={@shown_devices != []} class="mt-2 border-t border-hair">
+      <li
+        :for={device <- @shown_devices}
+        id={"route-device-#{device.id}"}
+        class="flex items-center gap-2 py-1.5 border-b border-hair text-xs"
+      >
+        <span class={presence_dot_class(device.online?)}></span>
+        <Navigation.link
+          navigate={~p"/#{@account}/devices/#{device.id}"}
+          class="flex-1 min-w-0 truncate text-fg hover:underline"
+        >
+          {device.name}
+        </Navigation.link>
+        <span :if={device.online?} class="text-muted">online</span>
+        <span :if={not device.online?} class="text-attn">offline</span>
+      </li>
+    </ul>
+    <p
+      :if={@resource.type != :device_pool and not is_nil(@resource.site) and @route_devices == []}
+      class="mt-2 text-xs text-attn"
+    >
+      No device carries this site yet.
+    </p>
+    <Navigation.link
+      :if={length(@route_devices) > length(@shown_devices)}
+      navigate={~p"/#{@account}/sites/#{@resource.site_id}"}
+      class="mt-1.5 inline-block text-xs text-muted hover:text-fg"
+    >
+      {length(@route_devices) - length(@shown_devices)} more
+    </Navigation.link>
+    """
+  end
+
+  attr :id, :string, required: true
+  slot :inner_block, required: true
+
+  defp load_error(assigns) do
+    ~H"""
+    <p id={@id} class="px-6 py-4 text-xs text-muted">{render_slot(@inner_block)}</p>
+    """
+  end
+
+  defp async_ok(%AsyncResult{ok?: true, result: result}, fun), do: fun.(result)
+  defp async_ok(_async, _fun), do: nil
 
   defmodule Database do
     import Ecto.Query

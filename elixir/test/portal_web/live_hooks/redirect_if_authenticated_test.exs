@@ -28,7 +28,7 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticatedTest do
       assert {:halt, redirected_socket} =
                RedirectIfAuthenticated.on_mount(:default, %{}, %{}, socket)
 
-      expected_path = "/#{account.slug}/sites"
+      expected_path = "/#{account.slug}/activity"
       assert {:redirect, %{to: ^expected_path}} = redirected_socket.redirected
     end
 
@@ -155,7 +155,7 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticatedTest do
         |> live(~p"/#{account}/sign_in")
 
       # Should redirect to /sites (portal)
-      assert redirect_path == ~p"/#{account}/sites"
+      assert redirect_path == ~p"/#{account}/activity"
     end
   end
 end

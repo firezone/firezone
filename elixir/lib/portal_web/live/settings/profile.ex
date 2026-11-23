@@ -7,12 +7,14 @@ defmodule PortalWeb.Settings.Profile do
   @form_channels [:email]
 
   @start_page_options [
-    %{value: "sites", label: "Sites", icon: "ri-global-line"},
+    %{value: "activity", label: "Activity", icon: "ri-pulse-line"},
+    %{value: "access", label: "Access", icon: "ri-shield-keyhole-line"},
+    %{value: "sites", label: "Sites", icon: "ri-map-pin-line"},
     %{value: "resources", label: "Resources", icon: "ri-server-line"},
     %{value: "groups", label: "Groups", icon: "ri-team-line"},
     %{value: "policies", label: "Policies", icon: "ri-shield-check-line"},
     %{value: "devices", label: "Devices", icon: "ri-computer-line"},
-    %{value: "actors", label: "Actors", icon: "ri-user-line"}
+    %{value: "actors", label: "People", icon: "ri-user-line"}
   ]
 
   def mount(_params, _session, socket) do
@@ -38,132 +40,122 @@ defmodule PortalWeb.Settings.Profile do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <%!-- Profile header --%>
-      <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-border">
-        <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
-        <div class="flex items-center gap-5">
-          <Core.icon name="ri-user-line" class="shrink-0 w-16 h-16 text-brand" />
-          <div class="flex-1 min-w-0">
-            <h1 class="text-base font-semibold text-heading">{@subject.actor.name}</h1>
-            <p class="mt-0.5 text-sm text-body">{@subject.actor.email}</p>
-          </div>
-        </div>
-      </div>
+      <Page.page_header>
+        <:title>
+          <span class="flex items-center gap-3 min-w-0">
+            <Core.avatar account={@account} actor={@subject.actor} class="w-9 h-9" />
+            <span class="truncate">{@subject.actor.name}</span>
+          </span>
+        </:title>
+        <:description>{@subject.actor.email}</:description>
+      </Page.page_header>
 
-      <%!-- Preferences content --%>
-      <div class="flex-1 overflow-y-auto p-6">
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-4">
-          Preferences
-        </h3>
+      <div class="flex-1 overflow-y-auto px-6 pb-10">
+        <div class="max-w-3xl space-y-8">
+          <section id="preferences">
+            <.eyebrow icon="ri-equalizer-line">Preferences</.eyebrow>
+            <.form for={@form} phx-change="save" id="preferences-form">
+              <.inputs_for :let={prefs} field={@form[:preferences]}>
+                <.start_page_selector field={prefs[:start_page]} options={@start_page_options} />
+              </.inputs_for>
+            </.form>
+          </section>
 
-        <.form for={@form} phx-change="save" id="preferences-form" class="max-w-2xl">
-          <div class="rounded border border-border bg-raised divide-y divide-border">
-            <.inputs_for :let={prefs} field={@form[:preferences]}>
-              <.start_page_selector field={prefs[:start_page]} options={@start_page_options} />
-            </.inputs_for>
-          </div>
-        </.form>
+          <section id="notifications">
+            <div class="flex items-baseline justify-between mb-3">
+              <.eyebrow icon="ri-notification-3-line" class="mb-0">Notification</.eyebrow>
+              <span class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+                Email
+              </span>
+            </div>
+            <.form for={@notifications_form} phx-change="save_notifications" id="notifications-form">
+              <table class="w-full text-sm border-t border-rule">
+                <tbody>
+                  <.notification_row
+                    notification={:outdated_gateways}
+                    preferences={@actor.preferences}
+                    icon="ri-arrow-up-circle-line"
+                    label="Gateway upgrade available"
+                    description="A new Gateway version is available"
+                  />
+                  <.notification_row
+                    notification={:seat_limit_warnings}
+                    preferences={@actor.preferences}
+                    icon="ri-user-star-line"
+                    label="Seat limit warnings"
+                    description="Your monthly active users near or reach the seats in your subscription"
+                    disabled={not @seats_warning_plan?}
+                    disabled_reason="Seat count warnings are sent on Business plans only."
+                  />
+                  <.notification_row
+                    notification={:product_announcements}
+                    preferences={@actor.preferences}
+                    icon="ri-megaphone-line"
+                    label="Product announcements"
+                    description="A monthly summary of new features and improvements in Firezone"
+                  />
+                  <.notification_row
+                    notification={:product_feedback_requests}
+                    preferences={@actor.preferences}
+                    icon="ri-feedback-line"
+                    label="Product feedback requests"
+                    description="Getting started help and requests for feedback on Firezone"
+                  />
+                </tbody>
+              </table>
+            </.form>
+          </section>
 
-        <div class="max-w-2xl flex items-baseline justify-between mt-8 pb-2 border-b border-border text-[10px] font-semibold tracking-widest uppercase text-subtle">
-          <h3>Notification</h3>
-          <span>Email</span>
-        </div>
+          <section id="connected-apps">
+            <.eyebrow icon="ri-plug-line">Connected apps</.eyebrow>
+            <p :if={@connections == []} class="flex items-center gap-2 text-sm text-muted">
+              <Core.icon name="ri-apps-line" class="w-4 h-4 text-faint" />
+              No apps are connected to your account.
+            </p>
 
-        <.form
-          for={@notifications_form}
-          phx-change="save_notifications"
-          id="notifications-form"
-          class="max-w-2xl"
-        >
-          <table class="w-full text-sm text-body">
-            <tbody class="divide-y divide-border">
-              <.notification_row
-                notification={:outdated_gateways}
-                preferences={@actor.preferences}
-                label="Gateway Upgrade Available"
-                description="A new Gateway version is available"
-              />
-              <.notification_row
-                notification={:seat_limit_warnings}
-                preferences={@actor.preferences}
-                label="Seat Limit Warnings"
-                description="Your monthly active users near or reach the seats in your subscription"
-                disabled={not @seats_warning_plan?}
-                disabled_reason="Seat count warnings are sent on Business plans only."
-              />
-              <.notification_row
-                notification={:product_announcements}
-                preferences={@actor.preferences}
-                label="Product Announcements"
-                description="A monthly summary of new features and improvements in Firezone"
-              />
-              <.notification_row
-                notification={:product_feedback_requests}
-                preferences={@actor.preferences}
-                label="Product Feedback Requests"
-                description="Getting started help and requests for feedback on Firezone"
-              />
-            </tbody>
-          </table>
-        </.form>
+            <ul :if={@connections != []} class="border-t border-rule">
+              <li :for={grant <- @connections} class="relative py-4 border-b border-hair">
+                <div class="flex items-start gap-3">
+                  <Page.client_icon client={grant.oauth_client} class="w-10 h-10" />
 
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mt-8 mb-4">
-          Connected apps
-        </h3>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-fg truncate">
+                      {grant.oauth_client.client_name}
+                    </p>
+                    <p class="flex items-center gap-1.5 mt-0.5">
+                      <Core.icon name="ri-lock-line" class="w-3 h-3 text-fg shrink-0" />
+                      <span class="text-xs font-mono text-fg break-all">
+                        {Page.client_host(grant.oauth_client.client_id)}
+                      </span>
+                    </p>
+                    <p class="text-xs text-muted mt-0.5 break-all">
+                      {grant.oauth_client.client_id}
+                    </p>
+                    <p class="text-xs text-muted mt-0.5">
+                      Connected <Core.relative_datetime datetime={grant.inserted_at} />
+                    </p>
+                  </div>
 
-        <div class="max-w-2xl">
-          <p :if={@connections == []} class="text-sm text-subtle">
-            No apps are connected to your account.
-          </p>
-
-          <div
-            :if={@connections != []}
-            class="rounded border border-border bg-raised divide-y divide-border"
-          >
-            <div :for={grant <- @connections} class="relative px-4 py-3.5">
-              <div class="flex items-start gap-3">
-                <Page.client_icon client={grant.oauth_client} class="w-10 h-10" />
-
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-heading truncate">
-                    {grant.oauth_client.client_name}
-                  </p>
-                  <p class="flex items-center gap-1.5 mt-0.5">
-                    <Core.icon name="ri-lock-line" class="w-3 h-3 text-brand shrink-0" />
-                    <span class="text-xs font-mono text-body break-all">
-                      {Page.client_host(grant.oauth_client.client_id)}
-                    </span>
-                  </p>
-                  <p class="text-xs text-subtle mt-0.5 break-all">
-                    {grant.oauth_client.client_id}
-                  </p>
-                  <p class="text-xs text-subtle mt-0.5">
-                    Connected <Core.relative_datetime datetime={grant.inserted_at} />
-                  </p>
+                  <Form.button
+                    :if={@confirm_disconnect_id != grant.id}
+                    style="danger"
+                    size="xs"
+                    icon="ri-link-unlink"
+                    phx-click="confirm_disconnect"
+                    phx-value-id={grant.id}
+                  >
+                    Disconnect
+                  </Form.button>
                 </div>
 
-                <Form.button
-                  :if={@confirm_disconnect_id != grant.id}
-                  style="danger"
-                  size="xs"
-                  phx-click="confirm_disconnect"
-                  phx-value-id={grant.id}
+                <div
+                  :if={@confirm_disconnect_id == grant.id}
+                  class="absolute right-0 top-3 z-10 w-1/2 min-w-[18rem] border border-rule bg-bg shadow-lg px-3 py-2.5"
                 >
-                  Disconnect
-                </Form.button>
-              </div>
-
-              <%!-- Floated over the card rather than inserted into it, so opening
-                    the confirmation does not move everything below it. --%>
-              <div
-                :if={@confirm_disconnect_id == grant.id}
-                class="absolute right-3 top-3 z-10 w-1/2 min-w-[18rem] rounded-md border border-border bg-elevated shadow-lg overflow-hidden"
-              >
-                <div class="px-3 py-2.5 bg-error-light">
-                  <p class="text-xs font-medium text-error mb-1">
+                  <p class="text-xs font-semibold text-attn mb-1">
                     Disconnect {grant.oauth_client.client_name}?
                   </p>
-                  <p class="text-xs text-error/70 mb-3">
+                  <p class="text-xs text-muted mb-3">
                     It will lose access immediately and any tokens it holds stop working.
                   </p>
                   <div class="flex items-center gap-1.5">
@@ -181,38 +173,54 @@ defmodule PortalWeb.Settings.Profile do
                     </Form.button>
                   </div>
                 </div>
-              </div>
 
-              <button
-                type="button"
-                phx-click="toggle_permissions"
-                phx-value-id={grant.id}
-                class="mt-3 flex items-center gap-1 text-xs text-body hover:text-heading transition-colors"
-              >
-                {permissions_summary(grant.scopes)}
-                <Core.icon
-                  name={
-                    if @expanded_grant_id == grant.id,
-                      do: "ri-arrow-up-s-line",
-                      else: "ri-arrow-down-s-line"
-                  }
-                  class="w-4 h-4"
-                />
-              </button>
+                <button
+                  type="button"
+                  phx-click="toggle_permissions"
+                  phx-value-id={grant.id}
+                  class="mt-3 ml-[52px] flex items-center gap-1 text-xs text-muted hover:text-fg transition-colors"
+                >
+                  <Core.icon name="ri-key-2-line" class="w-3.5 h-3.5" />
+                  {permissions_summary(grant.scopes)}
+                  <Core.icon
+                    name={
+                      if @expanded_grant_id == grant.id,
+                        do: "ri-arrow-up-s-line",
+                        else: "ri-arrow-down-s-line"
+                    }
+                    class="w-4 h-4"
+                  />
+                </button>
 
-              <ul :if={@expanded_grant_id == grant.id} class="mt-2 space-y-1.5">
-                <.granted_permission
-                  :for={{entity, level} <- Portal.Scope.grouped(grant.scopes)}
-                  entity={entity}
-                  level={level}
-                />
-              </ul>
-
-            </div>
-          </div>
+                <ul :if={@expanded_grant_id == grant.id} class="mt-2 ml-[52px] space-y-1.5">
+                  <.granted_permission
+                    :for={{entity, level} <- Portal.Scope.grouped(grant.scopes)}
+                    entity={entity}
+                    level={level}
+                  />
+                </ul>
+              </li>
+            </ul>
+          </section>
         </div>
       </div>
     </div>
+    """
+  end
+
+  attr :icon, :string, required: true
+  attr :class, :string, default: "mb-3"
+  slot :inner_block, required: true
+
+  defp eyebrow(assigns) do
+    ~H"""
+    <h2 class={[
+      "flex items-center gap-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted",
+      @class
+    ]}>
+      <Core.icon name={@icon} class="w-3.5 h-3.5" />
+      {render_slot(@inner_block)}
+    </h2>
     """
   end
 
@@ -223,23 +231,18 @@ defmodule PortalWeb.Settings.Profile do
     end
   end
 
-  # The same label and description the permission picker shows, so what was
-  # granted reads exactly as it did when it was asked for.
   attr :entity, :atom, required: true
   attr :level, :atom, required: true
 
   defp granted_permission(assigns) do
     ~H"""
     <li class="flex items-baseline gap-2">
-      <span class={[
-        "shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide",
-        (@level == :write && "bg-brand-muted text-brand") || "bg-raised text-subtle"
-      ]}>
+      <Core.badge size="xs" type={(@level == :write && "success") || "neutral"} class="uppercase">
         {@level}
-      </span>
+      </Core.badge>
       <span class="min-w-0">
-        <span class="text-xs text-heading">{Portal.Scope.label(@entity)}</span>
-        <span class="text-xs text-subtle"> - {Portal.Scope.description(@entity)}</span>
+        <span class="text-xs text-fg">{Portal.Scope.label(@entity)}</span>
+        <span class="text-xs text-muted"> - {Portal.Scope.description(@entity)}</span>
       </span>
     </li>
     """
@@ -247,6 +250,7 @@ defmodule PortalWeb.Settings.Profile do
 
   attr :notification, :atom, required: true
   attr :preferences, :any, required: true
+  attr :icon, :string, required: true
   attr :label, :string, required: true
   attr :description, :string, required: true
   attr :disabled, :boolean, default: false
@@ -263,12 +267,17 @@ defmodule PortalWeb.Settings.Profile do
       )
 
     ~H"""
-    <tr>
-      <td class="pr-3 py-2.5 align-middle">
-        <div class="text-xs font-semibold text-body">{@label}</div>
-        <div class="text-xs text-subtle mt-0.5">{@description}</div>
+    <tr class="border-b border-hair">
+      <td class="pr-3 py-3 align-middle">
+        <div class="flex items-start gap-2.5">
+          <Core.icon name={@icon} class="w-4 h-4 mt-0.5 shrink-0 text-muted" />
+          <div>
+            <div class="text-sm font-medium text-fg">{@label}</div>
+            <div class="text-xs text-muted mt-0.5">{@description}</div>
+          </div>
+        </div>
       </td>
-      <td class="pl-3 py-2.5 align-middle">
+      <td class="pl-3 py-3 align-middle">
         <span class="flex justify-end">
           <Core.popover :if={@disabled} placement="left" class="flex">
             <:target>
@@ -286,12 +295,12 @@ defmodule PortalWeb.Settings.Profile do
 
   defp start_page_selector(assigns) do
     ~H"""
-    <div class="px-4 py-3.5">
-      <p class="text-sm font-medium text-heading mb-0.5">Start Page</p>
-      <p class="text-xs text-subtle mb-3">
+    <div>
+      <p class="text-sm font-medium text-fg mb-0.5">Start page</p>
+      <p class="text-xs text-muted mb-3">
         Choose which page to land on after signing in.
       </p>
-      <div class="grid grid-cols-3 gap-2 sm:grid-cols-6">
+      <div class="grid grid-cols-3 sm:grid-cols-6 border-t border-l border-rule">
         <.start_page_option :for={opt <- @options} field={@field} option={opt} />
       </div>
     </div>
@@ -304,10 +313,9 @@ defmodule PortalWeb.Settings.Profile do
 
     ~H"""
     <label class={[
-      "flex flex-col items-center gap-2 px-3 py-3 rounded border cursor-pointer transition-colors",
-      @selected && "border-brand bg-brand-muted text-brand",
-      not @selected &&
-        "border-border hover:border-border-strong text-body"
+      "flex flex-col items-center gap-2 px-3 py-3 border-r border-b border-rule cursor-pointer transition-colors",
+      @selected && "bg-fg text-bg",
+      not @selected && "text-muted hover:bg-hover hover:text-fg"
     ]}>
       <input
         type="radio"

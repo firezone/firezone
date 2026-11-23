@@ -4,6 +4,39 @@
 @import "./scrollbar.css";
 
 @theme {
+  /* TYPE */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Inter,
+    system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+
+  /* SHAPE: square corners everywhere except things that are round on purpose */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: var(--hard-shadow);
+  --shadow-lg: var(--hard-shadow);
+  --shadow-xl: var(--hard-shadow);
+  --shadow-2xl: var(--hard-shadow);
+
+  /* MONOCHROME + ONE ACCENT */
+  --color-fg: var(--fg);
+  --color-bg: var(--bg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-rule: var(--rule);
+  --color-hair: var(--hair);
+  --color-hover: var(--hover);
+  --color-attn: var(--attn);
+  --color-attn-wash: var(--attn-wash);
+  --color-veil: var(--overlay-veil);
+
   /* BRAND */
   --color-brand: var(--brand);
   --color-brand-dark: var(--brand-hover);
@@ -124,6 +157,18 @@
 }
 /* End */
 
+/* Tailwind writes `rounded` and its side variants as literal sizes, not theme
+   values, so the square-corner theme above does not reach them. Unlayered
+   rules win over every layer. */
+.rounded,
+.rounded-t,
+.rounded-b,
+.rounded-l,
+.rounded-r,
+.rounded-\[2px\] {
+  border-radius: 0;
+}
+
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -231,105 +276,117 @@ html {
   }
 }
 
-:root {
-  /* Brand — orange (heat-wave-500 / heat-wave-600) */
-  --brand: oklch(71.74% 0.192 48.75);
-  --brand-secondary: oklch(77.69% 0.154 56.87);
-  --brand-tertiary: oklch(96.59% 0.022 63.21);
-  --brand-muted: oklch(98.56% 0.0084 56.32);
-  --brand-hover: oklch(58.23% 0.1574 48.48);
+/* ----------------------------------------------------------------------------
+   Design tokens
 
-  /* Accent - purple */
-  --accent: oklch(48.06% 0.2976 276);
-  --accent-secondary: oklch(81.3% 0.295 276);
-  --accent-tertiary: oklch(91.9% 0.193 276);
-  --accent-muted: oklch(97.9% 0.193 276);
-  --accent-hover: oklch(30.98% 0.1931 276);
+   The portal is black and white. Every usual state is drawn in the foreground
+   colour or a grey. One accent colour, `--attn`, marks things that need an
+   action: an offline device, a denied flow, a policy nobody uses, a destructive
+   button. Do not add colours; reach for weight, rules and space instead.
+   -------------------------------------------------------------------------- */
+:root {
+  --fg: #0a0a0a;
+  --bg: #ffffff;
+  --muted: #6b6b6b;
+  --faint: #9a9a9a;
+  --rule: #0a0a0a;
+  --hair: #e6e6e6;
+  --hover: #f6f6f6;
+  --attn: #c2410c;
+  --attn-wash: rgb(194 65 12 / 8%);
+
+  /* Brand: the foreground. Primary buttons, active tabs and focus are black. */
+  --brand: var(--fg);
+  --brand-secondary: #3a3a3a;
+  --brand-tertiary: var(--hover);
+  --brand-muted: var(--hover);
+  --brand-hover: #333333;
+  --brand-strong: var(--fg);
+  --brand-wash: var(--hover);
+
+  /* Accent: kept as a token for old call sites, drawn in greys. */
+  --accent: var(--fg);
+  --accent-secondary: #3a3a3a;
+  --accent-tertiary: var(--hover);
+  --accent-muted: var(--hover);
+  --accent-hover: #333333;
+  --accent-strong: var(--fg);
+  --accent-wash: var(--hover);
 
   /* Surfaces */
-  --canvas: oklch(95.73% 0.0074 260.73);
-  --surface: oklch(100% 0 0);
-  --surface-raised: oklch(98.14% 0.0045 258.32);
-  --surface-overlay: oklch(100% 0 0);
+  --canvas: var(--bg);
+  --surface: var(--bg);
+  --surface-raised: var(--hover);
+  --surface-overlay: var(--bg);
 
-  /* Borders */
-  --border: oklch(20.77% 0.0398 265.75 / 8%);
-  --border-strong: oklch(20.77% 0.0398 265.75 / 16%);
-  --border-emphasis: oklch(20.77% 0.0398 265.75 / 28%);
+  /* Borders: hairlines between rows, rules for structure */
+  --border: var(--hair);
+  --border-strong: #cfcfcf;
+  --border-emphasis: var(--rule);
 
   /* Text */
-  --text-primary: oklch(20.77% 0.0398 265.75);
-  --text-secondary: oklch(37.23% 0.0374 257.28);
-  --text-tertiary: oklch(53.7% 0.0404 252.26);
-  --text-disabled: oklch(75.17% 0.019 245.46);
-  --text-inverse: oklch(98.42% 0.0034 247.86);
+  --text-primary: var(--fg);
+  --text-secondary: #262626;
+  --text-tertiary: var(--muted);
+  --text-disabled: var(--faint);
+  --text-inverse: var(--bg);
 
-  /* Links — brand violet, lightened for dark surfaces */
-  --link: oklch(48.06% 0.2976 276);
+  --link: var(--fg);
 
-  /* Status */
-  --success: oklch(48.1% 0.1699 149.21);
-  --success-light: oklch(62.71% 0.1699 149.21 / 10%);
-  --info: oklch(52.5% 0.2152 262.88);
-  --info-light: oklch(54.61% 0.2152 262.88 / 8%);
-  --warning: oklch(52.3% 0.1574 58.32);
-  --warning-light: oklch(66.58% 0.1574 58.32 / 10%);
-  --neutral-status: oklch(50.5% 0.0407 257.42);
-  --neutral-status-light: oklch(55.44% 0.0407 257.42 / 12%);
-  --danger: oklch(52.9% 0.2152 27.33);
-  --danger-light: oklch(57.71% 0.2152 27.33 / 10%);
-  --error: oklch(52.9% 0.2152 27.33);
-  --error-light: oklch(93.56% 0.0309 17.72);
+  /* Status: only warning and danger take the accent */
+  --success: var(--fg);
+  --success-light: var(--hover);
+  --info: var(--muted);
+  --info-light: var(--hover);
+  --warning: var(--attn);
+  --warning-light: var(--attn-wash);
+  --neutral-status: var(--muted);
+  --neutral-status-light: var(--hover);
+  --danger: var(--attn);
+  --danger-light: var(--attn-wash);
+  --error: var(--attn);
+  --error-light: var(--attn-wash);
 
-  /* Toast backgrounds (opaque — used when flash floats over page content) */
-  --toast-bg-success: oklch(98.19% 0.0181 155.83);
-  --toast-bg-info: oklch(97.05% 0.0142 254.6);
-  --toast-bg-warn: oklch(98.69% 0.0214 95.28);
-  --toast-bg-error: oklch(97.05% 0.0129 17.38);
+  --toast-bg-success: var(--bg);
+  --toast-bg-info: var(--bg);
+  --toast-bg-warn: var(--bg);
+  --toast-bg-error: var(--bg);
 
   /* Controls */
-  --control-bg: oklch(100% 0 0);
-  --control-border: oklch(20.77% 0.0398 265.75 / 16%);
-  --control-focus: oklch(71.74% 0.192 48.75);
+  --control-bg: var(--bg);
+  --control-border: #bdbdbd;
+  --control-focus: var(--fg);
 
-  /* Badge variants */
-  --badge-dns-bg: oklch(97.05% 0.0142 254.6);
-  --badge-dns-text: oklch(48.82% 0.2172 264.38);
-  --badge-ip-bg: oklch(98.19% 0.0181 155.83);
-  --badge-ip-text: oklch(52.73% 0.1371 150.07);
-  --badge-cidr-bg: oklch(97.96% 0.0158 73.68);
-  --badge-cidr-text: oklch(56.8% 0.1574 48.48);
-  --badge-device-pool-bg: oklch(98.36% 0.0142 180.72);
-  --badge-device-pool-text: oklch(51.09% 0.0861 186.39);
-  --badge-accent-bg: oklch(56.76% 0.2532 287.59);
-  --badge-accent-text: oklch(100% 0 0);
-  --badge-admin-bg: oklch(77.69% 0.154 56.87);
+  /* Badges are outlined chips, never filled colour */
+  --badge-dns-bg: transparent;
+  --badge-dns-text: var(--fg);
+  --badge-ip-bg: transparent;
+  --badge-ip-text: var(--fg);
+  --badge-cidr-bg: transparent;
+  --badge-cidr-text: var(--fg);
+  --badge-device-pool-bg: transparent;
+  --badge-device-pool-text: var(--fg);
+  --badge-accent-bg: var(--fg);
+  --badge-accent-text: var(--bg);
+  --badge-admin-bg: var(--fg);
 
-  /* Icons */
-  --icon-bg: oklch(98.42% 0.0034 247.86);
+  --icon-bg: var(--hover);
 
-  /* Side Navbar */
-  --brand-wash: oklch(71.74% 0.192 48.75 / 20%);
+  --filter-active-bg: var(--fg);
+  --filter-active-text: var(--bg);
 
-  /* Tinted icon chips: a wash background with a strong foreground that reads in both themes */
-  --brand-strong: oklch(58.23% 0.1574 48.48);
-  --accent-strong: oklch(48.06% 0.2976 276);
-  --accent-wash: oklch(97.9% 0.193 276);
+  /* Showcase (sign in, sign up): an inverted panel */
+  --showcase-bg: #0a0a0a;
+  --showcase-bg-deep: #0a0a0a;
+  --showcase-text: #f2f2f2;
+  --showcase-icon: #a0a0a0;
+  --showcase-highlight: #fb923c;
+  --showcase-glow: #0a0a0a;
+  --showcase-glow-warm: #0a0a0a;
+  --showcase-card-border: var(--rule);
 
-  /* Filters */
-  --filter-active-bg: oklch(54.02% 0.02 260);
-  --filter-active-text: oklch(98.42% 0.0034 247.86);
-
-  /* Showcase — stays dark in both themes, so its content stays light.
-     electric-violet-800 → 900 with an electric-violet-500 and heat-wave-500 glow */
-  --showcase-bg: oklch(24.93% 0.1391 292.32);
-  --showcase-bg-deep: oklch(17.29% 0.0943 296.22);
-  --showcase-text: oklch(100% 0 0);
-  --showcase-icon: oklch(84.78% 0.0855 296.56);
-  --showcase-highlight: oklch(77.69% 0.154 56.87);
-  --showcase-glow: oklch(48.06% 0.2976 276);
-  --showcase-glow-warm: oklch(71.74% 0.192 48.75);
-  --showcase-card-border: transparent;
+  --overlay-veil: rgb(255 255 255 / 78%);
+  --hard-shadow: 8px 8px 0 var(--hair);
 }
 
 /* Theme toggle: show only the icon/checkmark matching the active theme */
@@ -365,91 +422,48 @@ html[data-theme="system"] .theme-check-system {
   display: inline-block;
 }
 
-.dark {
-  /* Surfaces */
-  --canvas: oklch(15.42% 0.0185 263.23);
-  --surface: oklch(20.01% 0.0284 262.33);
-  --surface-raised: oklch(24.42% 0.037 263.53);
-  --surface-overlay: oklch(28.45% 0.0423 261.22);
-
-  /* Borders */
-  --border: oklch(96.83% 0.0069 247.9 / 7%);
-  --border-strong: oklch(96.83% 0.0069 247.9 / 12%);
-  --border-emphasis: oklch(96.83% 0.0069 247.9 / 22%);
-
-  /* Text */
-  --text-primary: oklch(96.83% 0.0069 247.9);
-  --text-secondary: oklch(81.02% 0.0351 256.79);
-  --text-tertiary: oklch(66.2% 0.045 251.05);
-  --text-disabled: oklch(58% 0.0404 250.33);
-  --text-inverse: oklch(20.77% 0.0398 265.75);
-
-  /* Links */
-  --link: oklch(66.2% 0.16 276);
-
-  /* Brand */
-  --brand: oklch(77.69% 0.154 56.87);
-  --brand-secondary: oklch(71.74% 0.192 48.75 / 60%);
-  --brand-tertiary: oklch(71.74% 0.192 48.75 / 30%);
-  --brand-muted: oklch(71.74% 0.192 48.75 / 12%);
-  --brand-hover: oklch(82.64% 0.1259 64.15);
-
-  /* Status */
-  --success: oklch(69.1% 0.1699 149.21);
-  --success-light: oklch(80.03% 0.1821 151.71 / 10%);
-  --info: oklch(71.37% 0.1434 254.62);
-  --info-light: oklch(71.37% 0.1434 254.62 / 10%);
-  --warning: oklch(72% 0.1574 58.32);
-  --warning-light: oklch(83.69% 0.1644 84.43 / 10%);
-  --neutral-status: oklch(69.6% 0.0407 257.42);
-  --neutral-status-light: oklch(55.44% 0.0407 257.42 / 16%);
-  --danger: oklch(71.5% 0.2152 27.33);
-  --danger-light: oklch(57.71% 0.2152 27.33 / 12%);
-  --error: oklch(71.06% 0.1661 22.22);
-  --error-light: oklch(71.06% 0.1661 22.22 / 10%);
-
-  /* Toast backgrounds (opaque — used when flash floats over page content) */
-  --toast-bg-success: oklch(26.81% 0.0322 164.96);
-  --toast-bg-info: oklch(25.11% 0.0633 265.46);
-  --toast-bg-warn: oklch(24.81% 0.0346 68.78);
-  --toast-bg-error: oklch(21.69% 0.0465 21.67);
-
-  /* Controls */
-  --control-bg: oklch(24.42% 0.037 263.53);
-  --control-border: oklch(96.83% 0.0069 247.9 / 12%);
-  --control-focus: oklch(77.69% 0.154 56.87);
-
-  /* Badge variants — translucent tints, not the light theme's near-white fills */
-  --badge-dns-bg: oklch(70% 0.2172 264.38 / 15%);
-  --badge-dns-text: oklch(74.8% 0.2172 264.38);
-  --badge-ip-bg: oklch(70% 0.1371 150.07 / 15%);
-  --badge-ip-text: oklch(70.6% 0.1371 150.07);
-  --badge-cidr-bg: oklch(70% 0.1574 48.48 / 15%);
-  --badge-cidr-text: oklch(72.3% 0.1574 48.48);
-  --badge-device-pool-bg: oklch(70% 0.0861 186.39 / 15%);
-  --badge-device-pool-text: oklch(71.1% 0.0861 186.39);
-  --badge-accent-bg: oklch(93.52% 0.0356 298.01);
-  --badge-accent-text: oklch(20.77% 0.0398 265.75);
-  --badge-admin-bg: oklch(77.69% 0.1549 56.87);
-
-  /* Icons */
-  --icon-bg: var(--surface-overlay);
-
-  /* Side Navbar */
-  --brand-wash: oklch(77.69% 0.154 56.87 / 25%);
-
-  /* Tinted icon chips */
-  --brand-strong: oklch(77.69% 0.154 56.87);
-  --accent-strong: oklch(66.2% 0.16 276);
-  --accent-wash: oklch(48.06% 0.2976 276 / 20%);
-
-  /* Filters */
-  --filter-active-bg: oklch(55.44% 0.0407 257.42 / 40%);
-  --filter-active-text: oklch(98.42% 0.0034 247.86);
-
-  /* Showcase — the surface card needs an edge against the violet in dark mode */
-  --showcase-card-border: oklch(69.97% 0.1744 293.46 / 22%);
+html[data-theme="system"] [data-theme-option="system"],
+html[data-theme="light"] [data-theme-option="light"],
+html[data-theme="dark"] [data-theme-option="dark"] {
+  color: var(--fg);
+  background: var(--hover);
 }
+
+.dark {
+  --fg: #f2f2f2;
+  --bg: #0b0b0b;
+  --muted: #a0a0a0;
+  --faint: #6f6f6f;
+  --rule: #f2f2f2;
+  --hair: #262626;
+  --hover: #151515;
+  --attn: #fb923c;
+  --attn-wash: rgb(251 146 60 / 10%);
+
+  --brand-secondary: #c8c8c8;
+  --brand-hover: #d4d4d4;
+  --accent-secondary: #c8c8c8;
+  --accent-hover: #d4d4d4;
+
+  --surface-raised: var(--hover);
+  --surface-overlay: #111111;
+
+  --border-strong: #3a3a3a;
+  --text-secondary: #d9d9d9;
+
+  --control-bg: #0f0f0f;
+  --control-border: #444444;
+
+  --showcase-bg: #000000;
+  --showcase-bg-deep: #000000;
+  --showcase-card-border: var(--hair);
+
+  --overlay-veil: rgb(11 11 11 / 78%);
+  --hard-shadow: 8px 8px 0 #1e1e1e;
+
+  color-scheme: dark;
+}
+
 
 /* ----------------------------------------------------------------------------
    JSON diff renderer (PortalWeb.Logs.JSONDiff)
@@ -460,9 +474,7 @@ html[data-theme="system"] .theme-check-system {
    -------------------------------------------------------------------------- */
 
 .json-diff {
-  font-family:
-    "Roboto Mono Variable", "Roboto Mono", ui-monospace, Menlo, Monaco,
-    Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.65;
   color: var(--text-primary);
@@ -470,7 +482,7 @@ html[data-theme="system"] .theme-check-system {
 }
 
 .json-diff .json-diff-empty {
-  font-family: "Roboto Variable", "Roboto", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 13px;
   color: var(--text-tertiary);
   font-style: italic;
@@ -589,17 +601,10 @@ html[data-theme="system"] .theme-check-system {
 .json-diff .json-diff-added .json-diff-value pre,
 .json-diff .json-diff-modified .json-diff-right-value pre,
 .json-diff .json-diff-textdiff-added {
-  background: rgba(34, 197, 94, 0.18);
-  color: #15803d;
-  border-radius: 3px;
-}
-
-.dark .json-diff .json-diff-added .json-diff-property-name,
-.dark .json-diff .json-diff-added .json-diff-value pre,
-.dark .json-diff .json-diff-modified .json-diff-right-value pre,
-.dark .json-diff .json-diff-textdiff-added {
-  background: rgba(34, 197, 94, 0.22);
-  color: #4ade80;
+  background: var(--hover);
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* deleted */
@@ -607,20 +612,9 @@ html[data-theme="system"] .theme-check-system {
 .json-diff .json-diff-deleted pre,
 .json-diff .json-diff-modified .json-diff-left-value pre,
 .json-diff .json-diff-textdiff-deleted {
-  background: rgba(239, 68, 68, 0.16);
-  color: #b91c1c;
-  border-radius: 3px;
+  background: var(--attn-wash);
+  color: var(--attn);
   text-decoration: line-through;
-  text-decoration-color: rgba(185, 28, 28, 0.5);
-}
-
-.dark .json-diff .json-diff-deleted .json-diff-property-name,
-.dark .json-diff .json-diff-deleted pre,
-.dark .json-diff .json-diff-modified .json-diff-left-value pre,
-.dark .json-diff .json-diff-textdiff-deleted {
-  background: rgba(239, 68, 68, 0.22);
-  color: #fca5a5;
-  text-decoration-color: rgba(252, 165, 165, 0.6);
 }
 
 /* modified: show before -> after */

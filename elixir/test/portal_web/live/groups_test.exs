@@ -694,7 +694,7 @@ defmodule PortalWeb.GroupsTest do
       |> form("#group-form", group: %{name: group.name, member_search: ""})
       |> render_submit()
 
-      html = render(lv)
+      html = render_async(lv)
       assert html =~ added_member.name
       refute html =~ current_member.name
     end
@@ -970,7 +970,10 @@ defmodule PortalWeb.GroupsTest do
           {"submit_grant_resource", %{}},
           {"disable_resource_access", %{"resource_id" => :resource_id}},
           {"enable_resource_access", %{"resource_id" => :resource_id}},
-          {"remove_resource_access", %{"resource_id" => :resource_id}}
+          {"remove_resource_access", %{"resource_id" => :resource_id}},
+          {"search_members_to_add", %{"q" => "x"}},
+          {"add_group_member", %{"actor_id" => :actor_id}},
+          {"remove_group_member", %{"actor_id" => :actor_id}}
         ] do
       test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
         group = group_fixture(account: account)
@@ -990,6 +993,199 @@ defmodule PortalWeb.GroupsTest do
         assert Repo.get_by(Group, account_id: account.id, id: group.id).name == group.name
         refute Repo.get_by(Group, account_id: account.id, name: "Late")
       end
+    end
+  end
+
+  describe "groups owned by a resource" do
+    setup %{account: account} do
+      resource = resource_fixture(account: account, name: "Prod database")
+
+      direct_group =
+        group_fixture(account: account, name: "Direct access holder")
+        |> Ecto.Changeset.change(resource_id: resource.id)
+        |> Repo.update!()
+
+      %{direct_group: direct_group}
+    end
+
+    test "are not listed or counted", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      direct_group: direct_group
+    } do
+      group = group_fixture(account: account, name: "Engineering")
+
+      {:ok, lv, html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups")
+
+      assert html =~ group.name
+      refute html =~ direct_group.name
+      refute has_element?(lv, "#group-#{direct_group.id}")
+
+      count =
+        lv
+        |> element("h1 > span.tabular-nums")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.text()
+
+      assert count =~ "1"
+      refute count =~ "2"
+    end
+
+    test "cannot be opened", %{conn: conn, account: account, actor: actor, direct_group: direct_group} do
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{direct_group}")
+
+      assert to == ~p"/#{account}/groups"
+      assert flash["error"] =~ "Group does not exist"
+    end
+  end
+
+  describe "inline members" do
+    test "adds and removes a member without edit mode", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      person = actor_fixture(account: account, name: "Inline Person")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{group}")
+
+      html = lv |> form("#add-member-form", %{"q" => "Inline"}) |> render_change()
+      assert html =~ "Inline Person"
+
+      render_click(lv, "add_group_member", %{"actor_id" => person.id})
+      assert Repo.get_by(Membership, group_id: group.id, actor_id: person.id)
+      assert render_async(lv) =~ "Members · 1"
+
+      lv |> form("#add-member-form", %{"q" => "Inline"}) |> render_change()
+      refute has_element?(lv, "button[phx-click='add_group_member'][phx-value-actor_id='#{person.id}']")
+
+      render_click(lv, "remove_group_member", %{"actor_id" => person.id})
+      refute Repo.get_by(Membership, group_id: group.id, actor_id: person.id)
+      assert render_async(lv) =~ "No members in this group."
+    end
+
+    test "are not offered for synced groups", %{conn: conn, account: account, actor: actor} do
+      group = synced_group_fixture(account: account)
+      person = actor_fixture(account: account)
+      membership_fixture(account: account, actor: person, group: group)
+
+      {:ok, lv, html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{group}")
+
+      assert html =~ person.name
+      refute has_element?(lv, "#add-member-form")
+      refute has_element?(lv, "button[phx-click='remove_group_member']")
+
+      render_click(lv, "remove_group_member", %{"actor_id" => person.id})
+      assert Repo.get_by(Membership, group_id: group.id, actor_id: person.id)
+    end
+
+    test "shows what the group can reach with its conditions", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, name: "Wiki")
+      policy_with_conditions_fixture(%{account: account, group: group, resource: resource})
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{group}")
+
+      assert lv |> element("#group-reach") |> render() =~ "Wiki"
+      assert lv |> element("#group-reach") |> render() =~ "Conditions: IP Range"
+    end
+  end
+
+  describe "modal lists load after the group" do
+    test "renders the header first, then members and reach", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account, name: "Async Group")
+      person = actor_fixture(account: account)
+      membership_fixture(account: account, actor: person, group: group)
+      resource = resource_fixture(account: account, name: "Async Wiki")
+      policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/groups/#{group}")
+
+      [header] = html |> Floki.parse_document!() |> Floki.find("#group-panel h2")
+      assert Floki.text(header) =~ "Async Group"
+      assert html =~ "group-members-loading"
+      assert html =~ "group-reach-loading"
+      refute html =~ "group-member-#{person.id}"
+
+      render_async(lv)
+
+      assert has_element?(lv, "#group-member-#{person.id}")
+      assert lv |> element("#group-reach") |> render() =~ "Async Wiki"
+      refute has_element?(lv, "#group-members-loading")
+      refute has_element?(lv, "#group-reach-loading")
+    end
+
+    test "never shows one group's members on another", %{conn: conn, account: account, actor: actor} do
+      first = group_fixture(account: account)
+      second = group_fixture(account: account)
+      first_member = actor_fixture(account: account)
+      second_member = actor_fixture(account: account)
+      membership_fixture(account: account, actor: first_member, group: first)
+      membership_fixture(account: account, actor: second_member, group: second)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/groups/#{first}")
+
+      render_patch(lv, ~p"/#{account}/groups/#{second}")
+      render_async(lv)
+
+      assert has_element?(lv, "#group-member-#{second_member.id}")
+      refute has_element?(lv, "#group-member-#{first_member.id}")
+    end
+
+    test "drops a result for a group that is no longer selected" do
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{
+          __changed__: %{},
+          selected_group: %Group{id: Ecto.UUID.generate()},
+          group_members: %{panel_members: Phoenix.LiveView.AsyncResult.loading()},
+          group_resources: %{resources: Phoenix.LiveView.AsyncResult.loading()}
+        }
+      }
+
+      stale_id = Ecto.UUID.generate()
+
+      assert {:noreply, socket} =
+               PortalWeb.Groups.handle_async(:group_members, {:ok, {stale_id, {[], 0}}}, socket)
+
+      assert {:noreply, socket} =
+               PortalWeb.Groups.handle_async(:group_resources, {:ok, {stale_id, []}}, socket)
+
+      refute socket.assigns.group_members.panel_members.ok?
+      refute socket.assigns.group_resources.resources.ok?
+    end
+
+    test "pages members without dropping the shown page", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+
+      for i <- 1..11 do
+        member = actor_fixture(account: account, name: "Member #{String.pad_leading("#{i}", 2, "0")}")
+        membership_fixture(account: account, actor: member, group: group)
+      end
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{group}")
+      assert render(lv) =~ "Member 01"
+
+      html = render_click(lv, "next_member_page", %{})
+      refute html =~ "group-members-loading"
+
+      html = render_async(lv)
+      assert html =~ "Member 11"
+      refute html =~ "Member 01"
+      assert html =~ "Page 2 of 2"
     end
   end
 end

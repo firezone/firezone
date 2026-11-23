@@ -129,7 +129,7 @@ defmodule PortalWeb.SignUpControllerTest do
       refute Portal.Repo.get_by(Portal.Actor, email: "victim@example.com")
       refute Portal.Repo.get_by(Portal.Google.AuthProvider, account_id: account.id)
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
       assert conn |> recycle() |> get(redirected_to(conn)) |> html_response(200)
       refute get_session(conn, "idp_sign_up")
 
@@ -196,7 +196,7 @@ defmodule PortalWeb.SignUpControllerTest do
 
       conn = post(conn, ~p"/sign_up/email/complete", %{"registration" => @registration})
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
       admin = Portal.Repo.get_by!(Portal.Actor, email: email)
 
       assert_receive {:posthog, %{"event" => "$identify", "properties" => properties}}, 1_000
@@ -402,7 +402,7 @@ defmodule PortalWeb.SignUpControllerTest do
       assert actor.email == email
       refute Portal.Repo.get_by(Portal.Actor, email: "victim@example.com")
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
       assert conn |> recycle() |> get(redirected_to(conn)) |> html_response(200)
       assert [session] = Portal.Repo.all_by(Portal.PortalSession, actor_id: actor.id)
       assert session.auth_provider_id == provider.id

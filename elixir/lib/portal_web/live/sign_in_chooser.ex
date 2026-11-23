@@ -11,7 +11,7 @@ defmodule PortalWeb.SignInChooser do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
   alias __MODULE__.Database
   alias Phoenix.LiveView.JS
-  alias PortalWeb.Components.Turnstile
+  alias PortalWeb.Components.{AuthPage, Turnstile}
   alias PortalWeb.EmailForm
   alias PortalWeb.PublicEmailRateLimit
 
@@ -82,15 +82,12 @@ defmodule PortalWeb.SignInChooser do
 
   defp chooser(assigns) do
     ~H"""
-    <div class="text-center mb-6">
-      <h1 class="text-2xl font-bold text-heading tracking-tight">Sign in</h1>
-      <p class="text-sm text-subtle mt-1.5">
-        {subtitle(@accounts, @client_sign_in?)}
-      </p>
-    </div>
+    <AuthPage.heading title="Sign in">
+      {subtitle(@accounts, @client_sign_in?)}
+    </AuthPage.heading>
 
-    <div :if={@accounts != []} id="recent-accounts" class="mb-6">
-      <.section_label>Recently signed in</.section_label>
+    <div :if={@accounts != []} id="recent-accounts" class="mb-8">
+      <AuthPage.eyebrow>Recently signed in</AuthPage.eyebrow>
       <div class="flex flex-col gap-2">
         <div :for={account <- @accounts} id={"recent-account-#{account.id}"} class="relative group/row">
           <Page.account_button
@@ -113,7 +110,7 @@ defmodule PortalWeb.SignInChooser do
               type="submit"
               aria-label={"Remove #{account.name} from recent accounts"}
               title="Remove from recent accounts"
-              class="w-9 h-9 rounded flex items-center justify-center text-subtle hover:text-heading hover:bg-raised transition-colors"
+              class="w-8 h-8 flex items-center justify-center text-muted hover:text-fg hover:bg-hover transition-colors"
             >
               <Core.icon name="ri-close-line" class="w-4 h-4" />
             </button>
@@ -133,26 +130,34 @@ defmodule PortalWeb.SignInChooser do
           :if={@client_email_sent}
           id="client-email-sent"
           role="status"
-          class="rounded border border-border bg-raised p-4 text-center"
+          class="flex items-start gap-3 p-4 border border-hair bg-hover"
         >
-          <p class="text-sm font-medium text-heading">Check your inbox</p>
-          <p class="text-sm text-subtle mt-1">
-            If <span class="font-medium text-body">{@client_email_sent}</span>
-            is registered, we've sent you your sign-in URL. Enter it above when it arrives.
-          </p>
-          <p class="text-sm text-subtle mt-3">
-            Wrong address?
-            <button type="button" id="client-email-retry" phx-click="retry_client_email" class={Core.link_style()}>
-              Try again
-            </button>
-          </p>
+          <Core.icon name="ri-mail-check-line" class="w-4 h-4 mt-0.5 shrink-0 text-fg" />
+          <div>
+            <p class="text-sm font-medium text-fg">Check your inbox</p>
+            <p class="text-sm text-muted mt-1">
+              If <span class="font-medium text-fg">{@client_email_sent}</span>
+              is registered, we've sent you your sign-in URL. Enter it above when it arrives.
+            </p>
+            <p class="text-sm text-muted mt-3">
+              Wrong address?
+              <button
+                type="button"
+                id="client-email-retry"
+                phx-click="retry_client_email"
+                class={AuthPage.link_class()}
+              >
+                Try again
+              </button>
+            </p>
+          </div>
         </div>
 
         <%= if !@client_email_sent do %>
           <%!-- Clicking the link swaps it for the email form --%>
           <p
             id="client-email-prompt"
-            class={["text-center text-sm text-subtle", client_email_open?(assigns) && "hidden"]}
+            class={["text-sm text-muted", client_email_open?(assigns) && "hidden"]}
           >
             Forgot your sign-in URL?
             <button
@@ -164,7 +169,7 @@ defmodule PortalWeb.SignInChooser do
                 |> JS.show(to: "#client-email")
                 |> JS.focus(to: "#client-email input[type=email]")
               }
-              class={Core.link_style()}
+              class={AuthPage.link_class()}
             >
               Email it to me
             </button>
@@ -179,9 +184,9 @@ defmodule PortalWeb.SignInChooser do
     <div :if={!@client_sign_in?} id="find-accounts">
       <.email_form form={@form} turnstile_error={@turnstile_error} autofocus={@accounts == []} />
 
-      <div id="account-slug-section" class="mt-6">
+      <div id="account-slug-section" class="mt-8">
         <%!-- Clicking the link swaps it for the form --%>
-        <p id="account-slug-prompt" class="text-center text-sm text-subtle">
+        <p id="account-slug-prompt" class="text-sm text-muted">
           Know your sign-in URL?
           <button
             type="button"
@@ -192,7 +197,7 @@ defmodule PortalWeb.SignInChooser do
               |> JS.show(to: "#account-slug")
               |> JS.focus(to: "#account-slug input[type=text]")
             }
-            class={Core.link_style()}
+            class={AuthPage.link_class()}
           >
             Enter it instead
           </button>
@@ -200,8 +205,9 @@ defmodule PortalWeb.SignInChooser do
         <div id="account-slug" class="hidden mb-3">
           <Page.account_slug_form action={~p"/sign_in?#{@params}"} autofocus={false} />
         </div>
-        <p id="sign-up-link" class="mt-1 text-center text-sm text-subtle">
-          New to Firezone? <Navigation.link href={~p"/sign_up"}>Sign up</Navigation.link>
+        <p id="sign-up-link" class="mt-1 text-sm text-muted">
+          New to Firezone?
+          <Navigation.link href={~p"/sign_up"} class={AuthPage.link_class()}>Sign up</Navigation.link>
         </p>
       </div>
     </div>
@@ -219,20 +225,6 @@ defmodule PortalWeb.SignInChooser do
   defp subtitle([], false), do: "Enter your email and we'll send you a sign-in link."
   defp subtitle(_accounts, false), do: "Pick up where you left off or get a sign-in link by email."
 
-  slot :inner_block, required: true
-
-  defp section_label(assigns) do
-    ~H"""
-    <div class="flex items-center gap-3 mb-3">
-      <div class="flex-1 h-px bg-border"></div>
-      <span class="text-xs font-medium text-subtle uppercase tracking-widest">
-        {render_slot(@inner_block)}
-      </span>
-      <div class="flex-1 h-px bg-border"></div>
-    </div>
-    """
-  end
-
   attr :form, :any, required: true
   attr :turnstile_error, :string, default: nil
   attr :autofocus, :boolean, default: false
@@ -240,7 +232,7 @@ defmodule PortalWeb.SignInChooser do
   defp email_form(assigns) do
     ~H"""
     <.form id="find-account-form" for={@form} phx-submit="submit_email" phx-change="validate_email">
-      <label for={@form[:email].id} class="block text-xs font-semibold text-body mb-1.5">
+      <label for={@form[:email].id} class="block mb-1.5 text-xs font-medium text-muted">
         Work email
       </label>
       <div class="flex gap-2">
@@ -252,12 +244,13 @@ defmodule PortalWeb.SignInChooser do
             required
             autofocus={@autofocus}
             phx-debounce="300"
+            class="h-10"
           />
         </div>
         <button
           type="submit"
           phx-disable-with="Sending..."
-          class="px-4 py-2 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap self-start"
+          class={[AuthPage.primary_button_class(), "self-start"]}
         >
           Email me
         </button>
@@ -265,7 +258,7 @@ defmodule PortalWeb.SignInChooser do
 
       <Turnstile.widget id="find-account-turnstile-widget" />
       <Turnstile.token_input id="find-account-turnstile-token" />
-      <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-error">
+      <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-attn">
         {@turnstile_error}
       </p>
     </.form>
@@ -277,48 +270,26 @@ defmodule PortalWeb.SignInChooser do
 
   defp email_sent(assigns) do
     ~H"""
-    <div class="text-center mb-6">
-      <h1 class="text-2xl font-bold text-heading tracking-tight">Check your inbox</h1>
-      <p class="text-sm text-subtle mt-1.5">
-        If <span class="font-medium text-body">{@email}</span>
-        is registered, we've sent you a sign-in link.
-      </p>
-    </div>
+    <AuthPage.heading title="Check your inbox">
+      If <span class="font-medium text-fg">{@email}</span>
+      is registered, we've sent you a sign-in link.
+    </AuthPage.heading>
 
-    <ol class="rounded border border-border bg-raised p-4 space-y-4">
-      <li class="flex gap-3">
-        <.step_number>1</.step_number>
-        <div>
-          <p class="text-sm font-medium text-heading">Open the email from Firezone</p>
-          <p class="text-xs text-subtle mt-0.5 leading-relaxed">
-            It should arrive within a minute or two. Check your spam folder too.
-          </p>
-        </div>
-      </li>
-      <li class="flex gap-3">
-        <.step_number>2</.step_number>
-        <div>
-          <p class="text-sm font-medium text-heading">Click the sign-in link</p>
-          <p class="text-xs text-subtle mt-0.5 leading-relaxed">
-            It opens your organization's sign-in page.
-          </p>
-        </div>
-      </li>
-    </ol>
+    <AuthPage.steps>
+      <:step title="Open the email from Firezone">
+        It should arrive within a minute or two. Check your spam folder too.
+      </:step>
+      <:step title="Click the sign-in link">
+        It opens your organization's sign-in page.
+      </:step>
+    </AuthPage.steps>
 
-    <p class="mt-6 text-center text-sm text-subtle">
-      Wrong address? <Navigation.link patch={~p"/sign_in?#{@params}"}>Try again</Navigation.link>
+    <p class="text-sm text-muted">
+      Wrong address?
+      <Navigation.link patch={~p"/sign_in?#{@params}"} class={AuthPage.link_class()}>
+        Try again
+      </Navigation.link>
     </p>
-    """
-  end
-
-  slot :inner_block, required: true
-
-  defp step_number(assigns) do
-    ~H"""
-    <div class="shrink-0 w-6 h-6 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center">
-      <span class="text-xs font-bold text-brand">{render_slot(@inner_block)}</span>
-    </div>
     """
   end
 

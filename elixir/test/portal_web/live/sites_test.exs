@@ -1,6 +1,16 @@
 defmodule PortalWeb.SitesTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The site details load in an async task, so wait for them before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   import Ecto.Query
   alias Portal.{Device, DeviceToken, Repo, Resource, Site}
 
@@ -59,7 +69,7 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "open_new_site_panel")
       assert_patch(lv, ~p"/#{account}/sites/new")
       html = render(lv)
-      assert html =~ "New Site"
+      assert html =~ "Add a site"
       assert html =~ "Create Site"
 
       html =
@@ -84,7 +94,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites/new")
 
-      assert html =~ "New Site"
+      assert html =~ "Add a site"
       assert html =~ "Create Site"
     end
 
@@ -571,6 +581,93 @@ defmodule PortalWeb.SitesTest do
 
       refute html =~ "created successfully"
       assert Repo.aggregate(Resource, :count) == 0
+    end
+  end
+
+  describe ":show action async details" do
+    test "renders the header before the details load", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account, name: "Async Site")
+      gateway_fixture(account: account, site: site, name: "async-gw", token: :single_owner)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/sites/#{site.id}")
+
+      assert html =~ "Async Site"
+      assert html =~ "site-details-loading"
+      refute html =~ "async-gw"
+
+      html = render_async(lv)
+      assert html =~ "async-gw"
+      refute html =~ "site-details-loading"
+    end
+
+    test "never shows the previous site's details on the next one", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first = site_fixture(account: account)
+      second = site_fixture(account: account)
+      gateway_fixture(account: account, site: first, name: "first-gw", token: :single_owner)
+      gateway_fixture(account: account, site: second, name: "second-gw", token: :single_owner)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/sites/#{first.id}")
+
+      html = render_patch(lv, ~p"/#{account}/sites/#{second.id}")
+      refute html =~ "first-gw"
+
+      html = render_async(lv)
+      assert html =~ "second-gw"
+      refute html =~ "first-gw"
+    end
+
+    test "keeps loaded details when switching tabs", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      gateway_fixture(account: account, site: site, name: "kept-gw", token: :single_owner)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "switch_panel_tab", %{"tab" => "resources"})
+      render_click(lv, "switch_panel_tab", %{"tab" => "gateways"})
+
+      html = render(lv)
+      assert html =~ "kept-gw"
+      refute html =~ "site-details-loading"
+    end
+
+    test "a presence diff while the details load is not lost", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, name: "doomed-gw", token: :single_owner)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/sites/#{site.id}")
+
+      Repo.delete!(token)
+
+      send(lv.pid, %Phoenix.Socket.Broadcast{
+        topic: "presences:account_devices:#{account.id}",
+        event: "presence_diff",
+        payload: %{joins: %{}, leaves: %{}}
+      })
+
+      render_async(lv)
+      html = render_async(lv)
+      refute html =~ "doomed-gw"
     end
   end
 
@@ -1694,9 +1791,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Offline"
-      refute row =~ ~r/·\s*1 offline/
+      assert site_row(lv, site) =~ ~r/text-attn[^>]*>\s*0 of 1\s*</
     end
 
     test "is healthy when every provisioned gateway is online", %{
@@ -1713,9 +1808,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Healthy"
-      refute row =~ "offline"
+      assert site_row(lv, site) =~ ~r/text-fg[^>]*>\s*1 of 1\s*</
     end
 
     test "is degraded and counts provisioned gateways that are offline", %{
@@ -1734,9 +1827,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Degraded"
-      assert row =~ ~r/·\s*2 offline/
+      assert site_row(lv, site) =~ ~r/text-attn[^>]*>\s*1 of 3\s*</
     end
 
     test "counts legacy gateways as online but never as expected", %{
@@ -1754,9 +1845,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Healthy"
-      refute row =~ "offline"
+      assert site_row(lv, site) =~ ~r/>\s*1 of 1\s*</
     end
 
     test "is degraded when a provisioned gateway is offline next to online legacy gateways", %{
@@ -1774,9 +1863,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Degraded"
-      assert row =~ ~r/·\s*1 offline/
+      assert site_row(lv, site) =~ ~r/>\s*1 of 2\s*</
     end
 
     test "counts a gateway in its token rotation grace period once", %{
@@ -1795,7 +1882,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      assert site_row(lv, site) =~ ~r/·\s*1 offline/
+      assert site_row(lv, site) =~ ~r/>\s*1 of 2\s*</
     end
 
     test "shows the status in the site panel header", %{
@@ -1830,13 +1917,11 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites/#{site.id}")
 
-      assert site_row(lv, site) =~ "Healthy"
+      assert site_row(lv, site) =~ ~r/>\s*1 of 1\s*</
 
       render_click(lv, "deploy_gateway")
 
-      row = site_row(lv, site)
-      assert row =~ "Degraded"
-      assert row =~ ~r/·\s*1 offline/
+      assert site_row(lv, site) =~ ~r/>\s*1 of 2\s*</
 
       deployed =
         Repo.one!(
@@ -1856,7 +1941,7 @@ defmodule PortalWeb.SitesTest do
         payload: %{joins: %{}, leaves: %{}}
       })
 
-      assert site_row(lv, site) =~ "Healthy"
+      assert site_row(lv, site) =~ ~r/>\s*2 of 2\s*</
       assert lv |> element("#site-panel") |> render() =~ "Healthy"
     end
 
@@ -1875,11 +1960,11 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites/#{site.id}")
 
-      assert site_row(lv, site) =~ "Degraded"
+      assert site_row(lv, site) =~ ~r/>\s*1 of 2\s*</
 
       render_click(lv, "confirm_delete_gateway", %{"id" => offline.id})
 
-      assert site_row(lv, site) =~ "Healthy"
+      assert site_row(lv, site) =~ ~r/>\s*1 of 1\s*</
       assert lv |> element("#site-panel") |> render() =~ "Healthy"
     end
   end
@@ -1921,6 +2006,31 @@ defmodule PortalWeb.SitesTest do
         refute has_element?(lv, "#site-panel > div")
         assert site_snapshot(account) == before
       end
+    end
+  end
+
+  describe "sites list" do
+    test "shows resource names, searches by name, and maps devices to sites", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = put_unified_devices(account, true)
+      site = site_fixture(account: account, name: "Office")
+      other = site_fixture(account: account, name: "Cloud")
+      resource_fixture(account: account, site: site, name: "Wiki")
+      laptop = device_v1_client_fixture(account, actor, "office-laptop")
+      put_in_site!(site, laptop)
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/sites")
+
+      assert site_row(lv, site) =~ "Wiki"
+      assert site_row(lv, site) =~ ~r/>\s*0 of 1\s*</
+      assert has_element?(lv, "#site-attachments", "office-laptop")
+
+      lv |> form("#sites-search-form", %{"site_search" => "offi"}) |> render_change()
+      assert has_element?(lv, "#site-#{site.id}")
+      refute has_element?(lv, "#site-#{other.id}")
     end
   end
 
@@ -1969,6 +2079,25 @@ defmodule PortalWeb.SitesTest do
       %{account: put_unified_devices(account, true)}
     end
 
+    test "an empty site offers devices, not a gateway deploy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert has_element?(lv, "#site-devices-empty button[phx-click='open_add_devices']")
+      refute has_element?(lv, "button[phx-click='deploy_gateway']")
+
+      refute render_click(lv, "deploy_gateway") =~ "FIREZONE_API_URL"
+      assert Repo.all(from d in Portal.Device, where: d.account_id == ^account.id) == []
+    end
+
     test "lists gateways and other devices in one Devices tab", %{
       conn: conn,
       account: account,
@@ -1987,7 +2116,7 @@ defmodule PortalWeb.SitesTest do
       assert has_element?(lv, "#site-panel-devices-tab", "2")
       refute has_element?(lv, "button[phx-value-tab='gateways']")
       assert has_element?(lv, "#site-add-devices-button")
-      assert has_element?(lv, "button[phx-click='deploy_gateway']", "Deploy gateway")
+      refute has_element?(lv, "button[phx-click='deploy_gateway']")
       assert has_element?(lv, "#site-device-#{client.id}", client.name)
       assert has_element?(lv, "#site-device-#{client.id} button", "Remove from site")
 
@@ -2285,7 +2414,7 @@ defmodule PortalWeb.SitesTest do
   end
 
   defp site_row(lv, site) do
-    lv |> element("tr[phx-value-id='#{site.id}']") |> render()
+    lv |> element("#site-#{site.id}") |> render()
   end
 
   defp badge_count(html) do

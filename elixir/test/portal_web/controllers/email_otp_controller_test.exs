@@ -281,7 +281,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
         |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{"secret" => code})
 
-      assert redirected_to(verified_conn) =~ "/sites"
+      assert redirected_to(verified_conn) =~ "/activity"
 
       for _ <- 1..3 do
         conn = post(build_conn(), sign_in_path, %{"email" => %{"email" => actor.email}})
@@ -597,7 +597,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
         })
 
       # Should redirect to portal (browser context) - goes to sites page
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
 
       # The cookie should have been deleted after successful verification
       assert get_cookie(conn) == nil
@@ -783,7 +783,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
         })
 
       # Should redirect to portal - goes to sites page
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
 
       # Cookie should be cleared after successful verification
       assert get_cookie(conn) == nil
@@ -822,7 +822,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
           "secret" => code
         })
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
     end
 
     test "successfully authenticates account_user in client context", %{
@@ -1241,7 +1241,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
         })
 
       # Portal sign-in should still be allowed so admins can manage billing
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
     end
   end
 
@@ -1291,7 +1291,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
         })
 
       # Should redirect to portal - goes to sites page
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
     end
 
     test "redirects with error when code is invalid via GET", %{

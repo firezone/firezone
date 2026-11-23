@@ -1,5 +1,6 @@
 defmodule PortalWeb.SignIn.Email do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
+  alias PortalWeb.Components.AuthPage
 
   def mount(
         %{
@@ -76,16 +77,15 @@ defmodule PortalWeb.SignIn.Email do
     <Core.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
     <Core.flash flash={@flash} kind={:info} phx-click={JS.hide(transition: "fade-out")} />
 
-    <h1 class="text-xl font-semibold text-heading mb-2">
-      Check your email
-    </h1>
-    <p :if={@pending_identity?} class="text-sm text-body mb-6">
-      A verification code has been sent to your email address.
-    </p>
-    <p :if={!@pending_identity?} class="text-sm text-body mb-6">
-      If <strong class="text-heading">{@email}</strong>
-      is registered, a sign-in code has been sent.
-    </p>
+    <AuthPage.heading title="Check your email">
+      <span :if={@pending_identity?}>
+        A verification code has been sent to your email address.
+      </span>
+      <span :if={!@pending_identity?}>
+        If <strong class="font-semibold text-fg">{@email}</strong>
+        is registered, a sign-in code has been sent.
+      </span>
+    </AuthPage.heading>
 
     <form
       id="verify-sign-in-token"
@@ -107,7 +107,7 @@ defmodule PortalWeb.SignIn.Email do
         id="pin-input"
         phx-hook="PINInput"
         phx-update="ignore"
-        class="flex gap-3 justify-center mb-6"
+        class="grid grid-cols-6 gap-2 mb-6"
       >
         <input
           :for={i <- 0..5}
@@ -116,26 +116,23 @@ defmodule PortalWeb.SignIn.Email do
           maxlength="1"
           inputmode="text"
           autocomplete="off"
-          class="w-12 h-14 text-center text-xl font-semibold rounded-md border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-2 focus:ring-border-focus/30 transition-colors uppercase"
+          aria-label={"Code character #{i + 1}"}
+          class="w-full h-14 p-0 text-center font-mono text-2xl font-bold uppercase bg-bg text-fg border border-rule outline-none transition-colors focus:ring-2 focus:ring-fg focus:border-fg"
         />
         <input type="hidden" name="secret" id="secret" />
       </div>
 
-      <button
-        type="submit"
-        class="w-full px-3 py-2.5 rounded-md text-sm font-medium bg-brand text-white hover:bg-brand-dark transition-colors"
-      >
+      <button type="submit" class={[AuthPage.primary_button_class(), "w-full"]}>
         Verify code
       </button>
     </form>
 
-    <div class={["mt-4 grid gap-2", if(@resend_action, do: "grid-cols-2", else: "grid-cols-1")]}>
+    <div class={["mt-3 grid gap-2", if(@resend_action, do: "grid-cols-2", else: "grid-cols-1")]}>
       <Navigation.link
         href={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
-        class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
+        class={[AuthPage.outline_button_class(), "w-full"]}
       >
-        <Core.icon name="ri-arrow-left-line" class="absolute left-4 w-4 h-4 text-body" />
-        Different method
+        <Core.icon name="ri-arrow-left-line" class="w-4 h-4 text-muted" /> Different method
       </Navigation.link>
       <.resend
         :if={@resend_action}
@@ -180,10 +177,9 @@ defmodule PortalWeb.SignIn.Email do
       <a
         href={~p"/dev/mailbox"}
         target="_blank"
-        class="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
+        class={[AuthPage.outline_button_class(), "w-full mt-2 border-dashed"]}
       >
-        <Core.icon name="ri-mail-open-line" class="w-4 h-4 text-body shrink-0" />
-        Open local mailbox
+        <Core.icon name="ri-mail-open-line" class="w-4 h-4 text-muted shrink-0" /> Open local mailbox
       </a>
       """
     end
@@ -205,11 +201,8 @@ defmodule PortalWeb.SignIn.Email do
     >
       <Form.input type="hidden" name="email[email]" value={@email} />
       <Form.input :for={{key, value} <- @redirect_params} type="hidden" name={key} value={value} />
-      <button
-        type="submit"
-        class="relative w-full flex items-center justify-center px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
-      >
-        <Core.icon name="ri-loop-left-line" class="absolute left-4 w-4 h-4 text-body" />
+      <button type="submit" class={[AuthPage.outline_button_class(), "w-full"]}>
+        <Core.icon name="ri-loop-left-line" class="w-4 h-4 text-muted" />
         <span data-disable-with="Sending...">Resend email</span>
       </button>
     </.form>

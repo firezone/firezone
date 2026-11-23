@@ -32,6 +32,10 @@ defmodule Portal.Group do
 
     belongs_to :directory, Portal.Directory
 
+    # Set on the group that holds the people given access to one resource
+    # directly. The portal manages these groups; they are not listed as groups.
+    belongs_to :resource, Portal.Resource
+
     timestamps()
   end
 
@@ -54,6 +58,8 @@ defmodule Portal.Group do
     |> validate_length(:name, min: 1, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory)
+    |> assoc_constraint(:resource)
+    |> unique_constraint(:resource_id, name: :groups_account_id_resource_id_index)
     |> unique_constraint(:name,
       name: :groups_account_id_name_index,
       message: "A group with this name already exists."

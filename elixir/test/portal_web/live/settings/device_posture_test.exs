@@ -69,7 +69,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
 
       assert html =~ "settings/device_posture"
-      assert html =~ "Device Posture"
+      assert html =~ "Device posture"
     end
 
     test "shows the upgrade splash when the account lacks the feature", %{conn: conn} do
@@ -79,18 +79,18 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       {:ok, lv, html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      assert html =~ "Upgrade to Unlock"
-      assert html =~ "Device Posture"
+      assert html =~ "Upgrade to unlock"
+      assert html =~ "Device posture"
       assert html =~
                "Restrict access to resources based on device telemetry provided by MDM and EDR solutions"
 
       assert html =~ "settings/device_posture"
-      refute html =~ "Add posture provider"
+      refute html =~ "Add a provider"
 
       # The slide-over cannot be opened from the splash.
       assert lv
              |> render_patch(~p"/#{account}/settings/device_posture/intune/new")
-             |> Kernel.=~("Upgrade to Unlock")
+             |> Kernel.=~("Upgrade to unlock")
     end
 
     test "refuses to write when the feature is switched off mid-session", %{
@@ -132,10 +132,10 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/device_posture")
 
-    assert html =~ "Device Posture"
+    assert html =~ "Device posture"
     assert html =~ "No posture providers yet"
-    assert html =~ "Add posture provider"
-    refute html =~ "Upgrade to Unlock"
+    assert html =~ "Add a provider"
+    refute html =~ "Upgrade to unlock"
   end
 
   test "shows coming-soon posture providers with their logos", context do
@@ -304,14 +304,14 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
     assert has_element?(
              lv,
-             "#provider-verification.p-4.border.border-border.bg-raised.rounded"
+             "#provider-verification.p-4.border.border-rule"
            )
     assert has_element?(lv, "#provider-verification-open-url[phx-hook=OpenURL]")
 
     assert has_element?(
              lv,
              "#provider-verification-button[phx-click=start_verification]",
-             "Verify Now"
+             "Verify now"
            )
 
     assert has_element?(lv, "#provider-tenant-id", "Awaiting verification...")
@@ -523,7 +523,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       send(lv.pid, {:intune_posture_provider_complete, "tenant-123", ref, {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
 
-      assert render(lv) =~ "Device Posture"
+      assert render(lv) =~ "Device posture"
     end
   end
 
@@ -1170,7 +1170,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/new")
 
       html = render(lv)
-      assert html =~ "Select Provider Type"
+      assert html =~ "Add a posture provider"
       assert html =~ "Microsoft Intune"
       assert html =~ "Iru"
       assert html =~ "Microsoft Defender for Endpoint"
@@ -1479,7 +1479,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       |> render_change()
 
       refute has_element?(lv, "#provider-verification-status", "Verified")
-      assert has_element?(lv, "#provider-verification-button", "Verify Now")
+      assert has_element?(lv, "#provider-verification-button", "Verify now")
     end
 
     test "rejects a changed Workshop tenant submitted before its debounce fires", %{lv: lv} do
@@ -1622,7 +1622,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       |> render_change()
 
       refute has_element?(lv, "#provider-verification-status", "Verified")
-      assert has_element?(lv, "#provider-verification-button", "Verify Now")
+      assert has_element?(lv, "#provider-verification-button", "Verify now")
     end
 
     test "rejects a changed tenant submitted before its debounce fires", %{lv: lv} do
@@ -1937,7 +1937,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
         render_click(lv, unquote(event), unquote(Macro.escape(params)))
 
-        assert render(lv) =~ "Device Posture"
+        assert render(lv) =~ "Device posture"
       end
     end
   end

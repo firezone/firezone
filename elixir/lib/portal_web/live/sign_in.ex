@@ -13,6 +13,7 @@ defmodule PortalWeb.SignIn do
   }
 
   alias __MODULE__.Database
+  alias PortalWeb.Components.AuthPage
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, session, socket) do
     account = PortalWeb.Accounts.get_by_id_or_slug!(account_id_or_slug)
@@ -73,25 +74,13 @@ defmodule PortalWeb.SignIn do
 
     <Page.oauth_client_header :if={@connecting_client} client={@connecting_client} />
 
-    <div class="flex items-center gap-3 mb-8 mt-4">
-      <div class="w-11 h-11 rounded bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
-        <span class="text-lg font-bold text-brand">
-          {String.upcase(String.first(@account.name))}
-        </span>
-      </div>
-      <div>
-        <h1 class="text-xl font-bold text-heading tracking-tight">
-          Sign in to {@account.name}
-        </h1>
-        <p class="text-xs text-subtle mt-0.5">
-          Choose how you'd like to sign in.
-        </p>
-      </div>
-    </div>
+    <AuthPage.heading title={"Sign in to #{@account.name}"}>
+      Choose how you'd like to sign in.
+    </AuthPage.heading>
 
     <Core.intersperse_blocks>
       <:separator>
-        <.separator />
+        <AuthPage.separator />
       </:separator>
 
       <:item :if={
@@ -193,26 +182,20 @@ defmodule PortalWeb.SignIn do
     <div
       :if={!PortalWeb.Authentication.client_sign_in?(@params) and is_nil(@connecting_client)}
       id="sign-in-footer"
-      class="mt-8 text-center"
+      class="mt-10 pt-4 space-y-1"
     >
-      <p class="text-sm text-subtle">
+      <p class="text-sm text-muted">
         Meant to sign in from a client instead?
-        <Navigation.website_link path="/kb/client-apps">Read the docs.</Navigation.website_link>
+        <Navigation.website_link path="/kb/client-apps" class={AuthPage.link_class()}>
+          Read the docs.
+        </Navigation.website_link>
       </p>
-      <p class="text-sm text-subtle mt-1">
+      <p class="text-sm text-muted mt-1">
         Looking for a different account?
-        <Navigation.link href={~p"/sign_in"}>See recently used accounts.</Navigation.link>
+        <Navigation.link href={~p"/sign_in"} class={AuthPage.link_class()}>
+          See recently used accounts.
+        </Navigation.link>
       </p>
-    </div>
-    """
-  end
-
-  def separator(assigns) do
-    ~H"""
-    <div class="flex items-center gap-3 my-5">
-      <div class="flex-1 h-px bg-border"></div>
-      <span class="text-xs text-subtle">or</span>
-      <div class="flex-1 h-px bg-border"></div>
     </div>
     """
   end
@@ -227,16 +210,13 @@ defmodule PortalWeb.SignIn do
   defp auth_button(assigns) do
     ~H"""
     <Navigation.link
-      class="w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm transition-all duration-150 group text-sm font-medium text-heading"
+      class={AuthPage.option_button_class()}
       href={~p"/#{@account}/sign_in/#{@type}/#{@provider.id}?#{@params}"}
     >
       {render_slot(@icon)}
-      <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
+      <span class="flex-1 truncate">Continue with <strong>{@provider.name}</strong></span>
       <Core.badge :if={@last_used} type="primary" class="shrink-0">Last used</Core.badge>
-      <Core.icon
-        name="ri-arrow-right-s-line"
-        class="w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
-      />
+      <Core.icon name="ri-arrow-right-line" class={AuthPage.option_arrow_class()} />
     </Navigation.link>
     """
   end
@@ -260,25 +240,28 @@ defmodule PortalWeb.SignIn do
         Last used
       </Core.badge>
       <Form.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+      <label for="userpass_idp_id" class="sr-only">Username</label>
       <input
         type="text"
+        id="userpass_idp_id"
         name="userpass[idp_id]"
         value={@userpass_form[:idp_id].value}
         placeholder="Username"
-        class="w-full px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
+        autocomplete="username"
+        class={AuthPage.input_class()}
         required
       />
+      <label for="userpass_secret" class="sr-only">Password</label>
       <input
         type="password"
+        id="userpass_secret"
         name="userpass[secret]"
         placeholder="Password"
-        class="w-full px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
+        autocomplete="current-password"
+        class={AuthPage.input_class()}
         required
       />
-      <button
-        type="submit"
-        class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
-      >
+      <button type="submit" class={[AuthPage.primary_button_class(), "w-full"]}>
         Sign in
       </button>
     </.form>
@@ -303,20 +286,20 @@ defmodule PortalWeb.SignIn do
         Last used
       </Core.badge>
       <Form.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+      <label for="email_email" class="block mb-1.5 text-xs font-medium text-muted">Email</label>
       <div class="flex gap-2">
         <input
           type="email"
+          id="email_email"
           name="email[email]"
           value={@email_form[:email].value}
           placeholder="you@example.com"
-          class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
+          autocomplete="email"
+          class={[AuthPage.input_class(), "flex-1 min-w-0"]}
           required
         />
-        <button
-          type="submit"
-          class="px-4 py-2 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap"
-        >
-          Send code →
+        <button type="submit" class={AuthPage.primary_button_class()}>
+          Send code <Core.icon name="ri-arrow-right-line" class="w-4 h-4" />
         </button>
       </div>
     </.form>

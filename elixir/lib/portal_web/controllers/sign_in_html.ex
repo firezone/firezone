@@ -1,170 +1,47 @@
 defmodule PortalWeb.SignInHTML do
   use PortalWeb, :html
+  alias PortalWeb.Components.AuthPage
 
   def client_redirect(assigns) do
     ~H"""
-    <!DOCTYPE html>
-    <html lang="en" class="scrollbar-gutter-stable">
-      <head>
-        <meta charset="utf-8" />
-        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-        <meta http-equiv="refresh" content={"0; url=#{@redirect_url}"} />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
-        <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
-        <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
-        <link rel="manifest" href={~p"/site.webmanifest"} />
-        <meta name="theme-color" content="#FF7300" />
-        <meta name="csrf-token" content={get_csrf_token()} />
-        <.live_title suffix=" · Firezone">
-          {assigns[:page_title] || "Firezone"}
-        </.live_title>
-        <link
-          phx-track-static
-          rel="stylesheet"
-          nonce={@conn.private[:csp_nonce]}
-          href={~p"/assets/app.css"}
-        />
-        <link
-          phx-track-static
-          rel="stylesheet"
-          nonce={@conn.private[:csp_nonce]}
-          href={~p"/assets/main.css"}
-        />
-      </head>
-      <body class="bg-surface min-h-screen flex items-center justify-center">
-        <div class="w-full max-w-sm px-4 py-12 text-center">
-          <h1 class="text-xl font-semibold text-heading tracking-tight">
-            Signed in successfully
-          </h1>
-          <p class="mt-2 text-sm text-body">
-            You're signed in to <span class="font-medium text-heading">{@account.name}</span>.
-          </p>
-          <p class="mt-4 text-xs text-subtle">
-            You can now close this window and return to what you were doing.
-          </p>
-        </div>
-      </body>
-    </html>
+    <.document conn={@conn} page_title={assigns[:page_title]} refresh_url={@redirect_url}>
+      <AuthPage.heading title="Signed in successfully" class="mb-6">
+        You're signed in to <span class="font-medium text-fg">{@account.name}</span>.
+      </AuthPage.heading>
+      <p class="pt-4 border-t border-hair text-xs text-muted">
+        You can now close this window and return to what you were doing.
+      </p>
+    </.document>
     """
   end
 
   def client_auth_error(assigns) do
     ~H"""
-    <!DOCTYPE html>
-    <html lang="en" class="scrollbar-gutter-stable">
-      <head>
-        <meta charset="utf-8" />
-        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
-        <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
-        <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
-        <link rel="manifest" href={~p"/site.webmanifest"} />
-        <meta name="theme-color" content="#FF7300" />
-        <meta name="csrf-token" content={get_csrf_token()} />
-        <.live_title suffix=" · Firezone">
-          {assigns[:page_title] || "Firezone"}
-        </.live_title>
-        <link
-          phx-track-static
-          rel="stylesheet"
-          nonce={@conn.private[:csp_nonce]}
-          href={~p"/assets/app.css"}
-        />
-        <link
-          phx-track-static
-          rel="stylesheet"
-          nonce={@conn.private[:csp_nonce]}
-          href={~p"/assets/main.css"}
-        />
-      </head>
-      <body class="bg-surface min-h-screen flex items-center justify-center">
-        <div class="w-full max-w-sm px-6 py-12">
-          <img src="/images/logo-text.svg" alt="Firezone" class="h-8 block mx-auto mb-8" />
-          <div class="flex items-center gap-3 mb-8">
-            <div class="w-11 h-11 rounded bg-danger-light border border-danger/30 flex items-center justify-center shrink-0">
-              <svg
-                class="w-5 h-5 text-danger"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-            </div>
-            <div>
-              <h1 class="text-xl font-bold text-heading tracking-tight">
-                Sign in error
-              </h1>
-              <p class="text-xs text-subtle mt-0.5">{@account.name}</p>
-            </div>
-          </div>
-          <p class="text-sm text-center text-body">{@error}</p>
-          <div class="flex justify-center">
-            <Navigation.link
-              href={@retry_path}
-              class="inline-flex items-center justify-center rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-dark focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-accent-500"
-            >
-              Return to sign in
-            </Navigation.link>
-          </div>
-        </div>
-      </body>
-    </html>
+    <.document conn={@conn} page_title={assigns[:page_title]}>
+      <div class="w-10 h-10 mb-6 flex items-center justify-center border border-attn text-attn">
+        <Core.icon name="ri-error-warning-line" class="w-5 h-5" />
+      </div>
+      <AuthPage.heading title="Sign in error" class="mb-6">
+        {@account.name}
+      </AuthPage.heading>
+      <p class="mb-8 text-sm text-fg">{@error}</p>
+      <Navigation.link href={@retry_path} class={AuthPage.primary_button_class()}>
+        Return to sign in
+      </Navigation.link>
+    </.document>
     """
   end
 
   def client_account_disabled(assigns) do
     ~H"""
-    <!DOCTYPE html>
-    <html lang="en" class="scrollbar-gutter-stable">
-      <head>
-        <meta charset="utf-8" />
-        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
-        <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
-        <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
-        <link rel="manifest" href={~p"/site.webmanifest"} />
-        <meta name="theme-color" content="#FF7300" />
-        <meta name="csrf-token" content={get_csrf_token()} />
-        <.live_title suffix=" · Firezone">
-          {assigns[:page_title] || "Firezone"}
-        </.live_title>
-        <link
-          phx-track-static
-          rel="stylesheet"
-          nonce={@conn.private[:csp_nonce]}
-          href={~p"/assets/app.css"}
-        />
-        <link
-          phx-track-static
-          rel="stylesheet"
-          nonce={@conn.private[:csp_nonce]}
-          href={~p"/assets/main.css"}
-        />
-      </head>
-      <body class="bg-surface min-h-screen flex items-center justify-center">
-        <div class="w-full max-w-sm px-4 py-12 text-center">
-          <h1 class="text-xl font-semibold text-heading tracking-tight">
-            Account disabled
-          </h1>
-          <p class="mt-2 text-sm text-body">
-            <span class="font-medium text-heading">{@account.name}</span>
-            has been disabled.
-          </p>
-          <p class="mt-4 text-xs text-subtle">
-            Please contact your Firezone administrator to enable this account.
-          </p>
-        </div>
-      </body>
-    </html>
+    <.document conn={@conn} page_title={assigns[:page_title]}>
+      <AuthPage.heading title="Account disabled" class="mb-6">
+        <span class="font-medium text-fg">{@account.name}</span> has been disabled.
+      </AuthPage.heading>
+      <p class="pt-4 border-t border-hair text-xs text-muted">
+        Please contact your Firezone administrator to enable this account.
+      </p>
+    </.document>
     """
   end
 
@@ -172,11 +49,101 @@ defmodule PortalWeb.SignInHTML do
     assigns = Map.put(assigns, :api_url, PortalWeb.DeploymentURLs.api_url())
 
     ~H"""
+    <.document conn={@conn} page_title={assigns[:page_title]} with_js width="max-w-lg">
+      <div class="w-10 h-10 mb-6 flex items-center justify-center border border-rule text-fg">
+        <Core.icon name="ri-check-line" class="w-5 h-5" />
+      </div>
+      <AuthPage.heading title="Signed in successfully">
+        {@account.name}
+      </AuthPage.heading>
+
+      <div class="mb-8">
+        <AuthPage.eyebrow>Session details</AuthPage.eyebrow>
+        <dl class="text-sm">
+          <div class="flex gap-4 py-2 border-b border-hair">
+            <dt class="w-28 shrink-0 text-muted">Signed in as</dt>
+            <dd class="text-fg font-medium">{@actor_name}</dd>
+          </div>
+          <div class="flex gap-4 py-2 border-b border-hair">
+            <dt class="w-28 shrink-0 text-muted">Account</dt>
+            <dd class="text-fg font-medium">{@account.name}</dd>
+          </div>
+          <div class="flex gap-4 py-2 border-b border-hair">
+            <dt class="w-28 shrink-0 text-muted">Slug</dt>
+            <dd class="text-fg font-mono">{@account.slug}</dd>
+          </div>
+          <div class="flex gap-4 py-2 border-b border-hair">
+            <dt class="w-28 shrink-0 text-muted">Account ID</dt>
+            <dd class="text-fg font-mono break-all">{@account.id}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="mb-8">
+        <AuthPage.eyebrow>Your token</AuthPage.eyebrow>
+        <div class="p-3 border border-rule bg-hover font-mono text-xs text-fg break-all select-all">
+          <code id="token-value">{@token}</code>
+        </div>
+        <div class="mt-3 flex items-center justify-between gap-4">
+          <p :if={@expires_at} class="text-xs text-muted">
+            Expires
+            <time datetime={DateTime.to_iso8601(@expires_at)} class="font-mono">
+              {Calendar.strftime(@expires_at, "%Y-%m-%d %H:%M:%S UTC")}
+            </time>
+          </p>
+          <button
+            id="copy-button"
+            type="button"
+            data-copy-token-button
+            data-copy-target="#token-value"
+            class={[AuthPage.primary_button_class(), "ml-auto"]}
+          >
+            <Core.icon name="ri-file-copy-line" class="w-4 h-4" /> Copy to clipboard
+          </button>
+        </div>
+      </div>
+
+      <div class="pt-4 border-t border-hair">
+        <p class="text-xs text-muted leading-relaxed">
+          Paste this token in the prompt opened by the Firezone Client, or set it as the
+          <code
+            class="px-1 py-0.5 border border-hair bg-hover font-mono text-fg"
+            phx-no-format
+          >FIREZONE_TOKEN</code>
+          environment variable.
+        </p>
+        <p
+          :if={@api_url}
+          id="api-url-hint"
+          class="mt-2 text-xs text-muted leading-relaxed"
+        >
+          Also set
+          <code
+            class="px-1 py-0.5 border border-hair bg-hover font-mono text-fg"
+            phx-no-format
+          >FIREZONE_API_URL={@api_url}</code>
+          so the Client connects to this portal.
+        </p>
+      </div>
+    </.document>
+    """
+  end
+
+  attr :conn, :any, required: true
+  attr :page_title, :string, default: nil
+  attr :refresh_url, :string, default: nil
+  attr :with_js, :boolean, default: false
+  attr :width, :string, default: "max-w-sm"
+  slot :inner_block, required: true
+
+  defp document(assigns) do
+    ~H"""
     <!DOCTYPE html>
     <html lang="en" class="scrollbar-gutter-stable">
       <head>
         <meta charset="utf-8" />
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta :if={@refresh_url} http-equiv="refresh" content={"0; url=#{@refresh_url}"} />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
         <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
@@ -185,8 +152,9 @@ defmodule PortalWeb.SignInHTML do
         <meta name="theme-color" content="#FF7300" />
         <meta name="csrf-token" content={get_csrf_token()} />
         <.live_title suffix=" · Firezone">
-          {assigns[:page_title] || "Firezone"}
+          {@page_title || "Firezone"}
         </.live_title>
+        <AuthPage.theme_script nonce={@conn.private[:csp_nonce]} />
         <link
           phx-track-static
           rel="stylesheet"
@@ -200,6 +168,7 @@ defmodule PortalWeb.SignInHTML do
           href={~p"/assets/main.css"}
         />
         <script
+          :if={@with_js}
           defer
           phx-track-static
           type="text/javascript"
@@ -208,104 +177,16 @@ defmodule PortalWeb.SignInHTML do
         >
         </script>
       </head>
-      <body class="bg-surface min-h-screen flex items-center justify-center">
-        <div class="w-full max-w-lg px-6 py-12">
-          <img src="/images/logo-text.svg" alt="Firezone" class="h-8 block mx-auto mb-8" />
-          <div class="flex items-center gap-3 mb-8">
-            <div class="w-11 h-11 rounded bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 flex items-center justify-center shrink-0">
-              <svg
-                class="w-5 h-5 text-link"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
-            </div>
-            <div>
-              <h1 class="text-xl font-bold text-heading tracking-tight">
-                Signed in successfully
-              </h1>
-              <p class="text-xs text-subtle mt-0.5">{@account.name}</p>
-            </div>
-          </div>
-
-          <div class="rounded border border-border bg-raised p-4 mb-6">
-            <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
-              Session details
-            </p>
-            <dl class="space-y-2">
-              <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Signed in as</dt>
-                <dd class="text-xs text-body font-medium">{@actor_name}</dd>
-              </div>
-              <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account</dt>
-                <dd class="text-xs text-body font-medium">{@account.name}</dd>
-              </div>
-              <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Slug</dt>
-                <dd class="text-xs text-body font-mono font-medium">{@account.slug}</dd>
-              </div>
-              <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account ID</dt>
-                <dd class="text-xs text-body font-mono font-medium">{@account.id}</dd>
-              </div>
-            </dl>
-          </div>
-
-          <div class="space-y-3 mb-6">
-            <p class="text-xs font-semibold text-body uppercase tracking-widest">
-              Your token
-            </p>
-            <div class="rounded border border-border bg-raised p-3 font-mono text-xs text-heading break-all select-all">
-              <code id="token-value">{@token}</code>
-            </div>
-            <div class="flex items-center justify-between gap-4">
-              <p :if={@expires_at} class="text-xs text-subtle">
-                Expires
-                <time datetime={DateTime.to_iso8601(@expires_at)}>
-                  {Calendar.strftime(@expires_at, "%Y-%m-%d %H:%M:%S UTC")}
-                </time>
-              </p>
-              <button
-                id="copy-button"
-                type="button"
-                data-copy-token-button
-                data-copy-target="#token-value"
-                class="px-4 py-2 rounded text-xs font-semibold bg-accent text-white hover:bg-accent-dark transition-colors whitespace-nowrap"
-              >
-                Copy to clipboard
-              </button>
-            </div>
-          </div>
-
-          <div class="pt-5 border-t border-border">
-            <p class="text-xs text-subtle leading-relaxed">
-              Paste this token in the prompt opened by the Firezone Client, or set it as the
-              <code
-                class="px-1 py-0.5 rounded border border-border bg-raised font-mono"
-                phx-no-format
-              >FIREZONE_TOKEN</code>
-              environment variable.
-            </p>
-            <p
-              :if={@api_url}
-              id="api-url-hint"
-              class="mt-2 text-xs text-subtle leading-relaxed"
-            >
-              Also set
-              <code
-                class="px-1 py-0.5 rounded border border-border bg-raised font-mono"
-                phx-no-format
-              >FIREZONE_API_URL={@api_url}</code>
-              so the Client connects to this portal.
-            </p>
-          </div>
+      <body class="min-h-screen flex flex-col bg-bg text-fg">
+        <div class="flex items-center gap-2.5 h-14 px-6 border-b border-hair shrink-0">
+          <img src={~p"/images/logo.svg"} class="h-5 w-auto shrink-0" alt="Firezone Logo" />
+          <span class="text-sm font-semibold tracking-tight">Firezone</span>
         </div>
+        <main class="flex-1 flex items-center justify-center px-4 py-12">
+          <div class={["w-full", @width]}>
+            {render_slot(@inner_block)}
+          </div>
+        </main>
       </body>
     </html>
     """

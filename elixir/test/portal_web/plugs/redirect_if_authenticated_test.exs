@@ -26,7 +26,7 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
         |> RedirectIfAuthenticated.call([])
 
       assert conn.halted
-      assert redirected_to(conn) == ~p"/#{account}/sites"
+      assert redirected_to(conn) == ~p"/#{account}/activity"
     end
 
     test "does not redirect authenticated user when as=client param is set", %{
@@ -146,7 +146,7 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
         |> get(~p"/#{account}/sign_in")
 
       # Should redirect to /sites (portal)
-      assert redirected_to(conn) == ~p"/#{account}/sites"
+      assert redirected_to(conn) == ~p"/#{account}/activity"
     end
 
     test "integration: authenticated user with default provider and as=client auto-redirects to provider",

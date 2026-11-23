@@ -219,17 +219,19 @@ defmodule PortalWeb.Session.Redirector do
         preferences: %{start_page: start_page}
       }) do
     case start_page do
+      :activity -> ~p"/#{account}/activity"
+      :access -> ~p"/#{account}/access"
       :resources -> ~p"/#{account}/resources"
       :groups -> ~p"/#{account}/groups"
       :policies -> ~p"/#{account}/policies"
       :devices -> ~p"/#{account}/devices"
       :actors -> ~p"/#{account}/actors"
       :sites -> ~p"/#{account}/sites"
-      _ -> ~p"/#{account}/sites"
+      _ -> ~p"/#{account}/activity"
     end
   end
 
-  def default_portal_path(%Portal.Account{} = account, _other), do: ~p"/#{account}/sites"
+  def default_portal_path(%Portal.Account{} = account, _other), do: ~p"/#{account}/activity"
 
   defp delete_session(conn, account_id) do
     conn

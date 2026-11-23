@@ -1,7 +1,7 @@
 defmodule PortalWeb.Logs.ChangeLogs do
   use PortalWeb, :live_view
 
-  alias PortalWeb.Logs.Components, as: LogComponents
+  alias PortalWeb.Logs.Components
 
   alias PortalWeb.Logs.JSONDiff
   alias __MODULE__.Database
@@ -10,7 +10,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
   @filter_key "change_logs_filter"
 
   def mount(_params, _session, socket) do
-    browser_tz = LogComponents.browser_tz_from_connect(socket)
+    browser_tz = Components.browser_tz_from_connect(socket)
 
     socket =
       socket
@@ -34,7 +34,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
       ) do
     socket =
       socket
-      |> LogComponents.assign_tz(params, @filter_key)
+      |> Components.assign_tz(params, @filter_key)
       |> LiveTable.handle_live_tables_params(params, uri)
 
     case Database.fetch_change_log(log_id, socket.assigns.subject) do
@@ -59,7 +59,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
     socket =
       socket
       |> assign(selected_change_log: nil)
-      |> LogComponents.assign_tz(params, @filter_key)
+      |> Components.assign_tz(params, @filter_key)
       |> LiveTable.handle_live_tables_params(params, uri)
 
     {:noreply, socket}
@@ -91,11 +91,15 @@ defmodule PortalWeb.Logs.ChangeLogs do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <Navigation.logs_nav account={@account} current_path={@current_path} />
+      <Page.page_header>
+        <:title>Changes</:title>
+        <:description>Every change to your account's configuration, and who made it.</:description>
+      </Page.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <LiveTable.live_table
           id="change_logs"
+          modal_size="xl"
           rows={@change_logs}
           filtered_empty_hint="Try broadening the time window or using a different filter."
           loading={@loading_by_table_id["change_logs"]}
@@ -119,63 +123,54 @@ defmodule PortalWeb.Logs.ChangeLogs do
           class="flex-1 min-h-0"
           row_item={& &1}
         >
-          <:col :let={row} field={{:change_logs, :timestamp}} label="Timestamp" class="w-44">
-            <LogComponents.timestamp_cell
+          <:col :let={row} field={{:change_logs, :timestamp}} label="Time" class="w-40">
+            <Components.timestamp_cell
               log_id={row.change_log.log_id}
               timestamp={row.change_log.timestamp}
               tz_mode={@tz_mode}
               display_tz={@display_tz}
             />
           </:col>
-          <:col :let={row} field={{:change_logs, :log_id}} label="Log ID" class="w-52">
-            <span class="font-mono text-[10px] text-subtle break-all">
-              {row.change_log.log_id}
-            </span>
+          <:col :let={row} label="Who" class="w-56">
+            <Components.actor_cell subject={row.change_log.subject} />
           </:col>
-          <:col :let={row} label="Object" class="w-44">
-            <span class="font-mono text-xs text-heading">
-              {row.change_log.object}
-            </span>
+          <:col :let={row} label="What">
+            <div class="flex items-center gap-2 min-w-0">
+              <Components.op_label op={row.change_log.operation} />
+              <span class="font-mono text-xs text-fg truncate">{row.change_log.object}</span>
+            </div>
           </:col>
-          <:col :let={row} label="Actor" class="w-64">
-            <LogComponents.actor_cell subject={row.change_log.subject} />
-          </:col>
-          <:col :let={row} label="Operation" class="w-28">
-            <LogComponents.op_label op={row.change_log.operation} />
-          </:col>
-          <:col :let={row} label="Changes" class="w-24">
+          <:col :let={row} label="Result" class="w-28 text-right">
             <.changes_cell op={row.change_log.operation} count={row.changed_count} />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <Core.icon name="ri-history-line" class="w-5 h-5 text-subtle" />
-              </div>
+              <Core.icon name="ri-history-line" class="w-6 h-6 text-faint" />
               <div class="text-center">
-                <p class="text-sm font-medium text-heading">No change logs</p>
-                <p class="text-xs text-subtle mt-0.5">
+                <p class="text-sm font-medium text-fg">No change logs</p>
+                <p class="text-xs text-muted mt-0.5">
                   Configuration changes will appear here as they happen. Try broadening the time window to see older ones.
                 </p>
               </div>
             </div>
           </:empty>
           <:footer>
-            <LogComponents.log_sinks_notice account={@account} />
+            <Components.log_sinks_notice account={@account} />
           </:footer>
         </LiveTable.live_table>
       </div>
 
-      <LogComponents.show_panel id="change-log-panel" open?={not is_nil(@selected_change_log)}>
+      <Components.show_panel id="change-log-panel" open?={not is_nil(@selected_change_log)}>
         <:title>
           <%= if @selected_change_log do %>
-            <LogComponents.op_label op={@selected_change_log.operation} />
-            <span class="font-mono text-sm font-semibold text-heading truncate">
+            <Components.op_label op={@selected_change_log.operation} />
+            <span class="font-mono text-sm font-semibold text-fg truncate">
               {@selected_change_log.object}
             </span>
           <% end %>
         </:title>
         <div :if={@selected_change_log} class="flex-1 flex flex-col min-h-0 overflow-auto p-5 gap-4">
-          <LogComponents.actor_card
+          <Components.actor_card
             :if={not is_nil(@selected_change_log.subject)}
             name={subject_field(@selected_change_log, "actor_name")}
             email={subject_field(@selected_change_log, "actor_email")}
@@ -185,14 +180,14 @@ defmodule PortalWeb.Logs.ChangeLogs do
 
           <section class="flex flex-col">
             <div class="flex items-center justify-between mb-2">
-              <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+              <div class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
                 Diff
               </div>
-              <div class="text-[10px] text-subtle">
+              <div class="text-xs text-muted">
                 {diff_change_count(@selected_change_log)}
               </div>
             </div>
-            <div class="rounded border border-border bg-surface p-3 max-h-[600px] overflow-auto">
+            <div class="border border-hair p-3 max-h-[600px] overflow-auto">
               <div class="json-diff">
                 <JSONDiff.diff
                   old={@selected_change_log.before}
@@ -203,10 +198,10 @@ defmodule PortalWeb.Logs.ChangeLogs do
           </section>
 
           <section :if={not is_nil(@selected_change_log.subject)} class="flex flex-col">
-            <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
+            <div class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted mb-2">
               Location
             </div>
-            <LogComponents.location_map
+            <Components.location_map
               lat={subject_field(@selected_change_log, "ip_lat")}
               lon={subject_field(@selected_change_log, "ip_lon")}
             >
@@ -215,14 +210,14 @@ defmodule PortalWeb.Logs.ChangeLogs do
                   <div class="flex items-center gap-2 min-w-0">
                     <Core.icon
                       name="ri-map-pin-line"
-                      class="w-3.5 h-3.5 shrink-0 text-subtle"
+                      class="w-3.5 h-3.5 shrink-0 text-muted"
                     />
-                    <span class="text-heading truncate">
+                    <span class="text-fg truncate">
                       {change_log_location_caption(@selected_change_log)}
                     </span>
                     <span
                       :if={subject_field(@selected_change_log, "ip")}
-                      class="font-mono text-[10px] text-subtle shrink-0"
+                      class="font-mono text-xs text-muted shrink-0"
                     >
                       · {subject_field(@selected_change_log, "ip")}
                     </span>
@@ -232,7 +227,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
                       is_number(subject_field(@selected_change_log, "ip_lat")) and
                         is_number(subject_field(@selected_change_log, "ip_lon"))
                     }
-                    class="font-mono text-[10px] text-subtle tabular-nums shrink-0"
+                    class="font-mono text-xs text-muted tabular-nums shrink-0"
                   >
                     {format_coord(subject_field(@selected_change_log, "ip_lat"))}, {format_coord(
                       subject_field(@selected_change_log, "ip_lon")
@@ -240,73 +235,73 @@ defmodule PortalWeb.Logs.ChangeLogs do
                   </span>
                 </div>
               </:caption>
-            </LogComponents.location_map>
+            </Components.location_map>
           </section>
         </div>
-        <LogComponents.show_panel_sidebar :if={@selected_change_log}>
+        <Components.show_panel_sidebar :if={@selected_change_log}>
           <section>
-            <LogComponents.section_heading label="Details" />
+            <Components.section_heading label="Details" />
             <dl class="space-y-2.5">
-              <LogComponents.detail_row label="Timestamp">
-                <LogComponents.timestamp_cell
+              <Components.detail_row label="Timestamp">
+                <Components.timestamp_cell
                   id_prefix="panel-timestamp"
                   log_id={@selected_change_log.log_id}
                   timestamp={@selected_change_log.timestamp}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
                 />
-              </LogComponents.detail_row>
-              <LogComponents.detail_row label="Log ID">
-                <span class="font-mono text-[11px] text-body break-all">
+              </Components.detail_row>
+              <Components.detail_row label="Log ID">
+                <span class="font-mono text-[11px] text-muted break-all">
                   {@selected_change_log.log_id}
                 </span>
-              </LogComponents.detail_row>
+              </Components.detail_row>
             </dl>
           </section>
 
           <div class="border-t border-border"></div>
 
           <section>
-            <LogComponents.section_heading label="Identifiers" />
+            <Components.section_heading label="Identifiers" />
             <dl class="space-y-2.5">
-              <LogComponents.detail_row :if={subject_field(@selected_change_log, "actor_id")} label="Actor ID">
-                <span class="font-mono text-[11px] text-body break-all">
+              <Components.detail_row :if={subject_field(@selected_change_log, "actor_id")} label="Actor ID">
+                <span class="font-mono text-[11px] text-muted break-all">
                   {subject_field(@selected_change_log, "actor_id")}
                 </span>
-              </LogComponents.detail_row>
-              <LogComponents.detail_row
+              </Components.detail_row>
+              <Components.detail_row
                 :if={subject_field(@selected_change_log, "auth_provider_id")}
                 label="Auth provider ID"
               >
-                <span class="font-mono text-[11px] text-body break-all">
+                <span class="font-mono text-[11px] text-muted break-all">
                   {subject_field(@selected_change_log, "auth_provider_id")}
                 </span>
-              </LogComponents.detail_row>
+              </Components.detail_row>
             </dl>
           </section>
 
           <div class="border-t border-border"></div>
 
           <section>
-            <LogComponents.section_heading label="Source" />
+            <Components.section_heading label="Source" />
             <dl class="space-y-2.5">
-              <LogComponents.detail_row :if={subject_field(@selected_change_log, "ip")} label="IP address">
-                <span class="font-mono text-xs text-heading">
+              <Components.detail_row :if={subject_field(@selected_change_log, "ip")} label="IP address">
+                <span class="font-mono text-xs text-fg">
                   {subject_field(@selected_change_log, "ip")}
                 </span>
-              </LogComponents.detail_row>
-              <LogComponents.detail_row
+              </Components.detail_row>
+              <Components.detail_row
                 :if={subject_field(@selected_change_log, "user_agent")}
                 label="User agent"
               >
-                <span class="font-mono text-xs text-body break-all">
+                <span class="font-mono text-xs text-muted break-all">
                   {subject_field(@selected_change_log, "user_agent")}
                 </span>
-              </LogComponents.detail_row>
+              </Components.detail_row>
             </dl>
           </section>
-        </LogComponents.show_panel_sidebar>
-      </LogComponents.show_panel>
+        </Components.show_panel_sidebar>
+      </Components.show_panel>
     </div>
     """
   end
@@ -338,7 +333,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
 
   defp changes_cell(%{op: :update} = assigns) do
     ~H"""
-    <span class="text-xs text-body">
+    <span class="text-xs text-muted tabular-nums">
       {@count} field{if @count != 1, do: "s"}
     </span>
     """
@@ -346,7 +341,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
 
   defp changes_cell(assigns) do
     ~H"""
-    <span class="text-xs text-subtle">-</span>
+    <span class="text-xs text-muted">Saved</span>
     """
   end
 
@@ -384,7 +379,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
     def list_change_logs(subject, opts \\ []) do
       from(cl in ChangeLog, as: :change_logs)
       |> Safe.scoped(subject)
-      |> Safe.list_offset(__MODULE__, Keyword.merge(opts, [order_by_nulls: :natural] ++ LogComponents.list_opts()))
+      |> Safe.list_offset(__MODULE__, Keyword.merge(opts, [order_by_nulls: :natural] ++ Components.list_opts()))
     end
 
     def fetch_change_log(log_id, subject) do

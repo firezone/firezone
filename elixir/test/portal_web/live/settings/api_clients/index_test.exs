@@ -112,7 +112,7 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/api_clients")
 
-      assert html =~ "API Tokens"
+      assert html =~ "REST API"
       assert html =~ "No API tokens yet"
       assert html =~ "Add an API token"
     end
@@ -157,8 +157,8 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/api_clients/new")
 
-      assert html =~ "New API Token"
-      assert html =~ "Create Token"
+      assert html =~ "New API token"
+      assert html =~ "Create token"
 
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/settings/api_clients")
@@ -211,7 +211,7 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
         )
         |> render_submit()
 
-      assert html =~ "Your API Token"
+      assert html =~ "Your API token"
       assert html =~ "Store this token in a safe place."
       assert html =~ "code-api-token"
 
@@ -404,7 +404,7 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
       {:ok, lv, html} =
         live(conn, ~p"/#{account}/settings/api_clients/#{api_client}/edit")
 
-      assert html =~ "Edit API Token"
+      assert html =~ "Edit API token"
 
       html =
         lv
@@ -447,7 +447,7 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
       assert_patch(lv, ~p"/#{account}/settings/api_clients/#{api_client}/edit")
 
       html = render(lv)
-      assert html =~ "Edit API Token"
+      assert html =~ "Edit API token"
       refute has_actor_action_button?(html, "toggle", api_client.id)
     end
 

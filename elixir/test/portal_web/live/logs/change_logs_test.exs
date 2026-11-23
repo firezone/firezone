@@ -53,8 +53,8 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/change_logs")
 
-      assert html =~ "Change Logs"
-      assert html =~ "Structured, immutable records"
+      assert html =~ "Changes"
+      assert html =~ ~s(aria-current="page")
     end
 
     test "fresh account shows the unfiltered empty slot, not the filtered one", %{
@@ -640,7 +640,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
-      assert has_element?(lv, "#change-log-panel.translate-x-0")
+      assert has_element?(lv, "#change-log-panel [role='dialog']")
       # Panel title renders the operation badge + object instead of raw log_id.
       assert has_element?(lv, "#change-log-panel", "Update")
       assert has_element?(lv, "#change-log-panel", "actors")
@@ -719,7 +719,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       render_hook(lv, "handle_keydown", %{"key" => "ArrowDown"})
 
       # Panel still open at the same URL, no patch triggered.
-      assert has_element?(lv, "#change-log-panel.translate-x-0")
+      assert has_element?(lv, "#change-log-panel [role='dialog']")
     end
 
     test "redirects when change log does not exist", %{
@@ -771,7 +771,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
-      assert html =~ ~r/bg-success-light[^>]*>\s*Insert/
+      assert html =~ ~r/border-fg[^>]*>\s*Insert/
     end
 
     test "side panel timestamp is the absolute mode-aware form, not a relative 'ago' string", %{
@@ -821,7 +821,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
-      assert html =~ ~r/bg-danger-light[^>]*>\s*Delete/
+      assert html =~ ~r/border-attn[^>]*>\s*Delete/
     end
   end
 

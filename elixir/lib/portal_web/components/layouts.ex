@@ -25,13 +25,8 @@ defmodule PortalWeb.Layouts do
   defp banner_classes(:success),
     do: {"bg-success-light border-success/30", "text-success", "text-success", "ri-checkbox-circle-line"}
 
-  # NOTE: kept on the hand-paired heat-wave palette. The brand tint tokens are the wrong
-  # strengths for a banner
   defp banner_classes(:announcement),
-    do:
-      {"bg-primary-100 border-primary-200 dark:bg-primary-900/30 dark:border-primary-700",
-       "text-primary-900 dark:text-primary-200", "text-primary-600 dark:text-primary-400",
-       "ri-megaphone-line"}
+    do: {"bg-fg border-fg", "text-bg", "text-attn", "ri-megaphone-line"}
 
   defp banner_classes(_),
     do: {"bg-warning-light border-warning/30", "text-warning", "text-warning", "ri-alert-line"}

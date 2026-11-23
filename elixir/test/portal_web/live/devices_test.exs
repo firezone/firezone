@@ -760,6 +760,107 @@ defmodule PortalWeb.DevicesTest do
     end
   end
 
+  describe ":show action async details" do
+    test "renders the header before the device pools load", %{conn: conn, account: account, actor: actor} do
+      client = client_fixture(account: account, actor: actor, name: "Async Laptop")
+      device_pool_resource_fixture(account: account, name: "Async Pool", devices: [client])
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/devices/#{client.id}")
+
+      assert html =~ "Async Laptop"
+      assert html =~ "device-pools-loading"
+      refute html =~ "Async Pool"
+
+      html = render_async(lv)
+      assert html =~ "Async Pool"
+      refute html =~ "device-pools-loading"
+    end
+
+    test "never shows the previous device's pools on the next one", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first = client_fixture(account: account, actor: actor)
+      second = client_fixture(account: account, actor: actor)
+      device_pool_resource_fixture(account: account, name: "First Pool", devices: [first])
+      device_pool_resource_fixture(account: account, name: "Second Pool", devices: [second])
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/devices/#{first.id}")
+
+      html = render_patch(lv, ~p"/#{account}/devices/#{second.id}")
+      refute html =~ "First Pool"
+
+      html = render_async(lv)
+      assert html =~ "Second Pool"
+      refute html =~ "First Pool"
+    end
+
+    test "loads authorizations only for the device they belong to", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first = client_fixture(account: account, actor: actor)
+      second = client_fixture(account: account, actor: actor)
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      resource = resource_fixture(account: account, site: site, name: "Auth Target")
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+      token = client_token_fixture(account: account, actor: actor)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      policy_authorization_fixture(
+        account: account,
+        actor: actor,
+        client: first,
+        gateway: gateway,
+        resource: resource,
+        group: group,
+        policy: policy,
+        token: token
+      )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/devices/#{first.id}?tab=authorizations")
+
+      render_patch(lv, ~p"/#{account}/devices/#{second.id}")
+      html = render_patch(lv, ~p"/#{account}/devices/#{second.id}?tab=authorizations")
+      refute html =~ "Auth Target"
+
+      html = render_async(lv)
+      assert html =~ "No recent authorizations"
+      refute html =~ "Auth Target"
+    end
+
+    test "keeps loaded pools when switching tabs", %{conn: conn, account: account, actor: actor} do
+      client = client_fixture(account: account, actor: actor)
+      device_pool_resource_fixture(account: account, name: "Kept Pool", devices: [client])
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      render_click(lv, "switch_device_tab", %{"tab" => "authorizations"})
+      render_async(lv)
+      render_click(lv, "switch_device_tab", %{"tab" => "overview"})
+
+      html = render(lv)
+      assert html =~ "Kept Pool"
+      refute html =~ "device-pools-loading"
+    end
+  end
+
   describe ":show action authorizations tab" do
     test "tab bar shows Overview and Authorizations tabs", %{
       conn: conn,
@@ -907,8 +1008,7 @@ defmodule PortalWeb.DevicesTest do
 
       html = render_async(lv)
 
-      assert html =~ "1"
-      assert html =~ "Total"
+      assert has_element?(lv, "#devices-count", "1")
       refute html =~ "Loading..."
     end
 
@@ -926,9 +1026,7 @@ defmodule PortalWeb.DevicesTest do
 
       send(lv.pid, %Change{op: :insert, struct: %Device{type: :client}})
 
-      html = render(lv)
-      assert html =~ "1"
-      assert html =~ "Total"
+      assert has_element?(lv, "#devices-count", "1")
     end
 
     test "decrements count on client delete change", %{
@@ -947,9 +1045,7 @@ defmodule PortalWeb.DevicesTest do
 
       send(lv.pid, %Change{op: :delete, old_struct: %Device{type: :client}})
 
-      html = render(lv)
-      assert html =~ "0"
-      assert html =~ "Total"
+      assert has_element?(lv, "#devices-count", "0")
     end
 
     test "marks the table stale on client update change", %{
@@ -990,9 +1086,7 @@ defmodule PortalWeb.DevicesTest do
 
       send(lv.pid, %Change{op: :insert, struct: %Device{type: :gateway}})
 
-      html = render(lv)
-      assert html =~ "0"
-      assert html =~ "Total"
+      assert has_element?(lv, "#devices-count", "0")
     end
   end
 
@@ -1980,7 +2074,7 @@ defmodule PortalWeb.DevicesTest do
 
       assert has_element?(lv, "#device-#{client.id}")
       refute has_element?(lv, "#device-#{gateway.id}")
-      refute has_element?(lv, "th", "Routes for")
+      refute has_element?(lv, "#devices th", "Site")
       refute has_element?(lv, "#devices-site_id")
       refute has_element?(lv, "#devices-has_users-toggle")
     end
@@ -2030,13 +2124,14 @@ defmodule PortalWeb.DevicesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/devices")
 
-      assert has_element?(lv, "th", "Routes for")
+      assert has_element?(lv, "th", "Owner or site")
       assert has_element?(lv, "#device-#{gateway.id}", "Gateway")
       assert has_element?(lv, "#device-#{gateway.id} a[href='/#{account.slug}/sites/#{site.id}']", site.name)
       assert has_element?(lv, "#device-#{client.id}")
       refute has_element?(lv, "#device-#{client.id}", "Gateway")
       refute has_element?(lv, "#device-#{client.id} a[href='/#{account.slug}/sites/#{site.id}']")
-      assert render_async(lv) =~ ~r/>\s*2\s*<\/span>\s*<span[^>]*>\s*Total/
+      render_async(lv)
+      assert has_element?(lv, "#devices-count", "2")
     end
 
     test "shows the site of a client that routes for one", %{
@@ -2353,7 +2448,7 @@ defmodule PortalWeb.DevicesTest do
 
       assert has_element?(lv, "#device-#{other_client.id}")
       refute has_element?(lv, "#device-#{other_gateway.id}")
-      refute has_element?(lv, "th", "Routes for")
+      refute has_element?(lv, "#devices th", "Site")
       refute has_element?(lv, "#devices-site_id")
       refute has_element?(lv, "#devices-has_users-toggle")
     end

@@ -30,7 +30,7 @@ defmodule PortalWeb.UnsubscribeTest do
     assert preferences.notifications.outdated_gateways == []
     assert preferences.notifications.seat_limit_warnings == nil
     assert preferences.notifications.product_announcements == nil
-    assert preferences.start_page == :sites
+    assert preferences.start_page == :activity
   end
 
   test "turns off product feedback requests", %{conn: conn, account: account, actor: actor} do

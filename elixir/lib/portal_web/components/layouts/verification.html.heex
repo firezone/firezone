@@ -8,6 +8,7 @@
     <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
     <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
     <title>Firezone</title>
+    <PortalWeb.Components.AuthPage.theme_script nonce={@conn.private[:csp_nonce]} />
     <link
       rel="stylesheet"
       nonce={@conn.private[:csp_nonce]}
@@ -27,7 +28,7 @@
     >
     </script>
   </head>
-  <body class="bg-surface">
+  <body class="bg-bg">
     {@inner_content}
   </body>
 </html>

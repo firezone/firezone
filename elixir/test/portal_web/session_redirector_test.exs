@@ -30,7 +30,7 @@ defmodule PortalWeb.Session.RedirectorTest do
         })
         |> Redirector.portal_signed_in(account, %{}, actor)
 
-      assert redirected_to(conn) == "/acme/sites"
+      assert redirected_to(conn) == "/acme/activity"
       assert get_session(conn, "website_attribution") == nil
     end
   end
@@ -59,30 +59,30 @@ defmodule PortalWeb.Session.RedirectorTest do
       other_account: other_account
     } do
       assert Redirector.sanitize_redirect_to(account, "/#{other_account.slug}/sites") ==
-               "/#{account.slug}/sites"
+               "/#{account.slug}/activity"
 
       assert Redirector.sanitize_redirect_to(account, "/#{other_account.id}/sites") ==
-               "/#{account.slug}/sites"
+               "/#{account.slug}/activity"
     end
 
     test "rejects paths whose first segment only prefixes the account slug or id", %{
       account: account
     } do
       assert Redirector.sanitize_redirect_to(account, "/acme_other/sites") ==
-               "/#{account.slug}/sites"
+               "/#{account.slug}/activity"
 
       assert Redirector.sanitize_redirect_to(account, "/#{account.id}0/sites") ==
-               "/#{account.slug}/sites"
+               "/#{account.slug}/activity"
     end
 
     test "rejects external, protocol-relative, and malformed redirect targets", %{account: account} do
       assert Redirector.sanitize_redirect_to(account, "https://example.com/#{account.slug}/sites") ==
-               "/#{account.slug}/sites"
+               "/#{account.slug}/activity"
 
       assert Redirector.sanitize_redirect_to(account, "//#{account.slug}/sites") ==
-               "/#{account.slug}/sites"
+               "/#{account.slug}/activity"
 
-      assert Redirector.sanitize_redirect_to(account, "/") == "/#{account.slug}/sites"
+      assert Redirector.sanitize_redirect_to(account, "/") == "/#{account.slug}/activity"
     end
   end
 

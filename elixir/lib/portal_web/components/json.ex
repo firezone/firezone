@@ -162,10 +162,10 @@ defmodule PortalWeb.Components.JSON do
   defp token_kind("null", _json, _token_end), do: :null
   defp token_kind(_token, _json, _token_end), do: :number
 
-  defp token_class(:key), do: "json-key text-sky-700 dark:text-sky-300"
-  defp token_class(:string), do: "json-string text-emerald-700 dark:text-emerald-300"
-  defp token_class(:number), do: "json-number text-violet-700 dark:text-violet-300"
-  defp token_class(:boolean), do: "json-boolean text-amber-700 dark:text-amber-300"
+  defp token_class(:key), do: "json-key text-fg"
+  defp token_class(:string), do: "json-string text-muted"
+  defp token_class(:number), do: "json-number text-fg font-medium"
+  defp token_class(:boolean), do: "json-boolean text-fg italic"
   defp token_class(:null), do: "json-null text-subtle"
   defp token_class(:plain), do: nil
 end

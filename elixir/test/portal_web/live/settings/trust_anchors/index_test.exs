@@ -80,7 +80,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/trust_anchors")
 
-      assert html =~ "Trust Anchors"
+      assert html =~ "Trust anchors"
 
       assert has_element?(
                lv,
@@ -246,7 +246,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       |> render_click()
 
       assert_patch(lv, ~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
-      assert render(lv) =~ "Edit Trust Anchor"
+      assert render(lv) =~ "Edit trust anchor"
     end
   end
 
@@ -634,7 +634,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/trust_anchors/new")
 
-      assert html =~ "New Trust Anchor"
+      assert html =~ "New trust anchor"
 
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
@@ -947,7 +947,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
 
-      assert html =~ "Edit Trust Anchor"
+      assert html =~ "Edit trust anchor"
       assert html =~ "Editable CA"
 
       assert [textarea] =

@@ -43,6 +43,7 @@ defmodule PortalWeb.Sites do
       |> assign(provisioned_gateway_ids: %{})
       |> assign(internet_resource: nil)
       |> assign(internet_site: nil)
+      |> assign(site_search: "", resource_names: %{}, site_attachments: [], online_ids: MapSet.new())
       |> assign(unified_devices?: Portal.Account.unified_devices?(socket.assigns.subject.account))
       |> assign(site_state_reset_assigns())
       |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
@@ -62,7 +63,7 @@ defmodule PortalWeb.Sites do
       {:noreply,
        socket
        |> merge_state(:site_panel, %{
-         tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
+         tab: parse_panel_tab(params, socket.assigns.site_panel),
          view: :gateways,
          confirm_delete_site: false,
          expanded_gateway_id: nil
@@ -79,7 +80,8 @@ defmodule PortalWeb.Sites do
         site ->
           {:noreply,
            socket
-           |> assign(site_panel_assigns(site, params, socket))}
+           |> assign(site_panel_assigns(site, params))
+           |> load_site_details(site)}
       end
     end
   end
@@ -122,7 +124,7 @@ defmodule PortalWeb.Sites do
     {:noreply,
      socket
      |> merge_state(:site_panel, %{
-       tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
+       tab: parse_panel_tab(params, socket.assigns.site_panel),
        view: :edit_site,
        confirm_delete_site: false
      })
@@ -142,16 +144,17 @@ defmodule PortalWeb.Sites do
 
       site ->
         changeset = Database.change_site(site)
-        site_assigns = site_panel_assigns(site, params, socket)
+        site_assigns = site_panel_assigns(site, params)
 
         {:noreply,
-         assign(
-           socket,
+         socket
+         |> assign(
            Keyword.merge(site_assigns,
              site_panel: Map.put(Keyword.fetch!(site_assigns, :site_panel), :view, :edit_site),
              site_edit: %{form: to_form(changeset)}
            )
-         )}
+         )
+         |> load_site_details(site)}
     end
   end
 
@@ -162,46 +165,52 @@ defmodule PortalWeb.Sites do
      |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
   end
 
-  defp site_panel_assigns(site, params, socket) do
-    device_tokens = load_device_tokens(site.id, socket.assigns.subject)
-
-    {gateways, total_gateway_count} =
-      load_panel_gateways(site.id, false, device_tokens, socket.assigns.subject)
-
-    resources =
-      if site.managed_by == :account do
-        Database.list_resources_for_site(site.id, socket.assigns.subject)
-      else
-        internet_resource = socket.assigns.internet_resource
-
-        if internet_resource && internet_resource.site_id == site.id do
-          [internet_resource]
-        else
-          []
-        end
-      end
-
-    gateway_tokens = Portal.Devices.list_gateway_tokens_for_site(site.id, socket.assigns.subject)
-
+  defp site_panel_assigns(site, params) do
     [
       selected_site: site,
-      site_panel:
-        Map.merge(base_site_panel_state(), %{
-          tab: parse_panel_tab(params, gateway_tokens),
-          devices: load_site_devices(site.id, socket.assigns.unified_devices?, socket.assigns.subject),
-          gateways: gateways,
-          total_gateway_count: total_gateway_count,
-          resources: resources,
-          gateway_tokens: gateway_tokens,
-          legacy_token_connections: legacy_token_connections(gateway_tokens),
-          device_tokens: device_tokens
-        }),
+      site_panel: Map.merge(base_site_panel_state(), %{tab: parse_panel_tab(params, nil), details: :loading}),
       site_deploy: base_site_deploy_state(),
       site_resource_form: base_site_resource_form_state(),
       site_edit: base_site_edit_state(),
       new_site: base_new_site_state(),
       devices_picker: nil
     ]
+  end
+
+  defp load_site_details(socket, site) do
+    subject = socket.assigns.subject
+    unified_devices? = socket.assigns.unified_devices?
+    show_all? = socket.assigns.site_panel.show_all_gateways
+    internet_resource = socket.assigns.internet_resource
+
+    socket
+    |> merge_state(:site_panel, %{details_task?: true, refresh_details?: false})
+    |> start_async(:site_details, fn ->
+      {site.id, site_details(site, show_all?, unified_devices?, internet_resource, subject)}
+    end)
+  end
+
+  defp site_details(site, show_all?, unified_devices?, internet_resource, subject) do
+    device_tokens = load_device_tokens(site.id, subject)
+    {gateways, total_gateway_count} = load_panel_gateways(site.id, show_all?, device_tokens, subject)
+    gateway_tokens = Portal.Devices.list_gateway_tokens_for_site(site.id, subject)
+
+    resources =
+      cond do
+        site.managed_by == :account -> Database.list_resources_for_site(site.id, subject)
+        internet_resource && internet_resource.site_id == site.id -> [internet_resource]
+        true -> []
+      end
+
+    %{
+      devices: load_site_devices(site.id, unified_devices?, subject),
+      gateways: gateways,
+      total_gateway_count: total_gateway_count,
+      resources: resources,
+      gateway_tokens: gateway_tokens,
+      legacy_token_connections: legacy_token_connections(gateway_tokens),
+      device_tokens: device_tokens
+    }
   end
 
   defp stale_event?(event, %{unified_devices?: false}) when event in @site_devices_events, do: true
@@ -228,226 +237,120 @@ defmodule PortalWeb.Sites do
   end
 
   def render(assigns) do
+    assigns = assign(assigns, :shown_sites, filter_sites(assigns.sites, assigns.site_search))
+
     ~H"""
-    <div
-      class="relative flex flex-col h-full overflow-hidden"
-      phx-window-keydown="handle_keydown"
-      phx-key="Escape"
-    >
+    <div class="relative flex flex-col h-full overflow-hidden">
       <Page.page_header>
-        <:icon>
-          <Core.icon name="ri-map-pin-line" class="w-16 h-16 text-brand" />
-        </:icon>
         <:title>Sites</:title>
         <:description>
-          Logical groupings of gateways - typically mapped to a network location or cloud region.
+          A site is a set of devices that carry traffic to the resources behind it.
         </:description>
         <:action>
           <Navigation.docs_action show_label size="md" path="/deploy/sites" />
-          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_site_panel">
-            New Site
+          <Form.button style="primary" icon="ri-add-line" phx-click={Page.instant("Add a site", size: "md") |> JS.push("open_new_site_panel")}>
+            Add a site
           </Form.button>
         </:action>
         <:stats :if={not @sites_loading?}>
-          <Core.dual_badge type="primary">
-            <:left>{length(@sites) + if @internet_site, do: 1, else: 0}</:left>
-            <:right>Total</:right>
-          </Core.dual_badge>
+          {length(@sites) + if @internet_site, do: 1, else: 0}
         </:stats>
       </Page.page_header>
 
-      <div class="flex-1 overflow-auto overflow-x-auto">
-        <table class="w-full text-sm border-collapse">
-          <thead class="sticky top-0 z-10 bg-raised">
-            <tr class="border-b border-border-strong">
-              <th class="py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
+      <div class="px-6 pb-3 shrink-0">
+        <form id="sites-search-form" phx-change="search_sites" phx-submit="search_sites" class="relative max-w-sm">
+          <Core.icon
+            name="ri-search-line"
+            class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none"
+          />
+          <input
+            type="text"
+            name="site_search"
+            value={@site_search}
+            placeholder="Search sites"
+            phx-debounce="200"
+            autocomplete="off"
+            data-1p-ignore
+            class="w-full pl-8 pr-3 py-1.5 text-sm border border-rule bg-bg text-fg placeholder:text-faint outline-none focus:border-fg"
+          />
+        </form>
+      </div>
+
+      <div class="flex-1 overflow-auto">
+        <table id="sites" class="w-full text-sm text-left text-fg table-fixed">
+          <thead>
+            <tr class="border-b border-rule">
+              <th class="py-2 px-4 pl-6 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
                 Site
               </th>
-              <th class="w-36 py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                Gateways
-              </th>
-              <th class="w-28 py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
+              <th class="py-2 px-4 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
                 Resources
               </th>
-              <th class="w-28 py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                Status
+              <th class="w-40 py-2 px-4 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+                Devices online
               </th>
             </tr>
           </thead>
           <tbody>
-            <%= if @sites_loading? do %>
-              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
-                <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-border-strong w-36"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-16"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-10"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
-                    <div class="h-2.5 rounded bg-border-strong w-20"></div>
-                  </div>
-                </td>
-              </tr>
-              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
-                <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-border-strong w-48"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-12"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-8"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
-                    <div class="h-2.5 rounded bg-border-strong w-16"></div>
-                  </div>
-                </td>
-              </tr>
-              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
-                <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-border-strong w-40"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-20"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-12"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
-                    <div class="h-2.5 rounded bg-border-strong w-24"></div>
-                  </div>
-                </td>
-              </tr>
-              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
-                <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-border-strong w-32"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-14"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-10"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
-                    <div class="h-2.5 rounded bg-border-strong w-20"></div>
-                  </div>
-                </td>
-              </tr>
-              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
-                <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-border-strong w-44"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-16"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-border-strong w-8"></div>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
-                    <div class="h-2.5 rounded bg-border-strong w-20"></div>
-                  </div>
-                </td>
-              </tr>
-            <% end %>
-            <tr
-              :if={not @sites_loading? and @internet_site}
-              class={[
-                "border-b border-border cursor-pointer transition-colors group border-l-4",
-                if(not is_nil(@selected_site) and @selected_site.id == @internet_site.id,
-                  do: "bg-brand-muted border-l-brand",
-                  else:
-                    "hover:bg-raised border-l-transparent bg-violet-50/60 dark:bg-violet-950/20"
-                )
-              ]}
-              phx-click="select_site"
-              phx-value-id={@internet_site.id}
-            >
-              <td class="px-4 py-3">
-                <div class="flex items-center gap-2">
-                  <Core.icon name="ri-global-line" class="w-5 h-5 text-link" />
-                  <div class={[
-                    "font-medium transition-colors",
-                    if(not is_nil(@selected_site) and @selected_site.id == @internet_site.id,
-                      do: "text-brand",
-                      else: "text-heading group-hover:text-brand"
-                    )
-                  ]}>
-                    Internet
-                  </div>
-                  <Core.badge type="accent" size="xs">system</Core.badge>
-                </div>
-                <div class="font-mono text-[10px] text-subtle mt-0.5">
-                  {@internet_site.id}
-                </div>
-              </td>
-              <td class="px-4 py-3">
-                <% health = site_health(@internet_site.id, @online_gateway_ids, @provisioned_gateway_ids) %>
-                <.gateway_counts health={health} />
-              </td>
-              <td class="px-4 py-3">
-                <span class="tabular-nums text-body">
-                  {Map.get(@policies_counts, @internet_site.id, 0)}
-                </span>
-              </td>
-              <td class="px-4 py-3">
-                <SiteComponents.site_status_badge status={health.status} />
+            <tr :for={width <- if(@sites_loading?, do: ~w[w-40 w-28 w-36 w-24 w-32], else: [])} class="border-b border-hair animate-pulse">
+              <td :for={_col <- 1..3} class="px-4 first:pl-6 py-3">
+                <div class={["h-2 bg-hair max-w-full", width]}></div>
               </td>
             </tr>
             <tr
-              :for={site <- if(@sites_loading?, do: [], else: @sites)}
+              :if={not @sites_loading? and not is_nil(@internet_site) and @site_search == ""}
               class={[
-                "border-b border-border cursor-pointer transition-colors group border-l-4",
-                if(not is_nil(@selected_site) and @selected_site.id == site.id,
-                  do: "bg-brand-muted border-l-brand",
-                  else: "hover:bg-raised border-l-transparent"
-                )
+                "border-b border-hair cursor-pointer transition-colors hover:bg-hover",
+                not is_nil(@selected_site) and @selected_site.id == @internet_site.id && "bg-hover"
               ]}
-              phx-click="select_site"
-              phx-value-id={site.id}
+              phx-click={
+                Page.open_modal(
+                  LiveTable.live_table_path(assigns, ~p"/#{@account}/sites/#{@internet_site.id}"),
+                  title: "Internet",
+                  size: "xl"
+                )
+              }
             >
-              <td class="px-4 py-3">
-                <div class={[
-                  "font-medium transition-colors",
-                  if(not is_nil(@selected_site) and @selected_site.id == site.id,
-                    do: "text-brand",
-                    else: "text-heading group-hover:text-brand"
-                  )
-                ]}>
-                  {site.name}
+              <td class="px-4 pl-6 py-3">
+                <div class="flex items-center gap-2 font-medium text-fg">
+                  <Core.icon name="ri-earth-line" class="w-4 h-4 text-muted shrink-0" /> Internet
                 </div>
-                <div class="font-mono text-[10px] text-subtle mt-0.5">
-                  {site.id}
+                <div class="text-xs text-muted mt-0.5">Managed by Firezone</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-muted truncate">
+                {if @internet_resource, do: "Internet", else: "None"}
+              </td>
+              <td class="px-4 py-3">
+                <.devices_online counts={device_counts(@internet_site.id, assigns)} />
+              </td>
+            </tr>
+            <tr
+              :for={site <- if(@sites_loading?, do: [], else: @shown_sites)}
+              id={"site-#{site.id}"}
+              class={[
+                "border-b border-hair cursor-pointer transition-colors hover:bg-hover",
+                not is_nil(@selected_site) and @selected_site.id == site.id && "bg-hover"
+              ]}
+              phx-click={
+                Page.open_modal(
+                  LiveTable.live_table_path(assigns, ~p"/#{@account}/sites/#{site.id}"),
+                  title: site.name,
+                  size: "xl"
+                )
+              }
+            >
+              <td class="px-4 pl-6 py-3">
+                <div class="flex items-center gap-2 font-medium text-fg">
+                  <Core.icon name="ri-route-line" class="w-4 h-4 text-muted shrink-0" />
+                  <span class="truncate">{site.name}</span>
                 </div>
               </td>
-              <td class="px-4 py-3">
-                <% health = site_health(site.id, @online_gateway_ids, @provisioned_gateway_ids) %>
-                <.gateway_counts health={health} />
+              <td class="px-4 py-3 text-xs text-muted truncate">
+                <% names = Map.get(@resource_names, site.id, []) %>
+                {if names == [], do: "None", else: resource_names_label(names, Map.get(@resources_counts, site.id, 0))}
               </td>
               <td class="px-4 py-3">
-                <span class="tabular-nums text-body">
-                  {Map.get(@resources_counts, site.id, 0)}
-                </span>
-              </td>
-              <td class="px-4 py-3">
-                <SiteComponents.site_status_badge status={health.status} />
+                <.devices_online counts={device_counts(site.id, assigns)} />
               </td>
             </tr>
           </tbody>
@@ -457,21 +360,34 @@ defmodule PortalWeb.Sites do
           class="flex flex-1 items-center justify-center p-8"
         >
           <div class="flex flex-col items-center gap-3 py-16">
-            <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-              <Core.icon name="ri-map-pin-line" class="w-5 h-5 text-subtle" />
-            </div>
+            <Core.icon name="ri-route-line" class="w-6 h-6 text-faint" />
             <div class="text-center">
-              <p class="text-sm font-medium text-heading">No sites yet</p>
-              <p class="text-xs text-subtle mt-0.5">
-                Create a Site in order to deploy Gateways and attach Resources.
+              <p class="text-sm font-medium text-fg">No sites yet</p>
+              <p class="text-xs text-muted mt-0.5">
+                Add a site, then attach devices and resources to it.
               </p>
             </div>
-            <Form.button patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/sites/new")} icon="ri-add-line" size="xs">Add a Site</Form.button>
+            <Form.button patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/sites/new")} icon="ri-add-line" size="xs">
+              Add a site
+            </Form.button>
           </div>
         </div>
+        <p
+          :if={not @sites_loading? and @sites != [] and @shown_sites == []}
+          class="px-6 py-8 text-sm text-muted"
+        >
+          No sites match.
+        </p>
+
+        <SiteComponents.attachment_grid
+          :if={@unified_devices? and not @sites_loading?}
+          account={@account}
+          sites={@sites}
+          attachments={@site_attachments}
+          online_ids={@online_ids}
+        />
       </div>
 
-      <%!-- Right-hand detail panel --%>
       <SiteComponents.site_panel
         site={@selected_site}
         account={@account}
@@ -511,7 +427,10 @@ defmodule PortalWeb.Sites do
       rotated_gateway_token: nil,
       expanded_gateway_id: nil,
       devices: [],
-      confirm_remove_device_id: nil
+      confirm_remove_device_id: nil,
+      details: :ok,
+      details_task?: false,
+      refresh_details?: false
     }
   end
 
@@ -601,26 +520,41 @@ defmodule PortalWeb.Sites do
 
   # ---- Helpers ----
 
-  defp site_health(site_id, online_gateway_ids, provisioned_gateway_ids) do
-    online = Map.get(online_gateway_ids, site_id, MapSet.new())
-    provisioned = Map.get(provisioned_gateway_ids, site_id, MapSet.new())
-    {status, offline_count} = SiteComponents.site_health(online, provisioned)
+  attr :counts, :any, required: true
 
-    %{status: status, online_count: MapSet.size(online), offline_count: offline_count}
-  end
-
-  attr :health, :map, required: true
-
-  defp gateway_counts(assigns) do
+  defp devices_online(assigns) do
     ~H"""
-    <span class="text-sm text-body tabular-nums">
-      {@health.online_count}<span class="ml-1.5 text-[10px] text-subtle">online</span>
-    </span>
-    <span :if={@health.status == :degraded} class="text-[10px] text-subtle tabular-nums">
-      · {@health.offline_count} offline
+    <span class={[
+      "text-sm tabular-nums",
+      (elem(@counts, 1) == 0 or elem(@counts, 0) < elem(@counts, 1)) && "text-attn",
+      elem(@counts, 1) > 0 and elem(@counts, 0) == elem(@counts, 1) && "text-fg"
+    ]}>
+      {elem(@counts, 0)} of {elem(@counts, 1)}
     </span>
     """
   end
+
+  # Gateways count when online or holding a single-owner token; other devices always count.
+  defp device_counts(site_id, assigns) do
+    online_gateways = Map.get(assigns.online_gateway_ids, site_id, MapSet.new())
+    gateways = MapSet.union(online_gateways, Map.get(assigns.provisioned_gateway_ids, site_id, MapSet.new()))
+    others = for {device, ^site_id} <- assigns.site_attachments, do: device.id
+    online_others = Enum.count(others, &MapSet.member?(assigns.online_ids, &1))
+
+    {MapSet.size(online_gateways) + online_others, MapSet.size(gateways) + length(others)}
+  end
+
+  defp filter_sites(sites, ""), do: sites
+
+  defp filter_sites(sites, search) do
+    search = String.downcase(search)
+    Enum.filter(sites, &String.contains?(String.downcase(&1.name), search))
+  end
+
+  defp resource_names_label(names, count) when count > length(names),
+    do: Enum.join(names, ", ") <> " +#{count - length(names)}"
+
+  defp resource_names_label(names, _count), do: Enum.join(names, ", ")
 
   # Gateways holding a single-owner token are the ones the site expects online
   defp put_provisioned_gateway_ids(socket, site_id, device_tokens) do
@@ -630,6 +564,10 @@ defmodule PortalWeb.Sites do
   end
 
   # ---- Events ----
+
+  def handle_event("search_sites", %{"site_search" => search}, socket) do
+    {:noreply, assign(socket, site_search: String.trim(search))}
+  end
 
   def handle_event("select_site", %{"id" => id}, socket) do
     {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{id}"))}
@@ -945,6 +883,10 @@ defmodule PortalWeb.Sites do
 
     {:noreply, merge_state(socket, :site_panel, %{gateways: gateways, show_all_gateways: false})}
   end
+
+  # With unified devices, sites are served by enrolled devices; nothing is deployed.
+  def handle_event("deploy_gateway", _params, %{assigns: %{unified_devices?: true}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("deploy_gateway", _params, socket) do
     site = socket.assigns.selected_site
@@ -1400,48 +1342,41 @@ defmodule PortalWeb.Sites do
 
     socket = load_sites_index_data(socket)
 
-    {device_tokens, panel_gateways, total_gateway_count} =
-      if socket.assigns.selected_site do
-        # Connects can confirm rotations (deleting the expiring token), so the
-        # per-gateway token state is refreshed along with the gateway list
-        device_tokens =
-          load_device_tokens(socket.assigns.selected_site.id, socket.assigns.subject)
-
-        {panel_gateways, total_gateway_count} =
-          load_panel_gateways(
-            socket.assigns.selected_site.id,
-            socket.assigns.site_panel.show_all_gateways,
-            device_tokens,
-            socket.assigns.subject
-          )
-
-        {device_tokens, panel_gateways, total_gateway_count}
-      else
-        {socket.assigns.site_panel.device_tokens, socket.assigns.site_panel.gateways,
-         socket.assigns.site_panel.total_gateway_count}
-      end
-
-    site_devices =
-      if socket.assigns.selected_site do
-        load_site_devices(socket.assigns.selected_site.id, socket.assigns.unified_devices?, socket.assigns.subject)
-      else
-        socket.assigns.site_panel.devices
-      end
-
-    socket =
-      merge_state(socket, :site_panel, %{
-        devices: site_devices,
-        device_tokens: device_tokens,
-        gateways: panel_gateways,
-        total_gateway_count: total_gateway_count,
-        legacy_token_connections:
-          legacy_token_connections(socket.assigns.site_panel.gateway_tokens)
-      })
-
-    {:noreply, socket}
+    {:noreply, refresh_site_details(socket)}
   end
 
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  def handle_async(:site_details, {:ok, {site_id, details}}, %{assigns: %{selected_site: %{id: site_id}}} = socket) do
+    panel = socket.assigns.site_panel
+    socket =
+      merge_state(
+        socket,
+        :site_panel,
+        Map.merge(details, %{
+          details: :ok,
+          details_task?: false,
+          tab: sanitize_panel_tab(panel.tab, details.gateway_tokens)
+        })
+      )
+
+    if panel.refresh_details? do
+      {:noreply, load_site_details(socket, socket.assigns.selected_site)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_async(:site_details, {:ok, _stale}, socket), do: {:noreply, socket}
+
+  def handle_async(:site_details, {:exit, _reason}, %{assigns: %{selected_site: %Portal.Site{}}} = socket) do
+    case socket.assigns.site_panel do
+      %{details: :loading} -> {:noreply, merge_state(socket, :site_panel, %{details: :failed, details_task?: false})}
+      _ -> {:noreply, merge_state(socket, :site_panel, %{details_task?: false})}
+    end
+  end
+
+  def handle_async(:site_details, {:exit, _reason}, socket), do: {:noreply, socket}
 
   def handle_async(:device_search, {:ok, results}, %{assigns: %{devices_picker: %{} = picker}} = socket) do
     selected_ids = MapSet.new(picker.selected_devices, & &1.id)
@@ -1518,11 +1453,44 @@ defmodule PortalWeb.Sites do
   defp parse_site_tab("tokens"), do: :tokens
   defp parse_site_tab(_), do: :gateways
 
-  defp parse_panel_tab(params, gateway_tokens) do
+  defp parse_panel_tab(params, %{details: :ok, gateway_tokens: gateway_tokens}) do
     params
     |> Map.get("tab", "gateways")
     |> parse_site_tab()
     |> sanitize_panel_tab(gateway_tokens)
+  end
+
+  defp parse_panel_tab(params, _panel) do
+    params
+    |> Map.get("tab", "gateways")
+    |> parse_site_tab()
+  end
+
+  defp refresh_site_details(%{assigns: %{selected_site: nil}} = socket), do: socket
+
+  # A load in flight may predate this change, so it runs again once it lands.
+  defp refresh_site_details(%{assigns: %{site_panel: %{details_task?: true}}} = socket),
+    do: merge_state(socket, :site_panel, %{refresh_details?: true})
+
+  defp refresh_site_details(%{assigns: %{site_panel: %{details: :failed}}} = socket), do: socket
+
+  defp refresh_site_details(socket) do
+    site = socket.assigns.selected_site
+    subject = socket.assigns.subject
+    # Connects can confirm rotations (deleting the expiring token), so the
+    # per-gateway token state is refreshed along with the gateway list
+    device_tokens = load_device_tokens(site.id, subject)
+
+    {panel_gateways, total_gateway_count} =
+      load_panel_gateways(site.id, socket.assigns.site_panel.show_all_gateways, device_tokens, subject)
+
+    merge_state(socket, :site_panel, %{
+      devices: load_site_devices(site.id, socket.assigns.unified_devices?, subject),
+      device_tokens: device_tokens,
+      gateways: panel_gateways,
+      total_gateway_count: total_gateway_count,
+      legacy_token_connections: legacy_token_connections(socket.assigns.site_panel.gateway_tokens)
+    })
   end
 
   # The Legacy tokens tab is hidden when a site has no legacy tokens.
@@ -1560,6 +1528,7 @@ defmodule PortalWeb.Sites do
         else: site_ids
 
     resources_counts = Database.count_resources_by_site(site_ids, socket.assigns.subject)
+    resource_names = Database.list_resource_names_by_site(site_ids, socket.assigns.subject)
     policies_counts = Database.count_policies_by_site(all_site_ids, socket.assigns.subject)
     gateway_counts = Database.count_gateways_by_site(all_site_ids, socket.assigns.subject)
 
@@ -1570,6 +1539,9 @@ defmodule PortalWeb.Sites do
     |> assign(sites_loading?: false)
     |> assign(sites: sites)
     |> assign(resources_counts: resources_counts)
+    |> assign(resource_names: resource_names)
+    |> assign(site_attachments: Database.list_site_attachments(all_site_ids, socket.assigns.subject))
+    |> assign(online_ids: MapSet.new(Presence.Devices.online_ids(socket.assigns.account.id)))
     |> assign(policies_counts: policies_counts)
     |> assign(gateway_counts: gateway_counts)
     |> assign(online_gateway_ids: Presence.Devices.online_gateway_ids_by_site(socket.assigns.account.id))
@@ -1753,6 +1725,44 @@ defmodule PortalWeb.Sites do
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Map.new()
+    end
+
+    @doc "Up to 3 resource names per site, by name."
+    def list_resource_names_by_site(site_ids, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.site_id in ^site_ids)
+      |> order_by([resources: r], asc: r.site_id, asc: r.name)
+      |> select([resources: r], {r.site_id, r.name})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} ->
+          %{}
+
+        rows ->
+          rows
+          |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+          |> Map.new(fn {site_id, names} -> {site_id, Enum.take(names, 3)} end)
+      end
+    end
+
+    @doc "The devices other than gateways that route for one of `site_ids`, with that site."
+    def list_site_attachments(site_ids, subject) do
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client or is_nil(d.type))
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.site_id in ^site_ids)
+      |> order_by([devices: d], asc: d.name, asc: d.id)
+      |> select([devices: d, site_device: sd], {d, sd.site_id})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        rows -> rows
+      end
     end
 
     def count_policies_by_site(site_ids, subject) do

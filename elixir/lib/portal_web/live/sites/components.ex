@@ -1,28 +1,20 @@
 defmodule PortalWeb.Sites.Components do
   use PortalWeb, :component_library
 
+  alias PortalWeb.Settings
+
   attr :state, :map, required: true
 
   def new_site_panel(assigns) do
     assigns = assign(assigns, assigns.state)
 
     ~H"""
-    <div
-      id="new-site-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-96",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@open, do: "translate-x-0", else: "translate-x-full")
-      ]}
-    >
+    <Page.detail_modal id="new-site-panel" size="md" open={@open} on_close="handle_keydown">
       <div :if={@open} class="flex flex-col h-full overflow-hidden">
-        <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 class="text-sm font-semibold text-heading">New Site</h2>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_new_site_panel" />
-        </div>
-        <div class="flex-1 overflow-y-auto px-5 py-4">
+        <Form.panel_header title="Add a site" close_event="close_new_site_panel">
+          <:leading><Core.icon name="ri-route-line" class="w-4 h-4 text-muted" /></:leading>
+        </Form.panel_header>
+        <div class="flex-1 overflow-y-auto px-6 py-5">
           <.form id="new-site-form" for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
             <div class="space-y-4">
               <Form.input
@@ -44,7 +36,76 @@ defmodule PortalWeb.Sites.Components do
           </.form>
         </div>
       </div>
-    </div>
+    </Page.detail_modal>
+    """
+  end
+
+  @doc """
+  Which device routes for which site, as a grid: a site per row, a device per column,
+  a filled square where the device is in the site.
+  """
+  attr :account, :any, required: true
+  attr :sites, :list, required: true
+  attr :attachments, :list, required: true
+  attr :online_ids, :any, required: true
+
+  def attachment_grid(assigns) do
+    devices =
+      assigns.attachments
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.take(16)
+
+    assigns =
+      assign(assigns,
+        devices: devices,
+        attached: MapSet.new(assigns.attachments, fn {device, site_id} -> {site_id, device.id} end)
+      )
+
+    ~H"""
+    <section :if={@devices != []} id="site-attachments" class="px-6 pt-10 pb-6">
+      <h2 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted mb-3">
+        <Core.icon name="ri-grid-line" class="w-3.5 h-3.5" /> Which device routes for which site
+      </h2>
+      <div class="overflow-x-auto">
+        <table class="text-sm">
+          <thead>
+            <tr class="border-b border-rule">
+              <th></th>
+              <th :for={device <- @devices} class="px-4 py-2 text-xs font-normal text-fg whitespace-nowrap">
+                <Navigation.link navigate={~p"/#{@account}/devices/#{device.id}"} class="inline-flex items-center gap-1.5 hover:underline">
+                  <span class={[
+                    "inline-block w-[7px] h-[7px] rounded-full shrink-0",
+                    MapSet.member?(@online_ids, device.id) && "bg-fg",
+                    not MapSet.member?(@online_ids, device.id) && "ring-[1.5px] ring-inset ring-faint"
+                  ]}></span>
+                  {device.name}
+                </Navigation.link>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={site <- @sites} class="border-b border-hair">
+              <td class="py-2 pr-10 text-fg whitespace-nowrap">
+                <Navigation.link navigate={~p"/#{@account}/sites/#{site.id}"} class="hover:underline">
+                  {site.name}
+                </Navigation.link>
+              </td>
+              <td :for={device <- @devices} class="px-4 py-2 text-center">
+                <span
+                  data-attached={to_string(MapSet.member?(@attached, {site.id, device.id}))}
+                  class={[
+                    "inline-block w-2.5 h-2.5",
+                    MapSet.member?(@attached, {site.id, device.id}) && "bg-fg",
+                    not MapSet.member?(@attached, {site.id, device.id}) && "ring-1 ring-inset ring-hair"
+                  ]}
+                ></span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
     """
   end
 
@@ -85,28 +146,11 @@ defmodule PortalWeb.Sites.Components do
 
     assigns = assign(assigns, :filter_ports, filter_ports)
 
-    # The listed gateways include every online one, and device_tokens is keyed
-    # by the id of each gateway holding a single-owner token
-    {status, _offline_count} =
-      site_health(
-        assigns.gateways |> Enum.filter(& &1.online?) |> MapSet.new(& &1.id),
-        assigns.device_tokens |> Map.keys() |> MapSet.new()
-      )
-
-    assigns = assign(assigns, :status, status)
+    assigns = assign(assigns, :status, panel_status(assigns))
 
     ~H"""
-    <div
-      id="site-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@site, do: "translate-x-0", else: "translate-x-full")
-      ]}
-    >
-      <div :if={@site} class="flex flex-col h-full overflow-hidden">
+    <Page.detail_modal id="site-panel" size="xl" open={not is_nil(@site)} on_close="handle_keydown">
+      <div :if={@site} class="flex flex-col min-h-0 h-[80vh] overflow-hidden">
         <.site_panel_header
           :if={@view != :edit_site}
           site={@site}
@@ -150,26 +194,36 @@ defmodule PortalWeb.Sites.Components do
           picker={@devices_picker}
         />
       </div>
-    </div>
+    </Page.detail_modal>
     """
   end
 
   attr :site, :any, required: true
   attr :view, :atom, required: true
-  attr :status, :atom, required: true
+  attr :status, :atom, default: nil
 
   def site_panel_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
+    <div class="shrink-0 px-6 py-4 border-b border-rule">
       <div class="flex items-center gap-4">
-        <%!-- Left: name + status + ID --%>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold text-heading truncate">{@site.name}</h2>
+            <Core.icon
+              name={if @site.managed_by == :system, do: "ri-earth-line", else: "ri-route-line"}
+              class="w-5 h-5 text-muted shrink-0"
+            />
+            <h2 class="text-lg font-bold text-fg truncate">{@site.name}</h2>
             <Core.badge :if={@site.managed_by == :system} type="accent" size="xs">system</Core.badge>
-            <.site_status_badge status={@status} />
+            <.site_status_badge :if={@status} status={@status} />
+            <span
+              :if={is_nil(@status)}
+              id="site-status-loading"
+              aria-hidden="true"
+              class="inline-block h-2 w-16 bg-hair animate-pulse"
+            >
+            </span>
           </div>
-          <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@site.id}</p>
+          <p class="font-mono text-xs text-muted mt-1 truncate">{@site.id}</p>
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
@@ -180,7 +234,11 @@ defmodule PortalWeb.Sites.Components do
           >
             <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </Form.button>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          <Form.icon_button
+            icon="ri-close-line"
+            title="Close (Esc)"
+            phx-click={Page.close_modal({:closest, "[data-modal-layer]"}, "close_panel")}
+          />
         </div>
       </div>
     </div>
@@ -199,7 +257,7 @@ defmodule PortalWeb.Sites.Components do
     assigns = assign(assigns, assigns.panel)
 
     ~H"""
-    <div class="flex flex-1 min-h-0 divide-x divide-border overflow-hidden">
+    <div class="flex flex-1 min-h-0 divide-x divide-hair overflow-hidden">
       <div class="flex-1 flex flex-col overflow-hidden">
         <.site_panel_tabs
           site={@site}
@@ -211,10 +269,16 @@ defmodule PortalWeb.Sites.Components do
           confirm_revoke_all_tokens={@confirm_revoke_all_tokens}
           unified_devices?={@unified_devices?}
           device_count={length(@devices)}
+          loaded?={@details == :ok}
         />
 
+        <Settings.Components.skeleton :if={@details == :loading} id="site-details-loading" rows={3} />
+        <p :if={@details == :failed} id="site-details-error" class="px-6 py-4 text-xs text-muted">
+          Could not load this site's devices and resources.
+        </p>
+
         <.site_gateways_tab
-          :if={@tab == :gateways}
+          :if={@details == :ok and @tab == :gateways}
           site={@site}
           gateways={@gateways}
           total_gateway_count={@total_gateway_count}
@@ -233,14 +297,14 @@ defmodule PortalWeb.Sites.Components do
         />
 
         <.site_resources_tab
-          :if={@tab == :resources}
+          :if={@details == :ok and @tab == :resources}
           site={@site}
           account={@account}
           resources={@resources}
         />
 
         <.site_tokens_tab
-          :if={@tab == :tokens}
+          :if={@details == :ok and @tab == :tokens}
           site={@site}
           gateway_tokens={@gateway_tokens}
           legacy_token_connections={@legacy_token_connections}
@@ -263,10 +327,11 @@ defmodule PortalWeb.Sites.Components do
   attr :confirm_revoke_all_tokens, :boolean, required: true
   attr :unified_devices?, :boolean, default: false
   attr :device_count, :integer, default: 0
+  attr :loaded?, :boolean, default: true
 
   def site_panel_tabs(assigns) do
     ~H"""
-    <div class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0">
+    <div class="flex items-end gap-0 px-5 border-b border-hair bg-hover shrink-0">
       <button
         :if={@unified_devices?}
         id="site-panel-devices-tab"
@@ -275,15 +340,15 @@ defmodule PortalWeb.Sites.Components do
         class={[
           "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
           if(@tab == :gateways,
-            do: "border-brand text-brand",
-            else: "border-transparent text-body hover:text-heading hover:border-border-strong"
+            do: "border-fg text-fg",
+            else: "border-transparent text-muted hover:text-fg hover:border-hair"
           )
         ]}
       >
         Devices
-        <span class={[
+        <span :if={@loaded?} class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-          if(@tab == :gateways, do: "bg-brand-wash text-heading", else: "bg-raised text-subtle")
+          if(@tab == :gateways, do: "bg-hover text-fg", else: "bg-hover text-muted")
         ]}>
           {@total_count + @device_count}
         </span>
@@ -295,18 +360,18 @@ defmodule PortalWeb.Sites.Components do
         class={[
           "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
           if(@tab == :gateways,
-            do: "border-brand text-brand",
+            do: "border-fg text-fg",
             else:
-              "border-transparent text-body hover:text-heading hover:border-border-strong"
+              "border-transparent text-muted hover:text-fg hover:border-hair"
           )
         ]}
       >
         Gateways
-        <span class={[
+        <span :if={@loaded?} class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :gateways,
-            do: "bg-brand-wash text-heading",
-            else: "bg-raised text-subtle"
+            do: "bg-hover text-fg",
+            else: "bg-hover text-muted"
           )
         ]}>
           {@total_count}
@@ -318,18 +383,18 @@ defmodule PortalWeb.Sites.Components do
         class={[
           "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
           if(@tab == :resources,
-            do: "border-brand text-brand",
+            do: "border-fg text-fg",
             else:
-              "border-transparent text-body hover:text-heading hover:border-border-strong"
+              "border-transparent text-muted hover:text-fg hover:border-hair"
           )
         ]}
       >
         Resources
-        <span class={[
+        <span :if={@loaded?} class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :resources,
-            do: "bg-brand-wash text-heading",
-            else: "bg-raised text-subtle"
+            do: "bg-hover text-fg",
+            else: "bg-hover text-muted"
           )
         ]}>
           {@resource_count}
@@ -342,21 +407,25 @@ defmodule PortalWeb.Sites.Components do
         class={[
           "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
           if(@tab == :tokens,
-            do: "border-brand text-brand",
-            else: "border-transparent text-body hover:text-heading hover:border-border-strong"
+            do: "border-fg text-fg",
+            else: "border-transparent text-muted hover:text-fg hover:border-hair"
           )
         ]}
       >
         Legacy tokens
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-          if(@tab == :tokens, do: "bg-brand-wash text-heading", else: "bg-raised text-subtle")
+          if(@tab == :tokens, do: "bg-hover text-fg", else: "bg-hover text-muted")
         ]}>
           {length(@gateway_tokens)}
         </span>
       </button>
       <div class="ml-auto pb-2 flex items-center gap-2">
-        <Form.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
+        <Form.button
+          :if={not @unified_devices? and @tab == :gateways}
+          phx-click="deploy_gateway"
+          size="xs"
+        >
           <Core.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
         </Form.button>
         <Form.button
@@ -401,7 +470,7 @@ defmodule PortalWeb.Sites.Components do
           :if={@tab == :tokens and @confirm_revoke_all_tokens}
           class="flex items-center gap-2"
         >
-          <span class="text-xs text-error">Revoke all tokens?</span>
+          <span class="text-xs text-attn">Revoke all tokens?</span>
           <Form.button type="button" phx-click="cancel_revoke_all_tokens" size="xs">
             Cancel
           </Form.button>
@@ -439,9 +508,9 @@ defmodule PortalWeb.Sites.Components do
         <li
           :for={gateway <- @gateways}
           class={[
-            "border-b border-border transition-colors",
+            "border-b border-hair transition-colors",
             if(@confirm_delete_gateway_id == gateway.id,
-              do: "bg-error-light",
+              do: "bg-attn-wash",
               else: ""
             )
           ]}
@@ -453,15 +522,15 @@ defmodule PortalWeb.Sites.Components do
             :if={@confirm_delete_gateway_id != gateway.id}
             phx-click="toggle_gateway_expand"
             phx-value-id={gateway.id}
-            class="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-raised transition-colors group"
+            class="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-hover transition-colors group"
           >
             <Core.ping_icon
               color={if gateway.online?, do: "success", else: "danger"}
               title={if gateway.online?, do: "Online", else: "Offline"}
             />
-            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-hair bg-hover shrink-0">
               <svg
-                class="w-3.5 h-3.5 text-subtle"
+                class="w-3.5 h-3.5 text-muted"
                 viewBox="0 0 16 16"
                 fill="none"
                 stroke="currentColor"
@@ -475,7 +544,7 @@ defmodule PortalWeb.Sites.Components do
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
-                <p class="font-mono text-sm font-medium text-heading truncate group-hover:text-brand transition-colors">
+                <p class="font-mono text-sm font-medium text-fg truncate group-hover:text-fg transition-colors">
                   {gateway.name}
                 </p>
                 <Core.badge :if={@unified_devices?} type="neutral" size="xs">Gateway</Core.badge>
@@ -488,7 +557,7 @@ defmodule PortalWeb.Sites.Components do
                   legacy token
                 </Core.badge>
               </div>
-              <p :if={gateway.last_seen_remote_ip} class="font-mono text-xs text-subtle mt-0.5">
+              <p :if={gateway.last_seen_remote_ip} class="font-mono text-xs text-muted mt-0.5">
                 {gateway.last_seen_remote_ip}
               </p>
             </div>
@@ -503,7 +572,7 @@ defmodule PortalWeb.Sites.Components do
                 type="button"
                 phx-click="rename_gateway"
                 phx-value-id={gateway.id}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-muted hover:text-fg hover:bg-hover transition-colors"
               >
                 <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Rename gateway
               </button>
@@ -512,7 +581,7 @@ defmodule PortalWeb.Sites.Components do
                 type="button"
                 phx-click="rotate_gateway_token"
                 phx-value-id={gateway.id}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-muted hover:text-fg hover:bg-hover transition-colors"
               >
                 <Core.icon name={token_action_icon(action)} class="w-3.5 h-3.5 shrink-0" />
                 {token_action_label(action)}
@@ -521,7 +590,7 @@ defmodule PortalWeb.Sites.Components do
                 type="button"
                 phx-click="delete_gateway"
                 phx-value-id={gateway.id}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-error hover:bg-raised transition-colors"
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-attn hover:bg-hover transition-colors"
               >
                 <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete gateway
               </button>
@@ -532,7 +601,7 @@ defmodule PortalWeb.Sites.Components do
                   do: "ri-arrow-up-s-line",
                   else: "ri-arrow-down-s-line"
               }
-              class="w-4 h-4 text-subtle shrink-0"
+              class="w-4 h-4 text-muted shrink-0"
             />
           </div>
           <%!-- Confirm delete row --%>
@@ -544,9 +613,9 @@ defmodule PortalWeb.Sites.Components do
               color={if gateway.online?, do: "success", else: "danger"}
               title={if gateway.online?, do: "Online", else: "Offline"}
             />
-            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-hair bg-hover shrink-0">
               <svg
-                class="w-3.5 h-3.5 text-subtle"
+                class="w-3.5 h-3.5 text-muted"
                 viewBox="0 0 16 16"
                 fill="none"
                 stroke="currentColor"
@@ -559,12 +628,12 @@ defmodule PortalWeb.Sites.Components do
               </svg>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="font-mono text-sm font-medium text-heading truncate">{gateway.name}</p>
-              <p :if={gateway.last_seen_remote_ip} class="font-mono text-xs text-subtle mt-0.5">
+              <p class="font-mono text-sm font-medium text-fg truncate">{gateway.name}</p>
+              <p :if={gateway.last_seen_remote_ip} class="font-mono text-xs text-muted mt-0.5">
                 {gateway.last_seen_remote_ip}
               </p>
             </div>
-            <span class="text-xs text-error shrink-0">Delete this gateway?</span>
+            <span class="text-xs text-attn shrink-0">Delete this gateway?</span>
             <Form.button type="button" phx-click="cancel_delete_gateway" size="xs">
               Cancel
             </Form.button>
@@ -583,36 +652,36 @@ defmodule PortalWeb.Sites.Components do
             :if={@expanded_gateway_id == gateway.id and @confirm_delete_gateway_id != gateway.id}
             class="px-5 pb-3 pt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5"
           >
-            <span class="text-xs text-subtle">Last started</span>
-            <span class="text-xs text-heading">
+            <span class="text-xs text-muted">Last started</span>
+            <span class="text-xs text-fg">
               <Core.relative_datetime
                 datetime={gateway.last_seen_at}
                 popover={false}
                 empty="Unknown"
               />
             </span>
-            <span class="text-xs text-subtle">Remote IP</span>
-            <span class="text-xs text-heading">
+            <span class="text-xs text-muted">Remote IP</span>
+            <span class="text-xs text-fg">
               <Core.last_seen schema={gateway} />
             </span>
-            <span class="text-xs text-subtle">Version</span>
-            <span class="font-mono text-xs text-heading">
+            <span class="text-xs text-muted">Version</span>
+            <span class="font-mono text-xs text-fg">
               {gateway.last_seen_version}
             </span>
-            <span class="text-xs text-subtle">User agent</span>
-            <span class="font-mono text-xs text-heading break-all">
+            <span class="text-xs text-muted">User agent</span>
+            <span class="font-mono text-xs text-fg break-all">
               {gateway.last_seen_user_agent}
             </span>
-            <span class="text-xs text-subtle">Tunnel IPv4</span>
-            <span class="font-mono text-xs text-heading">
+            <span class="text-xs text-muted">Tunnel IPv4</span>
+            <span class="font-mono text-xs text-fg">
               {gateway.ipv4}
             </span>
-            <span class="text-xs text-subtle">Tunnel IPv6</span>
-            <span class="font-mono text-xs text-heading">
+            <span class="text-xs text-muted">Tunnel IPv6</span>
+            <span class="font-mono text-xs text-fg">
               {gateway.ipv6}
             </span>
-            <span class="text-xs text-subtle">Token</span>
-            <span class="text-xs text-heading">
+            <span class="text-xs text-muted">Token</span>
+            <span class="text-xs text-fg">
               {gateway_token_status(gateway, Map.get(@device_tokens, gateway.id), @legacy_token_ids)}
             </span>
           </div>
@@ -635,8 +704,8 @@ defmodule PortalWeb.Sites.Components do
           :for={device <- @devices}
           id={"site-device-#{device.id}"}
           class={[
-            "border-b border-border transition-colors",
-            if(@confirm_remove_device_id == device.id, do: "bg-error-light", else: "")
+            "border-b border-hair transition-colors",
+            if(@confirm_remove_device_id == device.id, do: "bg-attn-wash", else: "")
           ]}
         >
           <div class="flex items-center gap-3 px-5 py-3">
@@ -644,23 +713,23 @@ defmodule PortalWeb.Sites.Components do
               color={if device.online?, do: "success", else: "danger"}
               title={if device.online?, do: "Online", else: "Offline"}
             />
-            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-hair bg-hover shrink-0">
               <PortalWeb.Devices.Components.device_os_icon device={device} />
             </div>
             <div class="flex-1 min-w-0">
               <Navigation.link
                 navigate={~p"/#{@account}/devices/#{device.id}"}
-                class="block font-mono text-sm font-medium text-heading truncate hover:text-brand transition-colors"
+                class="block font-mono text-sm font-medium text-fg truncate hover:text-fg transition-colors"
               >
                 {device.name}
               </Navigation.link>
-              <p class="text-xs text-subtle mt-0.5 truncate">
+              <p class="text-xs text-muted mt-0.5 truncate">
                 {PortalWeb.Devices.Components.os_name_and_version(device.last_seen_user_agent)}
                 <span :if={device.last_seen_remote_ip} class="font-mono">
                   {device.last_seen_remote_ip}
                 </span>
               </p>
-              <p :if={not device.online?} class="text-xs text-warning mt-0.5">
+              <p :if={not device.online?} class="text-xs text-attn mt-0.5">
                 {offline_note(device)}
               </p>
             </div>
@@ -677,7 +746,7 @@ defmodule PortalWeb.Sites.Components do
               :if={@confirm_remove_device_id == device.id}
               class="flex items-center gap-2 shrink-0"
             >
-              <span class="text-xs text-error">Stop routing for this site?</span>
+              <span class="text-xs text-attn">Stop routing for this site?</span>
               <Form.button type="button" phx-click="cancel_remove_site_device" size="xs">
                 Cancel
               </Form.button>
@@ -695,13 +764,24 @@ defmodule PortalWeb.Sites.Components do
         </li>
       </ul>
       <div
-        :if={@gateways == [] and @total_gateway_count == 0 and @devices == []}
+        :if={@unified_devices? and @gateways == [] and @total_gateway_count == 0 and @devices == []}
+        id="site-devices-empty"
         class="flex flex-col items-center justify-center gap-3 py-16"
       >
-        <p class="text-sm text-subtle">No gateways deployed to this site.</p>
+        <Core.icon name="ri-computer-line" class="w-6 h-6 text-faint" />
+        <p class="text-sm text-muted">No devices serve this site yet.</p>
+        <Form.button phx-click="open_add_devices" size="sm" icon="ri-add-line">
+          Add devices
+        </Form.button>
+      </div>
+      <div
+        :if={not @unified_devices? and @gateways == [] and @total_gateway_count == 0 and @devices == []}
+        class="flex flex-col items-center justify-center gap-3 py-16"
+      >
+        <p class="text-sm text-muted">No gateways deployed to this site.</p>
         <button
           phx-click="deploy_gateway"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-hair text-muted hover:text-fg hover:border-rule bg-bg transition-colors"
         >
           <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Deploy a gateway
         </button>
@@ -710,8 +790,10 @@ defmodule PortalWeb.Sites.Components do
         :if={@gateways == [] and @total_gateway_count > 0}
         class="flex items-center justify-center py-16"
       >
-        <p class="text-sm text-subtle">
-          No gateways are currently online.
+        <p class="text-sm text-muted">
+          {if @unified_devices?,
+            do: "None of this site's devices are online.",
+            else: "No gateways are currently online."}
         </p>
       </div>
     </div>
@@ -739,13 +821,13 @@ defmodule PortalWeb.Sites.Components do
       :if={@reveal?}
       id={"gateway-token-reveal-#{@gateway.id}"}
       phx-hook="CopyClipboard"
-      class="rounded-md border-2 border-brand bg-brand-muted p-4 space-y-3"
+      class="rounded-md border-2 border-fg bg-hover p-4 space-y-3"
     >
       <div class="flex items-center gap-2">
-        <Core.icon name="ri-key-2-line" class="w-4 h-4 text-brand" />
-        <span class="text-xs font-semibold text-brand">New gateway token</span>
+        <Core.icon name="ri-key-2-line" class="w-4 h-4 text-fg" />
+        <span class="text-xs font-semibold text-fg">New gateway token</span>
       </div>
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Copy it now - it won't be shown again.
         <span :if={rotation_pending?(@device_tokens, @gateway.id)}>
           The expiring token keeps working until this gateway connects with the
@@ -760,7 +842,7 @@ defmodule PortalWeb.Sites.Components do
       </p>
       <code
         id={"gateway-token-reveal-#{@gateway.id}-code"}
-        class="block w-full rounded border border-border-strong bg-surface p-2 font-mono text-xs text-heading break-all"
+        class="block w-full rounded border border-hair bg-bg p-2 font-mono text-xs text-fg break-all"
         phx-no-format
       >{@rotated_gateway_token.encoded}</code>
       <div class="flex items-center gap-2">
@@ -791,11 +873,11 @@ defmodule PortalWeb.Sites.Components do
     <form
       :if={@rename_gateway_id == @gateway.id}
       phx-submit="save_gateway_name"
-      class="rounded border border-border-strong bg-raised p-3 space-y-3"
+      class="rounded border border-hair bg-hover p-3 space-y-3"
     >
       <label
         for={"rename-gateway-#{@gateway.id}"}
-        class="block text-xs font-medium text-heading"
+        class="block text-xs font-medium text-fg"
       >
         Rename gateway
       </label>
@@ -807,7 +889,7 @@ defmodule PortalWeb.Sites.Components do
         maxlength="255"
         required
         autocomplete="off"
-        class="block w-full rounded border border-border-strong bg-transparent px-2 py-1.5 font-mono text-xs text-heading"
+        class="block w-full rounded border border-hair bg-transparent px-2 py-1.5 font-mono text-xs text-fg"
       />
       <div class="flex items-center gap-2">
         <Form.button type="button" size="xs" phx-click="cancel_rename_gateway">
@@ -820,9 +902,9 @@ defmodule PortalWeb.Sites.Components do
     </form>
     <div
       :if={@confirm_rotate_gateway_id == @gateway.id}
-      class="rounded border border-border-strong bg-raised p-3 space-y-3"
+      class="rounded border border-hair bg-hover p-3 space-y-3"
     >
-      <p :if={@action == :rotate} class="text-xs text-body">
+      <p :if={@action == :rotate} class="text-xs text-fg">
         <span class="font-medium">Rotate this gateway's token?</span><br />
         <% active_state = active_token_state(@device_tokens, @gateway) %>
         <span :if={active_state == :in_use}>
@@ -837,7 +919,7 @@ defmodule PortalWeb.Sites.Components do
           This issues a new gateway token.
         </span>
       </p>
-      <p :if={@action == :upgrade} class="text-xs text-body">
+      <p :if={@action == :upgrade} class="text-xs text-fg">
         <span class="font-medium">Upgrade this gateway to its own token?</span><br />
         This issues a gateway token that only this gateway can use, replacing its
         legacy site token.
@@ -847,7 +929,7 @@ defmodule PortalWeb.Sites.Components do
         The legacy site token keeps working until you revoke it
         from the Legacy tokens tab.
       </p>
-      <p :if={@action == :generate} class="text-xs text-body">
+      <p :if={@action == :generate} class="text-xs text-fg">
         <span class="font-medium">Generate a gateway token?</span><br />
         This issues a gateway token that only this gateway can use.
       </p>
@@ -876,10 +958,10 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <div class="flex-1 overflow-y-auto">
       <ul>
-        <li :for={resource <- @resources} class="border-b border-border">
+        <li :for={resource <- @resources} class="border-b border-hair">
           <Navigation.link
             navigate={~p"/#{@account}/resources/#{resource.id}"}
-            class="flex items-center gap-3 px-5 py-3 hover:bg-raised transition-colors group"
+            class="flex items-center gap-3 px-5 py-3 hover:bg-hover transition-colors group"
           >
             <div class={[
               "shrink-0 flex",
@@ -890,10 +972,10 @@ defmodule PortalWeb.Sites.Components do
               </span>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-heading truncate group-hover:text-brand transition-colors">
+              <p class="text-sm font-medium text-fg truncate group-hover:text-fg transition-colors">
                 {resource.name}
               </p>
-              <p class="font-mono text-xs text-subtle mt-0.5">
+              <p class="font-mono text-xs text-muted mt-0.5">
                 {resource.address}
               </p>
             </div>
@@ -901,7 +983,7 @@ defmodule PortalWeb.Sites.Components do
         </li>
       </ul>
       <div :if={@resources == []} class="flex flex-col items-center justify-center gap-3 py-16">
-        <p class="text-sm text-subtle">No resources assigned to this site.</p>
+        <p class="text-sm text-muted">No resources assigned to this site.</p>
         <Form.button :if={@site.managed_by == :account} phx-click="add_resource" size="xs">
           <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add a resource
         </Form.button>
@@ -923,7 +1005,7 @@ defmodule PortalWeb.Sites.Components do
         class="flex flex-col flex-1 min-h-0 overflow-hidden"
       >
         <div class="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-          <p class="text-xs text-subtle">
+          <p class="text-xs text-muted">
             Picked devices route traffic for {@site.name}. A device can route for one site, and
             only on the latest Firezone client.
           </p>
@@ -992,17 +1074,17 @@ defmodule PortalWeb.Sites.Components do
         <li
           :for={token <- @gateway_tokens}
           class={[
-            "border-b border-border px-5 py-3 transition-colors",
-            if(@confirm_revoke_token_id == token.id, do: "bg-error-light", else: "")
+            "border-b border-hair px-5 py-3 transition-colors",
+            if(@confirm_revoke_token_id == token.id, do: "bg-attn-wash", else: "")
           ]}
         >
           <div class="flex items-center gap-3">
-            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
-              <Core.icon name="ri-key-line" class="w-3.5 h-3.5 text-subtle" />
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-hair bg-hover shrink-0">
+              <Core.icon name="ri-key-line" class="w-3.5 h-3.5 text-muted" />
             </div>
             <div class="flex-1 min-w-0">
-              <p class="font-mono text-xs text-body truncate">{token.id}</p>
-              <p class="text-[10px] text-subtle mt-0.5">
+              <p class="font-mono text-xs text-fg truncate">{token.id}</p>
+              <p class="text-[10px] text-muted mt-0.5">
                 Created <Core.relative_datetime datetime={token.inserted_at} popover={false} />
               </p>
             </div>
@@ -1013,10 +1095,10 @@ defmodule PortalWeb.Sites.Components do
               title="Revoke token"
               phx-click="revoke_gateway_token"
               phx-value-id={token.id}
-              class="text-subtle hover:text-error shrink-0"
+              class="text-muted hover:text-attn shrink-0"
             />
             <div :if={@confirm_revoke_token_id == token.id} class="flex items-center gap-2 shrink-0">
-              <span class="text-xs text-error">Revoke this token?</span>
+              <span class="text-xs text-attn">Revoke this token?</span>
               <Form.button type="button" phx-click="cancel_revoke_gateway_token" size="xs">
                 Cancel
               </Form.button>
@@ -1043,14 +1125,14 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <span
       :if={@count == 0}
-      class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-raised text-subtle"
+      class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-hover text-muted"
       title="No gateways are currently connected with this token"
     >
       unused
     </span>
     <span
       :if={@count > 0}
-      class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-muted text-brand"
+      class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-hover text-fg"
       title="Gateways currently connected with this token"
     >
       {@count} connected
@@ -1194,7 +1276,7 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
       <.site_details_section site={@site} />
-      <div :if={@site.managed_by == :account} class="border-t border-border"></div>
+      <div :if={@site.managed_by == :account} class="border-t border-hair"></div>
       <.site_danger_zone
         :if={@site.managed_by == :account}
         confirm_delete_site={@confirm_delete_site}
@@ -1208,19 +1290,19 @@ defmodule PortalWeb.Sites.Components do
   def site_details_section(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-muted mb-3">
         Details
       </h3>
       <dl class="space-y-2.5">
         <div>
-          <dt class="text-[10px] text-subtle mb-0.5">Name</dt>
-          <dd class="text-xs text-body truncate font-medium" title={@site.name}>
+          <dt class="text-[10px] text-muted mb-0.5">Name</dt>
+          <dd class="text-xs text-fg truncate font-medium" title={@site.name}>
             {@site.name}
           </dd>
         </div>
         <div>
-          <dt class="text-[10px] text-subtle mb-0.5">ID</dt>
-          <dd class="font-mono text-[11px] text-body break-all font-medium">
+          <dt class="text-[10px] text-muted mb-0.5">ID</dt>
+          <dd class="font-mono text-[11px] text-fg break-all font-medium">
             {@site.id}
           </dd>
         </div>
@@ -1234,22 +1316,22 @@ defmodule PortalWeb.Sites.Components do
   def site_danger_zone(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-attn mb-3">
         Danger Zone
       </h3>
       <button
         :if={not @confirm_delete_site}
         type="button"
         phx-click="confirm_delete_site"
-        class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded border border-attn/20 text-xs text-attn hover:bg-attn-wash transition-colors"
       >
         <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete site
       </button>
       <div
         :if={@confirm_delete_site}
-        class="rounded border border-error/20 bg-error-light p-3 space-y-3"
+        class="rounded border border-attn/20 bg-attn-wash p-3 space-y-3"
       >
-        <p class="text-xs text-error">
+        <p class="text-xs text-attn">
           <span class="font-medium">Delete this Site?</span>
           <br />
           All associated gateways and resources will also be permanently deleted.
@@ -1281,8 +1363,8 @@ defmodule PortalWeb.Sites.Components do
         <.site_deploy_tabs deploy_tab={@deploy_tab} />
         <.site_deploy_instructions deploy_tab={@deploy_tab} deploy_env={@deploy_env} />
       </div>
-      <div class="shrink-0 px-5 py-3 border-t border-border bg-raised flex items-center justify-between gap-4">
-        <p class="text-xs text-subtle">
+      <div class="shrink-0 px-5 py-3 border-t border-hair bg-hover flex items-center justify-between gap-4">
+        <p class="text-xs text-muted">
           Gateway not connecting? See our
           <Navigation.website_link path="/kb/administer/troubleshooting" fragment="gateway-not-connecting">
             troubleshooting guide.
@@ -1301,9 +1383,9 @@ defmodule PortalWeb.Sites.Components do
 
   def site_deploy_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
+    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-hair bg-bg">
       <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold text-heading">Deploy a Gateway</h2>
+        <h2 class="text-sm font-semibold text-fg">Deploy a Gateway</h2>
         <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_deploy" />
       </div>
     </div>
@@ -1314,8 +1396,8 @@ defmodule PortalWeb.Sites.Components do
 
   def site_deploy_tabs(assigns) do
     ~H"""
-    <div class="p-5 border-b border-border">
-      <p class="text-sm text-body mb-3">
+    <div class="p-5 border-b border-hair">
+      <p class="text-sm text-fg mb-3">
         Choose your deployment environment:
       </p>
       <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
@@ -1367,9 +1449,9 @@ defmodule PortalWeb.Sites.Components do
       class={[
         "flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-medium border transition-colors",
         if(@deploy_tab == @value,
-          do: "border-brand bg-brand-muted text-brand",
+          do: "border-fg bg-hover text-fg",
           else:
-            "border-border text-body hover:text-heading hover:bg-raised"
+            "border-hair text-muted hover:text-fg hover:bg-hover"
         )
       ]}
     >
@@ -1400,7 +1482,7 @@ defmodule PortalWeb.Sites.Components do
   def site_deploy_docker(assigns) do
     ~H"""
     <div class="p-5 space-y-4">
-      <p class="text-xs text-body">Run this command on your host:</p>
+      <p class="text-xs text-fg">Run this command on your host:</p>
       <Core.code_block
         id="deploy-code-docker"
         class="w-full text-xs whitespace-pre-line"
@@ -1416,7 +1498,7 @@ defmodule PortalWeb.Sites.Components do
   def site_deploy_systemd(assigns) do
     ~H"""
     <div class="p-5 space-y-4">
-      <p class="text-xs text-body">Install via systemd:</p>
+      <p class="text-xs text-fg">Install via systemd:</p>
       <Core.code_block
         id="deploy-code-systemd"
         class="w-full text-xs whitespace-pre-line"
@@ -1432,7 +1514,7 @@ defmodule PortalWeb.Sites.Components do
   def site_deploy_debian(assigns) do
     ~H"""
     <div class="p-5 space-y-4">
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 1: Add the Firezone APT repository:
       </p>
       <Core.code_block
@@ -1442,7 +1524,7 @@ defmodule PortalWeb.Sites.Components do
         phx-update="ignore"
       ><%= gateway_debian_apt_repository() %></Core.code_block>
 
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 2: Install the Firezone Gateway:
       </p>
       <Core.code_block
@@ -1452,7 +1534,7 @@ defmodule PortalWeb.Sites.Components do
         phx-update="ignore"
       ><%= gateway_debian_install(@deploy_env) %></Core.code_block>
 
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 3: Authenticate the Firezone Gateway:
       </p>
       <Core.code_block
@@ -1462,7 +1544,7 @@ defmodule PortalWeb.Sites.Components do
         phx-update="ignore"
       ><%= gateway_debian_authenticate() %></Core.code_block>
 
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 4: Use this token when prompted:
       </p>
       <Core.code_block
@@ -1472,7 +1554,7 @@ defmodule PortalWeb.Sites.Components do
         phx-update="ignore"
       ><%= gateway_token(@deploy_env) %></Core.code_block>
 
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 5: You are now ready to manage the Gateway using the <code class="font-mono">firezone</code>
         CLI.
       </p>
@@ -1485,14 +1567,14 @@ defmodule PortalWeb.Sites.Components do
   def site_deploy_custom(assigns) do
     ~H"""
     <div class="p-5 space-y-4">
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 1: Download the latest binary for your architecture:
       </p>
       <p>
         <Navigation.website_link path="/changelog">Firezone changelog</Navigation.website_link>
       </p>
 
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 2: Set required environment variables:
       </p>
       <Core.code_block
@@ -1502,7 +1584,7 @@ defmodule PortalWeb.Sites.Components do
         phx-update="ignore"
       ><%= gateway_manual_env(@deploy_env) %></Core.code_block>
 
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 3: Enable packet forwarding for IPv4 and IPv6:
       </p>
       <Core.code_block
@@ -1512,7 +1594,7 @@ defmodule PortalWeb.Sites.Components do
         phx-update="ignore"
       ><%= gateway_manual_forwarding() %></Core.code_block>
 
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 4: Enable masquerading for ethernet and Wi-Fi interfaces:
       </p>
       <Core.code_block
@@ -1522,7 +1604,7 @@ defmodule PortalWeb.Sites.Components do
         phx-update="ignore"
       ><%= gateway_manual_masquerading() %></Core.code_block>
 
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Step 5: Run the binary you downloaded:
       </p>
       <Core.code_block
@@ -1532,7 +1614,7 @@ defmodule PortalWeb.Sites.Components do
         phx-update="ignore"
       ><%= "sudo ./firezone-gateway-<version>-<architecture>" %></Core.code_block>
 
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Make sure to save the <code class="font-mono">FIREZONE_TOKEN</code>
         shown above to a secure location before continuing. It won't be shown again.
       </p>
@@ -1545,7 +1627,7 @@ defmodule PortalWeb.Sites.Components do
   def site_deploy_terraform(assigns) do
     ~H"""
     <div class="p-5 space-y-4">
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         Use `FIREZONE_TOKEN` in your Terraform-managed gateway environment:
       </p>
       <Core.code_block
@@ -1554,7 +1636,7 @@ defmodule PortalWeb.Sites.Components do
         phx-no-format
         phx-update="ignore"
       ><%= gateway_token(@deploy_env) %></Core.code_block>
-      <p :if={gateway_api_url(@deploy_env)} class="text-xs text-body">
+      <p :if={gateway_api_url(@deploy_env)} class="text-xs text-fg">
         Set `FIREZONE_API_URL` to:
       </p>
       <Core.code_block
@@ -1564,7 +1646,7 @@ defmodule PortalWeb.Sites.Components do
         phx-no-format
         phx-update="ignore"
       ><%= gateway_api_url(@deploy_env) %></Core.code_block>
-      <p class="text-xs text-body">
+      <p class="text-xs text-fg">
         <Navigation.website_link path="/kb/automate">Terraform guides</Navigation.website_link>
       </p>
     </div>
@@ -1609,9 +1691,9 @@ defmodule PortalWeb.Sites.Components do
 
   def site_add_resource_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
+    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-hair bg-bg">
       <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold text-heading">Add Resource</h2>
+        <h2 class="text-sm font-semibold text-fg">Add Resource</h2>
         <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_add_resource" />
       </div>
     </div>
@@ -1623,8 +1705,8 @@ defmodule PortalWeb.Sites.Components do
   def resource_type_picker(assigns) do
     ~H"""
     <div>
-      <span class="block text-xs font-medium text-body mb-1.5">
-        Type <span class="text-error">*</span>
+      <span class="block text-xs font-medium text-fg mb-1.5">
+        Type <span class="text-attn">*</span>
       </span>
       <ul class="grid w-full gap-3 grid-cols-3">
         <li>
@@ -1638,7 +1720,7 @@ defmodule PortalWeb.Sites.Components do
           />
           <label
             for="panel-resource-form-type--dns"
-            class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+            class="inline-flex items-center justify-between w-full p-3 text-fg bg-bg border border-hair rounded cursor-pointer peer-checked:border-fg peer-checked:text-muted hover:text-fg hover:bg-hover transition-colors"
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
@@ -1659,7 +1741,7 @@ defmodule PortalWeb.Sites.Components do
           />
           <label
             for="panel-resource-form-type--ip"
-            class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+            class="inline-flex items-center justify-between w-full p-3 text-fg bg-bg border border-hair rounded cursor-pointer peer-checked:border-fg peer-checked:text-muted hover:text-fg hover:bg-hover transition-colors"
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
@@ -1680,7 +1762,7 @@ defmodule PortalWeb.Sites.Components do
           />
           <label
             for="panel-resource-form-type--cidr"
-            class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+            class="inline-flex items-center justify-between w-full p-3 text-fg bg-bg border border-hair rounded cursor-pointer peer-checked:border-fg peer-checked:text-muted hover:text-fg hover:bg-hover transition-colors"
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
@@ -1702,9 +1784,9 @@ defmodule PortalWeb.Sites.Components do
     <div>
       <label
         for={@resource_form[:address].id}
-        class="block text-xs font-medium text-body mb-1.5"
+        class="block text-xs font-medium text-fg mb-1.5"
       >
-        Address <span class="text-error">*</span>
+        Address <span class="text-attn">*</span>
       </label>
       <Form.input
         field={@resource_form[:address]}
@@ -1726,9 +1808,9 @@ defmodule PortalWeb.Sites.Components do
     <div>
       <label
         for={@resource_form[:address_description].id}
-        class="block text-xs font-medium text-body mb-1.5"
+        class="block text-xs font-medium text-fg mb-1.5"
       >
-        Address Description <span class="text-subtle font-normal">(optional)</span>
+        Address Description <span class="text-muted font-normal">(optional)</span>
       </label>
       <Form.input
         field={@resource_form[:address_description]}
@@ -1736,16 +1818,16 @@ defmodule PortalWeb.Sites.Components do
         placeholder="Enter a description or URL"
         phx-debounce="300"
       />
-      <p class="mt-1 text-xs text-subtle">
+      <p class="mt-1 text-xs text-muted">
         Optional description or URL shown in Clients.
       </p>
     </div>
     <div>
       <label
         for={@resource_form[:name].id}
-        class="block text-xs font-medium text-body mb-1.5"
+        class="block text-xs font-medium text-fg mb-1.5"
       >
-        Name <span class="text-error">*</span>
+        Name <span class="text-attn">*</span>
       </label>
       <Form.input
         field={@resource_form[:name]}
@@ -1787,20 +1869,20 @@ defmodule PortalWeb.Sites.Components do
         value="ipv6_only"
         checked={"#{@resource_form[:ip_stack].value}" == "ipv6_only"}
       />
-      <span class="block text-xs font-medium text-body mb-1.5">
+      <span class="block text-xs font-medium text-fg mb-1.5">
         IP Stack
       </span>
-      <div class="inline-flex rounded border border-border overflow-hidden">
+      <div class="inline-flex rounded border border-hair overflow-hidden">
         <label
           for="panel-resource-form-ip-stack--dual"
           class={[
-            "px-4 py-1.5 text-xs transition-colors border-l border-border first:border-l-0 cursor-pointer",
+            "px-4 py-1.5 text-xs transition-colors border-l border-hair first:border-l-0 cursor-pointer",
             if(
               "#{@resource_form[:ip_stack].value}" == "" or
                 "#{@resource_form[:ip_stack].value}" == "dual",
-              do: "bg-brand text-white",
+              do: "bg-fg text-bg",
               else:
-                "bg-surface text-body hover:text-heading"
+                "bg-bg text-muted hover:text-fg"
             )
           ]}
         >
@@ -1809,12 +1891,12 @@ defmodule PortalWeb.Sites.Components do
         <label
           for="panel-resource-form-ip-stack--ipv4"
           class={[
-            "px-4 py-1.5 text-xs transition-colors border-l border-border first:border-l-0 cursor-pointer",
+            "px-4 py-1.5 text-xs transition-colors border-l border-hair first:border-l-0 cursor-pointer",
             if(
               "#{@resource_form[:ip_stack].value}" == "ipv4_only",
-              do: "bg-brand text-white",
+              do: "bg-fg text-bg",
               else:
-                "bg-surface text-body hover:text-heading"
+                "bg-bg text-muted hover:text-fg"
             )
           ]}
         >
@@ -1823,19 +1905,19 @@ defmodule PortalWeb.Sites.Components do
         <label
           for="panel-resource-form-ip-stack--ipv6"
           class={[
-            "px-4 py-1.5 text-xs transition-colors border-l border-border first:border-l-0 cursor-pointer",
+            "px-4 py-1.5 text-xs transition-colors border-l border-hair first:border-l-0 cursor-pointer",
             if(
               "#{@resource_form[:ip_stack].value}" == "ipv6_only",
-              do: "bg-brand text-white",
+              do: "bg-fg text-bg",
               else:
-                "bg-surface text-body hover:text-heading"
+                "bg-bg text-muted hover:text-fg"
             )
           ]}
         >
           IPv6
         </label>
       </div>
-      <p class="mt-1.5 text-xs text-body leading-snug">
+      <p class="mt-1.5 text-xs text-fg leading-snug">
         {case "#{@resource_form[:ip_stack].value}" do
           "ipv4_only" ->
             "Resolves only A records - clients connect over IPv4."
@@ -1859,8 +1941,8 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <div>
       <div class="flex items-center justify-between mb-2">
-        <span class="block text-xs font-medium text-body">
-          Traffic Restrictions <span class="font-normal text-subtle">(optional)</span>
+        <span class="block text-xs font-medium text-fg">
+          Traffic Restrictions <span class="font-normal text-muted">(optional)</span>
         </span>
         <.resource_filters_dropdown
           filters_dropdown_open={@filters_dropdown_open}
@@ -1888,7 +1970,7 @@ defmodule PortalWeb.Sites.Components do
       <button
         type="button"
         phx-click="toggle_resource_filters_dropdown"
-        class="inline-flex items-center gap-1 text-xs text-body hover:text-heading border border-border rounded px-2 py-1 bg-surface hover:bg-raised transition-colors"
+        class="inline-flex items-center gap-1 text-xs text-muted hover:text-fg border border-hair rounded px-2 py-1 bg-bg hover:bg-hover transition-colors"
       >
         <Core.icon name="ri-add-line" class="w-3 h-3" /> Add protocol
         <Core.icon name="ri-arrow-down-s-line" class="w-3 h-3" />
@@ -1896,14 +1978,14 @@ defmodule PortalWeb.Sites.Components do
       <div
         :if={@filters_dropdown_open}
         phx-click-away="close_resource_filters_dropdown"
-        class="absolute right-0 top-full mt-1 z-20 bg-elevated border border-border rounded shadow-md min-w-[120px]"
+        class="absolute right-0 top-full mt-1 z-20 bg-bg border border-hair rounded shadow-md min-w-[120px]"
       >
         <.resource_filter_dropdown_item :if={:tcp not in @active_protocols} protocol="tcp" />
         <.resource_filter_dropdown_item :if={:udp not in @active_protocols} protocol="udp" />
         <.resource_filter_dropdown_item :if={:icmp not in @active_protocols} protocol="icmp" />
         <div
           :if={Enum.sort(@active_protocols) == [:icmp, :tcp, :udp]}
-          class="px-3 py-2 text-xs text-subtle"
+          class="px-3 py-2 text-xs text-muted"
         >
           All protocols added
         </div>
@@ -1920,7 +2002,7 @@ defmodule PortalWeb.Sites.Components do
       type="button"
       phx-click="add_resource_filter"
       phx-value-protocol={@protocol}
-      class="flex items-center w-full px-3 py-2 text-xs text-heading hover:bg-raised transition-colors"
+      class="flex items-center w-full px-3 py-2 text-xs text-fg hover:bg-hover transition-colors"
     >
       {String.upcase(@protocol)}
     </button>
@@ -1929,7 +2011,7 @@ defmodule PortalWeb.Sites.Components do
 
   def resource_filters_empty_state(assigns) do
     ~H"""
-    <div class="flex items-center justify-center rounded border border-dashed border-border px-4 py-5 text-xs text-subtle">
+    <div class="flex items-center justify-center rounded border border-dashed border-hair px-4 py-5 text-xs text-muted">
       No restrictions - all traffic is permitted
     </div>
     """
@@ -1940,10 +2022,10 @@ defmodule PortalWeb.Sites.Components do
 
   def resource_filter_row(assigns) do
     ~H"""
-    <div class="flex items-center gap-2 rounded border border-border bg-surface px-3 py-2">
+    <div class="flex items-center gap-2 rounded border border-hair bg-bg px-3 py-2">
       <input type="hidden" name={"resource[filters][#{@protocol}][enabled]"} value="true" />
       <input type="hidden" name={"resource[filters][#{@protocol}][protocol]"} value={"#{@protocol}"} />
-      <span class="w-10 shrink-0 text-xs font-medium text-heading uppercase">
+      <span class="w-10 shrink-0 text-xs font-medium text-fg uppercase">
         {@protocol}
       </span>
       <div :if={@protocol != :icmp} class="flex-1">
@@ -1952,17 +2034,17 @@ defmodule PortalWeb.Sites.Components do
           name={"resource[filters][#{@protocol}][ports]"}
           value={@ports}
           placeholder="All ports"
-          class="w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-subtle outline-none transition-colors border-input-border focus:border-border-focus focus:ring-1 focus:ring-border-focus/30"
+          class="w-full px-3 py-2 text-sm rounded-md border font-mono bg-bg text-fg placeholder:text-muted outline-none transition-colors border-hair focus:border-border-focus focus:ring-1 focus:ring-border-focus/30"
         />
       </div>
-      <span :if={@protocol == :icmp} class="flex-1 text-xs text-subtle italic">
+      <span :if={@protocol == :icmp} class="flex-1 text-xs text-muted italic">
         echo request/reply
       </span>
       <button
         type="button"
         phx-click="remove_resource_filter"
         phx-value-protocol={"#{@protocol}"}
-        class="shrink-0 text-subtle hover:text-heading transition-colors"
+        class="shrink-0 text-muted hover:text-fg transition-colors"
         aria-label={"Remove #{@protocol} filter"}
       >
         <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
@@ -2003,9 +2085,9 @@ defmodule PortalWeb.Sites.Components do
           <div>
             <label
               for={@form[:name].id}
-              class="block text-xs font-medium text-body mb-1.5"
+              class="block text-xs font-medium text-fg mb-1.5"
             >
-              Name <span class="text-error">*</span>
+              Name <span class="text-attn">*</span>
             </label>
             <Form.input
               field={@form[:name]}
@@ -2195,4 +2277,18 @@ defmodule PortalWeb.Sites.Components do
     sudo ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || sudo ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
     """
   end
+
+  # The listed gateways include every online one, and device_tokens is keyed
+  # by the id of each gateway holding a single-owner token
+  defp panel_status(%{details: :ok} = assigns) do
+    {status, _offline_count} =
+      site_health(
+        assigns.gateways |> Enum.filter(& &1.online?) |> MapSet.new(& &1.id),
+        assigns.device_tokens |> Map.keys() |> MapSet.new()
+      )
+
+    status
+  end
+
+  defp panel_status(_assigns), do: nil
 end

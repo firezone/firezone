@@ -2,6 +2,7 @@ defmodule PortalWeb.Policies.Components do
   use PortalWeb, :component_library
   alias PortalWeb.Policies.{Database, Postures}
   alias PortalWeb.Policies.PostureComponents
+  alias Phoenix.LiveView.AsyncResult
 
   @days_of_week [
     {"M", "Monday"},
@@ -97,10 +98,11 @@ defmodule PortalWeb.Policies.Components do
   attr :conditions_state, :map, required: true
   attr :postures, :map, required: true
   attr :confirm_state, :map, required: true
-  attr :policy_authorizations, :list, default: []
+  attr :policy_authorizations, AsyncResult, required: true
   attr :policy_authorizations_page, :integer, default: 1
-  attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
+  attr :details, AsyncResult, required: true
+  attr :who, :map, required: true
 
   def policy_panel(assigns) do
     cs = assigns.conditions_state
@@ -123,20 +125,10 @@ defmodule PortalWeb.Policies.Components do
       })
 
     ~H"""
-    <div
+    <Page.detail_modal
       id="policy-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@policy || @panel.panel_view in [:edit_form, :new_form],
-          do: "translate-x-0",
-          else: "translate-x-full"
-        )
-      ]}
-      phx-window-keydown="handle_keydown"
-      phx-key="Escape"
+      open={not is_nil(@policy) or @panel.panel_view in [:edit_form, :new_form]}
+      on_close="handle_keydown"
     >
       <.policy_form_view
         :if={@panel.panel_view == :new_form}
@@ -152,6 +144,7 @@ defmodule PortalWeb.Policies.Components do
         panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
         conditions_state={@form_conditions_state}
         postures={@postures}
+        who={@who}
         mode={:new}
       />
 
@@ -169,6 +162,7 @@ defmodule PortalWeb.Policies.Components do
         panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
         conditions_state={@form_conditions_state}
         postures={@postures}
+        who={@who}
         mode={:edit}
       />
 
@@ -186,7 +180,7 @@ defmodule PortalWeb.Policies.Components do
           </p>
         </:body>
         <:cancel_button>Cancel</:cancel_button>
-        <:confirm_button>Save Changes</:confirm_button>
+        <:confirm_button>Save changes</:confirm_button>
       </Form.modal>
 
       <.policy_details_view
@@ -203,10 +197,10 @@ defmodule PortalWeb.Policies.Components do
         confirm_delete_policy={@confirm_state.confirm_delete_policy}
         policy_authorizations={@policy_authorizations}
         policy_authorizations_page={@policy_authorizations_page}
-        policy_authorizations_has_next={@policy_authorizations_has_next}
         policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
+        details={@details}
       />
-    </div>
+    </Page.detail_modal>
     """
   end
 
@@ -222,13 +216,19 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_conditions_dropdown_open, :boolean, default: false
   attr :conditions_state, :map, required: true
   attr :mode, :atom, required: true
+  attr :who, :map, required: true
 
   attr :postures, :map, required: true
 
   def policy_form_view(assigns) do
     ~H"""
-    <div class="flex flex-col h-full overflow-hidden">
-      <.policy_form_header mode={@mode} />
+    <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
+      <Form.panel_header
+        title={if @mode == :new, do: "Add a policy", else: "Edit policy"}
+        close_event="cancel_policy_form"
+      >
+        <:leading><Core.icon name="ri-shield-check-line" class="w-5 h-5 text-muted" /></:leading>
+      </Form.panel_header>
       <.form
         id="policy-form"
         for={@panel_form}
@@ -250,24 +250,10 @@ defmodule PortalWeb.Policies.Components do
           panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
           conditions_state={@conditions_state}
           postures={@postures}
+          who={@who}
         />
-        <.policy_form_actions mode={@mode} postures={@postures} />
+        <.policy_form_actions mode={@mode} postures={@postures} who={@who} />
       </.form>
-    </div>
-    """
-  end
-
-  attr :mode, :atom, required: true
-
-  def policy_form_header(assigns) do
-    ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold text-heading">
-          {if @mode == :new, do: "Add Policy", else: "Edit Policy"}
-        </h2>
-        <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_policy_form" />
-      </div>
     </div>
     """
   end
@@ -284,20 +270,37 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_active_conditions, :list, default: []
   attr :panel_conditions_dropdown_open, :boolean, default: false
   attr :conditions_state, :map, required: true
+  attr :who, :map, required: true
 
   attr :postures, :map, required: true
 
   def policy_form_body(assigns) do
     ~H"""
-    <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+    <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
       <.policy_form_error panel_form={@panel_form} />
       <.policy_fields
         mode={@mode}
         panel_form={@panel_form}
         panel_selected_resource={@panel_selected_resource}
         subject={@subject}
+        who={@who}
       />
-      <PostureComponents.policy_restrictions id="policy-postures" account={@account} state={@postures}>
+      <p
+        :if={@who.mode == :people}
+        id="policy-people-note"
+        class="flex items-start gap-2 px-3 py-2.5 border border-hair text-xs text-muted"
+      >
+        <Core.icon name="ri-information-line" class="w-4 h-4 shrink-0" />
+        <span>
+          People you pick here get access with no conditions. To add conditions or device posture checks, give access to a group instead.
+        </span>
+      </p>
+      <PostureComponents.policy_restrictions
+        :if={@who.mode == :group}
+        id="policy-postures"
+        account={@account}
+        state={@postures}
+      >
         <.policy_conditions_section
           account={@account}
           mode={@mode}
@@ -335,18 +338,176 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_form, :any, default: nil
   attr :panel_selected_resource, :any, default: nil
   attr :subject, :any, required: true
+  attr :who, :map, required: true
 
   def policy_fields(assigns) do
     ~H"""
     <fieldset class="flex flex-col gap-4">
-      <.policy_group_field mode={@mode} panel_form={@panel_form} subject={@subject} />
-      <.policy_resource_field mode={@mode} panel_form={@panel_form} subject={@subject} />
-      <.policy_description_field panel_form={@panel_form} />
+      <.policy_who_toggle :if={@mode == :new} who={@who} />
+      <.policy_group_field
+        :if={@who.mode == :group and is_nil(@who.direct_people)}
+        mode={@mode}
+        panel_form={@panel_form}
+        subject={@subject}
+      />
+      <.policy_direct_people_field
+        :if={@who.mode == :group and not is_nil(@who.direct_people)}
+        panel_form={@panel_form}
+        names={@who.direct_people}
+      />
+      <.policy_people_field :if={@who.mode == :people} who={@who} />
+      <.policy_resource_field
+        :if={is_nil(@who.direct_people)}
+        mode={@mode}
+        panel_form={@panel_form}
+        subject={@subject}
+      />
+      <div :if={@who.direct_people} id="policy-direct-resource">
+        <input
+          type="hidden"
+          name={@panel_form[:resource_id].name}
+          value={@panel_form[:resource_id].value}
+        />
+        <p class="mb-1 text-xs font-semibold text-fg">Resource</p>
+        <p class="flex items-center gap-2 text-sm">
+          <Core.icon name="ri-server-line" class="w-4 h-4 text-muted" />
+          {@panel_selected_resource && @panel_selected_resource.name}
+        </p>
+      </div>
+      <.policy_description_field :if={@who.mode == :group} panel_form={@panel_form} />
       <.policy_flow_log_uploads_field
+        :if={@who.mode == :group}
         panel_form={@panel_form}
         panel_selected_resource={@panel_selected_resource}
       />
     </fieldset>
+    """
+  end
+
+  attr :who, :map, required: true
+
+  defp policy_who_toggle(assigns) do
+    ~H"""
+    <div id="policy-who">
+      <p class="mb-1.5 text-xs font-semibold text-fg">Who gets access</p>
+      <div class="inline-flex border border-rule" role="radiogroup">
+        <button
+          :for={
+            {mode, label, icon} <- [
+              {:group, "A group", "ri-group-line"},
+              {:people, "People", "ri-user-line"}
+            ]
+          }
+          id={"policy-who-#{mode}"}
+          type="button"
+          role="radio"
+          aria-checked={to_string(@who.mode == mode)}
+          phx-click="set_policy_who"
+          phx-value-who={mode}
+          class={[
+            "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm",
+            if(@who.mode == mode, do: "bg-fg text-bg", else: "text-muted hover:text-fg hover:bg-hover")
+          ]}
+        >
+          <Core.icon name={icon} class="w-4 h-4" /> {label}
+        </button>
+      </div>
+      <p class="mt-1 text-xs text-muted">
+        {if @who.mode == :group,
+          do: "Everyone in the group can reach the resource.",
+          else: "Pick people or service accounts. No group is needed."}
+      </p>
+    </div>
+    """
+  end
+
+  attr :panel_form, :any, required: true
+  attr :names, :list, required: true
+
+  defp policy_direct_people_field(assigns) do
+    ~H"""
+    <div id="policy-direct-people">
+      <input type="hidden" name={@panel_form[:group_id].name} value={@panel_form[:group_id].value} />
+      <p class="mb-1 text-xs font-semibold text-fg">Who gets access</p>
+      <p class="flex items-center gap-2 text-sm">
+        <Core.icon name="ri-user-line" class="w-4 h-4 text-muted" />
+        {PortalWeb.Access.Components.people_label(@names)}
+      </p>
+      <p class="mt-1 text-xs text-muted">Add or remove these people on the resource.</p>
+    </div>
+    """
+  end
+
+  attr :who, :map, required: true
+
+  defp policy_people_field(assigns) do
+    ~H"""
+    <div id="policy-people">
+      <label for="policy-people-search" class="block mb-1.5 text-xs font-semibold text-fg">
+        People and service accounts
+      </label>
+      <div :if={@who.selected != []} class="flex flex-wrap gap-1.5 mb-2">
+        <span
+          :for={actor <- @who.selected}
+          id={"policy-person-#{actor.id}"}
+          class="inline-flex items-center gap-1 border border-rule px-2 py-px text-xs"
+        >
+          <Core.icon
+            name={if actor.type == :service_account, do: "ri-robot-2-line", else: "ri-user-line"}
+            class="w-3 h-3 text-muted"
+          />
+          {actor.name}
+          <button
+            type="button"
+            phx-click="remove_policy_person"
+            phx-value-id={actor.id}
+            title={"Remove #{actor.name}"}
+            class="text-muted hover:text-fg"
+          >
+            <Core.icon name="ri-close-line" class="w-3 h-3" />
+          </button>
+        </span>
+      </div>
+      <div class="relative">
+        <Core.icon
+          name="ri-search-line"
+          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none"
+        />
+        <input
+          id="policy-people-search"
+          type="text"
+          name="_people_search"
+          value={@who.search}
+          placeholder="Search by name or email"
+          phx-debounce="300"
+          autocomplete="off"
+          class="w-full pl-8 pr-3 py-2 text-sm bg-bg text-fg border border-rule placeholder:text-faint focus:border-fg focus:ring-0"
+        />
+      </div>
+      <ul :if={@who.results != []} id="policy-people-results" class="border border-t-0 border-rule">
+        <li :for={actor <- @who.results} class="border-b border-hair last:border-b-0">
+          <button
+            type="button"
+            phx-click="add_policy_person"
+            phx-value-id={actor.id}
+            class="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-hover"
+          >
+            <Core.icon
+              name={if actor.type == :service_account, do: "ri-robot-2-line", else: "ri-user-line"}
+              class="w-4 h-4 text-muted"
+            />
+            <span class="text-fg">{actor.name}</span>
+            <span :if={actor.email} class="text-xs text-muted truncate">{actor.email}</span>
+          </button>
+        </li>
+      </ul>
+      <p :if={@who.search != "" and @who.results == []} class="mt-1 text-xs text-muted">
+        Nobody matches "{@who.search}".
+      </p>
+      <p :if={@who.error} id="policy-people-error" class="mt-1 flex items-center gap-1 text-xs text-attn">
+        <Core.icon name="ri-alert-line" class="w-3.5 h-3.5" /> {@who.error}
+      </p>
+    </div>
     """
   end
 
@@ -701,6 +862,7 @@ defmodule PortalWeb.Policies.Components do
 
   attr :mode, :atom, required: true
   attr :postures, :map, required: true
+  attr :who, :map, required: true
 
   def policy_form_actions(assigns) do
     ~H"""
@@ -708,13 +870,21 @@ defmodule PortalWeb.Policies.Components do
       <Form.panel_footer_button type="button" phx-click="cancel_policy_form">
         Cancel
       </Form.panel_footer_button>
-      <Form.panel_footer_button type="submit" style="primary" disabled={Postures.blocked?(@postures)}>
-        {if @mode == :new, do: "Create Policy", else: "Save Changes"}
+      <Form.panel_footer_button
+        type="submit"
+        style="primary"
+        disabled={@who.mode == :group and Postures.blocked?(@postures)}
+      >
+        {submit_label(@mode, @who.mode)}
       </Form.panel_footer_button>
     </Form.panel_footer>
     """
   end
 
+  defp submit_label(:new, :people), do: "Grant access"
+  defp submit_label(:new, _who), do: "Create policy"
+  defp submit_label(:edit, _who), do: "Save changes"
+
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
@@ -724,239 +894,311 @@ defmodule PortalWeb.Policies.Components do
   attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
-  attr :policy_authorizations, :list, default: []
+  attr :policy_authorizations, AsyncResult, required: true
   attr :policy_authorizations_page, :integer, default: 1
-  attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :connected_posture_providers, :list, default: nil
+  attr :details, AsyncResult, required: true
 
   def policy_details_view(assigns) do
-    ~H"""
-    <div class="flex flex-col h-full overflow-hidden">
-      <.policy_details_header policy={@policy} />
-      <.policy_details_layout
-        connected_posture_providers={@connected_posture_providers}
-        account={@account}
-        policy={@policy}
-        providers={@providers}
-        disabled_providers={@disabled_providers}
-        x509_auth_provider_id={@x509_auth_provider_id}
-        has_trust_anchors?={@has_trust_anchors?}
-        tab={@tab}
-        confirm_disable_policy={@confirm_disable_policy}
-        confirm_delete_policy={@confirm_delete_policy}
-        policy_authorizations={@policy_authorizations}
-        policy_authorizations_page={@policy_authorizations_page}
-        policy_authorizations_has_next={@policy_authorizations_has_next}
-        policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
-      />
-    </div>
-    """
-  end
+    assigns = assign(assigns, :who, who_label(assigns.policy, loaded_details(assigns.details)))
 
-  attr :account, :any, required: true
-  attr :policy, :any, required: true
-  attr :providers, :list, default: []
-  attr :disabled_providers, :list, default: []
-  attr :x509_auth_provider_id, :string, default: nil
-  attr :has_trust_anchors?, :boolean, default: false
-  attr :tab, :atom, default: :overview
-  attr :confirm_disable_policy, :boolean, default: false
-  attr :confirm_delete_policy, :boolean, default: false
-  attr :policy_authorizations, :list, default: []
-  attr :policy_authorizations_page, :integer, default: 1
-  attr :policy_authorizations_has_next, :boolean, default: false
-  attr :policy_authorizations_expanded_id, :string, default: nil
-  attr :connected_posture_providers, :list, default: nil
-
-  def policy_details_layout(assigns) do
     ~H"""
-    <div class="flex flex-1 min-h-0 divide-x divide-border">
-      <div class="flex-1 flex flex-col overflow-hidden">
-        <div
-          role="tablist"
-          class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
-        >
-          <button
-            role="tab"
-            aria-selected={@tab == :overview}
-            phx-click="switch_policy_tab"
-            phx-value-tab="overview"
-            class={[
-              "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-              if(@tab == :overview,
-                do: "border-brand text-brand",
-                else: "border-transparent text-body hover:text-heading"
-              )
-            ]}
+    <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
+      <Form.panel_header title={"#{@who} → #{@policy.resource.name}"} close_event="close_panel">
+        <:leading><Core.icon name="ri-shield-check-line" class="w-5 h-5 text-muted" /></:leading>
+        <:adornment><.policy_status_badge is_disabled={@policy.is_disabled} /></:adornment>
+        <:actions>
+          <Form.button
+            phx-click={Page.instant("Edit policy") |> JS.push("open_edit_form")}
+            size="sm"
+            icon="ri-pencil-line"
           >
-            Overview
-          </button>
-          <button
-            role="tab"
-            aria-selected={@tab == :authorizations}
-            phx-click="switch_policy_tab"
-            phx-value-tab="authorizations"
-            class={[
-              "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-              if(@tab == :authorizations,
-                do: "border-brand text-brand",
-                else: "border-transparent text-body hover:text-heading"
-              )
-            ]}
-          >
-            Authorizations
-          </button>
-        </div>
-        <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
-          <.policy_access_mapping account={@account} policy={@policy} />
-          <.policy_conditions_list
-            connected_posture_providers={@connected_posture_providers}
-            account={@account}
-            policy={@policy}
-            providers={@providers}
-            disabled_providers={@disabled_providers}
-            x509_auth_provider_id={@x509_auth_provider_id}
-            has_trust_anchors?={@has_trust_anchors?}
-          />
-        </div>
-        <.policy_authorizations_tab
-          :if={@tab == :authorizations}
-          account={@account}
-          policy={@policy}
-          policy_authorizations={@policy_authorizations}
-          page={@policy_authorizations_page}
-          has_next={@policy_authorizations_has_next}
-          expanded_id={@policy_authorizations_expanded_id}
-        />
-      </div>
-      <.policy_sidebar
-        policy={@policy}
-        confirm_disable_policy={@confirm_disable_policy}
-        confirm_delete_policy={@confirm_delete_policy}
-      />
-    </div>
-    """
-  end
-
-  attr :policy, :any, required: true
-
-  def policy_details_header(assigns) do
-    ~H"""
-    <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
-      <div class="flex items-center gap-4">
-        <%!-- Left: title + status + ID --%>
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold text-heading truncate">
-              <%= if @policy.group do %>
-                {@policy.group.name} — {@policy.resource.name}
-              <% else %>
-                <span class="text-warning">(Group deleted)</span> — {@policy.resource.name}
-              <% end %>
-            </h2>
-            <.policy_status_badge is_disabled={@policy.is_disabled} />
-          </div>
-          <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@policy.id}</p>
-        </div>
-        <%!-- Right: actions --%>
-        <div class="flex items-center gap-1.5 shrink-0">
-          <Form.button phx-click="open_edit_form" size="sm" icon="ri-pencil-line">
             Edit
           </Form.button>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+        </:actions>
+      </Form.panel_header>
+      <div role="tablist" class="flex items-end gap-5 px-6 border-b border-hair shrink-0">
+        <button
+          :for={
+            {tab, label, icon} <- [
+              {:overview, "Overview", "ri-file-list-3-line"},
+              {:authorizations, "Authorizations", "ri-key-2-line"}
+            ]
+          }
+          role="tab"
+          aria-selected={@tab == tab}
+          phx-click="switch_policy_tab"
+          phx-value-tab={tab}
+          class={[
+            "flex items-center gap-1.5 py-2.5 text-sm border-b-2 -mb-px",
+            if(@tab == tab, do: "border-fg text-fg font-medium", else: "border-transparent text-muted hover:text-fg")
+          ]}
+        >
+          <Core.icon name={icon} class="w-4 h-4" /> {label}
+        </button>
+      </div>
+      <div :if={@tab == :overview} class="flex-1 overflow-y-auto px-6 py-5">
+        <.policy_sentence account={@account} policy={@policy} who={@who} />
+        <Table.vertical_table id="policy-details">
+          <Table.vertical_table_row>
+            <:label>Conditions</:label>
+            <:value>
+              <.policy_conditions_list
+                connected_posture_providers={@connected_posture_providers}
+                account={@account}
+                policy={@policy}
+                providers={@providers}
+                disabled_providers={@disabled_providers}
+                x509_auth_provider_id={@x509_auth_provider_id}
+                has_trust_anchors?={@has_trust_anchors?}
+              />
+            </:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row>
+            <:label>Route</:label>
+            <:value><.policy_route account={@account} policy={@policy} /></:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row>
+            <:label>Carried by</:label>
+            <:value>
+              <.async_result :let={details} assign={@details}>
+                <:loading><.loading_bars id="policy-carriers-loading" /></:loading>
+                <:failed><.load_failed /></:failed>
+                <.policy_carriers account={@account} details={details} />
+              </.async_result>
+            </:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row>
+            <:label>Who gets this access</:label>
+            <:value>
+              <.async_result :let={details} assign={@details}>
+                <:loading><.loading_bars id="policy-members-loading" /></:loading>
+                <:failed><.load_failed /></:failed>
+                <.policy_members account={@account} policy={@policy} details={details} />
+              </.async_result>
+            </:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row :if={@policy.description}>
+            <:label>Description</:label>
+            <:value>{@policy.description}</:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row>
+            <:label>Flow log reporting</:label>
+            <:value>{if @policy.flow_log_uploads_enabled, do: "Enabled", else: "Disabled"}</:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row>
+            <:label>Device attestation</:label>
+            <:value>{if @policy.require_attestation, do: "Required", else: "Not required"}</:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row>
+            <:label>Created</:label>
+            <:value><Core.relative_datetime datetime={@policy.inserted_at} /></:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row>
+            <:label>Policy ID</:label>
+            <:value><span class="font-mono text-xs break-all">{@policy.id}</span></:value>
+          </Table.vertical_table_row>
+        </Table.vertical_table>
+        <div class="grid gap-6 mt-6 sm:grid-cols-2">
+          <.policy_actions_section policy={@policy} confirm_disable_policy={@confirm_disable_policy} />
+          <.policy_danger_zone confirm_delete_policy={@confirm_delete_policy} />
         </div>
       </div>
+      <.policy_authorizations_tab
+        :if={@tab == :authorizations}
+        account={@account}
+        policy={@policy}
+        policy_authorizations={@policy_authorizations}
+        page={@policy_authorizations_page}
+        expanded_id={@policy_authorizations_expanded_id}
+      />
     </div>
+    """
+  end
+
+  @doc "How the group of a policy reads: its name, the direct-access people, or a deleted group."
+  def who_label(%{group: nil}, _details), do: "Deleted group"
+
+  def who_label(%{group: group}, details) do
+    cond do
+      not PortalWeb.DirectAccess.direct_group?(group) -> group.name
+      is_nil(details) -> "People"
+      true -> PortalWeb.Access.Components.people_label(details.people || [])
+    end
+  end
+
+  defp loaded_details(%AsyncResult{ok?: true, result: details}), do: details
+  defp loaded_details(_details), do: nil
+
+  attr :id, :string, required: true
+
+  defp loading_bars(assigns) do
+    ~H"""
+    <span id={@id} class="flex flex-col gap-1.5 py-0.5 animate-pulse" aria-busy="true">
+      <span class="block h-3 w-48 bg-hover"></span>
+      <span class="block h-3 w-32 bg-hair"></span>
+    </span>
+    """
+  end
+
+  defp load_failed(assigns) do
+    ~H"""
+    <span class="text-xs text-muted">Could not load this. Reload the page to try again.</span>
     """
   end
 
   attr :account, :any, required: true
   attr :policy, :any, required: true
+  attr :who, :string, required: true
 
-  def policy_access_mapping(assigns) do
+  defp policy_sentence(assigns) do
     ~H"""
-    <div class="px-5 pt-4 pb-4 border-b border-border">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
-          Access Mapping
-        </h3>
-      </div>
-      <div class="flex items-stretch gap-2">
-        <.policy_group_mapping_card account={@account} policy={@policy} />
-        <.policy_mapping_arrow />
-        <.policy_resource_mapping_card account={@account} policy={@policy} />
-      </div>
-    </div>
-    """
-  end
-
-  attr :account, :any, required: true
-  attr :policy, :any, required: true
-
-  def policy_group_mapping_card(assigns) do
-    ~H"""
-    <%= if @policy.group do %>
-      <Navigation.link
-        navigate={~p"/#{@account}/groups/#{@policy.group}"}
-        class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-emphasis hover:bg-surface transition-colors text-left group"
+    <p id="policy-sentence" class="mb-5 text-xl leading-snug tracking-tight text-muted">
+      <%= cond do %>
+        <% is_nil(@policy.group) -> %>
+          <b class="font-semibold text-attn">A deleted group</b>
+        <% PortalWeb.DirectAccess.direct_group?(@policy.group) -> %>
+          <.link
+            navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
+            class="font-semibold text-fg hover:underline"
+          >
+            {@who}
+          </.link>
+        <% true -> %>
+          <.link
+            navigate={~p"/#{@account}/groups/#{@policy.group}"}
+            class="font-semibold text-fg hover:underline"
+          >
+            {@who}
+          </.link>
+      <% end %>
+      {if @policy.is_disabled, do: "could reach", else: "can reach"}
+      <.link
+        navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
+        class="font-semibold text-fg hover:underline"
       >
-        <Core.provider_icon provider={Core.provider_type_from_group(@policy.group)} size="sm" variant="circle" />
-        <div class="min-w-0">
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
-            Group
-          </p>
-          <p class="text-sm font-medium text-heading group-hover:text-brand transition-colors truncate">
-            {@policy.group.name}
-          </p>
-        </div>
-      </Navigation.link>
-    <% else %>
-      <div class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-warning/30 bg-warning-light">
-        <Core.icon name="ri-error-warning-line" class="w-5 h-5 text-warning shrink-0" />
-        <div class="min-w-0">
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
-            Group
-          </p>
-          <p class="text-sm text-warning">Group deleted</p>
-        </div>
-      </div>
-    <% end %>
-    """
-  end
-
-  def policy_mapping_arrow(assigns) do
-    ~H"""
-    <div class="flex items-center shrink-0 text-subtle">
-      <Core.icon name="ri-arrow-right-long-line" class="w-5 h-5" />
-    </div>
+        {@policy.resource.name}
+      </.link>
+      <%= cond do %>
+        <% @policy.resource.type == :device_pool -> %>
+          directly, device to device.
+        <% @policy.resource.site -> %>
+          through
+          <.link
+            navigate={~p"/#{@account}/sites/#{@policy.resource.site_id}"}
+            class="font-semibold text-fg hover:underline"
+          >
+            {@policy.resource.site.name}
+          </.link>.
+        <% true -> %>
+          .
+      <% end %>
+      <span :if={@policy.is_disabled} class="block mt-1 text-sm text-attn">
+        This policy is disabled, so nobody gets this access right now.
+      </span>
+    </p>
     """
   end
 
   attr :account, :any, required: true
   attr :policy, :any, required: true
 
-  def policy_resource_mapping_card(assigns) do
+  defp policy_route(assigns) do
     ~H"""
-    <Navigation.link
-      navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
-      class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-emphasis hover:bg-surface transition-colors text-left group"
-    >
+    <span class="inline-flex flex-wrap items-center gap-2">
       <span class={ResourceType.type_badge_class(@policy.resource.type)}>
-        {@policy.resource.type}
+        {ResourceType.resource_type_label(@policy.resource.type)}
       </span>
-      <div class="min-w-0">
-        <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
-          Resource
-        </p>
-        <p class="text-sm font-medium text-heading group-hover:text-brand transition-colors truncate">
-          {@policy.resource.name}
-        </p>
-        <p class="font-mono text-xs text-subtle truncate">
-          {@policy.resource.address}
-        </p>
-      </div>
-    </Navigation.link>
+      <span :if={@policy.resource.address} class="font-mono text-xs">{@policy.resource.address}</span>
+      <PortalWeb.Access.Components.chip
+        :if={@policy.resource.site}
+        navigate={~p"/#{@account}/sites/#{@policy.resource.site_id}"}
+        icon="ri-building-line"
+      >
+        {@policy.resource.site.name}
+      </PortalWeb.Access.Components.chip>
+      <PortalWeb.Access.Components.chip
+        :if={@policy.resource.type == :device_pool}
+        dashed
+        icon="ri-git-commit-line"
+      >
+        Direct to devices
+      </PortalWeb.Access.Components.chip>
+    </span>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :details, :map, required: true
+
+  defp policy_carriers(assigns) do
+    ~H"""
+    <span :if={@details.pool_label} class="text-muted">{@details.pool_label}</span>
+    <span
+      :if={is_nil(@details.pool_label) and @details.carriers == []}
+      class="text-attn"
+    >
+      No device carries this resource yet.
+    </span>
+    <span :if={@details.carriers != []} class="flex flex-wrap gap-x-4 gap-y-1">
+      <.link
+        :for={device <- @details.carriers}
+        navigate={~p"/#{@account}/devices/#{device.id}"}
+        class="inline-flex items-center gap-1.5 hover:underline"
+      >
+        <span
+          :if={device.online}
+          class="inline-block w-2 h-2 rounded-full bg-fg"
+          title="Online"
+        >
+        </span>
+        <span
+          :if={not device.online}
+          class="inline-block w-2 h-2 rounded-full border border-attn"
+          title="Offline"
+        >
+        </span>
+        {device.name}
+        <span :if={not device.online} class="text-xs text-attn">offline</span>
+      </.link>
+    </span>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :policy, :any, required: true
+  attr :details, :map, required: true
+
+  defp policy_members(assigns) do
+    ~H"""
+    <%= cond do %>
+      <% @details.everyone? -> %>
+        <span>Everyone who signs in to this account</span>
+      <% @details.members == [] -> %>
+        <span class="text-attn">No members</span>
+      <% true -> %>
+        <span class="flex flex-wrap gap-x-3 gap-y-1">
+          <.link
+            :for={actor <- @details.members}
+            navigate={~p"/#{@account}/actors/#{actor.id}"}
+            class="inline-flex items-center gap-1 hover:underline"
+          >
+            <Core.icon
+              name={if actor.type == :service_account, do: "ri-robot-2-line", else: "ri-user-line"}
+              class="w-3.5 h-3.5 text-muted"
+            />
+            {actor.name}
+          </.link>
+          <.link
+            :if={@details.member_count > length(@details.members) and @policy.group}
+            navigate={~p"/#{@account}/groups/#{@policy.group}"}
+            class="text-muted hover:text-fg hover:underline"
+          >
+            and {@details.member_count - length(@details.members)} more
+          </.link>
+        </span>
+    <% end %>
     """
   end
 
@@ -970,16 +1212,9 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_conditions_list(assigns) do
     ~H"""
-    <div class="px-5 pt-4 pb-4">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
-          Conditions
-        </h3>
-      </div>
+    <div id="policy-conditions">
       <%= if @policy.conditions == [] do %>
-        <p class="text-xs text-subtle">
-          No conditions — access is always granted to group members.
-        </p>
+        <p class="text-muted">None. Every member gets access.</p>
       <% else %>
         <ul class="space-y-2">
           <.policy_condition_row
@@ -1013,7 +1248,7 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_condition_row(assigns) do
     ~H"""
-    <li class="flex items-start gap-3 px-3 py-2.5 rounded border border-border bg-raised">
+    <li class="flex items-start gap-3 px-3 py-2 border border-hair">
       <span class={condition_type_badge_class(@condition.property)}>
         {condition_type_label(@condition.property)}
       </span>
@@ -1136,23 +1371,54 @@ defmodule PortalWeb.Policies.Components do
 
   attr :account, :any, required: true
   attr :policy, :any, required: true
-  attr :policy_authorizations, :list, default: []
+  attr :policy_authorizations, AsyncResult, required: true
   attr :page, :integer, default: 1
-  attr :has_next, :boolean, default: false
   attr :expanded_id, :string, default: nil
 
   def policy_authorizations_tab(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
       <Authorization.authorization_flow_logs_notice account={@account} />
+      <.async_result :let={authorizations} assign={@policy_authorizations}>
+        <:loading>
+          <div id="policy-authorizations-loading" class="flex flex-col gap-3 px-4 py-4 animate-pulse" aria-busy="true">
+            <span :for={_ <- 1..4} class="block h-3 w-full bg-hover"></span>
+          </div>
+        </:loading>
+        <:failed>
+          <p class="px-4 py-4"><.load_failed /></p>
+        </:failed>
+        <.policy_authorizations_table
+          account={@account}
+          policy={@policy}
+          rows={authorizations.rows}
+          page={@page}
+          has_next={authorizations.has_next}
+          expanded_id={@expanded_id}
+        />
+      </.async_result>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :policy, :any, required: true
+  attr :rows, :list, required: true
+  attr :page, :integer, required: true
+  attr :has_next, :boolean, required: true
+  attr :expanded_id, :string, default: nil
+
+  defp policy_authorizations_table(assigns) do
+    ~H"""
+    <div class="contents">
       <div
-        :if={@policy_authorizations == []}
+        :if={@rows == []}
         class="flex flex-1 flex-col items-center justify-center gap-2 text-subtle"
       >
         <Core.icon name="ri-shield-check-line" class="w-8 h-8" />
         <p class="text-sm">No recent authorizations</p>
       </div>
-      <div :if={@policy_authorizations != []} class="flex-1 flex flex-col overflow-hidden">
+      <div :if={@rows != []} class="flex-1 flex flex-col overflow-hidden">
         <div class="flex-1 overflow-y-auto">
           <table class="w-full text-xs">
             <thead class="sticky top-0 bg-surface z-10">
@@ -1164,7 +1430,7 @@ defmodule PortalWeb.Policies.Components do
               </tr>
             </thead>
             <tbody>
-              <%= for row <- @policy_authorizations do %>
+              <%= for row <- @rows do %>
                 <tr
                   phx-click="toggle_policy_authorization_row"
                   phx-keydown="toggle_policy_authorization_row"
@@ -1281,75 +1547,12 @@ defmodule PortalWeb.Policies.Components do
 
   attr :policy, :any, required: true
   attr :confirm_disable_policy, :boolean, default: false
-  attr :confirm_delete_policy, :boolean, default: false
-
-  def policy_sidebar(assigns) do
-    ~H"""
-    <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
-      <.policy_details_section
-        policy={@policy}
-      />
-      <div class="border-t border-border"></div>
-      <.policy_actions_section
-        policy={@policy}
-        confirm_disable_policy={@confirm_disable_policy}
-      />
-      <div class="border-t border-border"></div>
-      <.policy_danger_zone confirm_delete_policy={@confirm_delete_policy} />
-    </div>
-    """
-  end
-
-  attr :policy, :any, required: true
-
-  def policy_details_section(assigns) do
-    ~H"""
-    <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-        Details
-      </h3>
-      <dl class="space-y-2.5">
-        <div>
-          <dt class="text-[10px] text-subtle mb-0.5">Policy ID</dt>
-          <dd class="font-mono text-[11px] text-body break-all font-medium">
-            {@policy.id}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-          <dd class="text-xs text-body font-medium">
-            <Core.relative_datetime datetime={@policy.inserted_at} />
-          </dd>
-        </div>
-        <div>
-          <dt class="text-[10px] text-subtle mb-0.5">Flow log reporting</dt>
-          <dd class="text-xs text-body font-medium">
-            {if @policy.flow_log_uploads_enabled, do: "Enabled", else: "Disabled"}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-[10px] text-subtle mb-0.5">Device attestation</dt>
-          <dd class="text-xs text-body font-medium">
-            {if @policy.require_attestation, do: "Required", else: "Not required"}
-          </dd>
-        </div>
-        <div :if={@policy.description}>
-          <dt class="text-[10px] text-subtle mb-0.5">Description</dt>
-          <dd class="text-xs text-body font-medium">{@policy.description}</dd>
-        </div>
-      </dl>
-    </section>
-    """
-  end
-
-  attr :policy, :any, required: true
-  attr :confirm_disable_policy, :boolean, default: false
 
   def policy_actions_section(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-        Actions
+      <h3 class="flex items-center gap-1.5 mb-3 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+        <Core.icon name="ri-toggle-line" class="w-3.5 h-3.5" /> Actions
       </h3>
       <div class="space-y-2">
         <Form.action_button
@@ -1362,12 +1565,12 @@ defmodule PortalWeb.Policies.Components do
         </Form.action_button>
         <div
           :if={!@policy.is_disabled and @confirm_disable_policy}
-          class="px-3 py-2.5 rounded border border-border bg-raised"
+          class="px-3 py-2.5 border border-rule"
         >
-          <p class="text-xs font-medium text-heading mb-1">
+          <p class="text-xs font-medium text-fg mb-1">
             Disable this policy?
           </p>
-          <p class="text-xs text-body mb-3">
+          <p class="text-xs text-muted mb-3">
             This will immediately revoke all access granted by it.
           </p>
           <div class="flex items-center gap-1.5">
@@ -1397,25 +1600,25 @@ defmodule PortalWeb.Policies.Components do
   def policy_danger_zone(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
-        Danger Zone
+      <h3 class="flex items-center gap-1.5 mb-3 text-[11px] font-semibold tracking-[.12em] uppercase text-attn">
+        <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5" /> Danger zone
       </h3>
       <button
         :if={not @confirm_delete_policy}
         type="button"
         phx-click="confirm_delete_policy"
-        class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
+        class="w-full flex items-center gap-2 px-3 py-2 border border-attn text-xs text-attn hover:bg-attn-wash transition-colors"
       >
         <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete policy
       </button>
       <div
         :if={@confirm_delete_policy}
-        class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
+        class="px-3 py-2.5 border border-attn bg-attn-wash"
       >
-        <p class="text-xs font-medium text-error mb-1">
+        <p class="text-xs font-medium text-attn mb-1">
           Delete this policy?
         </p>
-        <p class="text-xs text-error/70 mb-3">
+        <p class="text-xs text-muted mb-3">
           All sessions authorized by it will be expired.
         </p>
         <div class="flex items-center gap-1.5">
@@ -1440,29 +1643,8 @@ defmodule PortalWeb.Policies.Components do
   def condition_short_label(_), do: "Condition"
 
   @spec condition_type_badge_class(atom()) :: String.t()
-  defp condition_type_badge_class(:client_verified),
-    do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
-
-  defp condition_type_badge_class(:auth_provider_id),
-    do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-badge-dns-text bg-badge-dns"
-
-  defp condition_type_badge_class(:remote_ip_location_region),
-    do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-badge-ip-text bg-badge-ip"
-
-  defp condition_type_badge_class(:remote_ip),
-    do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-badge-cidr-text bg-badge-cidr"
-
-  defp condition_type_badge_class(:current_utc_datetime),
-    do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-body bg-raised border border-border"
-
-  defp condition_type_badge_class(_),
-    do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-body bg-raised"
+  defp condition_type_badge_class(_property),
+    do: "inline-flex items-center gap-1 px-1.5 py-px border border-rule text-[11px] font-medium shrink-0 text-fg"
 
   @spec condition_values_display(map(), list(), any()) :: String.t()
   defp condition_values_display(%{property: :client_verified}, _providers, _account),
@@ -2262,6 +2444,7 @@ defmodule PortalWeb.Policies.Components do
     def list_group_options(search_query_or_nil, subject) do
       query =
         from(g in Portal.Group, as: :groups)
+        |> where([groups: g], is_nil(g.resource_id))
         |> join(:left, [groups: g], d in assoc(g, :directory),
           on: d.account_id == g.account_id,
           as: :directory

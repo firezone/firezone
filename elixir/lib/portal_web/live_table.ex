@@ -4,6 +4,7 @@ defmodule PortalWeb.LiveTable do
   on top of `Portal.Repo.list/3` and allows to render a table with sorting, filtering and pagination.
   """
   use Phoenix.LiveView
+  alias Phoenix.LiveView.JS
   alias PortalWeb.Components.Table
   alias PortalWeb.Components.Core
   alias PortalWeb.Components.Form
@@ -63,6 +64,12 @@ defmodule PortalWeb.LiveTable do
     attr :label, :string
     attr :field, :any, doc: "the cursor field that to be used for ordering for this column"
     attr :class, :string
+
+    attr :filter, :atom,
+      doc: """
+      the name of a filter this column belongs to. The column is only shown while
+      that filter is applied, so tables stay at their few default columns.
+      """
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
@@ -76,6 +83,8 @@ defmodule PortalWeb.LiveTable do
 
   slot :footer, doc: "content rendered centered in the paginator bar"
 
+  attr :modal_size, :string, default: "lg", doc: "the size of the modal a row opens, so its instant preview matches"
+
   def live_table(assigns) do
     assigns =
       assign(assigns, rows: if(assigns.query_error, do: [], else: assigns.rows))
@@ -83,7 +92,8 @@ defmodule PortalWeb.LiveTable do
     # Rows haven't loaded yet, e.g. on the static render before the loader runs.
     assigns =
       assign(assigns,
-        show_skeleton: assigns.loading and is_nil(assigns.query_error) and Enum.empty?(assigns.rows)
+        show_skeleton: assigns.loading and is_nil(assigns.query_error) and Enum.empty?(assigns.rows),
+        col: visible_columns(assigns.col, assigns.filter, assigns.filters)
       )
 
     ~H"""
@@ -99,7 +109,7 @@ defmodule PortalWeb.LiveTable do
       <div class="flex-1 overflow-auto flex flex-col">
         <table
           class={[
-            "w-full text-sm text-left text-body table-fixed shrink-0 transition-opacity",
+            "w-full text-sm text-left text-fg table-fixed shrink-0 transition-opacity",
             @loading and not @show_skeleton && "opacity-50"
           ]}
           id={@id}
@@ -123,15 +133,16 @@ defmodule PortalWeb.LiveTable do
               selected={not is_nil(@row_selected) and @row_selected.(row)}
               class={@row_class && @row_class.(row)}
               mapper={@row_item}
+              modal_size={@modal_size}
             />
           </tbody>
           <tbody :if={@show_skeleton} id={"#{@id}-skeleton"} aria-hidden="true">
             <tr
               :for={width <- ~w[w-40 w-28 w-36 w-24 w-32]}
-              class="border-b border-border animate-pulse"
+              class="border-b border-hair animate-pulse"
             >
-              <td :for={_col <- @col} class="px-4 py-3">
-                <div class={["h-2.5 rounded bg-border-strong max-w-full", width]}></div>
+              <td :for={_col <- @col} class="px-4 first:pl-6 py-3">
+                <div class={["h-2 bg-hair max-w-full", width]}></div>
               </td>
               <td :if={@action != []} class="px-3 py-3"></td>
             </tr>
@@ -143,9 +154,7 @@ defmodule PortalWeb.LiveTable do
           class="flex flex-1 items-center justify-center"
         >
           <div class="flex flex-col items-center gap-3 py-16">
-            <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-              <Core.icon name="ri-time-line" class="w-5 h-5 text-subtle" />
-            </div>
+            <Core.icon name="ri-time-line" class="w-6 h-6 text-faint" />
             <div class="text-center">
               <p class="text-sm font-medium text-heading">
                 Your query includes too many results
@@ -175,9 +184,7 @@ defmodule PortalWeb.LiveTable do
           class="flex flex-1 items-center justify-center"
         >
           <div class="flex flex-col items-center gap-3 py-16">
-            <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-              <Core.icon name="ri-search-line" class="w-4 h-4 text-subtle" />
-            </div>
+            <Core.icon name="ri-search-line" class="w-6 h-6 text-faint" />
             <div class="text-center">
               <p class="text-sm font-medium text-heading">No results found</p>
               <p class="text-xs text-subtle mt-0.5">
@@ -200,6 +207,66 @@ defmodule PortalWeb.LiveTable do
       <.paginator id={@id} metadata={@metadata} rows_count={Enum.count(@rows)} footer={@footer} />
     </div>
     """
+  end
+
+  # Columns tied to a filter only show while that filter is applied.
+  defp visible_columns(cols, form, filters) do
+    active = MapSet.new(active_filters(form, filters), & &1.name)
+    Enum.filter(cols, fn col -> is_nil(col[:filter]) or MapSet.member?(active, col[:filter]) end)
+  end
+
+  # The search box stays in the bar; every other filter lives in the Filters menu.
+  defp search_filter?(%{type: {:string, type}}) when type in [:websearch, :websearch_wide, :email],
+    do: true
+
+  defp search_filter?(_filter), do: false
+
+  # Filters holding a value the person picked, not the default.
+  defp active_filters(form, filters) do
+    Enum.filter(filters, fn filter ->
+      key = to_string(filter.name)
+
+      Map.has_key?(form.params, key) and not Map.get(form.params, "#{key}_default", false) and
+        form.params[key] not in [nil, "", [], %{}]
+    end)
+  end
+
+  defp filter_chip_value(%{values: values} = filter, value) when is_list(values) and values != [] do
+    picked =
+      value
+      |> List.wrap()
+      |> list_filter_current()
+      |> Enum.map(&to_string/1)
+
+    labels =
+      values
+      |> Enum.flat_map(fn
+        {_group, options} when is_list(options) -> options
+        option -> [option]
+      end)
+      |> Enum.flat_map(fn
+        {label, value} -> if to_string(value) in picked, do: [label], else: []
+        _other -> []
+      end)
+
+    case labels do
+      [] -> filter_chip_value(%{filter | values: []}, value)
+      labels -> Enum.join(labels, ", ")
+    end
+  end
+
+  defp filter_chip_value(%{type: :boolean}, _value), do: "yes"
+  defp filter_chip_value(%{type: {:range, :datetime}}, %{"preset" => preset}), do: preset_label(preset)
+  defp filter_chip_value(%{type: {:range, :datetime}}, _value), do: "custom range"
+  defp filter_chip_value(_filter, value) when is_binary(value), do: value
+  defp filter_chip_value(_filter, value) when is_list(value), do: Enum.join(value, ", ")
+  defp filter_chip_value(_filter, value), do: to_string(value)
+
+  defp preset_label(preset) do
+    Enum.find_value(@time_presets, "custom range", fn
+      {^preset, label, _} -> String.downcase(label)
+      _other -> nil
+    end)
   end
 
   # A filter that only holds its default value is not an active filter.
@@ -278,8 +345,19 @@ defmodule PortalWeb.LiveTable do
   defp notice_style(_), do: "bg-raised text-heading"
 
   defp resource_filter(assigns) do
+    {search, menu} = Enum.split_with(assigns.filters, &search_filter?/1)
+    active = active_filters(assigns.form, menu)
+
+    assigns =
+      assign(assigns,
+        search: search,
+        menu: menu,
+        active: active,
+        menu_id: "#{assigns.live_table_id}-filters-menu"
+      )
+
     ~H"""
-    <div class="flex items-start sm:items-center gap-3 px-6 py-3 border-b border-border bg-raised shrink-0">
+    <div class="flex items-start sm:items-center gap-3 px-6 pb-3 bg-bg shrink-0">
       <.form
         :if={@filters != []}
         id={"#{@live_table_id}-filters"}
@@ -287,32 +365,95 @@ defmodule PortalWeb.LiveTable do
         phx-change="filter"
         phx-debounce="100"
         data-prevent-enter-submit
-        class="flex flex-wrap items-center gap-x-3 gap-y-2 flex-1 min-w-0"
+        class="flex flex-wrap items-center gap-x-2 gap-y-2 flex-1 min-w-0"
       >
         <Form.input type="hidden" name="table_id" value={@live_table_id} />
         <.filter
-          :for={filter <- @filters}
+          :for={filter <- @search}
           live_table_id={@live_table_id}
           form={@form}
           filter={filter}
         />
+        <div
+          :if={@menu != []}
+          class="relative shrink-0"
+          phx-click-away={JS.add_class("hidden", to: "##{@menu_id}")}
+        >
+          <button
+            type="button"
+            id={"#{@live_table_id}-filters-button"}
+            phx-click={JS.toggle_class("hidden", to: "##{@menu_id}")}
+            aria-controls={@menu_id}
+            class={[
+              "inline-flex items-center gap-1.5 h-8 px-3 border text-[13px] font-medium transition-colors",
+              @active != [] && "border-fg bg-fg text-bg",
+              @active == [] && "border-rule text-fg hover:bg-hover"
+            ]}
+          >
+            <Core.icon name="ri-filter-3-line" class="w-3.5 h-3.5" /> Filters
+            <span :if={@active != []} class="tabular-nums">· {length(@active)}</span>
+          </button>
+          <div
+            id={@menu_id}
+            class="hidden absolute left-0 top-full mt-1 z-40 w-[min(26rem,calc(100vw-2rem))] max-h-[70vh] overflow-y-auto bg-bg border border-rule shadow-md"
+          >
+            <div
+              :for={filter <- @menu}
+              class="px-4 py-3 border-b border-hair last:border-b-0"
+            >
+              <p class="mb-2 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+                {filter.title}
+              </p>
+              <div class="flex flex-wrap items-center gap-2">
+                <.filter
+                  live_table_id={@live_table_id}
+                  form={@form}
+                  filter={filter}
+                  in_menu
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        <span
+          :for={filter <- @active}
+          id={"#{@live_table_id}-filter-chip-#{filter.name}"}
+          class="inline-flex items-center h-8 border border-rule text-[13px]"
+        >
+          <span class="pl-2.5 pr-1 text-muted">{filter.title}:</span>
+          <span class="pr-1.5 max-w-48 truncate text-fg">
+            {filter_chip_value(filter, @form.params[to_string(filter.name)])}
+          </span>
+          <label
+            class="flex items-center h-full px-1.5 border-l border-hair text-muted hover:text-fg hover:bg-hover cursor-pointer"
+            title={"Remove the #{filter.title} filter"}
+          >
+            <input
+              type="checkbox"
+              class="hidden"
+              name={"_reset:" <> @form[filter.name].name}
+              value="true"
+            />
+            <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
+          </label>
+        </span>
         <button
           :if={has_filter?(@form, @filters)}
           type="button"
           phx-click="filter"
           phx-value-table_id={@live_table_id}
           phx-value-filter={nil}
-          class="order-last inline-flex items-center gap-1 px-2.5 h-8 rounded text-xs font-medium text-body hover:text-heading hover:bg-surface cursor-pointer transition-colors shrink-0"
+          class="order-last inline-flex items-center gap-1 px-2 h-8 text-[13px] text-muted hover:text-fg underline-offset-4 hover:underline cursor-pointer shrink-0"
           title="Clear all filters"
         >
-          <Core.icon name="ri-close-line" class="w-3.5 h-3.5" /> Reset
+          Clear all
         </button>
       </.form>
       <span
         :if={@loading}
         id={"#{@live_table_id}-loading"}
         role="status"
-        class="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-body"
+        class="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted"
       >
         <Core.icon name="ri-loader-4-line" class="w-3.5 h-3.5 animate-spin" /> Running query...
       </span>
@@ -321,17 +462,17 @@ defmodule PortalWeb.LiveTable do
         id={"#{@live_table_id}-reload-btn"}
         type="button"
         style="warning"
-        size="xs"
+        size="sm"
         title="The table data has changed"
         phx-click="reload"
         phx-value-table_id={@live_table_id}
         class="shrink-0"
       >
-        <Core.icon name="ri-loop-left-line" class="mr-1 w-3 h-3" /> Reload
+        <Core.icon name="ri-loop-left-line" class="w-3.5 h-3.5" /> Reload
       </Form.button>
       <span
         :for={notice <- @notice}
-        class={["text-sm px-3 py-1.5 rounded-sm shrink-0", notice_style(notice[:type])]}
+        class={["text-sm px-3 py-1.5 shrink-0", notice_style(notice[:type])]}
       >
         {render_slot(notice)}
       </span>
@@ -575,6 +716,32 @@ defmodule PortalWeb.LiveTable do
       >
         {msg}
       </Core.error>
+    </div>
+    """
+  end
+
+  defp filter(%{filter: %{type: {:list, :string}}, in_menu: true} = assigns) do
+    assigns =
+      assign(assigns, current: list_filter_current(assigns.form[assigns.filter.name].value))
+
+    ~H"""
+    <div class="w-full">
+      <input type="hidden" name={"_reset:#{@form[@filter.name].name}[]"} value="" />
+      <div class="grid grid-cols-2 gap-x-3 gap-y-1">
+        <label
+          :for={{label, value} <- @filter.values}
+          class="flex items-center gap-2 py-1 text-[13px] cursor-pointer text-fg"
+        >
+          <input
+            type="checkbox"
+            name={"#{@form[@filter.name].name}[]"}
+            value={value}
+            checked={value in @current}
+            class="w-3.5 h-3.5 border-rule text-fg focus:ring-1 focus:ring-fg/30 cursor-pointer"
+          />
+          <span class="truncate">{label}</span>
+        </label>
+      </div>
     </div>
     """
   end

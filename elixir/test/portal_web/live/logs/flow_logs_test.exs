@@ -240,16 +240,11 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert html =~ "GitLab"
 
       assert has_element?(lv, "#flow_logs-header th", "Opened")
-      assert has_element?(lv, "#flow_logs-header th", "Actor")
-      assert has_element?(lv, "#flow_logs-header th", "Client")
-      assert has_element?(lv, "#flow_logs-header th", "Resource")
-      assert has_element?(lv, "#flow_logs-header th", "Duration")
-      assert has_element?(lv, "#flow_logs-header th", "Size")
-      refute has_element?(lv, "#flow_logs-header th", "Initiator")
-      refute has_element?(lv, "#flow_logs-header th", "Destination")
-      refute has_element?(lv, "#flow_logs-header th", "Last packet")
+      assert has_element?(lv, "#flow_logs-header th", "Who")
+      assert has_element?(lv, "#flow_logs-header th", "What")
+      assert has_element?(lv, "#flow_logs-header th", "Result")
       refute has_element?(lv, "#flow_logs-header th", "Logged by")
-      refute has_element?(lv, "#flow_logs-header th", "Protocol")
+      refute has_element?(lv, "#flow_logs-header th", "Last packet")
       refute has_element?(lv, "#flow_logs-header th", "Clock skew")
 
       assert has_element?(lv, "#flow-log-#{initiator.log_id}", "12.0 MB")
@@ -259,12 +254,8 @@ defmodule PortalWeb.Logs.FlowLogsTest do
                "#flow_logs-header button[phx-value-order_by='flow_logs:asc:total_bytes']"
              )
 
-      initiator_row = lv |> element("#flow-log-#{initiator.log_id}") |> render()
-      responder_row = lv |> element("#flow-log-#{responder.log_id}") |> render()
-      assert initiator_row =~ "!bg-brand/[0.025]"
-      assert initiator_row =~ "dark:!bg-brand/[0.04]"
-      assert responder_row =~ "!bg-accent/[0.025]"
-      assert responder_row =~ "dark:!bg-accent/[0.04]"
+      assert has_element?(lv, "#flow-log-#{initiator.log_id} .sr-only", "Logged by initiator")
+      assert has_element?(lv, "#flow-log-#{responder.log_id} .sr-only", "Logged by responder")
 
       assert has_element?(lv, "#flow_logs-role-initiator[type='radio'][value='initiator']")
       assert has_element?(lv, "#flow_logs-role-responder[type='radio'][value='responder']")
@@ -808,6 +799,54 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       refute panel_html =~ other.log_id
     end
 
+    test "renders the selected log at once and loads matching logs async", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {selected, other} = matched_pair(account, ~U[2026-07-30 10:00:00.000000Z])
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/logs/flow_logs/#{selected.log_id}")
+
+      assert html =~ "flow-log-path-history-#{selected.log_id}"
+      assert html =~ "flow-log-matching-loading"
+      refute html =~ "flow-log-match-#{other.log_id}"
+
+      render_async(lv)
+
+      assert has_element?(lv, "#flow-log-match-#{other.log_id}")
+      refute has_element?(lv, "#flow-log-matching-loading")
+    end
+
+    test "never shows the previous log's matches while the next log loads", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {first, first_match} = matched_pair(account, ~U[2026-07-30 10:00:00.000000Z])
+      second = flow_log_fixture(account: account, role: :initiator)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs/#{first.log_id}")
+
+      assert has_element?(lv, "#flow-log-match-#{first_match.log_id}")
+
+      html = render_patch(lv, ~p"/#{account}/logs/flow_logs/#{second.log_id}")
+
+      refute html =~ "flow-log-match-#{first_match.log_id}"
+      assert html =~ "flow-log-matching-loading"
+
+      html = render_async(lv)
+
+      refute has_element?(lv, "#flow-log-match-#{first_match.log_id}")
+      assert html =~ "No matching responder log"
+    end
+
     test "matches when NAT rewrote the WireGuard tuple", %{
       conn: conn,
       account: account,
@@ -1038,5 +1077,33 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       |> Floki.attribute("value")
 
     NaiveDateTime.from_iso8601!(value)
+  end
+
+  defp matched_pair(account, started_at) do
+    identity = %{
+      account: account,
+      policy_authorization_id: Ecto.UUID.generate(),
+      initiator_device_id: Ecto.UUID.generate(),
+      responder_device_id: Ecto.UUID.generate(),
+      resource_id: Ecto.UUID.generate(),
+      protocol: :tcp,
+      inner_src_ip: %Postgrex.INET{address: {100, 64, 0, 8}},
+      inner_src_port: 51_234,
+      inner_dst_ip: %Postgrex.INET{address: {10, 0, 0, 9}},
+      inner_dst_port: 443,
+      domain: nil
+    }
+
+    selected =
+      identity
+      |> Map.merge(%{role: :initiator, flow_start: started_at, flow_end: DateTime.add(started_at, 60)})
+      |> flow_log_fixture()
+
+    other =
+      identity
+      |> Map.merge(%{role: :responder, flow_start: DateTime.add(started_at, 2), flow_end: DateTime.add(started_at, 62)})
+      |> flow_log_fixture()
+
+    {selected, other}
   end
 end

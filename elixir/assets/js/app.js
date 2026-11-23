@@ -1,7 +1,3 @@
-// Self-hosted variable fonts (avoids CSP issues with Google Fonts CDN)
-import "@fontsource-variable/roboto";
-import "@fontsource-variable/roboto-mono";
-
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html";
 
@@ -16,11 +12,14 @@ import { SidebarCollapse } from "./hooks/sidebar_collapse";
 import { DatetimeRangeFilter } from "./hooks/datetime_range_filter";
 import { PostureJsonEditor } from "./hooks/posture_json_editor";
 import { Turnstile } from "./hooks/turnstile";
+import { ActivityMap } from "./hooks/activity_map";
+import { AccessGraph } from "./hooks/access_graph";
 import {
   PageSizePreference,
   getPageSizePreference,
 } from "./hooks/page_size_preference";
 import "./event_listeners";
+import "./instant_modal";
 
 Hooks.DismissableBanner = DismissableBanner;
 Hooks.ThemeToggle = ThemeToggle;
@@ -28,6 +27,8 @@ Hooks.SidebarCollapse = SidebarCollapse;
 Hooks.DatetimeRangeFilter = DatetimeRangeFilter;
 Hooks.PostureJsonEditor = PostureJsonEditor;
 Hooks.Turnstile = Turnstile;
+Hooks.ActivityMap = ActivityMap;
+Hooks.AccessGraph = AccessGraph;
 Hooks.PageSizePreference = PageSizePreference;
 Hooks.SupportForm = {
   mounted() {
@@ -54,7 +55,11 @@ let liveSocket = new LiveSocket("/live", Socket, {
 });
 
 // Show progress bar on live navigation and form submits
-topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
+topbar.config({
+  barColors: { 0: "#c2410c" },
+  barThickness: 2,
+  shadowColor: "rgba(0, 0, 0, 0)",
+});
 window.addEventListener("phx:page-loading-start", (_info) => topbar.show(300));
 window.addEventListener("phx:page-loading-stop", (_info) => topbar.hide());
 

@@ -42,7 +42,7 @@ defmodule PortalWeb.SignUpReviewTest do
 
       conn = verify(conn, email)
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
       assert Portal.Repo.get_by(Portal.Account, name: "Review Corp")
       assert [] == all_enqueued(worker: SignUpReviewRequest)
     end
@@ -55,7 +55,7 @@ defmodule PortalWeb.SignUpReviewTest do
 
       conn = verify(conn, email)
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
       assert Portal.Repo.get_by(Portal.Account, name: "Review Corp")
     end
 
@@ -109,7 +109,7 @@ defmodule PortalWeb.SignUpReviewTest do
       email = "owner-#{System.unique_integer([:positive])}@mail.known-mail.test"
       stub_stripe(email)
 
-      assert redirected_to(verify(conn, email)) =~ "/sites"
+      assert redirected_to(verify(conn, email)) =~ "/activity"
     end
 
     test "blocks a domain without MX records that is itself denied", %{conn: conn} do

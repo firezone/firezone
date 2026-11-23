@@ -311,8 +311,8 @@ defmodule PortalWeb.Settings.AccountTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert html =~ "Plan Features"
-      assert html =~ "Device Posture"
+      assert html =~ "Plan features"
+      assert html =~ "Device posture"
       refute html =~ "ICE-less"
     end
 
@@ -442,7 +442,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert html =~ "Usage"
-      refute html =~ "Ad hoc Service Accounts"
+      refute html =~ "Ad hoc service accounts"
     end
 
     test "hides seats when the plan has no active seat limit", %{
@@ -512,7 +512,7 @@ defmodule PortalWeb.Settings.AccountTest do
       assert html =~ "Add-ons"
       assert html =~ "Ad hoc service account + device"
       assert html =~ "× 10000"
-      assert html =~ "Ad hoc Service Accounts"
+      assert html =~ "Ad hoc service accounts"
       assert html =~ "1 / 10000"
       assert html =~ "Seats"
       assert html =~ "0 / 100"
@@ -536,7 +536,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       html = render_click(lv, "open_edit_account")
-      assert html =~ "Edit Account"
+      assert html =~ "Edit account"
     end
 
     test "validates name length", %{conn: conn, account: account, actor: actor} do
@@ -571,8 +571,7 @@ defmodule PortalWeb.Settings.AccountTest do
 
       html = render(lv)
       assert html =~ new_name
-      # Panel slides back off-screen after save (translate-x-full = hidden)
-      assert html =~ "translate-x-full"
+      refute has_element?(lv, "#edit-account-panel form")
     end
   end
 
@@ -606,7 +605,7 @@ defmodule PortalWeb.Settings.AccountTest do
 
       html = render_click(lv, "open_edit_account")
 
-      assert html =~ "Account Slug"
+      assert html =~ "Account slug"
       assert html =~ "Old slugs keep working"
       assert html =~ "up to 3 new slugs every 30 days"
       assert html =~ account.id

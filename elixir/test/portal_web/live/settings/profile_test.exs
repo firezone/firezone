@@ -41,7 +41,7 @@ defmodule PortalWeb.Settings.ProfileTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/profile")
 
-      assert html =~ "Start Page"
+      assert html =~ "Start page"
       assert html =~ "Sites"
       assert html =~ "Resources"
     end
@@ -64,7 +64,7 @@ defmodule PortalWeb.Settings.ProfileTest do
   end
 
   describe "sidebar wordmark link" do
-    test "defaults to sites when no start page preference is set", %{
+    test "defaults to activity when no start page preference is set", %{
       conn: conn,
       account: account,
       actor: actor
@@ -74,7 +74,7 @@ defmodule PortalWeb.Settings.ProfileTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/profile")
 
-      assert has_element?(lv, "[data-sidebar-wordmark] a[href='#{~p"/#{account}/sites"}']")
+      assert has_element?(lv, "[data-sidebar-wordmark] a[href='#{~p"/#{account}/activity"}']")
     end
 
     test "links to the actor's preferred start page", %{
@@ -90,7 +90,9 @@ defmodule PortalWeb.Settings.ProfileTest do
             policies: ~p"/#{account}/policies",
             devices: ~p"/#{account}/devices",
             actors: ~p"/#{account}/actors",
-            sites: ~p"/#{account}/sites"
+            sites: ~p"/#{account}/sites",
+            activity: ~p"/#{account}/activity",
+            access: ~p"/#{account}/access"
           ] do
         actor
         |> Ecto.Changeset.change()
@@ -238,10 +240,10 @@ defmodule PortalWeb.Settings.ProfileTest do
       {:ok, lv, html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/profile")
 
-      assert html =~ "Gateway Upgrade Available"
-      assert html =~ "Seat Limit Warnings"
-      assert html =~ "Product Announcements"
-      assert html =~ "Product Feedback Requests"
+      assert html =~ "Gateway upgrade available"
+      assert html =~ "Seat limit warnings"
+      assert html =~ "Product announcements"
+      assert html =~ "Product feedback requests"
 
       for notification <- ~w[outdated_gateways seat_limit_warnings product_announcements product_feedback_requests] do
         assert has_element?(lv, "#notifications_#{notification}_email[checked]")
@@ -352,7 +354,7 @@ defmodule PortalWeb.Settings.ProfileTest do
         {:ok, lv, html} =
           conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/profile")
 
-        assert html =~ "Seat Limit Warnings"
+        assert html =~ "Seat limit warnings"
         assert html =~ "Seat count warnings are sent on Business plans only."
         assert has_element?(lv, "#notifications_seat_limit_warnings_email[disabled]")
         refute has_element?(lv, "#notifications_seat_limit_warnings_email[checked]")

@@ -52,7 +52,7 @@ defmodule PortalWeb.SignUpTest do
         {:ok, lv, _} = live(conn)
         # The browser posts back the session cookie that captured the attribution.
         conn = submit_identity_form(lv, recycle(conn), "google", %{account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}, sign_up_survey: @survey})
-        assert redirected_to(conn) =~ "/sites"
+        assert redirected_to(conn) =~ "/activity"
         account = Portal.Repo.get_by!(Portal.Account, name: "Direct Corp")
         assert account.metadata.marketing_attribution["marketing_allowed"] == @allowed
         assert length(all_enqueued(worker: Portal.Analytics.OpenAI)) == if(@allowed, do: 1, else: 0)
@@ -71,7 +71,7 @@ defmodule PortalWeb.SignUpTest do
         conn = open_sign_up_link(recycle(conn), token)
         {:ok, lv, _} = live(conn, ~p"/sign_up/email")
         conn = submit_identity_form(lv, conn, "email", %{account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}, sign_up_survey: @survey})
-        assert redirected_to(conn) =~ "/sites"
+        assert redirected_to(conn) =~ "/activity"
         account = Portal.Repo.get_by!(Portal.Account, name: "Direct Corp")
         assert account.metadata.marketing_attribution["marketing_allowed"] == @allowed
         assert length(all_enqueued(worker: Portal.Analytics.OpenAI)) == if(@allowed, do: 1, else: 0)
@@ -88,7 +88,7 @@ defmodule PortalWeb.SignUpTest do
       refute has_element?(lv, "#sign-up-options-label")
 
       for id <- ["#google-sign-up button", "#github-sign-up button", "#email-sign-up-toggle"] do
-        assert has_element?(lv, "#sign-up-options #{id}.w-full .ri-arrow-right-s-line")
+        assert has_element?(lv, "#sign-up-options #{id}.w-full .ri-arrow-right-line")
       end
     end
 
@@ -379,7 +379,7 @@ defmodule PortalWeb.SignUpTest do
           sign_up_survey: @survey
         })
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
       refute get_session(conn, "idp_sign_up")
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Email Corp")
@@ -520,7 +520,7 @@ defmodule PortalWeb.SignUpTest do
           sign_up_survey: @survey
         })
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
       refute get_session(conn, "idp_sign_up")
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Google Corp")
@@ -573,7 +573,7 @@ defmodule PortalWeb.SignUpTest do
       {:ok, lv, _} = live(conn, ~p"/sign_up/google")
       conn = submit_identity_form(lv, conn, "google", %{
         account: %{name: "Workspace Corp"}, actor: %{name: "Workspace Owner"}, sign_up_survey: @survey})
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
       account = Portal.Repo.get_by!(Portal.Account, name: "Workspace Corp")
       provider = Portal.Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
       assert provider.workspace_domains == ["workspace.example"]
@@ -724,7 +724,7 @@ defmodule PortalWeb.SignUpTest do
           sign_up_survey: @survey
         })
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Octo Corp")
 
@@ -1195,7 +1195,7 @@ defmodule PortalWeb.SignUpTest do
             sign_up_survey: @survey
           })
 
-        assert redirected_to(conn) =~ "/sites"
+        assert redirected_to(conn) =~ "/activity"
         assert Portal.Repo.get_by!(Portal.Account, name: "Identity Corp")
         refute_receive {:cloudflare_request, _}
       end
@@ -1221,7 +1221,7 @@ defmodule PortalWeb.SignUpTest do
           sign_up_survey: @survey
         })
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
       assert Portal.Repo.get_by!(Portal.Account, name: "Link Corp")
       refute_receive {:cloudflare_request, _}
     end
@@ -1392,7 +1392,7 @@ defmodule PortalWeb.SignUpTest do
           }
         })
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Survey Corp")
 
@@ -1433,7 +1433,7 @@ defmodule PortalWeb.SignUpTest do
           }
         })
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
 
       assert [job] = all_enqueued(worker: Portal.Workers.OutboundEmail)
       body = job.args["request"]["text_body"]

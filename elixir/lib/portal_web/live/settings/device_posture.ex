@@ -5,7 +5,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, Sophos, PubSub}
   alias Portal.Mailer.PostureProviderInterestEmail
-  alias PortalWeb.Settings.Components, as: SettingsComponents
+  alias PortalWeb.Settings
   alias __MODULE__.Database
 
   require Logger
@@ -47,12 +47,6 @@ defmodule PortalWeb.Settings.DevicePosture do
   @coming_soon_types Enum.map(@coming_soon_providers, & &1.type)
   @feedback_max_length 5_000
 
-  @select_type_classes [
-    "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
-    "border-border bg-surface",
-    "hover:bg-raised hover:border-border-emphasis"
-  ]
-
   @form_fields %{
     "intune" => ~w[name]a,
     "iru" => ~w[name region subdomain api_token]a,
@@ -90,7 +84,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     {:ok,
      socket
      |> assign(
-       page_title: "Device Posture",
+       page_title: "Device posture",
        type: nil,
        provider: nil,
        form: nil,
@@ -693,248 +687,199 @@ defmodule PortalWeb.Settings.DevicePosture do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <Navigation.settings_nav
-        account={@account}
-        current_path={@current_path}
-      />
+      <Page.page_header>
+        <:title>Device posture</:title>
+        <:description>
+          Check device health from your MDM and EDR tools before granting access.
+        </:description>
+        <:stats :if={Portal.Account.device_posture_enabled?(@account) and @providers}>
+          {length(@providers)}
+        </:stats>
+        <:action>
+          <Navigation.docs_action show_label size="md" path="/device-posture" />
+          <Form.button
+            :if={Portal.Account.device_posture_enabled?(@account)}
+            id="add-posture-provider-button"
+            patch={~p"/#{@account}/settings/device_posture/new"}
+            data-instant-modal="Add a posture provider"
+            data-instant-modal-size="md"
+            icon="ri-add-line"
+            size="sm"
+            style="primary"
+          >
+            Add a provider
+          </Form.button>
+        </:action>
+      </Page.page_header>
 
       <%= if Portal.Account.device_posture_enabled?(@account) do %>
-        <div class="flex-1 flex flex-col overflow-hidden">
-          <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
-            <div class="flex items-center gap-2">
-              <h2 class="text-xs font-semibold text-heading">Posture Providers</h2>
-              <span :if={@providers} class="text-xs text-subtle tabular-nums">
-                {length(@providers)}
-              </span>
-            </div>
-            <div class="flex items-center gap-2">
-              <Navigation.docs_action show_label path="/device-posture" />
-              <Navigation.link
-                patch={~p"/#{@account}/settings/device_posture/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+        <div class="flex-1 overflow-auto">
+          <%= cond do %>
+            <% is_nil(@providers) -> %>
+              <Settings.Components.skeleton id="providers-skeleton" />
+            <% Enum.empty?(@providers) -> %>
+              <Settings.Components.empty_state
+                id="posture-providers-empty"
+                icon="ri-shield-star-line"
+                title="No posture providers yet"
               >
-                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
-              </Navigation.link>
-            </div>
-          </div>
-
-          <div class="flex-1 overflow-auto">
-            <%= cond do %>
-              <% is_nil(@providers) -> %>
-                <SettingsComponents.skeleton id="providers-skeleton" />
-              <% Enum.empty?(@providers) -> %>
-                <div class="flex items-center justify-center h-full">
-                  <div class="flex flex-col items-center gap-3 py-16">
-                    <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                      <Core.icon name="ri-shield-star-line" class="w-5 h-5 text-subtle" />
-                    </div>
-                    <div class="text-center">
-                      <p class="text-sm font-medium text-heading">No posture providers yet</p>
-                      <p class="text-xs text-subtle mt-0.5">
-                        Add a posture provider to allow device health checks before granting access.
-                      </p>
-                    </div>
-                    <Navigation.link
-                      patch={~p"/#{@account}/settings/device_posture/new"}
-                      class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                    >
-                      <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
-                    </Navigation.link>
-                  </div>
-                </div>
-              <% true -> %>
-                <table class="w-full text-sm border-collapse">
-                  <thead class="sticky top-0 z-10 bg-raised">
-                    <tr class="border-b border-border-strong">
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
-                        Provider
-                      </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                        Status
-                      </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
-                        Tenant
-                      </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                        Devices
-                      </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                        Last Synced
-                      </th>
-                      <th class="px-6 py-2.5 w-14"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <.provider_row
-                      :for={provider <- @providers}
-                      account={@account}
-                      provider={provider}
-                      open_actions_id={@open_provider_actions_id}
-                      pending_confirm={@pending_confirm}
-                    />
-                  </tbody>
-                </table>
-            <% end %>
-          </div>
+                Add a posture provider to allow device health checks before granting access.
+                <:action>
+                  <Form.button
+                    patch={~p"/#{@account}/settings/device_posture/new"}
+                    data-instant-modal="Add a posture provider"
+                    data-instant-modal-size="md"
+                    icon="ri-add-line"
+                    size="sm"
+                  >
+                    Add a provider
+                  </Form.button>
+                </:action>
+              </Settings.Components.empty_state>
+            <% true -> %>
+              <table class="w-full text-sm border-collapse">
+                <thead class="sticky top-0 z-10 bg-bg">
+                  <tr class="border-b border-rule">
+                    <th class={Settings.Components.th_class()}>Provider</th>
+                    <th class={[Settings.Components.th_class(), "w-32"]}>Status</th>
+                    <th class={[Settings.Components.th_class(), "w-28 hidden md:table-cell"]}>
+                      Devices
+                    </th>
+                    <th class={[Settings.Components.th_class(), "w-40 hidden md:table-cell"]}>
+                      Last synced
+                    </th>
+                    <th class="px-6 py-2.5 w-14"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <.provider_row
+                    :for={provider <- @providers}
+                    account={@account}
+                    provider={provider}
+                    open_actions_id={@open_provider_actions_id}
+                    pending_confirm={@pending_confirm}
+                  />
+                </tbody>
+              </table>
+          <% end %>
         </div>
       <% else %>
         <.upgrade_splash account={@account} />
       <% end %>
 
-      <div
+      <Page.detail_modal
         id="device-posture-panel"
-        class={[
-          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-elevated border-l border-border-strong shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-          "transition-transform duration-200 ease-in-out",
-          (@live_action in [:select_type, :new, :edit] && "translate-x-0") || "translate-x-full"
-        ]}
-        phx-window-keydown="handle_keydown"
-        phx-key="Escape"
+        open={@live_action in [:select_type, :new, :edit]}
+        on_close="close_panel"
+        size="md"
       >
         <div
           :if={@live_action == :select_type and is_nil(@interest_provider)}
-          class="flex flex-col h-full overflow-hidden"
+          class="flex flex-col min-h-0"
         >
-          <Form.panel_header title="Select Provider Type" variant="plain" />
-          <div class="flex-1 overflow-y-auto px-5 py-4">
-            <p class="mb-4 text-xs text-subtle">
-              Select the provider that manages your devices:
+          <Form.panel_header title="Add a posture provider" variant="plain">
+            <:leading><Core.icon name="ri-shield-star-line" class="w-4 h-4 text-muted" /></:leading>
+            <:adornment><Navigation.docs_action path="/device-posture" /></:adornment>
+          </Form.panel_header>
+          <Settings.Components.modal_body>
+            <p class="mb-4 text-sm text-muted">
+              Select the provider that manages your devices.
             </p>
-            <ul class="flex flex-col gap-2">
-              <li>
-                <Navigation.link
-                  patch={~p"/#{@account}/settings/device_posture/intune/new"}
-                  class={select_type_classes()}
-                >
-                  <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <Core.provider_icon provider="intune" size="xl" />
-                    <span class="text-sm font-medium text-heading">Microsoft Intune</span>
-                  </span>
-                  <span class="text-xs text-body">
-                    Sync managed devices from a Microsoft Intune tenant.
-                  </span>
-                </Navigation.link>
-              </li>
-              <li>
-                <Navigation.link
-                  patch={~p"/#{@account}/settings/device_posture/iru/new"}
-                  class={select_type_classes()}
-                >
-                  <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <Core.provider_icon provider="iru" size="xl" />
-                    <span class="text-sm font-medium text-heading">Iru</span>
-                  </span>
-                  <span class="text-xs text-body">
-                    Sync devices and posture from an Iru (formerly Kandji) tenant.
-                  </span>
-                </Navigation.link>
-              </li>
-              <li>
-                <Navigation.link
-                  patch={~p"/#{@account}/settings/device_posture/defender/new"}
-                  class={select_type_classes()}
-                >
-                  <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <Core.provider_icon provider="defender" size="xl" />
-                    <span class="text-sm font-medium text-heading">
-                      Microsoft Defender for Endpoint
-                    </span>
-                  </span>
-                  <span class="text-xs text-body">
-                    Sync onboarded machines from a Microsoft Defender for Endpoint tenant.
-                  </span>
-                </Navigation.link>
-              </li>
-              <li>
-                <Navigation.link
-                  patch={~p"/#{@account}/settings/device_posture/santa/new"}
-                  class={select_type_classes()}
-                >
-                  <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <Core.provider_icon provider="santa" size="xl" />
-                    <span class="text-sm font-medium text-heading">Santa</span>
-                  </span>
-                  <span class="text-xs text-body">
-                    Sync Santa hosts from North Pole Security Workshop.
-                  </span>
-                </Navigation.link>
-              </li>
-              <li>
-                <Navigation.link
-                  patch={~p"/#{@account}/settings/device_posture/sentinelone/new"}
-                  class={select_type_classes()}
-                >
-                  <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <Core.provider_icon provider="sentinelone" size="xl" />
-                    <span class="text-sm font-medium text-heading">SentinelOne</span>
-                  </span>
-                  <span class="text-xs text-body">
-                    Sync endpoint agents and posture from a SentinelOne tenant.
-                  </span>
-                </Navigation.link>
-              </li>
-              <li>
-                <Navigation.link
-                  patch={~p"/#{@account}/settings/device_posture/sophos/new"}
-                  class={select_type_classes()}
-                >
-                  <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <Core.provider_icon provider="sophos" size="xl" />
-                    <span class="text-sm font-medium text-heading">Sophos XDR</span>
-                  </span>
-                  <span class="text-xs text-body">
-                    Sync endpoints and their health from a Sophos Central tenant.
-                  </span>
-                </Navigation.link>
-              </li>
-              <li :for={provider <- @coming_soon_providers}>
-                <button
-                  id={"register-interest-#{provider.type}"}
-                  type="button"
-                  disabled={not @feedback_enabled?}
-                  phx-click="register_interest"
-                  phx-value-provider={provider.type}
-                  class={select_type_classes()}
-                >
-                  <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <Core.provider_icon provider={provider.type} size="xl" />
-                    <span class="text-sm font-medium text-heading">{provider.title}</span>
-                  </span>
-                  <span class="text-xs text-body text-left">{provider.description}</span>
-                </button>
-              </li>
-            </ul>
-          </div>
+            <Settings.Components.type_grid id="posture-provider-types">
+              <Settings.Components.type_tile
+                patch={~p"/#{@account}/settings/device_posture/intune/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
+                provider="intune"
+                title="Microsoft Intune"
+              >
+                Sync managed devices from a Microsoft Intune tenant.
+              </Settings.Components.type_tile>
+              <Settings.Components.type_tile
+                patch={~p"/#{@account}/settings/device_posture/iru/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
+                provider="iru"
+                title="Iru"
+              >
+                Sync devices and posture from an Iru (formerly Kandji) tenant.
+              </Settings.Components.type_tile>
+              <Settings.Components.type_tile
+                patch={~p"/#{@account}/settings/device_posture/defender/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
+                provider="defender"
+                title="Microsoft Defender for Endpoint"
+              >
+                Sync onboarded machines from a Microsoft Defender for Endpoint tenant.
+              </Settings.Components.type_tile>
+              <Settings.Components.type_tile
+                patch={~p"/#{@account}/settings/device_posture/santa/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
+                provider="santa"
+                title="Santa"
+              >
+                Sync Santa hosts from North Pole Security Workshop.
+              </Settings.Components.type_tile>
+              <Settings.Components.type_tile
+                patch={~p"/#{@account}/settings/device_posture/sentinelone/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
+                provider="sentinelone"
+                title="SentinelOne"
+              >
+                Sync endpoint agents and posture from a SentinelOne tenant.
+              </Settings.Components.type_tile>
+              <Settings.Components.type_tile
+                patch={~p"/#{@account}/settings/device_posture/sophos/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
+                provider="sophos"
+                title="Sophos XDR"
+              >
+                Sync endpoints and their health from a Sophos Central tenant.
+              </Settings.Components.type_tile>
+            </Settings.Components.type_grid>
+
+            <h3 class="flex items-center gap-1.5 mt-8 mb-3 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+              <Core.icon name="ri-lightbulb-line" class="w-3.5 h-3.5" /> Not supported yet
+            </h3>
+            <Settings.Components.type_grid id="posture-provider-requests">
+              <Settings.Components.type_tile
+                :for={provider <- @coming_soon_providers}
+                id={"register-interest-#{provider.type}"}
+                disabled={not @feedback_enabled?}
+                phx-click="register_interest"
+                phx-value-provider={provider.type}
+                provider={provider.type}
+                title={provider.title}
+              >
+                {provider.description}
+              </Settings.Components.type_tile>
+            </Settings.Components.type_grid>
+          </Settings.Components.modal_body>
         </div>
 
         <div
           :if={@live_action == :select_type and not is_nil(@interest_provider)}
           id="posture-provider-interest"
-          class="flex flex-col h-full overflow-hidden"
+          class="flex flex-col min-h-0"
         >
-          <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
-            <div class="flex items-center gap-2">
-              <button
-                type="button"
-                phx-click="clear_interest"
-                class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-                title="Back"
-              >
-                <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
-              </button>
+          <Form.panel_header title={@interest_provider.title} variant="plain">
+            <:leading>
+              <Form.icon_button icon="ri-arrow-left-line" title="Back" phx-click="clear_interest" />
               <Core.provider_icon provider={@interest_provider.type} size="sm" />
-              <h2 class="text-sm font-semibold text-heading">{@interest_provider.title}</h2>
-            </div>
-            <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-          </div>
+            </:leading>
+          </Form.panel_header>
 
-          <div class="flex-1 overflow-y-auto px-5 py-6">
+          <Settings.Components.modal_body>
             <div class="max-w-xl">
-              <h3 class="text-base font-semibold text-heading">
+              <h3 class="flex items-center gap-2 text-base font-semibold text-fg">
+                <Core.icon name="ri-time-line" class="w-4 h-4 text-muted" />
                 This provider is coming soon!
               </h3>
-              <p class="mt-2 text-sm leading-6 text-body">
+              <p class="mt-2 text-sm leading-6 text-muted">
                 We've registered your interest in {@interest_provider.title} support in Firezone.
                 Feel free to provide feedback below to pass on to the team.
               </p>
@@ -942,7 +887,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               <div
                 :if={@feedback_sent?}
                 id="posture-provider-feedback-thanks"
-                class="mt-6 rounded border border-success/30 bg-success-light p-4 text-sm text-success"
+                class="mt-6 border border-rule p-4 text-sm text-fg"
               >
                 <div class="flex items-center gap-2 font-medium">
                   <Core.icon name="ri-checkbox-circle-line" class="size-4" />
@@ -967,42 +912,48 @@ defmodule PortalWeb.Settings.DevicePosture do
                   errors={List.wrap(@feedback_error)}
                 />
                 <div class="flex justify-end">
-                  <Form.button type="submit" style="primary">Send feedback</Form.button>
+                  <Form.button type="submit" style="primary" icon="ri-send-plane-line">
+                    Send feedback
+                  </Form.button>
                 </div>
               </form>
             </div>
-          </div>
+          </Settings.Components.modal_body>
         </div>
 
-        <div :if={@live_action in [:new, :edit] and @form} class="flex flex-col h-full overflow-hidden">
-          <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
-            <div class="flex items-center gap-2">
+        <div :if={@live_action in [:new, :edit] and @form} class="flex flex-col min-h-0">
+          <Form.panel_header
+            title={
+              if @live_action == :new,
+                do: "Add #{provider_title(@type)}",
+                else: "Edit #{provider_title(@type)}"
+            }
+            variant="plain"
+          >
+            <:leading>
               <Navigation.link
                 :if={@live_action == :new}
                 patch={~p"/#{@account}/settings/device_posture/new"}
-                class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
+                class="flex items-center justify-center w-6 h-6 text-muted hover:text-fg hover:bg-hover transition-colors"
                 title="Back"
               >
                 <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
               </Navigation.link>
               <Core.provider_icon provider={@type} size="sm" />
-              <h2 class="text-sm font-semibold text-heading">
-                {if @live_action == :new,
-                  do: "Add #{provider_title(@type)}",
-                  else: "Edit #{provider_title(@type)}"}
-              </h2>
-            </div>
-            <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-          </div>
+            </:leading>
+            <:adornment><Navigation.docs_action path="/device-posture" /></:adornment>
+          </Form.panel_header>
 
-          <div class="flex-1 overflow-y-auto px-5 py-4">
+          <Settings.Components.modal_body>
             <.provider_form
               form={@form}
               type={@type}
               verification_error={@verification_error}
               verifying={@verifying}
             />
-          </div>
+          </Settings.Components.modal_body>
 
           <Form.panel_footer>
             <Form.panel_footer_button type="button" phx-click="close_panel">
@@ -1018,117 +969,100 @@ defmodule PortalWeb.Settings.DevicePosture do
             </Form.panel_footer_button>
           </Form.panel_footer>
         </div>
-      </div>
+      </Page.detail_modal>
     </div>
     """
   end
 
   attr :account, :any, required: true
 
-  # Shown when the account lacks the feature, matching the
-  # log sinks upgrade page: a blurred sample of the real table under a card.
   defp upgrade_splash(assigns) do
     ~H"""
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
-        <div class="flex items-center gap-2">
-          <h2 class="text-xs font-semibold text-heading">Posture Providers</h2>
+    <div id="device-posture-upgrade" class="flex-1 overflow-auto px-6 pb-8">
+      <div class="max-w-4xl">
+        <div class="flex flex-col items-start gap-3 px-5 py-6 border border-rule">
+          <Core.icon name="ri-shield-star-line" class="w-6 h-6 text-fg" />
+          <div>
+            <p class="text-base font-semibold text-fg">Device posture</p>
+            <p class="mt-1 text-sm text-muted">
+              Restrict access to resources based on device telemetry provided by MDM and EDR solutions
+            </p>
+          </div>
+          <Form.button
+            style="primary"
+            size="sm"
+            icon="ri-sparkling-line"
+            navigate={~p"/#{@account}/settings/account"}
+          >
+            Upgrade to unlock
+          </Form.button>
         </div>
-      </div>
 
-      <div class="flex-1 overflow-hidden relative">
-        <div class="blur-xs pointer-events-none select-none opacity-60">
+        <Settings.Components.tiles cols="3" class="mt-6 border-t-0 border-l-0 sm:border-t sm:border-l">
+          <Settings.Components.tile label="Sync devices" icon="ri-refresh-line">
+            <p class="text-sm text-muted">
+              Pull managed devices from Intune, Iru, Defender, Santa, SentinelOne and Sophos.
+            </p>
+          </Settings.Components.tile>
+          <Settings.Components.tile label="Check health" icon="ri-heart-pulse-line">
+            <p class="text-sm text-muted">
+              Use compliance, encryption and threat data in policy conditions.
+            </p>
+          </Settings.Components.tile>
+          <Settings.Components.tile label="Grant access" icon="ri-lock-unlock-line">
+            <p class="text-sm text-muted">
+              Only healthy devices reach the resources you protect.
+            </p>
+          </Settings.Components.tile>
+        </Settings.Components.tiles>
+
+        <div class="mt-6 blur-xs pointer-events-none select-none opacity-60" aria-hidden="true">
           <table class="w-full text-sm border-collapse">
-            <thead class="bg-raised">
-              <tr class="border-b border-border-strong">
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
-                  Provider
-                </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                  Status
-                </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
-                  Tenant
-                </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                  Devices
-                </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                  Last Synced
-                </th>
-                <th class="px-6 py-2.5 w-14"></th>
+            <thead class="bg-bg">
+              <tr class="border-b border-rule">
+                <th class={Settings.Components.th_class()}>Provider</th>
+                <th class={[Settings.Components.th_class(), "w-32"]}>Status</th>
+                <th class={[Settings.Components.th_class(), "w-28"]}>Devices</th>
+                <th class={[Settings.Components.th_class(), "w-40"]}>Last synced</th>
               </tr>
             </thead>
             <tbody>
-              <tr class="border-b border-border">
+              <tr class="border-b border-hair">
                 <td class="px-6 py-3">
                   <div class="flex items-center gap-3">
                     <Core.provider_icon provider="intune" size="lg" />
                     <div class="min-w-0">
-                      <span class="text-sm font-medium text-heading truncate block">
+                      <span class="block text-sm font-medium text-fg truncate">
                         Microsoft Intune
                       </span>
-                      <span class="text-xs text-subtle">Microsoft Intune</span>
+                      <span class="text-xs text-muted font-mono">contoso.onmicrosoft.com</span>
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-3 w-28">
+                <td class="px-6 py-3">
                   <Core.status_badge style={:success}>Active</Core.status_badge>
                 </td>
-                <td class="px-6 py-3 w-48">
-                  <span class="text-sm text-body font-mono truncate block">
-                    contoso.onmicrosoft.com
-                  </span>
-                </td>
-                <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">1,284</td>
-                <td class="px-6 py-3 w-40"><span class="text-xs text-body">2 hours ago</span></td>
-                <td class="px-6 py-3 w-14"></td>
+                <td class="px-6 py-3 text-sm text-fg tabular-nums">1,284</td>
+                <td class="px-6 py-3 text-xs text-muted">2 hours ago</td>
               </tr>
-              <tr class="border-b border-border">
+              <tr class="border-b border-hair">
                 <td class="px-6 py-3">
                   <div class="flex items-center gap-3">
                     <Core.provider_icon provider="iru" size="lg" />
                     <div class="min-w-0">
-                      <span class="text-sm font-medium text-heading truncate block">
-                        Iru
-                      </span>
-                      <span class="text-xs text-subtle">Iru (formerly Kandji)</span>
+                      <span class="block text-sm font-medium text-fg truncate">Iru</span>
+                      <span class="text-xs text-muted font-mono">acme</span>
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-3 w-28">
+                <td class="px-6 py-3">
                   <Core.status_badge style={:success}>Active</Core.status_badge>
                 </td>
-                <td class="px-6 py-3 w-48">
-                  <span class="text-sm text-body font-mono truncate block">acme</span>
-                </td>
-                <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">312</td>
-                <td class="px-6 py-3 w-40"><span class="text-xs text-body">1 hour ago</span></td>
-                <td class="px-6 py-3 w-14"></td>
+                <td class="px-6 py-3 text-sm text-fg tabular-nums">312</td>
+                <td class="px-6 py-3 text-xs text-muted">1 hour ago</td>
               </tr>
             </tbody>
           </table>
-        </div>
-
-        <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
-          <div class="flex flex-col items-center gap-3 bg-elevated border border-border rounded-lg shadow-lg px-8 py-6 text-subtle">
-            <Core.icon name="ri-shield-star-fill" class="w-8 h-8" />
-            <div class="flex flex-col items-center gap-1 text-center">
-              <p class="text-sm font-medium text-heading">
-                Device Posture
-              </p>
-              <p class="text-xs">
-                Restrict access to resources based on device telemetry provided by MDM and EDR solutions
-              </p>
-            </div>
-            <Form.button
-              style="primary"
-              icon="ri-sparkling-fill"
-              navigate={~p"/#{@account}/settings/account"}
-            >
-              Upgrade to Unlock
-            </Form.button>
-          </div>
         </div>
       </div>
     </div>
@@ -1149,9 +1083,9 @@ defmodule PortalWeb.Settings.DevicePosture do
 
     ~H"""
     <tr class={[
-      "border-b transition-colors",
-      @is_pending_delete && "border-danger/30 bg-danger-light",
-      !@is_pending_delete && "border-border hover:bg-raised"
+      "border-b border-hair transition-colors",
+      @is_pending_delete && "bg-attn-wash",
+      !@is_pending_delete && "hover:bg-hover"
     ]}>
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
@@ -1160,20 +1094,29 @@ defmodule PortalWeb.Settings.DevicePosture do
             <span
               class={[
                 "text-sm font-medium truncate block",
-                (@is_pending_delete && "text-danger") || "text-heading"
+                (@is_pending_delete && "text-attn") || "text-fg"
               ]}
               title={@provider.name}
             >
               {@provider.name}
             </span>
-            <span class="text-xs text-subtle">{provider_title(@provider.type)}</span>
+            <span class="flex items-center gap-1.5 text-xs text-muted min-w-0">
+              <span class="shrink-0">{provider_title(@provider.type)}</span>
+              <span :if={@provider.identifier} aria-hidden="true">&middot;</span>
+              <span :if={@provider.identifier} class="font-mono truncate">
+                {@provider.identifier}
+              </span>
+            </span>
           </div>
         </div>
       </td>
-      <td :if={@is_pending_delete} colspan="5" class="px-6 py-3">
+      <td :if={@is_pending_delete} colspan="4" class="px-6 py-3">
         <div class="flex items-center gap-4">
-          <div class="text-xs text-danger space-y-1">
-            <p>Delete this provider and all devices synced from it? This cannot be undone.</p>
+          <div class="text-xs text-attn space-y-1">
+            <p class="flex items-center gap-1.5">
+              <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0" />
+              Delete this provider and all devices synced from it? This cannot be undone.
+            </p>
             <p :if={@referencing_policy_count > 0} id={"provider-#{@provider.id}-policy-warning"}>
               {@referencing_policy_count} {ngettext("policy uses", "policies use", @referencing_policy_count)}
               {provider_title(@provider.type)} posture rules and will need to be updated.
@@ -1189,28 +1132,28 @@ defmodule PortalWeb.Settings.DevicePosture do
           </div>
         </div>
       </td>
-      <td :if={not @is_pending_delete} class="px-6 py-3 w-28">
+      <td :if={not @is_pending_delete} class="px-6 py-3">
         <.provider_status provider={@provider} />
       </td>
-      <td :if={not @is_pending_delete} class="px-6 py-3 w-48">
-        <span class="text-sm text-body font-mono truncate block">
-          {@provider.identifier || "—"}
-        </span>
-      </td>
-      <td :if={not @is_pending_delete} class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
+      <td
+        :if={not @is_pending_delete}
+        class="hidden md:table-cell px-6 py-3 text-sm text-fg tabular-nums"
+      >
         {@provider.devices_count}
       </td>
-      <td :if={not @is_pending_delete} class="px-6 py-3 w-40">
-        <span :if={@provider.synced_at} class="text-xs text-body">
+      <td :if={not @is_pending_delete} class="hidden md:table-cell px-6 py-3">
+        <span :if={@provider.synced_at} class="text-xs text-muted">
           <Core.relative_datetime datetime={@provider.synced_at} />
         </span>
-        <span :if={is_nil(@provider.synced_at)} class="text-xs text-subtle">Never</span>
+        <span :if={is_nil(@provider.synced_at)} class="text-xs text-faint">Never</span>
       </td>
       <td :if={not @is_pending_delete} class="px-6 py-3 w-14">
         <div class="flex justify-end">
           <Core.actions_dropdown
             open={@open_actions_id == @provider.id}
             close_event="close_provider_actions"
+            button_class="flex items-center justify-center w-7 h-7 text-muted hover:text-fg hover:bg-hover transition-colors"
+            menu_class="absolute right-0 top-full mt-1 w-48 border border-rule bg-bg shadow-md z-10 py-1"
             phx-click="toggle_provider_actions"
             phx-value-id={@provider.id}
           >
@@ -1218,7 +1161,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               patch={
                 ~p"/#{@account}/settings/device_posture/#{@provider.type}/#{@provider.id}/edit"
               }
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
             >
               <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
             </Navigation.link>
@@ -1227,15 +1170,17 @@ defmodule PortalWeb.Settings.DevicePosture do
               phx-click="sync"
               phx-value-id={@provider.id}
               disabled={@provider.is_disabled}
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Core.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
+              <Core.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync now
             </button>
-            <div class="my-1 border-t border-border"></div>
+            <div class="my-1 border-t border-hair"></div>
             <Navigation.link
               :if={@provider.is_disabled and @provider.disabled_reason == "Sync error"}
               patch={~p"/#{@account}/settings/device_posture/#{@provider.type}/#{@provider.id}/edit"}
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+              data-instant-modal="Edit the posture provider"
+              data-instant-modal-size="md"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
             >
               <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
               Re-verify to enable
@@ -1245,7 +1190,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               type="button"
               phx-click="toggle"
               phx-value-id={@provider.id}
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
             >
               <Core.icon
                 name={if @provider.is_disabled, do: "ri-play-circle-line", else: "ri-pause-circle-line"}
@@ -1258,7 +1203,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               phx-click="request_confirm"
               phx-value-id={@provider.id}
               phx-value-action="delete"
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-attn-wash transition-colors text-attn"
             >
               <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
             </button>
@@ -1268,7 +1213,6 @@ defmodule PortalWeb.Settings.DevicePosture do
     </tr>
     """
   end
-
   attr :provider, :map, required: true
 
   defp provider_status(assigns) do
@@ -1322,7 +1266,7 @@ defmodule PortalWeb.Settings.DevicePosture do
           options={iru_region_options()}
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           The region your Iru tenant is hosted in.
         </p>
       </div>
@@ -1337,14 +1281,14 @@ defmodule PortalWeb.Settings.DevicePosture do
           placeholder="https://acme.workshop.cloud"
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           The base URL of the Workshop tenant that manages your Santa hosts.
         </p>
       </div>
 
       <div :if={@type == "santa"}>
-        <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
-          API Key <span class="text-error">*</span>
+        <label for={@form[:api_key].id} class="block text-xs font-medium text-muted mb-1.5">
+          API key <span class="text-attn">*</span>
         </label>
         <Form.input
           field={@form[:api_key]}
@@ -1354,7 +1298,7 @@ defmodule PortalWeb.Settings.DevicePosture do
           data-1p-ignore
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           Create a read-only key in Workshop under API Keys. It must be able to call
           <code class="text-xs">{Santa.APIClient.list_hosts_path()}</code>.
         </p>
@@ -1370,15 +1314,15 @@ defmodule PortalWeb.Settings.DevicePosture do
           placeholder="https://acme.sentinelone.net"
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           The origin shown in your SentinelOne Management Console URL. A pasted dashboard or
           API URL is reduced to this origin.
         </p>
       </div>
 
       <div :if={@type == "sentinelone"}>
-        <label for={@form[:api_token].id} class="block text-xs font-medium text-body mb-1.5">
-          API Token <span class="text-error">*</span>
+        <label for={@form[:api_token].id} class="block text-xs font-medium text-muted mb-1.5">
+          API token <span class="text-attn">*</span>
         </label>
         <Form.input
           field={@form[:api_token]}
@@ -1388,14 +1332,14 @@ defmodule PortalWeb.Settings.DevicePosture do
           data-1p-ignore
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           Generate a token for a dedicated SentinelOne service user that can view endpoints.
         </p>
-        <div class="mt-2 rounded border border-border bg-raised px-3 py-2">
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+        <div class="mt-2 border border-hair bg-hover px-3 py-2">
+          <p class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
             Required
           </p>
-          <p class="mt-1 text-xs font-mono text-body">
+          <p class="mt-1 text-xs font-mono text-fg">
             GET {SentinelOne.APIClient.agents_path()}
           </p>
         </div>
@@ -1410,15 +1354,15 @@ defmodule PortalWeb.Settings.DevicePosture do
           phx-debounce="300"
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           Create tenant API credentials with the Service Principal Read-Only role in Sophos
           Central under Global Settings > Access Control > API Credentials.
         </p>
       </div>
 
       <div :if={@type == "sophos"}>
-        <label for={@form[:client_secret].id} class="block text-xs font-medium text-body mb-1.5">
-          Client Secret <span class="text-error">*</span>
+        <label for={@form[:client_secret].id} class="block text-xs font-medium text-muted mb-1.5">
+          Client secret <span class="text-attn">*</span>
         </label>
         <Form.input
           field={@form[:client_secret]}
@@ -1428,14 +1372,14 @@ defmodule PortalWeb.Settings.DevicePosture do
           data-1p-ignore
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           Sophos shows the secret only once, when the credentials are created.
         </p>
-        <div class="mt-2 rounded border border-border bg-raised px-3 py-2">
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+        <div class="mt-2 border border-hair bg-hover px-3 py-2">
+          <p class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
             Required
           </p>
-          <p class="mt-1 text-xs font-mono text-body">
+          <p class="mt-1 text-xs font-mono text-fg">
             GET {Sophos.APIClient.endpoints_path()}
           </p>
         </div>
@@ -1450,7 +1394,7 @@ defmodule PortalWeb.Settings.DevicePosture do
           phx-debounce="300"
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           The first label of the API URL under Settings > Access in Iru. For
           <code class="text-xs">https://acme.api.kandji.io</code>
           the subdomain is <code class="text-xs">acme</code>.
@@ -1458,8 +1402,8 @@ defmodule PortalWeb.Settings.DevicePosture do
       </div>
 
       <div :if={@type == "iru"}>
-        <label for={@form[:api_token].id} class="block text-xs font-medium text-body mb-1.5">
-          API Token <span class="text-error">*</span>
+        <label for={@form[:api_token].id} class="block text-xs font-medium text-muted mb-1.5">
+          API token <span class="text-attn">*</span>
         </label>
         <Form.input
           field={@form[:api_token]}
@@ -1469,44 +1413,44 @@ defmodule PortalWeb.Settings.DevicePosture do
           data-1p-ignore
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           Create the token in Iru under Settings > Access, then turn these endpoints on for it.
         </p>
 
-        <div class="mt-2 rounded border border-border bg-raised px-3 py-2 space-y-2.5">
+        <div class="mt-2 border border-hair bg-hover px-3 py-2 space-y-2.5">
           <div>
-            <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+            <p class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
               Required
             </p>
-            <p class="mt-1 text-xs font-mono text-body">GET {Iru.APIClient.devices_path()}</p>
+            <p class="mt-1 text-xs font-mono text-fg">GET {Iru.APIClient.devices_path()}</p>
           </div>
           <div>
-            <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+            <p class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
               Posture data
             </p>
             <ul class="mt-1 space-y-0.5">
               <li
                 :for={category <- Iru.Sync.prism_categories()}
-                class="text-xs font-mono text-body"
+                class="text-xs font-mono text-fg"
               >
                 GET {Iru.APIClient.prism_path(category)}
               </li>
             </ul>
-            <p class="mt-1.5 text-xs text-subtle">
+            <p class="mt-1.5 text-xs text-muted">
               An endpoint you leave off is skipped, and the fields it reports stay empty.
             </p>
           </div>
         </div>
       </div>
 
-      <div id="provider-verification" class="p-4 border border-border bg-raised rounded">
+      <div id="provider-verification" class="p-4 border border-rule">
         <Core.flash :if={@verification_error} kind={:error}>
           {@verification_error}
         </Core.flash>
         <div class="flex items-center justify-between">
           <div class="flex-1">
-            <h3 class="text-sm font-semibold text-heading">Provider Verification</h3>
-            <p class="mt-1 text-xs text-body">
+            <h3 class="text-sm font-semibold text-fg">Provider verification</h3>
+            <p class="mt-1 text-xs text-muted">
               {verification_help_text(@form, @type)}
             </p>
           </div>
@@ -1517,12 +1461,12 @@ defmodule PortalWeb.Settings.DevicePosture do
 
         <div
           :if={@type in ~w[intune defender sophos]}
-          class="mt-4 pt-4 border-t border-border space-y-3"
+          class="mt-4 pt-4 border-t border-hair space-y-3"
         >
           <div class="flex justify-between items-center">
-            <label class="text-xs font-medium text-body">Tenant ID</label>
+            <label class="text-xs font-medium text-muted">Tenant ID</label>
             <div class="text-right">
-              <p id="provider-tenant-id" class="text-xs font-semibold text-heading">
+              <p id="provider-tenant-id" class="text-xs font-semibold font-mono text-fg">
                 {verification_tenant_id(@form)}
               </p>
             </div>
@@ -1546,7 +1490,7 @@ defmodule PortalWeb.Settings.DevicePosture do
       <div
         :if={@verified?}
         id="provider-verification-status"
-        class="flex items-center text-success bg-success-light px-4 py-2 rounded-sm"
+        class="flex items-center text-fg border border-fg px-4 py-2"
       >
         <Core.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
         <span class="font-medium">Verified</span>
@@ -1561,7 +1505,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         }
         phx-click="start_verification"
       >
-        Verify Now
+        Verify now
       </Form.button>
       <Form.button :if={not @verified? and @verifying} type="button" style="primary" disabled>
         Verifying...
@@ -1578,7 +1522,7 @@ defmodule PortalWeb.Settings.DevicePosture do
       <button
         type="button"
         phx-click="reset_verification"
-        class="text-xs text-body hover:text-heading underline"
+        class="text-xs text-muted hover:text-fg underline"
         title="Reset verification to grant admin consent again"
       >
         Reset verification
@@ -1656,8 +1600,6 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp new_provider("sophos"), do: %Sophos.PostureProvider{}
 
   defp iru_region_options, do: [{"United States", "us"}, {"European Union", "eu"}]
-
-  defp select_type_classes, do: @select_type_classes
 
   defp reset_verification_attrs("intune"), do: %{tenant_id: nil, is_verified: false}
   defp reset_verification_attrs("iru"), do: %{is_verified: false}

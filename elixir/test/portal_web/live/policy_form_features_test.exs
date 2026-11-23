@@ -26,7 +26,7 @@ defmodule PortalWeb.PolicyFormFeaturesTest do
 
       assert_locked_state(locked_sections, document, html, unquote(locked))
 
-      form_text = document |> Floki.find("form") |> Floki.text()
+      form_text = document |> Floki.find("form:not([phx-change=filter])") |> Floki.text()
       assert {flow_position, _} = :binary.match(form_text, "Flow log reporting")
       assert {conditions_position, _} = :binary.match(form_text, "Conditions")
       assert flow_position < conditions_position

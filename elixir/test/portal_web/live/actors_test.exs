@@ -23,6 +23,8 @@ defmodule PortalWeb.ActorsTest do
   import Portal.IdentityFixtures
   import Portal.MembershipFixtures
   import Portal.PortalSessionFixtures
+  import Portal.PolicyFixtures
+  import Portal.ResourceFixtures
   import Portal.TokenFixtures
 
   setup do
@@ -64,7 +66,7 @@ defmodule PortalWeb.ActorsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/actors")
 
-      assert html =~ "Actors"
+      assert html =~ "People"
       assert html =~ actor.name
     end
 
@@ -576,7 +578,7 @@ defmodule PortalWeb.ActorsTest do
         }
       })
 
-      assert render(lv) =~ "Online"
+      assert render_async(lv) =~ "Online"
     end
 
     test "shows portal session details in the portal sessions tab", %{
@@ -1543,7 +1545,8 @@ defmodule PortalWeb.ActorsTest do
 
       render_click(lv, "change_tab", %{"tab" => "groups"})
 
-      html = render(lv)
+      # The list behind the modal reloads on its own; only the modal is checked here.
+      html = lv |> element("#actor-panel") |> render()
       assert html =~ added_group.name
       refute html =~ current_group.name
     end
@@ -1783,26 +1786,26 @@ defmodule PortalWeb.ActorsTest do
       assert has_element?(lv, "#actor-#{user.id} img[src^='/#{account.slug}/avatars/#{synced.id}?v=']")
     end
 
-    test "shows the user icon and a shield on an admin without a photo", %{conn: conn, account: account, actor: actor} do
+    test "shows the user icon and an admin badge on an admin without a photo", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
 
-      assert has_element?(lv, "#actor-#{actor.id} [title='Admin'].bg-purple-800")
+      assert has_element?(lv, "#actor-#{actor.id} span", "Admin")
       refute has_element?(lv, "#actor-#{actor.id} .font-mono", actor.id)
       assert has_element?(lv, "#actor-#{actor.id} .ri-user-line")
       refute has_element?(lv, "#actor-#{actor.id} .ri-shield-check-line")
       refute has_element?(lv, "#actor-#{actor.id} img[src*='/avatars/']")
     end
 
-    test "shows one logo per identity provider next to the name", %{conn: conn, account: account, actor: actor, directory: directory} do
+    test "shows the logo of each identity provider in the details", %{conn: conn, account: account, actor: actor, directory: directory} do
       user = actor_fixture(account: account, type: :account_user)
       directory_identity_fixture(directory: directory, actor: user)
       google = Portal.GoogleDirectoryFixtures.google_directory_fixture(account: account)
       directory_identity_fixture(directory: google, actor: user)
 
-      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{user}")
 
-      assert has_element?(lv, "#actor-#{user.id} img[alt='Microsoft Entra']")
-      assert has_element?(lv, "#actor-#{user.id} img[alt='Google']")
+      assert has_element?(lv, "#actor-panel img[alt='Microsoft Entra']")
+      assert has_element?(lv, "#actor-panel img[alt='Google']")
     end
 
     test "shows the photo in the detail panel", %{conn: conn, account: account, actor: actor, directory: directory} do
@@ -1811,7 +1814,7 @@ defmodule PortalWeb.ActorsTest do
 
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{user}")
 
-      assert has_element?(lv, "#actor-panel .size-24 img[src^='/#{account.slug}/avatars/#{identity.id}?v=']")
+      assert has_element?(lv, "#actor-panel .size-12 img[src^='/#{account.slug}/avatars/#{identity.id}?v=']")
     end
 
     test "shows each identity with its own photo and name", %{conn: conn, account: account, actor: actor, directory: directory} do
@@ -2051,7 +2054,9 @@ defmodule PortalWeb.ActorsTest do
           {"delete_token", %{"id" => :token_id}},
           {"delete_session", %{"id" => :session_id}},
           {"delete_identity", %{"id" => :identity_id}},
-          {"send_welcome_email", %{"id" => :other_actor_id}}
+          {"send_welcome_email", %{"id" => :other_actor_id}},
+          {"add_actor_to_group", %{"group_id" => :group_id}},
+          {"remove_actor_from_group", %{"group_id" => :group_id}}
         ] do
       test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
         other_actor = actor_fixture(account: account)
@@ -2059,8 +2064,10 @@ defmodule PortalWeb.ActorsTest do
         session = portal_session_fixture(account: account, actor: other_actor, auth_provider: auth_provider)
         identity = identity_fixture(account: account, actor: other_actor)
         token = client_token_fixture(account: account, actor: other_actor)
+        group = group_fixture(account: account)
 
         ids = %{
+          group_id: group.id,
           other_actor_id: other_actor.id,
           session_id: session.id,
           identity_id: identity.id,
@@ -2081,7 +2088,203 @@ defmodule PortalWeb.ActorsTest do
         assert Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
         assert Portal.Repo.get_by(Portal.ExternalIdentity, account_id: account.id, id: identity.id)
         assert Portal.Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+        refute Portal.Repo.get_by(Portal.Membership, group_id: group.id, actor_id: other_actor.id)
       end
+    end
+  end
+
+  describe "new look" do
+    setup %{account: account} do
+      person = actor_fixture(account: account, name: "Grace Person")
+      resource = resource_fixture(account: account, name: "Prod database")
+
+      direct_group =
+        group_fixture(account: account, name: "Direct holder group")
+        |> Ecto.Changeset.change(resource_id: resource.id)
+        |> Portal.Repo.update!()
+
+      membership_fixture(account: account, actor: person, group: direct_group)
+      policy_fixture(account: account, group: direct_group, resource: resource)
+
+      %{person: person, resource: resource, direct_group: direct_group}
+    end
+
+    test "lists groups and last activity, never a group owned by a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      person: person,
+      direct_group: direct_group
+    } do
+      group = group_fixture(account: account, name: "Engineering")
+      membership_fixture(account: account, actor: person, group: group)
+      client_fixture(account: account, actor: person, name: "Grace Laptop")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
+
+      row = lv |> element("#actor-#{person.id}") |> render()
+      assert row =~ "Engineering"
+      refute row =~ direct_group.name
+      refute row =~ "Never"
+    end
+
+    test "shows groups, devices and what the person can reach", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      person: person,
+      direct_group: direct_group
+    } do
+      group = group_fixture(account: account, name: "Engineering")
+      membership_fixture(account: account, actor: person, group: group)
+      wiki = resource_fixture(account: account, name: "Wiki")
+      policy_fixture(account: account, group: group, resource: wiki)
+      client_fixture(account: account, actor: person, name: "Grace Laptop")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{person}")
+
+      groups = lv |> element("#actor-groups") |> render()
+      assert groups =~ "Engineering"
+      refute groups =~ direct_group.name
+
+      assert lv |> element("#actor-devices") |> render() =~ "Grace Laptop"
+
+      reach = lv |> element("#actor-reach") |> render()
+      assert reach =~ "Wiki"
+      assert reach =~ "through"
+      assert reach =~ "Prod database"
+      assert reach =~ "direct access"
+    end
+
+    test "the group picker never offers a group owned by a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      person: person
+    } do
+      group_fixture(account: account, name: "Direct helpers")
+      other = actor_fixture(account: account)
+
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/actors/#{other}")
+
+      html = lv |> element("#actor-add-group-search") |> render_change(%{"value" => "Direct"})
+      assert html =~ "Direct helpers"
+      refute html =~ "Direct holder group"
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/actors/#{person}/edit")
+
+      html =
+        lv
+        |> element("input[placeholder='Search to add groups...']")
+        |> render_change(%{"value" => "Direct"})
+
+      assert html =~ "Direct helpers"
+      refute html =~ "Direct holder group"
+    end
+
+    test "adds and removes a group from the details", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      person: person,
+      direct_group: direct_group
+    } do
+      group = group_fixture(account: account, name: "Engineering")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{person}")
+
+      html = render_click(lv, "add_actor_to_group", %{"group_id" => group.id})
+      assert Portal.Repo.get_by(Portal.Membership, group_id: group.id, actor_id: person.id)
+      assert html =~ "actor-group-#{group.id}"
+
+      html = render_click(lv, "remove_actor_from_group", %{"group_id" => group.id})
+      refute Portal.Repo.get_by(Portal.Membership, group_id: group.id, actor_id: person.id)
+      refute html =~ "actor-group-#{group.id}"
+
+      render_click(lv, "remove_actor_from_group", %{"group_id" => direct_group.id})
+      assert Portal.Repo.get_by(Portal.Membership, group_id: direct_group.id, actor_id: person.id)
+    end
+  end
+
+  describe "modal lists load after the actor" do
+    test "renders the header first, then the lists", %{conn: conn, account: account, actor: actor} do
+      person = actor_fixture(account: account, name: "Async Person")
+      group = group_fixture(account: account, name: "Async Group")
+      membership_fixture(account: account, actor: person, group: group)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/actors/#{person}")
+
+      [header] = html |> Floki.parse_document!() |> Floki.find("#actor-panel h2")
+      assert Floki.text(header) =~ "Async Person"
+      assert html =~ "actor-groups-loading"
+      assert html =~ "actor-identities-loading"
+      refute html =~ "actor-group-#{group.id}"
+
+      render_async(lv)
+
+      assert has_element?(lv, "#actor-group-#{group.id}")
+      refute has_element?(lv, "#actor-groups-loading")
+      refute has_element?(lv, "#actor-identities-loading")
+    end
+
+    test "never shows one actor's lists on another", %{conn: conn, account: account, actor: actor} do
+      first = actor_fixture(account: account, name: "First Person")
+      second = actor_fixture(account: account, name: "Second Person")
+      first_group = group_fixture(account: account, name: "First Group")
+      second_group = group_fixture(account: account, name: "Second Group")
+      membership_fixture(account: account, actor: first, group: first_group)
+      membership_fixture(account: account, actor: second, group: second_group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/actors/#{first}")
+
+      render_patch(lv, ~p"/#{account}/actors/#{second}")
+      render_async(lv)
+
+      assert has_element?(lv, "#actor-group-#{second_group.id}")
+      refute has_element?(lv, "#actor-group-#{first_group.id}")
+    end
+
+    test "drops a result for an actor that is no longer selected" do
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{
+          __changed__: %{},
+          selected_actor: %Actor{id: Ecto.UUID.generate()},
+          actor_related: PortalWeb.Actors.Details.related_state()
+        }
+      }
+
+      stale = {:ok, {Ecto.UUID.generate(), [%{group: %{id: Ecto.UUID.generate()}}]}}
+
+      assert {:noreply, socket} =
+               PortalWeb.Actors.handle_async({:actor_related, :groups}, stale, socket)
+
+      assert socket.assigns.actor_related.groups.loading
+      refute socket.assigns.actor_related.groups.ok?
+
+      current = {:ok, {socket.assigns.selected_actor.id, []}}
+
+      assert {:noreply, socket} =
+               PortalWeb.Actors.handle_async({:actor_related, :groups}, current, socket)
+
+      assert socket.assigns.actor_related.groups.ok?
+      assert socket.assigns.actor_related.groups.result == []
+    end
+
+    test "keeps loaded lists when switching tabs", %{conn: conn, account: account, actor: actor} do
+      person = actor_fixture(account: account)
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{person}")
+
+      html = render_patch(lv, ~p"/#{account}/actors/#{person}?tab=client_sessions")
+      refute html =~ "actor-client-sessions-loading"
+      refute html =~ "actor-groups-loading"
     end
   end
 end

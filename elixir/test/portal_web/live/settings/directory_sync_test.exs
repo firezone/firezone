@@ -161,7 +161,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/directory_sync")
 
-      assert html =~ "Last Update"
+      assert html =~ "Last update"
       assert html =~ "Not set up"
       assert html =~ "ri-error-warning-line"
       assert html =~ "Okta sends user and group changes as they happen."
@@ -333,7 +333,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/directory_sync")
 
-      assert html =~ "Directory Sync"
+      assert html =~ "Directory sync"
       assert html =~ "No directories yet"
       assert html =~ "Add a directory"
     end
@@ -380,8 +380,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/directory_sync")
 
-      assert html =~ "Automate User &amp; Group Management"
-      assert html =~ "Upgrade to Unlock"
+      assert html =~ "Automate user &amp; group management"
+      assert html =~ "Upgrade to unlock"
       refute html =~ "No directories yet"
     end
 
@@ -613,7 +613,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/directory_sync/new")
 
-      assert html =~ "Select Directory Type"
+      assert html =~ "Add a directory"
       assert html =~ "Google"
       assert html =~ "Entra"
       assert html =~ "Okta"
@@ -640,10 +640,10 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/directory_sync/google/new")
 
-      assert html =~ "Add Google Directory"
+      assert html =~ "Add a Google directory"
       assert html =~ "Name"
       assert html =~ "Impersonation Email"
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
 
@@ -1425,7 +1425,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert_receive {:verification_ack, ^ack_ref}
 
       html = render(lv)
-      assert html =~ "Add Google Directory"
+      assert html =~ "Add a Google directory"
       refute html =~ "Verified"
       refute html =~ "stale-tenant"
     end
@@ -1505,7 +1505,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/edit")
 
       html = render_click(lv, "reset_verification")
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
       refute html =~ "Verification complete"
     end
 
@@ -1581,11 +1581,11 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/edit")
 
       assert html =~ "This directory has been successfully verified."
-      refute html =~ "Verify Now"
+      refute html =~ "Verify now"
 
       html = render_click(lv, "generate_keypair")
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
       assert html =~ "Awaiting verification..."
       refute html =~ "This directory has been successfully verified."
       assert has_element?(lv, "button[form='directory-form'][disabled]", "Save")
@@ -1637,7 +1637,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       render_click(lv, "submit_directory", %{})
 
-      assert render(lv) =~ "Directory Sync"
+      assert render(lv) =~ "Directory sync"
     end
 
     for event <- ["delete_directory", "toggle_directory"] do
