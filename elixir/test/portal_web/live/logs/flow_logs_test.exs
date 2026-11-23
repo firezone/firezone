@@ -240,16 +240,11 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert html =~ "GitLab"
 
       assert has_element?(lv, "#flow_logs-header th", "Opened")
-      assert has_element?(lv, "#flow_logs-header th", "Actor")
-      assert has_element?(lv, "#flow_logs-header th", "Client")
-      assert has_element?(lv, "#flow_logs-header th", "Resource")
-      assert has_element?(lv, "#flow_logs-header th", "Duration")
-      assert has_element?(lv, "#flow_logs-header th", "Size")
-      refute has_element?(lv, "#flow_logs-header th", "Initiator")
-      refute has_element?(lv, "#flow_logs-header th", "Destination")
-      refute has_element?(lv, "#flow_logs-header th", "Last packet")
+      assert has_element?(lv, "#flow_logs-header th", "Who")
+      assert has_element?(lv, "#flow_logs-header th", "What")
+      assert has_element?(lv, "#flow_logs-header th", "Result")
       refute has_element?(lv, "#flow_logs-header th", "Logged by")
-      refute has_element?(lv, "#flow_logs-header th", "Protocol")
+      refute has_element?(lv, "#flow_logs-header th", "Last packet")
       refute has_element?(lv, "#flow_logs-header th", "Clock skew")
 
       assert has_element?(lv, "#flow-log-#{initiator.log_id}", "12.0 MB")
@@ -259,12 +254,8 @@ defmodule PortalWeb.Logs.FlowLogsTest do
                "#flow_logs-header button[phx-value-order_by='flow_logs:asc:total_bytes']"
              )
 
-      initiator_row = lv |> element("#flow-log-#{initiator.log_id}") |> render()
-      responder_row = lv |> element("#flow-log-#{responder.log_id}") |> render()
-      assert initiator_row =~ "!bg-brand/[0.025]"
-      assert initiator_row =~ "dark:!bg-brand/[0.04]"
-      assert responder_row =~ "!bg-accent/[0.025]"
-      assert responder_row =~ "dark:!bg-accent/[0.04]"
+      assert has_element?(lv, "#flow-log-#{initiator.log_id} .sr-only", "Logged by initiator")
+      assert has_element?(lv, "#flow-log-#{responder.log_id} .sr-only", "Logged by responder")
 
       assert has_element?(lv, "#flow_logs-role-initiator[type='radio'][value='initiator']")
       assert has_element?(lv, "#flow_logs-role-responder[type='radio'][value='responder']")
