@@ -839,19 +839,7 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
-        if self
-            .allocation_expires_at()
-            .is_some_and(|expires_at| now >= expires_at)
-        {
-            tracing::debug!("Allocation is expired");
-
-            self.invalidate_allocation();
-            self.authenticate_and_queue(
-                MessagePrototype::allocate(self.software.clone()),
-                None,
-                now,
-            );
-        }
+        self.reallocate_if_expired(now);
 
         if self.has_allocation()
             && let Some(addr) = self
@@ -979,6 +967,8 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
+        self.reallocate_if_expired(now);
+
         if self.is_suspended() {
             tracing::debug!("Allocation is suspended");
             return;
@@ -1159,6 +1149,24 @@ impl Allocation {
         let (received_at, lifetime) = self.allocation_lifetime?;
 
         Some(received_at + lifetime)
+    }
+
+    /// Makes a new allocation once the lifetime of this one passed.
+    ///
+    /// The lifetime only passes if the host slept through the refresh, so whatever the
+    /// allocation is asked to do first after waking up may find it expired.
+    fn reallocate_if_expired(&mut self, now: Instant) {
+        if self
+            .allocation_expires_at()
+            .is_none_or(|expires_at| now < expires_at)
+        {
+            return;
+        }
+
+        tracing::debug!("Allocation is expired");
+
+        self.invalidate_allocation();
+        self.authenticate_and_queue(MessagePrototype::allocate(self.software.clone()), None, now);
     }
 
     fn invalidate_allocation(&mut self) {
