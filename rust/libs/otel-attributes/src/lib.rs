@@ -64,6 +64,11 @@ pub fn connection_socket(socket: &'static str) -> KeyValue {
     KeyValue::new("connection.socket", socket)
 }
 
+/// The type of a message received from the portal, i.e. its `event` name.
+pub fn portal_message_type(event: &'static str) -> KeyValue {
+    KeyValue::new("portal.message.type", event)
+}
+
 pub fn io_error_code(e: &io::Error) -> KeyValue {
     KeyValue::new("error.code", e.raw_os_error().unwrap_or_default() as i64)
 }

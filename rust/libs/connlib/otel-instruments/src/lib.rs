@@ -118,6 +118,41 @@ pub fn portal_connection_hiccups() -> Counter<u64> {
         .build()
 }
 
+/// Duration from requesting to join the portal's channel until the portal replies.
+pub fn portal_join_duration() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("portal.join.duration")
+        .with_description("Duration from requesting to join the portal's channel until its reply.")
+        .with_unit("s")
+        // A join that is not answered within 5s times out and counts as a hiccup instead.
+        .with_boundaries(vec![
+            0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0,
+        ])
+        .build()
+}
+
+/// Duration of handling a single message from the portal, by message type.
+pub fn portal_message_duration() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("portal.message.duration")
+        .with_description("Duration of handling a single message from the portal.")
+        .with_unit("s")
+        .with_boundaries(vec![
+            0.000_010, 0.000_025, 0.000_050, 0.000_100, 0.000_250, 0.000_500, 0.001, 0.0025, 0.005,
+            0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0,
+        ])
+        .build()
+}
+
+/// Number of portal messages that were dropped or discarded, by reason.
+pub fn portal_messages_dropped() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("portal.message.dropped")
+        .with_description("Number of portal messages that were dropped or discarded.")
+        .with_unit("{message}")
+        .build()
+}
+
 /// Number of connections by the network path in use.
 pub fn connection_count() -> Gauge<u64> {
     connlib_meter()

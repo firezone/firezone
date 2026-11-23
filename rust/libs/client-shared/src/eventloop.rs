@@ -9,7 +9,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{
     collections::BTreeSet,
     io,
@@ -78,6 +78,7 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
+    portal_message_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -226,6 +227,7 @@ impl Eventloop {
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
+            portal_message_duration: otel_instruments::portal_message_duration(),
             portal_event_rx,
             portal_cmd_tx,
             resource_list_sender,
@@ -297,7 +299,12 @@ impl Eventloop {
                 Ok(cf)
             }
             CombinedEvent::Portal(Some(Ok(PortalEvent::Message(msg)))) => {
-                self.handle_portal_message(msg).await?;
+                let message_type = otel_attributes::portal_message_type((&msg).into());
+                let started_at = Instant::now();
+                let result = self.handle_portal_message(msg).await;
+                self.portal_message_duration
+                    .record(started_at.elapsed().as_secs_f64(), &[message_type]);
+                result?;
 
                 Ok(ControlFlow::Continue(()))
             }

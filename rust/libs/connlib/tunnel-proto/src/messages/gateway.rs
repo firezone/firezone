@@ -123,8 +123,9 @@ pub struct PublicKeyChanged {
 
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, strum::IntoStaticStr)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+#[strum(serialize_all = "snake_case")]
 pub enum IngressMessages {
     RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),

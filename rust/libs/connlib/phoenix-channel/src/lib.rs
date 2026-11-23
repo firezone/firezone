@@ -70,6 +70,9 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
 
     login: &'static str,
     init_req: TInitReq,
+
+    join_duration: otel_instruments::Histogram<f64>,
+    dropped_messages: otel_instruments::Counter<u64>,
 }
 
 enum State<TOutboundMsg> {
@@ -496,6 +499,8 @@ where
             login,
             init_req,
             last_url: None,
+            join_duration: otel_instruments::portal_join_duration(),
+            dropped_messages: otel_instruments::portal_messages_dropped(),
         }
     }
 
@@ -538,6 +543,9 @@ where
             ..
         }) = &mut self.state
         else {
+            self.dropped_messages
+                .add(1, &[otel_attributes::error_type("NotConnected")]);
+
             return Err(NotConnected(message));
         };
 
@@ -569,7 +577,11 @@ where
 
         let closing = match std::mem::replace(&mut self.state, State::Closed) {
             State::Closing(closing) => closing,
-            State::Connected(connected) => close_websocket(connected.stream).boxed(),
+            State::Connected(connected) => {
+                self.count_unsent_messages(&connected);
+
+                close_websocket(connected.stream).boxed()
+            }
             State::Connecting(_) | State::Closed => std::future::ready(Ok(())).boxed(),
         };
 
@@ -832,7 +844,11 @@ where
                 Poll::Ready(Some(Ok(Message::Close(frame)))) => {
                     // Grab ownership of the `stream`.
                     let mut stream = match std::mem::replace(&mut self.state, State::Closed) {
-                        State::Connected(Connected { stream, .. }) => stream,
+                        State::Connected(connected) => {
+                            self.count_unsent_messages(&connected);
+
+                            connected.stream
+                        }
                         State::Connecting(_) | State::Closing(_) | State::Closed => {
                             // Defense-in-depth: This should not happen but never know what kind of bugs we might introduce in the future.
                             debug_assert!(
@@ -874,6 +890,8 @@ where
                                     "Failed to deserialize message: {}",
                                     err_with_src(&e)
                                 );
+                                self.dropped_messages
+                                    .add(1, &[otel_attributes::error_type("InvalidMessage")]);
                                 continue;
                             }
                         };
@@ -925,8 +943,10 @@ where
                                 continue;
                             }
 
-                            if pending_join_requests.remove(&req_id).is_some() {
+                            if let Some(sent_at) = pending_join_requests.remove(&req_id) {
                                 if message.topic == self.login {
+                                    self.join_duration
+                                        .record(sent_at.elapsed().as_secs_f64(), &[]);
                                     self.backoff = None;
                                     self.was_connected = true;
 
@@ -1005,7 +1025,19 @@ where
     ///
     /// The [`PhoenixChannel::poll`] function will handle the error appropriately.
     fn handle_internal_error(&mut self, e: InternalError) {
+        if let State::Connected(connected) = &self.state {
+            self.count_unsent_messages(connected);
+        }
+
         self.state = State::Connecting(future::ready(Err(e)).boxed())
+    }
+
+    /// Counts the messages that are discarded together with the connection, without having been sent.
+    fn count_unsent_messages(&self, connected: &Connected<TOutboundMsg>) {
+        self.dropped_messages.add(
+            connected.pending_messages.len() as u64,
+            &[otel_attributes::error_type("ConnectionClosed")],
+        );
     }
 }
 

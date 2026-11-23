@@ -65,6 +65,7 @@ pub struct Eventloop {
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
+    portal_message_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
 enum PortalCommand {
@@ -124,6 +125,7 @@ impl Eventloop {
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
+            portal_message_duration: otel_instruments::portal_message_duration(),
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -167,7 +169,12 @@ impl Eventloop {
                 Ok(ControlFlow::Continue(()))
             }
             CombinedEvent::Portal(Some(Ok(PortalEvent::Message(msg)))) => {
-                self.handle_portal_message(msg).await?;
+                let message_type = otel_attributes::portal_message_type((&msg).into());
+                let started_at = Instant::now();
+                let result = self.handle_portal_message(msg).await;
+                self.portal_message_duration
+                    .record(started_at.elapsed().as_secs_f64(), &[message_type]);
+                result?;
 
                 Ok(ControlFlow::Continue(()))
             }

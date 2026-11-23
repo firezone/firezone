@@ -16,6 +16,8 @@ jiff = { workspace = true, features = ["std"] }
 libc = { workspace = true }
 logging = { workspace = true }
 os_info = { workspace = true }
+otel-attributes = { workspace = true }
+otel-instruments = { workspace = true }
 rand = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }

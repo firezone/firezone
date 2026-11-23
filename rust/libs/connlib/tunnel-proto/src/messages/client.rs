@@ -351,8 +351,9 @@ pub enum ViolatedProperty {
 
 // These messages are the messages that can be received
 // by a client.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, strum::IntoStaticStr)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+#[strum(serialize_all = "snake_case")]
 pub enum IngressMessages {
     Init(InitClient),
 
