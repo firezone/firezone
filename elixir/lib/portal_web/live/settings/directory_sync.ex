@@ -644,6 +644,8 @@ defmodule PortalWeb.Settings.DirectorySync do
             :if={Portal.Account.idp_sync_enabled?(@account)}
             id="add-directory-button"
             patch={~p"/#{@account}/settings/directory_sync/new"}
+            data-instant-modal="Add a directory"
+            data-instant-modal-size="md"
             icon="ri-add-line"
             size="sm"
             style="primary"
@@ -668,6 +670,8 @@ defmodule PortalWeb.Settings.DirectorySync do
                 <:action>
                   <Form.button
                     patch={~p"/#{@account}/settings/directory_sync/new"}
+                    data-instant-modal="Add a directory"
+                    data-instant-modal-size="md"
                     icon="ri-add-line"
                     size="sm"
                   >
@@ -716,6 +720,8 @@ defmodule PortalWeb.Settings.DirectorySync do
               <Settings.Components.type_grid id="directory-types">
                 <Settings.Components.type_tile
                   patch={~p"/#{@account}/settings/directory_sync/google/new"}
+                  data-instant-modal="Add a directory"
+                  data-instant-modal-size="md"
                   provider="google"
                   title="Google"
                 >
@@ -723,6 +729,8 @@ defmodule PortalWeb.Settings.DirectorySync do
                 </Settings.Components.type_tile>
                 <Settings.Components.type_tile
                   patch={~p"/#{@account}/settings/directory_sync/entra/new"}
+                  data-instant-modal="Add a directory"
+                  data-instant-modal-size="md"
                   provider="entra"
                   title="Entra"
                 >
@@ -730,6 +738,8 @@ defmodule PortalWeb.Settings.DirectorySync do
                 </Settings.Components.type_tile>
                 <Settings.Components.type_tile
                   patch={~p"/#{@account}/settings/directory_sync/okta/new"}
+                  data-instant-modal="Add a directory"
+                  data-instant-modal-size="md"
                   provider="okta"
                   title="Okta"
                 >
@@ -744,6 +754,8 @@ defmodule PortalWeb.Settings.DirectorySync do
               <:leading>
                 <Navigation.link
                   patch={~p"/#{@account}/settings/directory_sync/new"}
+                  data-instant-modal="Add a directory"
+                  data-instant-modal-size="md"
                   class="flex items-center justify-center w-6 h-6 text-muted hover:text-fg hover:bg-hover transition-colors"
                   title="Back"
                 >
@@ -1344,6 +1356,8 @@ defmodule PortalWeb.Settings.DirectorySync do
               >
                 <Navigation.link
                   patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
+                  data-instant-modal="Edit the directory"
+                  data-instant-modal-size="md"
                   class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
                 >
                   <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
@@ -1373,6 +1387,8 @@ defmodule PortalWeb.Settings.DirectorySync do
                 <Navigation.link
                   :if={@directory.is_disabled and @directory.disabled_reason == "Sync error"}
                   patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
+                  data-instant-modal="Edit the directory"
+                  data-instant-modal-size="md"
                   class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
                 >
                   <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />

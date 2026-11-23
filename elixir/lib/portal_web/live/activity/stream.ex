@@ -269,7 +269,13 @@ defmodule PortalWeb.Activity.Stream do
           <tr
             :for={event <- @events}
             id={"activity-event-#{event.type}-#{event.log_id}"}
-            phx-click={JS.patch(stream_path(@account, @filter, event.key))}
+            phx-click={
+              Page.open_modal(stream_path(@account, @filter, event.key),
+                title: event.who,
+                subtitle: clock(event.at, @browser_tz),
+                size: "md"
+              )
+            }
             class={[
               "border-b border-hair cursor-pointer hover:bg-hover align-top",
               @selected && @selected.key == event.key && "bg-hover"

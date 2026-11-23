@@ -209,7 +209,7 @@ defmodule PortalWeb.Logs.Components do
         </div>
         <button
           type="button"
-          phx-click="close_panel"
+          phx-click={Page.close_modal({:closest, "[data-modal-layer]"}, "close_panel")}
           class="shrink-0 flex items-center justify-center w-7 h-7 text-muted hover:text-fg hover:bg-hover"
           title="Close (Esc)"
         >

@@ -240,7 +240,7 @@ defmodule PortalWeb.Sites do
         </:description>
         <:action>
           <Navigation.docs_action show_label size="md" path="/deploy/sites" />
-          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_site_panel">
+          <Form.button style="primary" icon="ri-add-line" phx-click={Page.instant("Add a site", size: "md") |> JS.push("open_new_site_panel")}>
             Add a site
           </Form.button>
         </:action>
@@ -295,8 +295,13 @@ defmodule PortalWeb.Sites do
                 "border-b border-hair cursor-pointer transition-colors hover:bg-hover",
                 not is_nil(@selected_site) and @selected_site.id == @internet_site.id && "bg-hover"
               ]}
-              phx-click="select_site"
-              phx-value-id={@internet_site.id}
+              phx-click={
+                Page.open_modal(
+                  LiveTable.live_table_path(assigns, ~p"/#{@account}/sites/#{@internet_site.id}"),
+                  title: "Internet",
+                  size: "xl"
+                )
+              }
             >
               <td class="px-4 pl-6 py-3">
                 <div class="flex items-center gap-2 font-medium text-fg">
@@ -318,8 +323,13 @@ defmodule PortalWeb.Sites do
                 "border-b border-hair cursor-pointer transition-colors hover:bg-hover",
                 not is_nil(@selected_site) and @selected_site.id == site.id && "bg-hover"
               ]}
-              phx-click="select_site"
-              phx-value-id={site.id}
+              phx-click={
+                Page.open_modal(
+                  LiveTable.live_table_path(assigns, ~p"/#{@account}/sites/#{site.id}"),
+                  title: site.name,
+                  size: "xl"
+                )
+              }
             >
               <td class="px-4 pl-6 py-3">
                 <div class="flex items-center gap-2 font-medium text-fg">

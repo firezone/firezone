@@ -1071,7 +1071,7 @@ defmodule PortalWeb.Actors do
           <Navigation.docs_action show_label size="md" path="/deploy/users" />
         </:action>
         <:action>
-          <Form.button style="primary" icon="ri-user-add-line" phx-click="open_new_actor_panel">
+          <Form.button style="primary" icon="ri-user-add-line" phx-click={Page.instant("Add a person", size: "xl") |> JS.push("open_new_actor_panel")}>
             Add a person
           </Form.button>
         </:action>
@@ -1089,6 +1089,7 @@ defmodule PortalWeb.Actors do
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <LiveTable.live_table
           id="actors"
+          modal_size="xl"
           loading={@loading_by_table_id["actors"]}
           query_error={@query_error_by_table_id["actors"]}
           rows={@actors}

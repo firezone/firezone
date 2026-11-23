@@ -1,6 +1,7 @@
 defmodule PortalWeb.Components.Page do
   use Phoenix.Component
   use PortalWeb, :verified_routes
+  alias Phoenix.LiveView.JS
   alias PortalWeb.Components.Core
 
   @doc """
@@ -416,42 +417,103 @@ defmodule PortalWeb.Components.Page do
   slot :inner_block, required: true
 
   def detail_modal(assigns) do
+    assigns = assign(assigns, :close, close_modal("##{assigns.id}-layer", assigns.on_close))
+
     ~H"""
     <div
       id={@id}
-      class={[
-        "fixed inset-0 z-40 items-start justify-center px-4 pt-[5vh] pb-6",
-        if(@open, do: "flex", else: "hidden")
-      ]}
-      phx-window-keydown={@open && @on_close}
+      class={["fixed inset-0 z-40 pointer-events-none", if(@open, do: "block", else: "hidden")]}
+      phx-window-keydown={@open && @close}
       phx-key="Escape"
       {@rest}
     >
       <div
         :if={@open}
-        id={"#{@id}-veil"}
-        class="absolute inset-0 bg-veil backdrop-blur-[1px]"
-        phx-click={@on_close}
-        aria-hidden="true"
+        id={"#{@id}-layer"}
+        data-modal-layer
+        class="absolute inset-0 flex items-start justify-center px-4 pt-[5vh] pb-6 pointer-events-auto"
       >
-      </div>
-      <div
-        :if={@open}
-        role="dialog"
-        aria-modal="true"
-        class={[
-          "relative flex flex-col w-full max-h-[90vh] overflow-hidden",
-          "bg-bg text-fg border border-rule shadow-lg",
-          @size == "md" && "max-w-2xl",
-          @size == "lg" && "max-w-4xl",
-          @size == "xl" && "max-w-6xl",
-          @class
-        ]}
-      >
-        {render_slot(@inner_block)}
+        <div
+          id={"#{@id}-veil"}
+          class="absolute inset-0 bg-veil backdrop-blur-[1px]"
+          phx-click={@close}
+          aria-hidden="true"
+        >
+        </div>
+        <div
+          id={"#{@id}-dialog"}
+          role="dialog"
+          aria-modal="true"
+          class={[
+            "relative flex flex-col w-full max-h-[90vh] overflow-hidden",
+            "bg-bg text-fg border border-rule shadow-lg",
+            @size == "md" && "max-w-2xl",
+            @size == "lg" && "max-w-4xl",
+            @size == "xl" && "max-w-6xl",
+            @class
+          ]}
+        >
+          {render_slot(@inner_block)}
+        </div>
       </div>
     </div>
     """
+  end
+
+  @doc ~S"""
+  Opens an item's modal without waiting for the server.
+
+  The browser shows a preview straight away: with `from_row: true` it copies the
+  clicked table row's cells under their column headings, otherwise it shows the
+  `title` and `subtitle`. At the same time it patches to `path`, and the
+  server's modal replaces the preview when it arrives.
+
+  ## Examples
+
+      <tr phx-click={Page.open_modal(~p"/#{@account}/sites/#{site}", title: site.name)}>
+  """
+  @spec open_modal(String.t(), keyword()) :: Phoenix.LiveView.JS.t()
+  def open_modal(path, opts \\ []) do
+    detail =
+      opts
+      |> Keyword.take([:from_row, :title, :subtitle, :size])
+      |> Map.new()
+
+    JS.dispatch("fz:instant-modal", detail: detail)
+    |> JS.patch(path)
+  end
+
+  @doc """
+  Shows a modal preview with just a title at once, for buttons whose event opens
+  a modal. Pipe the button's `JS.push/2` after it.
+
+  ## Examples
+
+      <Form.button phx-click={Page.instant("Add a policy") |> JS.push("open_new_policy_form")}>
+  """
+  @spec instant(String.t(), keyword()) :: Phoenix.LiveView.JS.t()
+  def instant(title, opts \\ []) do
+    detail = opts |> Keyword.take([:subtitle, :size]) |> Map.new() |> Map.put(:title, title)
+    JS.dispatch("fz:instant-modal", detail: detail)
+  end
+
+  @doc """
+  Hides a modal layer at once and then runs `on_close` (an event name or JS).
+
+  The layer is hidden with an inline style, not a sticky JS class, so if the
+  server keeps the modal open (for example Escape in an edit form goes back to
+  the details) the next render shows it again.
+  """
+  @spec close_modal(String.t() | {:closest, String.t()}, String.t() | Phoenix.LiveView.JS.t() | nil) ::
+          Phoenix.LiveView.JS.t()
+  def close_modal(target, on_close) do
+    js = JS.dispatch("fz:modal-hide", to: target)
+
+    case on_close do
+      nil -> js
+      %JS{ops: ops} -> %JS{ops: js.ops ++ ops}
+      event when is_binary(event) -> JS.push(js, event)
+    end
   end
 
   @doc """

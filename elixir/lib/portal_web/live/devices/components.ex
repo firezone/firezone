@@ -597,7 +597,11 @@ defmodule PortalWeb.Devices.Components do
           <Form.button :if={@device.type != :gateway} phx-click="open_device_edit_form" size="xs">
             <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </Form.button>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          <Form.icon_button
+            icon="ri-close-line"
+            title="Close (Esc)"
+            phx-click={Page.close_modal({:closest, "[data-modal-layer]"}, "close_panel")}
+          />
         </div>
       </div>
     </div>

@@ -1306,13 +1306,17 @@ defmodule PortalWeb.Resources.Components do
         <div class="flex items-center gap-1.5 shrink-0">
           <Form.button
             :if={not @confirm_delete_resource && @resource.type != :internet}
-            phx-click="open_edit_form"
+            phx-click={Page.instant("Edit " <> @resource.name, size: "xl") |> JS.push("open_edit_form")}
             size="sm"
             icon="ri-pencil-line"
           >
             Edit
           </Form.button>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          <Form.icon_button
+            icon="ri-close-line"
+            title="Close (Esc)"
+            phx-click={Page.close_modal({:closest, "[data-modal-layer]"}, "close_panel")}
+          />
         </div>
       </div>
     </div>

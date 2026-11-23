@@ -44,6 +44,8 @@ defmodule PortalWeb.Settings.DNS do
           <Form.button
             id="edit-dns-button"
             patch={~p"/#{@account}/settings/dns/edit"}
+            data-instant-modal="Edit DNS settings"
+            data-instant-modal-size="md"
             icon="ri-pencil-line"
             size="sm"
           >

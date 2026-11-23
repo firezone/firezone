@@ -878,6 +878,7 @@ defmodule PortalWeb.Groups do
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <LiveTable.live_table
           id="groups"
+          modal_size="xl"
           loading={@loading_by_table_id["groups"]}
           query_error={@query_error_by_table_id["groups"]}
           rows={@groups}

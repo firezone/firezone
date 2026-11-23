@@ -701,6 +701,8 @@ defmodule PortalWeb.Settings.DevicePosture do
             :if={Portal.Account.device_posture_enabled?(@account)}
             id="add-posture-provider-button"
             patch={~p"/#{@account}/settings/device_posture/new"}
+            data-instant-modal="Add a posture provider"
+            data-instant-modal-size="md"
             icon="ri-add-line"
             size="sm"
             style="primary"
@@ -725,6 +727,8 @@ defmodule PortalWeb.Settings.DevicePosture do
                 <:action>
                   <Form.button
                     patch={~p"/#{@account}/settings/device_posture/new"}
+                    data-instant-modal="Add a posture provider"
+                    data-instant-modal-size="md"
                     icon="ri-add-line"
                     size="sm"
                   >
@@ -784,6 +788,8 @@ defmodule PortalWeb.Settings.DevicePosture do
             <Settings.Components.type_grid id="posture-provider-types">
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/device_posture/intune/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
                 provider="intune"
                 title="Microsoft Intune"
               >
@@ -791,6 +797,8 @@ defmodule PortalWeb.Settings.DevicePosture do
               </Settings.Components.type_tile>
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/device_posture/iru/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
                 provider="iru"
                 title="Iru"
               >
@@ -798,6 +806,8 @@ defmodule PortalWeb.Settings.DevicePosture do
               </Settings.Components.type_tile>
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/device_posture/defender/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
                 provider="defender"
                 title="Microsoft Defender for Endpoint"
               >
@@ -805,6 +815,8 @@ defmodule PortalWeb.Settings.DevicePosture do
               </Settings.Components.type_tile>
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/device_posture/santa/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
                 provider="santa"
                 title="Santa"
               >
@@ -812,6 +824,8 @@ defmodule PortalWeb.Settings.DevicePosture do
               </Settings.Components.type_tile>
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/device_posture/sentinelone/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
                 provider="sentinelone"
                 title="SentinelOne"
               >
@@ -819,6 +833,8 @@ defmodule PortalWeb.Settings.DevicePosture do
               </Settings.Components.type_tile>
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/device_posture/sophos/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
                 provider="sophos"
                 title="Sophos XDR"
               >
@@ -918,6 +934,8 @@ defmodule PortalWeb.Settings.DevicePosture do
               <Navigation.link
                 :if={@live_action == :new}
                 patch={~p"/#{@account}/settings/device_posture/new"}
+                data-instant-modal="Add a posture provider"
+                data-instant-modal-size="md"
                 class="flex items-center justify-center w-6 h-6 text-muted hover:text-fg hover:bg-hover transition-colors"
                 title="Back"
               >
@@ -1160,6 +1178,8 @@ defmodule PortalWeb.Settings.DevicePosture do
             <Navigation.link
               :if={@provider.is_disabled and @provider.disabled_reason == "Sync error"}
               patch={~p"/#{@account}/settings/device_posture/#{@provider.type}/#{@provider.id}/edit"}
+              data-instant-modal="Edit the posture provider"
+              data-instant-modal-size="md"
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
             >
               <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />

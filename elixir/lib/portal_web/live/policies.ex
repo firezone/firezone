@@ -229,7 +229,7 @@ defmodule PortalWeb.Policies do
         </:description>
         <:action>
           <Navigation.docs_action show_label size="md" path="/deploy/policies" />
-          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_policy_form">
+          <Form.button style="primary" icon="ri-add-line" phx-click={Page.instant("Add a policy") |> JS.push("open_new_policy_form")}>
             Add a policy
           </Form.button>
         </:action>

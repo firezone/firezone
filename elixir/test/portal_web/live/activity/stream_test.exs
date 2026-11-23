@@ -209,7 +209,7 @@ defmodule PortalWeb.Activity.StreamTest do
 
     assert has_element?(lv, "#activity-event-panel [role='dialog']", "Received")
 
-    lv |> element("#activity-event-panel button[phx-click='close_panel']") |> render_click()
+    lv |> element("#activity-event-panel button[title='Close (Esc)']") |> render_click()
     assert_patch(lv)
     refute has_element?(lv, "#activity-event-panel [role='dialog']")
   end

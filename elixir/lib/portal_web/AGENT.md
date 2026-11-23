@@ -14,17 +14,17 @@ These rules apply to everything under `lib/portal_web`. Read them before you add
 
 Use these names in new code. They are defined in `assets/css/main.css`.
 
-| Token            | Use                                                        |
-| ---------------- | ---------------------------------------------------------- |
-| `text-fg`        | Body text, names, values                                   |
-| `text-muted`     | Secondary text, descriptions, labels                       |
-| `text-faint`     | Placeholders, disabled, decoration                         |
-| `bg-bg`          | Page and overlay background                                |
-| `bg-hover`       | Row hover, selected row, quiet fills                       |
-| `border-hair`    | Between rows and list items                                |
-| `border-rule`    | Under table headings, around menus and modals, buttons     |
-| `text-attn`      | Needs action. Pair with `border-attn` or `bg-attn-wash`    |
-| `bg-veil`        | The veil behind a modal                                    |
+| Token         | Use                                                     |
+| ------------- | ------------------------------------------------------- |
+| `text-fg`     | Body text, names, values                                |
+| `text-muted`  | Secondary text, descriptions, labels                    |
+| `text-faint`  | Placeholders, disabled, decoration                      |
+| `bg-bg`       | Page and overlay background                             |
+| `bg-hover`    | Row hover, selected row, quiet fills                    |
+| `border-hair` | Between rows and list items                             |
+| `border-rule` | Under table headings, around menus and modals, buttons  |
+| `text-attn`   | Needs action. Pair with `border-attn` or `bg-attn-wash` |
+| `bg-veil`     | The veil behind a modal                                 |
 
 The old names (`text-heading`, `text-body`, `text-subtle`, `bg-surface`, `bg-raised`, `brand`, `accent`, `success`, ...) still resolve to these greys so old markup stays monochrome. Do not add new uses of them. `primary-*`, `accent-*` and `neutral-*` palettes are greys too.
 
@@ -53,6 +53,12 @@ Use Remix icons through `<Core.icon name="ri-...-line" />`. Use them on nav item
   - A column that only matters while a filter is applied takes `filter={:that_filter}` on its `:col`. It shows only while the filter is applied.
 - One item opens in `Page.detail_modal` over the list. Pass the event the page already uses for Escape as `on_close`; it also runs on a veil click. Keep the old element id (for example `id="resource-panel"`) so tests and links keep working.
 - Inside a modal: `Form.panel_header`, a scrolling body, `Form.panel_footer` for actions.
+- Modals open and close without waiting for the server, so the UI stays fast on slow links:
+  - LiveTable rows do this on their own. Set `modal_size` on `live_table` to the size of the page's `detail_modal` so the preview matches.
+  - Any other row or link that opens a modal: `phx-click={Page.open_modal(path, title: ..., size: ...)}`, or `data-instant-modal="Title"` on a patch link.
+  - A button whose event opens a modal: `Page.instant("Add a site") |> JS.push("open_new_site_panel")`.
+  - A close control inside a modal: `Page.close_modal({:closest, "[data-modal-layer]"}, "close_panel")`. `Form.panel_header` already does this.
+  - Never hide a modal with a sticky JS class (`JS.hide`, `JS.add_class`): the server could not show it again.
 - Confirmations use `Form.modal`.
 - Detail content: eyebrow label, then a plain list with hairlines, or `Table.vertical_table` for key and value pairs. Show every field the old page showed. Put rare fields behind an expand control rather than dropping them.
 - Status: `Core.status_badge`. Online is a filled dot; offline or failed is a hollow `attn` ring.
@@ -60,16 +66,16 @@ Use Remix icons through `<Core.icon name="ri-...-line" />`. Use them on nav item
 
 ### List columns
 
-| List              | Columns                               |
-| ----------------- | ------------------------------------- |
-| Policies          | Group, Resource, Status               |
-| Resources         | Resource, Address, Route              |
-| Sites             | Site, Resources, Devices online       |
-| Devices           | Device, Owner or site, Last seen      |
-| People            | Name, Groups, Last active             |
-| Service accounts  | Name, Groups, Last active             |
-| Groups            | Group, Members, Policies              |
-| Activity          | Time, Who, What, Result               |
+| List             | Columns                          |
+| ---------------- | -------------------------------- |
+| Policies         | Group, Resource, Status          |
+| Resources        | Resource, Address, Route         |
+| Sites            | Site, Resources, Devices online  |
+| Devices          | Device, Owner or site, Last seen |
+| People           | Name, Groups, Last active        |
+| Service accounts | Name, Groups, Last active        |
+| Groups           | Group, Members, Policies         |
+| Activity         | Time, Who, What, Result          |
 
 ## Behaviour to keep
 

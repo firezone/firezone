@@ -437,7 +437,7 @@ defmodule PortalWeb.Resources do
         </:description>
         <:action>
           <Navigation.docs_action show_label size="md" path="/deploy/resources" />
-          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_form">
+          <Form.button style="primary" icon="ri-add-line" phx-click={Page.instant("Add a resource", size: "xl") |> JS.push("open_new_form")}>
             Add a resource
           </Form.button>
         </:action>
@@ -453,6 +453,7 @@ defmodule PortalWeb.Resources do
         <LiveTable.live_table
           stale={@stale}
           id="resources"
+          modal_size="xl"
           loading={@loading_by_table_id["resources"]}
           query_error={@query_error_by_table_id["resources"]}
           rows={@resources}
@@ -473,8 +474,13 @@ defmodule PortalWeb.Resources do
                 not is_nil(@selected_resource) and @selected_resource.id == @internet_resource.id &&
                   "bg-hover"
               ]}
-              phx-click="table_row_click"
-              phx-value-path={~p"/#{@account}/resources/#{@internet_resource.id}"}
+              phx-click={
+                Page.open_modal(~p"/#{@account}/resources/#{@internet_resource.id}",
+                  title: "Internet",
+                  subtitle: "0.0.0.0/0, ::/0",
+                  size: "xl"
+                )
+              }
             >
               <td class="px-4 first:pl-6 py-3">
                 <div class="flex items-center gap-2 font-medium text-fg">

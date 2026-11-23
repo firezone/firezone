@@ -911,7 +911,13 @@ defmodule PortalWeb.Policies.Components do
         <:leading><Core.icon name="ri-shield-check-line" class="w-5 h-5 text-muted" /></:leading>
         <:adornment><.policy_status_badge is_disabled={@policy.is_disabled} /></:adornment>
         <:actions>
-          <Form.button phx-click="open_edit_form" size="sm" icon="ri-pencil-line">Edit</Form.button>
+          <Form.button
+            phx-click={Page.instant("Edit policy") |> JS.push("open_edit_form")}
+            size="sm"
+            icon="ri-pencil-line"
+          >
+            Edit
+          </Form.button>
         </:actions>
       </Form.panel_header>
       <div role="tablist" class="flex items-end gap-5 px-6 border-b border-hair shrink-0">

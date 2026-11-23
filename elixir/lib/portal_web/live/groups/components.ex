@@ -274,7 +274,11 @@ defmodule PortalWeb.Groups.Components do
           >
             Delete group
           </Form.button>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          <Form.icon_button
+            icon="ri-close-line"
+            title="Close (Esc)"
+            phx-click={Page.close_modal({:closest, "[data-modal-layer]"}, "close_panel")}
+          />
         </div>
       </div>
       <div

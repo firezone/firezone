@@ -217,6 +217,7 @@ defmodule PortalWeb.Devices do
         <LiveTable.live_table
           stale={@stale}
           id="devices"
+          modal_size="xl"
           loading={@loading_by_table_id["devices"]}
           query_error={@query_error_by_table_id["devices"]}
           rows={@devices}

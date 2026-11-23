@@ -7,6 +7,7 @@ defmodule PortalWeb.Components.Table do
   use Gettext, backend: PortalWeb.Gettext
   alias PortalWeb.Components.Core
   alias PortalWeb.Components.Navigation
+  alias PortalWeb.Components.Page
 
   attr :table_id, :string, required: true, doc: "id of the parent table"
   attr :columns, :any, required: true, doc: "col slot taken from parent component"
@@ -79,6 +80,8 @@ defmodule PortalWeb.Components.Table do
   attr :selected, :boolean, default: false, doc: "whether this row is currently selected"
   attr :class, :any, default: nil, doc: "additional classes for the table row"
 
+  attr :modal_size, :string, default: "lg", doc: "the size of the modal the row opens"
+
   attr :columns, :any, required: true, doc: "col slot taken from parent component"
   attr :actions, :list, required: true, doc: "action slot taken from parent component"
 
@@ -87,6 +90,13 @@ defmodule PortalWeb.Components.Table do
     doc: "the function for mapping each row before calling the :col and :action slots"
 
   def table_row(assigns) do
+    click =
+      if assigns.click do
+        Page.open_modal(assigns.click.(assigns.row), from_row: true, size: assigns.modal_size)
+      end
+
+    assigns = assign(assigns, click_js: click)
+
     ~H"""
     <tr
       id={@id}
@@ -97,8 +107,7 @@ defmodule PortalWeb.Components.Table do
         @selected && (@patch || @click) && "cursor-pointer",
         @class
       ]}
-      phx-click={@click && "table_row_click"}
-      phx-value-path={@click && @click.(@row)}
+      phx-click={@click_js}
     >
       <td
         :for={{col, _i} <- Enum.with_index(@columns)}

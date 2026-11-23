@@ -170,7 +170,7 @@ defmodule PortalWeb.Actors.Components do
           >
             Activity
           </Form.button>
-          <Form.button type="button" phx-click="open_actor_edit_form" size="sm" icon="ri-pencil-line">
+          <Form.button type="button" phx-click={Page.instant("Edit " <> @actor.name, size: "xl") |> JS.push("open_actor_edit_form")} size="sm" icon="ri-pencil-line">
             Edit
           </Form.button>
           <Form.button
@@ -202,7 +202,11 @@ defmodule PortalWeb.Actors.Components do
           >
             Delete
           </Form.button>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          <Form.icon_button
+            icon="ri-close-line"
+            title="Close (Esc)"
+            phx-click={Page.close_modal({:closest, "[data-modal-layer]"}, "close_panel")}
+          />
         </div>
       </div>
 

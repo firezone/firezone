@@ -98,6 +98,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <LiveTable.live_table
           id="api_request_logs"
+          modal_size="xl"
           rows={@api_request_logs}
           filtered_empty_hint="Try broadening the time window or using a different filter."
           loading={@loading_by_table_id["api_request_logs"]}

@@ -186,6 +186,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           <Form.button
             id="add-api-client-button"
             patch={~p"/#{@account}/settings/api_clients/new"}
+            data-instant-modal="Add a API client"
+            data-instant-modal-size="md"
             style="primary"
             icon="ri-add-line"
             size="sm"
@@ -205,6 +207,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
               <:action>
                 <Form.button
                   patch={~p"/#{@account}/settings/api_clients/new"}
+                  data-instant-modal="Add a API client"
+                  data-instant-modal-size="md"
                   icon="ri-add-line"
                   size="sm"
                 >
@@ -452,6 +456,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
               >
                 <Navigation.link
                   patch={~p"/#{@account}/settings/api_clients/#{@actor}/edit"}
+                  data-instant-modal="Edit the API client"
+                  data-instant-modal-size="md"
                   class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
                 >
                   <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit

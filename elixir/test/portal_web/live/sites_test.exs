@@ -2317,7 +2317,7 @@ defmodule PortalWeb.SitesTest do
   end
 
   defp site_row(lv, site) do
-    lv |> element("tr[phx-value-id='#{site.id}']") |> render()
+    lv |> element("#site-#{site.id}") |> render()
   end
 
   defp badge_count(html) do

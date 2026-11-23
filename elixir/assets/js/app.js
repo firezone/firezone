@@ -19,6 +19,7 @@ import {
   getPageSizePreference,
 } from "./hooks/page_size_preference";
 import "./event_listeners";
+import "./instant_modal";
 
 Hooks.DismissableBanner = DismissableBanner;
 Hooks.ThemeToggle = ThemeToggle;

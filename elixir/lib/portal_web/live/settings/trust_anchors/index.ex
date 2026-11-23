@@ -237,6 +237,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <Form.button
             id="add-trust-anchor-button"
             patch={~p"/#{@account}/settings/trust_anchors/new"}
+            data-instant-modal="Add a trust anchor"
+            data-instant-modal-size="md"
             style="primary"
             icon="ri-add-line"
             size="sm"
@@ -256,6 +258,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <:action>
                 <Form.button
                   patch={~p"/#{@account}/settings/trust_anchors/new"}
+                  data-instant-modal="Add a trust anchor"
+                  data-instant-modal-size="md"
                   icon="ri-add-line"
                   size="sm"
                 >
@@ -595,6 +599,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       <:actions>
         <Form.button
           patch={~p"/#{@account}/settings/trust_anchors/#{@trust_anchor.id}/edit"}
+          data-instant-modal="Edit the trust anchor"
+          data-instant-modal-size="md"
           icon="ri-pencil-line"
           size="xs"
         >

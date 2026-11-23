@@ -517,7 +517,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/new")
 
-      lv |> element("button[phx-click='close_panel']") |> render_click()
+      lv |> element("button[title='Close (Esc)']") |> render_click()
 
       assert_patch(lv, ~p"/#{account}/settings/authentication")
     end
@@ -2317,7 +2317,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/new")
 
-      lv |> element("button[phx-click='close_panel'][title='Close (Esc)']") |> render_click()
+      lv |> element("button[title='Close (Esc)']") |> render_click()
 
       assert_patch(lv, ~p"/#{account}/settings/authentication")
     end
@@ -3016,7 +3016,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/new")
 
-      lv |> element("button[phx-click='close_panel'][title='Close (Esc)']") |> render_click()
+      lv |> element("button[title='Close (Esc)']") |> render_click()
       assert_patch(lv, ~p"/#{account}/settings/authentication")
     end
   end
@@ -3929,7 +3929,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
           :edit -> render_patch(lv, ~p"/#{ctx.account}/settings/authentication/google/#{google.id}/edit")
           :same_type -> render_patch(lv, ~p"/#{ctx.account}/settings/authentication/entra/#{entra.id}/edit")
           :close ->
-            lv |> element("#add-provider-panel button[phx-click='close_panel'][title='Close (Esc)']") |> render_click()
+            lv |> element("#add-provider-panel button[title='Close (Esc)']") |> render_click()
             render_patch(lv, ~p"/#{ctx.account}/settings/authentication/entra/#{entra.id}/edit")
         end
 

@@ -7,6 +7,7 @@ defmodule PortalWeb.Components.Form do
 
   alias PortalWeb.Components.Core
   alias PortalWeb.Components.Navigation
+  alias PortalWeb.Components.Page
 
   @doc """
   Renders a themed LiveView file picker with upload progress, removal, and errors.
@@ -910,7 +911,11 @@ defmodule PortalWeb.Components.Form do
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
         {render_slot(@actions)}
-        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click={@close_event} />
+        <.icon_button
+          icon="ri-close-line"
+          title="Close (Esc)"
+          phx-click={Page.close_modal({:closest, "[data-modal-layer]"}, @close_event)}
+        />
       </div>
     </div>
     """

@@ -772,6 +772,8 @@ defmodule PortalWeb.Settings.Authentication do
           <Form.button
             id="add-provider-button"
             patch={~p"/#{@account}/settings/authentication/new"}
+            data-instant-modal="Add a authentication provider"
+            data-instant-modal-size="lg"
             icon="ri-add-line"
             size="sm"
             style="primary"
@@ -825,6 +827,8 @@ defmodule PortalWeb.Settings.Authentication do
             <Settings.Components.type_grid id="provider-types">
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/authentication/google/new"}
+                data-instant-modal="Add a authentication provider"
+                data-instant-modal-size="lg"
                 provider="google"
                 title="Google"
               >
@@ -832,6 +836,8 @@ defmodule PortalWeb.Settings.Authentication do
               </Settings.Components.type_tile>
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/authentication/github/new"}
+                data-instant-modal="Add a authentication provider"
+                data-instant-modal-size="lg"
                 provider="github"
                 title="GitHub"
               >
@@ -839,6 +845,8 @@ defmodule PortalWeb.Settings.Authentication do
               </Settings.Components.type_tile>
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/authentication/entra/new"}
+                data-instant-modal="Add a authentication provider"
+                data-instant-modal-size="lg"
                 provider="entra"
                 title="Entra"
               >
@@ -846,6 +854,8 @@ defmodule PortalWeb.Settings.Authentication do
               </Settings.Components.type_tile>
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/authentication/okta/new"}
+                data-instant-modal="Add a authentication provider"
+                data-instant-modal-size="lg"
                 provider="okta"
                 title="Okta"
               >
@@ -853,6 +863,8 @@ defmodule PortalWeb.Settings.Authentication do
               </Settings.Components.type_tile>
               <Settings.Components.type_tile
                 patch={~p"/#{@account}/settings/authentication/oidc/new"}
+                data-instant-modal="Add a authentication provider"
+                data-instant-modal-size="lg"
                 provider="oidc"
                 title="OIDC"
               >
@@ -867,6 +879,8 @@ defmodule PortalWeb.Settings.Authentication do
             <:leading>
               <Navigation.link
                 patch={~p"/#{@account}/settings/authentication/new"}
+                data-instant-modal="Add a authentication provider"
+                data-instant-modal-size="lg"
                 class="flex items-center justify-center w-6 h-6 text-muted hover:text-fg hover:bg-hover transition-colors"
                 title="Back"
               >
@@ -1151,6 +1165,8 @@ defmodule PortalWeb.Settings.Authentication do
                 <Navigation.link
                   :if={@can_be_edited}
                   patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
+                  data-instant-modal="Edit the authentication provider"
+                  data-instant-modal-size="lg"
                   class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
                 >
                   <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit

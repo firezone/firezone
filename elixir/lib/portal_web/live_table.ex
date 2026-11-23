@@ -83,6 +83,8 @@ defmodule PortalWeb.LiveTable do
 
   slot :footer, doc: "content rendered centered in the paginator bar"
 
+  attr :modal_size, :string, default: "lg", doc: "the size of the modal a row opens, so its instant preview matches"
+
   def live_table(assigns) do
     assigns =
       assign(assigns, rows: if(assigns.query_error, do: [], else: assigns.rows))
@@ -131,6 +133,7 @@ defmodule PortalWeb.LiveTable do
               selected={not is_nil(@row_selected) and @row_selected.(row)}
               class={@row_class && @row_class.(row)}
               mapper={@row_item}
+              modal_size={@modal_size}
             />
           </tbody>
           <tbody :if={@show_skeleton} id={"#{@id}-skeleton"} aria-hidden="true">
