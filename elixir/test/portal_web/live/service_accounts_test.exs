@@ -20,6 +20,7 @@ defmodule PortalWeb.ServiceAccountsTest do
   import Portal.ClientSessionFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
+  import Portal.ResourceFixtures
   import Portal.TokenFixtures
 
   setup do
@@ -64,7 +65,7 @@ defmodule PortalWeb.ServiceAccountsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/service_accounts")
 
-      assert html =~ "Service Accounts"
+      assert html =~ "Service accounts"
     end
 
     test "lists service accounts by name", %{conn: conn, account: account, actor: actor} do
@@ -1318,6 +1319,46 @@ defmodule PortalWeb.ServiceAccountsTest do
         refute Repo.get_by(Actor, account_id: account.id, name: "Late")
         assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
       end
+    end
+  end
+
+  describe "new look" do
+    test "lists token expiry and groups, never a group owned by a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account, name: "Deployer")
+      resource = resource_fixture(account: account)
+
+      direct_group =
+        group_fixture(account: account, name: "Direct holder group")
+        |> Ecto.Changeset.change(resource_id: resource.id)
+        |> Repo.update!()
+
+      group = group_fixture(account: account, name: "Direct robots")
+      membership_fixture(account: account, actor: service_account, group: direct_group)
+      membership_fixture(account: account, actor: service_account, group: group)
+
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/service_accounts")
+
+      row = lv |> element("#actor-#{service_account.id}") |> render()
+      assert row =~ "Direct robots"
+      refute row =~ "Direct holder group"
+      assert row =~ "No token"
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/service_accounts/#{service_account}")
+
+      refute lv |> element("#actor-groups") |> render() =~ "Direct holder group"
+
+      other = group_fixture(account: account, name: "Direct others")
+      html = lv |> element("#actor-add-group-search") |> render_change(%{"value" => "Direct"})
+      assert html =~ other.name
+      refute html =~ "Direct holder group"
+
+      render_click(lv, "add_actor_to_group", %{"group_id" => other.id})
+      assert Repo.get_by(Portal.Membership, group_id: other.id, actor_id: service_account.id)
     end
   end
 end

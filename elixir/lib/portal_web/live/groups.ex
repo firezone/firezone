@@ -7,7 +7,7 @@ defmodule PortalWeb.Groups do
   alias Portal.Group
   alias Portal.PubSub
   alias Phoenix.LiveView.AsyncResult
-  alias PortalWeb.Groups.Components, as: GroupComponents
+  alias __MODULE__.Components
 
   @member_page_size 10
 
@@ -16,11 +16,12 @@ defmodule PortalWeb.Groups do
   @selected_group_events ~w[
     filter_show_members prev_member_page next_member_page delete submit_grant_resource
     disable_resource_access enable_resource_access remove_resource_access
+    search_members_to_add add_group_member remove_group_member
   ]
 
   import Ecto.Changeset
 
-  alias PortalWeb.Policies.Components, as: PolicyComponents
+  alias PortalWeb.Policies
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
@@ -105,7 +106,7 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_info(
-        %Change{op: :insert, struct: %Group{type: type, idp_id: idp_id, name: name}},
+        %Change{op: :insert, struct: %Group{type: type, idp_id: idp_id, name: name, resource_id: nil}},
         socket
       )
       when type != :managed or not is_nil(idp_id) or name != "Everyone" do
@@ -117,7 +118,7 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_info(
-        %Change{op: :delete, old_struct: %Group{type: type, idp_id: idp_id, name: name}},
+        %Change{op: :delete, old_struct: %Group{type: type, idp_id: idp_id, name: name, resource_id: nil}},
         socket
       )
       when type != :managed or not is_nil(idp_id) or name != "Everyone" do
@@ -153,18 +154,18 @@ defmodule PortalWeb.Groups do
     {:noreply, merge_state(socket, :group_panel, confirm_delete?: false)}
   end
 
-  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+  def handle_event("handle_keydown", _params, socket)
       when socket.assigns.group_panel.view == :edit_form do
     {:noreply,
      push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{socket.assigns.selected_group.id}"))}
   end
 
-  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+  def handle_event("handle_keydown", _params, socket)
       when socket.assigns.group_panel.view == :new_form do
     {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
 
-  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+  def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_group) do
     {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
@@ -269,6 +270,45 @@ defmodule PortalWeb.Groups do
     {:noreply, merge_state(socket, :group_form, member_search_results: nil)}
   end
 
+  def handle_event("search_members_to_add", %{"q" => search}, socket) do
+    results =
+      if has_content?(search) do
+        Database.search_actors(search, socket.assigns.subject, socket.assigns.selected_group.actors)
+      end
+
+    {:noreply, merge_state(socket, :group_panel, add_member_results: results)}
+  end
+
+  def handle_event("blur_members_to_add", _params, socket) do
+    {:noreply, merge_state(socket, :group_panel, add_member_results: nil)}
+  end
+
+  def handle_event("add_group_member", %{"actor_id" => actor_id}, socket) do
+    group = socket.assigns.selected_group
+
+    result =
+      if editable_group?(group) do
+        Database.add_membership(group, actor_id, socket.assigns.subject)
+      else
+        {:error, :not_editable}
+      end
+
+    {:noreply, after_inline_membership_change(socket, result, "Could not add the member.")}
+  end
+
+  def handle_event("remove_group_member", %{"actor_id" => actor_id}, socket) do
+    group = socket.assigns.selected_group
+
+    result =
+      if editable_group?(group) do
+        Database.delete_membership(group, actor_id, socket.assigns.subject)
+      else
+        {:error, :not_editable}
+      end
+
+    {:noreply, after_inline_membership_change(socket, result, "Could not remove the member.")}
+  end
+
   def handle_event("filter_show_members", %{"filter" => filter}, socket) do
     socket =
       socket
@@ -336,7 +376,7 @@ defmodule PortalWeb.Groups do
         Enum.find(socket.assigns.group_resources.available_resources, &(&1.id == id))
       end)
       |> Enum.reject(&is_nil/1)
-      |> Enum.map(&PolicyComponents.available_conditions/1)
+      |> Enum.map(&Policies.Components.available_conditions/1)
       |> case do
         [] -> []
         lists -> Enum.reduce(lists, &(Enum.filter(&2, fn c -> c in &1 end)))
@@ -373,8 +413,8 @@ defmodule PortalWeb.Groups do
 
     condition_attrs =
       policy_params
-      |> PolicyComponents.map_condition_params(empty_values: :drop)
-      |> PolicyComponents.maybe_drop_unsupported_conditions(socket)
+      |> Policies.Components.map_condition_params(empty_values: :drop)
+      |> Policies.Components.maybe_drop_unsupported_conditions(socket)
       |> Postures.maybe_drop_unsupported(socket.assigns.grant_conditions.postures)
       |> Map.put("group_id", group.id)
 
@@ -810,12 +850,9 @@ defmodule PortalWeb.Groups do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
       <Page.page_header>
-        <:icon>
-          <Core.icon name="ri-team-line" class="w-16 h-16 text-brand" />
-        </:icon>
         <:title>Groups</:title>
         <:description>
-          Collections of users.
+          Groups of people and service accounts. Policies give a group access to resources.
         </:description>
         <:action>
           <Navigation.docs_action show_label size="md" path="/deploy/groups" />
@@ -824,7 +861,7 @@ defmodule PortalWeb.Groups do
             icon="ri-add-line"
             patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/groups/new")}
           >
-            New Group
+            Add a group
           </Form.button>
         </:action>
         <:stats>
@@ -853,66 +890,59 @@ defmodule PortalWeb.Groups do
           metadata={@groups_metadata}
           class="flex-1 min-h-0"
         >
-          <:col :let={row} field={{:groups, :name}} label="Name" class="w-full">
-            <div class="flex items-center gap-3">
-              <Core.provider_icon provider={Core.provider_type_from_group(row)} size="md" variant="circle" />
+          <:col :let={row} field={{:groups, :name}} label="Group">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <Core.provider_icon provider={Core.provider_type_from_group(row)} size="sm" />
               <div class="min-w-0">
-                <div class="flex items-center gap-1.5 font-medium text-heading group-hover:text-brand transition-colors">
-                  <span class="truncate">{row.group.name}</span>
-                  <span
+                <div class="flex items-center gap-1.5">
+                  <span class="font-medium text-fg truncate">{row.group.name}</span>
+                  <Core.badge
                     :if={row.group.entity_type == :org_unit}
-                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle shrink-0"
+                    size="xs"
                     title="Organizational Unit"
                   >
                     OU
-                  </span>
+                  </Core.badge>
                 </div>
-                <div class="text-xs text-subtle truncate">
-                  {directory_display_name(row)}
-                </div>
+                <div class="text-xs text-muted truncate">{group_source(row)}</div>
               </div>
             </div>
           </:col>
-          <:col :let={row} field={{:member_counts, :count}} label="Members" class="w-40">
-            <div class="text-sm text-heading tabular-nums">
-              <span class="font-medium">{row.member_count}</span>
-              <span class="text-xs text-subtle">users</span>
-            </div>
+          <:col :let={row} label="Directory" filter={:directory_id} class="w-40">
+            <span class="text-muted">{directory_display_name(row)}</span>
           </:col>
-          <:col :let={row} label="Resources" class="w-54">
+          <:col :let={row} field={{:member_counts, :count}} label="Members" class="w-28 text-right">
+            <span class="text-muted tabular-nums">{row.member_count}</span>
+          </:col>
+          <:col :let={row} label="Policies" class="w-28 text-right">
             <span class={[
-              "inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums",
-              if((row.policy_count || 0) > 0,
-                do: "bg-brand-subtle text-brand",
-                else: "bg-neutral-status-light text-subtle"
-              )
+              "tabular-nums",
+              if((row.policy_count || 0) > 0, do: "text-fg", else: "text-muted")
             ]}>
               {row.policy_count || 0}
             </span>
           </:col>
-          <:action :let={_row}></:action>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <Core.icon name="ri-team-line" class="w-5 h-5 text-subtle" />
-              </div>
+              <Core.icon name="ri-team-line" class="w-6 h-6 text-faint" />
               <div class="text-center">
-                <p class="text-sm font-medium text-heading">No groups yet</p>
-                <p class="text-xs text-subtle mt-0.5">
-                  Create a Group of Actors to use in Policies.
+                <p class="text-sm font-medium text-fg">No groups yet</p>
+                <p class="text-xs text-muted mt-0.5">
+                  Make a group of people to use in policies.
                 </p>
               </div>
-              <Navigation.link
+              <Form.button
                 patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/groups/new")}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                size="sm"
+                icon="ri-add-line"
               >
-                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a Group
-              </Navigation.link>
+                Add a group
+              </Form.button>
             </div>
           </:empty>
         </LiveTable.live_table>
       </div>
-      <GroupComponents.group_panel
+      <Components.group_panel
         account={@account}
         group={@selected_group}
         edit_path={@selected_group && LiveTable.live_table_path(assigns, ~p"/#{@account}/groups/#{@selected_group.id}/edit")}
@@ -950,7 +980,8 @@ defmodule PortalWeb.Groups do
         show_member_filter: "",
         member_page: 1,
         member_pages: 1,
-        member_total: 0
+        member_total: 0,
+        add_member_results: nil
       },
       Map.new(overrides)
     )
@@ -1088,8 +1119,13 @@ defmodule PortalWeb.Groups do
     )
   end
 
+  defp group_source(%{group: %{type: :managed}}), do: "Built in"
+  defp group_source(%{directory_name: name}) when not is_nil(name), do: "Synced from #{name}"
+  defp group_source(%{group: %{idp_id: idp_id}}) when not is_nil(idp_id), do: "Synced"
+  defp group_source(_row), do: "Manual"
+
   defp directory_display_name(%{directory_name: name}) when not is_nil(name), do: name
-  defp directory_display_name(%{idp_id: idp_id}) when not is_nil(idp_id), do: "Unknown"
+  defp directory_display_name(%{group: %{idp_id: idp_id}}) when not is_nil(idp_id), do: "Unknown"
   defp directory_display_name(_), do: "Firezone"
 
   defp deletable_group?(%{name: "Everyone"}), do: false
@@ -1282,6 +1318,24 @@ defmodule PortalWeb.Groups do
     )
   end
 
+  defp after_inline_membership_change(socket, {:ok, _membership}, _message) do
+    case Database.get_group_with_actors(socket.assigns.selected_group.id, socket.assigns.subject) do
+      %Group{} = group ->
+        socket
+        |> assign(selected_group: group)
+        |> merge_state(:group_panel, add_member_results: nil)
+        |> load_panel_members()
+        |> LiveTable.reload_live_table!("groups")
+
+      _ ->
+        put_flash(socket, :error, "Group does not exist.")
+    end
+  end
+
+  defp after_inline_membership_change(socket, _result, message) do
+    put_flash(socket, :error, message)
+  end
+
   defp apply_resource_access_change(socket, {:error, _}) do
     {:noreply, put_flash(socket, :error, "Could not update resource access.")}
   end
@@ -1328,6 +1382,7 @@ defmodule PortalWeb.Groups do
 
   defmodule Database do
     import Ecto.Query
+    import Ecto.Changeset
     import Portal.Repo.Query
     alias Portal.Safe
     alias Portal.Directory
@@ -1414,6 +1469,7 @@ defmodule PortalWeb.Groups do
         [groups: g],
         not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
       )
+      |> where([groups: g], is_nil(g.resource_id))
     end
 
     # Inlined from Portal.Actors.list_groups
@@ -1423,6 +1479,7 @@ defmodule PortalWeb.Groups do
         [groups: g],
         not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
       )
+      |> where([groups: g], is_nil(g.resource_id))
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
@@ -1688,8 +1745,6 @@ defmodule PortalWeb.Groups do
     end
 
     def insert_policy(attrs, subject) do
-      import Ecto.Changeset
-
       changeset =
         %Portal.Policy{}
         |> cast(attrs, ~w[group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
@@ -1722,8 +1777,6 @@ defmodule PortalWeb.Groups do
     end
 
     defp populate_group_idp_id(changeset, subject) do
-      import Ecto.Changeset
-
       case get_change(changeset, :group_id) do
         nil ->
           changeset
@@ -1746,10 +1799,16 @@ defmodule PortalWeb.Groups do
             p.group_id == ^group.id,
         as: :policies
       )
-      |> select([resources: r, policies: p], %{
+      |> join(:left, [resources: r], s in Portal.Site,
+        on: s.id == r.site_id and s.account_id == r.account_id,
+        as: :site
+      )
+      |> select([resources: r, policies: p, site: s], %{
         resource: r,
+        policy: p,
         policy_id: p.id,
-        policy_is_disabled: p.is_disabled
+        policy_is_disabled: p.is_disabled,
+        site_name: s.name
       })
       |> order_by([policies: p, resources: r], asc: p.is_disabled, asc: r.name)
       |> Safe.scoped(subject)
@@ -1763,7 +1822,7 @@ defmodule PortalWeb.Groups do
     def get_group_with_actors(id, subject) do
       query =
         from(g in Portal.Group, as: :groups)
-        |> where([groups: groups], groups.id == ^id)
+        |> where([groups: groups], groups.id == ^id and is_nil(groups.resource_id))
         |> join(:left, [groups: g], d in assoc(g, :directory),
           on: d.account_id == g.account_id,
           as: :directory
@@ -1802,6 +1861,24 @@ defmodule PortalWeb.Groups do
         )
 
       query |> Safe.scoped(subject) |> Safe.one()
+    end
+
+    def add_membership(group, actor_id, subject) do
+      %Portal.Membership{}
+      |> change(%{account_id: group.account_id, group_id: group.id, actor_id: actor_id})
+      |> Portal.Membership.changeset()
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+    end
+
+    def delete_membership(group, actor_id, subject) do
+      from(m in Portal.Membership, where: m.group_id == ^group.id and m.actor_id == ^actor_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        %Portal.Membership{} = membership -> membership |> Safe.scoped(subject) |> Safe.delete()
+        _ -> {:error, :not_found}
+      end
     end
 
     def preloads do

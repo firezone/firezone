@@ -970,7 +970,10 @@ defmodule PortalWeb.GroupsTest do
           {"submit_grant_resource", %{}},
           {"disable_resource_access", %{"resource_id" => :resource_id}},
           {"enable_resource_access", %{"resource_id" => :resource_id}},
-          {"remove_resource_access", %{"resource_id" => :resource_id}}
+          {"remove_resource_access", %{"resource_id" => :resource_id}},
+          {"search_members_to_add", %{"q" => "x"}},
+          {"add_group_member", %{"actor_id" => :actor_id}},
+          {"remove_group_member", %{"actor_id" => :actor_id}}
         ] do
       test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
         group = group_fixture(account: account)
@@ -990,6 +993,102 @@ defmodule PortalWeb.GroupsTest do
         assert Repo.get_by(Group, account_id: account.id, id: group.id).name == group.name
         refute Repo.get_by(Group, account_id: account.id, name: "Late")
       end
+    end
+  end
+
+  describe "groups owned by a resource" do
+    setup %{account: account} do
+      resource = resource_fixture(account: account, name: "Prod database")
+
+      direct_group =
+        group_fixture(account: account, name: "Direct access holder")
+        |> Ecto.Changeset.change(resource_id: resource.id)
+        |> Repo.update!()
+
+      %{direct_group: direct_group}
+    end
+
+    test "are not listed or counted", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      direct_group: direct_group
+    } do
+      group = group_fixture(account: account, name: "Engineering")
+
+      {:ok, lv, html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups")
+
+      assert html =~ group.name
+      refute html =~ direct_group.name
+      refute has_element?(lv, "#group-#{direct_group.id}")
+
+      count =
+        lv
+        |> element("h1 > span.tabular-nums")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.text()
+
+      assert count =~ "1"
+      refute count =~ "2"
+    end
+
+    test "cannot be opened", %{conn: conn, account: account, actor: actor, direct_group: direct_group} do
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{direct_group}")
+
+      assert to == ~p"/#{account}/groups"
+      assert flash["error"] =~ "Group does not exist"
+    end
+  end
+
+  describe "inline members" do
+    test "adds and removes a member without edit mode", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      person = actor_fixture(account: account, name: "Inline Person")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{group}")
+
+      html = lv |> form("#add-member-form", %{"q" => "Inline"}) |> render_change()
+      assert html =~ "Inline Person"
+
+      html = render_click(lv, "add_group_member", %{"actor_id" => person.id})
+      assert Repo.get_by(Membership, group_id: group.id, actor_id: person.id)
+      assert html =~ "Members · 1"
+
+      html = render_click(lv, "remove_group_member", %{"actor_id" => person.id})
+      refute Repo.get_by(Membership, group_id: group.id, actor_id: person.id)
+      assert html =~ "No members in this group."
+    end
+
+    test "are not offered for synced groups", %{conn: conn, account: account, actor: actor} do
+      group = synced_group_fixture(account: account)
+      person = actor_fixture(account: account)
+      membership_fixture(account: account, actor: person, group: group)
+
+      {:ok, lv, html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{group}")
+
+      assert html =~ person.name
+      refute has_element?(lv, "#add-member-form")
+      refute has_element?(lv, "button[phx-click='remove_group_member']")
+
+      render_click(lv, "remove_group_member", %{"actor_id" => person.id})
+      assert Repo.get_by(Membership, group_id: group.id, actor_id: person.id)
+    end
+
+    test "shows what the group can reach with its conditions", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, name: "Wiki")
+      policy_with_conditions_fixture(%{account: account, group: group, resource: resource})
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{group}")
+
+      assert lv |> element("#group-reach") |> render() =~ "Wiki"
+      assert lv |> element("#group-reach") |> render() =~ "Conditions: IP Range"
     end
   end
 end

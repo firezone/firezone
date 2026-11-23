@@ -1,8 +1,8 @@
 defmodule PortalWeb.Groups.Components do
   use PortalWeb, :component_library
-  alias PortalWeb.Policies.PostureComponents
 
-  alias PortalWeb.Policies.Components, as: PolicyComponents
+  alias PortalWeb.Actors
+  alias PortalWeb.Policies
 
   attr :account, :any, required: true
   attr :group, :any, default: nil
@@ -19,22 +19,13 @@ defmodule PortalWeb.Groups.Components do
       assigns
       |> assign(assigns.panel)
       |> assign(assigns.form_state)
-      |> assign(assigns.members_state)
-      |> assign(assigns.resources_state)
-      |> assign(assigns.conditions_state)
 
     ~H"""
-    <div
+    <Page.detail_modal
       id="group-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@group || @view == :new_form, do: "translate-x-0", else: "translate-x-full")
-      ]}
-      phx-window-keydown="handle_keydown"
-      phx-key="Escape"
+      open={not is_nil(@group) or @view == :new_form}
+      on_close="handle_keydown"
+      size="xl"
     >
       <.group_form_view
         :if={@view in [:new_form, :edit_form]}
@@ -59,7 +50,7 @@ defmodule PortalWeb.Groups.Components do
         resources_state={@resources_state}
         conditions_state={@conditions_state}
       />
-    </div>
+    </Page.detail_modal>
     """
   end
 
@@ -72,158 +63,98 @@ defmodule PortalWeb.Groups.Components do
   attr :members_to_remove, :list, required: true
   attr :member_search_results, :any, default: nil
 
-  def group_form_view(assigns) do
+  defp group_form_view(assigns) do
     assigns =
       assign(
         assigns,
         :current_members,
-        if(assigns.panel_view == :edit_form && assigns.group,
-          do: current_members_for_display(assigns.group, assigns.members_to_remove),
-          else: []
-        )
+        current_members_for_display(assigns.panel_view, assigns.group, assigns.members_to_remove)
       )
 
     ~H"""
-    <div class="flex flex-col h-full overflow-hidden">
-      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex items-center gap-2 min-w-0">
-            <Navigation.link
-              :if={@panel_view == :edit_form && @group}
-              patch={~p"/#{@account}/groups/#{@group.id}"}
-              class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors shrink-0"
-              title="Back to group"
-            >
-              <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
-            </Navigation.link>
-            <h2 class="text-sm font-semibold text-heading truncate">
-              {if @panel_view == :new_form, do: "New Group", else: "Edit #{@group && @group.name}"}
-            </h2>
+    <Form.panel_header title={if @panel_view == :new_form, do: "New group", else: "Edit #{@group && @group.name}"}>
+      <:leading>
+        <Navigation.link
+          :if={@panel_view == :edit_form && @group}
+          patch={~p"/#{@account}/groups/#{@group.id}"}
+          class="flex items-center justify-center w-7 h-7 text-muted hover:text-fg hover:bg-hover"
+          title="Back to group"
+        >
+          <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
+        </Navigation.link>
+        <Core.icon :if={@panel_view == :new_form} name="ri-team-line" class="w-5 h-5 text-muted" />
+      </:leading>
+    </Form.panel_header>
+    <.form
+      id="group-form"
+      for={@form}
+      phx-change="validate"
+      phx-submit={if @panel_view == :new_form, do: "create", else: "save"}
+      class="flex flex-col flex-1 min-h-0 overflow-hidden"
+    >
+      <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        <Core.flash id="group-success-inline" kind={:success_inline} style="inline" flash={@flash} />
+        <Form.input
+          field={@form[:name]}
+          label="Group Name"
+          placeholder="Enter group name"
+          autocomplete="off"
+          phx-debounce="300"
+          data-1p-ignore
+          required
+        />
+        <div>
+          <h3 class="flex items-center gap-1.5 text-sm font-medium text-fg mb-2">
+            <Core.icon name="ri-user-line" class="w-4 h-4 text-muted" />
+            Members ({length(@current_members) + length(@members_to_add)})
+          </h3>
+          <.member_search_input form={@form} member_search_results={@member_search_results} />
+          <div class="grid gap-2 mt-2 lg:grid-cols-3">
+            <.member_bucket
+              title="Current"
+              members={@current_members}
+              empty_message="No current members."
+              action="remove_member"
+              action_title="Remove from current members"
+            />
+            <.member_bucket
+              title="To Add"
+              members={@members_to_add}
+              empty_message="No pending additions."
+              action="remove_member"
+              action_title="Remove from pending additions"
+            />
+            <.member_bucket
+              title="To Remove"
+              members={@members_to_remove}
+              empty_message="No pending removals."
+              action="undo_member_removal"
+              action_title="Remove from pending removals"
+            />
           </div>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" class="shrink-0" />
         </div>
       </div>
-      <.form
-        id="group-form"
-        for={@form}
-        phx-change="validate"
-        phx-submit={if @panel_view == :new_form, do: "create", else: "save"}
-        class="flex flex-col flex-1 min-h-0 overflow-hidden"
-      >
-        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <Core.flash id="group-success-inline" kind={:success_inline} style="inline" flash={@flash} />
-          <Form.input
-            field={@form[:name]}
-            label="Group Name"
-            placeholder="Enter group name"
-            autocomplete="off"
-            phx-debounce="300"
-            data-1p-ignore
-            required
-          />
-          <div>
-            <h3 class="text-sm font-medium text-body mb-2">
-              {if @panel_view == :edit_form,
-                do: "Members (#{length(@current_members) + length(@members_to_add)})",
-                else: "Members (#{length(@members_to_add)})"}
-            </h3>
-            <.member_search_input form={@form} member_search_results={@member_search_results} />
-            <div class="grid gap-2 mt-2 lg:grid-cols-3">
-              <.member_bucket
-                title="Current"
-                count={length(@current_members)}
-                members={@current_members}
-                empty_message="No current members."
-              >
-                <:badge :let={actor}>
-                  <.actor_type_badge actor={actor} />
-                </:badge>
-                <:actions :let={actor}>
-                  <button
-                    type="button"
-                    phx-click="remove_member"
-                    phx-value-actor_id={actor.id}
-                    class="shrink-0 text-subtle hover:text-error transition-colors"
-                    title="Remove from current members"
-                  >
-                    <Core.icon name="ri-close-line" class="w-4 h-4" />
-                  </button>
-                </:actions>
-              </.member_bucket>
-
-              <.member_bucket
-                title="To Add"
-                title_class="text-success"
-                count={length(@members_to_add)}
-                members={@members_to_add}
-                empty_message="No pending additions."
-              >
-                <:badge :let={actor}>
-                  <.actor_type_badge actor={actor} />
-                </:badge>
-                <:actions :let={actor}>
-                  <button
-                    type="button"
-                    phx-click="remove_member"
-                    phx-value-actor_id={actor.id}
-                    class="shrink-0 text-subtle hover:text-error transition-colors"
-                    title="Remove from pending additions"
-                  >
-                    <Core.icon name="ri-close-line" class="w-4 h-4" />
-                  </button>
-                </:actions>
-              </.member_bucket>
-
-              <.member_bucket
-                title="To Remove"
-                title_class="text-danger"
-                count={length(@members_to_remove)}
-                members={@members_to_remove}
-                empty_message="No pending removals."
-              >
-                <:badge :let={actor}>
-                  <.actor_type_badge actor={actor} />
-                </:badge>
-                <:actions :let={actor}>
-                  <button
-                    type="button"
-                    phx-click="undo_member_removal"
-                    phx-value-actor_id={actor.id}
-                    class="shrink-0 text-subtle hover:text-heading transition-colors"
-                    title="Remove from pending removals"
-                  >
-                    <Core.icon name="ri-close-line" class="w-4 h-4" />
-                  </button>
-                </:actions>
-              </.member_bucket>
-            </div>
-          </div>
-        </div>
-        <Form.panel_footer>
-          <Form.panel_footer_button
-            patch={
-              if @panel_view == :edit_form && @group,
-                do: ~p"/#{@account}/groups/#{@group.id}",
-                else: ~p"/#{@account}/groups"
-            }
-          >
-            Cancel
-          </Form.panel_footer_button>
-          <Form.panel_footer_button
-            type="submit"
-            style="primary"
-            disabled={
-              if @panel_view == :new_form,
-                do: not @form.source.valid?,
-                else: edit_form_unchanged?(@form, @members_to_add, @members_to_remove)
-            }
-            class="font-medium"
-          >
-            {if @panel_view == :new_form, do: "Create Group", else: "Save Changes"}
-          </Form.panel_footer_button>
-        </Form.panel_footer>
-      </.form>
-    </div>
+      <Form.panel_footer>
+        <Form.panel_footer_button patch={
+          if @panel_view == :edit_form && @group,
+            do: ~p"/#{@account}/groups/#{@group.id}",
+            else: ~p"/#{@account}/groups"
+        }>
+          Cancel
+        </Form.panel_footer_button>
+        <Form.panel_footer_button
+          type="submit"
+          style="primary"
+          disabled={
+            if @panel_view == :new_form,
+              do: not @form.source.valid?,
+              else: edit_form_unchanged?(@form, @members_to_add, @members_to_remove)
+          }
+        >
+          {if @panel_view == :new_form, do: "Create Group", else: "Save Changes"}
+        </Form.panel_footer_button>
+      </Form.panel_footer>
+    </.form>
     """
   end
 
@@ -236,53 +167,52 @@ defmodule PortalWeb.Groups.Components do
   attr :resources_state, :map, required: true
   attr :conditions_state, :map, required: true
 
-  def group_details_view(assigns) do
+  defp group_details_view(assigns) do
     assigns =
       assigns
       |> assign(assigns.panel)
       |> assign(assigns.members_state)
       |> assign(assigns.resources_state)
-      |> assign(assigns.conditions_state)
 
     ~H"""
-    <div class="flex flex-col h-full overflow-hidden">
+    <div class="flex flex-col min-h-0 h-full">
       <.group_details_header
         account={@account}
         group={@group}
         edit_path={@edit_path}
         confirm_delete?={@confirm_delete?}
+        granting?={@tab_view == :grant_form}
       />
 
-      <div class="flex flex-1 min-h-0 divide-x divide-border">
-        <div class="flex-1 flex flex-col overflow-hidden">
-          <.group_tabs
-            tab={@tab}
-            tab_view={@tab_view}
-            member_total={@member_total}
-            resources_count={length(@resources)}
-            show_member_filter={@show_member_filter}
-          />
+      <div :if={@tab_view == :grant_form} class="flex flex-col flex-1 min-h-0">
+        <.group_grant_resource_form
+          account={@account}
+          resources_state={@resources_state}
+          conditions_state={@conditions_state}
+        />
+      </div>
 
-          <.group_members_tab
-            :if={@tab == :members}
+      <div :if={@tab_view != :grant_form} class="flex-1 overflow-y-auto">
+        <Core.flash id="group-success-inline-show" kind={:success_inline} style="inline" flash={@flash} />
+        <div class="grid gap-10 px-6 py-6 md:grid-cols-2">
+          <.group_members_section
             account={@account}
-            flash={@flash}
+            group={@group}
             panel_members={@panel_members}
             member_total={@member_total}
             member_pages={@member_pages}
             member_page={@member_page}
             show_member_filter={@show_member_filter}
+            add_member_results={@add_member_results}
           />
-
-          <.group_resources_tab
-            :if={@tab == :resources}
+          <.group_reach_section
             account={@account}
-            resources_state={@resources_state}
-            conditions_state={@conditions_state}
+            resources={@resources}
+            resource_access_actions_open_id={@resource_access_actions_open_id}
+            confirm_remove_resource_access_id={@confirm_remove_resource_access_id}
           />
         </div>
-
-        <.group_sidebar group={@group} confirm_delete?={@confirm_delete?} />
+        <.group_details_section group={@group} />
       </div>
     </div>
     """
@@ -292,185 +222,159 @@ defmodule PortalWeb.Groups.Components do
   attr :group, :any, required: true
   attr :edit_path, :string, required: true
   attr :confirm_delete?, :boolean, required: true
+  attr :granting?, :boolean, required: true
 
-  def group_details_header(assigns) do
+  defp group_details_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
-      <div class="flex items-center gap-4">
-        <%!-- Left: icon + name + directory info --%>
-        <div class="flex items-center gap-3 min-w-0 flex-1">
-          <Core.provider_icon provider={Core.provider_type_from_group(@group)} size="lg" variant="circle" />
-          <div class="min-w-0">
-            <h2 class="text-sm font-semibold text-heading truncate">
-              {@group.name}
-            </h2>
-            <div class="flex items-center gap-1.5 mt-0.5">
-              <span
-                :if={@group.entity_type == :org_unit}
-                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle"
-              >
-                OU
-              </span>
-              <span class="text-xs text-subtle">
-                {directory_display_name(@group.directory)}
-              </span>
-            </div>
-          </div>
+    <div class="shrink-0 px-6 pt-5 pb-4 border-b border-hair">
+      <div class="flex items-start gap-4">
+        <Core.provider_icon provider={Core.provider_type_from_group(@group)} size="lg" variant="circle" />
+        <div class="min-w-0 flex-1">
+          <h2 class="flex items-center gap-2 text-[22px] leading-tight font-bold tracking-tight text-fg">
+            <span class="truncate">{@group.name}</span>
+            <Core.badge :if={@group.entity_type == :org_unit} size="xs" title="Organizational Unit">
+              OU
+            </Core.badge>
+          </h2>
+          <p class="mt-1 text-sm text-muted">{group_source(@group)}</p>
         </div>
-        <%!-- Right: actions --%>
-        <div class="flex items-center gap-1.5 shrink-0">
-          <Navigation.link
-            :if={editable_group?(@group) and not @confirm_delete?}
-            patch={@edit_path}
-            class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+        <div class="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+          <Form.button
+            navigate={~p"/#{@account}/activity?#{[group_id: @group.id]}"}
+            size="sm"
+            icon="ri-pulse-line"
           >
-            <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </Navigation.link>
+            Activity
+          </Form.button>
+          <Form.button
+            :if={not @granting?}
+            type="button"
+            phx-click="open_grant_resource_form"
+            style="primary"
+            size="sm"
+            icon="ri-shield-check-line"
+          >
+            Grant access
+          </Form.button>
+          <Form.button
+            :if={editable_group?(@group)}
+            patch={@edit_path}
+            size="sm"
+            icon="ri-pencil-line"
+          >
+            Edit
+          </Form.button>
+          <Form.button
+            :if={deletable_group?(@group) and not @confirm_delete?}
+            type="button"
+            phx-click="confirm_delete_group"
+            style="danger"
+            size="sm"
+            icon="ri-delete-bin-line"
+          >
+            Delete group
+          </Form.button>
           <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
-    </div>
-    """
-  end
-
-  attr :tab, :atom, required: true
-  attr :tab_view, :atom, required: true
-  attr :member_total, :integer, required: true
-  attr :resources_count, :integer, required: true
-  attr :show_member_filter, :string, required: true
-
-  def group_tabs(assigns) do
-    ~H"""
-    <div class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0">
-      <button
-        phx-click="switch_group_tab"
-        phx-value-tab="members"
-        class={[
-          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-          if(@tab == :members,
-            do: "border-brand text-brand",
-            else:
-              "border-transparent text-body hover:text-heading hover:border-border-strong"
-          )
-        ]}
+      <div
+        :if={deletable_group?(@group) and @confirm_delete?}
+        class="mt-4 px-4 py-3 border border-attn bg-attn-wash"
       >
-        Members
-        <span class={[
-          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-          if(@tab == :members,
-            do: "bg-brand-wash text-heading",
-            else: "bg-raised text-subtle"
-          )
-        ]}>
-          {@member_total}
-        </span>
-      </button>
-      <button
-        phx-click="switch_group_tab"
-        phx-value-tab="resources"
-        class={[
-          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-          if(@tab == :resources,
-            do: "border-brand text-brand",
-            else:
-              "border-transparent text-body hover:text-heading hover:border-border-strong"
-          )
-        ]}
-      >
-        Resources
-        <span class={[
-          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-          if(@tab == :resources,
-            do: "bg-brand-wash text-heading",
-            else: "bg-raised text-subtle"
-          )
-        ]}>
-          {@resources_count}
-        </span>
-      </button>
-      <div :if={@tab == :resources && @tab_view == :list} class="ml-auto pb-2 flex items-center">
-        <Form.button type="button" phx-click="open_grant_resource_form" size="xs">
-          <Core.icon name="ri-add-line" class="w-3 h-3" /> Grant access
-        </Form.button>
-      </div>
-      <div :if={@tab == :members} class="ml-auto pb-2 flex items-center">
-        <form id="filter-members-form" phx-change="filter_show_members">
-          <div class="relative">
-            <Core.icon
-              name="ri-search-line"
-              class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle"
-            />
-            <input
-              type="text"
-              value={@show_member_filter}
-              placeholder="Filter..."
-              phx-debounce="300"
-              name="filter"
-              autocomplete="off"
-              data-1p-ignore
-              class="pl-6 pr-2 py-1 text-xs rounded border bg-input border-input-border text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors w-32"
-            />
-          </div>
-        </form>
+        <p class="text-sm font-semibold text-attn">Delete this group?</p>
+        <p class="mt-1 text-xs text-attn">
+          All associated policies will also be deleted and clients will immediately lose access.
+        </p>
+        <div class="flex items-center gap-1.5 mt-3">
+          <Form.button type="button" phx-click="cancel_delete_group" size="xs">Cancel</Form.button>
+          <Form.button type="button" phx-click="delete" phx-value-id={@group.id} style="danger" size="xs">
+            Delete
+          </Form.button>
+        </div>
       </div>
     </div>
     """
   end
 
   attr :account, :any, required: true
-  attr :flash, :map, required: true
+  attr :group, :any, required: true
   attr :panel_members, :list, required: true
   attr :member_total, :integer, required: true
   attr :member_pages, :integer, required: true
   attr :member_page, :integer, required: true
   attr :show_member_filter, :string, required: true
+  attr :add_member_results, :any, default: nil
 
-  def group_members_tab(assigns) do
+  defp group_members_section(assigns) do
+    assigns = assign(assigns, :editable?, editable_group?(assigns.group))
+
     ~H"""
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <Core.flash id="group-success-inline-show" kind={:success_inline} style="inline" flash={@flash} />
-      <div class="flex-1 overflow-y-auto">
-        <div
-          :if={@panel_members == [] && @member_total == 0}
-          class="flex items-center justify-center py-16"
-        >
-          <p class="text-sm text-subtle">
-            <%= if has_content?(@show_member_filter) do %>
-              No members match your filter.
-            <% else %>
-              No members in this group.
-            <% end %>
-          </p>
-        </div>
-        <ul :if={@panel_members != []} class="divide-y divide-border">
-          <li :for={actor <- @panel_members} class="transition-colors">
-            <Navigation.link
-              navigate={~p"/#{@account}/actors/#{actor.id}"}
-              class="flex items-center gap-3 px-5 py-3 hover:bg-raised"
-            >
-              <.actor_type_badge actor={actor} />
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-heading truncate">
-                  {actor.name}
-                </p>
-                <p
-                  :if={actor.email || actor.type == :service_account}
-                  class="text-xs text-subtle truncate"
-                >
-                  {actor.email || "(Service Account)"}
-                </p>
-              </div>
-            </Navigation.link>
-          </li>
-        </ul>
+    <section id="group-members" class="min-w-0">
+      <div class="flex items-center justify-between gap-3 mb-2.5">
+        <.eyebrow icon="ri-user-line">Members · {@member_total}</.eyebrow>
+        <form id="filter-members-form" phx-change="filter_show_members" class="relative">
+          <Core.icon
+            name="ri-search-line"
+            class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted pointer-events-none"
+          />
+          <input
+            type="text"
+            value={@show_member_filter}
+            placeholder="Filter..."
+            phx-debounce="300"
+            name="filter"
+            autocomplete="off"
+            data-1p-ignore
+            class="w-36 pl-6 pr-2 py-1 text-xs border border-rule bg-bg text-fg placeholder:text-muted outline-none focus:border-fg"
+          />
+        </form>
       </div>
-      <div
-        :if={@member_pages > 1}
-        class="shrink-0 flex items-center justify-between px-5 py-2.5 border-t border-border bg-raised"
+      <ul class="border-t border-rule">
+        <li
+          :for={actor <- @panel_members}
+          id={"group-member-#{actor.id}"}
+          class="flex items-center justify-between gap-3 py-2 border-b border-hair"
+        >
+          <div class="flex items-center gap-2.5 min-w-0">
+            <Core.icon name={member_icon(actor)} class="w-4 h-4 text-muted shrink-0" />
+            <div class="min-w-0">
+              <.link navigate={member_path(@account, actor)} class="block text-sm text-fg truncate hover:underline">
+                {actor.name}
+              </.link>
+              <p
+                :if={actor.email || actor.type == :service_account}
+                class="text-xs text-muted truncate"
+              >
+                {actor.email || "(Service Account)"}
+              </p>
+            </div>
+          </div>
+          <button
+            :if={@editable?}
+            type="button"
+            phx-click="remove_group_member"
+            phx-value-actor_id={actor.id}
+            class="shrink-0 text-xs text-muted hover:text-attn"
+            title={"Remove #{actor.name}"}
+          >
+            remove
+          </button>
+        </li>
+      </ul>
+      <p
+        :if={@panel_members == [] && @member_total == 0}
+        class="flex items-center gap-2 py-3 text-sm text-muted"
       >
-        <span class="text-xs text-subtle">
-          Page {@member_page} of {@member_pages}
-          <span class="text-subtle">({@member_total} members)</span>
+        <Core.icon name="ri-user-line" class="w-4 h-4 text-faint" />
+        <%= if has_content?(@show_member_filter) do %>
+          No members match your filter.
+        <% else %>
+          No members in this group.
+        <% end %>
+      </p>
+      <div :if={@member_pages > 1} class="flex items-center justify-between py-2">
+        <span class="text-xs text-muted">
+          Page {@member_page} of {@member_pages} ({@member_total} members)
         </span>
         <div class="flex items-center gap-1">
           <Form.icon_button
@@ -489,303 +393,41 @@ defmodule PortalWeb.Groups.Components do
           />
         </div>
       </div>
-    </div>
-    """
-  end
-
-  attr :account, :any, required: true
-  attr :resources_state, :map, required: true
-  attr :conditions_state, :map, required: true
-
-  def group_resources_tab(assigns) do
-    assigns =
-      assigns
-      |> assign(assigns.resources_state)
-      |> assign(assigns.conditions_state)
-
-    ~H"""
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <.group_grant_resource_form
-        :if={@tab_view == :grant_form}
-        account={@account}
-        resources_state={@resources_state}
-        conditions_state={@conditions_state}
-      />
-
-      <.group_resources_list
-        :if={@tab_view != :grant_form}
-        account={@account}
-        resources={@resources}
-        resource_access_actions_open_id={@resource_access_actions_open_id}
-        confirm_remove_resource_access_id={@confirm_remove_resource_access_id}
-      />
-    </div>
-    """
-  end
-
-  attr :account, :any, required: true
-  attr :resources_state, :map, required: true
-  attr :conditions_state, :map, required: true
-
-  def group_grant_resource_form(assigns) do
-    assigns =
-      assigns
-      |> assign(assigns.resources_state)
-      |> assign(assigns.conditions_state)
-
-    assigns =
-      assign(assigns, :conditions_state, %{
-        timezone: assigns.conditions_state.timezone,
-        location_search: assigns.conditions_state.location_search,
-        location_operator: assigns.conditions_state.location_operator,
-        location_values: assigns.conditions_state.location_values,
-        ip_range_operator: assigns.conditions_state.ip_range_operator,
-        ip_range_values: assigns.conditions_state.ip_range_values,
-        ip_range_input: assigns.conditions_state.ip_range_input,
-        auth_provider_operator: assigns.conditions_state.auth_provider_operator,
-        auth_provider_values: assigns.conditions_state.auth_provider_values,
-        tod_values: assigns.conditions_state.tod_values,
-        tod_adding: assigns.conditions_state.tod_adding?,
-        tod_pending: assigns.conditions_state.tod_pending,
-        tod_pending_error: assigns.conditions_state.tod_pending_error
-      })
-
-    ~H"""
-    <div class="flex items-center justify-between px-5 py-2.5 border-b border-border bg-raised shrink-0">
-      <div class="flex items-center gap-2">
-        <button
-          type="button"
-          phx-click="close_grant_resource_form"
-          class="flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
-          title="Back to resource list"
+      <div :if={@editable?} class="relative mt-3" phx-click-away="blur_members_to_add">
+        <form id="add-member-form" phx-change="search_members_to_add" phx-submit="search_members_to_add">
+          <Core.icon
+            name="ri-user-add-line"
+            class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none"
+          />
+          <input
+            type="text"
+            name="q"
+            placeholder="Add a member..."
+            phx-debounce="300"
+            autocomplete="off"
+            data-1p-ignore
+            class="w-full pl-8 pr-3 py-1.5 text-sm border border-rule bg-bg text-fg placeholder:text-muted outline-none focus:border-fg"
+          />
+        </form>
+        <div
+          :if={@add_member_results != nil}
+          class="absolute z-10 left-0 right-0 mt-1 bg-bg border border-rule shadow-lg max-h-56 overflow-y-auto"
         >
-          <Core.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
-        </button>
-        <span class="text-xs font-semibold text-heading">Grant access</span>
-      </div>
-    </div>
-    <.form
-      for={@grant_resource_form}
-      phx-submit="submit_grant_resource"
-      id="grant-resource-form"
-      class="flex-1 flex flex-col overflow-hidden"
-    >
-      <div class="flex-1 overflow-y-auto">
-        <div class="px-5 py-4 space-y-5">
-          <div>
-            <label class="block text-xs font-medium text-body mb-2">
-              Resources <span class="text-error">*</span>
-            </label>
-            <% filtered_available =
-              @available_resources
-              |> Enum.reject(&(&1.id in @grant_selected_resource_ids))
-              |> then(fn resources ->
-                if @grant_resource_search == "" do
-                  resources
-                else
-                  Enum.filter(resources, fn r ->
-                    String.contains?(
-                      String.downcase(r.name),
-                      String.downcase(@grant_resource_search)
-                    ) or
-                      String.contains?(
-                        String.downcase(r.address || ""),
-                        String.downcase(@grant_resource_search)
-                      )
-                  end)
-                end
-              end)
-              selected_resources =
-                Enum.filter(@available_resources, &(&1.id in @grant_selected_resource_ids))
-              %>
-            <div class="flex gap-2 h-52">
-              <div class="flex-1 flex flex-col min-w-0 rounded border border-border overflow-hidden">
-                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-border bg-raised shrink-0">
-                  <span class="text-[10px] font-semibold uppercase tracking-wider text-subtle">
-                    Available
-                  </span>
-                  <span class="text-[10px] text-subtle">
-                    {length(filtered_available)}
-                  </span>
-                </div>
-                <div class="px-2 pt-1.5 shrink-0">
-                  <div class="relative">
-                    <Core.icon
-                      name="ri-search-line"
-                      class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Search…"
-                      value={@grant_resource_search}
-                      phx-keyup="search_grant_resources"
-                      phx-debounce="200"
-                      autocomplete="off"
-                      data-1p-ignore
-                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-border bg-surface text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
-                    />
-                  </div>
-                </div>
-                <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
-                  <li :for={resource <- filtered_available}>
-                    <button
-                      type="button"
-                      phx-click="toggle_grant_resource"
-                      phx-value-resource_id={resource.id}
-                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors hover:bg-surface cursor-pointer"
-                    >
-                      <div class="flex-1 min-w-0">
-                        <p class="text-xs text-heading truncate">{resource.name}</p>
-                        <p class="text-[10px] text-subtle font-mono truncate">
-                          {resource.address}
-                        </p>
-                      </div>
-                    </button>
-                  </li>
-                  <li
-                    :if={@available_resources == []}
-                    class="flex items-center justify-center h-16 text-xs text-subtle"
-                  >
-                    All resources already have access.
-                  </li>
-                  <li
-                    :if={@available_resources != [] && filtered_available == []}
-                    class="flex items-center justify-center h-12 text-xs text-subtle"
-                  >
-                    No resources match.
-                  </li>
-                </ul>
-              </div>
-              <div class="flex-1 flex flex-col min-w-0 rounded border border-border overflow-hidden">
-                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-border bg-raised shrink-0">
-                  <span class="text-[10px] font-semibold uppercase tracking-wider text-subtle">
-                    Selected
-                  </span>
-                  <span class="text-[10px] font-medium text-subtle">
-                    {length(@grant_selected_resource_ids)}
-                  </span>
-                </div>
-                <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
-                  <li :for={resource <- selected_resources}>
-                    <button
-                      type="button"
-                      phx-click="toggle_grant_resource"
-                      phx-value-resource_id={resource.id}
-                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-surface transition-colors cursor-pointer group"
-                    >
-                      <div class="flex-1 min-w-0">
-                        <p class="text-xs text-heading truncate">{resource.name}</p>
-                        <p class="text-[10px] text-subtle font-mono truncate">
-                          {resource.address}
-                        </p>
-                      </div>
-                      <Core.icon
-                        name="ri-close-line"
-                        class="w-3.5 h-3.5 text-subtle opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
-                      />
-                    </button>
-                  </li>
-                  <li
-                    :if={selected_resources == []}
-                    class="flex items-center justify-center h-16 text-xs text-subtle"
-                  >
-                    No resources selected.
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-          <% allowed_conditions =
-            case @grant_selected_resource_ids do
-              [] ->
-                []
-
-              ids ->
-                ids
-                |> Enum.map(fn id -> Enum.find(@available_resources, &(&1.id == id)) end)
-                |> Enum.reject(&is_nil/1)
-                |> Enum.map(&PolicyComponents.available_conditions/1)
-                |> Enum.reduce(&Enum.filter(&2, fn c -> c in &1 end))
-            end %>
-          <div class="border-t border-border pt-4">
-            <PolicyComponents.flow_log_uploads_toggle
-              form={@grant_resource_form}
-              internet_resource?={Enum.any?(selected_resources, &(&1.type == :internet))}
-            />
-          </div>
-          <PostureComponents.policy_restrictions id="group-grant-postures" account={@account} state={@postures}>
-            <div class="border-t border-border pt-4">
-              <div class="flex items-center justify-between mb-3">
-                <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                  Conditions
-                  <span class="ml-1 font-normal normal-case tracking-normal text-subtle">
-                    (optional)
-                  </span>
-                </h4>
-                <div
-                  :if={allowed_conditions -- @active_conditions != []}
-                  class="relative"
-                >
-                  <button
-                    type="button"
-                    phx-click="toggle_conditions_dropdown"
-                    class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                  >
-                    <Core.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
-                  </button>
-                  <div :if={@conditions_dropdown_open?}>
-                    <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
-                    <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-border-strong bg-elevated shadow-lg py-1 overflow-hidden">
-                      <button
-                        :for={type <- allowed_conditions -- @active_conditions}
-                        type="button"
-                        phx-click="add_condition"
-                        phx-value-type={type}
-                        class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
-                      >
-                        {PolicyComponents.condition_type_label(type)}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <p
-                :if={@active_conditions == []}
-                class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border"
-              >
-                No conditions - access is unrestricted
-              </p>
-              <div class="space-y-2">
-                <PolicyComponents.grant_condition_card
-                  :for={type <- @active_conditions}
-                  type={type}
-                  providers={@providers}
-                  conditions_state={@conditions_state}
-                />
-              </div>
-            </div>
-          </PostureComponents.policy_restrictions>
+          <button
+            :for={actor <- @add_member_results}
+            type="button"
+            phx-click="add_group_member"
+            phx-value-actor_id={actor.id}
+            class="flex items-center gap-2 w-full text-left px-3 py-2 border-b border-hair last:border-b-0 hover:bg-hover"
+          >
+            <Core.icon name={member_icon(actor)} class="w-3.5 h-3.5 text-muted shrink-0" />
+            <span class="text-sm text-fg truncate">{actor.name}</span>
+            <span :if={actor.email} class="text-xs text-muted truncate">{actor.email}</span>
+          </button>
+          <p :if={@add_member_results == []} class="px-3 py-3 text-xs text-muted">No one found.</p>
         </div>
       </div>
-      <div
-        :if={@grant_resource_form && @grant_resource_form.errors != []}
-        class="px-5 py-2 text-xs text-error"
-      >
-        <p :for={{_field, {msg, _}} <- @grant_resource_form.errors}>{msg}</p>
-      </div>
-      <Form.panel_footer>
-        <Form.panel_footer_button type="button" phx-click="close_grant_resource_form">
-          Cancel
-        </Form.panel_footer_button>
-        <Form.panel_footer_button
-          type="submit"
-          style="primary"
-          disabled={@grant_selected_resource_ids == [] or PortalWeb.Policies.Postures.blocked?(@postures)}
-        >
-          Grant access
-        </Form.panel_footer_button>
-      </Form.panel_footer>
-    </.form>
+    </section>
     """
   end
 
@@ -794,36 +436,19 @@ defmodule PortalWeb.Groups.Components do
   attr :resource_access_actions_open_id, :any, default: nil
   attr :confirm_remove_resource_access_id, :any, default: nil
 
-  def group_resources_list(assigns) do
+  defp group_reach_section(assigns) do
     ~H"""
-    <div class="flex-1 overflow-y-auto">
-      <div
-        :if={@resources == []}
-        class="flex flex-col items-center justify-center h-full py-12 text-center"
-      >
-        <p class="text-sm font-medium text-body">No resource access</p>
-        <p class="text-xs text-subtle mt-1">
-          Assign a policy to grant this group access.
-        </p>
-      </div>
-      <ul :if={@resources != []}>
-        <li
-          :for={row <- @resources}
-          class={[
-            "border-b border-border transition-colors",
-            @confirm_remove_resource_access_id == row.resource.id &&
-              "bg-error-light border-error/20"
-          ]}
-        >
+    <section id="group-reach" class="min-w-0">
+      <.eyebrow icon="ri-route-line">Can reach</.eyebrow>
+      <ul class="border-t border-rule">
+        <li :for={row <- @resources} class="border-b border-hair">
           <div
             :if={@confirm_remove_resource_access_id == row.resource.id}
-            class="flex items-center justify-between gap-2 px-4 py-2.5"
+            class="flex items-center justify-between gap-2 px-2 py-2.5 bg-attn-wash"
           >
-            <span class="text-xs text-body truncate">
-              Remove access to <span class="font-medium text-heading">{row.resource.name}</span>?
-              <span class="block text-subtle">
-                All group members will immediately lose access.
-              </span>
+            <span class="text-xs text-fg truncate">
+              Remove access to <span class="font-medium">{row.resource.name}</span>?
+              <span class="block text-muted">All group members will immediately lose access.</span>
             </span>
             <div class="flex items-center gap-1.5 shrink-0">
               <Form.button type="button" phx-click="cancel_remove_resource_access" size="xs">
@@ -843,277 +468,380 @@ defmodule PortalWeb.Groups.Components do
           <div
             :if={@confirm_remove_resource_access_id != row.resource.id}
             class={[
-              "flex items-center gap-1 pr-4 hover:bg-raised group/item",
+              "flex items-start justify-between gap-3 py-2",
               @resource_access_actions_open_id == row.resource.id && "relative z-20"
             ]}
           >
-            <Navigation.link
-              navigate={~p"/#{@account}/policies/#{row.policy_id}"}
-              class={[
-                "flex items-center gap-3 px-5 py-3 flex-1 min-w-0",
-                row.policy_is_disabled && "opacity-50 hover:opacity-75"
-              ]}
-            >
-              <div class={[
-                "shrink-0 flex",
-                ResourceType.type_badge_col_class(Enum.map(@resources, & &1.resource.type))
-              ]}>
-                <span class={ResourceType.type_badge_class(row.resource.type)}>
-                  {ResourceType.resource_type_label(row.resource.type)}
-                </span>
+            <div class={["min-w-0", row.policy_is_disabled && "opacity-50"]}>
+              <div class="flex items-center gap-2">
+                <.link
+                  navigate={~p"/#{@account}/policies/#{row.policy_id}"}
+                  class="text-sm text-fg truncate hover:underline"
+                >
+                  {row.resource.name}
+                </.link>
+                <Core.badge :if={row.policy_is_disabled} size="xs">disabled</Core.badge>
               </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <p class="text-sm font-medium text-heading group-hover/item:text-brand transition-colors truncate">
-                    {row.resource.name}
-                  </p>
-                  <span
-                    :if={row.policy_is_disabled}
-                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle shrink-0"
-                  >
-                    disabled
-                  </span>
-                </div>
-                <span class="text-xs text-subtle font-mono truncate block">
-                  {row.resource.address}
-                </span>
-              </div>
-            </Navigation.link>
-            <Core.actions_dropdown
-              open={@resource_access_actions_open_id == row.resource.id}
-              close_event="close_resource_access_actions"
-              button_class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
-              icon_class="w-3.5 h-3.5"
-              phx-click="toggle_resource_access_actions"
-              phx-value-resource_id={row.resource.id}
-              title="More actions"
-            >
-              <Navigation.link
-                navigate={~p"/#{@account}/resources/#{row.resource.id}"}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
-              >
-                <Core.icon name="ri-server-line" class="w-3.5 h-3.5 shrink-0" /> Go to Resource
-              </Navigation.link>
-              <button
-                :if={!row.policy_is_disabled}
-                type="button"
-                phx-click="disable_resource_access"
+              <p class="text-xs text-muted truncate">
+                {conditions_summary(row.policy) || row.resource.address}
+              </p>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <Actors.Components.route_chip resource={row.resource} site_name={row.site_name} />
+              <Core.actions_dropdown
+                open={@resource_access_actions_open_id == row.resource.id}
+                close_event="close_resource_access_actions"
+                button_class="flex items-center justify-center w-6 h-6 text-muted hover:text-fg hover:bg-hover"
+                icon_class="w-3.5 h-3.5"
+                phx-click="toggle_resource_access_actions"
                 phx-value-resource_id={row.resource.id}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+                title="More actions"
               >
-                <Core.icon name="ri-pause-circle-line" class="w-3.5 h-3.5 shrink-0" /> Disable
-              </button>
-              <button
-                :if={row.policy_is_disabled}
-                type="button"
-                phx-click="enable_resource_access"
-                phx-value-resource_id={row.resource.id}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
-              >
-                <Core.icon name="ri-play-circle-line" class="w-3.5 h-3.5 shrink-0" /> Enable
-              </button>
-              <button
-                type="button"
-                phx-click="confirm_remove_resource_access"
-                phx-value-resource_id={row.resource.id}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-error hover:bg-raised transition-colors"
-              >
-                <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
-              </button>
-            </Core.actions_dropdown>
+                <Navigation.link
+                  navigate={~p"/#{@account}/resources/#{row.resource.id}"}
+                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-fg hover:bg-hover"
+                >
+                  <Core.icon name="ri-server-line" class="w-3.5 h-3.5 shrink-0" /> Go to Resource
+                </Navigation.link>
+                <button
+                  :if={!row.policy_is_disabled}
+                  type="button"
+                  phx-click="disable_resource_access"
+                  phx-value-resource_id={row.resource.id}
+                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-fg hover:bg-hover"
+                >
+                  <Core.icon name="ri-pause-circle-line" class="w-3.5 h-3.5 shrink-0" /> Disable
+                </button>
+                <button
+                  :if={row.policy_is_disabled}
+                  type="button"
+                  phx-click="enable_resource_access"
+                  phx-value-resource_id={row.resource.id}
+                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-fg hover:bg-hover"
+                >
+                  <Core.icon name="ri-play-circle-line" class="w-3.5 h-3.5 shrink-0" /> Enable
+                </button>
+                <button
+                  type="button"
+                  phx-click="confirm_remove_resource_access"
+                  phx-value-resource_id={row.resource.id}
+                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-attn hover:bg-attn-wash"
+                >
+                  <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
+                </button>
+              </Core.actions_dropdown>
+            </div>
           </div>
         </li>
       </ul>
-    </div>
+      <div :if={@resources == []} class="flex items-start gap-2 py-3 text-sm text-muted">
+        <Core.icon name="ri-route-line" class="w-4 h-4 text-faint mt-0.5" />
+        <div>
+          <p>No resource access</p>
+          <p class="text-xs">Grant access to let this group reach a resource.</p>
+        </div>
+      </div>
+    </section>
     """
   end
 
   attr :group, :any, required: true
-  attr :confirm_delete?, :boolean, required: true
 
-  def group_sidebar(assigns) do
+  defp group_details_section(assigns) do
     ~H"""
-    <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
-      <section>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-          Details
-        </h3>
-        <dl class="space-y-2.5">
-          <div>
-            <dt class="text-[10px] text-subtle mb-0.5">ID</dt>
-            <dd class="font-mono text-[11px] text-body break-all font-medium">
-              {@group.id}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-[10px] text-subtle mb-0.5">Name</dt>
-            <dd class="text-xs text-body truncate font-medium" title={@group.name}>
-              {@group.name}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-[10px] text-subtle mb-0.5">Directory</dt>
-            <dd class="text-xs text-body font-medium">
-              {directory_display_name(@group.directory)}
-            </dd>
-          </div>
-          <div :if={@group.entity_type == :org_unit}>
-            <dt class="text-[10px] text-subtle mb-0.5">Type</dt>
-            <dd class="text-xs text-body font-medium">Org Unit</dd>
-          </div>
-          <div>
-            <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-            <dd class="text-xs text-body mt-0.5 font-medium">
-              <Core.relative_datetime datetime={@group.inserted_at} />
-            </dd>
-          </div>
-          <div>
-            <dt class="text-[10px] text-subtle mb-0.5">Updated</dt>
-            <dd class="text-xs text-body mt-0.5 font-medium">
-              <Core.relative_datetime datetime={@group.updated_at} />
-            </dd>
-          </div>
-          <div :if={Ecto.assoc_loaded?(@group.sync_state) && @group.sync_state && @group.sync_state.synced_at}>
-            <dt class="text-[10px] text-subtle mb-0.5">Last Synced</dt>
-            <dd class="text-xs text-body mt-0.5 font-medium">
-              <Core.relative_datetime datetime={@group.sync_state.synced_at} />
-            </dd>
-          </div>
-          <div :if={@group.idp_id && get_idp_id(@group.idp_id)}>
-            <dt class="text-[10px] text-subtle mb-0.5">IDP ID</dt>
-            <dd
-              class="font-mono text-[11px] text-body break-all mt-0.5"
-              title={get_idp_id(@group.idp_id)}
-            >
-              {get_idp_id(@group.idp_id)}
-            </dd>
-          </div>
-        </dl>
-      </section>
-      <div :if={deletable_group?(@group)} class="border-t border-border"></div>
-      <section :if={deletable_group?(@group)}>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
-          Danger Zone
-        </h3>
-        <button
-          :if={not @confirm_delete?}
-          type="button"
-          phx-click="confirm_delete_group"
-          class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
+    <details id="group-details" class="group/more border-t border-hair">
+      <summary class="flex items-center gap-2 px-6 py-3 cursor-pointer list-none hover:bg-hover">
+        <Core.icon name="ri-information-line" class="w-4 h-4 text-muted" />
+        <span class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">Details</span>
+        <Core.icon name="ri-arrow-down-s-line" class="w-4 h-4 text-muted group-open/more:hidden" />
+        <Core.icon name="ri-arrow-up-s-line" class="w-4 h-4 text-muted hidden group-open/more:block" />
+      </summary>
+      <dl class="grid gap-x-8 gap-y-3 px-6 pb-6 sm:grid-cols-2 lg:grid-cols-3">
+        <.detail_field label="ID" mono>{@group.id}</.detail_field>
+        <.detail_field label="Name">{@group.name}</.detail_field>
+        <.detail_field label="Directory">{directory_display_name(@group.directory)}</.detail_field>
+        <.detail_field :if={@group.entity_type == :org_unit} label="Type">Org Unit</.detail_field>
+        <.detail_field label="Created">
+          <Core.relative_datetime datetime={@group.inserted_at} />
+        </.detail_field>
+        <.detail_field label="Updated">
+          <Core.relative_datetime datetime={@group.updated_at} />
+        </.detail_field>
+        <.detail_field
+          :if={Ecto.assoc_loaded?(@group.sync_state) && @group.sync_state && @group.sync_state.synced_at}
+          label="Last synced"
         >
-          <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete group
-        </button>
-        <div
-          :if={@confirm_delete?}
-          class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
-        >
-          <p class="text-xs font-medium text-error mb-1">
-            Delete this group?
-          </p>
-          <p class="text-xs text-error/70 mb-3">
-            All associated policies will also be deleted and clients will immediately lose access.
-          </p>
-          <div class="flex items-center gap-1.5">
-            <Form.button type="button" phx-click="cancel_delete_group" size="xs">
-              Cancel
-            </Form.button>
-            <Form.button
-              type="button"
-              phx-click="delete"
-              phx-value-id={@group.id}
-              style="danger"
-              size="xs"
-            >
-              Delete
-            </Form.button>
-          </div>
-        </div>
-      </section>
-    </div>
+          <Core.relative_datetime datetime={@group.sync_state.synced_at} />
+        </.detail_field>
+        <.detail_field :if={@group.idp_id && get_idp_id(@group.idp_id)} label="IDP ID" mono>
+          {get_idp_id(@group.idp_id)}
+        </.detail_field>
+      </dl>
+    </details>
     """
   end
 
-  attr :actor, :any, required: true
-  attr :class, :string, default: "w-7 h-7"
+  attr :account, :any, required: true
+  attr :resources_state, :map, required: true
+  attr :conditions_state, :map, required: true
 
-  defp actor_type_badge(assigns) do
+  defp group_grant_resource_form(assigns) do
+    assigns =
+      assigns
+      |> assign(assigns.resources_state)
+      |> assign(assigns.conditions_state)
+
+    filtered_available =
+      assigns.available_resources
+      |> Enum.reject(&(&1.id in assigns.grant_selected_resource_ids))
+      |> Enum.filter(&resource_matches?(&1, assigns.grant_resource_search))
+
+    selected_resources =
+      Enum.filter(assigns.available_resources, &(&1.id in assigns.grant_selected_resource_ids))
+
+    assigns =
+      assigns
+      |> assign(:filtered_available, filtered_available)
+      |> assign(:selected_resources, selected_resources)
+      |> assign(:allowed_conditions, allowed_conditions(selected_resources))
+      |> assign(:card_state, %{
+        timezone: assigns.conditions_state.timezone,
+        location_search: assigns.conditions_state.location_search,
+        location_operator: assigns.conditions_state.location_operator,
+        location_values: assigns.conditions_state.location_values,
+        ip_range_operator: assigns.conditions_state.ip_range_operator,
+        ip_range_values: assigns.conditions_state.ip_range_values,
+        ip_range_input: assigns.conditions_state.ip_range_input,
+        auth_provider_operator: assigns.conditions_state.auth_provider_operator,
+        auth_provider_values: assigns.conditions_state.auth_provider_values,
+        tod_values: assigns.conditions_state.tod_values,
+        tod_adding: assigns.conditions_state.tod_adding?,
+        tod_pending: assigns.conditions_state.tod_pending,
+        tod_pending_error: assigns.conditions_state.tod_pending_error
+      })
+
     ~H"""
-    <div class={[
-      "inline-flex items-center justify-center rounded-full shrink-0",
-      @class,
-      actor_type_icon_bg_color(@actor.type)
-    ]}>
-      <%= case @actor.type do %>
-        <% :service_account -> %>
-          <Core.icon
-            name="ri-server-line"
-            class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"}
-          />
-        <% :account_admin_user -> %>
-          <Core.icon
-            name="ri-shield-check-line"
-            class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"}
-          />
-        <% _ -> %>
-          <Core.icon name="ri-user-line" class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"} />
-      <% end %>
+    <div class="flex items-center gap-2 px-6 py-2.5 border-b border-hair shrink-0">
+      <Form.icon_button
+        icon="ri-arrow-left-s-line"
+        title="Back to the group"
+        phx-click="close_grant_resource_form"
+        size="sm"
+      />
+      <span class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">Grant access</span>
     </div>
+    <.form
+      for={@grant_resource_form}
+      phx-submit="submit_grant_resource"
+      id="grant-resource-form"
+      class="flex-1 flex flex-col min-h-0 overflow-hidden"
+    >
+      <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        <div>
+          <label class="block text-xs font-medium text-muted mb-2">
+            Resources <span class="text-attn">*</span>
+          </label>
+          <div class="flex gap-2 h-52">
+            <div class="flex-1 flex flex-col min-w-0 border border-hair">
+              <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-hair shrink-0">
+                <span class="text-[11px] font-semibold uppercase tracking-[.12em] text-muted">Available</span>
+                <span class="text-[11px] text-muted tabular-nums">{length(@filtered_available)}</span>
+              </div>
+              <div class="px-2 pt-1.5 shrink-0 relative">
+                <Core.icon
+                  name="ri-search-line"
+                  class="absolute left-4 top-1/2 translate-y-[-25%] w-3 h-3 text-muted pointer-events-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Search…"
+                  value={@grant_resource_search}
+                  phx-keyup="search_grant_resources"
+                  phx-debounce="200"
+                  autocomplete="off"
+                  data-1p-ignore
+                  class="w-full pl-6 pr-2 py-1 text-xs border border-rule bg-bg text-fg placeholder:text-muted outline-none focus:border-fg"
+                />
+              </div>
+              <ul class="flex-1 overflow-y-auto px-1 py-1.5">
+                <li :for={resource <- @filtered_available}>
+                  <button
+                    type="button"
+                    phx-click="toggle_grant_resource"
+                    phx-value-resource_id={resource.id}
+                    class="flex items-center gap-2 px-2 py-1.5 w-full text-left hover:bg-hover"
+                  >
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs text-fg truncate">{resource.name}</p>
+                      <p class="text-[11px] text-muted font-mono truncate">{resource.address}</p>
+                    </div>
+                  </button>
+                </li>
+                <li
+                  :if={@available_resources == []}
+                  class="flex items-center justify-center h-16 text-xs text-muted"
+                >
+                  All resources already have access.
+                </li>
+                <li
+                  :if={@available_resources != [] && @filtered_available == []}
+                  class="flex items-center justify-center h-12 text-xs text-muted"
+                >
+                  No resources match.
+                </li>
+              </ul>
+            </div>
+            <div class="flex-1 flex flex-col min-w-0 border border-hair">
+              <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-hair shrink-0">
+                <span class="text-[11px] font-semibold uppercase tracking-[.12em] text-muted">Selected</span>
+                <span class="text-[11px] text-muted tabular-nums">{length(@grant_selected_resource_ids)}</span>
+              </div>
+              <ul class="flex-1 overflow-y-auto px-1 py-1.5">
+                <li :for={resource <- @selected_resources}>
+                  <button
+                    type="button"
+                    phx-click="toggle_grant_resource"
+                    phx-value-resource_id={resource.id}
+                    class="flex items-center gap-2 px-2 py-1.5 w-full text-left hover:bg-hover group"
+                  >
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs text-fg truncate">{resource.name}</p>
+                      <p class="text-[11px] text-muted font-mono truncate">{resource.address}</p>
+                    </div>
+                    <Core.icon
+                      name="ri-close-line"
+                      class="w-3.5 h-3.5 text-muted opacity-0 group-hover:opacity-100 shrink-0"
+                    />
+                  </button>
+                </li>
+                <li
+                  :if={@selected_resources == []}
+                  class="flex items-center justify-center h-16 text-xs text-muted"
+                >
+                  No resources selected.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="border-t border-hair pt-4">
+          <Policies.Components.flow_log_uploads_toggle
+            form={@grant_resource_form}
+            internet_resource?={Enum.any?(@selected_resources, &(&1.type == :internet))}
+          />
+        </div>
+        <Policies.PostureComponents.policy_restrictions
+          id="group-grant-postures"
+          account={@account}
+          state={@postures}
+        >
+          <div class="border-t border-hair pt-4">
+            <div class="flex items-center justify-between mb-3">
+              <h4 class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+                Conditions
+                <span class="ml-1 font-normal normal-case tracking-normal">(optional)</span>
+              </h4>
+              <div :if={@allowed_conditions -- @active_conditions != []} class="relative">
+                <Form.button
+                  type="button"
+                  phx-click="toggle_conditions_dropdown"
+                  size="xs"
+                  icon="ri-add-line"
+                >
+                  Add condition
+                </Form.button>
+                <div :if={@conditions_dropdown_open?}>
+                  <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
+                  <div class="absolute right-0 top-full mt-1 z-20 min-w-44 border border-rule bg-bg shadow-lg py-1">
+                    <button
+                      :for={type <- @allowed_conditions -- @active_conditions}
+                      type="button"
+                      phx-click="add_condition"
+                      phx-value-type={type}
+                      class="w-full text-left px-3 py-1.5 text-xs text-fg hover:bg-hover"
+                    >
+                      {Policies.Components.condition_type_label(type)}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p
+              :if={@active_conditions == []}
+              class="text-xs text-muted text-center py-4 border border-dashed border-hair"
+            >
+              No conditions - access is unrestricted
+            </p>
+            <div class="space-y-2">
+              <Policies.Components.grant_condition_card
+                :for={type <- @active_conditions}
+                type={type}
+                providers={@providers}
+                conditions_state={@card_state}
+              />
+            </div>
+          </div>
+        </Policies.PostureComponents.policy_restrictions>
+      </div>
+      <div
+        :if={@grant_resource_form && @grant_resource_form.errors != []}
+        class="px-6 py-2 text-xs text-attn"
+      >
+        <p :for={{_field, {msg, _}} <- @grant_resource_form.errors}>{msg}</p>
+      </div>
+      <Form.panel_footer>
+        <Form.panel_footer_button type="button" phx-click="close_grant_resource_form">
+          Cancel
+        </Form.panel_footer_button>
+        <Form.panel_footer_button
+          type="submit"
+          style="primary"
+          disabled={@grant_selected_resource_ids == [] or PortalWeb.Policies.Postures.blocked?(@postures)}
+        >
+          Grant access
+        </Form.panel_footer_button>
+      </Form.panel_footer>
+    </.form>
     """
   end
 
   attr :form, :any, required: true
   attr :member_search_results, :any, default: nil
-  attr :placeholder, :string, default: "Search to add members..."
 
   defp member_search_input(assigns) do
     ~H"""
-    <div
-      class="p-3 bg-raised border-b border-border relative"
-      phx-click-away="blur_search"
-    >
-      <div class="relative">
-        <Core.icon
-          name="ri-search-line"
-          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
-        />
-        <input
-          type="text"
-          name={@form[:member_search].name}
-          value={@form[:member_search].value}
-          placeholder={@placeholder}
-          phx-debounce="300"
-          phx-focus="focus_search"
-          autocomplete="off"
-          data-1p-ignore
-          class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-surface text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
-        />
-      </div>
-
+    <div class="relative" phx-click-away="blur_search">
+      <Core.icon
+        name="ri-search-line"
+        class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted pointer-events-none"
+      />
+      <input
+        type="text"
+        name={@form[:member_search].name}
+        value={@form[:member_search].value}
+        placeholder="Search to add members..."
+        phx-debounce="300"
+        phx-focus="focus_search"
+        autocomplete="off"
+        data-1p-ignore
+        class="w-full pl-7 pr-3 py-1.5 text-sm border border-rule bg-bg text-fg placeholder:text-muted outline-none focus:border-fg"
+      />
       <div
         :if={@member_search_results != nil}
-        class="absolute z-10 left-3 right-3 mt-1 bg-elevated border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto"
+        class="absolute z-10 left-0 right-0 mt-1 bg-bg border border-rule shadow-lg max-h-48 overflow-y-auto"
       >
         <button
           :for={actor <- @member_search_results}
           type="button"
           phx-click="add_member"
           phx-value-actor_id={actor.id}
-          class="w-full text-left px-3 py-2 hover:bg-raised border-b border-border last:border-b-0 transition-colors"
+          class="flex items-center gap-2 w-full text-left px-3 py-2 border-b border-hair last:border-b-0 hover:bg-hover"
         >
-          <div class="space-y-0.5">
-            <div class="flex items-center gap-2">
-              <.actor_type_badge actor={actor} />
-              <div class="text-xs font-medium text-heading">{actor.name}</div>
-            </div>
-            <div :if={actor.email} class="text-xs text-subtle pl-9">
-              {actor.email}
-            </div>
-          </div>
+          <Core.icon name={member_icon(actor)} class="w-3.5 h-3.5 text-muted shrink-0" />
+          <span class="text-xs font-medium text-fg">{actor.name}</span>
+          <span :if={actor.email} class="text-xs text-muted truncate">{actor.email}</span>
         </button>
-        <div
-          :if={@member_search_results == []}
-          class="px-3 py-4 text-center text-xs text-subtle"
-        >
+        <div :if={@member_search_results == []} class="px-3 py-4 text-center text-xs text-muted">
           No members found
         </div>
       </div>
@@ -1123,86 +851,131 @@ defmodule PortalWeb.Groups.Components do
 
   attr :members, :list, required: true
   attr :title, :string, required: true
-  attr :count, :integer, required: true
-  attr :title_class, :string, default: nil
   attr :empty_message, :string, required: true
-  slot :badge
-  slot :actions
+  attr :action, :string, required: true
+  attr :action_title, :string, required: true
 
   defp member_bucket(assigns) do
     ~H"""
-    <section class="min-w-0 rounded border border-border bg-surface overflow-hidden">
-      <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-border bg-raised shrink-0">
-        <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-subtle"]}>
-          {@title}
-        </h4>
-        <span class="text-[10px] text-subtle">{@count}</span>
+    <section class="min-w-0 border border-hair">
+      <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-hair">
+        <h4 class="text-[11px] font-semibold uppercase tracking-[.12em] text-muted">{@title}</h4>
+        <span class="text-[11px] text-muted tabular-nums">{length(@members)}</span>
       </div>
-      <.member_list
-        members={@members}
-        item_class="px-2 py-1.5 flex items-center justify-between gap-2 rounded group hover:bg-surface transition-colors"
-        list_class="h-48 overflow-y-auto px-2 py-1.5 space-y-0.5"
-        empty_class="flex items-center justify-center h-16"
-      >
-        <:badge :let={actor}>{render_slot(@badge, actor)}</:badge>
-        <:actions :let={actor}>{render_slot(@actions, actor)}</:actions>
-        <:empty_message>{@empty_message}</:empty_message>
-      </.member_list>
+      <ul :if={@members != []} class="h-48 overflow-y-auto px-1 py-1">
+        <li :for={actor <- @members} class="flex items-center gap-2 px-2 py-1.5 hover:bg-hover">
+          <Core.icon name={member_icon(actor)} class="w-3.5 h-3.5 text-muted shrink-0" />
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-medium text-fg truncate">{actor.name}</p>
+            <p :if={actor.email} class="text-xs text-muted truncate">{actor.email}</p>
+          </div>
+          <button
+            type="button"
+            phx-click={@action}
+            phx-value-actor_id={actor.id}
+            class="shrink-0 text-muted hover:text-attn"
+            title={@action_title}
+          >
+            <Core.icon name="ri-close-line" class="w-4 h-4" />
+          </button>
+        </li>
+      </ul>
+      <div :if={@members == []} class="flex items-center justify-center h-16">
+        <p class="text-xs text-muted">{@empty_message}</p>
+      </div>
     </section>
     """
   end
 
-  attr :members, :list, required: true
-  attr :item_class, :string, default: "px-3 py-2.5 flex items-center justify-between group"
-  attr :list_class, :string, default: "divide-y divide-border h-48 overflow-y-auto"
-  attr :empty_class, :string, default: "flex items-center justify-center h-64"
-  slot :badge
-  slot :actions
-  slot :empty_message, required: true
+  attr :icon, :string, required: true
+  slot :inner_block, required: true
 
-  defp member_list(assigns) do
-    assigns = assign(assigns, :has_actions, assigns.actions != [])
-
+  defp eyebrow(assigns) do
     ~H"""
-    <ul :if={@members != []} class={@list_class}>
-      <li :for={actor <- @members} class={@item_class}>
-        <div class={["flex items-center gap-3", @has_actions && "flex-1 min-w-0"]}>
-          <%= if @badge != [] do %>
-            {render_slot(@badge, actor)}
-          <% end %>
-          <div class={@has_actions && "flex-1 min-w-0"}>
-            <p class={["text-xs font-medium text-heading", @has_actions && "truncate"]}>
-              {actor.name}
-            </p>
-            <p
-              :if={actor.email}
-              class={["text-xs text-subtle", @has_actions && "truncate"]}
-            >
-              {actor.email}
-            </p>
-          </div>
-        </div>
-        <%= if @has_actions do %>
-          {render_slot(@actions, actor)}
-        <% end %>
-      </li>
-    </ul>
+    <h3 class="flex items-center gap-1.5 mb-2.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+      <Core.icon name={@icon} class="w-3.5 h-3.5" /> {render_slot(@inner_block)}
+    </h3>
+    """
+  end
 
-    <div :if={@members == []} class={@empty_class}>
-      <p class="text-xs text-subtle">
-        {render_slot(@empty_message)}
-      </p>
+  attr :label, :string, required: true
+  attr :mono, :boolean, default: false
+  slot :inner_block, required: true
+
+  defp detail_field(assigns) do
+    ~H"""
+    <div class="min-w-0">
+      <dt class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">{@label}</dt>
+      <dd class={["text-sm text-fg mt-0.5 break-all", @mono && "font-mono text-xs"]}>
+        {render_slot(@inner_block)}
+      </dd>
     </div>
     """
   end
 
-  defp actor_type_icon_bg_color(:service_account), do: "bg-blue-100"
-  defp actor_type_icon_bg_color(:account_admin_user), do: "bg-purple-100"
-  defp actor_type_icon_bg_color(_), do: "bg-neutral-100"
+  defp group_source(%{type: :managed}), do: "Built in"
 
-  defp actor_type_icon_text_color(:service_account), do: "text-blue-800"
-  defp actor_type_icon_text_color(:account_admin_user), do: "text-purple-800"
-  defp actor_type_icon_text_color(_), do: "text-neutral-800"
+  defp group_source(group) do
+    cond do
+      name = directory_name(group) -> "Synced from #{name}"
+      not is_nil(group.idp_id) -> "Synced"
+      true -> "Manual"
+    end
+  end
+
+  defp directory_name(%{directory: directory}) when is_map(directory),
+    do: directory_name_from(directory)
+
+  defp directory_name(_group), do: nil
+
+  defp directory_name_from(%{google_directory: %{name: name}}) when is_binary(name), do: name
+  defp directory_name_from(%{entra_directory: %{name: name}}) when is_binary(name), do: name
+  defp directory_name_from(%{okta_directory: %{name: name}}) when is_binary(name), do: name
+  defp directory_name_from(_directory), do: nil
+
+  defp conditions_summary(policy) do
+    labels =
+      Enum.map(policy.conditions, &Policies.Components.condition_short_label(&1.property)) ++
+        attestation_label(policy) ++ posture_label(policy)
+
+    if labels == [] do
+      nil
+    else
+      "Conditions: " <> Enum.join(Enum.uniq(labels), " · ")
+    end
+  end
+
+  defp attestation_label(%{require_attestation: true}), do: ["Attested device"]
+  defp attestation_label(_policy), do: []
+
+  defp posture_label(%{postures: nil}), do: []
+  defp posture_label(_policy), do: ["Device posture"]
+
+  defp resource_matches?(_resource, ""), do: true
+
+  defp resource_matches?(resource, search) do
+    search = String.downcase(search)
+
+    String.contains?(String.downcase(resource.name), search) or
+      String.contains?(String.downcase(resource.address || ""), search)
+  end
+
+  defp allowed_conditions([]), do: []
+
+  defp allowed_conditions(resources) do
+    resources
+    |> Enum.map(&Policies.Components.available_conditions/1)
+    |> Enum.reduce(&Enum.filter(&2, fn condition -> condition in &1 end))
+  end
+
+  defp member_icon(%{type: :service_account}), do: "ri-robot-3-line"
+  defp member_icon(%{type: :account_admin_user}), do: "ri-shield-user-line"
+  defp member_icon(_actor), do: "ri-user-line"
+
+  defp member_path(account, %{type: :service_account} = actor),
+    do: ~p"/#{account}/service_accounts/#{actor.id}"
+
+  defp member_path(account, actor), do: ~p"/#{account}/actors/#{actor.id}"
 
   defp editable_group?(%{type: :managed, name: "Everyone"}), do: false
   defp editable_group?(%{idp_id: nil}), do: true
@@ -1211,14 +984,7 @@ defmodule PortalWeb.Groups.Components do
   defp deletable_group?(%{name: "Everyone"}), do: false
   defp deletable_group?(_group), do: true
 
-  defp directory_display_name(directory) do
-    case directory do
-      %{google_directory: %{name: name}} when not is_nil(name) -> name
-      %{entra_directory: %{name: name}} when not is_nil(name) -> name
-      %{okta_directory: %{name: name}} when not is_nil(name) -> name
-      _ -> "Firezone"
-    end
-  end
+  defp directory_display_name(directory), do: directory_name_from(directory) || "Firezone"
 
   defp get_idp_id(idp_id) do
     case String.split(idp_id, ":", parts: 2) do
@@ -1234,8 +1000,10 @@ defmodule PortalWeb.Groups.Components do
       (Enum.empty?(form.source.changes) and members_to_add == [] and members_to_remove == [])
   end
 
-  defp current_members_for_display(group, members_to_remove) do
+  defp current_members_for_display(:edit_form, %{actors: actors}, members_to_remove) do
     remove_ids = MapSet.new(members_to_remove, & &1.id)
-    Enum.reject(group.actors, &MapSet.member?(remove_ids, &1.id))
+    Enum.reject(actors, &MapSet.member?(remove_ids, &1.id))
   end
+
+  defp current_members_for_display(_view, _group, _members_to_remove), do: []
 end
