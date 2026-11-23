@@ -5850,6 +5850,8 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-proto",
  "opentelemetry_sdk",
+ "otel-attributes",
+ "otel-instruments",
  "prost",
  "secrecy",
  "socket-factory",
