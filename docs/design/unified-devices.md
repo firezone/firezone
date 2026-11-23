@@ -616,8 +616,10 @@ reported `firezone_id`.
   ends the TLS handshake there.
 - **Key storage:** the key belongs to the machine, not to a user. TPM 2.0 on
   Windows and Linux. On macOS both builds run the tunnel as a system
-  extension, so the key goes in the System keychain, as a software key until
-  the Secure Enclave is shown to work from the system extension. On iOS the
+  extension: the key is a Secure Enclave key (every Mac with a T2 chip or
+  Apple silicon), and the System keychain holds its CryptoKit
+  `dataRepresentation`, which only that Secure Enclave can use. Older Macs
+  get a software key in the System keychain. On iOS the
   app extension keeps it in the app group keychain, in the Secure Enclave.
   Keystore or StrongBox on Android. Where none is available (containers,
   VMs without a vTPM, older Macs), a software key in the state directory or
