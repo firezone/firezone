@@ -5,7 +5,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   alias Portal.{Safe, TrustAnchor}
   alias Portal.Crypto.X509
-  alias PortalWeb.Settings.Components, as: SettingsComponents
+  alias PortalWeb.Settings
 
   @max_upload_size 1_000_000
   @max_upload_entries 10
@@ -154,7 +154,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(page_title: "Trust Anchors")
+      |> assign(page_title: "Trust anchors")
       |> load_trust_anchors_if_connected()
       |> assign(selected_trust_anchor: nil)
       |> assign(form: nil, input_mode: :paste)
@@ -225,95 +225,74 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col h-full" phx-window-keydown="handle_keydown" phx-key="Escape">
-      <Navigation.settings_nav
-        account={@account}
-        current_path={@current_path}
-      />
+    <div class="flex flex-col h-full">
+      <Page.page_header>
+        <:title>Trust anchors</:title>
+        <:stats :if={@trust_anchors}>{length(@trust_anchors)}</:stats>
+        <:description>
+          CA certificates that issue the device certificates Firezone trusts.
+        </:description>
+        <:action>
+          <Navigation.docs_action show_label size="md" path="/device-trust" />
+          <Form.button
+            id="add-trust-anchor-button"
+            patch={~p"/#{@account}/settings/trust_anchors/new"}
+            style="primary"
+            icon="ri-add-line"
+            size="sm"
+          >
+            Add a trust anchor
+          </Form.button>
+        </:action>
+      </Page.page_header>
 
-      <div class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
-          <div class="flex items-center gap-2">
-            <h2 class="text-xs font-semibold text-heading">Trust Anchors</h2>
-            <span :if={@trust_anchors} class="text-xs text-subtle tabular-nums">
-              {length(@trust_anchors)}
-            </span>
-          </div>
-          <div class="flex items-center gap-2">
-            <Navigation.docs_action show_label path="/device-trust" />
-            <Navigation.link
-              patch={~p"/#{@account}/settings/trust_anchors/new"}
-              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-            >
-              <Core.icon name="ri-add-line" class="w-3 h-3" /> Add
-            </Navigation.link>
-          </div>
-        </div>
-
-        <div class="flex-1 overflow-auto">
-          <%= cond do %>
-            <% is_nil(@trust_anchors) -> %>
-              <SettingsComponents.skeleton id="trust-anchors-skeleton" />
-            <% Enum.empty?(@trust_anchors) -> %>
-              <div class="flex items-center justify-center h-full">
-                <div class="flex flex-col items-center gap-3 py-16">
-                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                    <Core.icon name="ri-shield-check-line" class="w-5 h-5 text-subtle" />
-                  </div>
-                  <div class="text-center">
-                    <p class="text-sm font-medium text-heading">No trust anchors yet</p>
-                    <p class="text-xs text-subtle mt-0.5">
-                      Add a CA certificate chain to validate presented certificates against.
-                    </p>
-                  </div>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/trust_anchors/new"}
-                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                  >
-                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a trust anchor
-                  </Navigation.link>
-                </div>
-              </div>
-            <% true -> %>
-              <table class="w-full text-sm border-collapse">
-                <thead class="sticky top-0 z-10 bg-raised">
-                  <tr class="border-b border-border-strong">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                      Name
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                      Certificates
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                      Created
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <.trust_anchor_row
-                    :for={trust_anchor <- @trust_anchors}
-                    trust_anchor={trust_anchor}
-                    health={@revocation_health[trust_anchor.id]}
-                    selected?={
-                      !!@selected_trust_anchor && @selected_trust_anchor.id == trust_anchor.id
-                    }
-                  />
-                </tbody>
-              </table>
-          <% end %>
-        </div>
+      <div class="flex-1 overflow-auto">
+        <%= cond do %>
+          <% is_nil(@trust_anchors) -> %>
+            <Settings.Components.skeleton id="trust-anchors-skeleton" />
+          <% Enum.empty?(@trust_anchors) -> %>
+            <Settings.Components.empty_state icon="ri-shield-check-line" title="No trust anchors yet">
+              Add a CA certificate chain to validate presented certificates against.
+              <:action>
+                <Form.button
+                  patch={~p"/#{@account}/settings/trust_anchors/new"}
+                  icon="ri-add-line"
+                  size="sm"
+                >
+                  Add a trust anchor
+                </Form.button>
+              </:action>
+            </Settings.Components.empty_state>
+          <% true -> %>
+            <table class="w-full text-sm border-collapse">
+              <thead class="sticky top-0 z-10 bg-bg">
+                <tr class="border-b border-rule">
+                  <th class={Settings.Components.th_class()}>Name</th>
+                  <th class={[Settings.Components.th_class(), "w-36"]}>Certificates</th>
+                  <th class={[Settings.Components.th_class(), "w-36"]}>Revocation</th>
+                  <th class={[Settings.Components.th_class(), "hidden md:table-cell w-36"]}>
+                    Created
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <.trust_anchor_row
+                  :for={trust_anchor <- @trust_anchors}
+                  trust_anchor={trust_anchor}
+                  health={@revocation_health[trust_anchor.id]}
+                  selected?={
+                    !!@selected_trust_anchor && @selected_trust_anchor.id == trust_anchor.id
+                  }
+                />
+              </tbody>
+            </table>
+        <% end %>
       </div>
 
-    <!-- Show Panel (:show) -->
-      <div
+      <Page.detail_modal
         id="trust-anchor-show-panel"
-        class={[
-          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-elevated border-l border-border-strong",
-          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-          "transition-transform duration-200 ease-in-out",
-          (@live_action == :show && "translate-x-0") || "translate-x-full"
-        ]}
+        open={@live_action == :show and not is_nil(@selected_trust_anchor)}
+        on_close="close_panel"
       >
         <.trust_anchor_show_panel
           :if={@live_action == :show && @selected_trust_anchor}
@@ -324,143 +303,117 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           panel_tab={@panel_tab}
           expanded_endpoint={@expanded_endpoint}
         />
-      </div>
+      </Page.detail_modal>
 
-    <!-- Creation Panel (:new) -->
-      <div
+      <Page.detail_modal
         id="trust-anchor-new-panel"
-        class={[
-          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-elevated border-l border-border-strong",
-          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-          "transition-transform duration-200 ease-in-out",
-          (@live_action == :new && "translate-x-0") || "translate-x-full"
-        ]}
+        open={@live_action == :new and not is_nil(@form)}
+        on_close="close_panel"
+        size="md"
       >
-        <div :if={@live_action == :new && @form} class="flex flex-col h-full overflow-hidden">
-          <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-2">
-                <h2 class="text-sm font-semibold text-heading">New Trust Anchor</h2>
-                <Navigation.docs_action path="/device-trust" />
-              </div>
-              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-            </div>
-          </div>
+        <Form.panel_header title="New trust anchor" variant="plain">
+          <:leading><Core.icon name="ri-shield-check-line" class="w-4 h-4 text-muted" /></:leading>
+          <:adornment><Navigation.docs_action path="/device-trust" /></:adornment>
+        </Form.panel_header>
 
-          <.form
-            id="trust-anchor-new-form"
-            for={@form}
-            phx-change="validate_new"
-            phx-submit="create_trust_anchor"
-            class="flex flex-col flex-1 min-h-0 overflow-hidden"
-          >
-            <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
-            </div>
-
-            <Form.panel_footer>
-              <Form.panel_footer_button type="button" phx-click="close_panel">
-                Cancel
-              </Form.panel_footer_button>
-              <Form.panel_footer_button type="submit" style="primary">
-                Create
-              </Form.panel_footer_button>
-            </Form.panel_footer>
-          </.form>
-        </div>
-      </div>
-
-    <!-- Edit Panel (:edit) -->
-      <div
-        id="trust-anchor-edit-panel"
-        class={[
-          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-elevated border-l border-border-strong",
-          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-          "transition-transform duration-200 ease-in-out",
-          (@live_action == :edit && "translate-x-0") || "translate-x-full"
-        ]}
-      >
-        <div
-          :if={@live_action == :edit && @selected_trust_anchor && @form}
-          class="flex flex-col h-full overflow-hidden"
+        <.form
+          id="trust-anchor-new-form"
+          for={@form}
+          phx-change="validate_new"
+          phx-submit="create_trust_anchor"
+          class="flex flex-col flex-1 min-h-0 overflow-hidden"
         >
-          <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-            <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold text-heading">Edit Trust Anchor</h2>
-              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-            </div>
-          </div>
+          <Settings.Components.modal_body class="space-y-5">
+            <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
+          </Settings.Components.modal_body>
 
-          <.form
-            id="trust-anchor-edit-form"
-            for={@form}
-            phx-change="validate_edit"
-            phx-submit="update_trust_anchor"
-            class="flex flex-col flex-1 min-h-0 overflow-hidden"
-          >
-            <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
-            </div>
+          <Form.panel_footer>
+            <Form.panel_footer_button type="button" phx-click="close_panel">
+              Cancel
+            </Form.panel_footer_button>
+            <Form.panel_footer_button type="submit" style="primary">
+              Create
+            </Form.panel_footer_button>
+          </Form.panel_footer>
+        </.form>
+      </Page.detail_modal>
 
-            <Form.panel_footer>
-              <Form.panel_footer_button type="button" phx-click="close_panel">
-                Cancel
-              </Form.panel_footer_button>
-              <Form.panel_footer_button type="submit" style="primary">
-                Save
-              </Form.panel_footer_button>
-            </Form.panel_footer>
-          </.form>
+      <Page.detail_modal
+        id="trust-anchor-edit-panel"
+        open={@live_action == :edit and not is_nil(@selected_trust_anchor) and not is_nil(@form)}
+        on_close="close_panel"
+        size="md"
+      >
+        <Form.panel_header title="Edit trust anchor" variant="plain">
+          <:leading><Core.icon name="ri-shield-check-line" class="w-4 h-4 text-muted" /></:leading>
+          <:adornment><Navigation.docs_action path="/device-trust" /></:adornment>
+        </Form.panel_header>
 
-          <Form.modal
-            :if={@pending_update}
-            id="trust-anchor-remove-certificates-modal"
-            on_close="cancel_update_trust_anchor"
-            on_cancel="cancel_update_trust_anchor"
-            on_confirm="confirm_update_trust_anchor"
-            confirm_style="danger"
-          >
-            <:title>Remove certificates?</:title>
-            <:body>
-              <p>This change removes one or more certificates from this trust anchor.</p>
-              <p class="mt-2">
-                Devices that connected with a certificate will reconnect. If no trust anchor
-                trusts the certificate of a device after this change, that device is disconnected.
-              </p>
-            </:body>
-            <:cancel_button>Cancel</:cancel_button>
-            <:confirm_button>Save</:confirm_button>
-          </Form.modal>
-        </div>
-      </div>
+        <.form
+          id="trust-anchor-edit-form"
+          for={@form}
+          phx-change="validate_edit"
+          phx-submit="update_trust_anchor"
+          class="flex flex-col flex-1 min-h-0 overflow-hidden"
+        >
+          <Settings.Components.modal_body class="space-y-5">
+            <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
+          </Settings.Components.modal_body>
+
+          <Form.panel_footer>
+            <Form.panel_footer_button type="button" phx-click="close_panel">
+              Cancel
+            </Form.panel_footer_button>
+            <Form.panel_footer_button type="submit" style="primary">
+              Save
+            </Form.panel_footer_button>
+          </Form.panel_footer>
+        </.form>
+
+        <Form.modal
+          :if={@pending_update}
+          id="trust-anchor-remove-certificates-modal"
+          on_close="cancel_update_trust_anchor"
+          on_cancel="cancel_update_trust_anchor"
+          on_confirm="confirm_update_trust_anchor"
+          confirm_style="danger"
+        >
+          <:title>Remove certificates?</:title>
+          <:body>
+            <p>This change removes one or more certificates from this trust anchor.</p>
+            <p class="mt-2">
+              Devices that connected with a certificate will reconnect. If no trust anchor
+              trusts the certificate of a device after this change, that device is disconnected.
+            </p>
+          </:body>
+          <:cancel_button>Cancel</:cancel_button>
+          <:confirm_button>Save</:confirm_button>
+        </Form.modal>
+      </Page.detail_modal>
     </div>
     """
   end
 
   attr :health, :any, required: true
 
-  # An icon rather than a status column: an anchor with no revocation endpoint
-  # yet is not unhealthy, so the common case should say nothing at all. The
-  # detail lives one click away, on the panel's Revocation tab.
-  defp revocation_warning_icon(%{health: nil} = assigns) do
+  defp revocation_status(%{health: nil} = assigns) do
     ~H"""
+    <Core.status_badge style={:success}>OK</Core.status_badge>
     """
   end
 
-  defp revocation_warning_icon(%{health: %{state: :disabled}} = assigns) do
+  defp revocation_status(%{health: %{state: :disabled}} = assigns) do
     ~H"""
     <span title="Revocation is not being checked for at least one of this CA's addresses.">
-      <Core.icon name="ri-error-warning-fill" class="w-4 h-4 text-danger" />
+      <Core.status_badge style={:danger} icon="ri-error-warning-fill">Stopped</Core.status_badge>
     </span>
     """
   end
 
-  defp revocation_warning_icon(assigns) do
+  defp revocation_status(assigns) do
     ~H"""
     <span title="Firezone is having trouble reaching at least one of this CA's addresses.">
-      <Core.icon name="ri-error-warning-fill" class="w-4 h-4 text-warning" />
+      <Core.status_badge style={:warning} icon="ri-error-warning-fill">Failing</Core.status_badge>
     </span>
     """
   end
@@ -475,33 +428,37 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       phx-click="select_trust_anchor"
       phx-value-id={@trust_anchor.id}
       class={[
-        "border-b border-border cursor-pointer transition-colors",
-        @selected? && "bg-raised",
-        !@selected? && "hover:bg-raised"
+        "border-b border-hair cursor-pointer transition-colors",
+        @selected? && "bg-hover",
+        !@selected? && "hover:bg-hover"
       ]}
     >
       <td class="px-6 py-3">
-        <div class="flex items-center gap-1.5 min-w-0">
-          <div class="text-sm font-medium text-heading truncate">{@trust_anchor.name}</div>
-          <.revocation_warning_icon health={@health} />
-        </div>
-        <div class="font-mono text-[10px] text-subtle mt-0.5 truncate">
-          {@trust_anchor.id}
+        <div class="flex items-center gap-3 min-w-0">
+          <Core.icon name="ri-shield-check-line" class="w-4 h-4 shrink-0 text-muted" />
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-fg truncate">{@trust_anchor.name}</div>
+            <div class="font-mono text-xs text-muted mt-0.5 truncate">
+              {@trust_anchor.id}
+            </div>
+          </div>
         </div>
       </td>
-      <td class="px-6 py-3 w-36">
-        <span class="text-sm text-body">{cert_count_label(@trust_anchor.certificates)}</span>
+      <td class="px-6 py-3 text-muted">
+        {cert_count_label(@trust_anchor.certificates)}
       </td>
-      <td class="px-6 py-3 w-36">
-        <span class="text-sm text-body">
-          <Core.relative_datetime datetime={@trust_anchor.inserted_at} />
-        </span>
+      <td class="px-6 py-3">
+        <.revocation_status health={@health} />
+      </td>
+      <td class="px-6 py-3 hidden md:table-cell text-muted">
+        <Core.relative_datetime datetime={@trust_anchor.inserted_at} />
       </td>
     </tr>
     """
   end
 
   attr :label, :string, required: true
+  attr :icon, :string, required: true
   attr :tab, :atom, required: true
   attr :active, :atom, required: true
   attr :warn, :boolean, default: false
@@ -514,18 +471,17 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       phx-click="switch_anchor_tab"
       phx-value-tab={@tab}
       class={[
-        "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-        if(@active == @tab,
-          do: "border-brand text-brand",
-          else: "border-transparent text-body hover:text-heading"
-        )
+        "flex items-center gap-1.5 h-full text-sm whitespace-nowrap border-b-2 -mb-px transition-colors",
+        @active == @tab && "border-fg text-fg",
+        @active != @tab && "border-transparent text-muted hover:text-fg"
       ]}
     >
+      <Core.icon name={@icon} class="w-3.5 h-3.5 shrink-0" />
       {@label}
       <Core.icon
         :if={@warn}
         name="ri-error-warning-fill"
-        class="w-3.5 h-3.5 text-warning"
+        class="w-3.5 h-3.5 text-attn"
       />
     </button>
     """
@@ -537,13 +493,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     ~H"""
     <%= cond do %>
       <% stopped?(@entry) -> %>
-        <Core.status_badge style={:danger} dot={false}>Not checked</Core.status_badge>
+        <Core.status_badge style={:danger}>Not checked</Core.status_badge>
       <% failing?(@entry.endpoint) -> %>
-        <Core.status_badge style={:warning} dot={false}>Failing</Core.status_badge>
+        <Core.status_badge style={:warning}>Failing</Core.status_badge>
       <% checked_at(@entry.endpoint) -> %>
-        <Core.status_badge style={:success} dot={false}>OK</Core.status_badge>
+        <Core.status_badge style={:success}>OK</Core.status_badge>
       <% true -> %>
-        <Core.status_badge style={:neutral} dot={false}>Pending</Core.status_badge>
+        <Core.status_badge style={:neutral}>Pending</Core.status_badge>
     <% end %>
     """
   end
@@ -555,7 +511,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     <div class="space-y-3">
       <p
         :if={stopped?(@entry)}
-        class="flex items-start gap-1.5 text-xs text-danger"
+        class="flex items-start gap-1.5 text-xs text-attn"
       >
         <Core.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
@@ -567,7 +523,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       <p
         :if={!stopped?(@entry) && stopped_mechanism(@entry.endpoint)}
-        class="flex items-start gap-1.5 text-xs text-warning"
+        class="flex items-start gap-1.5 text-xs text-attn"
       >
         <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
@@ -579,7 +535,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       <p
         :if={!stopped_mechanism(@entry.endpoint) && failing?(@entry.endpoint)}
-        class="flex items-start gap-1.5 text-xs text-warning"
+        class="flex items-start gap-1.5 text-xs text-attn"
       >
         <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
@@ -588,16 +544,16 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       </p>
 
       <div :for={group <- endpoint_detail_groups(@entry)}>
-        <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1.5">
+        <p class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted mb-1.5">
           {group.title}
         </p>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-1.5">
           <div :for={{label, value} <- group.rows} class="min-w-0">
-            <dt class="text-[10px] text-subtle">{label}</dt>
+            <dt class="text-xs text-muted">{label}</dt>
             <dd class={[
               "text-xs break-all font-medium",
-              label == "Error" && "text-danger",
-              label != "Error" && "text-body"
+              label == "Error" && "text-attn",
+              label != "Error" && "text-fg"
             ]}>
               <.detail_value value={value} />
             </dd>
@@ -634,195 +590,191 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     assigns = assign(assigns, :certificate_details, certificate_details)
 
     ~H"""
-    <div class="flex flex-col h-full overflow-hidden">
-      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-        <div class="flex items-center justify-between gap-3">
-          <div class="min-w-0">
-            <h2 class="text-sm font-semibold text-heading truncate">{@trust_anchor.name}</h2>
-            <p class="font-mono text-[10px] text-subtle mt-0.5 truncate">{@trust_anchor.id}</p>
-          </div>
-          <div class="flex items-center gap-1.5 shrink-0">
-            <Navigation.link
-              patch={~p"/#{@account}/settings/trust_anchors/#{@trust_anchor.id}/edit"}
-              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-            >
-              <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-            </Navigation.link>
-            <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+    <Form.panel_header title={@trust_anchor.name} variant="plain">
+      <:leading><Core.icon name="ri-shield-check-line" class="w-4 h-4 text-muted" /></:leading>
+      <:actions>
+        <Form.button
+          patch={~p"/#{@account}/settings/trust_anchors/#{@trust_anchor.id}/edit"}
+          icon="ri-pencil-line"
+          size="xs"
+        >
+          Edit
+        </Form.button>
+      </:actions>
+    </Form.panel_header>
+
+    <div
+      role="tablist"
+      class="flex items-center gap-6 h-[42px] px-6 border-b border-hair shrink-0 overflow-x-auto"
+    >
+      <.panel_tab label="Overview" icon="ri-information-line" tab={:overview} active={@panel_tab} />
+      <.panel_tab
+        label={"Certificates (#{length(@certificate_details)})"}
+        icon="ri-file-list-3-line"
+        tab={:certificates}
+        active={@panel_tab}
+      />
+      <.panel_tab
+        label={"Revocation (#{length(@revocation)})"}
+        icon="ri-forbid-line"
+        tab={:revocation}
+        active={@panel_tab}
+        warn={Enum.any?(@revocation, &failing?(&1.endpoint))}
+      />
+    </div>
+
+    <Settings.Components.modal_body class="space-y-6">
+      <section :if={@panel_tab == :overview}>
+        <Core.header>
+          <:title>Details</:title>
+        </Core.header>
+        <Table.vertical_table id="trust-anchor-details">
+          <Table.vertical_table_row>
+            <:label>ID</:label>
+            <:value><span class="font-mono text-xs">{@trust_anchor.id}</span></:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row>
+            <:label>Created</:label>
+            <:value><Core.relative_datetime datetime={@trust_anchor.inserted_at} /></:value>
+          </Table.vertical_table_row>
+          <Table.vertical_table_row>
+            <:label>Certificates</:label>
+            <:value>{cert_count_label(@trust_anchor.certificates)}</:value>
+          </Table.vertical_table_row>
+        </Table.vertical_table>
+      </section>
+
+      <section :if={@panel_tab == :revocation}>
+        <p :if={@revocation == []} class="text-sm text-muted">
+          No revocation endpoint known yet. A CA publishes its address in the certificates it
+          issues, so this fills in the first time a device connects with one.
+        </p>
+
+        <table :if={@revocation != []} class="w-full table-fixed text-sm">
+          <thead>
+            <tr class="border-b border-rule">
+              <th class="text-left px-2 py-2 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+                Certificate authority
+              </th>
+              <th class="text-left px-2 py-2 text-[11px] font-semibold tracking-[.12em] uppercase text-muted w-24">
+                Checked via
+              </th>
+              <th class="text-left px-2 py-2 text-[11px] font-semibold tracking-[.12em] uppercase text-muted w-28">
+                Status
+              </th>
+              <th class="w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <%= for entry <- @revocation do %>
+              <tr
+                phx-click="toggle_revocation_endpoint"
+                phx-keydown="toggle_revocation_endpoint"
+                phx-key="Enter"
+                phx-value-id={endpoint_key(entry.endpoint)}
+                tabindex="0"
+                class="border-b border-hair hover:bg-hover cursor-pointer focus:outline-none focus:bg-hover"
+              >
+                <td class="px-2 py-2 text-fg">
+                  <span class="block truncate">
+                    {X509.describe_name(entry.endpoint.issuer) || "(unnamed issuer)"}
+                  </span>
+                  <span class="block font-mono text-xs text-muted truncate">
+                    {entry.endpoint.distribution_point}
+                  </span>
+                </td>
+                <td class="px-2 py-2 text-muted">{checked_via(entry.endpoint)}</td>
+                <td class="px-2 py-2">
+                  <.endpoint_status_badge entry={entry} />
+                </td>
+                <td class="px-2 py-2 text-muted">
+                  <Core.icon
+                    name={
+                      if @expanded_endpoint == endpoint_key(entry.endpoint),
+                        do: "ri-arrow-up-s-line",
+                        else: "ri-arrow-down-s-line"
+                    }
+                    class="w-4 h-4"
+                  />
+                </td>
+              </tr>
+              <tr
+                :if={@expanded_endpoint == endpoint_key(entry.endpoint)}
+                class="border-b border-hair bg-hover"
+              >
+                <td colspan="4" class="px-3 py-3">
+                  <.endpoint_details entry={entry} />
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </section>
+
+      <section :if={@panel_tab == :certificates}>
+        <div class="divide-y divide-hair border-y border-hair">
+          <div :for={detail <- @certificate_details} class="py-4 space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <p class="flex items-center gap-2 text-sm font-semibold text-fg truncate">
+                <Core.icon name="ri-file-shield-2-line" class="w-4 h-4 shrink-0 text-muted" />
+                {detail.common_name || "(no Common Name)"}
+              </p>
+              <a
+                href={"data:application/x-pem-file;base64," <> Base.encode64(detail.pem)}
+                download={download_filename(@trust_anchor.name, detail)}
+                class="shrink-0 flex items-center gap-1 px-2 py-1 text-xs border border-rule text-fg hover:bg-hover transition-colors"
+              >
+                <Core.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
+              </a>
+            </div>
+            <dl class="space-y-2">
+              <div :for={{label, value} <- certificate_detail_rows(detail)}>
+                <dt class="text-xs text-muted mb-0.5">{label}</dt>
+                <dd class="text-xs text-fg font-mono break-all">
+                  <.detail_value value={value} />
+                </dd>
+              </div>
+            </dl>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div
-        role="tablist"
-        class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
-      >
-        <.panel_tab label="Overview" tab={:overview} active={@panel_tab} />
-        <.panel_tab
-          label={"Certificates (#{length(@certificate_details)})"}
-          tab={:certificates}
-          active={@panel_tab}
-        />
-        <.panel_tab
-          label={"Revocation (#{length(@revocation)})"}
-          tab={:revocation}
-          active={@panel_tab}
-          warn={Enum.any?(@revocation, &failing?(&1.endpoint))}
-        />
-      </div>
-
-      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-        <section :if={@panel_tab == :overview}>
-          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-            Details
-          </h3>
-          <dl class="space-y-2.5">
-            <div>
-              <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-              <dd class="text-xs text-body font-medium">
-                <Core.relative_datetime datetime={@trust_anchor.inserted_at} />
-              </dd>
-            </div>
-            <div>
-              <dt class="text-[10px] text-subtle mb-0.5">Certificates</dt>
-              <dd class="text-xs text-body font-medium">{cert_count_label(@trust_anchor.certificates)}</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section :if={@panel_tab == :revocation}>
-          <p :if={@revocation == []} class="text-xs text-subtle">
-            No revocation endpoint known yet. A CA publishes its address in the certificates it
-            issues, so this fills in the first time a device connects with one.
+      <section>
+        <Core.header>
+          <:title>Danger zone</:title>
+        </Core.header>
+        <button
+          :if={!@confirm_delete?}
+          type="button"
+          phx-click="confirm_delete_trust_anchor"
+          class="flex items-center gap-2 px-3 py-2 border border-attn text-sm text-attn hover:bg-attn-wash transition-colors"
+        >
+          <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete trust anchor
+        </button>
+        <div :if={@confirm_delete?} class="border border-attn bg-attn-wash p-3 space-y-3">
+          <p class="text-xs text-attn">
+            <span class="font-medium">Delete this trust anchor?</span>
+            <br /> Certificates issued by it will no longer be trusted, and this cannot be undone.
+            Devices that connected with a certificate will reconnect, and devices that no
+            other trust anchor trusts are disconnected.
           </p>
-
-          <table :if={@revocation != []} class="w-full table-fixed text-xs">
-            <thead>
-              <tr class="border-b border-border text-subtle">
-                <th class="text-left px-2 py-2 font-medium">Certificate authority</th>
-                <th class="text-left px-2 py-2 font-medium w-20">Checked via</th>
-                <th class="text-left px-2 py-2 font-medium w-24">Status</th>
-                <th class="w-10"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for entry <- @revocation do %>
-                <tr
-                  phx-click="toggle_revocation_endpoint"
-                  phx-keydown="toggle_revocation_endpoint"
-                  phx-key="Enter"
-                  phx-value-id={endpoint_key(entry.endpoint)}
-                  tabindex="0"
-                  class="border-b border-border hover:bg-raised cursor-pointer focus:outline-none focus:bg-raised"
-                >
-                  <td class="px-2 py-2 text-heading">
-                    <span class="block truncate">
-                      {X509.describe_name(entry.endpoint.issuer) || "(unnamed issuer)"}
-                    </span>
-                    <span class="block font-mono text-[10px] text-subtle truncate">
-                      {entry.endpoint.distribution_point}
-                    </span>
-                  </td>
-                  <td class="px-2 py-2 text-body">{checked_via(entry.endpoint)}</td>
-                  <td class="px-2 py-2">
-                    <.endpoint_status_badge entry={entry} />
-                  </td>
-                  <td class="px-2 py-2 text-subtle">
-                    <Core.icon
-                      name={
-                        if @expanded_endpoint == endpoint_key(entry.endpoint),
-                          do: "ri-arrow-up-s-line",
-                          else: "ri-arrow-down-s-line"
-                      }
-                      class="w-4 h-4"
-                    />
-                  </td>
-                </tr>
-                <tr
-                  :if={@expanded_endpoint == endpoint_key(entry.endpoint)}
-                  class="border-b border-border bg-raised"
-                >
-                  <td colspan="4" class="px-3 py-3">
-                    <.endpoint_details entry={entry} />
-                  </td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
-        </section>
-
-        <section :if={@panel_tab == :certificates}>
-          <div class="space-y-3">
-            <div
-              :for={detail <- @certificate_details}
-              class="border border-border rounded p-3 bg-surface space-y-3"
+          <div class="flex items-center gap-2">
+            <Form.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
+              Cancel
+            </Form.button>
+            <Form.button
+              type="button"
+              phx-click="delete_trust_anchor"
+              style="danger"
+              size="xs"
+              class="font-medium"
             >
-              <div class="flex items-center justify-between gap-2">
-                <p class="text-xs font-semibold text-heading truncate">
-                  {detail.common_name || "(no Common Name)"}
-                </p>
-                <a
-                  href={"data:application/x-pem-file;base64," <> Base.encode64(detail.pem)}
-                  download={download_filename(@trust_anchor.name, detail)}
-                  class="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-elevated transition-colors"
-                >
-                  <Core.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
-                </a>
-              </div>
-              <dl class="space-y-2">
-                <div :for={{label, value} <- certificate_detail_rows(detail)}>
-                  <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
-                  <dd class="text-xs text-body font-mono break-all font-medium">
-                    <.detail_value value={value} />
-                  </dd>
-                </div>
-              </dl>
-            </div>
+              Delete
+            </Form.button>
           </div>
-        </section>
-
-        <div class="border-t border-border"></div>
-
-        <section>
-          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
-            Danger Zone
-          </h3>
-          <button
-            :if={!@confirm_delete?}
-            type="button"
-            phx-click="confirm_delete_trust_anchor"
-            class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
-          >
-            <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete trust anchor
-          </button>
-          <div
-            :if={@confirm_delete?}
-            class="rounded border border-error/20 bg-error-light p-3 space-y-3"
-          >
-            <p class="text-xs text-error">
-              <span class="font-medium">Delete this trust anchor?</span>
-              <br /> Certificates issued by it will no longer be trusted, and this cannot be undone.
-              Devices that connected with a certificate will reconnect, and devices that no
-              other trust anchor trusts are disconnected.
-            </p>
-            <div class="flex items-center gap-2">
-              <Form.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
-                Cancel
-              </Form.button>
-              <Form.button
-                type="button"
-                phx-click="delete_trust_anchor"
-                style="danger"
-                size="xs"
-                class="font-medium"
-              >
-                Delete
-              </Form.button>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
+        </div>
+      </section>
+    </Settings.Components.modal_body>
     """
   end
 
@@ -857,8 +809,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     </div>
 
     <div>
-      <h3 class="text-[10px] font-semibold uppercase tracking-widest text-subtle mb-2">
-        Certificate Chain
+      <h3 class="text-[11px] font-semibold uppercase tracking-[.12em] text-muted mb-2">
+        Certificate chain
       </h3>
 
       <div class="grid gap-3 grid-cols-2 mb-4">
@@ -874,15 +826,15 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <label
             for="trust-anchor-input-mode--paste"
             class={[
-              "flex flex-col h-full p-3 border rounded cursor-pointer transition-all",
-              "peer-checked:border-brand peer-checked:bg-raised",
-              "border-border hover:border-border-emphasis"
+              "flex flex-col h-full p-3 border cursor-pointer transition-all",
+              "peer-checked:border-fg peer-checked:bg-hover",
+              "border-hair hover:border-rule"
             ]}
           >
-            <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
+            <span class="text-sm font-semibold text-fg mb-1 flex items-center gap-1.5">
               <Core.icon name="ri-clipboard-line" class="w-4 h-4 shrink-0" /> Paste
             </span>
-            <span class="text-xs text-body my-auto">Paste PEM or base64 DER text.</span>
+            <span class="text-xs text-muted my-auto">Paste PEM or base64 DER text.</span>
           </label>
         </div>
 
@@ -898,15 +850,15 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <label
             for="trust-anchor-input-mode--upload"
             class={[
-              "flex flex-col h-full p-3 border rounded cursor-pointer transition-all",
-              "peer-checked:border-brand peer-checked:bg-raised",
-              "border-border hover:border-border-emphasis"
+              "flex flex-col h-full p-3 border cursor-pointer transition-all",
+              "peer-checked:border-fg peer-checked:bg-hover",
+              "border-hair hover:border-rule"
             ]}
           >
-            <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-              <Core.icon name="ri-upload-2-line" class="w-4 h-4 shrink-0" /> Upload File
+            <span class="text-sm font-semibold text-fg mb-1 flex items-center gap-1.5">
+              <Core.icon name="ri-upload-2-line" class="w-4 h-4 shrink-0" /> Upload file
             </span>
-            <span class="text-xs text-body my-auto">Upload one or more chain files.</span>
+            <span class="text-xs text-muted my-auto">Upload one or more chain files.</span>
           </label>
         </div>
       </div>

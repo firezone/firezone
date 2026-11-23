@@ -9,7 +9,7 @@ defmodule PortalWeb.Settings.LogSinks do
   alias Portal.Sentinel
   alias Portal.S3
   alias Portal.Splunk
-  alias PortalWeb.Settings.Components, as: SettingsComponents
+  alias PortalWeb.Settings
   alias __MODULE__.Database
 
   import Ecto.Changeset
@@ -39,10 +39,15 @@ defmodule PortalWeb.Settings.LogSinks do
     {"US1-FED (ddog-gov.com)", "ddog-gov.com"}
   ]
 
-  @select_type_classes [
-    "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
-    "border-border bg-surface",
-    "hover:bg-raised hover:border-border-emphasis"
+  @sink_type_options [
+    {"splunk", "Stream logs to a Splunk HTTP Event Collector."},
+    {"datadog", "Stream logs to Datadog Log Management."},
+    {"newrelic", "Stream logs to the New Relic Log API."},
+    {"elastic", "Index logs into Elasticsearch or any compatible cluster."},
+    {"sentinel", "Stream logs to Microsoft Sentinel via the Azure Monitor Logs Ingestion API."},
+    {"s3", "Archive logs to an Amazon S3 bucket as NDJSON objects."},
+    {"qradar", "Stream logs to an IBM QRadar HTTP Receiver log source."},
+    {"http", "POST batches of logs as JSON to any HTTPS endpoint."}
   ]
 
   @streams ~w[change session api_request flow]
@@ -309,264 +314,132 @@ defmodule PortalWeb.Settings.LogSinks do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <Navigation.settings_nav
-        account={@account}
-        current_path={@current_path}
-      />
+      <Page.page_header>
+        <:title>Log sinks</:title>
+        <:description>Stream audit, session, API and flow logs to your SIEM or storage.</:description>
+        <:stats :if={Portal.Account.log_sinks_enabled?(@account) and @log_sinks != nil}>
+          {length(@log_sinks)}
+        </:stats>
+        <:action>
+          <Navigation.docs_action show_label size="md" path="/log-sinks" />
+          <Form.button
+            :if={Portal.Account.log_sinks_enabled?(@account)}
+            id="add-log-sink-button"
+            patch={~p"/#{@account}/settings/log_sinks/new"}
+            icon="ri-add-line"
+            size="sm"
+            style="primary"
+          >
+            Add a sink
+          </Form.button>
+        </:action>
+      </Page.page_header>
 
       <%= if Portal.Account.log_sinks_enabled?(@account) do %>
-        <div class="flex-1 flex flex-col overflow-hidden">
-          <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
-            <div class="flex items-center gap-2">
-              <h2 class="text-xs font-semibold text-heading">Log Sinks</h2>
-              <span :if={@log_sinks} class="text-xs text-subtle tabular-nums">
-                {length(@log_sinks)}
-              </span>
-            </div>
-            <div class="flex items-center gap-2">
-              <Navigation.docs_action show_label path="/log-sinks" />
-              <Navigation.link
-                patch={~p"/#{@account}/settings/log_sinks/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+        <div class="flex-1 overflow-auto">
+          <%= cond do %>
+            <% is_nil(@log_sinks) -> %>
+              <Settings.Components.skeleton id="log-sinks-skeleton" />
+            <% Enum.empty?(@log_sinks) -> %>
+              <Settings.Components.empty_state
+                id="log-sinks-empty"
+                icon="ri-upload-cloud-2-line"
+                title="No log sinks yet"
               >
-                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add
-              </Navigation.link>
-            </div>
-          </div>
-
-          <div class="flex-1 overflow-auto">
-            <%= cond do %>
-              <% is_nil(@log_sinks) -> %>
-                <SettingsComponents.skeleton id="log-sinks-skeleton" />
-              <% Enum.empty?(@log_sinks) -> %>
-                <div class="flex items-center justify-center h-full">
-                  <div class="flex flex-col items-center gap-3 py-16">
-                    <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                      <Core.icon name="ri-upload-cloud-2-line" class="w-5 h-5 text-subtle" />
-                    </div>
-                    <div class="text-center">
-                      <p class="text-sm font-medium text-heading">No log sinks yet</p>
-                      <p class="text-xs text-subtle mt-0.5">
-                        Forward audit logs to an external destination.
-                      </p>
-                    </div>
-                    <Navigation.link
-                      patch={~p"/#{@account}/settings/log_sinks/new"}
-                      class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                    >
-                      <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a log sink
-                    </Navigation.link>
-                  </div>
-                </div>
-              <% true -> %>
-                <table class="w-full text-sm border-collapse">
-                  <thead class="sticky top-0 z-10 bg-raised">
-                    <tr class="border-b border-border-strong">
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
-                        Log Sink
-                      </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                        Status
-                      </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
-                        Destination
-                      </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                        Delivered
-                      </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                        Backfill
-                      </th>
-                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                        Last Delivery
-                      </th>
-                      <th class="px-6 py-2.5 w-14"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <.sink_row
-                      :for={sink <- @log_sinks}
-                      type={sink_type(sink)}
-                      account={@account}
-                      sink={sink}
-                      open_sink_actions_id={@open_sink_actions_id}
-                      pending_confirm={@pending_confirm}
-                    />
-                  </tbody>
-                </table>
-            <% end %>
-          </div>
+                Forward audit logs to an external destination.
+                <:action>
+                  <Form.button
+                    patch={~p"/#{@account}/settings/log_sinks/new"}
+                    icon="ri-add-line"
+                    size="sm"
+                  >
+                    Add a log sink
+                  </Form.button>
+                </:action>
+              </Settings.Components.empty_state>
+            <% true -> %>
+              <table class="w-full text-sm border-collapse">
+                <thead class="sticky top-0 z-10 bg-bg">
+                  <tr class="border-b border-rule">
+                    <th class={Settings.Components.th_class()}>Sink</th>
+                    <th class={[Settings.Components.th_class(), "w-32"]}>Status</th>
+                    <th class={[Settings.Components.th_class(), "w-48 hidden md:table-cell"]}>
+                      Last delivery
+                    </th>
+                    <th class="px-6 py-2.5 w-14"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <.sink_row
+                    :for={sink <- @log_sinks}
+                    type={sink_type(sink)}
+                    account={@account}
+                    sink={sink}
+                    open_sink_actions_id={@open_sink_actions_id}
+                    pending_confirm={@pending_confirm}
+                  />
+                </tbody>
+              </table>
+          <% end %>
         </div>
 
-    <!-- Add Log Sink Panel -->
-        <div
+        <Page.detail_modal
           id="add-log-sink-panel"
-          class={[
-            "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-            "bg-elevated border-l border-border-strong",
-            "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-            "transition-transform duration-200 ease-in-out",
-            (@live_action in [:select_type, :new] && "translate-x-0") || "translate-x-full"
-          ]}
-          phx-window-keydown="handle_keydown"
-          phx-key="Escape"
+          open={
+            @live_action == :select_type or (@live_action == :new and assigns[:form] != nil)
+          }
+          on_close="close_panel"
         >
-          <!-- Select Log Sink Type -->
-          <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
-            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
-              <h2 class="text-sm font-semibold text-heading">Select Log Sink Type</h2>
-              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-            </div>
-            <div class="flex-1 overflow-y-auto px-5 py-4">
-              <p class="mb-4 text-xs text-subtle">
-                Select a destination to stream your logs to:
-              </p>
-              <ul class="flex flex-col gap-2">
-                <li>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/log_sinks/splunk/new"}
-                    class={select_type_classes()}
-                  >
-                    <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <Core.provider_icon provider="splunk" size="xl" />
-                      <span class="text-sm font-medium text-heading">Splunk</span>
-                    </span>
-                    <span class="text-xs text-body">
-                      Stream logs to a Splunk HTTP Event Collector.
-                    </span>
-                  </Navigation.link>
-                </li>
-                <li>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/log_sinks/datadog/new"}
-                    class={select_type_classes()}
-                  >
-                    <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <Core.provider_icon provider="datadog" size="xl" />
-                      <span class="text-sm font-medium text-heading">Datadog</span>
-                    </span>
-                    <span class="text-xs text-body">
-                      Stream logs to Datadog Log Management.
-                    </span>
-                  </Navigation.link>
-                </li>
-                <li>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/log_sinks/newrelic/new"}
-                    class={select_type_classes()}
-                  >
-                    <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <Core.provider_icon provider="newrelic" size="xl" />
-                      <span class="text-sm font-medium text-heading">New Relic</span>
-                    </span>
-                    <span class="text-xs text-body">
-                      Stream logs to the New Relic Log API.
-                    </span>
-                  </Navigation.link>
-                </li>
-                <li>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/log_sinks/elastic/new"}
-                    class={select_type_classes()}
-                  >
-                    <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <Core.provider_icon provider="elastic" size="xl" />
-                      <span class="text-sm font-medium text-heading">Elastic</span>
-                    </span>
-                    <span class="text-xs text-body">
-                      Index logs into Elasticsearch or any compatible cluster.
-                    </span>
-                  </Navigation.link>
-                </li>
-                <li>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/log_sinks/sentinel/new"}
-                    class={select_type_classes()}
-                  >
-                    <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <Core.provider_icon provider="sentinel" size="xl" />
-                      <span class="text-sm font-medium text-heading">Microsoft Sentinel</span>
-                    </span>
-                    <span class="text-xs text-body">
-                      Stream logs to Microsoft Sentinel via the Azure Monitor Logs Ingestion API.
-                    </span>
-                  </Navigation.link>
-                </li>
-                <li>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/log_sinks/s3/new"}
-                    class={select_type_classes()}
-                  >
-                    <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <Core.provider_icon provider="s3" size="xl" />
-                      <span class="text-sm font-medium text-heading">Amazon S3</span>
-                    </span>
-                    <span class="text-xs text-body">
-                      Archive logs to an Amazon S3 bucket as NDJSON objects.
-                    </span>
-                  </Navigation.link>
-                </li>
-                <li>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/log_sinks/qradar/new"}
-                    class={select_type_classes()}
-                  >
-                    <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <Core.provider_icon provider="qradar" size="xl" />
-                      <span class="text-sm font-medium text-heading">IBM QRadar</span>
-                    </span>
-                    <span class="text-xs text-body">
-                      Stream logs to an IBM QRadar HTTP Receiver log source.
-                    </span>
-                  </Navigation.link>
-                </li>
-                <li>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/log_sinks/http/new"}
-                    class={select_type_classes()}
-                  >
-                    <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <Core.provider_icon provider="http" size="xl" />
-                      <span class="text-sm font-medium text-heading">HTTP</span>
-                    </span>
-                    <span class="text-xs text-body">
-                      POST batches of logs as JSON to any HTTPS endpoint.
-                    </span>
-                  </Navigation.link>
-                </li>
-              </ul>
-            </div>
-          </div>
+          <%= if @live_action == :select_type do %>
+            <Form.panel_header title="Add a log sink" variant="plain">
+              <:leading>
+                <Core.icon name="ri-upload-cloud-2-line" class="w-4 h-4 text-muted" />
+              </:leading>
+              <:adornment><Navigation.docs_action path="/log-sinks" /></:adornment>
+            </Form.panel_header>
+            <Settings.Components.modal_body>
+              <p class="mb-4 text-sm text-muted">Pick where to stream your logs.</p>
+              <Settings.Components.type_grid id="log-sink-types">
+                <Settings.Components.type_tile
+                  :for={{type, description} <- sink_type_options()}
+                  id={"log-sink-type-#{type}"}
+                  patch={~p"/#{@account}/settings/log_sinks/#{type}/new"}
+                  provider={type}
+                  title={titleize(type)}
+                >
+                  {description}
+                </Settings.Components.type_tile>
+              </Settings.Components.type_grid>
+            </Settings.Components.modal_body>
+          <% end %>
 
-    <!-- New Log Sink Form -->
-          <div
-            :if={@live_action == :new and assigns[:form] != nil}
-            class="flex flex-col h-full overflow-hidden"
-          >
-            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
-              <div class="flex items-center gap-2">
+          <%= if @live_action == :new and assigns[:form] != nil do %>
+            <Form.panel_header title={"Add #{titleize(@type)} log sink"} variant="plain">
+              <:leading>
                 <Navigation.link
                   patch={~p"/#{@account}/settings/log_sinks/new"}
-                  class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
+                  class="flex items-center justify-center w-6 h-6 text-muted hover:text-fg hover:bg-hover transition-colors"
                   title="Back"
                 >
                   <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
                 </Navigation.link>
-                <div class="flex items-center gap-2">
-                  <Core.provider_icon provider={@type} size="md" />
-                  <h2 class="text-sm font-semibold text-heading">
-                    Add {titleize(@type)} Log Sink
-                  </h2>
-                  <Navigation.docs_action path={"/log-sinks/#{@type}"} />
-                </div>
-              </div>
-              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-            </div>
-            <div class="flex-1 overflow-y-auto px-5 py-4">
-              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
-            </div>
+                <Core.provider_icon provider={@type} size="md" />
+              </:leading>
+              <:adornment><Navigation.docs_action path={"/log-sinks/#{@type}"} /></:adornment>
+            </Form.panel_header>
+            <Settings.Components.modal_body>
+              <.sink_form
+                form={@form}
+                type={@type}
+                live_action={@live_action}
+                account={@account}
+                sentinel_setup_tab={@sentinel_setup_tab}
+                s3_setup_tab={@s3_setup_tab}
+              />
+            </Settings.Components.modal_body>
             <Form.panel_footer>
-              <p :if={@submit_failed?} class="mr-auto text-xs text-error">
+              <p :if={@submit_failed?} class="mr-auto flex items-center gap-1.5 text-xs text-attn">
+                <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0" />
                 Errors prevented this form from being saved
               </p>
               <Form.panel_footer_button phx-click="close_panel">
@@ -581,127 +454,103 @@ defmodule PortalWeb.Settings.LogSinks do
                 Create
               </Form.panel_footer_button>
             </Form.panel_footer>
-          </div>
-        </div>
+          <% end %>
+        </Page.detail_modal>
 
-    <!-- Edit Log Sink Panel -->
-        <div
+        <Page.detail_modal
           id="edit-log-sink-panel"
-          class={[
-            "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-            "bg-elevated border-l border-border-strong",
-            "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-            "transition-transform duration-200 ease-in-out",
-            (@live_action == :edit && assigns[:form] != nil && "translate-x-0") || "translate-x-full"
-          ]}
-          phx-window-keydown="handle_keydown"
-          phx-key="Escape"
+          open={@live_action == :edit and assigns[:form] != nil}
+          on_close="close_panel"
         >
-          <div
-            :if={@live_action == :edit and assigns[:form] != nil}
-            class="flex flex-col h-full overflow-hidden"
-          >
-            <Form.panel_header title={"Edit #{assigns[:sink_name]}"} variant="plain">
-              <:leading><Core.provider_icon provider={@type} size="md" /></:leading>
-              <:adornment><Navigation.docs_action path={"/log-sinks/#{@type}"} /></:adornment>
-            </Form.panel_header>
-            <div class="flex-1 overflow-y-auto px-5 py-4">
-              <Core.flash :if={assigns[:sink] && @sink.error_message} kind={:error} class="mb-4">
-                {@sink.error_message}
-              </Core.flash>
-              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
-            </div>
-            <Form.panel_footer>
-              <p :if={@submit_failed?} class="mr-auto text-xs text-error">
-                Errors prevented this form from being saved
-              </p>
-              <Form.panel_footer_button phx-click="close_panel">
-                Cancel
-              </Form.panel_footer_button>
-              <Form.panel_footer_button
-                form="log-sink-form"
-                type="submit"
-                style="primary"
-                disabled={not @form.source.valid?}
-              >
-                Save
-              </Form.panel_footer_button>
-            </Form.panel_footer>
-          </div>
-        </div>
+          <Form.panel_header title={"Edit #{assigns[:sink_name]}"} variant="plain">
+            <:leading><Core.provider_icon provider={@type} size="md" /></:leading>
+            <:adornment><Navigation.docs_action path={"/log-sinks/#{@type}"} /></:adornment>
+          </Form.panel_header>
+          <Settings.Components.modal_body>
+            <p :if={assigns[:sink]} class="mb-4 text-xs text-muted">
+              ID <span class="font-mono text-fg">{@sink.id}</span>
+            </p>
+            <Core.flash :if={assigns[:sink] && @sink.error_message} kind={:error} class="mb-4">
+              {@sink.error_message}
+            </Core.flash>
+            <.sink_form
+              form={@form}
+              type={@type}
+              live_action={@live_action}
+              account={@account}
+              sentinel_setup_tab={@sentinel_setup_tab}
+              s3_setup_tab={@s3_setup_tab}
+            />
+          </Settings.Components.modal_body>
+          <Form.panel_footer>
+            <p :if={@submit_failed?} class="mr-auto flex items-center gap-1.5 text-xs text-attn">
+              <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0" />
+              Errors prevented this form from being saved
+            </p>
+            <Form.panel_footer_button phx-click="close_panel">
+              Cancel
+            </Form.panel_footer_button>
+            <Form.panel_footer_button
+              form="log-sink-form"
+              type="submit"
+              style="primary"
+              disabled={not @form.source.valid?}
+            >
+              Save
+            </Form.panel_footer_button>
+          </Form.panel_footer>
+        </Page.detail_modal>
       <% else %>
-        <div class="flex-1 flex flex-col overflow-hidden">
-          <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
-            <div class="flex items-center gap-2">
-              <h2 class="text-xs font-semibold text-heading">Log Sinks</h2>
-            </div>
-            <div class="flex items-center gap-2">
-              <Navigation.docs_action show_label path="/log-sinks" />
-            </div>
+        <div class="flex-1 overflow-hidden relative">
+          <div class="blur-xs pointer-events-none select-none opacity-60" aria-hidden="true">
+            <table class="w-full text-sm border-collapse">
+              <thead class="bg-bg">
+                <tr class="border-b border-rule">
+                  <th class={Settings.Components.th_class()}>Sink</th>
+                  <th class={[Settings.Components.th_class(), "w-32"]}>Status</th>
+                  <th class={[Settings.Components.th_class(), "w-48"]}>Last delivery</th>
+                  <th class="px-6 py-2.5 w-14"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="border-b border-hair">
+                  <td class="px-6 py-3">
+                    <div class="flex items-center gap-3">
+                      <Core.provider_icon provider="splunk" size="lg" />
+                      <div>
+                        <span class="block text-sm font-medium text-fg">SOC Splunk</span>
+                        <span class="block text-xs text-muted font-mono">acme.splunkcloud.com</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-6 py-3">
+                    <Core.status_badge style={:success}>Active</Core.status_badge>
+                  </td>
+                  <td class="px-6 py-3 text-xs text-muted tabular-nums">1,284,113 delivered</td>
+                  <td class="px-6 py-3"></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
-          <div class="flex-1 overflow-hidden relative">
-            <div class="blur-xs pointer-events-none select-none opacity-60">
-              <table class="w-full text-sm border-collapse">
-                <thead class="bg-raised">
-                  <tr class="border-b border-border-strong">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
-                      Log Sink
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Status
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
-                      Destination
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Delivered
-                    </th>
-                    <th class="px-6 py-2.5 w-14"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr class="border-b border-border">
-                    <td class="px-6 py-3">
-                      <div class="flex items-center gap-3">
-                        <Core.provider_icon provider="splunk" size="lg" />
-                        <span class="text-sm font-medium text-heading">SOC Splunk</span>
-                      </div>
-                    </td>
-                    <td class="px-6 py-3 w-28">
-                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success-light text-success">
-                        Active
-                      </span>
-                    </td>
-                    <td class="px-6 py-3 w-48">
-                      <span class="text-sm text-body font-mono">acme.splunkcloud.com</span>
-                    </td>
-                    <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">1,284,113</td>
-                    <td class="px-6 py-3 w-14"></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
-              <div class="flex flex-col items-center gap-3 bg-elevated border border-border rounded-lg shadow-lg px-8 py-6 text-subtle">
-                <Core.icon name="ri-upload-cloud-2-line" class="w-8 h-8" />
-                <div class="flex flex-col items-center gap-1 text-center">
-                  <p class="text-sm font-medium text-heading">
-                    Stream Logs to Your SIEM
-                  </p>
-                  <p class="text-xs">
-                    Deliver audit, session, API, and flow logs to destinations like Splunk.
-                  </p>
-                </div>
-                <Form.button
-                  style="primary"
-                  icon="ri-sparkling-fill"
-                  navigate={~p"/#{@account}/settings/account"}
-                >
-                  Upgrade to Unlock
-                </Form.button>
+          <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
+            <div class="flex flex-col items-center gap-3 bg-bg border border-rule shadow-lg px-8 py-6 text-muted">
+              <Core.icon name="ri-upload-cloud-2-line" class="w-8 h-8" />
+              <div class="flex flex-col items-center gap-1 text-center">
+                <p class="text-sm font-semibold text-fg">
+                  Stream logs to your SIEM
+                </p>
+                <p class="text-xs">
+                  Deliver audit, session, API, and flow logs to destinations like Splunk.
+                </p>
               </div>
+              <Form.button
+                style="primary"
+                icon="ri-sparkling-fill"
+                navigate={~p"/#{@account}/settings/account"}
+              >
+                Upgrade to Unlock
+              </Form.button>
             </div>
           </div>
         </div>
@@ -728,36 +577,45 @@ defmodule PortalWeb.Settings.LogSinks do
       )
 
     ~H"""
-    <tr class={[
-      "border-b transition-colors",
-      @is_pending_toggle && "border-warning/30 bg-warning-light",
-      @is_pending_delete && "border-danger/30 bg-danger-light",
-      !@is_pending_toggle && !@is_pending_delete && "border-border hover:bg-raised"
-    ]}>
+    <tr
+      id={"log-sink-#{@sink.id}"}
+      class={[
+        "border-b border-hair transition-colors",
+        (@is_pending_toggle or @is_pending_delete) && "bg-attn-wash",
+        not @is_pending_toggle and not @is_pending_delete && "hover:bg-hover",
+        @sink.is_disabled and not @is_pending_toggle and not @is_pending_delete &&
+          "[&>td:not(:last-child)]:opacity-60"
+      ]}
+    >
       <td class="px-6 py-3">
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 min-w-0">
           <Core.provider_icon provider={@type} size="lg" />
           <div class="min-w-0">
             <span
               class={[
-                "text-sm font-medium truncate",
-                @is_pending_toggle && "text-warning",
-                @is_pending_delete && "text-danger",
-                !@is_pending_toggle && !@is_pending_delete && "text-heading"
+                "block text-sm font-medium truncate",
+                (@is_pending_toggle or @is_pending_delete) && "text-attn",
+                not @is_pending_toggle and not @is_pending_delete && "text-fg"
               ]}
-              title={@sink.name}
+              title={@sink.id}
             >
               {@sink.name}
             </span>
-            <span class="block text-xs text-subtle font-mono">{@sink.id}</span>
+            <span
+              class="block text-xs text-muted font-mono truncate"
+              title={sink_destination(@sink)}
+            >
+              {sink_destination(@sink)}
+            </span>
           </div>
         </div>
       </td>
       <%= cond do %>
         <% @is_pending_toggle -> %>
-          <td colspan="6" class="px-6 py-3">
+          <td colspan="3" class="px-6 py-3">
             <div class="flex items-center gap-4">
-              <span class="text-xs text-warning">
+              <span class="flex items-start gap-1.5 text-xs text-attn">
+                <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-px" />
                 {if @sink.is_disabled,
                   do: "Enable this log sink?",
                   else:
@@ -779,9 +637,10 @@ defmodule PortalWeb.Settings.LogSinks do
             </div>
           </td>
         <% @is_pending_delete -> %>
-          <td colspan="6" class="px-6 py-3">
+          <td colspan="3" class="px-6 py-3">
             <div class="flex items-center gap-4">
-              <span class="text-xs text-danger">
+              <span class="flex items-start gap-1.5 text-xs text-attn">
+                <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0 mt-px" />
                 Delete this log sink? Delivery state is deleted with it; re-creating the sink starts over.
               </span>
               <div class="flex items-center gap-2 ml-auto shrink-0">
@@ -800,92 +659,87 @@ defmodule PortalWeb.Settings.LogSinks do
             </div>
           </td>
         <% true -> %>
-      <td class="px-6 py-3 w-28">
-        <.sink_status_badge sink={@sink} />
-      </td>
-      <td class="px-6 py-3 w-48">
-        <span class="text-sm text-body font-mono truncate block" title={sink_destination(@sink)}>
-          {sink_destination(@sink)}
-        </span>
-      </td>
-      <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
-        {delivered_count(@sink)}
-      </td>
-      <td class="px-6 py-3 w-28 text-xs text-body tabular-nums">
-        {backfill_status(@sink)}
-      </td>
-      <td class="px-6 py-3 w-40">
-        <%= if last_delivery_at(@sink) do %>
-          <span class="text-xs text-body">
-            <Core.relative_datetime datetime={last_delivery_at(@sink)} />
-          </span>
-        <% else %>
-          <span class="text-xs text-subtle">Never</span>
-        <% end %>
-      </td>
-      <td class="px-6 py-3 w-14">
-        <div class="flex justify-end">
-          <Core.actions_dropdown
-            open={@open_sink_actions_id == @sink.id}
-            close_event="close_sink_actions"
-            phx-click="toggle_sink_actions"
-            phx-value-id={@sink.id}
-          >
-            <Navigation.link
-              patch={~p"/#{@account}/settings/log_sinks/#{@type}/#{@sink.id}/edit"}
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
-            >
-              <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-            </Navigation.link>
-            <button
-              type="button"
-              phx-click="sync_sink"
-              phx-value-id={@sink.id}
-              disabled={@sink.is_disabled}
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Core.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Deliver Now
-            </button>
-            <div class="my-1 border-t border-border"></div>
-            <Navigation.link
-              :if={@sink.is_disabled and @sink.disabled_reason == "Sync error"}
-              patch={~p"/#{@account}/settings/log_sinks/#{@type}/#{@sink.id}/edit"}
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
-            >
-              <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
-              Re-verify to enable
-            </Navigation.link>
-            <button
-              :if={not (@sink.is_disabled and @sink.disabled_reason == "Sync error")}
-              type="button"
-              phx-click="request_confirm"
-              phx-value-id={@sink.id}
-              phx-value-action="toggle"
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
-            >
-              <Core.icon
-                name={
-                  if @sink.is_disabled,
-                    do: "ri-play-circle-line",
-                    else: "ri-pause-circle-line"
-                }
-                class="w-3.5 h-3.5 shrink-0"
-              />
-              {if @sink.is_disabled, do: "Enable", else: "Disable"}
-            </button>
-            <div class="my-1 border-t border-border"></div>
-            <button
-              type="button"
-              phx-click="request_confirm"
-              phx-value-id={@sink.id}
-              phx-value-action="delete"
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
-            >
-              <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
-            </button>
-          </Core.actions_dropdown>
-        </div>
-      </td>
+          <td class="px-6 py-3">
+            <.sink_status_badge sink={@sink} />
+          </td>
+          <td class="px-6 py-3 hidden md:table-cell">
+            <%= if last_delivery_at(@sink) do %>
+              <span class="block text-xs text-fg">
+                <Core.relative_datetime datetime={last_delivery_at(@sink)} />
+              </span>
+            <% else %>
+              <span class="block text-xs text-muted">Never</span>
+            <% end %>
+            <span class="block text-xs text-muted tabular-nums">
+              {delivered_count(@sink)} delivered<span :if={backfill_status(@sink)}>
+                · backfill {backfill_status(@sink)}</span>
+            </span>
+          </td>
+          <td class="px-6 py-3">
+            <div class="flex justify-end">
+              <Core.actions_dropdown
+                open={@open_sink_actions_id == @sink.id}
+                close_event="close_sink_actions"
+                button_class="flex items-center justify-center w-7 h-7 text-muted hover:text-fg hover:bg-hover transition-colors"
+                menu_class="absolute right-0 top-full mt-1 w-48 border border-rule bg-bg shadow-md z-10 py-1"
+                phx-click="toggle_sink_actions"
+                phx-value-id={@sink.id}
+              >
+                <Navigation.link
+                  patch={~p"/#{@account}/settings/log_sinks/#{@type}/#{@sink.id}/edit"}
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
+                >
+                  <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+                </Navigation.link>
+                <button
+                  type="button"
+                  phx-click="sync_sink"
+                  phx-value-id={@sink.id}
+                  disabled={@sink.is_disabled}
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Core.icon name="ri-send-plane-line" class="w-3.5 h-3.5 shrink-0" /> Deliver now
+                </button>
+                <div class="my-1 border-t border-hair"></div>
+                <Navigation.link
+                  :if={@sink.is_disabled and @sink.disabled_reason == "Sync error"}
+                  patch={~p"/#{@account}/settings/log_sinks/#{@type}/#{@sink.id}/edit"}
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
+                >
+                  <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
+                  Re-verify to enable
+                </Navigation.link>
+                <button
+                  :if={not (@sink.is_disabled and @sink.disabled_reason == "Sync error")}
+                  type="button"
+                  phx-click="request_confirm"
+                  phx-value-id={@sink.id}
+                  phx-value-action="toggle"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
+                >
+                  <Core.icon
+                    name={
+                      if @sink.is_disabled,
+                        do: "ri-play-circle-line",
+                        else: "ri-pause-circle-line"
+                    }
+                    class="w-3.5 h-3.5 shrink-0"
+                  />
+                  {if @sink.is_disabled, do: "Enable", else: "Disable"}
+                </button>
+                <div class="my-1 border-t border-hair"></div>
+                <button
+                  type="button"
+                  phx-click="request_confirm"
+                  phx-value-id={@sink.id}
+                  phx-value-action="delete"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-attn-wash transition-colors text-attn"
+                >
+                  <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+                </button>
+              </Core.actions_dropdown>
+            </div>
+          </td>
       <% end %>
     </tr>
     """
@@ -901,27 +755,23 @@ defmodule PortalWeb.Settings.LogSinks do
     <%= cond do %>
       <% @sink.is_disabled and @sink.disabled_reason == "Sync error" -> %>
         <Core.status_popover id={"sink-status-#{@sink.id}"} label="Error" color="red">
-          <p class="text-xs text-body break-words">{@sink.error_message}</p>
-          <p class="mt-2 text-xs text-subtle">
+          <p class="text-xs text-fg break-words">{@sink.error_message}</p>
+          <p class="mt-2 text-xs text-muted">
             Delivery is stopped. Edit and Save this log sink to enable it.
           </p>
         </Core.status_popover>
       <% @sink.is_disabled -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-raised text-subtle">
-          Disabled
-        </span>
+        <Core.status_badge style={:neutral}>Disabled</Core.status_badge>
       <% @sink.errored_at -> %>
         <Core.status_popover id={"sink-status-#{@sink.id}"} label="Warning" color="yellow">
-          <p class="text-xs text-body break-words">{@sink.error_message}</p>
-          <p class="mt-2 text-xs text-subtle">
+          <p class="text-xs text-fg break-words">{@sink.error_message}</p>
+          <p class="mt-2 text-xs text-muted">
             Delivery is retried automatically. The sink is disabled if failures
             persist for 24 hours.
           </p>
         </Core.status_popover>
       <% true -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-success-light text-success">
-          Active
-        </span>
+        <Core.status_badge style={:success}>Active</Core.status_badge>
     <% end %>
     """
   end
@@ -943,8 +793,8 @@ defmodule PortalWeb.Settings.LogSinks do
     >
       <div class="space-y-6">
         <div>
-          <label for={@form[:name].id} class="block text-xs font-medium text-body mb-1.5">
-            Name <span class="text-error">*</span>
+          <label for={@form[:name].id} class="block text-xs font-medium text-muted mb-1.5">
+            Name <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:name]}
@@ -954,14 +804,14 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             Enter a name to identify this log sink.
           </p>
         </div>
 
         <div :if={@type == "splunk"}>
-          <label for={@form[:collector_url].id} class="block text-xs font-medium text-body mb-1.5">
-            HEC URL <span class="text-error">*</span>
+          <label for={@form[:collector_url].id} class="block text-xs font-medium text-muted mb-1.5">
+            HEC URL <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:collector_url]}
@@ -971,15 +821,15 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The base URL of your Splunk HTTP Event Collector, e.g.
             <code class="text-xs">https://http-inputs-acme.splunkcloud.com</code>.
           </p>
         </div>
 
         <div :if={@type == "splunk"}>
-          <label for={@form[:hec_token].id} class="block text-xs font-medium text-body mb-1.5">
-            HEC Token <span class="text-error">*</span>
+          <label for={@form[:hec_token].id} class="block text-xs font-medium text-muted mb-1.5">
+            HEC Token <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:hec_token]}
@@ -989,13 +839,13 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The HTTP Event Collector token to authenticate with.
           </p>
         </div>
 
         <div :if={@type == "splunk"}>
-          <label for={@form[:index].id} class="block text-xs font-medium text-body mb-1.5">
+          <label for={@form[:index].id} class="block text-xs font-medium text-muted mb-1.5">
             Index
           </label>
           <Form.input
@@ -1005,7 +855,7 @@ defmodule PortalWeb.Settings.LogSinks do
             phx-debounce="300"
             data-1p-ignore
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             Optional. The Splunk index to send events to; the token's default index is used
             when left blank.
           </p>
@@ -1019,14 +869,14 @@ defmodule PortalWeb.Settings.LogSinks do
             options={datadog_site_options()}
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The Datadog site your organization uses; shown under Organization Settings in Datadog.
           </p>
         </div>
 
         <div :if={@type == "datadog"}>
-          <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
-            API Key <span class="text-error">*</span>
+          <label for={@form[:api_key].id} class="block text-xs font-medium text-muted mb-1.5">
+            API Key <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:api_key]}
@@ -1036,13 +886,13 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             A Datadog API key with log ingestion permission.
           </p>
         </div>
 
         <div :if={@type == "datadog"}>
-          <label for={@form[:tags].id} class="block text-xs font-medium text-body mb-1.5">
+          <label for={@form[:tags].id} class="block text-xs font-medium text-muted mb-1.5">
             Tags
           </label>
           <Form.input
@@ -1052,7 +902,7 @@ defmodule PortalWeb.Settings.LogSinks do
             phx-debounce="300"
             data-1p-ignore
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             Optional. Comma-separated tags added to every event, e.g.
             <code class="text-xs">env:prod,team:secops</code>. A
             <code class="text-xs">stream:&lt;stream&gt;</code>
@@ -1068,14 +918,14 @@ defmodule PortalWeb.Settings.LogSinks do
             options={newrelic_region_options()}
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The region your New Relic account reports to.
           </p>
         </div>
 
         <div :if={@type == "newrelic"}>
-          <label for={@form[:license_key].id} class="block text-xs font-medium text-body mb-1.5">
-            License Key <span class="text-error">*</span>
+          <label for={@form[:license_key].id} class="block text-xs font-medium text-muted mb-1.5">
+            License Key <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:license_key]}
@@ -1085,14 +935,14 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             A New Relic license key (ingest key) to authenticate with.
           </p>
         </div>
 
         <div :if={@type == "elastic"}>
-          <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-body mb-1.5">
-            Endpoint URL <span class="text-error">*</span>
+          <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-muted mb-1.5">
+            Endpoint URL <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:endpoint_url]}
@@ -1102,7 +952,7 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             Your cluster's Elasticsearch endpoint, e.g.
             <code class="text-xs">https://my-deployment.es.us-east-1.aws.elastic-cloud.com</code>.
             OpenSearch and other compatible clusters work too.
@@ -1110,8 +960,8 @@ defmodule PortalWeb.Settings.LogSinks do
         </div>
 
         <div :if={@type == "elastic"}>
-          <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
-            API Key <span class="text-error">*</span>
+          <label for={@form[:api_key].id} class="block text-xs font-medium text-muted mb-1.5">
+            API Key <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:api_key]}
@@ -1121,15 +971,15 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             A base64-encoded Elasticsearch API key with permission to manage index
             templates and write to the data stream.
           </p>
         </div>
 
         <div :if={@type == "elastic"}>
-          <label for={@form[:data_stream].id} class="block text-xs font-medium text-body mb-1.5">
-            Data stream <span class="text-error">*</span>
+          <label for={@form[:data_stream].id} class="block text-xs font-medium text-muted mb-1.5">
+            Data stream <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:data_stream]}
@@ -1139,17 +989,17 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The data stream to append events to. Firezone creates it on first
             delivery; manage retention with the stream's lifecycle in Kibana.
           </p>
         </div>
 
-        <div :if={@type == "sentinel"} class="p-3 rounded border border-border bg-raised">
-          <p class="text-xs font-medium text-heading mb-3">Setup</p>
+        <div :if={@type == "sentinel"} class="p-3 border border-hair bg-hover">
+          <p class="text-xs font-medium text-fg mb-3">Setup</p>
 
-          <p class="text-xs font-medium text-heading mb-1.5">1. Grant admin consent</p>
-          <p class="text-xs text-subtle mb-3">
+          <p class="text-xs font-medium text-fg mb-1.5">1. Grant admin consent</p>
+          <p class="text-xs text-muted mb-3">
             Have a tenant administrator grant consent. This adds the
             <strong>Firezone Sentinel Log Ingestion</strong>
             application to your tenant so you can assign it a role in the next step. The
@@ -1171,20 +1021,20 @@ defmodule PortalWeb.Settings.LogSinks do
           </Form.button>
 
           <div class="mt-4 mb-4 flex justify-between items-center">
-            <label class="text-xs font-medium text-body">Tenant ID</label>
+            <label class="text-xs font-medium text-muted">Tenant ID</label>
             <div class="text-right">
-              <p id="sentinel-tenant-id" class="text-xs font-semibold text-heading">
+              <p id="sentinel-tenant-id" class="text-xs font-semibold text-fg">
                 {sentinel_tenant_id(@form)}
               </p>
             </div>
           </div>
 
-          <p class="text-xs font-medium text-heading mb-1.5">2. Create the ingestion resources</p>
-          <p class="text-xs text-subtle mb-3">
+          <p class="text-xs font-medium text-fg mb-1.5">2. Create the ingestion resources</p>
+          <p class="text-xs text-muted mb-3">
             Create a data collection endpoint, a custom table, and a data collection rule, then
             grant the Firezone application the Monitoring Metrics Publisher role on the rule.
           </p>
-          <div class="flex border-b border-border mb-3" role="tablist">
+          <div class="flex border-b border-hair mb-3" role="tablist">
             <button
               :for={{tab, label, icon} <- [{"portal", "Azure Portal", "ri-window-line"}, {"cli", "Azure CLI", "ri-terminal-line"}, {"terraform", "Terraform", "ri-stack-line"}]}
               type="button"
@@ -1193,9 +1043,9 @@ defmodule PortalWeb.Settings.LogSinks do
               phx-value-tab={tab}
               class={[
                 "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
-                @sentinel_setup_tab == tab && "border-brand text-brand",
+                @sentinel_setup_tab == tab && "border-fg text-fg",
                 @sentinel_setup_tab != tab &&
-                  "border-transparent text-body hover:text-heading hover:border-border-strong"
+                  "border-transparent text-muted hover:text-fg hover:border-rule"
               ]}
             >
               <Core.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
@@ -1204,7 +1054,7 @@ defmodule PortalWeb.Settings.LogSinks do
           </div>
           <ol
             :if={@sentinel_setup_tab == "portal"}
-            class="list-decimal ml-4 space-y-1.5 text-xs text-subtle"
+            class="list-decimal ml-4 space-y-1.5 text-xs text-muted"
           >
             <li>
               You need a Log Analytics workspace: use the one Microsoft Sentinel is enabled
@@ -1229,7 +1079,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <a
                 href={~p"/downloads/firezone-sentinel-sample.json"}
                 download
-                class="underline hover:text-heading"
+                class="underline hover:text-fg"
               >
                 this sample file
               </a>
@@ -1252,20 +1102,20 @@ defmodule PortalWeb.Settings.LogSinks do
             </li>
           </ol>
           <div :if={@sentinel_setup_tab == "cli"}>
-            <p class="text-xs text-subtle mb-2">
+            <p class="text-xs text-muted mb-2">
               Creates the resource group, workspace, custom table, data collection endpoint,
               and data collection rule if they do not exist yet, and leaves them alone if they
               do. Set the variables for your environment, then run the script with the Azure
               CLI logged into your subscription. It prints the values for the fields below.
             </p>
-            <Core.code_block id="sentinel-setup-cli" class="rounded text-xs">{sentinel_cli_snippet()}</Core.code_block>
+            <Core.code_block id="sentinel-setup-cli" class="text-xs">{sentinel_cli_snippet()}</Core.code_block>
           </div>
           <div :if={@sentinel_setup_tab == "terraform"}>
-            <p class="text-xs text-subtle mb-2">
+            <p class="text-xs text-muted mb-2">
               Assumes an existing Log Analytics workspace and requires the azurerm, azuread,
               and azapi providers. The outputs are the values for the fields below.
             </p>
-            <Core.code_block id="sentinel-setup-terraform" class="rounded text-xs">{sentinel_terraform_snippet()}</Core.code_block>
+            <Core.code_block id="sentinel-setup-terraform" class="text-xs">{sentinel_terraform_snippet()}</Core.code_block>
           </div>
         </div>
 
@@ -1273,9 +1123,9 @@ defmodule PortalWeb.Settings.LogSinks do
         <div :if={@type == "sentinel"}>
           <label
             for={@form[:ingestion_endpoint].id}
-            class="block text-xs font-medium text-body mb-1.5"
+            class="block text-xs font-medium text-muted mb-1.5"
           >
-            Ingestion Endpoint <span class="text-error">*</span>
+            Ingestion Endpoint <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:ingestion_endpoint]}
@@ -1285,7 +1135,7 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The <strong>Logs Ingestion</strong> URI shown on your data collection endpoint's
             Overview page, e.g.
             <code class="text-xs">https://my-dce-abcd.eastus-1.ingest.monitor.azure.com</code>.
@@ -1295,9 +1145,9 @@ defmodule PortalWeb.Settings.LogSinks do
         <div :if={@type == "sentinel"}>
           <label
             for={@form[:dcr_immutable_id].id}
-            class="block text-xs font-medium text-body mb-1.5"
+            class="block text-xs font-medium text-muted mb-1.5"
           >
-            DCR Immutable ID <span class="text-error">*</span>
+            DCR Immutable ID <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:dcr_immutable_id]}
@@ -1307,7 +1157,7 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The <strong>Immutable Id</strong> shown on the data collection rule's Overview
             page (also in its <strong>JSON View</strong>), e.g.
             <code class="text-xs">dcr-0123456789abcdef0123456789abcdef</code>.
@@ -1315,8 +1165,8 @@ defmodule PortalWeb.Settings.LogSinks do
         </div>
 
         <div :if={@type == "sentinel"}>
-          <label for={@form[:stream_name].id} class="block text-xs font-medium text-body mb-1.5">
-            Stream Name <span class="text-error">*</span>
+          <label for={@form[:stream_name].id} class="block text-xs font-medium text-muted mb-1.5">
+            Stream Name <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:stream_name]}
@@ -1326,7 +1176,7 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The DCR's input stream, listed in its <strong>JSON View</strong> under
             <code class="text-xs">streamDeclarations</code>. The Azure portal wizard names it
             <code class="text-xs">Custom-&lt;table&gt;_CL</code>, e.g.
@@ -1334,14 +1184,14 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
-        <div :if={@type == "s3"} class="p-3 rounded border border-border bg-raised">
-          <p class="text-xs font-medium text-heading mb-2">Setup</p>
-          <p class="text-xs text-subtle mb-3">
+        <div :if={@type == "s3"} class="p-3 border border-hair bg-hover">
+          <p class="text-xs font-medium text-fg mb-2">Setup</p>
+          <p class="text-xs text-muted mb-3">
             Firezone assumes an IAM role in your AWS account to write log objects. The
             trust policy and snippets below are pinned to this sink's External ID, so
             complete setup and save without leaving this page:
           </p>
-          <div class="flex border-b border-border mb-3" role="tablist">
+          <div class="flex border-b border-hair mb-3" role="tablist">
             <button
               :for={{tab, label, icon} <- [{"console", "AWS Console", "ri-window-line"}, {"cli", "AWS CLI", "ri-terminal-line"}, {"terraform", "Terraform", "ri-stack-line"}]}
               type="button"
@@ -1350,9 +1200,9 @@ defmodule PortalWeb.Settings.LogSinks do
               phx-value-tab={tab}
               class={[
                 "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
-                @s3_setup_tab == tab && "border-brand text-brand",
+                @s3_setup_tab == tab && "border-fg text-fg",
                 @s3_setup_tab != tab &&
-                  "border-transparent text-body hover:text-heading hover:border-border-strong"
+                  "border-transparent text-muted hover:text-fg hover:border-rule"
               ]}
             >
               <Core.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
@@ -1361,7 +1211,7 @@ defmodule PortalWeb.Settings.LogSinks do
           </div>
           <ol
             :if={@s3_setup_tab == "console"}
-            class="list-decimal ml-4 space-y-1.5 text-xs text-subtle"
+            class="list-decimal ml-4 space-y-1.5 text-xs text-muted"
           >
             <li>
               In the S3 console, create a bucket (or pick an existing one) and note its
@@ -1390,24 +1240,24 @@ defmodule PortalWeb.Settings.LogSinks do
             </li>
           </ol>
           <div :if={@s3_setup_tab == "cli"}>
-            <p class="text-xs text-subtle mb-2">
+            <p class="text-xs text-muted mb-2">
               Set the variables, then run the script with the AWS CLI logged into your
               account. It prints the Role ARN for the field below.
             </p>
-            <Core.code_block id="s3-setup-cli" class="rounded text-xs">{s3_cli_snippet(@form)}</Core.code_block>
+            <Core.code_block id="s3-setup-cli" class="text-xs">{s3_cli_snippet(@form)}</Core.code_block>
           </div>
           <div :if={@s3_setup_tab == "terraform"}>
-            <p class="text-xs text-subtle mb-2">
+            <p class="text-xs text-muted mb-2">
               Requires the aws provider; the bucket is created in the provider's region.
               The output is the Role ARN for the field below.
             </p>
-            <Core.code_block id="s3-setup-terraform" class="rounded text-xs">{s3_terraform_snippet(@form)}</Core.code_block>
+            <Core.code_block id="s3-setup-terraform" class="text-xs">{s3_terraform_snippet(@form)}</Core.code_block>
           </div>
         </div>
 
         <div :if={@type == "s3"}>
-          <label for={@form[:bucket].id} class="block text-xs font-medium text-body mb-1.5">
-            Bucket <span class="text-error">*</span>
+          <label for={@form[:bucket].id} class="block text-xs font-medium text-muted mb-1.5">
+            Bucket <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:bucket]}
@@ -1417,14 +1267,14 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The name of the S3 bucket to write log objects to.
           </p>
         </div>
 
         <div :if={@type == "s3"}>
-          <label for={@form[:region].id} class="block text-xs font-medium text-body mb-1.5">
-            Region <span class="text-error">*</span>
+          <label for={@form[:region].id} class="block text-xs font-medium text-muted mb-1.5">
+            Region <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:region]}
@@ -1434,14 +1284,14 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The AWS region the bucket is in, e.g. <code class="text-xs">us-east-1</code>.
           </p>
         </div>
 
         <div :if={@type == "s3"}>
-          <label for={@form[:role_arn].id} class="block text-xs font-medium text-body mb-1.5">
-            Role ARN <span class="text-error">*</span>
+          <label for={@form[:role_arn].id} class="block text-xs font-medium text-muted mb-1.5">
+            Role ARN <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:role_arn]}
@@ -1451,14 +1301,14 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The IAM role in your AWS account that Firezone assumes to write objects,
             e.g. <code class="text-xs">arn:aws:iam::123456789012:role/firezone-logs</code>.
           </p>
         </div>
 
         <div :if={@type == "s3"}>
-          <label for={@form[:key_prefix].id} class="block text-xs font-medium text-body mb-1.5">
+          <label for={@form[:key_prefix].id} class="block text-xs font-medium text-muted mb-1.5">
             Key Prefix
           </label>
           <Form.input
@@ -1468,30 +1318,30 @@ defmodule PortalWeb.Settings.LogSinks do
             phx-debounce="300"
             data-1p-ignore
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             Optional. A prefix added to every object key, e.g.
             <code class="text-xs">firezone/logs</code>.
           </p>
         </div>
 
         <div :if={@type == "s3"}>
-          <span class="block text-xs font-medium text-body mb-1.5">External ID</span>
-          <p class="text-sm font-mono text-heading">
+          <span class="block text-xs font-medium text-muted mb-1.5">External ID</span>
+          <p class="text-sm font-mono text-fg">
             {get_field(@form.source, :external_id)}
           </p>
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             Generated by Firezone and pinned to this sink. The role's trust policy must
             require it via <code class="text-xs">sts:ExternalId</code>.
           </p>
         </div>
 
-        <div :if={@type == "qradar"} class="p-3 rounded border border-border bg-raised">
-          <p class="text-xs font-medium text-heading mb-2">Setup</p>
-          <p class="text-xs text-subtle mb-3">
+        <div :if={@type == "qradar"} class="p-3 border border-hair bg-hover">
+          <p class="text-xs font-medium text-fg mb-2">Setup</p>
+          <p class="text-xs text-muted mb-3">
             Firezone delivers events as newline-delimited JSON, one event per POST line,
             to a QRadar HTTP Receiver log source:
           </p>
-          <ol class="list-decimal ml-4 space-y-1.5 text-xs text-subtle">
+          <ol class="list-decimal ml-4 space-y-1.5 text-xs text-muted">
             <li>
               In QRadar, open the <strong>Admin</strong> tab, choose
               <strong>Log Sources</strong>, and add a log source with the
@@ -1517,8 +1367,8 @@ defmodule PortalWeb.Settings.LogSinks do
         </div>
 
         <div :if={@type == "qradar"}>
-          <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-body mb-1.5">
-            Endpoint URL <span class="text-error">*</span>
+          <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-muted mb-1.5">
+            Endpoint URL <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:endpoint_url]}
@@ -1528,14 +1378,14 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The public HTTPS URL of the HTTP Receiver, including its listen port, e.g.
             <code class="text-xs">https://qradar.example.com:12469</code>.
           </p>
         </div>
 
         <div :if={@type == "qradar"}>
-          <label for={@form[:auth_header].id} class="block text-xs font-medium text-body mb-1.5">
+          <label for={@form[:auth_header].id} class="block text-xs font-medium text-muted mb-1.5">
             Authorization Header
           </label>
           <Form.input
@@ -1547,17 +1397,17 @@ defmodule PortalWeb.Settings.LogSinks do
           />
           <label
             :if={not is_nil(@form.data.auth_header)}
-            class="mt-2 flex items-center gap-2 text-xs text-body"
+            class="mt-2 flex items-center gap-2 text-xs text-muted"
           >
             <input
               type="checkbox"
               name="log_sink[remove_secret]"
               value="true"
               checked={remove_secret?(@form)}
-              class="w-4 h-4 text-brand border-border rounded"
+              class="w-4 h-4 text-fg border-rule"
             /> Remove the current header
           </label>
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             Optional. Sent as the <code class="text-xs">Authorization</code> header on
             every delivery, e.g. <code class="text-xs">Bearer my-secret-token</code>.
             QRadar's HTTP Receiver ignores it; set it when a proxy in front of the
@@ -1566,8 +1416,8 @@ defmodule PortalWeb.Settings.LogSinks do
         </div>
 
         <div :if={@type == "http"}>
-          <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-body mb-1.5">
-            Endpoint URL <span class="text-error">*</span>
+          <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-muted mb-1.5">
+            Endpoint URL <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:endpoint_url]}
@@ -1577,14 +1427,14 @@ defmodule PortalWeb.Settings.LogSinks do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The HTTPS URL to POST log batches to, e.g.
             <code class="text-xs">https://logs.example.com/ingest</code>.
           </p>
         </div>
 
         <div :if={@type == "http"}>
-          <label for={@form[:bearer_token].id} class="block text-xs font-medium text-body mb-1.5">
+          <label for={@form[:bearer_token].id} class="block text-xs font-medium text-muted mb-1.5">
             Bearer Token
           </label>
           <Form.input
@@ -1596,25 +1446,25 @@ defmodule PortalWeb.Settings.LogSinks do
           />
           <label
             :if={not is_nil(@form.data.bearer_token)}
-            class="mt-2 flex items-center gap-2 text-xs text-body"
+            class="mt-2 flex items-center gap-2 text-xs text-muted"
           >
             <input
               type="checkbox"
               name="log_sink[remove_secret]"
               value="true"
               checked={remove_secret?(@form)}
-              class="w-4 h-4 text-brand border-border rounded"
+              class="w-4 h-4 text-fg border-rule"
             /> Remove the current token
           </label>
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             Optional. Sent as an <code class="text-xs">Authorization: Bearer</code>
             header on every request; leave blank for none.
           </p>
         </div>
 
         <div :if={@type == "http"}>
-          <label for={@form[:batch_max_events].id} class="block text-xs font-medium text-body mb-1.5">
-            Batch Size <span class="text-error">*</span>
+          <label for={@form[:batch_max_events].id} class="block text-xs font-medium text-muted mb-1.5">
+            Batch Size <span class="text-attn">*</span>
           </label>
           <Form.input
             field={@form[:batch_max_events]}
@@ -1624,32 +1474,32 @@ defmodule PortalWeb.Settings.LogSinks do
             phx-debounce="300"
             required
           />
-          <p class="mt-1 text-xs text-subtle">
+          <p class="mt-1 text-xs text-muted">
             The maximum number of events per POST, between 1 and 1000. Requests stay
             under 512 KB regardless.
           </p>
         </div>
 
         <fieldset>
-          <legend class="block text-xs font-medium text-body mb-3">
+          <legend class="block text-xs font-medium text-muted mb-3">
             Log streams
           </legend>
           <input type="hidden" name={@form[:enabled_streams].name <> "[]"} value="" />
           <div class="grid gap-2 md:grid-cols-2">
             <label
               :for={stream <- streams()}
-              class="flex items-center gap-3 p-3 border border-border rounded cursor-pointer hover:border-border-emphasis transition-colors"
+              class="flex items-center gap-3 p-3 border border-hair cursor-pointer hover:border-rule transition-colors"
             >
               <input
                 type="checkbox"
                 name={@form[:enabled_streams].name <> "[]"}
                 value={stream}
                 checked={stream_enabled?(@form, stream)}
-                class="w-4 h-4 text-brand border-border rounded"
+                class="w-4 h-4 text-fg border-rule"
               />
               <span class="flex flex-col">
-                <span class="text-sm font-medium text-heading">{stream_label(stream)}</span>
-                <span class="text-xs text-subtle">{stream_help(stream)}</span>
+                <span class="text-sm font-medium text-fg">{stream_label(stream)}</span>
+                <span class="text-xs text-muted">{stream_help(stream)}</span>
               </span>
             </label>
           </div>
@@ -1657,15 +1507,15 @@ defmodule PortalWeb.Settings.LogSinks do
 
         <div :if={@live_action == :new} class="flex items-start justify-between gap-4">
           <div>
-            <span class="text-sm font-medium text-heading">
+            <span class="text-sm font-medium text-fg">
               Deliver existing logs
             </span>
-            <p class="mt-1 text-xs text-subtle">
+            <p class="mt-1 text-xs text-muted">
               Backfill logs recorded before this sink was created, oldest first, while new
               logs are delivered as they arrive. When disabled, only logs recorded from now
               on are delivered.
             </p>
-            <p :if={@type == "newrelic"} class="mt-1 text-xs text-subtle">
+            <p :if={@type == "newrelic"} class="mt-1 text-xs text-muted">
               New Relic drops payloads with timestamps older than 48 hours, so backfilled
               events older than that will not appear in New Relic.
             </p>
@@ -1889,7 +1739,7 @@ defmodule PortalWeb.Settings.LogSinks do
     end)
   end
 
-  defp select_type_classes, do: @select_type_classes
+  defp sink_type_options, do: @sink_type_options
 
   defp datadog_site_options, do: @datadog_site_options
 
@@ -2394,7 +2244,7 @@ defmodule PortalWeb.Settings.LogSinks do
 
     cond do
       not sink.retroactive or is_nil(stats) or is_nil(stats.backfill_total) ->
-        "—"
+        nil
 
       stats.pending_backfills == 0 or stats.backfill_total == 0 ->
         "Done"

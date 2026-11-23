@@ -113,7 +113,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert html =~ "Identity Providers"
+      assert html =~ "Identity providers"
     end
 
     test "renders page title", %{account: account, actor: actor, conn: conn} do
@@ -122,7 +122,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert html =~ "Identity Providers"
+      assert html =~ "Identity providers"
     end
 
     test "renders add provider button", %{account: account, actor: actor, conn: conn} do
@@ -213,7 +213,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert has_element?(
                lv,
                "a[href='/#{account.slug}/settings/trust_anchors']",
-               "Trust Anchors"
+               "trust anchors"
              )
 
       actions = open_provider_actions(lv, provider.id)
@@ -480,7 +480,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
 
-      assert html =~ "Select Provider Type"
+      assert html =~ "Choose a provider type"
       assert html =~ "Google"
       assert html =~ "Entra"
       assert html =~ "Okta"
@@ -544,14 +544,14 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/new")
 
-      assert html =~ "Add Google Provider"
+      assert html =~ "New Google provider"
       assert html =~ "Name"
       assert html =~ "Context"
       assert html =~ "Portal (seconds)"
       assert html =~ "Client (seconds)"
       assert html =~ "Clients will be <strong>signed out</strong>"
       assert html =~ "after this and forced to re-authenticate."
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "validates portal_session_lifetime_secs minimum", %{
@@ -639,7 +639,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/google/new")
 
       # The verify button should be present
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "shows awaiting verification message", %{account: account, actor: actor, conn: conn} do
@@ -648,7 +648,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/new")
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
   end
 
@@ -663,9 +663,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/github/new")
 
-      assert html =~ "Add GitHub Provider"
+      assert html =~ "New GitHub provider"
       assert html =~ "Sign in with your GitHub account to verify the configuration."
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
       refute html =~ "Redirect URI"
 
       parsed = Floki.parse_fragment!(html)
@@ -695,7 +695,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       refute_received {:github_token_request, _params}
 
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
       refute html =~ "Verified"
     end
 
@@ -752,10 +752,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/entra/new")
 
-      assert html =~ "Add Microsoft Entra Provider"
+      assert html =~ "New Microsoft Entra provider"
       assert html =~ "Name"
       assert html =~ "Context"
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
   end
 
@@ -770,14 +770,14 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/okta/new")
 
-      assert html =~ "Add Okta Provider"
+      assert html =~ "New Okta provider"
       assert html =~ "Name"
       assert html =~ "Context"
-      assert html =~ "Okta Domain"
+      assert html =~ "Okta domain"
       assert html =~ "Client ID"
-      assert html =~ "Client Secret"
+      assert html =~ "Client secret"
       assert html =~ "Redirect URI"
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "validates required fields", %{account: account, actor: actor, conn: conn} do
@@ -837,18 +837,18 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/oidc/new")
 
-      assert html =~ "Add OpenID Connect Provider"
+      assert html =~ "New OpenID Connect provider"
       assert html =~ "Name"
       assert html =~ "Context"
-      assert html =~ "Discovery Document URI"
+      assert html =~ "Discovery document URI"
       assert html =~ "Client ID"
-      assert html =~ "Client Secret"
-      assert html =~ "Email Verification"
+      assert html =~ "Client secret"
+      assert html =~ "Email verification"
       assert html =~ "Do not require the identity provider to confirm email ownership"
       assert html =~ "email_verified=true"
       assert html =~ "Send a one-time passcode to the claimed email address"
       assert html =~ "Redirect URI"
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "validates required fields", %{account: account, actor: actor, conn: conn} do
@@ -1340,7 +1340,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
 
-      assert html =~ "Email Claim"
+      assert html =~ "Email claim"
 
       lv
       |> form("#auth-provider-form", %{
@@ -1364,7 +1364,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       {:ok, lv, html} = live(conn, ~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
 
-      assert html =~ "Sign-in Tenant"
+      assert html =~ "Sign-in tenant"
 
       lv
       |> form("#auth-provider-form", %{"auth_provider" => %{"sign_in_tenant_id" => second}})
@@ -1417,9 +1417,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/okta/#{provider.id}/edit")
 
       assert html =~ "Edit Test Okta"
-      assert html =~ "Okta Domain"
+      assert html =~ "Okta domain"
       assert html =~ "Client ID"
-      assert html =~ "Client Secret"
+      assert html =~ "Client secret"
       assert html =~ "Verification"
     end
 
@@ -1445,7 +1445,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> render_change()
 
       # Verification should be cleared
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "clears verification when client_secret changes", %{
@@ -1467,7 +1467,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> form("#auth-provider-form", %{auth_provider: %{client_secret: "new-secret"}})
         |> render_change()
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "clears verification when okta_domain changes", %{
@@ -1489,7 +1489,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> form("#auth-provider-form", %{auth_provider: %{okta_domain: "new-domain.okta.com"}})
         |> render_change()
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
   end
 
@@ -1685,10 +1685,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/oidc/#{provider.id}/edit")
 
       assert html =~ "Edit Test OIDC"
-      assert html =~ "Discovery Document URI"
+      assert html =~ "Discovery document URI"
       assert html =~ "Client ID"
-      assert html =~ "Client Secret"
-      assert html =~ "Email Verification"
+      assert html =~ "Client secret"
+      assert html =~ "Email verification"
       assert html =~ "Do not require the identity provider to confirm email ownership"
       assert html =~ "email_verified=true"
       assert html =~ "Send a one-time passcode to the claimed email address"
@@ -1718,7 +1718,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         })
         |> render_change()
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "clears verification when email_verification_method changes", %{
@@ -1742,7 +1742,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         })
         |> render_change()
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "shows legacy warning for legacy providers", %{
@@ -2191,7 +2191,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       # Verification link should be available
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "entra provider shows verification link", %{
@@ -2210,7 +2210,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       # Verification link should be available
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "okta provider shows verification link", %{
@@ -2236,7 +2236,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       # Verification link should be available
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "oidc provider shows verification link", %{
@@ -2262,7 +2262,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       # Verification link should be available
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
   end
 
@@ -2685,7 +2685,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       # Try to start verification - this will subscribe to PubSub
       # and push an open_url event
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "clicking verify button subscribes to PubSub topic for entra", %{
@@ -2703,7 +2703,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       |> render_change()
 
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
   end
 
@@ -2718,7 +2718,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/new")
 
-      assert html =~ "Google Provider"
+      assert html =~ "Google provider"
     end
 
     test "renders Microsoft Entra title", %{account: account, actor: actor, conn: conn} do
@@ -2727,7 +2727,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/entra/new")
 
-      assert html =~ "Microsoft Entra Provider"
+      assert html =~ "Microsoft Entra provider"
     end
 
     test "renders Okta title", %{account: account, actor: actor, conn: conn} do
@@ -2736,7 +2736,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/okta/new")
 
-      assert html =~ "Okta Provider"
+      assert html =~ "Okta provider"
     end
 
     test "renders OpenID Connect title", %{account: account, actor: actor, conn: conn} do
@@ -2745,7 +2745,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/oidc/new")
 
-      assert html =~ "OpenID Connect Provider"
+      assert html =~ "OpenID Connect provider"
     end
 
     test "renders Email OTP title in edit", %{account: account, actor: actor, conn: conn} do
@@ -2807,7 +2807,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/new")
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "email_otp providers always show as verified (no verification section)", %{
@@ -3177,7 +3177,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       # Should push an event to open the URL
       html = render(lv)
-      assert html =~ "Verify Now" or html =~ "Awaiting"
+      assert html =~ "Verify now" or html =~ "Awaiting"
     end
 
     test "successful verification setup for entra provider", %{
@@ -3198,7 +3198,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Verify Now" or html =~ "Awaiting"
+      assert html =~ "Verify now" or html =~ "Awaiting"
     end
   end
 
@@ -3236,7 +3236,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       # The socket should now have verification state assigned
       html = render(lv)
       # Verification setup should have started
-      assert html =~ "Verify Now" or html =~ "error"
+      assert html =~ "Verify now" or html =~ "error"
     end
 
     test "passes email_verification_method from oidc form into pending verification", %{
@@ -3348,7 +3348,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         })
         |> render_change()
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
 
       ref = make_ref()
       send(lv.pid, {:oidc_verify_complete, "https://example.com", verification_ref, {self(), ref}})
@@ -3356,7 +3356,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert_receive {:verification_ack, ^ref}
 
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
       refute html =~ "Verified"
     end
 
@@ -3410,7 +3410,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert_receive {:verification_ack, ^stale_ack_ref}
 
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
       refute html =~ "Verified"
 
       current_ack_ref = make_ref()
@@ -3645,7 +3645,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert_receive {:verification_ack, ^ack_ref}
 
       html = render(lv)
-      assert html =~ "Add Google Provider"
+      assert html =~ "New Google provider"
       refute has_element?(lv, "#verified-organizations")
     end
 
@@ -3667,7 +3667,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "handles okta provider form with valid domain format", %{
@@ -3694,7 +3694,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       # Form should be valid and show verify button
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
   end
 
@@ -4069,7 +4069,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> form("#auth-provider-form", %{auth_provider: %{client_id: "new-client-id"}})
         |> render_change()
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "clears verification when client_secret changes", %{
@@ -4091,7 +4091,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> form("#auth-provider-form", %{auth_provider: %{client_secret: "new-secret"}})
         |> render_change()
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "clears verification when discovery_document_uri changes", %{
@@ -4117,7 +4117,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         })
         |> render_change()
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "clears verification when okta_domain changes", %{
@@ -4139,7 +4139,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> form("#auth-provider-form", %{auth_provider: %{okta_domain: "new-domain.okta.com"}})
         |> render_change()
 
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "preserves verification when non-trigger fields change", %{
@@ -4341,7 +4341,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       # Verify button should be present and not disabled
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
   end
 
@@ -4437,7 +4437,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       # The verification process is now started, render to confirm
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
   end
 
@@ -4473,7 +4473,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "handles HTTP 403 error", %{
@@ -4503,7 +4503,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       # Discovery document errors now happen in the new tab (begin_verification controller)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
   end
 
@@ -4572,7 +4572,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       # The verification is set up, check that awaiting verification is shown
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
     end
 
     test "oidc_verify with token mismatch shows error message", %{
@@ -4823,7 +4823,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       # Wait for the verification to be set up
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
 
       lv_pid = lv.pid
 
@@ -4863,7 +4863,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Verify Now"
+      assert html =~ "Verify now"
 
       lv_pid = lv.pid
       send(lv_pid, {:oidc_verify_failed, :token_exchange_failed})
@@ -4882,7 +4882,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      provider = google_provider_fixture(account: account, name: "Google Provider")
+      provider = google_provider_fixture(account: account, name: "Google provider")
 
       {:ok, lv, _html} =
         conn

@@ -1,6 +1,7 @@
 defmodule PortalWeb.Settings.DNS do
   use PortalWeb, :live_view
   alias __MODULE__.Database
+  alias PortalWeb.Settings
 
   def mount(_params, _session, socket) do
     # FetchAccount already loaded the account, so there is no need to query it again.
@@ -35,78 +36,61 @@ defmodule PortalWeb.Settings.DNS do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <Navigation.settings_nav
-        account={@account}
-        current_path={@current_path}
-      />
+      <Page.page_header>
+        <:title>DNS</:title>
+        <:description>How devices resolve names that are not resources.</:description>
+        <:action>
+          <Navigation.docs_action show_label size="md" path="/deploy/dns" />
+          <Form.button
+            id="edit-dns-button"
+            patch={~p"/#{@account}/settings/dns/edit"}
+            icon="ri-pencil-line"
+            size="sm"
+          >
+            Edit
+          </Form.button>
+        </:action>
+      </Page.page_header>
 
-      <div class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
-          <h2 class="text-xs font-semibold text-heading">DNS Configuration</h2>
-          <div class="flex items-center gap-2">
-            <Navigation.docs_action show_label path="/deploy/dns" />
-            <Navigation.link
-              patch={~p"/#{@account}/settings/dns/edit"}
-              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-            >
-              <Core.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
-            </Navigation.link>
-          </div>
-        </div>
-
-        <div class="flex-1 overflow-auto p-6">
-          <div class="max-w-sm space-y-3">
-            <div class="rounded border border-border bg-surface px-4 py-3">
-              <p class="text-[10px] font-semibold uppercase tracking-widest text-subtle mb-1">
-                Search Domain
+      <div class="flex-1 overflow-auto px-6 pb-8">
+        <Settings.Components.tiles cols="2" class="max-w-4xl">
+          <Settings.Components.tile id="search-domain" label="Search domain" icon="ri-search-line">
+            <%= if @dns_account.config.search_domain do %>
+              <p class="text-sm font-semibold text-fg font-mono">
+                {@dns_account.config.search_domain}
               </p>
-              <%= if @dns_account.config.search_domain do %>
-                <p class="text-sm font-semibold text-heading font-mono">
-                  {@dns_account.config.search_domain}
-                </p>
-              <% else %>
-                <p class="text-sm text-subtle italic">Not configured</p>
-              <% end %>
-            </div>
+            <% else %>
+              <p class="text-sm text-muted">Not configured</p>
+            <% end %>
+            <p class="mt-1 text-xs text-muted">Appended to single-label queries.</p>
+          </Settings.Components.tile>
 
-            <.upstream_dns_display config={@dns_account.config} />
-          </div>
-        </div>
+          <.upstream_dns_display config={@dns_account.config} />
+        </Settings.Components.tiles>
       </div>
 
-    <!-- Edit Panel -->
-      <div
+      <Page.detail_modal
         id="edit-dns-panel"
-        class={[
-          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-elevated border-l border-border-strong",
-          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-          "transition-transform duration-200 ease-in-out",
-          (@live_action == :edit && assigns[:form] != nil && "translate-x-0") || "translate-x-full"
-        ]}
-        phx-window-keydown="handle_keydown"
-        phx-key="Escape"
+        open={@live_action == :edit and assigns[:form] != nil}
+        on_close="close_panel"
+        size="md"
       >
-        <div
-          :if={@live_action == :edit and assigns[:form] != nil}
-          class="flex flex-col h-full overflow-hidden"
-        >
-          <Form.panel_header title="Edit DNS Settings" variant="plain">
-            <:adornment><Navigation.docs_action path="/deploy/dns" /></:adornment>
-          </Form.panel_header>
-          <div class="flex-1 overflow-y-auto px-5 py-4">
-            <.dns_form form={@form} />
-          </div>
-          <Form.panel_footer>
-            <Form.panel_footer_button phx-click="close_panel">
-              Cancel
-            </Form.panel_footer_button>
-            <Form.panel_footer_button form="dns-form" type="submit" style="primary">
-              Save
-            </Form.panel_footer_button>
-          </Form.panel_footer>
-        </div>
-      </div>
+        <Form.panel_header title="Edit DNS settings" variant="plain">
+          <:leading><Core.icon name="ri-global-line" class="w-4 h-4 text-muted" /></:leading>
+          <:adornment><Navigation.docs_action path="/deploy/dns" /></:adornment>
+        </Form.panel_header>
+        <Settings.Components.modal_body>
+          <.dns_form form={@form} />
+        </Settings.Components.modal_body>
+        <Form.panel_footer>
+          <Form.panel_footer_button phx-click="close_panel">
+            Cancel
+          </Form.panel_footer_button>
+          <Form.panel_footer_button form="dns-form" type="submit" style="primary">
+            Save
+          </Form.panel_footer_button>
+        </Form.panel_footer>
+      </Page.detail_modal>
     </div>
     """
   end
@@ -118,9 +102,6 @@ defmodule PortalWeb.Settings.DNS do
 
     {icon, label, description} =
       case dns && dns.type do
-        :system ->
-          {"ri-computer-line", "System DNS", "Use the device's default DNS resolvers."}
-
         :secure ->
           provider = doh_provider_label(dns.doh_provider)
           {"ri-lock-line", "Secure DNS", "DNS-over-HTTPS via #{provider}."}
@@ -135,33 +116,27 @@ defmodule PortalWeb.Settings.DNS do
     assigns = assign(assigns, icon: icon, label: label, description: description, dns: dns)
 
     ~H"""
-    <div class="rounded border border-border bg-surface px-4 py-3">
-      <p class="text-[10px] font-semibold uppercase tracking-widest text-subtle mb-1.5">
-        Upstream DNS
-      </p>
+    <Settings.Components.tile id="upstream-dns" label="Upstream DNS" icon="ri-server-line">
       <div class="flex items-center gap-2">
-        <Core.icon name={@icon} class="w-4 h-4 text-brand" />
-        <span class="text-sm font-semibold text-heading">{@label}</span>
+        <Core.icon name={@icon} class="w-4 h-4 text-fg" />
+        <span class="text-sm font-semibold text-fg">{@label}</span>
       </div>
-      <p :if={@description} class="mt-1 text-xs text-subtle">{@description}</p>
+      <p :if={@description} class="mt-1 text-xs text-muted">{@description}</p>
       <div
         :if={@dns && @dns.type == :custom && not Enum.empty?(@dns.addresses || [])}
         class="mt-2 flex flex-wrap gap-1.5"
       >
-        <span
-          :for={addr <- @dns.addresses}
-          class="text-xs font-mono px-1.5 py-0.5 rounded bg-raised text-body"
-        >
+        <Core.badge :for={addr <- @dns.addresses} class="font-mono">
           {addr.address}
-        </span>
+        </Core.badge>
       </div>
       <p
         :if={@dns && @dns.type == :custom && Enum.empty?(@dns.addresses || [])}
-        class="mt-1 text-xs text-subtle italic"
+        class="mt-1 text-xs text-muted"
       >
         No resolvers configured.
       </p>
-    </div>
+    </Settings.Components.tile>
     """
   end
 
@@ -178,15 +153,15 @@ defmodule PortalWeb.Settings.DNS do
     <.form id="dns-form" for={@form} phx-submit={:submit} phx-change={:change}>
       <div class="space-y-8">
         <div>
-          <h3 class="text-[10px] font-semibold uppercase tracking-widest text-subtle mb-4">
-            Search Domain
+          <h3 class="text-[11px] font-semibold uppercase tracking-[.12em] text-muted mb-4">
+            Search domain
           </h3>
           <.inputs_for :let={config_form} field={@form[:config]}>
             <label
               for={config_form[:search_domain].id}
               class="block text-xs font-medium text-body mb-1.5"
             >
-              Search Domain
+              Search domain
             </label>
             <Form.input
               field={config_form[:search_domain]}
@@ -202,8 +177,8 @@ defmodule PortalWeb.Settings.DNS do
         </div>
 
         <div>
-          <h3 class="text-[10px] font-semibold uppercase tracking-widest text-subtle mb-4">
-            Upstream Resolvers
+          <h3 class="text-[11px] font-semibold uppercase tracking-[.12em] text-muted mb-4">
+            Upstream resolvers
           </h3>
           <p class="mb-4 text-xs text-body">
             Queries for Resources will <strong>always</strong>
@@ -296,7 +271,7 @@ defmodule PortalWeb.Settings.DNS do
                   for={dns_form[:doh_provider].id}
                   class="block text-xs font-medium text-body mb-1.5"
                 >
-                  DNS-over-HTTPS Provider
+                  DNS-over-HTTPS provider
                 </label>
                 <Form.input
                   type="select"
@@ -328,7 +303,7 @@ defmodule PortalWeb.Settings.DNS do
                   :if={Enum.empty?(dns_form[:addresses].value || [])}
                   class="text-xs text-body"
                 >
-                  No upstream resolvers configured. Click <strong>Add Resolver</strong> to add one.
+                  No upstream resolvers configured. Click <strong>Add resolver</strong> to add one.
                 </p>
 
                 <.inputs_for :let={address_form} field={dns_form[:addresses]}>
@@ -342,7 +317,7 @@ defmodule PortalWeb.Settings.DNS do
                       for={address_form[:address].id}
                       class="block text-xs font-medium text-body mb-1.5"
                     >
-                      IP Address
+                      IP address
                     </label>
                     <div class="flex gap-2 items-start">
                       <div class="flex-1">
@@ -383,7 +358,7 @@ defmodule PortalWeb.Settings.DNS do
                   size="xs"
                   icon="ri-add-line"
                 >
-                  Add Resolver
+                  Add resolver
                 </Form.button>
                 <p
                   :if={Enum.count(dns_form[:addresses].value || []) >= 8}
