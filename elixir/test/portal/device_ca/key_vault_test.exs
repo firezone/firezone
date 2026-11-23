@@ -15,15 +15,17 @@ defmodule Portal.DeviceCA.KeyVaultTest do
       Req.Test.json(conn, %{"access_token" => "vault-token", "expires_on" => "4102444800"})
     end)
 
-    {public_key, private_key} = :crypto.generate_key(:ecdh, :prime256v1)
-    %{public_key: public_key, private_key: private_key}
+    {:RSAPrivateKey, _, modulus, exponent, _, _, _, _, _, _, _} =
+      private_key = :public_key.generate_key({:rsa, 2048, 65_537})
+
+    %{public_key: {:RSAPublicKey, modulus, exponent}, private_key: private_key}
   end
 
   test "creates a CA whose key stays in the vault", %{public_key: public_key, private_key: private_key} do
     account = account_fixture()
     key_id = "#{@vault_url}/keys/device-ca-#{account.id}/v1"
     test_pid = self()
-    <<4, x::binary-size(32), y::binary-size(32)>> = public_key
+    {:RSAPublicKey, modulus, exponent} = public_key
 
     Req.Test.stub(DeviceCA.KeyVault, fn conn ->
       {:ok, body, conn} = read_body(conn)
@@ -32,12 +34,17 @@ defmodule Portal.DeviceCA.KeyVaultTest do
       case conn.request_path do
         "/keys/device-ca-" <> _rest = path ->
           if String.ends_with?(path, "/create") do
-            Req.Test.json(conn, %{"key" => %{"kid" => key_id, "x" => b64(x), "y" => b64(y)}})
+            Req.Test.json(conn, %{
+              "key" => %{
+                "kid" => key_id,
+                "n" => b64(:binary.encode_unsigned(modulus)),
+                "e" => b64(:binary.encode_unsigned(exponent))
+              }
+            })
           else
             digest = Base.url_decode64!(Jason.decode!(body)["value"], padding: false)
-            der = :crypto.sign(:ecdsa, :sha256, {:digest, digest}, [private_key, :prime256v1])
-            {:"ECDSA-Sig-Value", r, s} = :public_key.der_decode(:"ECDSA-Sig-Value", der)
-            Req.Test.json(conn, %{"kid" => key_id, "value" => b64(<<r::256, s::256>>)})
+            signature = :public_key.sign({:digest, digest}, :sha256, private_key)
+            Req.Test.json(conn, %{"kid" => key_id, "value" => b64(signature)})
           end
       end
     end)
@@ -45,17 +52,16 @@ defmodule Portal.DeviceCA.KeyVaultTest do
     assert {:ok, ca} = DeviceCA.ensure(account.id)
     assert ca.key_id == key_id
 
-    ec_params = {:namedCurve, {1, 2, 840, 10045, 3, 1, 7}}
-    assert :public_key.pkix_verify(ca.certificate, {{:ECPoint, public_key}, ec_params})
+    assert :public_key.pkix_verify(ca.certificate, public_key)
 
     create_path = "/keys/device-ca-#{account.id}/create"
     assert_received {"POST", ^create_path, create, ["Bearer vault-token"]}
-    assert create["kty"] == "EC"
-    assert create["crv"] == "P-256"
+    assert create["kty"] == "RSA"
+    assert create["key_size"] == 2048
     assert create["attributes"] == %{"exportable" => false}
 
     sign_path = "/keys/device-ca-#{account.id}/v1/sign"
-    assert_received {"POST", ^sign_path, %{"alg" => "ES256"}, ["Bearer vault-token"]}
+    assert_received {"POST", ^sign_path, %{"alg" => "RS256"}, ["Bearer vault-token"]}
   end
 
   test "never sends the token outside the vault" do

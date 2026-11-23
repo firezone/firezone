@@ -2,27 +2,28 @@ defmodule Portal.DeviceCA do
   @moduledoc """
   The CA of each account that issues the certificates its devices connect with.
 
-  Each account has its own P-256 key. With a Key Vault URL, the key is a non-exportable key in
-  Azure Key Vault and every signature is made there. Without one, the default for on-prem, dev
-  and test, the `Local` adapter derives the key from the tokens key base.
+  Each account has its own RSA-2048 key. Device keys can still be P-256: the CA key type does not
+  limit them. With a Key Vault URL, the key is a non-exportable key in Azure Key Vault and every
+  signature is made there. Without one, the default for on-prem, dev and test, the `Local`
+  adapter keeps the key encrypted with the tokens key base.
   """
   alias __MODULE__.{Database, KeyVault, Local}
   alias Portal.DeviceCertificateAuthority
 
-  @type key :: %{key_id: String.t(), public_key: binary()}
+  @type key :: %{key_id: String.t(), public_key: {:RSAPublicKey, pos_integer(), pos_integer()}}
 
-  @doc "Creates the account's key, or a new version of it, and returns its public point."
+  @doc "Creates the account's key, or a new version of it, and returns its public key."
   @callback create_key(account_id :: Ecto.UUID.t()) :: {:ok, key()} | {:error, term()}
 
-  @doc "Signs a SHA-256 digest with the key and returns the raw `r || s` signature."
+  @doc "Signs a SHA-256 digest with the key and returns the RSASSA-PKCS1-v1_5 signature."
   @callback sign(key_id :: String.t(), digest :: binary()) :: {:ok, binary()} | {:error, term()}
 
   @doc "Deletes the account's key. A key that does not exist is already deleted."
   @callback delete_key(account_id :: Ecto.UUID.t()) :: :ok | {:error, term()}
 
-  @ec_public_key {1, 2, 840, 10_045, 2, 1}
-  @prime256v1 {:namedCurve, {1, 2, 840, 10_045, 3, 1, 7}}
-  @ecdsa_with_sha256 {:SignatureAlgorithm, {1, 2, 840, 10_045, 4, 3, 2}, :asn1_NOVALUE}
+  @rsa_encryption {1, 2, 840, 113_549, 1, 1, 1}
+  @sha256_with_rsa {:SignatureAlgorithm, {1, 2, 840, 113_549, 1, 1, 11}, :asn1_NOVALUE}
+  @signature_size 256
   @common_name {2, 5, 4, 3}
   @organization {2, 5, 4, 10}
   @basic_constraints {2, 5, 29, 19}
@@ -64,9 +65,9 @@ defmodule Portal.DeviceCA do
     name = ca_name(account_id)
 
     tbs =
-      {:OTPTBSCertificate, :v3, serial_number(), @ecdsa_with_sha256, name,
+      {:OTPTBSCertificate, :v3, serial_number(), @sha256_with_rsa, name,
        {:Validity, x509_time(now), x509_time(DateTime.add(now, @ca_lifetime_days, :day))}, name,
-       {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, @ec_public_key, @prime256v1}, {:ECPoint, public_key}},
+       {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, @rsa_encryption, :asn1_NOVALUE}, public_key},
        :asn1_NOVALUE, :asn1_NOVALUE,
        [
          {:Extension, @basic_constraints, true, {:BasicConstraints, true, 0}},
@@ -76,9 +77,9 @@ defmodule Portal.DeviceCA do
 
     tbs_der = :public_key.pkix_encode(:OTPTBSCertificate, tbs, :otp)
 
-    with {:ok, <<r::256, s::256>>} <- adapter().sign(key_id, :crypto.hash(:sha256, tbs_der)) do
-      signature = :public_key.der_encode(:"ECDSA-Sig-Value", {:"ECDSA-Sig-Value", r, s})
-      {:ok, :public_key.pkix_encode(:OTPCertificate, {:OTPCertificate, tbs, @ecdsa_with_sha256, signature}, :otp)}
+    with {:ok, <<_::binary-size(@signature_size)>> = signature} <-
+           adapter().sign(key_id, :crypto.hash(:sha256, tbs_der)) do
+      {:ok, :public_key.pkix_encode(:OTPCertificate, {:OTPCertificate, tbs, @sha256_with_rsa, signature}, :otp)}
     end
   end
 
@@ -98,7 +99,8 @@ defmodule Portal.DeviceCA do
     do: {:generalTime, datetime |> Calendar.strftime("%Y%m%d%H%M%SZ") |> String.to_charlist()}
 
   # RFC 7093 method 1: the leftmost 160 bits of the SHA-256 of the public key.
-  defp key_identifier(public_key), do: binary_part(:crypto.hash(:sha256, public_key), 0, 20)
+  defp key_identifier(public_key),
+    do: binary_part(:crypto.hash(:sha256, :public_key.der_encode(:RSAPublicKey, public_key)), 0, 20)
 
   # Positive and within the 20 octets RFC 5280 allows.
   defp serial_number, do: :binary.decode_unsigned(:crypto.strong_rand_bytes(19)) + 1

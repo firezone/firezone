@@ -1,39 +1,48 @@
 defmodule Portal.DeviceCA.Local do
   @moduledoc """
-  A software key per account, derived from the tokens key base, for a portal without Key Vault.
-  Nothing is stored: the same key base gives the same key, and a new key base invalidates every
-  device certificate.
+  A software key per account for a portal without Key Vault. The private key is kept in the
+  key id, encrypted and signed with a key derived from the tokens key base, so a new key base
+  invalidates every device CA.
   """
   @behaviour Portal.DeviceCA
 
-  # The order of the P-256 group.
-  @order 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+  @prefix "local:"
 
   @impl true
-  def create_key(account_id) do
-    {public_key, _private_key} = :crypto.generate_key(:ecdh, :prime256v1, private_key(account_id))
-    {:ok, %{key_id: "local:" <> account_id, public_key: public_key}}
+  def create_key(_account_id) do
+    {:RSAPrivateKey, _version, modulus, exponent, _d, _p, _q, _e1, _e2, _c, _other} =
+      private_key = :public_key.generate_key({:rsa, 2048, 65_537})
+
+    der = :public_key.der_encode(:RSAPrivateKey, private_key)
+    {secret, sign_secret} = secrets()
+    key_id = @prefix <> Plug.Crypto.MessageEncryptor.encrypt(der, secret, sign_secret)
+
+    {:ok, %{key_id: key_id, public_key: {:RSAPublicKey, modulus, exponent}}}
   end
 
   @impl true
   def delete_key(_account_id), do: :ok
 
   @impl true
-  def sign("local:" <> account_id, digest) do
-    der = :crypto.sign(:ecdsa, :sha256, {:digest, digest}, [private_key(account_id), :prime256v1])
-    {:"ECDSA-Sig-Value", r, s} = :public_key.der_decode(:"ECDSA-Sig-Value", der)
-    {:ok, <<r::256, s::256>>}
+  def sign(@prefix <> encrypted, digest) do
+    {secret, sign_secret} = secrets()
+
+    case Plug.Crypto.MessageEncryptor.decrypt(encrypted, secret, sign_secret) do
+      {:ok, der} ->
+        private_key = :public_key.der_decode(:RSAPrivateKey, der)
+        {:ok, :public_key.sign({:digest, digest}, :sha256, private_key)}
+
+      :error ->
+        {:error, :unknown_key}
+    end
   end
 
   def sign(_key_id, _digest), do: {:error, :unknown_key}
 
-  defp private_key(account_id, counter \\ 0) do
+  defp secrets do
     key_base = Portal.Config.fetch_env!(:portal, Portal.Tokens) |> Keyword.fetch!(:key_base)
-    candidate = :crypto.mac(:hmac, :sha256, key_base, "device-ca:#{account_id}:#{counter}")
 
-    case :binary.decode_unsigned(candidate) do
-      scalar when scalar > 0 and scalar < @order -> candidate
-      _out_of_range -> private_key(account_id, counter + 1)
-    end
+    {Plug.Crypto.KeyGenerator.generate(key_base, "device-ca encryption"),
+     Plug.Crypto.KeyGenerator.generate(key_base, "device-ca signing")}
   end
 end

@@ -9,14 +9,14 @@ defmodule Portal.DeviceCATest do
       account = account_fixture()
 
       assert {:ok, %DeviceCertificateAuthority{} = ca} = DeviceCA.ensure(account.id)
-      assert ca.key_id == "local:" <> account.id
+      assert "local:" <> _encrypted = ca.key_id
       assert :public_key.pkix_is_self_signed(ca.certificate)
 
-      {:ok, public_key} = DeviceCA.Local.create_key(account.id)
-      ec_params = {:namedCurve, {1, 2, 840, 10045, 3, 1, 7}}
-      assert :public_key.pkix_verify(ca.certificate, {{:ECPoint, public_key.public_key}, ec_params})
-
       certificate = :public_key.pkix_decode_cert(ca.certificate, :otp)
+      {:ok, {:RSAPublicKey, modulus, _exponent} = public_key} = Portal.Crypto.X509.subject_public_key(certificate)
+      assert byte_size(:binary.encode_unsigned(modulus)) == 256
+      assert :public_key.pkix_verify(ca.certificate, public_key)
+
       assert Portal.Crypto.X509.ca_certificate?(certificate)
       assert Portal.Crypto.X509.key_cert_sign_allowed?(certificate)
       assert Portal.Crypto.X509.subject_common_name(certificate) == "Firezone device CA " <> account.id
@@ -35,11 +35,16 @@ defmodule Portal.DeviceCATest do
   end
 
   describe "Local" do
-    test "derives a different key for each account" do
-      {:ok, a} = DeviceCA.Local.create_key(Ecto.UUID.generate())
-      {:ok, b} = DeviceCA.Local.create_key(Ecto.UUID.generate())
+    test "signs with the key it created" do
+      {:ok, %{key_id: key_id, public_key: public_key}} = DeviceCA.Local.create_key(Ecto.UUID.generate())
+      digest = :crypto.hash(:sha256, "message")
 
-      assert a.public_key != b.public_key
+      {:ok, signature} = DeviceCA.Local.sign(key_id, digest)
+      assert :public_key.verify({:digest, digest}, :sha256, signature, public_key)
+    end
+
+    test "refuses a key id that was not encrypted with this key base" do
+      assert DeviceCA.Local.sign("local:tampered", :crypto.hash(:sha256, "")) == {:error, :unknown_key}
     end
 
     test "signs only with its own keys" do

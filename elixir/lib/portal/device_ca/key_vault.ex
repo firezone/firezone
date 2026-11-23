@@ -1,6 +1,6 @@
 defmodule Portal.DeviceCA.KeyVault do
   @moduledoc """
-  Keeps each account's CA key in Azure Key Vault as a non-exportable, software-protected P-256
+  Keeps each account's CA key in Azure Key Vault as a non-exportable, software-protected RSA-2048
   key named `device-ca-<account id>`. The portal signs with its managed identity and never sees
   the key. An account that needs a FIPS 140 Level 3 key gets a new CA from an HSM key later.
   """
@@ -14,16 +14,16 @@ defmodule Portal.DeviceCA.KeyVault do
   @impl true
   def create_key(account_id) do
     body = %{
-      kty: "EC",
-      crv: "P-256",
+      kty: "RSA",
+      key_size: 2048,
       key_ops: ["sign", "verify"],
       attributes: %{exportable: false},
       tags: %{account_id: account_id}
     }
 
     case request(:post, vault_url() <> "/keys/device-ca-#{account_id}/create", body) do
-      {:ok, %{status: 200, body: %{"key" => %{"kid" => key_id, "x" => x, "y" => y}}}} ->
-        {:ok, %{key_id: key_id, public_key: <<4>> <> decode!(x) <> decode!(y)}}
+      {:ok, %{status: 200, body: %{"key" => %{"kid" => key_id, "n" => n, "e" => e}}}} ->
+        {:ok, %{key_id: key_id, public_key: {:RSAPublicKey, unsigned!(n), unsigned!(e)}}}
 
       other ->
         failed(:create_key, account_id, other)
@@ -41,7 +41,7 @@ defmodule Portal.DeviceCA.KeyVault do
   @impl true
   def sign(key_id, digest) do
     with :ok <- in_vault(key_id) do
-      case request(:post, key_id <> "/sign", %{alg: "ES256", value: Base.url_encode64(digest, padding: false)}) do
+      case request(:post, key_id <> "/sign", %{alg: "RS256", value: Base.url_encode64(digest, padding: false)}) do
         {:ok, %{status: 200, body: %{"value" => value}}} -> {:ok, decode!(value)}
         other -> failed(:sign, key_id, other)
       end
@@ -86,6 +86,7 @@ defmodule Portal.DeviceCA.KeyVault do
   end
 
   defp decode!(value), do: Base.url_decode64!(value, padding: false)
+  defp unsigned!(value), do: value |> decode!() |> :binary.decode_unsigned()
 
   defp failed(operation, key, result) do
     Logger.error("Device CA Key Vault request failed",
