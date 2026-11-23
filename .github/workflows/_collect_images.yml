@@ -57,6 +57,14 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
+      otel_ingest_proxy_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/debug/otel-ingest-proxy"
+      otel_ingest_proxy_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
 
 jobs:
   collect-images:
@@ -73,6 +81,8 @@ jobs:
       GATEWAY_TAG: ${{ inputs.gateway_tag }}
       CLIENT_IMAGE: ${{ inputs.client_image }}
       CLIENT_TAG: ${{ inputs.client_tag }}
+      OTEL_INGEST_PROXY_IMAGE: ${{ inputs.otel_ingest_proxy_image }}
+      OTEL_INGEST_PROXY_TAG: ${{ inputs.otel_ingest_proxy_tag }}
       ELIXIR_IMAGE: ${{ inputs.elixir_image }}
       ELIXIR_TAG: ${{ inputs.elixir_tag }}
     steps:
