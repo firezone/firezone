@@ -2234,9 +2234,7 @@ defmodule PortalWeb.SitesTest do
   end
 
   defp device_v1_client_fixture(account, actor, name) do
-    client = client_fixture(account: account, actor: actor, name: name)
-    Repo.update_all(from(d in Device, where: d.id == ^client.id), set: [type: nil])
-    %{client | type: nil}
+    typeless_device_fixture(account: account, actor: actor, name: name)
   end
 
   defp put_in_site!(site, device) do

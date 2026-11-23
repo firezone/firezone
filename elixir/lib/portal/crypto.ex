@@ -6,38 +6,31 @@ defmodule Portal.Crypto do
   @user_friendly_byte_limit div(256, @user_friendly_alphabet_size) * @user_friendly_alphabet_size
 
   @doc """
-  Generates a WireGuard pre-shared key for a client-gateway or client-to-client pair.
-  A distinct salt prefix is used for each pair type to avoid key reuse.
+  Generates a WireGuard pre-shared key for an initiator and a receiver. `:site` is a receiver that
+  serves the resource, and `:pool` is a receiver in a device pool. Each role has its own salt prefix
+  to avoid key reuse.
   """
   def psk(
-        %Device{type: :client, id: client_a_id, psk_base: client_a_psk_base},
-        client_a_pubkey,
-        %Device{type: :client, id: client_b_id, psk_base: client_b_psk_base},
-        client_b_pubkey
+        role,
+        %Device{id: initiator_id, psk_base: initiator_psk_base},
+        initiator_pubkey,
+        %Device{id: receiver_id, psk_base: receiver_psk_base},
+        receiver_pubkey
       )
-      when not (is_nil(client_a_id) or is_nil(client_a_pubkey) or is_nil(client_a_psk_base) or
-                  is_nil(client_b_id) or is_nil(client_b_pubkey) or is_nil(client_b_psk_base)) do
-    salt =
-      "WG_PSK_CC|CA_ID:#{client_a_id}|CB_ID:#{client_b_id}|CA_PK:#{client_a_pubkey}|CB_PK:#{client_b_pubkey}"
-
-    derive_psk(client_a_psk_base <> client_b_psk_base, salt)
-  end
-
-  def psk(
-        %Device{type: :client, id: client_id, psk_base: client_psk_base},
-        client_pubkey,
-        %Device{type: :gateway, id: gateway_id, psk_base: gateway_psk_base},
-        gateway_pubkey
-      )
-      when not (is_nil(client_id) or is_nil(client_pubkey) or is_nil(client_psk_base) or
-                  is_nil(gateway_id) or is_nil(gateway_pubkey) or is_nil(gateway_psk_base)) do
-    salt =
-      "WG_PSK|C_ID:#{client_id}|G_ID:#{gateway_id}|C_PK:#{client_pubkey}|G_PK:#{gateway_pubkey}"
-
-    derive_psk(client_psk_base <> gateway_psk_base, salt)
+      when role in [:site, :pool] and
+             not (is_nil(initiator_id) or is_nil(initiator_pubkey) or is_nil(initiator_psk_base) or
+                    is_nil(receiver_id) or is_nil(receiver_pubkey) or is_nil(receiver_psk_base)) do
+    salt = salt(role, initiator_id, receiver_id, initiator_pubkey, receiver_pubkey)
+    derive_psk(initiator_psk_base <> receiver_psk_base, salt)
   end
 
   # PBKDF2 is overkill since inputs are high entropy, but still better than maintaining our own HKDF implementation.
+  defp salt(:pool, initiator_id, receiver_id, initiator_pubkey, receiver_pubkey),
+    do: "WG_PSK_CC|CA_ID:#{initiator_id}|CB_ID:#{receiver_id}|CA_PK:#{initiator_pubkey}|CB_PK:#{receiver_pubkey}"
+
+  defp salt(:site, initiator_id, receiver_id, initiator_pubkey, receiver_pubkey),
+    do: "WG_PSK|C_ID:#{initiator_id}|G_ID:#{receiver_id}|C_PK:#{initiator_pubkey}|G_PK:#{receiver_pubkey}"
+
   defp derive_psk(secret_bytes, salt) do
     :crypto.pbkdf2_hmac(:sha256, secret_bytes, salt, 1, 32)
     |> Base.encode64()

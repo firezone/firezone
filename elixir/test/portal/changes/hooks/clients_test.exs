@@ -107,6 +107,18 @@ defmodule Portal.Changes.Hooks.ClientsTest do
       refute Repo.get_by(Portal.PolicyAuthorization, id: policy_authorization.id)
     end
 
+    test "update unverifies a device without a type and deletes its policy authorizations" do
+      account = account_fixture()
+      device = typeless_device_fixture(account: account, verified_at: DateTime.utc_now())
+      old_data = %{"id" => device.id, "type" => nil, "verified_at" => "2023-10-01T00:00:00Z", "account_id" => account.id}
+      data = Map.put(old_data, "verified_at", nil)
+
+      policy_authorization = policy_authorization_fixture(client: device, account: account)
+
+      assert :ok == on_update(0, old_data, data)
+      refute Repo.get_by(Portal.PolicyAuthorization, id: policy_authorization.id)
+    end
+
     test "update unverifies client and keeps the authorizations toward it as a pool member" do
       account = account_fixture()
       client = client_fixture(account: account, verified_at: DateTime.utc_now())

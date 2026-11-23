@@ -1191,7 +1191,7 @@ defmodule PortalWeb.GettingStarted do
     subject.account.id
     |> Presence.Devices.Account.list()
     |> Enum.flat_map(fn
-      {id, %{metas: [%{type: :client, actor_id: ^actor_id} = meta | _]}} ->
+      {id, %{metas: [%{type: type, actor_id: ^actor_id} = meta | _]}} when type != :gateway ->
         [{Map.get(meta, :online_at, 0), id}]
 
       _other ->
@@ -1335,7 +1335,7 @@ defmodule PortalWeb.GettingStarted do
     def list_devices(ids, subject) do
       devices =
         from(d in Device, as: :devices)
-        |> where([devices: d], d.type == :client)
+        |> where([devices: d], d.type == :client or is_nil(d.type))
         |> where(
           [devices: d],
           exists(

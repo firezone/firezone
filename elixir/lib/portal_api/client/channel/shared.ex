@@ -1899,13 +1899,16 @@ Relays.render(relays, relay_owner(socket)),
       )
 
     %{
-      preshared_key: Portal.Crypto.psk(initiator, initiator.public_key, receiver, receiver_public_key),
+      preshared_key: Portal.Crypto.psk(psk_role(resource), initiator, initiator.public_key, receiver, receiver_public_key),
       ice_credentials:
         generate_ice_credentials(initiator.public_key, initiator, receiver, receiver_public_key),
       initiator_token: initiator_token,
       responder_token: responder_token
     }
   end
+
+  defp psk_role(%{type: :device_pool}), do: :pool
+  defp psk_role(_resource), do: :site
 
   # ICE credentials must stay the same for all connections between an initiator and a receiver as long
   # as they do not lose their state, so we can leverage their public keys, which are reset on each
@@ -2515,7 +2518,7 @@ Relays.render(relays, relay_owner(socket)),
          policy_authorization_id,
          policy_id,
          flow_log_uploads_enabled,
-         %Device{type: :client} = initiator_client,
+         %Device{} = initiator_client,
          responder_device_id,
          expires_at
        ) do

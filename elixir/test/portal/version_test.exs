@@ -349,6 +349,18 @@ defmodule Portal.VersionTest do
     end
   end
 
+  describe "devices without a type" do
+    test "support every gated feature, whatever their user agent" do
+      device = %Portal.Device{type: nil, last_seen_version: "1.7.0", last_seen_user_agent: "Linux/6.8 firezone/1.7.0"}
+
+      assert client_supports_sites_payload?(device)
+      refute resource_cannot_change_sites_on_client?(device)
+      assert client_supports_device_pools?(device)
+      assert supports_device_access?(device)
+      assert supports_public_key_changed?(device)
+    end
+  end
+
   describe "legacy_proto_range/2" do
     test "a client speaks its own minor" do
       assert legacy_proto_range(:client, "1.5.3") == %{min: 5, max: 5}

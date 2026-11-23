@@ -25,12 +25,16 @@ defmodule Portal.Version do
 
   def fetch_version(_user_agent), do: {:error, :invalid_user_agent}
 
+  # A device without a type is from a 1.7 or later binary, which supports every feature below.
+
   @site_payload_min_versions %{
     apple: "1.5.11",
     headless: "1.5.6",
     android: "1.5.8",
     gui: "1.5.10"
   }
+
+  def client_supports_sites_payload?(%Device{type: nil}), do: true
 
   def client_supports_sites_payload?(%Device{
         type: :client,
@@ -51,6 +55,8 @@ defmodule Portal.Version do
 
   # TODO: Remove once all clients are on versions that support resources changing sites.
   # Connlib didn't support resources changing sites until https://github.com/firezone/firezone/pull/10604
+  def resource_cannot_change_sites_on_client?(%Device{type: nil}), do: false
+
   def resource_cannot_change_sites_on_client?(%Device{
         type: :client,
         last_seen_version: nil
@@ -71,6 +77,8 @@ defmodule Portal.Version do
   #   gui      >= 1.5.13 (windows / linux gui)
   #   headless >= 1.5.9  (windows / linux headless)
   #   android  >= 1.5.11
+  def client_supports_device_pools?(%Device{type: nil}), do: true
+
   def client_supports_device_pools?(%Device{type: :client, last_seen_version: nil}),
     do: false
 
@@ -102,6 +110,8 @@ defmodule Portal.Version do
   #   gui      >= 1.5.11 (windows / linux gui)
   #   headless >= 1.5.7  (windows / linux headless)
   #   android  >= 1.5.9
+  def supports_device_access?(%Device{type: nil}), do: true
+
   def supports_device_access?(%Device{type: :client} = client),
     do: supports_device_access?(client.last_seen_user_agent, client.last_seen_version)
 
@@ -124,6 +134,7 @@ defmodule Portal.Version do
   #   headless >= 1.5.16 (windows / linux headless)
   #   android  >= 1.5.18
   #   gateway  >= 1.6.5
+  def supports_public_key_changed?(%Device{type: nil}), do: true
   def supports_public_key_changed?(%Device{last_seen_version: nil}), do: false
 
   def supports_public_key_changed?(%Device{type: :gateway, last_seen_version: version}),

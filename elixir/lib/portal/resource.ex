@@ -521,8 +521,9 @@ defmodule Portal.Resource do
 
   def adapt_resource_for_version(
         %{type: :device_pool} = resource,
-        %Portal.Device{type: :client} = client
-      ) do
+        %Portal.Device{type: type} = client
+      )
+      when type != :gateway do
     if Portal.Version.client_supports_device_pools?(client) do
       adapt_resource_for_version(resource, client.last_seen_version)
     else
@@ -530,7 +531,7 @@ defmodule Portal.Resource do
     end
   end
 
-  def adapt_resource_for_version(resource, %Portal.Device{type: :client} = client) do
+  def adapt_resource_for_version(resource, %Portal.Device{type: type} = client) when type != :gateway do
     adapt_resource_for_version(resource, client.last_seen_version)
   end
 

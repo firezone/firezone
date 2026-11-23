@@ -286,7 +286,7 @@ defmodule PortalWeb.Devices.Components do
           required
         />
       </div>
-      <div :if={@device_edit_form.data.type == :client}>
+      <div :if={@device_edit_form.data.type != :gateway}>
         <label
           for={@device_edit_form[:slug].id}
           class="block text-xs font-medium text-body mb-1.5"

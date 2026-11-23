@@ -209,6 +209,15 @@ defmodule Portal.DeviceFixtures do
   end
 
   @doc """
+  Generate a device from a 1.7 or later binary, which has no type.
+  """
+  def typeless_device_fixture(attrs \\ %{}) do
+    device = client_fixture(attrs)
+    Portal.Repo.update_all(from(d in Portal.Device, where: d.id == ^device.id), set: [type: nil])
+    %{device | type: nil}
+  end
+
+  @doc """
   Verify a device (sets verified_at timestamp).
   """
   def verify_device(device) do
