@@ -16,7 +16,7 @@ defmodule Portal.Repo.Migrations.CreateMetricsDiagnostics do
           null: false,
           primary_key: true
 
-      add :expires_at, :utc_datetime_usec, null: false
+      add :expires_at, :timestamptz, null: false
 
       timestamps()
     end
