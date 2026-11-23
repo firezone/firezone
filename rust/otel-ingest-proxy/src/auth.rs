@@ -24,6 +24,8 @@ pub struct Claims {
     pub device_id: String,
     pub device_type: DeviceType,
     pub device_version: Option<String>,
+    /// Set while the device's actor has diagnostics enabled, to tell its devices apart.
+    pub actor_id: Option<String>,
     /// The patterns of the metric names the device may export.
     pub metrics: Vec<String>,
     pub exp: u64,
