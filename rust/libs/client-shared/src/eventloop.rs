@@ -78,6 +78,7 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
+    authorization_failures: opentelemetry::metrics::Counter<u64>,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -226,6 +227,7 @@ impl Eventloop {
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
+            authorization_failures: otel_instruments::authorization_failures(),
             portal_event_rx,
             portal_cmd_tx,
             resource_list_sender,
@@ -752,6 +754,8 @@ impl Eventloop {
                 ..
             }) => {
                 tracing::debug!("Failed to create authorization: {reason:?}");
+                self.authorization_failures
+                    .add(1, &[otel_attributes::error_type(format!("{reason:?}"))]);
 
                 match reason {
                     FailReason::Offline => {
@@ -858,6 +862,8 @@ impl Eventloop {
                 ipv6,
                 reason,
             }) => {
+                self.authorization_failures
+                    .add(1, &[otel_attributes::error_type(format!("{reason:?}"))]);
                 tunnel
                     .state_mut()
                     .handle_client_device_access_denied(ipv4, ipv6, reason);

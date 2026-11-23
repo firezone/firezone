@@ -164,8 +164,7 @@ impl PendingAuthorizations {
             let position = self.next_position;
             self.next_position += 1;
 
-            // Insert with a negative time to ensure we instantly send a request.
-            PendingAuthorization::new(now - Duration::from_secs(10), position)
+            PendingAuthorization::new(now, position)
         });
 
         if let AuthorizationRequest::Device { pools, .. } = &request {
@@ -190,6 +189,7 @@ impl PendingAuthorizations {
 }
 
 pub struct PendingAuthorization {
+    first_seen_at: Instant,
     last_request_sent_at: Instant,
     position: u64,
     device_pools: HashSet<ResourceId, FastRandomState>,
@@ -207,7 +207,9 @@ impl PendingAuthorization {
 
     fn new(now: Instant, position: u64) -> Self {
         Self {
-            last_request_sent_at: now,
+            first_seen_at: now,
+            // Backdated to ensure we instantly send a request.
+            last_request_sent_at: now - Duration::from_secs(10),
             position,
             device_pools: HashSet::default(),
             packets: UniquePacketBuffer::with_capacity_power_of_2(
@@ -226,6 +228,10 @@ impl PendingAuthorization {
             }
             Trigger::NoAuthorization => {}
         }
+    }
+
+    pub fn first_seen_at(&self) -> Instant {
+        self.first_seen_at
     }
 
     pub fn into_buffers(self) -> (UniquePacketBuffer, AllocRingBuffer<DnsQueryForSite>) {

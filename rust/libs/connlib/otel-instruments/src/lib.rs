@@ -118,6 +118,29 @@ pub fn portal_connection_hiccups() -> Counter<u64> {
         .build()
 }
 
+/// Duration from the first packet that needs an authorization until the portal grants it.
+pub fn authorization_duration() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("connlib.authorization.duration")
+        .with_description(
+            "Duration from the first packet that needs an authorization until the portal grants it.",
+        )
+        .with_unit("s")
+        .with_boundaries(vec![
+            0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, 30.0,
+        ])
+        .build()
+}
+
+/// Number of authorizations the portal refused to create, by reason.
+pub fn authorization_failures() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("connlib.authorization.failed")
+        .with_description("Number of authorizations the portal refused to create.")
+        .with_unit("{authorization}")
+        .build()
+}
+
 /// Number of connections by the network path in use.
 pub fn connection_count() -> Gauge<u64> {
     connlib_meter()
