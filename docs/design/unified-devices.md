@@ -695,7 +695,7 @@ without one on the same terms as the legacy sockets.
 - I.1 Device CA per account, with the Key Vault and local adapters (#16722).
   Infra first: a Key Vault Standard per region and the "Key Vault Crypto
   Officer" role for the portal identity.
-- I.2 Backfill: queue the CA job for every existing account.
+- I.2 Backfill: queue the CA job for every existing account, disabled or not, so an account that is enabled again already has its CA.
 - I.3 Turn off `/device/v1` until the unified binary ships.
 - I.4 Device key columns: key hash and key storage on `devices`.
 - I.5 `POST /device/enroll` with the claim rules, and renewal on the mTLS
