@@ -25,6 +25,12 @@ const TOKEN_QUERY: [(&str, &str); 2] = [
 ];
 const MAX_TOKEN_RESPONSE_BYTES: usize = 64 * 1024;
 
+/// Debug builds also accept plaintext HTTP, e.g. for a local collector, and send it no token.
+#[cfg(debug_assertions)]
+const ENDPOINT_SCHEMES: &[&str] = &["https", "http"];
+#[cfg(not(debug_assertions))]
+const ENDPOINT_SCHEMES: &[&str] = &["https"];
+
 pub fn with_exporter(
     builder: MeterProviderBuilder,
     endpoint: &Url,
@@ -51,7 +57,7 @@ pub fn with_exporter(
 }
 
 fn check_endpoint(endpoint: &Url) -> Result<()> {
-    if endpoint.scheme() != "https"
+    if !ENDPOINT_SCHEMES.contains(&endpoint.scheme())
         || !endpoint.username().is_empty()
         || endpoint.password().is_some()
         || endpoint.fragment().is_some()
@@ -98,8 +104,10 @@ impl HttpClient for ExportHttpClient {
             return Err("OTLP metrics export destination changed".into());
         }
 
-        let authorization = self.authorization()?;
-        request.headers_mut().insert(AUTHORIZATION, authorization);
+        if self.endpoint.scheme() == "https" {
+            let authorization = self.authorization()?;
+            request.headers_mut().insert(AUTHORIZATION, authorization);
+        }
 
         let response = self.client.send_bytes(request).await?;
 

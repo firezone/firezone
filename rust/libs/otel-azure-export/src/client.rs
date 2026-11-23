@@ -38,11 +38,15 @@ impl Client {
         let body = request.encode_to_vec();
         drop(request);
 
-        let response = self
+        let mut request = self
             .client
             .post(self.endpoint.clone())
-            .header(CONTENT_TYPE, "application/x-protobuf")
-            .header(AUTHORIZATION, self.authorization().await?)
+            .header(CONTENT_TYPE, "application/x-protobuf");
+        if self.endpoint.scheme() == "https" {
+            request = request.header(AUTHORIZATION, self.authorization().await?);
+        }
+
+        let response = request
             .body(body)
             .send()
             .await

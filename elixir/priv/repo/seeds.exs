@@ -2677,6 +2677,10 @@ defmodule Portal.Repo.Seeds do
       |> Account.changeset()
       |> Repo.insert!()
 
+    if System.get_env("SEED_ACCOUNT_METRICS") == "true" do
+      Repo.insert!(%Portal.AccountMetrics{account_id: account.id, patterns: ["*"]})
+    end
+
     other_account =
       %Account{}
       |> cast(

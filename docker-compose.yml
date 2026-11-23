@@ -40,6 +40,10 @@ services:
       RELEASE_HOSTNAME: "portal.cluster.local"
       RELEASE_NAME: "portal"
       LOG_LEVEL: "debug"
+      OTLP_METRICS_INGEST_URL: http://203.0.113.20:443/v1/metrics
+      OTLP_METRICS_EXPORT_INTERVAL_SECS: 10
+      # Dev-only key pair: `otel-ingest-proxy` has the public key.
+      OTEL_INGEST_JWT_PRIVATE_KEY: "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUh2Rm1mTTFVWWtZZ0IrQzR4Q2FnQVlNUXh2Yk9JNHJuRUJsYThmQ1F4VUEKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo="
     user: root # Needed to run `ip route` commands
     cap_add:
       - NET_ADMIN # Needed to run `tc` commands to add simulated delay
@@ -113,6 +117,9 @@ services:
       # Toggles the account-wide ICE-less feature flag in `mix ecto.seed`, so
       # integration tests can run with or without ICE-less. Defaults to off.
       FEATURE_ICELESS_ENABLED: ${FEATURE_ICELESS_ENABLED:-false}
+      # Lets `mix ecto.seed` allow the account's devices to export all metrics,
+      # which they then do to `otel-ingest-proxy`. Defaults to off.
+      SEED_ACCOUNT_METRICS: ${SEED_ACCOUNT_METRICS:-false}
     depends_on:
       postgres:
         condition: "service_healthy"
@@ -447,13 +454,60 @@ services:
       relay-2-router:
         condition: "service_healthy"
 
+  otel-ingest-proxy:
+    build:
+      target: ${DOCKER_BUILD_TARGET:-debug}
+      context: rust
+      dockerfile: Dockerfile
+      args:
+        PACKAGE: firezone-otel-ingest-proxy
+    image: ${OTEL_INGEST_PROXY_IMAGE:-ghcr.io/firezone/debug/otel-ingest-proxy}:${OTEL_INGEST_PROXY_TAG:-main}
+    environment:
+      RUST_LOG: ${RUST_LOG:-debug}
+      JWT_PUBLIC_KEY: "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUNvd0JRWURLMlZ3QXlFQVIzUEVmQlNnVlY3RzhheGsySXBxalg3dXMwcHlMTUIrOW5sZlhnekdYT3c9Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo="
+      OTLP_METRICS_ENDPOINT: http://otel:4318/v1/metrics
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
+      <<: *health-check
+    depends_on:
+      - otel
+    networks:
+      app-internal:
+      internet:
+        ipv4_address: 203.0.113.20
+        ipv6_address: 203:0:113::20
+
   otel:
     image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otelcol/config.yaml"]
+    configs:
+      - source: otel-collector
+        target: /etc/otelcol/config.yaml
     ports:
       - 127.0.0.1:4317:4317 # OTLP gRPC receiver
       - 127.0.0.1:4318:4318 # OTLP http receiver
     networks:
       app-internal:
+
+configs:
+  # Logs every data point it receives.
+  otel-collector:
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+      exporters:
+        debug:
+          verbosity: detailed
+      service:
+        pipelines:
+          metrics:
+            receivers: [otlp]
+            exporters: [debug]
 
 networks:
   # Internet network - where all public IPs live

@@ -28,6 +28,10 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
+    outputs:
+      otel_ingest_proxy_image:
+        description: "The otel-ingest-proxy image that was built"
+        value: ${{ jobs.image.outputs.image }}
 
 permissions:
   contents: read
@@ -49,6 +53,25 @@ jobs:
       profile: ${{ (inputs.flavour == 'release' || inputs.flavour == 'perf') && 'release' || 'debug' }}
       stage: ${{ inputs.flavour == 'release' && 'release' || 'debug' }}
       arches: '["x86_64"]'
+
+  # Only docker-compose runs the proxy in a container.
+  image:
+    needs: binary
+    if: ${{ inputs.flavour == 'debug' }}
+    uses: ./.github/workflows/_rust-docker-image.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      package: firezone-otel-ingest-proxy
+      image_name: otel-ingest-proxy
+      image_prefix: debug
+      sha: ${{ inputs.sha }}
+      stage: debug
+      binary_artifact: ${{ needs.binary.outputs.artifact }}
+      arches: ${{ needs.binary.outputs.arches }}
 
   upload-binary:
     needs: binary

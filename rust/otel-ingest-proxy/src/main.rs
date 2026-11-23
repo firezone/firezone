@@ -21,11 +21,13 @@ const RATE_LIMIT_EVICTION_INTERVAL: Duration = Duration::from_secs(60);
 #[derive(Parser, Debug)]
 struct Args {
     /// Path to the PEM-encoded TLS certificate chain.
-    #[arg(long, env)]
-    tls_cert_path: PathBuf,
+    ///
+    /// Debug builds serve plaintext HTTP if neither this nor the key is set.
+    #[arg(long, env, required = cfg!(not(debug_assertions)), requires = "tls_key_path")]
+    tls_cert_path: Option<PathBuf>,
     /// Path to the PEM-encoded TLS private key.
-    #[arg(long, env)]
-    tls_key_path: PathBuf,
+    #[arg(long, env, required = cfg!(not(debug_assertions)), requires = "tls_cert_path")]
+    tls_key_path: Option<PathBuf>,
 
     /// Base64-encoded PEM of the portal's Ed25519 public key, used to verify device tokens.
     #[arg(long = "jwt-public-key", env = "JWT_PUBLIC_KEY", value_name = "BASE64_PEM", value_parser = parse_verifier)]
@@ -82,12 +84,18 @@ async fn try_main(args: Args) -> Result<()> {
 
     setup_meter_provider(&args.otlp_metrics_endpoint)?;
 
-    let cert_resolver = CertResolver::load(args.tls_cert_path, args.tls_key_path)?;
-    let tls = cert_resolver.acceptor();
+    let cert_resolver = args
+        .tls_cert_path
+        .zip(args.tls_key_path)
+        .map(|(cert_path, key_path)| CertResolver::load(cert_path, key_path))
+        .transpose()?;
+    let tls = cert_resolver.as_ref().map(CertResolver::acceptor);
 
     let ingest = Arc::new(Ingest::new(args.verifier, &args.otlp_metrics_endpoint)?);
 
-    tokio::spawn(reload_certificate(cert_resolver));
+    if let Some(cert_resolver) = cert_resolver {
+        tokio::spawn(reload_certificate(cert_resolver));
+    }
     tokio::spawn(evict_idle_rate_limits(ingest.clone()));
     tokio::spawn(http_health_check::serve_with_version(
         args.health_check.health_check_addr,
@@ -99,7 +107,7 @@ async fn try_main(args: Args) -> Result<()> {
         .await
         .with_context(|| format!("Failed to listen on {LISTEN_ADDR}"))?;
 
-    tracing::info!(addr = %LISTEN_ADDR, "Listening for OTLP metrics");
+    tracing::info!(addr = %LISTEN_ADDR, tls = tls.is_some(), "Listening for OTLP metrics");
 
     serve(listener, tls, router(ingest)).await?;
 

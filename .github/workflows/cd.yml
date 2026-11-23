@@ -79,6 +79,17 @@ jobs:
     with:
       flavour: debug
 
+  otel-ingest-proxy-test-images:
+    uses: ./.github/workflows/_otel-ingest-proxy.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      flavour: debug
+
   # Build data-plane prod images for staging and production environments.
   headless-client-prod-images:
     uses: ./.github/workflows/_headless-client.yml
@@ -119,6 +130,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
       security-events: write # trivy SARIF upload from setup-mise
     with:
       flavour: release

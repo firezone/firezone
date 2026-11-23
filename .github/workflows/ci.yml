@@ -465,6 +465,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
       security-events: write # trivy SARIF upload from setup-mise
     with:
       flavour: debug
@@ -480,7 +481,7 @@ jobs:
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
-    needs: [control-plane, headless-client, gateway, relay]
+    needs: [control-plane, headless-client, gateway, relay, otel-ingest-proxy]
     secrets: inherit
     permissions:
       contents: read
@@ -489,9 +490,11 @@ jobs:
     with:
       id: integration
       api_fuzz: true
+      metrics_export: true
       gateway_image: ${{ needs.gateway.outputs.gateway_image }}
       client_image: ${{ needs.headless-client.outputs.client_image }}
       relay_image: ${{ needs.relay.outputs.relay_image }}
+      otel_ingest_proxy_image: ${{ needs.otel-ingest-proxy.outputs.otel_ingest_proxy_image }}
 
   compatibility-tests:
     strategy:
@@ -517,7 +520,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     name: compatibility-tests-client(${{ matrix.client.ci-name }})-gateway(${{ matrix.gateway.ci-name }})
     uses: ./.github/workflows/_integration_tests.yml
-    needs: [control-plane, headless-client, gateway, relay]
+    needs: [control-plane, headless-client, gateway, relay, otel-ingest-proxy]
     secrets: inherit
     permissions:
       contents: read

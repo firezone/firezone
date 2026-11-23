@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::pin::pin;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_rustls::TlsAcceptor;
@@ -107,8 +108,9 @@ fn load_certified_key(cert_path: &Path, key_path: &Path) -> Result<CertifiedKey>
     Ok(certified_key)
 }
 
-/// Serves `router` over HTTPS until SIGINT or SIGTERM, then waits for open connections to finish.
-pub async fn serve(listener: TcpListener, tls: TlsAcceptor, router: Router) -> Result<()> {
+/// Serves `router` over HTTPS, or plaintext HTTP without `tls`, until SIGINT or SIGTERM, then
+/// waits for open connections to finish.
+pub async fn serve(listener: TcpListener, tls: Option<TlsAcceptor>, router: Router) -> Result<()> {
     let mut terminate = Terminate::new().context("Failed to listen for signals")?;
     let graceful = GracefulShutdown::new();
     let connections = Arc::new(Semaphore::new(MAX_CONNECTIONS));
@@ -165,10 +167,16 @@ async fn accept(
 async fn serve_connection(
     stream: TcpStream,
     _permit: OwnedSemaphorePermit,
-    tls: TlsAcceptor,
+    tls: Option<TlsAcceptor>,
     router: Router,
     watcher: Watcher,
 ) {
+    let Some(tls) = tls else {
+        serve_http(stream, router, watcher).await;
+
+        return;
+    };
+
     let stream = match tokio::time::timeout(HANDSHAKE_TIMEOUT, tls.accept(stream)).await {
         Ok(Ok(stream)) => stream,
         Ok(Err(e)) => {
@@ -183,6 +191,13 @@ async fn serve_connection(
         }
     };
 
+    serve_http(stream, router, watcher).await;
+}
+
+async fn serve_http<S>(stream: S, router: Router, watcher: Watcher)
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let connection = hyper::server::conn::http1::Builder::new()
         .timer(TokioTimer::new())
         .header_read_timeout(HEADER_READ_TIMEOUT)

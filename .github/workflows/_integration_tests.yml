@@ -47,8 +47,21 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
+      otel_ingest_proxy_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/debug/otel-ingest-proxy"
+      otel_ingest_proxy_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
       api_fuzz:
         description: "Also fuzz the REST API from its OpenAPI spec. Only depends on the portal, so one invocation is enough."
+        required: false
+        type: boolean
+        default: false
+      metrics_export:
+        description: "Also check that the Client and Gateway export metrics through the OTLP ingest proxy. Needs debug builds of both."
         required: false
         type: boolean
         default: false
@@ -68,6 +81,8 @@ jobs:
       gateway_tag: ${{ inputs.gateway_tag }}
       client_image: ${{ inputs.client_image }}
       client_tag: ${{ inputs.client_tag }}
+      otel_ingest_proxy_image: ${{ inputs.otel_ingest_proxy_image }}
+      otel_ingest_proxy_tag: ${{ inputs.otel_ingest_proxy_tag }}
       elixir_image: ${{ inputs.elixir_image }}
       elixir_tag: ${{ inputs.elixir_tag }}
 
@@ -109,6 +124,47 @@ jobs:
         if: "!cancelled()"
         with:
           services: portal postgres
+
+  # Exports from the Client and Gateway through the OTLP ingest proxy to a collector.
+  # Release builds reject the plaintext endpoint, so it does not join the matrix below,
+  # which also runs released images.
+  metrics-export:
+    if: inputs.metrics_export
+    runs-on: ubuntu-24.04
+    needs: collect-images
+    permissions:
+      contents: read
+    env:
+      PORTAL_IMAGE: ${{ inputs.portal_image }}
+      PORTAL_TAG: ${{ inputs.portal_tag }}
+      GATEWAY_IMAGE: ${{ inputs.gateway_image }}
+      GATEWAY_TAG: ${{ inputs.gateway_tag }}
+      CLIENT_IMAGE: ${{ inputs.client_image }}
+      CLIENT_TAG: ${{ inputs.client_tag }}
+      OTEL_INGEST_PROXY_IMAGE: ${{ inputs.otel_ingest_proxy_image }}
+      OTEL_INGEST_PROXY_TAG: ${{ inputs.otel_ingest_proxy_tag }}
+      ELIXIR_IMAGE: ${{ inputs.elixir_image }}
+      ELIXIR_TAG: ${{ inputs.elixir_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-docker
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: images-${{ inputs.id }}
+      - name: Load pre-pulled images
+        run: zstd -dc --long=30 images.tar.zst | docker load
+      - uses: ./.github/actions/setup-scripts
+      - name: Seed database
+        env:
+          SEED_ACCOUNT_METRICS: true
+        run: docker compose run --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
+      - name: Start docker compose in the background
+        run: retry docker compose up -d otel-ingest-proxy gateway primary-client --no-build --pull never
+      - run: ./scripts/tests/metrics-export.sh
+      - uses: ./.github/actions/show-compose-logs
+        if: "!cancelled()"
+        with:
+          services: primary-client gateway otel-ingest-proxy otel portal
 
   integration-tests:
     name: ${{ matrix.test.name || matrix.test.script }}
@@ -270,7 +326,6 @@ jobs:
           retry docker compose up -d httpbin --no-build --pull never
           retry docker compose up -d download.httpbin --no-build --pull never
           retry docker compose up -d portal --no-build --pull never
-          retry docker compose up -d otel --no-build --pull never
           retry docker compose up -d relay-1 --no-build --pull never
           retry docker compose up -d relay-2 --no-build --pull never
           retry docker compose up -d gateway --no-build --pull never
