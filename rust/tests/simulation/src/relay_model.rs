@@ -109,8 +109,12 @@ impl RelayModel {
             .saturating_add(interference.lose_to_client);
 
         match transition {
-            Transition::Roam { stack } => {
-                self.client.stack = *stack;
+            Transition::Roam { ip4, ip6 } => {
+                self.client.stack = match (ip4, ip6) {
+                    (Some(_), Some(_)) => IpStack::Dual,
+                    (Some(_), None) => IpStack::Ipv4Only,
+                    (None, _) => IpStack::Ipv6Only,
+                };
                 self.disrupted = true;
             }
             Transition::RebootRelay => self.disrupted = true,

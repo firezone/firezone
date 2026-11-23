@@ -14,7 +14,6 @@ use std::{
 };
 
 use bufferpool::Bytes;
-use connlib_model::IpStack;
 use ip_packet::Ecn;
 use is::CandidateKind;
 use jiff::Timestamp;
@@ -75,6 +74,8 @@ pub(crate) struct RealRelaySystem {
     allocation_boot: u64,
 
     client: Host<RealAllocation>,
+    /// A device with credentials of its own for the relay, which sends the injected datagrams.
+    foreign: ModelHost,
 
     /// The peers that the client is connected to.
     connections: BTreeSet<SocketAddr>,
@@ -177,14 +178,19 @@ impl RealRelaySystem {
     /// Builds the hosts of `model`.
     pub(crate) fn new(model: &RelayModel, start: Instant) -> Self {
         let clock = Clock::new(start, Timestamp::UNIX_EPOCH);
+        let (relay_ip4, relay_ip6) = model.relay.interfaces(model.relay.stack);
 
         Self {
-            relay: new_relay(&model.relay, 0, clock.now()),
+            relay: host(
+                RealRelay::new(0, relay_ip4, relay_ip6, clock.now()),
+                &model.relay,
+            ),
             clock,
             transmits: BufferedTransmits::default(),
             relay_boots: 0,
             allocation_boot: 0,
-            client: host(RealAllocation::default(), &model.client, model.client.stack),
+            client: host(RealAllocation::default(), &model.client),
+            foreign: model.foreign,
             connections: model.connections.keys().copied().collect(),
             lost_heartbeats: BTreeSet::new(),
             at_peers: Vec::new(),
@@ -198,7 +204,6 @@ impl RealRelaySystem {
     /// Applies a transition, returning the peers whose data got lost on a heartbeat meanwhile.
     pub(crate) fn apply(
         &mut self,
-        model: &RelayModel,
         transition: &Transition,
         interference: Interference,
     ) -> BTreeSet<SocketAddr> {
@@ -211,22 +216,21 @@ impl RealRelaySystem {
                 self.client
                     .drive(&mut self.transmits, now, |a| a.refresh(now));
             }
-            Transition::Roam { stack } => {
-                let (ip4, ip6) = model.client.interfaces(*stack);
+            Transition::Roam { ip4, ip6 } => {
                 let seed = self.client.exec_mut(|c| {
                     c.forget_relay_addresses();
                     c.next_seed()
                 });
 
                 self.client.port += 1;
-                self.client.update_interface(ip4, ip6);
+                self.client.update_interface(*ip4, *ip6);
                 self.client
                     .drive(&mut self.transmits, now, |a| a.restart(now, seed));
                 self.bind_channels();
             }
             Transition::RebootRelay => {
                 self.relay_boots += 1;
-                self.relay = new_relay(&model.relay, self.relay_boots, self.clock.now());
+                self.relay = new_relay(self.relay_boots, &self.relay, self.clock.now());
             }
             Transition::Partition { duration } => {
                 self.client.set_offline();
@@ -242,7 +246,7 @@ impl RealRelaySystem {
             Transition::Disconnect { peer } => {
                 self.connections.remove(peer);
             }
-            Transition::InjectDatagram(injection) => self.inject(model, injection),
+            Transition::InjectDatagram(injection) => self.inject(injection),
         }
 
         mem::take(&mut self.lost_heartbeats)
@@ -415,14 +419,14 @@ impl RealRelaySystem {
         });
     }
 
-    fn inject(&mut self, model: &RelayModel, injection: &Injection) {
+    fn inject(&mut self, injection: &Injection) {
         let now = self.clock.now();
 
         match injection {
             Injection::RelayFromForeign(datagram) => {
-                let foreign = model.foreign.socket_for(any_socket(&self.relay).ip());
+                let foreign = self.foreign.socket_for(any_socket(&self.relay).ip());
 
-                self.inject_to_relay(model, foreign, datagram);
+                self.inject_to_relay(foreign, datagram);
             }
             Injection::RelayFromClient(datagram) => {
                 let client = [
@@ -436,7 +440,7 @@ impl RealRelaySystem {
                     return;
                 };
 
-                self.inject_to_relay(model, client, datagram);
+                self.inject_to_relay(client, datagram);
             }
             Injection::Client(payload) => {
                 let dst = any_socket(&self.client);
@@ -448,7 +452,7 @@ impl RealRelaySystem {
             }
             Injection::RelayAddresses => {
                 for relay_address in self.client.inner().relay_addresses.clone() {
-                    let foreign = model.foreign.socket_for(relay_address.ip());
+                    let foreign = self.foreign.socket_for(relay_address.ip());
                     let data = self.next_data(Direction::ToClient, foreign);
 
                     self.transmits.push(
@@ -462,7 +466,7 @@ impl RealRelaySystem {
     }
 
     /// Sends the relay a datagram from `src`.
-    fn inject_to_relay(&mut self, model: &RelayModel, src: SocketAddr, datagram: &RelayDatagram) {
+    fn inject_to_relay(&mut self, src: SocketAddr, datagram: &RelayDatagram) {
         let now = self.clock.now();
         let Some(dst) = self.relay.sending_socket_for(src.ip()) else {
             return;
@@ -472,7 +476,7 @@ impl RealRelaySystem {
             RelayDatagram::Stun(bytes) => stun::round_trip(bytes),
             RelayDatagram::Request(request) => {
                 let (_, username, password, _) = self.credentials(FOREIGN_DEVICE);
-                let nonce = self.issue_nonce(model.foreign.socket_for(src.ip()));
+                let nonce = self.issue_nonce(self.foreign.socket_for(src.ip()));
 
                 stun::request(*request, Some((&username, &password, nonce)))
             }
@@ -824,15 +828,21 @@ impl ExecMutScope for RealAllocation {
     fn enter(&self) -> Self::Guard {}
 }
 
-fn new_relay(model: &ModelHost, boot: u64, now_utc: SystemTime) -> Host<RealRelay> {
-    let (ip4, ip6) = model.interfaces(model.stack);
+/// A relay that boots with the interfaces, latency and port of `like`.
+fn new_relay<T>(boot: u64, like: &Host<T>, now_utc: SystemTime) -> Host<RealRelay> {
+    let mut relay = Host::new(
+        RealRelay::new(boot, like.ip4, like.ip6, now_utc),
+        like.latency(),
+        like.port,
+    );
+    relay.update_interface(like.ip4, like.ip6);
 
-    host(RealRelay::new(boot, ip4, ip6, now_utc), model, model.stack)
+    relay
 }
 
-/// A host that is reachable from everywhere, with the addresses of `stack`.
-fn host<T>(inner: T, model: &ModelHost, stack: IpStack) -> Host<T> {
-    let (ip4, ip6) = model.interfaces(stack);
+/// A host that is reachable from everywhere, with the addresses of its stack.
+fn host<T>(inner: T, model: &ModelHost) -> Host<T> {
+    let (ip4, ip6) = model.interfaces(model.stack);
     let mut host = Host::new(inner, model.latency, model.port);
     host.update_interface(ip4, ip6);
 

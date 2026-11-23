@@ -57,15 +57,17 @@ impl<'a> RelayGenerator<'a> {
 
     /// Samples a transition, what the network does to it and whether the system settles and
     /// is checked before the next one.
-    pub(crate) fn transition(&mut self) -> (Transition, Interference, bool) {
+    pub(crate) fn transition(&mut self, model: &RelayModel) -> (Transition, Interference, bool) {
         let transition = match self.int(15) {
             0..=5 => Transition::Advance {
                 duration: self.duration(),
             },
             6 => Transition::Refresh,
-            7 => Transition::Roam {
-                stack: self.ip_stack(),
-            },
+            7 => {
+                let (ip4, ip6) = model.client.interfaces(self.ip_stack());
+
+                Transition::Roam { ip4, ip6 }
+            }
             8 => Transition::RebootRelay,
             9 => Transition::Partition {
                 duration: self.duration(),

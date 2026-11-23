@@ -1,6 +1,7 @@
-use std::{net::SocketAddr, time::Duration};
-
-use connlib_model::IpStack;
+use std::{
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    time::Duration,
+};
 
 use crate::stun;
 
@@ -11,8 +12,11 @@ pub(crate) enum Transition {
     Advance { duration: Duration },
     /// The client calls `Allocation::refresh`.
     Refresh,
-    /// The client moves to new sockets and calls `Allocation::restart`.
-    Roam { stack: IpStack },
+    /// The client moves to new sockets on these interfaces and calls `Allocation::restart`.
+    Roam {
+        ip4: Option<Ipv4Addr>,
+        ip6: Option<Ipv6Addr>,
+    },
     /// The relay restarts: it forgets everything and generates a new secret.
     RebootRelay,
     /// No datagram makes it between the client and the relay for a while.

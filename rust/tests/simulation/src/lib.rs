@@ -128,14 +128,14 @@ pub fn run_relay(data: &[u8], now: Instant) {
             break;
         }
 
-        let (transition, interference, settle) = generator.transition();
+        let (transition, interference, settle) = generator.transition(&model);
 
         tracing::debug!(
             "Applying transition {applied}: {transition:?} with {interference:?}, settle: {settle}"
         );
 
         model.apply(&transition, &interference);
-        let lost_heartbeats = system.apply(&model, &transition, interference);
+        let lost_heartbeats = system.apply(&transition, interference);
         check_heartbeats(&model, &lost_heartbeats);
 
         // The next transition meets whatever the client and the relay are in the middle of.
