@@ -579,6 +579,7 @@ defmodule Portal.Resource do
   defp map_resource_address([], acc),
     do: {:cont, acc}
 
+  # sobelow_skip ["DOS.Regex"]
   defp pattern_to_regex(pattern) do
     body =
       ~r/\*\*|\*|\?|[^*?]+/
