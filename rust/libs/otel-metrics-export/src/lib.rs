@@ -16,6 +16,7 @@ use bytes::Bytes;
 use futures::future::{Either, select};
 use http::{StatusCode, header};
 use http_client::{HttpClient, TlsConfig};
+use opentelemetry::KeyValue;
 use secrecy::{ExposeSecret as _, SecretString};
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio::sync::watch;
@@ -111,6 +112,7 @@ async fn run(
     };
     let mut last_export = Instant::now();
     let mut retry_at = Instant::now();
+    let export_duration = otel_instruments::metrics_export_duration();
 
     loop {
         let Some(current) = config.borrow_and_update().clone() else {
@@ -139,9 +141,18 @@ async fn run(
             Ok(None) => continue,
             Err(e) => {
                 tracing::debug!("Failed to export metrics: {e:#}");
+                export_duration.record(
+                    last_export.elapsed().as_secs_f64(),
+                    &otel_attributes::error_layers(&e),
+                );
                 continue;
             }
         };
+
+        export_duration.record(
+            last_export.elapsed().as_secs_f64(),
+            &response_attributes(response.status()),
+        );
 
         match Outcome::from_response(&response) {
             Outcome::Exported => {
@@ -231,6 +242,19 @@ impl Outcome {
             status => Self::Failed(status),
         }
     }
+}
+
+fn response_attributes(status: StatusCode) -> Vec<KeyValue> {
+    let status_code = KeyValue::new("http.response.status_code", i64::from(status.as_u16()));
+
+    if status.is_success() {
+        return vec![status_code];
+    }
+
+    vec![
+        status_code,
+        otel_attributes::error_type(status.as_str().to_owned()),
+    ]
 }
 
 fn retry_after(response: &http::Response<Bytes>) -> Option<Duration> {

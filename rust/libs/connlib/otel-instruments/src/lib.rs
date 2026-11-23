@@ -184,6 +184,18 @@ pub fn dns_lookup_duration() -> Histogram<f64> {
         .build()
 }
 
+/// Duration of exporting a batch of metrics to the portal, one record per attempt.
+pub fn metrics_export_duration() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("otel.sdk.exporter.operation.duration")
+        .with_description("The duration of exporting a batch of telemetry records.")
+        .with_unit("s")
+        .with_boundaries(vec![
+            0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0,
+        ])
+        .build()
+}
+
 /// Records how many items a queue already held when another one was enqueued.
 ///
 /// Recorded by the producer, for one in every [`QueueDepth::SAMPLE_EVERY`] items.
