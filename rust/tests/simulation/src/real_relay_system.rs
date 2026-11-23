@@ -62,10 +62,15 @@ const FOREIGN_DEVICE: &str = "foreign";
 pub(crate) struct RealRelaySystem {
     clock: Clock,
     transmits: BufferedTransmits,
-    /// How long the system settled, during which the wall clock stood still.
-    settled_for: Duration,
-    /// When the system started to settle, if it is settling.
-    settling_since: Option<SystemTime>,
+    /// The wall clock of the portal and the relay, which credentials expire by, at
+    /// `wall_clock_since`.
+    ///
+    /// It shows the time that the transitions let pass: it runs while one of them lets time pass,
+    /// until `wall_clock_until`, and stands still while the system settles or a heartbeat
+    /// outlasts the transition.
+    wall_clock: SystemTime,
+    wall_clock_since: Instant,
+    wall_clock_until: Instant,
 
     /// When the credentials expire that the portal hands out.
     credentials_expire_at: SystemTime,
@@ -198,8 +203,9 @@ impl RealRelaySystem {
             ),
             clock,
             transmits: BufferedTransmits::default(),
-            settled_for: Duration::ZERO,
-            settling_since: None,
+            wall_clock: SystemTime::UNIX_EPOCH,
+            wall_clock_since: start,
+            wall_clock_until: start,
             credentials_expire_at: SystemTime::UNIX_EPOCH + model.credentials_expire_at,
             relay_boots: 0,
             allocation_boot: 0,
@@ -225,6 +231,7 @@ impl RealRelaySystem {
 
         match transition {
             Transition::Advance { duration } => {
+                self.run_wall_clock(*duration);
                 lost_heartbeats = self.advance(*duration, interference);
             }
             Transition::Roam { ip4, ip6 } => {
@@ -255,12 +262,14 @@ impl RealRelaySystem {
                 self.relay = new_relay(self.relay_boots, &self.relay, self.wall_clock());
             }
             Transition::Partition { duration } => {
+                self.run_wall_clock(*duration);
                 self.client.set_offline();
                 lost_heartbeats = self.advance(*duration, interference);
                 self.client
                     .update_interface(self.client.ip4, self.client.ip6);
             }
             Transition::Sleep { duration } => {
+                self.run_wall_clock(*duration);
                 self.client.set_offline();
                 self.client_asleep = true;
 
@@ -289,32 +298,6 @@ impl RealRelaySystem {
     /// Lets the system settle while the network still interferes with the control datagrams of
     /// the last transition, then exchanges data once over every connection.
     pub(crate) fn settle(&mut self, interference: &mut Interference) -> Settled {
-        let since = self.clock.now();
-        self.settling_since = Some(since);
-
-        let settled = self.settle_with_wall_clock_stopped(interference);
-
-        self.settled_for += self
-            .clock
-            .now::<SystemTime>()
-            .duration_since(since)
-            .expect("the clock only moves forward");
-        self.settling_since = None;
-
-        settled
-    }
-
-    /// The wall clock of the portal and the relay, which credentials expire by.
-    ///
-    /// Settling stands for the moment between two transitions, so the wall clock stands still
-    /// meanwhile: it shows the time that the transitions let pass.
-    fn wall_clock(&self) -> SystemTime {
-        let now = self.settling_since.unwrap_or_else(|| self.clock.now());
-
-        now - self.settled_for
-    }
-
-    fn settle_with_wall_clock_stopped(&mut self, interference: &mut Interference) -> Settled {
         self.run_until_settled(interference);
         let interference = &mut Interference::default();
 
@@ -464,6 +447,21 @@ impl RealRelaySystem {
         });
         self.allocation_boot = self.relay_boots;
         self.bind_channels();
+    }
+
+    fn wall_clock(&self) -> SystemTime {
+        let now = self.clock.now::<Instant>().min(self.wall_clock_until);
+
+        self.wall_clock + now.saturating_duration_since(self.wall_clock_since)
+    }
+
+    /// Lets the wall clock run for `duration` from now.
+    fn run_wall_clock(&mut self, duration: Duration) {
+        let now = self.clock.now();
+
+        self.wall_clock = self.wall_clock();
+        self.wall_clock_since = now;
+        self.wall_clock_until = now + duration;
     }
 
     /// Has the client bind a channel to every peer it is connected to, as it does whenever
