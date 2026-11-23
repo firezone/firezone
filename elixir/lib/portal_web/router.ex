@@ -315,6 +315,15 @@ defmodule PortalWeb.Router do
         PortalWeb.LiveHooks.EnsureAdmin,
         PortalWeb.LiveHooks.SetCurrentUri
       ] do
+      # Activity: every log type in one stream, and a live map of connections
+      live "/activity", Activity.Stream
+      live "/activity/map", Activity.Map
+
+      # Access: who can reach what
+      live "/access", Access.Graph
+      live "/access/by_group", Access.ByGroup
+      live "/access/by_resource", Access.ByResource
+
       # People (non-service-account actors)
       live "/actors", Actors
       live "/actors/new", Actors, :new

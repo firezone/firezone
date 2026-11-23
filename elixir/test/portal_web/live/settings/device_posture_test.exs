@@ -69,7 +69,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
 
       assert html =~ "settings/device_posture"
-      assert html =~ "Device Posture"
+      assert html =~ "Device posture"
     end
 
     test "shows the upgrade splash when the account lacks the feature", %{conn: conn} do
@@ -523,7 +523,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       send(lv.pid, {:intune_posture_provider_complete, "tenant-123", ref, {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
 
-      assert render(lv) =~ "Device Posture"
+      assert render(lv) =~ "Device posture"
     end
   end
 
@@ -1937,7 +1937,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
         render_click(lv, unquote(event), unquote(Macro.escape(params)))
 
-        assert render(lv) =~ "Device Posture"
+        assert render(lv) =~ "Device posture"
       end
     end
   end

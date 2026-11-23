@@ -91,7 +91,6 @@ defmodule PortalWeb.Logs.SessionLogs do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <Navigation.logs_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <LiveTable.live_table

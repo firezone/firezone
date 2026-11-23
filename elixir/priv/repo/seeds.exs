@@ -2655,6 +2655,7 @@ defmodule Portal.Repo.Seeds do
         slug_changes: true
       })
       |> put_change(:metadata, %{
+        unified_devices: true,
         stripe: %{
           customer_id: "cus_PZKIfcHB6SSBA4",
           subscription_id: "sub_1OkGm2ADeNU9NGxvbrCCw6m3",

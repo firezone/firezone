@@ -39,9 +39,9 @@ defmodule PortalWeb.Components.FormTest do
     assert [back] = Floki.find(footer, "a")
 
     for action <- [cancel, save, back] do
-      assert "text-xs" in classes(action)
-      assert "px-3" in classes(action)
-      assert "py-1.5" in classes(action)
+      assert "text-[13px]" in classes(action)
+      assert "px-2.5" in classes(action)
+      assert "h-7" in classes(action)
     end
 
     assert Floki.attribute(cancel, "phx-click") == ["close_panel"]

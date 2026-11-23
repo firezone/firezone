@@ -664,7 +664,7 @@ defmodule PortalWeb.Components.Form do
     <dialog
       id={@id}
       class={[
-        "backdrop:bg-gray-800/75 bg-transparent",
+        "backdrop:bg-veil backdrop:backdrop-blur-[1px] bg-transparent",
         "w-full md:inset-0 max-h-full",
         "overflow-y-auto overflow-x-hidden",
         @class
@@ -675,15 +675,15 @@ defmodule PortalWeb.Components.Form do
     >
       <div class="flex items-center justify-center min-h-screen p-4">
         <div
-          class="relative bg-elevated border border-border rounded-md shadow-sm w-full max-w-2xl"
+          class="relative bg-bg text-fg border border-rule shadow-lg w-full max-w-2xl"
           phx-click-away={@on_close}
           phx-target={@target}
         >
           <div
             :if={@title != []}
-            class="flex items-center justify-between p-4 md:p-5 border-b border-border rounded-t"
+            class="flex items-center justify-between px-6 py-4 border-b border-hair"
           >
-            <h3 class="text-xl font-semibold text-heading flex items-center gap-3">
+            <h3 class="text-lg font-bold tracking-tight text-fg flex items-center gap-3">
               <Core.provider_icon
                 :for={title_slot <- @title}
                 :if={Map.get(title_slot, :provider)}
@@ -700,12 +700,12 @@ defmodule PortalWeb.Components.Form do
               phx-target={@target}
             />
           </div>
-          <div class="p-4 md:p-5 text-body text-base">
+          <div class="px-6 py-5 text-fg text-sm">
             {render_slot(@body)}
           </div>
           <div
             :if={@footer != [] or @cancel_button != [] or @confirm_button != []}
-            class="flex items-center justify-between p-4 md:p-5 border-t border-border rounded-b gap-3"
+            class="flex items-center justify-between px-6 py-4 border-t border-hair gap-3"
           >
             <%= if @footer != [] do %>
               {render_slot(@footer)}
@@ -715,8 +715,7 @@ defmodule PortalWeb.Components.Form do
                 data-dialog-action="cancel"
                 phx-click={@on_cancel}
                 type="button"
-                style="info"
-                class="px-5 py-2.5"
+                class="px-4"
               >
                 {render_slot(@cancel_button)}
               </.button>
@@ -729,7 +728,7 @@ defmodule PortalWeb.Components.Form do
                 type={Map.get(confirm_slot, :type, "button")}
                 form={Map.get(confirm_slot, :form)}
                 style={@confirm_style}
-                class="py-2.5 px-5"
+                class="px-4"
                 disabled={@confirm_disabled}
                 title={@confirm_button_title}
                 tabindex="0"
@@ -901,14 +900,12 @@ defmodule PortalWeb.Components.Form do
   def panel_header(assigns) do
     ~H"""
     <div class={[
-      "shrink-0 flex items-center justify-between gap-3 border-b border-border",
-      @variant == "elevated" && "px-5 pt-4 pb-3 bg-elevated",
-      @variant == "plain" && "px-5 py-4",
+      "shrink-0 flex items-center justify-between gap-3 border-b border-hair px-6 py-4 bg-bg",
       @class
     ]}>
       <div class="flex items-center gap-2 min-w-0">
         {render_slot(@leading)}
-        <h2 class="text-sm font-semibold text-heading truncate">{@title}</h2>
+        <h2 class="text-lg font-bold tracking-tight text-fg truncate">{@title}</h2>
         {render_slot(@adornment)}
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
@@ -938,8 +935,8 @@ defmodule PortalWeb.Components.Form do
   def panel_footer(assigns) do
     ~H"""
     <div class={[
-      "shrink-0 flex items-center justify-end gap-2 px-5 py-3",
-      "border-t border-border bg-elevated",
+      "shrink-0 flex items-center justify-end gap-2 px-6 py-3",
+      "border-t border-hair bg-bg",
       @class
     ]}>
       {render_slot(@inner_block)}
@@ -972,11 +969,11 @@ defmodule PortalWeb.Components.Form do
   end
 
   defp icon_button_style(nil) do
-    ["text-subtle hover:text-heading hover:bg-raised"]
+    ["text-muted hover:text-fg hover:bg-hover"]
   end
 
   defp icon_button_style("outline") do
-    ["border border-border text-body hover:text-heading hover:border-border-emphasis"]
+    ["border border-rule text-fg hover:bg-hover"]
   end
 
   defp icon_button_container_size(size) do
@@ -1142,119 +1139,62 @@ defmodule PortalWeb.Components.Form do
 
   def button_style do
     [
-      "flex items-center justify-center gap-1",
-      "rounded",
-      "phx-submit-loading:opacity-75"
+      "inline-flex items-center justify-center gap-1.5 font-medium whitespace-nowrap",
+      "transition-colors phx-submit-loading:opacity-75",
+      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg"
     ]
   end
 
   def button_style("primary") do
-    button_style() ++
-      [
-        "text-white",
-        "bg-brand",
-        "border border-brand",
-        "hover:border-brand-dark hover:bg-brand-dark"
-      ]
+    button_style() ++ ["text-bg bg-fg border border-fg", "hover:opacity-85"]
   end
 
-  def button_style("secondary") do
-    button_style() ++
-      [
-        "text-white",
-        "bg-accent",
-        "border border-accent",
-        "hover:border-accent-dark hover:bg-accent-dark"
-      ]
+  # Old call sites ask for "secondary", "success" and "info"; in black and white
+  # they are all the plain outlined button.
+  def button_style(style) when style in ["secondary", "success", "info"] do
+    button_style(nil)
   end
 
-  def button_style("success") do
-    button_style() ++
-      [
-        "text-success",
-        "bg-surface",
-        "border border-success",
-        "hover:bg-success-light"
-      ]
-  end
-
-  def button_style("info") do
-    button_style() ++
-      [
-        "text-info",
-        "bg-surface",
-        "border border-info",
-        "hover:bg-info-light"
-      ]
-  end
-
-  def button_style("warning") do
-    button_style() ++
-      [
-        "text-warning",
-        "bg-surface",
-        "border border-warning",
-        "hover:bg-warning-light"
-      ]
-  end
-
-  def button_style("danger") do
-    button_style() ++
-      [
-        "text-danger",
-        "bg-surface",
-        "border border-danger/40",
-        "hover:bg-danger-light"
-      ]
+  def button_style(style) when style in ["warning", "danger"] do
+    button_style() ++ ["text-attn bg-transparent border border-attn", "hover:bg-attn-wash"]
   end
 
   def button_style("disabled") do
-    button_style() ++
-      [
-        "text-disabled",
-        "border border-border",
-        "cursor-not-allowed"
-      ]
+    button_style() ++ ["text-faint border border-hair cursor-not-allowed"]
   end
 
   def button_style(_style) do
-    button_style() ++
-      [
-        "text-body",
-        "bg-surface",
-        "border border-border-strong",
-        "hover:bg-raised hover:text-heading"
-      ]
+    button_style() ++ ["text-fg bg-transparent border border-rule", "hover:bg-hover"]
   end
 
-  def action_button_style(nil), do: action_button_base() ++ ["text-body", "hover:text-heading", "hover:bg-raised"]
-  def action_button_style("info"), do: action_button_base() ++ ["text-info", "hover:bg-raised"]
-  def action_button_style("success"), do: action_button_base() ++ ["text-success", "hover:bg-raised"]
-  def action_button_style("warning"), do: action_button_base() ++ ["text-warning", "hover:bg-raised"]
+  def action_button_style(nil), do: action_button_base() ++ ["text-fg", "hover:bg-hover"]
+  def action_button_style("info"), do: action_button_base() ++ ["text-fg", "hover:bg-hover"]
+  def action_button_style("success"), do: action_button_base() ++ ["text-fg", "hover:bg-hover"]
+  def action_button_style("warning"), do: action_button_base() ++ ["text-attn", "hover:bg-attn-wash"]
 
   def action_button_style(style) when style in ["error", "danger"] do
-    action_button_base() ++ ["text-error", "border", "border-error/20", "hover:bg-error-light"]
+    action_button_base() ++ ["text-attn", "hover:bg-attn-wash"]
   end
 
   defp action_button_base do
-    ["flex items-center gap-2", "rounded", "w-full", "transition-colors"]
+    ["flex items-center gap-2", "w-full", "transition-colors"]
   end
 
   def button_size(size) do
     text = %{
       "xs" => "text-xs",
-      "sm" => "text-xs",
-      "md" => "text-sm",
-      "lg" => "text-base",
+      "sm" => "text-[13px]",
+      "md" => "text-[13px]",
+      "lg" => "text-sm",
       "xl" => "text-base"
     }
 
     spacing = %{
-      "xs" => "px-2 py-1",
-      "sm" => "px-3 py-1.5",
-      "md" => "px-3 py-2",
-      "lg" => "px-4 py-3",
-      "xl" => "px-5 py-3.5"
+      "xs" => "h-6 px-2",
+      "sm" => "h-7 px-2.5",
+      "md" => "h-8 px-3",
+      "lg" => "h-10 px-4",
+      "xl" => "h-12 px-5"
     }
 
     [text[size], spacing[size]]

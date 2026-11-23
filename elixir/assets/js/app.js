@@ -1,7 +1,3 @@
-// Self-hosted variable fonts (avoids CSP issues with Google Fonts CDN)
-import "@fontsource-variable/roboto";
-import "@fontsource-variable/roboto-mono";
-
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html";
 
@@ -54,7 +50,11 @@ let liveSocket = new LiveSocket("/live", Socket, {
 });
 
 // Show progress bar on live navigation and form submits
-topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
+topbar.config({
+  barColors: { 0: "#c2410c" },
+  barThickness: 2,
+  shadowColor: "rgba(0, 0, 0, 0)",
+});
 window.addEventListener("phx:page-loading-start", (_info) => topbar.show(300));
 window.addEventListener("phx:page-loading-stop", (_info) => topbar.hide());
 

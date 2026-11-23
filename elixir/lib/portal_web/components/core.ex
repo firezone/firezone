@@ -217,20 +217,16 @@ defmodule PortalWeb.Components.Core do
 
   def header(assigns) do
     ~H"""
-    <div class="py-4 px-1 md:py-6">
-      <div class="grid grid-cols-1 xl:grid-cols-3 xl:gap-4">
-        <div class="col-span-full">
-          <div class="flex justify-between items-center">
-            <h2 class="text-2xl leading-none tracking-tight text-heading">
-              {render_slot(@title)}
-            </h2>
-            <div class="inline-flex justify-between items-center space-x-2">
-              {render_slot(@actions)}
-            </div>
-          </div>
+    <div class="pt-2 pb-3 mb-4 border-b border-rule">
+      <div class="flex justify-between items-end gap-4">
+        <h2 class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+          {render_slot(@title)}
+        </h2>
+        <div class="inline-flex items-center gap-2">
+          {render_slot(@actions)}
         </div>
       </div>
-      <div :for={help <- @help} class="pt-3 text-subtle">
+      <div :for={help <- @help} class="pt-2 text-sm text-muted">
         {render_slot(help)}
       </div>
     </div>
@@ -386,7 +382,7 @@ defmodule PortalWeb.Components.Core do
     ~H"""
     <label
       for={@for}
-      class={["block text-xs font-semibold text-body mb-1.5", @class]}
+      class={["block text-[13px] font-semibold text-fg mb-1.5", @class]}
     >
       {render_slot(@inner_block)}
     </label>
@@ -584,19 +580,19 @@ defmodule PortalWeb.Components.Core do
 
   def badge(assigns) do
     colors = %{
-      "success" => "bg-success-light text-success",
-      "danger" => "bg-danger-light text-danger",
-      "warning" => "bg-warning-light text-warning",
-      "info" => "bg-info-light text-info",
-      "primary" => "bg-brand-subtle text-brand",
-      "accent" => "bg-accent-subtle text-accent",
-      "neutral" => "bg-neutral-100 text-neutral-700"
+      "success" => "border-fg text-fg",
+      "danger" => "border-attn text-attn",
+      "warning" => "border-attn text-attn",
+      "info" => "border-hair text-muted",
+      "primary" => "border-fg bg-fg text-bg",
+      "accent" => "border-fg text-fg",
+      "neutral" => "border-hair text-muted"
     }
 
     sizes = %{
       "xs" => "text-[10px] px-1.5 py-px",
-      "sm" => "text-xs px-2.5 py-0.5",
-      "md" => "text-sm px-3 py-1"
+      "sm" => "text-xs px-2 py-px",
+      "md" => "text-sm px-2.5 py-0.5"
     }
 
     assigns = assign(assigns, colors: colors, sizes: sizes)
@@ -604,7 +600,7 @@ defmodule PortalWeb.Components.Core do
     ~H"""
     <span
       class={[
-        "rounded whitespace-nowrap",
+        "inline-flex items-center gap-1 border whitespace-nowrap",
         @sizes[@size],
         @colors[@type],
         @class
@@ -622,56 +618,15 @@ defmodule PortalWeb.Components.Core do
   slot :right, required: true
 
   def dual_badge(assigns) do
-    colors = %{
-      "success" => %{
-        "dark" => "bg-green-300 text-green-800",
-        "light" => "bg-success-light text-success"
-      },
-      "danger" => %{
-        "dark" => "bg-red-300 text-red-800",
-        "light" => "bg-danger-light text-danger"
-      },
-      "warning" => %{
-        "dark" => "bg-yellow-300 text-yellow-800",
-        "light" => "bg-warning-light text-warning"
-      },
-      "info" => %{
-        "dark" => "bg-blue-300 text-blue-800",
-        "light" => "bg-info-light text-info"
-      },
-      "primary" => %{
-        "dark" => "bg-primary-400 text-primary-800",
-        "light" => "bg-brand-subtle text-brand"
-      },
-      "accent" => %{
-        "dark" => "bg-accent-muted text-accent-800",
-        "light" => "bg-accent-light text-accent"
-      },
-      "neutral" => %{
-        "dark" => "bg-neutral-100 text-neutral-800",
-        "light" => "bg-neutral-50 text-neutral-800"
-      }
-    }
-
-    assigns = assign(assigns, colors: colors)
-
     ~H"""
-    <div class="inline-flex">
-      <span class={[
-        "text-xs rounded-l py-0.5 px-2",
-        @colors[@type]["dark"]
-      ]}>
-        {render_slot(@left)}
-      </span>
-      <span class={[
-        "text-xs",
-        "rounded-r",
-        "py-0.5 px-2",
-        @colors[@type]["light"]
-      ]}>
-        {render_slot(@right)}
-      </span>
-    </div>
+    <span class={[
+      "inline-flex items-stretch border text-xs whitespace-nowrap",
+      @type in ["danger", "warning"] && "border-attn text-attn",
+      @type not in ["danger", "warning"] && "border-hair text-fg"
+    ]}>
+      <span class="px-2 py-px font-semibold tabular-nums">{render_slot(@left)}</span>
+      <span class="px-2 py-px border-l border-inherit text-muted">{render_slot(@right)}</span>
+    </span>
     """
   end
 
@@ -1637,13 +1592,13 @@ defmodule PortalWeb.Components.Core do
   def status_badge(assigns) do
     ~H"""
     <span class={[
-      "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium",
+      "inline-flex items-center gap-2 text-xs whitespace-nowrap",
       badge_pill_class(@style)
     ]}>
       <.icon :if={@icon} name={@icon} title={@icon_title} class="w-3 h-3 shrink-0" />
       <span
         :if={@dot and is_nil(@icon)}
-        class={["w-1.5 h-1.5 rounded-full shrink-0", badge_dot_class(@style)]}
+        class={["w-[7px] h-[7px] rounded-full shrink-0", badge_dot_class(@style)]}
       >
       </span>
       {render_slot(@inner_block)}
@@ -1678,9 +1633,7 @@ defmodule PortalWeb.Components.Core do
       data-popover-trigger="click"
       data-popover-placement="bottom"
       class={[
-        "inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer",
-        @color == "red" && "bg-danger-light text-danger",
-        @color == "yellow" && "bg-warning-light text-warning"
+        "inline-flex items-center gap-1 text-[11px] px-1.5 py-px border border-attn text-attn cursor-pointer"
       ]}
     >
       {@label} <.icon name="ri-information-line" class="w-3 h-3" />
@@ -1718,8 +1671,7 @@ defmodule PortalWeb.Components.Core do
     ~H"""
     <span
       class={[
-        "px-1 py-px rounded text-[9px] font-semibold tracking-wider",
-        "bg-badge-accent text-badge-accent-text",
+        "px-1 py-px text-[9px] font-semibold tracking-wider border border-attn text-attn",
         @class
       ]}
       {@rest}
@@ -1729,13 +1681,14 @@ defmodule PortalWeb.Components.Core do
     """
   end
 
-  defp badge_pill_class(:success), do: "bg-success-light text-success"
-  defp badge_pill_class(:warning), do: "bg-warning-light text-warning"
-  defp badge_pill_class(:danger), do: "bg-danger-light text-danger"
-  defp badge_pill_class(:neutral), do: "bg-neutral-status-light text-neutral-status"
+  defp badge_pill_class(:success), do: "text-fg"
+  defp badge_pill_class(:warning), do: "text-attn"
+  defp badge_pill_class(:danger), do: "text-attn"
+  defp badge_pill_class(:neutral), do: "text-muted"
 
-  defp badge_dot_class(:success), do: "bg-success"
-  defp badge_dot_class(:warning), do: "bg-warning"
-  defp badge_dot_class(:danger), do: "bg-danger"
-  defp badge_dot_class(:neutral), do: "bg-neutral-status"
+  # Filled for a good state, a hollow ring for anything else, as in the mockups.
+  defp badge_dot_class(:success), do: "bg-fg"
+  defp badge_dot_class(:warning), do: "ring-[1.5px] ring-inset ring-attn"
+  defp badge_dot_class(:danger), do: "bg-attn"
+  defp badge_dot_class(:neutral), do: "ring-[1.5px] ring-inset ring-faint"
 end

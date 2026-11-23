@@ -4,43 +4,11 @@
 const plugin = require("tailwindcss/plugin");
 const fs = require("fs");
 const path = require("path");
-const defaultTheme = require("tailwindcss/defaultTheme");
-const colors = require("tailwindcss/colors");
 
 const depsDir = process.env.MIX_DEPS_PATH || path.join(__dirname, "../deps");
 
 const firezoneColors = {
-  // See our brand palette in Figma.
-  // These have been reversed to match Tailwind's default order.
-
-  // primary: orange
-  "heat-wave": {
-    50: "#fff9f5",
-    100: "#fff1e5",
-    200: "#ffddc2",
-    300: "#ffbc85",
-    400: "#ff9a47",
-    450: "#ff7300",
-    500: "#ff7605",
-    600: "#c25700",
-    700: "#7f3900",
-    800: "#5c2900",
-    900: "#331700",
-  },
-  // accent: violet
-  "electric-violet": {
-    50: "#f8f5ff",
-    100: "#ece5ff",
-    200: "#d2c2ff",
-    300: "#a585ff",
-    400: "#7847ff",
-    450: "#5e00d6",
-    500: "#4805ff",
-    600: "#3400c2",
-    700: "#37007f",
-    800: "#28005c",
-    900: "#160033",
-  },
+  // Greys from the brand palette, reversed to match Tailwind's default order.
   // neutral: chicago
   chicago: {
     50: "#f6f6f6",
@@ -67,19 +35,13 @@ module.exports = {
     "../portal_dev/**/*.*ex",
   ],
   theme: {
-    fontFamily: {
-      sans: ["Roboto Variable", "Roboto", ...defaultTheme.fontFamily.sans],
-      mono: [
-        "Roboto Mono Variable",
-        "Roboto Mono",
-        ...defaultTheme.fontFamily.mono,
-      ],
-    },
     extend: {
       colors: {
-        brand: "#FD4F00",
-        primary: firezoneColors["heat-wave"],
-        accent: firezoneColors["electric-violet"],
+        // The portal is monochrome. The old brand palettes resolve to greys so
+        // stray `primary-*` / `accent-*` classes can not bring colour back.
+        brand: "var(--brand)",
+        primary: firezoneColors["chicago"],
+        accent: firezoneColors["chicago"],
         neutral: firezoneColors["chicago"],
       },
     },

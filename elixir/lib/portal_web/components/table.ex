@@ -17,15 +17,12 @@ defmodule PortalWeb.Components.Table do
 
   def table_header(assigns) do
     ~H"""
-    <thead
-      id={"#{@table_id}-header"}
-      class="bg-raised border-b border-border-strong"
-    >
+    <thead id={"#{@table_id}-header"} class="border-b border-rule">
       <tr>
         <th
           :for={col <- @columns}
           class={[
-            "px-4 py-3 text-[10px] font-semibold tracking-widest uppercase text-subtle whitespace-nowrap",
+            "px-4 first:pl-6 last:pr-6 pt-3 pb-2.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted whitespace-nowrap",
             Map.get(col, :class, "")
           ]}
         >
@@ -37,7 +34,7 @@ defmodule PortalWeb.Components.Table do
             ordered_by={@ordered_by}
           />
         </th>
-        <th :if={not Enum.empty?(@actions)} class="px-4 py-3">
+        <th :if={not Enum.empty?(@actions)} class="px-4 last:pr-6 pt-3 pb-2.5">
           <span class="sr-only">{gettext("Actions")}</span>
         </th>
       </tr>
@@ -69,7 +66,7 @@ defmodule PortalWeb.Components.Table do
               "ri-expand-up-down-fill"
           end
         }
-        class="w-4 h-4 ml-1"
+        class="w-3.5 h-3.5 ml-0.5 text-faint hover:text-fg"
       />
     </button>
     """
@@ -94,9 +91,9 @@ defmodule PortalWeb.Components.Table do
     <tr
       id={@id}
       class={[
-        "border-b border-border group transition-colors",
-        @selected && "border-l-4 border-l-brand bg-raised",
-        not @selected && (@patch || @click) && "hover:cursor-pointer hover:bg-raised",
+        "border-b border-hair group transition-colors",
+        @selected && "bg-hover shadow-[inset_2px_0_0_var(--fg)]",
+        not @selected && (@patch || @click) && "hover:cursor-pointer hover:bg-hover",
         @selected && (@patch || @click) && "cursor-pointer",
         @class
       ]}
@@ -105,7 +102,7 @@ defmodule PortalWeb.Components.Table do
     >
       <td
         :for={{col, _i} <- Enum.with_index(@columns)}
-        class={["px-4 py-3", Map.get(col, :class, "")]}
+        class={["px-4 first:pl-6 last:pr-6 py-[11px] align-top", Map.get(col, :class, "")]}
       >
         <Navigation.link
           :if={@patch}
@@ -125,7 +122,7 @@ defmodule PortalWeb.Components.Table do
           render = render_slot(action, @mapper.(@row))
           not_empty_render?(render)
         end) %>
-      <td :if={@actions != [] and show_actions?} class="px-3 py-3">
+      <td :if={@actions != [] and show_actions?} class="px-3 last:pr-6 py-2 align-top">
         <div class="flex space-x-1 items-center justify-end">
           <span :for={action <- @actions}>
             {render_slot(action, @mapper.(@row))}
@@ -239,7 +236,7 @@ defmodule PortalWeb.Components.Table do
 
   def vertical_table(assigns) do
     ~H"""
-    <table class={["w-full text-sm text-left text-body", @class]} {@rest}>
+    <table class={["w-full text-sm text-left text-fg border-t border-rule", @class]} {@rest}>
       <tbody>
         {render_slot(@inner_block)}
       </tbody>
@@ -276,15 +273,15 @@ defmodule PortalWeb.Components.Table do
       <th
         scope="row"
         class={[
-          "text-right px-4 py-3 font-medium text-body whitespace-nowrap",
-          "bg-raised w-1/5 border-b border-border",
+          "text-left pr-4 py-2.5 font-normal text-muted whitespace-nowrap align-top",
+          "w-1/4 border-b border-hair",
           @label_class
         ]}
       >
         {render_slot(@label)}
       </th>
       <td class={[
-        "px-4 py-3 border-b border-border text-heading",
+        "py-2.5 border-b border-hair text-fg",
         @value_class
       ]}>
         {render_slot(@value)}

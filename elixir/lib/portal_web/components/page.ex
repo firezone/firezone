@@ -352,8 +352,8 @@ defmodule PortalWeb.Components.Page do
     <div
       id={@id}
       class={[
-        "mb-4 md:mb-6 bg-surface mx-2 md:mx-5 border border-border px-4 md:px-6",
-        @content != [] && "pb-6"
+        "mb-8 mx-6 bg-bg",
+        @content != [] && "pb-2"
       ]}
     >
       <Core.header>
@@ -377,6 +377,69 @@ defmodule PortalWeb.Components.Page do
         </div>
         {render_slot(content)}
       </section>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders the modal that shows one item's details, or a form, over the page.
+
+  Every list page opens its items in this, so there is one pattern across the
+  portal: the list stays put behind a veil, the item opens on top, and Escape or
+  a click on the veil closes it.
+
+  The wrapper stays in the DOM while closed (hidden and empty), so it keeps the
+  same element id whether it is open or not.
+
+  ## Examples
+
+      <Page.detail_modal id="resource-panel" open={@selected != nil} on_close="close_panel">
+        ...
+      </Page.detail_modal>
+  """
+  attr :id, :string, required: true
+  attr :open, :boolean, required: true
+  attr :on_close, :any, required: true, doc: "event name or JS run on Escape and veil clicks"
+  attr :size, :string, default: "lg", values: ~w[md lg xl]
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def detail_modal(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={[
+        "fixed inset-0 z-40 items-start justify-center px-4 pt-[5vh] pb-6",
+        if(@open, do: "flex", else: "hidden")
+      ]}
+      phx-window-keydown={@open && @on_close}
+      phx-key="Escape"
+      {@rest}
+    >
+      <div
+        :if={@open}
+        id={"#{@id}-veil"}
+        class="absolute inset-0 bg-veil backdrop-blur-[1px]"
+        phx-click={@on_close}
+        aria-hidden="true"
+      >
+      </div>
+      <div
+        :if={@open}
+        role="dialog"
+        aria-modal="true"
+        class={[
+          "relative flex flex-col w-full max-h-[90vh] overflow-hidden",
+          "bg-bg text-fg border border-rule shadow-lg",
+          @size == "md" && "max-w-2xl",
+          @size == "lg" && "max-w-4xl",
+          @size == "xl" && "max-w-6xl",
+          @class
+        ]}
+      >
+        {render_slot(@inner_block)}
+      </div>
     </div>
     """
   end
@@ -409,32 +472,24 @@ defmodule PortalWeb.Components.Page do
 
   def page_header(assigns) do
     ~H"""
-    <div class="relative overflow-hidden px-4 pt-4 pb-3 md:px-6 md:pt-6 md:pb-4 border-b border-border bg-surface">
-      <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
-      <div class="flex items-start gap-5">
-        <div :if={not Enum.empty?(@icon)} class="hidden md:block shrink-0 mt-0.5">
-          {render_slot(@icon)}
+    <div class="px-6 pt-7 pb-5 bg-bg shrink-0">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+        <div class="min-w-0">
+          <h1 class="flex items-center gap-3 text-[26px] leading-tight font-bold tracking-tight text-fg">
+            {render_slot(@title)}
+            <span
+              :if={not Enum.empty?(@stats)}
+              class="text-sm font-normal tracking-normal text-muted tabular-nums"
+            >
+              {render_slot(@stats)}
+            </span>
+          </h1>
+          <p :if={not Enum.empty?(@description)} class="hidden md:block mt-1 text-sm text-muted">
+            {render_slot(@description)}
+          </p>
         </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <div class="min-w-0">
-              <h1 class="text-base font-semibold text-heading">
-                {render_slot(@title)}
-              </h1>
-              <p
-                :if={not Enum.empty?(@description)}
-                class="hidden md:block mt-0.5 text-sm text-body"
-              >
-                {render_slot(@description)}
-              </p>
-            </div>
-            <div :if={not Enum.empty?(@action)} class="shrink-0 flex items-center gap-2">
-              {render_slot(@action)}
-            </div>
-          </div>
-          <div :if={not Enum.empty?(@stats)} class="mt-2 flex items-center gap-2 flex-wrap">
-            {render_slot(@stats)}
-          </div>
+        <div :if={not Enum.empty?(@action)} class="sm:ml-auto shrink-0 flex items-center gap-2">
+          {render_slot(@action)}
         </div>
       </div>
     </div>

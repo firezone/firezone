@@ -1637,7 +1637,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       render_click(lv, "submit_directory", %{})
 
-      assert render(lv) =~ "Directory Sync"
+      assert render(lv) =~ "Directory sync"
     end
 
     for event <- ["delete_directory", "toggle_directory"] do

@@ -27,8 +27,8 @@ defmodule PortalWeb.SupportForm do
         disabled={not @enabled?}
         phx-hook="SupportForm"
         phx-target={@myself}
-        class="text-sm text-body hover:text-heading"
-      >Feedback</button>
+        class="inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
+      ><Core.icon name="ri-chat-smile-2-line" class="w-3.5 h-3.5" />Feedback</button>
       <Form.modal :if={@open?} id="support-modal" on_close="close" target={@myself}>
         <:title>{if @sent?, do: "Thank you for your feedback", else: "Submit feedback"}</:title>
         <:body>

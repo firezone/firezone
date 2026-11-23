@@ -3,6 +3,26 @@ defmodule PortalWeb.Dev.ColorsLive do
 
   @sections [
     %{
+      label: "Monochrome",
+      swatches: [
+        %{name: "fg", class: "bg-fg", css_var: "--fg"},
+        %{name: "bg", class: "bg-bg", css_var: "--bg"},
+        %{name: "muted", class: "bg-muted", css_var: "--muted"},
+        %{name: "faint", class: "bg-faint", css_var: "--faint"},
+        %{name: "rule", class: "bg-rule", css_var: "--rule"},
+        %{name: "hair", class: "bg-hair", css_var: "--hair"},
+        %{name: "hover", class: "bg-hover", css_var: "--hover"},
+        %{name: "veil", class: "bg-veil", css_var: "--overlay-veil"}
+      ]
+    },
+    %{
+      label: "Accent",
+      swatches: [
+        %{name: "attn", class: "bg-attn", css_var: "--attn"},
+        %{name: "attn-wash", class: "bg-attn-wash", css_var: "--attn-wash"}
+      ]
+    },
+    %{
       label: "Brand",
       swatches: [
         %{name: "brand", class: "bg-brand", css_var: "--brand"},

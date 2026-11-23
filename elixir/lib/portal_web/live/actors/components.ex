@@ -23,17 +23,10 @@ defmodule PortalWeb.Actors.Components do
       |> assign(assigns.group_membership_state)
 
     ~H"""
-    <div
+    <Page.detail_modal
       id="actor-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@actor || @creating_actor, do: "translate-x-0", else: "translate-x-full")
-      ]}
-      phx-window-keydown="handle_keydown"
-      phx-key="Escape"
+      open={not is_nil(@actor) or @creating_actor}
+      on_close="handle_keydown"
     >
       <.actor_detail_view
         :if={@actor && @view == :detail}
@@ -63,7 +56,7 @@ defmodule PortalWeb.Actors.Components do
         token_state={@token_state}
         group_membership_state={@group_membership_state}
       />
-    </div>
+    </Page.detail_modal>
     """
   end
 

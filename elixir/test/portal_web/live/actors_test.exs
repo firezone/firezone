@@ -64,7 +64,7 @@ defmodule PortalWeb.ActorsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/actors")
 
-      assert html =~ "Actors"
+      assert html =~ "People"
       assert html =~ actor.name
     end
 
