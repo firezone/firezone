@@ -16,10 +16,11 @@ opentelemetry-proto = { workspace = true, features = ["gen-tonic-messages", "met
 opentelemetry_sdk = { workspace = true, features = ["metrics", "experimental_metrics_custom_reader"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
+process-memory = { workspace = true }
 prost = { workspace = true, features = ["std"] }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }
-tokio = { workspace = true, features = ["sync", "time"] }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }

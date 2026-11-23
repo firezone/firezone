@@ -196,6 +196,26 @@ pub fn metrics_export_duration() -> Histogram<f64> {
         .build()
 }
 
+/// Memory of the process that the platform enforces limits on, sampled periodically to show its distribution and peaks.
+///
+/// That is the resident set on Linux and Android, the physical footprint on Apple platforms and the private bytes on Windows.
+///
+/// The semantic conventions define `process.memory.usage` as an up-down counter, hence the different name.
+pub fn process_memory_usage() -> Histogram<u64> {
+    connlib_meter()
+        .u64_histogram("connlib.process.memory.usage")
+        .with_description("The amount of memory in use.")
+        .with_unit("By")
+        .with_boundaries(
+            [
+                8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 512,
+            ]
+            .map(|mib| f64::from(mib) * 1024.0 * 1024.0)
+            .to_vec(),
+        )
+        .build()
+}
+
 /// Records how many items a queue already held when another one was enqueued.
 ///
 /// Recorded by the producer, for one in every [`QueueDepth::SAMPLE_EVERY`] items.
