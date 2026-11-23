@@ -1379,6 +1379,7 @@ dependencies = [
  "mimalloc",
  "opentelemetry",
  "oslog",
+ "otel-metrics-export",
  "parking_lot",
  "phoenix-channel",
  "rustls",
@@ -1436,6 +1437,7 @@ dependencies = [
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
+ "otel-metrics-export",
  "parking_lot",
  "phoenix-channel",
  "serde",
@@ -2635,9 +2637,9 @@ dependencies = [
  "nix",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry_sdk",
  "otel-attributes",
  "otel-instruments",
+ "otel-metrics-export",
  "phoenix-channel",
  "resolv-conf",
  "rpassword",
@@ -2691,7 +2693,8 @@ dependencies = [
  "mimalloc",
  "native-dialog",
  "nix",
- "opentelemetry",
+ "otel-attributes",
+ "otel-metrics-export",
  "output_vt100",
  "parking_lot",
  "phoenix-channel",
@@ -2761,10 +2764,9 @@ dependencies = [
  "logging",
  "mimalloc",
  "nix",
- "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry_sdk",
  "otel-attributes",
+ "otel-metrics-export",
  "phoenix-channel",
  "rpassword",
  "rustls",
@@ -5749,7 +5751,6 @@ dependencies = [
  "rand 0.9.4",
  "thiserror 2.0.21",
  "tokio",
- "tokio-stream",
 ]
 
 [[package]]
@@ -5835,6 +5836,28 @@ dependencies = [
 [[package]]
 name = "otel-metric-patterns"
 version = "0.1.0"
+
+[[package]]
+name = "otel-metrics-export"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "async-runtime",
+ "bytes",
+ "futures",
+ "http",
+ "http-client",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "secrecy",
+ "socket-factory",
+ "tokio",
+ "tracing",
+ "tunnel-bypass-resolver",
+ "url",
+]
 
 [[package]]
 name = "output_vt100"
@@ -8418,7 +8441,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
- "rand 0.10.4",
  "sentry",
  "serde",
  "serde_json",
@@ -9248,6 +9270,7 @@ dependencies = [
  "ip-packet",
  "libc",
  "mimalloc",
+ "otel-metrics-export",
  "rand 0.10.4",
  "relay-server-proto",
  "seeded-rng",

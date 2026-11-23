@@ -57,6 +57,7 @@ members = [
     "libs/otel-attributes",
     "libs/otel-azure-export",
     "libs/otel-metric-patterns",
+    "libs/otel-metrics-export",
     "libs/prefetch",
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
@@ -203,6 +204,7 @@ otel-attributes = { path = "libs/otel-attributes" }
 otel-azure-export = { path = "libs/otel-azure-export" }
 otel-instruments = { path = "libs/connlib/otel-instruments" }
 otel-metric-patterns = { path = "libs/otel-metric-patterns" }
+otel-metrics-export = { path = "libs/otel-metrics-export" }
 output_vt100 = "0.1.3"
 parking_lot = "0.12.5"
 phoenix-channel = { path = "libs/connlib/phoenix-channel" }
