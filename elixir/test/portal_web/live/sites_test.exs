@@ -59,7 +59,7 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "open_new_site_panel")
       assert_patch(lv, ~p"/#{account}/sites/new")
       html = render(lv)
-      assert html =~ "New Site"
+      assert html =~ "Add a site"
       assert html =~ "Create Site"
 
       html =
@@ -84,7 +84,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites/new")
 
-      assert html =~ "New Site"
+      assert html =~ "Add a site"
       assert html =~ "Create Site"
     end
 
@@ -1694,9 +1694,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Offline"
-      refute row =~ ~r/·\s*1 offline/
+      assert site_row(lv, site) =~ ~r/text-attn[^>]*>\s*0 of 1\s*</
     end
 
     test "is healthy when every provisioned gateway is online", %{
@@ -1713,9 +1711,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Healthy"
-      refute row =~ "offline"
+      assert site_row(lv, site) =~ ~r/text-fg[^>]*>\s*1 of 1\s*</
     end
 
     test "is degraded and counts provisioned gateways that are offline", %{
@@ -1734,9 +1730,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Degraded"
-      assert row =~ ~r/·\s*2 offline/
+      assert site_row(lv, site) =~ ~r/text-attn[^>]*>\s*1 of 3\s*</
     end
 
     test "counts legacy gateways as online but never as expected", %{
@@ -1754,9 +1748,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Healthy"
-      refute row =~ "offline"
+      assert site_row(lv, site) =~ ~r/>\s*1 of 1\s*</
     end
 
     test "is degraded when a provisioned gateway is offline next to online legacy gateways", %{
@@ -1774,9 +1766,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      row = site_row(lv, site)
-      assert row =~ "Degraded"
-      assert row =~ ~r/·\s*1 offline/
+      assert site_row(lv, site) =~ ~r/>\s*1 of 2\s*</
     end
 
     test "counts a gateway in its token rotation grace period once", %{
@@ -1795,7 +1785,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites")
 
-      assert site_row(lv, site) =~ ~r/·\s*1 offline/
+      assert site_row(lv, site) =~ ~r/>\s*1 of 2\s*</
     end
 
     test "shows the status in the site panel header", %{
@@ -1830,13 +1820,11 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites/#{site.id}")
 
-      assert site_row(lv, site) =~ "Healthy"
+      assert site_row(lv, site) =~ ~r/>\s*1 of 1\s*</
 
       render_click(lv, "deploy_gateway")
 
-      row = site_row(lv, site)
-      assert row =~ "Degraded"
-      assert row =~ ~r/·\s*1 offline/
+      assert site_row(lv, site) =~ ~r/>\s*1 of 2\s*</
 
       deployed =
         Repo.one!(
@@ -1856,7 +1844,7 @@ defmodule PortalWeb.SitesTest do
         payload: %{joins: %{}, leaves: %{}}
       })
 
-      assert site_row(lv, site) =~ "Healthy"
+      assert site_row(lv, site) =~ ~r/>\s*2 of 2\s*</
       assert lv |> element("#site-panel") |> render() =~ "Healthy"
     end
 
@@ -1875,11 +1863,11 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites/#{site.id}")
 
-      assert site_row(lv, site) =~ "Degraded"
+      assert site_row(lv, site) =~ ~r/>\s*1 of 2\s*</
 
       render_click(lv, "confirm_delete_gateway", %{"id" => offline.id})
 
-      assert site_row(lv, site) =~ "Healthy"
+      assert site_row(lv, site) =~ ~r/>\s*1 of 1\s*</
       assert lv |> element("#site-panel") |> render() =~ "Healthy"
     end
   end
@@ -1921,6 +1909,31 @@ defmodule PortalWeb.SitesTest do
         refute has_element?(lv, "#site-panel > div")
         assert site_snapshot(account) == before
       end
+    end
+  end
+
+  describe "sites list" do
+    test "shows resource names, searches by name, and maps devices to sites", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = put_unified_devices(account, true)
+      site = site_fixture(account: account, name: "Office")
+      other = site_fixture(account: account, name: "Cloud")
+      resource_fixture(account: account, site: site, name: "Wiki")
+      laptop = device_v1_client_fixture(account, actor, "office-laptop")
+      put_in_site!(site, laptop)
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/sites")
+
+      assert site_row(lv, site) =~ "Wiki"
+      assert site_row(lv, site) =~ ~r/>\s*0 of 1\s*</
+      assert has_element?(lv, "#site-attachments", "office-laptop")
+
+      lv |> form("#sites-search-form", %{"site_search" => "offi"}) |> render_change()
+      assert has_element?(lv, "#site-#{site.id}")
+      refute has_element?(lv, "#site-#{other.id}")
     end
   end
 
