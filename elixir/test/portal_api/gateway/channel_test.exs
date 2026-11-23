@@ -584,18 +584,23 @@ assert site_ids == [site.id]
       assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["a", "b"]
     end
 
-    test "labels the gateway when a rule asks for it", %{
+    test "labels the gateway only while a rule targets it", %{
       gateway: gateway,
       site: site,
       token: token
     } do
       Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
-      metrics_rule_fixture(match: %{"device_type" => "gateway"}, label_devices: true, export_interval_secs: 30)
-      join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
+      metrics_rule_fixture(match: %{"device_type" => "gateway"}, export_interval_secs: 30)
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
 
       assert_push "init", _init_payload
       assert_push "metrics_config", %{export_interval_secs: 30, patterns: ["*"], token: metrics_token}
+      refute Map.has_key?(JOSE.JWT.peek_payload(metrics_token).fields, "label_devices")
 
+      metrics_rule_fixture(match: %{"device_id" => gateway.id}, patterns: ["a"])
+      send(socket.channel_pid, :refresh_metrics_token)
+
+      assert_push "metrics_config", %{patterns: ["*", "a"], token: metrics_token}
       claims = JOSE.JWT.peek_payload(metrics_token).fields
       assert claims["label_devices"] == true
       refute Map.has_key?(claims, "actor_id")

@@ -8,7 +8,6 @@ defmodule Portal.MetricsFixtures do
     |> Ecto.Changeset.cast(Enum.into(attrs, %{patterns: ["*"]}), [
       :match,
       :patterns,
-      :label_devices,
       :export_interval_secs,
       :expires_at
     ])

@@ -3,7 +3,7 @@ defmodule Portal.MetricsRule do
   Metric name patterns that the Clients and Gateways whose attributes contain
   all of `match` export until `expires_at`. A device exports the union of the
   patterns of its rules, at the shortest export interval they set, and labelled
-  with the device if any of them asks for it.
+  with the device if any of them targets a single device or actor.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -22,7 +22,6 @@ defmodule Portal.MetricsRule do
   schema "metrics_rules" do
     field :match, :map, default: %{}
     field :patterns, {:array, :string}
-    field :label_devices, :boolean, default: false
     field :export_interval_secs, :integer
     field :expires_at, :utc_datetime_usec
 
@@ -31,7 +30,7 @@ defmodule Portal.MetricsRule do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:match, :patterns, :label_devices])
+    |> validate_required([:match, :patterns])
     |> validate_length(:patterns, min: 1)
     |> validate_number(:export_interval_secs, greater_than_or_equal_to: @min_export_interval_secs)
     |> validate_change(:match, fn :match, match ->
@@ -57,6 +56,13 @@ defmodule Portal.MetricsRule do
     }
     |> Map.reject(fn {_attribute, value} -> is_nil(value) end)
   end
+
+  @doc """
+  Whether the devices `rule` matches export metrics labelled with the device.
+  Only rules targeting a single device or actor do, so labels stay few.
+  """
+  @spec labels_devices?(t()) :: boolean()
+  def labels_devices?(%__MODULE__{match: match}), do: Map.has_key?(match, "device_id") or Map.has_key?(match, "actor_id")
 
   @spec matches?(t(), %{String.t() => String.t()}) :: boolean()
   def matches?(%__MODULE__{match: match}, attributes) do

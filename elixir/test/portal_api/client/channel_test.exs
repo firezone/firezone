@@ -733,7 +733,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["a", "b"]
     end
 
-    test "labels the client and its actor at the shortest export interval of its rules", %{
+    test "labels the client and its actor when a rule targets the actor, at the shortest export interval", %{
       account: account,
       actor: actor,
       client: client,
@@ -741,7 +741,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
       metrics_rule_fixture(match: %{"account_id" => account.id}, patterns: ["b"], export_interval_secs: 30)
-      metrics_rule_fixture(match: %{"actor_id" => actor.id}, patterns: ["*"], label_devices: true, export_interval_secs: 10)
+      metrics_rule_fixture(match: %{"actor_id" => actor.id}, patterns: ["*"], export_interval_secs: 10)
       metrics_rule_fixture(match: %{"device_id" => client.id}, patterns: ["c"], expires_at: DateTime.add(DateTime.utc_now(), -1))
       join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
 

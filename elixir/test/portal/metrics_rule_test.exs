@@ -52,6 +52,14 @@ defmodule Portal.MetricsRuleTest do
     end
   end
 
+  test "labels_devices?/1 holds for rules targeting a single device or actor" do
+    assert MetricsRule.labels_devices?(%MetricsRule{match: %{"device_id" => Ecto.UUID.generate()}})
+    assert MetricsRule.labels_devices?(%MetricsRule{match: %{"actor_id" => Ecto.UUID.generate(), "plan" => "team"}})
+    refute MetricsRule.labels_devices?(%MetricsRule{match: %{}})
+    refute MetricsRule.labels_devices?(%MetricsRule{match: %{"plan" => "team", "device_type" => "client"}})
+    refute MetricsRule.labels_devices?(%MetricsRule{match: %{"account_id" => Ecto.UUID.generate()}})
+  end
+
   test "count_devices/1 counts the devices whose attributes contain the match" do
     account = team_account_fixture()
     actor = actor_fixture(account: account)

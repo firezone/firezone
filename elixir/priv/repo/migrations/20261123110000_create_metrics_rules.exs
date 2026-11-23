@@ -6,7 +6,6 @@ defmodule Portal.Repo.Migrations.CreateMetricsRules do
       add :id, :uuid, primary_key: true
       add :match, :jsonb, null: false
       add :patterns, {:array, :text}, null: false
-      add :label_devices, :boolean, null: false, default: false
       add :export_interval_secs, :integer
       add :expires_at, :timestamptz
 

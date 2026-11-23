@@ -21,7 +21,7 @@ defmodule PortalAPI.MetricsConfig do
         else: account |> MetricsRule.attributes(device) |> MetricsRule.list_matching()
 
     patterns = rules |> Enum.flat_map(& &1.patterns) |> Enum.uniq() |> Enum.sort()
-    label_devices = Enum.any?(rules, & &1.label_devices)
+    label_devices = Enum.any?(rules, &MetricsRule.labels_devices?/1)
 
     %{
       endpoint: endpoint,
