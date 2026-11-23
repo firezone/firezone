@@ -4,7 +4,7 @@ plugins {
     id("com.android.application") version "9.5.2" apply false
     id("com.google.devtools.ksp") version "2.3.14" apply false
     id("com.google.dagger.hilt.android") version "2.60.1" apply false
-    id("com.google.gms.google-services") version "4.5.0" apply false
+    id("com.google.gms.google-services") version "4.6.0" apply false
     id("com.google.firebase.crashlytics") version "3.0.8" apply false
     id("io.sentry.android.gradle") version "6.26.0" apply false
     id("io.github.takahirom.roborazzi") version "1.79.0" apply false
