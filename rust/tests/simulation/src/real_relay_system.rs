@@ -242,11 +242,14 @@ impl RealRelaySystem {
             }
             Transition::RotateCredentials { lifetime } => {
                 self.credentials_expire_at = self.wall_clock() + *lifetime;
+                let (_, username, password, realm) = self.credentials(CLIENT_DEVICE);
+                let username = Username::new(username).expect("username is short enough");
+                let realm = Realm::new(realm).expect("realm is short enough");
 
-                // `Allocations::upsert` replaces an allocation whose credentials changed.
-                if self.client.inner().allocation.is_some() {
-                    self.allocate();
-                }
+                self.client.drive(&mut self.transmits, now, |a| {
+                    a.update_credentials(username, password, realm, now)
+                });
+                self.allocation_boot = self.relay_boots;
             }
             Transition::RebootRelay => {
                 self.relay_boots += 1;

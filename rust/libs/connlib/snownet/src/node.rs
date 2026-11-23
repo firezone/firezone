@@ -896,6 +896,9 @@ where
                 allocations::UpsertResult::Skipped => {
                     tracing::info!(%rid, address = ?server, "Skipping known TURN server")
                 }
+                allocations::UpsertResult::Updated => {
+                    tracing::info!(%rid, address = ?server, "Updated credentials of TURN server")
+                }
                 allocations::UpsertResult::Blocked => {
                     tracing::debug!(%rid, address = ?server, "Ignoring blocked TURN server")
                 }

@@ -198,12 +198,16 @@ where
                 UpsertResult::Added
             }
             Entry::Occupied(mut o) => {
-                let allocation = o.get();
+                let allocation = o.get_mut();
 
-                if allocation.matches_credentials(&username, &password)
-                    && allocation.matches_socket(&server)
-                {
-                    return UpsertResult::Skipped;
+                if allocation.matches_socket(&server) {
+                    if allocation.matches_credentials(&username, &password) {
+                        return UpsertResult::Skipped;
+                    }
+
+                    allocation.update_credentials(username, password, realm, now);
+
+                    return UpsertResult::Updated;
                 }
 
                 let mut seed = [0u8; 32];
@@ -410,6 +414,8 @@ fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
 pub(crate) enum UpsertResult {
     Added,
     Skipped,
+    /// The allocation got new credentials.
+    Updated,
     Blocked,
     Replaced(Allocation),
 }
