@@ -63,7 +63,7 @@ defmodule PortalWeb.Sites do
       {:noreply,
        socket
        |> merge_state(:site_panel, %{
-         tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
+         tab: parse_panel_tab(params, socket.assigns.site_panel),
          view: :gateways,
          confirm_delete_site: false,
          expanded_gateway_id: nil
@@ -80,7 +80,8 @@ defmodule PortalWeb.Sites do
         site ->
           {:noreply,
            socket
-           |> assign(site_panel_assigns(site, params, socket))}
+           |> assign(site_panel_assigns(site, params))
+           |> load_site_details(site)}
       end
     end
   end
@@ -123,7 +124,7 @@ defmodule PortalWeb.Sites do
     {:noreply,
      socket
      |> merge_state(:site_panel, %{
-       tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
+       tab: parse_panel_tab(params, socket.assigns.site_panel),
        view: :edit_site,
        confirm_delete_site: false
      })
@@ -143,16 +144,17 @@ defmodule PortalWeb.Sites do
 
       site ->
         changeset = Database.change_site(site)
-        site_assigns = site_panel_assigns(site, params, socket)
+        site_assigns = site_panel_assigns(site, params)
 
         {:noreply,
-         assign(
-           socket,
+         socket
+         |> assign(
            Keyword.merge(site_assigns,
              site_panel: Map.put(Keyword.fetch!(site_assigns, :site_panel), :view, :edit_site),
              site_edit: %{form: to_form(changeset)}
            )
-         )}
+         )
+         |> load_site_details(site)}
     end
   end
 
@@ -163,46 +165,52 @@ defmodule PortalWeb.Sites do
      |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
   end
 
-  defp site_panel_assigns(site, params, socket) do
-    device_tokens = load_device_tokens(site.id, socket.assigns.subject)
-
-    {gateways, total_gateway_count} =
-      load_panel_gateways(site.id, false, device_tokens, socket.assigns.subject)
-
-    resources =
-      if site.managed_by == :account do
-        Database.list_resources_for_site(site.id, socket.assigns.subject)
-      else
-        internet_resource = socket.assigns.internet_resource
-
-        if internet_resource && internet_resource.site_id == site.id do
-          [internet_resource]
-        else
-          []
-        end
-      end
-
-    gateway_tokens = Portal.Devices.list_gateway_tokens_for_site(site.id, socket.assigns.subject)
-
+  defp site_panel_assigns(site, params) do
     [
       selected_site: site,
-      site_panel:
-        Map.merge(base_site_panel_state(), %{
-          tab: parse_panel_tab(params, gateway_tokens),
-          devices: load_site_devices(site.id, socket.assigns.unified_devices?, socket.assigns.subject),
-          gateways: gateways,
-          total_gateway_count: total_gateway_count,
-          resources: resources,
-          gateway_tokens: gateway_tokens,
-          legacy_token_connections: legacy_token_connections(gateway_tokens),
-          device_tokens: device_tokens
-        }),
+      site_panel: Map.merge(base_site_panel_state(), %{tab: parse_panel_tab(params, nil), details: :loading}),
       site_deploy: base_site_deploy_state(),
       site_resource_form: base_site_resource_form_state(),
       site_edit: base_site_edit_state(),
       new_site: base_new_site_state(),
       devices_picker: nil
     ]
+  end
+
+  defp load_site_details(socket, site) do
+    subject = socket.assigns.subject
+    unified_devices? = socket.assigns.unified_devices?
+    show_all? = socket.assigns.site_panel.show_all_gateways
+    internet_resource = socket.assigns.internet_resource
+
+    socket
+    |> merge_state(:site_panel, %{details_task?: true, refresh_details?: false})
+    |> start_async(:site_details, fn ->
+      {site.id, site_details(site, show_all?, unified_devices?, internet_resource, subject)}
+    end)
+  end
+
+  defp site_details(site, show_all?, unified_devices?, internet_resource, subject) do
+    device_tokens = load_device_tokens(site.id, subject)
+    {gateways, total_gateway_count} = load_panel_gateways(site.id, show_all?, device_tokens, subject)
+    gateway_tokens = Portal.Devices.list_gateway_tokens_for_site(site.id, subject)
+
+    resources =
+      cond do
+        site.managed_by == :account -> Database.list_resources_for_site(site.id, subject)
+        internet_resource && internet_resource.site_id == site.id -> [internet_resource]
+        true -> []
+      end
+
+    %{
+      devices: load_site_devices(site.id, unified_devices?, subject),
+      gateways: gateways,
+      total_gateway_count: total_gateway_count,
+      resources: resources,
+      gateway_tokens: gateway_tokens,
+      legacy_token_connections: legacy_token_connections(gateway_tokens),
+      device_tokens: device_tokens
+    }
   end
 
   defp stale_event?(event, %{unified_devices?: false}) when event in @site_devices_events, do: true
@@ -419,7 +427,10 @@ defmodule PortalWeb.Sites do
       rotated_gateway_token: nil,
       expanded_gateway_id: nil,
       devices: [],
-      confirm_remove_device_id: nil
+      confirm_remove_device_id: nil,
+      details: :ok,
+      details_task?: false,
+      refresh_details?: false
     }
   end
 
@@ -1331,48 +1342,41 @@ defmodule PortalWeb.Sites do
 
     socket = load_sites_index_data(socket)
 
-    {device_tokens, panel_gateways, total_gateway_count} =
-      if socket.assigns.selected_site do
-        # Connects can confirm rotations (deleting the expiring token), so the
-        # per-gateway token state is refreshed along with the gateway list
-        device_tokens =
-          load_device_tokens(socket.assigns.selected_site.id, socket.assigns.subject)
-
-        {panel_gateways, total_gateway_count} =
-          load_panel_gateways(
-            socket.assigns.selected_site.id,
-            socket.assigns.site_panel.show_all_gateways,
-            device_tokens,
-            socket.assigns.subject
-          )
-
-        {device_tokens, panel_gateways, total_gateway_count}
-      else
-        {socket.assigns.site_panel.device_tokens, socket.assigns.site_panel.gateways,
-         socket.assigns.site_panel.total_gateway_count}
-      end
-
-    site_devices =
-      if socket.assigns.selected_site do
-        load_site_devices(socket.assigns.selected_site.id, socket.assigns.unified_devices?, socket.assigns.subject)
-      else
-        socket.assigns.site_panel.devices
-      end
-
-    socket =
-      merge_state(socket, :site_panel, %{
-        devices: site_devices,
-        device_tokens: device_tokens,
-        gateways: panel_gateways,
-        total_gateway_count: total_gateway_count,
-        legacy_token_connections:
-          legacy_token_connections(socket.assigns.site_panel.gateway_tokens)
-      })
-
-    {:noreply, socket}
+    {:noreply, refresh_site_details(socket)}
   end
 
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  def handle_async(:site_details, {:ok, {site_id, details}}, %{assigns: %{selected_site: %{id: site_id}}} = socket) do
+    panel = socket.assigns.site_panel
+    socket =
+      merge_state(
+        socket,
+        :site_panel,
+        Map.merge(details, %{
+          details: :ok,
+          details_task?: false,
+          tab: sanitize_panel_tab(panel.tab, details.gateway_tokens)
+        })
+      )
+
+    if panel.refresh_details? do
+      {:noreply, load_site_details(socket, socket.assigns.selected_site)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_async(:site_details, {:ok, _stale}, socket), do: {:noreply, socket}
+
+  def handle_async(:site_details, {:exit, _reason}, %{assigns: %{selected_site: %Portal.Site{}}} = socket) do
+    case socket.assigns.site_panel do
+      %{details: :loading} -> {:noreply, merge_state(socket, :site_panel, %{details: :failed, details_task?: false})}
+      _ -> {:noreply, merge_state(socket, :site_panel, %{details_task?: false})}
+    end
+  end
+
+  def handle_async(:site_details, {:exit, _reason}, socket), do: {:noreply, socket}
 
   def handle_async(:device_search, {:ok, results}, %{assigns: %{devices_picker: %{} = picker}} = socket) do
     selected_ids = MapSet.new(picker.selected_devices, & &1.id)
@@ -1449,11 +1453,44 @@ defmodule PortalWeb.Sites do
   defp parse_site_tab("tokens"), do: :tokens
   defp parse_site_tab(_), do: :gateways
 
-  defp parse_panel_tab(params, gateway_tokens) do
+  defp parse_panel_tab(params, %{details: :ok, gateway_tokens: gateway_tokens}) do
     params
     |> Map.get("tab", "gateways")
     |> parse_site_tab()
     |> sanitize_panel_tab(gateway_tokens)
+  end
+
+  defp parse_panel_tab(params, _panel) do
+    params
+    |> Map.get("tab", "gateways")
+    |> parse_site_tab()
+  end
+
+  defp refresh_site_details(%{assigns: %{selected_site: nil}} = socket), do: socket
+
+  # A load in flight may predate this change, so it runs again once it lands.
+  defp refresh_site_details(%{assigns: %{site_panel: %{details_task?: true}}} = socket),
+    do: merge_state(socket, :site_panel, %{refresh_details?: true})
+
+  defp refresh_site_details(%{assigns: %{site_panel: %{details: :failed}}} = socket), do: socket
+
+  defp refresh_site_details(socket) do
+    site = socket.assigns.selected_site
+    subject = socket.assigns.subject
+    # Connects can confirm rotations (deleting the expiring token), so the
+    # per-gateway token state is refreshed along with the gateway list
+    device_tokens = load_device_tokens(site.id, subject)
+
+    {panel_gateways, total_gateway_count} =
+      load_panel_gateways(site.id, socket.assigns.site_panel.show_all_gateways, device_tokens, subject)
+
+    merge_state(socket, :site_panel, %{
+      devices: load_site_devices(site.id, socket.assigns.unified_devices?, subject),
+      device_tokens: device_tokens,
+      gateways: panel_gateways,
+      total_gateway_count: total_gateway_count,
+      legacy_token_connections: legacy_token_connections(socket.assigns.site_panel.gateway_tokens)
+    })
   end
 
   # The Legacy tokens tab is hidden when a site has no legacy tokens.

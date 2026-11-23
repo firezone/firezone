@@ -1,6 +1,16 @@
 defmodule PortalWeb.SitesTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The site details load in an async task, so wait for them before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   import Ecto.Query
   alias Portal.{Device, DeviceToken, Repo, Resource, Site}
 
@@ -571,6 +581,93 @@ defmodule PortalWeb.SitesTest do
 
       refute html =~ "created successfully"
       assert Repo.aggregate(Resource, :count) == 0
+    end
+  end
+
+  describe ":show action async details" do
+    test "renders the header before the details load", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account, name: "Async Site")
+      gateway_fixture(account: account, site: site, name: "async-gw", token: :single_owner)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/sites/#{site.id}")
+
+      assert html =~ "Async Site"
+      assert html =~ "site-details-loading"
+      refute html =~ "async-gw"
+
+      html = render_async(lv)
+      assert html =~ "async-gw"
+      refute html =~ "site-details-loading"
+    end
+
+    test "never shows the previous site's details on the next one", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first = site_fixture(account: account)
+      second = site_fixture(account: account)
+      gateway_fixture(account: account, site: first, name: "first-gw", token: :single_owner)
+      gateway_fixture(account: account, site: second, name: "second-gw", token: :single_owner)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/sites/#{first.id}")
+
+      html = render_patch(lv, ~p"/#{account}/sites/#{second.id}")
+      refute html =~ "first-gw"
+
+      html = render_async(lv)
+      assert html =~ "second-gw"
+      refute html =~ "first-gw"
+    end
+
+    test "keeps loaded details when switching tabs", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      gateway_fixture(account: account, site: site, name: "kept-gw", token: :single_owner)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "switch_panel_tab", %{"tab" => "resources"})
+      render_click(lv, "switch_panel_tab", %{"tab" => "gateways"})
+
+      html = render(lv)
+      assert html =~ "kept-gw"
+      refute html =~ "site-details-loading"
+    end
+
+    test "a presence diff while the details load is not lost", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, name: "doomed-gw", token: :single_owner)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/sites/#{site.id}")
+
+      Repo.delete!(token)
+
+      send(lv.pid, %Phoenix.Socket.Broadcast{
+        topic: "presences:account_devices:#{account.id}",
+        event: "presence_diff",
+        payload: %{joins: %{}, leaves: %{}}
+      })
+
+      render_async(lv)
+      html = render_async(lv)
+      refute html =~ "doomed-gw"
     end
   end
 

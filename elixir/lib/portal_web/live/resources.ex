@@ -41,21 +41,18 @@ defmodule PortalWeb.Resources do
       |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
-        selected_resource_pool_member_ids: [],
-        selected_resource_pool_devices: [],
+        loaded_resource_id: nil,
+        selected_resource_pool_devices: %AsyncResult{},
         selected_resource_pool_group_ids: nil,
         pool_group_ids: nil,
         devices_expanded_id: nil,
         online_ids: MapSet.new(),
         online_site_ids: MapSet.new(),
-        selected_groups: [],
-        selected_people: [],
-        selected_hits: %{},
-        route_devices: [],
+        selected_access: %AsyncResult{},
+        route_devices: %AsyncResult{},
         people_grant: base_people_grant(),
-        policy_authorizations: [],
-        policy_authorizations_page: 1,
-        policy_authorizations_has_next: false,
+        policy_authorizations: %AsyncResult{},
+        policy_authorizations_key: nil,
         policy_authorizations_expanded_id: nil,
         internet_resource: nil,
         resources: [],
@@ -80,46 +77,28 @@ defmodule PortalWeb.Resources do
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
     socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
-    case Database.get_resource(id, socket.assigns.subject) do
-      nil ->
-        redirect_to_resources_index(socket, "Resource does not exist.")
+    case socket.assigns do
+      %{loaded_resource_id: ^id, selected_resource: %Resource{} = resource} ->
+        {:noreply, show_resource_tab(socket, resource, params)}
 
-      resource ->
-        page = parse_page(params)
-        tab = parse_show_tab(params, resource)
+      _ ->
+        case Database.get_resource(id, socket.assigns.subject) do
+          nil ->
+            redirect_to_resources_index(socket, "Resource does not exist.")
 
-        groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
-        people = PortalWeb.DirectAccess.list_people(resource, socket.assigns.subject)
-        hits = Database.count_recent_hits(resource, socket.assigns.subject)
+          resource ->
+            pool_group_ids = Database.existing_pool_group_ids([resource], socket.assigns.subject)
 
-        {policy_authorizations, has_next_page} =
-          Database.list_policy_authorizations_for_resource(resource, socket.assigns.subject, page)
-
-        filter_site = filter_site_from_params(params, socket.assigns.subject)
-
-        pool_devices = Database.list_pool_members(resource, socket.assigns.subject)
-        pool_member_ids = Enum.map(pool_devices, & &1.id)
-        pool_group_ids = Database.existing_pool_group_ids([resource], socket.assigns.subject)
-
-        {:noreply,
-         socket
-         |> assign(
-           filter_site: filter_site,
-           selected_resource: resource,
-           selected_resource_pool_member_ids: pool_member_ids,
-           selected_resource_pool_devices: pool_devices,
-           selected_resource_pool_group_ids: pool_group_ids,
-           devices_expanded_id: nil,
-           selected_groups: groups,
-           selected_people: people,
-           selected_hits: hits,
-           route_devices: Database.list_route_devices(resource, socket.assigns.subject),
-           people_grant: base_people_grant(),
-           policy_authorizations: policy_authorizations,
-           policy_authorizations_page: page,
-           policy_authorizations_has_next: has_next_page
-         )
-         |> assign(show_resource_state_assigns(socket, tab))}
+            {:noreply,
+             socket
+             |> assign(
+               selected_resource: resource,
+               loaded_resource_id: resource.id,
+               selected_resource_pool_group_ids: pool_group_ids
+             )
+             |> load_resource_details(resource)
+             |> show_resource_tab(resource, params)}
+        end
     end
   end
 
@@ -130,7 +109,7 @@ defmodule PortalWeb.Resources do
 
     {:noreply,
      socket
-     |> assign(filter_site: nil, selected_resource: nil, selected_groups: [])
+     |> assign(filter_site: nil, selected_resource: nil, loaded_resource_id: nil)
      |> assign(new_resource_state_assigns(socket, to_form(changeset), sites))}
   end
 
@@ -147,20 +126,12 @@ defmodule PortalWeb.Resources do
       resource ->
         sites = Database.all_sites(socket.assigns.subject)
         changeset = Database.change_resource(resource, socket.assigns.subject)
-        selected_devices = Database.list_pool_members(resource, socket.assigns.subject)
 
         {:noreply,
          socket
-         |> assign(filter_site: nil, selected_resource: resource, selected_groups: [])
-         |> assign(
-           edit_resource_state_assigns(
-             socket,
-             to_form(changeset),
-             sites,
-             resource,
-             selected_devices
-           )
-         )}
+         |> assign(filter_site: nil, selected_resource: resource, loaded_resource_id: nil)
+         |> assign(edit_resource_state_assigns(socket, to_form(changeset), sites, resource))
+         |> load_edit_form_devices(resource)}
     end
   end
 
@@ -172,7 +143,7 @@ defmodule PortalWeb.Resources do
 
     {:noreply,
      socket
-     |> assign(filter_site: filter_site, selected_resource: nil, selected_groups: [])
+     |> assign(filter_site: filter_site, selected_resource: nil, loaded_resource_id: nil)
      |> assign(resource_state_assigns(socket))}
   end
 
@@ -206,27 +177,14 @@ defmodule PortalWeb.Resources do
     ]
   end
 
-  defp edit_resource_state_assigns(socket, resource_form, sites, resource, selected_devices) do
-    unified_devices? = Portal.Account.unified_devices?(socket.assigns.account)
-
-    served_devices =
-      if unified_devices?, do: Database.list_served_devices(resource, socket.assigns.subject), else: []
-
+  defp edit_resource_state_assigns(socket, resource_form, sites, resource) do
     [
       resource_panel: base_resource_panel(socket, view: :edit_form),
       resource_form:
         base_resource_form(resource_form, sites,
           active_protocols: Enum.map(resource.filters, & &1.protocol),
-          selected_devices: selected_devices,
-          pool_counts: Database.pool_counts(socket.assigns.subject, stored_group_id(resource)),
-          unified_devices?: unified_devices?,
-          served_by: if(served_devices == [], do: "site", else: "devices"),
-          served_devices: served_devices,
-          served_device_results:
-            if(unified_devices?,
-              do: served_device_results(served_devices, "", socket.assigns.subject),
-              else: []
-            )
+          unified_devices?: Portal.Account.unified_devices?(socket.assigns.account),
+          devices_load: :loading
         ),
       resource_grant: base_resource_grant(socket),
       resource_ui: base_resource_ui()
@@ -274,7 +232,8 @@ defmodule PortalWeb.Resources do
         served_by: "site",
         served_devices: [],
         served_device_search: "",
-        served_device_results: []
+        served_device_results: [],
+        devices_load: :ok
       }
     )
   end
@@ -582,19 +541,14 @@ defmodule PortalWeb.Resources do
           <ResourceComponents.resource_details_panel
             account={@account}
             resource={@selected_resource}
-            pool_member_ids={@selected_resource_pool_member_ids}
             pool_devices={@selected_resource_pool_devices}
             pool_group_ids={@selected_resource_pool_group_ids}
             devices_expanded_id={@devices_expanded_id}
             online_ids={@online_ids}
             online_site_ids={@online_site_ids}
-            groups={@selected_groups}
-            people={@selected_people}
-            hits={@selected_hits}
+            access={@selected_access}
             route_devices={@route_devices}
             policy_authorizations={@policy_authorizations}
-            policy_authorizations_page={@policy_authorizations_page}
-            policy_authorizations_has_next={@policy_authorizations_has_next}
             policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
             panel_view={@resource_panel.view}
             tab={@resource_panel.tab}
@@ -722,6 +676,11 @@ defmodule PortalWeb.Resources do
        address_description_changed?: address_description_changed?,
        pool_counts: Database.pool_counts(socket.assigns.subject, attrs["group_id"])
      )}
+  end
+
+  def handle_event("submit_resource_form", _params, %{assigns: %{resource_form: %{devices_load: load}}} = socket)
+      when load != :ok do
+    {:noreply, socket}
   end
 
   def handle_event("submit_resource_form", %{"resource" => attrs}, socket) do
@@ -933,7 +892,7 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_event("open_people_form", _params, socket) do
-    exclude_ids = Enum.map(socket.assigns.selected_people, & &1.id)
+    exclude_ids = Enum.map(selected_access(socket).people, & &1.id)
     results = Database.search_people("", exclude_ids, socket.assigns.subject)
 
     {:noreply,
@@ -950,7 +909,7 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_event("search_people", %{"people_search" => search}, socket) do
-    exclude_ids = Enum.map(socket.assigns.selected_people, & &1.id)
+    exclude_ids = Enum.map(selected_access(socket).people, & &1.id)
     results = Database.search_people(search, exclude_ids, socket.assigns.subject)
 
     {:noreply, merge_state(socket, :people_grant, search: search, results: results)}
@@ -983,7 +942,7 @@ defmodule PortalWeb.Resources do
         {:noreply,
          socket
          |> put_flash(:success, people_granted_message(length(actor_ids)))
-         |> refresh_selected_access()
+         |> reload_selected_access()
          |> merge_state(:resource_panel, view: :list)
          |> assign(people_grant: base_people_grant())
          |> LiveTable.reload_live_table!("resources")}
@@ -1012,14 +971,14 @@ defmodule PortalWeb.Resources do
 
     {:noreply,
      socket
-     |> refresh_selected_access()
+     |> reload_selected_access()
      |> merge_state(:people_grant, confirm_revoke_id: nil)
      |> LiveTable.reload_live_table!("resources")}
   end
 
   def handle_event("open_grant_form", _params, socket) do
     resource = socket.assigns.selected_resource
-    existing_ids = Enum.map(socket.assigns.selected_groups, & &1.group.id)
+    existing_ids = Enum.map(selected_access(socket).groups, & &1.group.id)
     available = Database.list_available_groups(resource, existing_ids, socket.assigns.subject)
     providers = Database.list_providers(socket.assigns.subject)
 
@@ -1244,11 +1203,9 @@ defmodule PortalWeb.Resources do
 
     case result do
       :ok ->
-        groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
-
         {:noreply,
          socket
-         |> assign(selected_groups: groups)
+         |> reload_selected_access()
          |> merge_state(:resource_panel, view: :list)
          |> assign(resource_grant: base_resource_grant(socket))
          |> assign(resource_ui: base_resource_ui())
@@ -1420,6 +1377,24 @@ defmodule PortalWeb.Resources do
 
   def handle_info(_, socket) do
     {:noreply, socket}
+  end
+
+  def handle_async(:edit_form_devices, {:ok, {resource_id, data}}, socket) do
+    case socket.assigns do
+      %{resource_panel: %{view: :edit_form}, selected_resource: %{id: ^resource_id}, resource_form: form} ->
+        data = if form.pool_counts == %{}, do: data, else: Map.delete(data, :pool_counts)
+        {:noreply, merge_state(socket, :resource_form, Map.put(data, :devices_load, :ok))}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_async(:edit_form_devices, {:exit, _reason}, socket) do
+    case socket.assigns.resource_panel do
+      %{view: :edit_form} -> {:noreply, merge_state(socket, :resource_form, devices_load: :failed)}
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_async(:device_search, {:ok, results}, socket) do
@@ -1627,6 +1602,7 @@ defmodule PortalWeb.Resources do
       resource_form_served_devices: assigns.resource_form.served_devices,
       resource_form_served_device_search: assigns.resource_form.served_device_search,
       resource_form_served_device_results: assigns.resource_form.served_device_results,
+      resource_form_devices_load: assigns.resource_form.devices_load,
       filter_ports: resource_filter_ports(assigns.resource_form.form),
       filter_errors: resource_filter_errors(assigns.resource_form.form)
     }
@@ -1651,7 +1627,7 @@ defmodule PortalWeb.Resources do
   defp apply_group_state_change(socket, result) do
     socket =
       socket
-      |> refresh_selected_groups()
+      |> reload_selected_access()
       |> merge_state(:resource_ui, group_actions_open_id: nil)
       |> maybe_put_stale_flash(result, "Group access state has changed.")
 
@@ -1668,7 +1644,7 @@ defmodule PortalWeb.Resources do
   defp apply_group_removal(socket, result) do
     socket =
       socket
-      |> refresh_selected_groups()
+      |> reload_selected_access()
       |> merge_state(:resource_ui, confirm_remove_group_id: nil, group_actions_open_id: nil)
       |> LiveTable.reload_live_table!("resources")
       |> maybe_put_stale_flash(result, "Group access no longer exists.")
@@ -1676,16 +1652,126 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
-  defp refresh_selected_access(socket) do
+  defp reload_selected_access(socket) do
     resource = socket.assigns.selected_resource
     subject = socket.assigns.subject
 
     socket
-    |> refresh_selected_groups()
-    |> assign(
-      selected_people: PortalWeb.DirectAccess.list_people(resource, subject),
-      selected_hits: Database.count_recent_hits(resource, subject)
+    |> cancel_async(socket.assigns.selected_access)
+    |> assign(selected_access: AsyncResult.ok(load_access(resource, subject)))
+  end
+
+  defp load_access(resource, subject) do
+    %{
+      groups: Database.list_groups_for_resource(resource, subject),
+      people: PortalWeb.DirectAccess.list_people(resource, subject),
+      hits: Database.count_recent_hits(resource, subject)
+    }
+  end
+
+  defp selected_access(socket) do
+    case socket.assigns.selected_access do
+      %AsyncResult{ok?: true, result: access} -> access
+      _ -> %{groups: [], people: [], hits: %{}}
+    end
+  end
+
+  defp load_resource_details(socket, resource) do
+    subject = socket.assigns.subject
+
+    socket
+    |> reset_policy_authorizations()
+    |> assign_async(:selected_access, fn -> {:ok, %{selected_access: load_access(resource, subject)}} end, reset: true)
+    |> assign_async(:route_devices, fn -> {:ok, %{route_devices: Database.list_route_devices(resource, subject)}} end,
+      reset: true
     )
+    |> load_pool_devices(resource)
+  end
+
+  defp load_pool_devices(socket, %Resource{type: :device_pool} = resource) do
+    subject = socket.assigns.subject
+
+    assign_async(
+      socket,
+      :selected_resource_pool_devices,
+      fn -> {:ok, %{selected_resource_pool_devices: Database.list_pool_members(resource, subject)}} end,
+      reset: true
+    )
+  end
+
+  defp load_pool_devices(socket, _resource) do
+    socket
+    |> cancel_async(socket.assigns.selected_resource_pool_devices)
+    |> assign(selected_resource_pool_devices: AsyncResult.ok([]))
+  end
+
+  defp show_resource_tab(socket, resource, params) do
+    tab = parse_show_tab(params, resource)
+
+    socket
+    |> assign(
+      filter_site: filter_site_from_params(params, socket.assigns.subject),
+      devices_expanded_id: nil,
+      people_grant: base_people_grant()
+    )
+    |> assign(show_resource_state_assigns(socket, tab))
+    |> maybe_load_policy_authorizations(resource, tab, parse_page(params))
+  end
+
+  defp reset_policy_authorizations(socket) do
+    socket
+    |> cancel_async(socket.assigns.policy_authorizations)
+    |> assign(policy_authorizations: %AsyncResult{}, policy_authorizations_key: nil)
+  end
+
+  defp maybe_load_policy_authorizations(socket, resource, :authorizations, page) do
+    resource_id = resource.id
+    key = {resource_id, page}
+
+    case socket.assigns do
+      %{policy_authorizations_key: ^key, policy_authorizations: %AsyncResult{failed: nil}} ->
+        socket
+
+      %{policy_authorizations: loaded} ->
+        subject = socket.assigns.subject
+        same_resource? = match?(%AsyncResult{ok?: true, result: %{resource_id: ^resource_id}}, loaded)
+
+        socket
+        |> assign(policy_authorizations_key: key)
+        |> assign_async(
+          :policy_authorizations,
+          fn ->
+            {rows, has_next} = Database.list_policy_authorizations_for_resource(resource, subject, page)
+            {:ok, %{policy_authorizations: %{resource_id: resource.id, page: page, rows: rows, has_next: has_next}}}
+          end,
+          reset: not same_resource?
+        )
+    end
+  end
+
+  defp maybe_load_policy_authorizations(socket, _resource, _tab, _page), do: socket
+
+  defp load_edit_form_devices(socket, resource) do
+    subject = socket.assigns.subject
+    unified_devices? = socket.assigns.resource_form.unified_devices?
+
+    start_async(socket, :edit_form_devices, fn ->
+      {resource.id, edit_form_devices(resource, unified_devices?, subject)}
+    end)
+  end
+
+  defp edit_form_devices(resource, unified_devices?, subject) do
+    served_devices =
+      if unified_devices?, do: Database.list_served_devices(resource, subject), else: []
+
+    %{
+      selected_devices: Database.list_pool_members(resource, subject),
+      pool_counts: Database.pool_counts(subject, stored_group_id(resource)),
+      served_by: if(served_devices == [], do: "site", else: "devices"),
+      served_devices: served_devices,
+      served_device_results:
+        if(unified_devices?, do: served_device_results(served_devices, "", subject), else: [])
+    }
   end
 
   defp people_granted_message(1), do: "1 person can now reach this resource."
@@ -1703,13 +1789,6 @@ defmodule PortalWeb.Resources do
 
   defp served_device_results(selected, search, subject) do
     Database.search_servable_devices(search, Enum.map(selected, & &1.id), subject)
-  end
-
-  defp refresh_selected_groups(socket) do
-    groups =
-      Database.list_groups_for_resource(socket.assigns.selected_resource, socket.assigns.subject)
-
-    assign(socket, selected_groups: groups)
   end
 
   defp maybe_put_stale_flash(socket, nil, message) do
