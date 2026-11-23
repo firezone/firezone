@@ -12,27 +12,29 @@ pub fn threads() -> Result<Vec<Thread>> {
         .filter(|ticks| *ticks > 0)
         .context("Failed to get clock ticks per second")?;
 
-    let mut threads = Vec::new();
-
-    for entry in std::fs::read_dir("/proc/self/task").context("Failed to list `/proc/self/task`")? {
-        let path = entry.context("Failed to list `/proc/self/task`")?.path();
-        let id = path
-            .file_name()
-            .and_then(|name| name.to_str()?.parse::<u64>().ok())
-            .with_context(|| format!("Invalid thread ID in `{}`", path.display()))?;
-        let stat = std::fs::read_to_string(path.join("stat"))
-            .with_context(|| format!("Failed to read `{}/stat`", path.display()))?;
-        let (name, ticks) = parse_stat(&stat)
-            .with_context(|| format!("Failed to parse `{}/stat`", path.display()))?;
-
-        threads.push(Thread {
-            id,
-            name: name.to_owned(),
-            cpu_time: Duration::from_nanos(ticks * 1_000_000_000 / ticks_per_second),
-        });
-    }
+    let threads = std::fs::read_dir("/proc/self/task")
+        .context("Failed to list `/proc/self/task`")?
+        .filter_map(|entry| thread(&entry.ok()?.path(), ticks_per_second).ok())
+        .collect();
 
     Ok(threads)
+}
+
+fn thread(path: &std::path::Path, ticks_per_second: u64) -> Result<Thread> {
+    let id = path
+        .file_name()
+        .and_then(|name| name.to_str()?.parse::<u64>().ok())
+        .with_context(|| format!("Invalid thread ID in `{}`", path.display()))?;
+    let stat = std::fs::read_to_string(path.join("stat"))
+        .with_context(|| format!("Failed to read `{}/stat`", path.display()))?;
+    let (name, ticks) =
+        parse_stat(&stat).with_context(|| format!("Failed to parse `{}/stat`", path.display()))?;
+
+    Ok(Thread {
+        id,
+        name: name.to_owned(),
+        cpu_time: Duration::from_nanos(ticks * 1_000_000_000 / ticks_per_second),
+    })
 }
 
 /// Parses the name and the user plus system time in clock ticks from a `/proc/<pid>/task/<tid>/stat` file.

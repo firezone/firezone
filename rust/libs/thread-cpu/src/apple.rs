@@ -25,7 +25,7 @@ pub fn threads() -> Result<Vec<Thread>> {
 
     // SAFETY: `task_threads` succeeded, so `list` points to `count` thread ports.
     let ports = unsafe { std::slice::from_raw_parts(list, count as usize) };
-    let threads = ports.iter().map(|port| thread(*port)).collect();
+    let threads = ports.iter().filter_map(|port| thread(*port).ok()).collect();
 
     for port in ports {
         // SAFETY: `task_threads` gave us a send right to each port, which we no longer use.
@@ -41,7 +41,7 @@ pub fn threads() -> Result<Vec<Thread>> {
         )
     };
 
-    threads
+    Ok(threads)
 }
 
 fn thread(port: thread_act_t) -> Result<Thread> {

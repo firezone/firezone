@@ -39,7 +39,7 @@ pub fn threads() -> Result<Vec<Thread>> {
 
     loop {
         if entry.th32OwnerProcessID == process {
-            threads.push(thread(entry.th32ThreadID)?);
+            threads.extend(thread(entry.th32ThreadID).ok());
         }
 
         // SAFETY: `snapshot` is valid and `entry` is valid for writes of its `dwSize`.

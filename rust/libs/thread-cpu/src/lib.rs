@@ -42,6 +42,8 @@ pub struct Thread {
 }
 
 /// Lists the threads of the current process.
+///
+/// Threads that exit while they are listed, or that cannot be read, are left out.
 pub fn threads() -> anyhow::Result<Vec<Thread>> {
     platform::threads()
 }
