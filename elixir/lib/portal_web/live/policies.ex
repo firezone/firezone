@@ -1,7 +1,7 @@
 defmodule PortalWeb.Policies do
   use PortalWeb, :live_view
 
-  alias PortalWeb.Policies.Components, as: PolicyComponents
+  alias PortalWeb.Policies.Components
 
   alias Portal.{Changes.Change, Policy, Authentication, PubSub}
   alias Phoenix.LiveView.AsyncResult
@@ -10,7 +10,17 @@ defmodule PortalWeb.Policies do
 
   @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
 
-  @form_events ~w[change_policy_form submit_policy_form]
+  @who_empty %{
+    mode: :group,
+    search: "",
+    results: [],
+    selected: [],
+    error: nil,
+    direct_people: nil,
+    resource_id: nil
+  }
+
+  @form_events ~w[change_policy_form submit_policy_form set_policy_who add_policy_person remove_policy_person]
 
   @selected_policy_events ~w[disable_policy enable_policy delete_policy]
 
@@ -37,7 +47,7 @@ defmodule PortalWeb.Policies do
         policy_authorizations_expanded_id: nil
       )
       |> assign(base_policy_assigns(socket))
-      |> assign(policies: [], policies_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
+      |> assign(policies: [], policy_people: %{}, policies_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> LiveTable.assign_live_table("policies",
         query_module: Database,
         sortable_fields: [],
@@ -45,8 +55,7 @@ defmodule PortalWeb.Policies do
           :group_id,
           :group_name,
           :resource_id,
-          :resource_name,
-          :site_id
+          :resource_name
         ],
         loader: &load_policies/2
       )
@@ -81,7 +90,8 @@ defmodule PortalWeb.Policies do
              policy_authorizations_expanded_id: nil
            ] ++ provider_assigns(socket.assigns.subject) ++
              policy_filter_assigns(params, socket.assigns.subject) ++
-             show_policy_assigns(socket, tab)
+             show_policy_assigns(socket, tab) ++
+             [policy_details: Database.policy_details(policy, socket.assigns.subject)]
          )}
     end
   end
@@ -120,7 +130,8 @@ defmodule PortalWeb.Policies do
              return_to: uri_path(uri)
            ] ++ provider_assigns(socket.assigns.subject) ++
              policy_filter_assigns(params, socket.assigns.subject) ++
-             edit_policy_assigns(socket, policy, form)
+             edit_policy_assigns(socket, policy, form) ++
+             [policy_who: edit_who(policy, socket.assigns.subject)]
          )}
     end
   end
@@ -195,10 +206,16 @@ defmodule PortalWeb.Policies do
   end
 
   defp load_policies(subject, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, group: [:directory], resource: [])
+    list_opts = Keyword.put(list_opts, :preload, group: [:directory], resource: [:site])
 
     with {:ok, policies, metadata} <- Database.list_policies(subject, list_opts) do
-      {:ok, %{policies: policies, policies_metadata: metadata}}
+      people =
+        policies
+        |> Enum.filter(&(&1.group && PortalWeb.DirectAccess.direct_group?(&1.group)))
+        |> Enum.map(& &1.group_id)
+        |> PortalWeb.Access.Components.direct_people(subject)
+
+      {:ok, %{policies: policies, policy_people: people, policies_metadata: metadata}}
     end
   end
 
@@ -206,26 +223,20 @@ defmodule PortalWeb.Policies do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
       <Page.page_header>
-        <:icon>
-          <Core.icon name="ri-shield-line" class="w-16 h-16 text-brand" />
-        </:icon>
         <:title>Policies</:title>
         <:description>
-          Rules that grant a group access to a resource.
+          Each policy lets a group, or a few people, reach one resource.
         </:description>
         <:action>
           <Navigation.docs_action show_label size="md" path="/deploy/policies" />
           <Form.button style="primary" icon="ri-add-line" phx-click="open_new_policy_form">
-            New Policy
+            Add a policy
           </Form.button>
         </:action>
         <:stats>
           <.async_result :let={count} assign={@policies_count}>
-            <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
-            <Core.dual_badge type="primary">
-              <:left>{count}</:left>
-              <:right>Total</:right>
-            </Core.dual_badge>
+            <:loading><span id="policies-count">Loading...</span></:loading>
+            <span id="policies-count">{count}</span>
           </.async_result>
         </:stats>
       </Page.page_header>
@@ -262,94 +273,59 @@ defmodule PortalWeb.Policies do
               View all policies
             </Navigation.link>
           </:notice>
-          <:col :let={policy} label="Policy">
-            <div class="font-medium transition-colors text-heading group-hover:text-brand">
-              <%= if policy.group do %>
-                {policy.group.name} — {policy.resource.name}
-              <% else %>
-                <span class="text-warning">(Group deleted)</span> — {policy.resource.name}
-              <% end %>
+          <:col :let={policy} label="Group" class="w-2/5">
+            <.policy_group_cell policy={policy} people={@policy_people} />
+          </:col>
+          <:col :let={policy} label="Resource" class="w-2/5">
+            <div class="flex items-center gap-2 min-w-0">
+              <Core.icon name="ri-server-line" class="w-4 h-4 text-muted shrink-0" />
+              <span class="truncate text-fg">{policy.resource.name}</span>
             </div>
-            <div class="font-mono text-[10px] text-subtle mt-0.5">
-              {policy.id}
+            <div :if={policy.resource.address} class="pl-6 font-mono text-xs text-muted truncate">
+              {policy.resource.address}
             </div>
           </:col>
-          <:col :let={policy} label="Status" class="w-32">
-            <PolicyComponents.policy_status_badge is_disabled={policy.is_disabled} />
+          <:col :let={policy} label="Status" class="w-1/5">
+            <Components.policy_status_badge is_disabled={policy.is_disabled} />
+            <div class="mt-0.5 text-xs text-muted truncate">{conditions_summary(policy)}</div>
           </:col>
-          <:col :let={policy} label="Group" class="w-36 lg:w-72">
-            <%= if policy.group do %>
-              <div class="flex items-center gap-2">
-                <Core.provider_icon provider={Core.provider_type_from_group(policy.group)} size="xs" variant="circle" />
-                <Navigation.link
-                  navigate={~p"/#{@account}/groups/#{policy.group}"}
-                  class="text-sm text-body truncate hover:text-heading transition-colors"
-                >
-                  {policy.group.name}
-                </Navigation.link>
-              </div>
-            <% else %>
-              <span class="text-xs text-subtle italic">Group deleted</span>
-            <% end %>
+          <:col :let={policy} label="Site" filter={:site_id} class="w-40">
+            <span :if={policy.resource.site} class="text-sm truncate">{policy.resource.site.name}</span>
+            <span :if={is_nil(policy.resource.site)} class="text-xs text-muted">No site</span>
           </:col>
-          <:col :let={policy} label="Resource" class="w-36 lg:w-72">
-            <div class="flex items-center gap-2">
-              <span class={ResourceType.type_badge_class(policy.resource.type)}>
-                {ResourceType.resource_type_label(policy.resource.type)}
+          <:col :let={policy} label="Conditions" filter={:conditions} class="w-48">
+            <div class="flex flex-wrap items-center gap-1">
+              <Core.badge :for={condition <- policy.conditions} size="xs">
+                {Components.condition_short_label(condition.property)}
+              </Core.badge>
+              <Core.badge :if={policy.postures} size="xs">Posture</Core.badge>
+              <span :if={policy.conditions == [] and is_nil(policy.postures)} class="text-xs text-muted">
+                None
               </span>
-              <Navigation.link
-                navigate={~p"/#{@account}/resources/#{policy.resource_id}"}
-                class="text-sm text-body truncate hover:text-heading transition-colors"
-              >
-                {policy.resource.name}
-              </Navigation.link>
             </div>
-          </:col>
-          <:col :let={policy} label="Conditions" class="w-28 lg:w-72">
-            <%= if policy.conditions != [] or policy.postures do %>
-              <span class="lg:hidden text-xs text-body">
-                {length(policy.conditions)} condition{if length(policy.conditions) != 1, do: "s"}
-              </span>
-              <div class="hidden lg:flex items-center gap-1.5 flex-wrap">
-                <%= for condition <- policy.conditions do %>
-                  <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-raised text-body border border-border">
-                    {PolicyComponents.condition_short_label(condition.property)}
-                  </span>
-                <% end %>
-                <span
-                  :if={policy.postures}
-                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-raised text-body border border-border"
-                >
-                  Posture
-                </span>
-              </div>
-            <% else %>
-              <span class="text-xs text-subtle">—</span>
-            <% end %>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <Core.icon name="ri-shield-line" class="w-5 h-5 text-subtle" />
-              </div>
+              <Core.icon name="ri-shield-check-line" class="w-6 h-6 text-faint" />
               <div class="text-center">
-                <p class="text-sm font-medium text-heading">No policies yet</p>
-                <p class="text-xs text-subtle mt-0.5">
-                  Create a Policy to grant Groups access to Resources.
+                <p class="text-sm font-medium text-fg">No policies yet</p>
+                <p class="text-xs text-muted mt-0.5">
+                  Add a policy to let a group or a few people reach a resource.
                 </p>
               </div>
-              <Navigation.link
+              <Form.button
+                size="sm"
+                icon="ri-add-line"
                 patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/policies/new")}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
-                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a Policy
-              </Navigation.link>
+                Add a policy
+              </Form.button>
             </div>
           </:empty>
         </LiveTable.live_table>
       </div>
 
-      <PolicyComponents.policy_panel
+      <Components.policy_panel
         account={@account}
         policy={@selected_policy}
         providers={@policy_providers}
@@ -365,9 +341,48 @@ defmodule PortalWeb.Policies do
         policy_authorizations_page={@policy_authorizations_page}
         policy_authorizations_has_next={@policy_authorizations_has_next}
         policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
+        details={@policy_details}
+        who={@policy_who}
       />
     </div>
     """
+  end
+
+  attr :policy, :any, required: true
+  attr :people, :map, required: true
+
+  defp policy_group_cell(%{policy: %{group: nil}} = assigns) do
+    ~H"""
+    <span class="inline-flex items-center gap-2 text-attn">
+      <Core.icon name="ri-error-warning-line" class="w-4 h-4" /> Group deleted
+    </span>
+    """
+  end
+
+  defp policy_group_cell(assigns) do
+    ~H"""
+    <%= if PortalWeb.DirectAccess.direct_group?(@policy.group) do %>
+      <span class="flex items-center gap-2 min-w-0" data-direct-access>
+        <Core.icon name="ri-user-line" class="w-4 h-4 text-muted shrink-0" />
+        <span class="truncate text-fg">
+          {PortalWeb.Access.Components.people_label(Map.get(@people, @policy.group_id, []))}
+        </span>
+      </span>
+    <% else %>
+      <span class="flex items-center gap-2 min-w-0">
+        <Core.provider_icon provider={Core.provider_type_from_group(@policy.group)} size="xs" variant="circle" />
+        <span class="truncate text-fg font-medium">{@policy.group.name}</span>
+      </span>
+    <% end %>
+    """
+  end
+
+  defp conditions_summary(%{conditions: [], postures: nil}), do: "No conditions"
+
+  defp conditions_summary(policy) do
+    labels = Enum.map(policy.conditions, &Components.condition_short_label(&1.property))
+    labels = if policy.postures, do: labels ++ ["Posture"], else: labels
+    Enum.join(labels, ", ")
   end
 
   # Disabled providers can't be selected, but conditions may still reference them.
@@ -448,8 +463,19 @@ defmodule PortalWeb.Policies do
         delete?: false,
         breaking_params: nil
       },
-      policy_postures: Postures.for_account(socket.assigns.account)
+      policy_postures: Postures.for_account(socket.assigns.account),
+      policy_who: @who_empty,
+      policy_details: nil
     ]
+  end
+
+  defp edit_who(%Policy{group: group, resource_id: resource_id}, subject) do
+    if group && PortalWeb.DirectAccess.direct_group?(group) do
+      people = PortalWeb.Access.Components.direct_people([group.id], subject)
+      %{@who_empty | direct_people: Map.get(people, group.id, []), resource_id: resource_id}
+    else
+      @who_empty
+    end
   end
 
   defp default_policy_assigns(socket), do: base_policy_assigns(socket)
@@ -562,7 +588,7 @@ defmodule PortalWeb.Policies do
     {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
   end
 
-  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+  def handle_event("handle_keydown", _params, socket)
       when socket.assigns.policy_panel.view in [:new_form, :edit_form] do
     path =
       case socket.assigns.live_action do
@@ -573,7 +599,7 @@ defmodule PortalWeb.Policies do
     {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, path))}
   end
 
-  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+  def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_policy) do
     {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
@@ -661,11 +687,40 @@ defmodule PortalWeb.Policies do
     {:noreply, update(socket, :policy_postures, &Postures.handle_event(event, params, &1))}
   end
 
-  def handle_event("change_policy_form", %{"policy" => params}, socket) do
+  def handle_event("set_policy_who", %{"who" => who}, socket) when who in ~w[group people] do
+    {:noreply, merge_state(socket, :policy_who, mode: String.to_existing_atom(who), error: nil)}
+  end
+
+  def handle_event("add_policy_person", %{"id" => id}, socket) do
+    who = socket.assigns.policy_who
+
+    case Enum.find(who.results, &(&1.id == id)) do
+      nil ->
+        {:noreply, socket}
+
+      actor ->
+        {:noreply,
+         merge_state(socket, :policy_who,
+           selected: Enum.uniq_by(who.selected ++ [actor], & &1.id),
+           results: [],
+           search: "",
+           error: nil
+         )}
+    end
+  end
+
+  def handle_event("remove_policy_person", %{"id" => id}, socket) do
+    selected = Enum.reject(socket.assigns.policy_who.selected, &(&1.id == id))
+    {:noreply, merge_state(socket, :policy_who, selected: selected)}
+  end
+
+  def handle_event("change_policy_form", %{"policy" => params} = all_params, socket) do
+    socket = maybe_search_people(socket, all_params)
+
     params =
       params
-      |> PolicyComponents.map_condition_params(empty_values: :drop)
-      |> PolicyComponents.maybe_drop_unsupported_conditions(socket)
+      |> Components.map_condition_params(empty_values: :drop)
+      |> Components.maybe_drop_unsupported_conditions(socket)
       |> Postures.maybe_drop_unsupported(socket.assigns.policy_postures)
 
     changeset =
@@ -679,11 +734,15 @@ defmodule PortalWeb.Policies do
     {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
   end
 
+  def handle_event("submit_policy_form", %{"policy" => params}, %{assigns: %{policy_who: %{mode: :people}}} = socket) do
+    grant_people(socket, params["resource_id"])
+  end
+
   def handle_event("submit_policy_form", %{"policy" => params}, socket) do
     params =
       params
-      |> PolicyComponents.map_condition_params(empty_values: :drop)
-      |> PolicyComponents.maybe_drop_unsupported_conditions(socket)
+      |> Components.map_condition_params(empty_values: :drop)
+      |> Components.maybe_drop_unsupported_conditions(socket)
       |> Postures.maybe_drop_unsupported(socket.assigns.policy_postures)
 
     if socket.assigns.live_action == :new do
@@ -917,7 +976,7 @@ defmodule PortalWeb.Policies do
   end
 
   def handle_info({:panel_change_resource, resource}, socket) do
-    available = PolicyComponents.available_conditions(resource)
+    available = Components.available_conditions(resource)
     filtered = Enum.filter(socket.assigns.policy_conditions.active_conditions, &(&1 in available))
 
     {:noreply,
@@ -1160,6 +1219,69 @@ defmodule PortalWeb.Policies do
     end
   end
 
+  defp maybe_search_people(socket, %{"_people_search" => search}) do
+    search = String.trim(search)
+    who = socket.assigns.policy_who
+
+    cond do
+      search == who.search ->
+        socket
+
+      search == "" ->
+        merge_state(socket, :policy_who, search: "", results: [])
+
+      true ->
+        selected = MapSet.new(who.selected, & &1.id)
+
+        results =
+          search
+          |> Database.search_actors(socket.assigns.subject)
+          |> Enum.reject(&MapSet.member?(selected, &1.id))
+
+        merge_state(socket, :policy_who, search: search, results: results)
+    end
+  end
+
+  defp maybe_search_people(socket, _params), do: socket
+
+  defp grant_people(socket, resource_id) do
+    subject = socket.assigns.subject
+    actor_ids = Enum.map(socket.assigns.policy_who.selected, & &1.id)
+    resource = resource_id not in [nil, ""] && Database.get_resource(resource_id, subject)
+
+    cond do
+      actor_ids == [] ->
+        {:noreply, merge_state(socket, :policy_who, error: "Pick at least one person.")}
+
+      not is_struct(resource, Portal.Resource) ->
+        {:noreply, merge_state(socket, :policy_who, error: "Pick a resource.")}
+
+      true ->
+        do_grant_people(socket, resource, actor_ids)
+    end
+  end
+
+  defp do_grant_people(socket, resource, actor_ids) do
+    subject = socket.assigns.subject
+
+    case PortalWeb.DirectAccess.grant(resource, actor_ids, subject) do
+      {:ok, group} ->
+        path = direct_policy_path(socket.assigns.account, Database.get_direct_policy(group.id, resource.id, subject))
+
+        {:noreply,
+         socket
+         |> put_flash(:success, "Access granted.")
+         |> LiveTable.reload_live_table!("policies")
+         |> push_patch(to: LiveTable.live_table_path(socket, path))}
+
+      {:error, _reason} ->
+        {:noreply, merge_state(socket, :policy_who, error: "Could not give these people access. Try again.")}
+    end
+  end
+
+  defp direct_policy_path(account, nil), do: ~p"/#{account}/policies"
+  defp direct_policy_path(account, policy), do: ~p"/#{account}/policies/#{policy.id}"
+
   defp mark_stale_if_unreflected(socket, change) do
     LiveTable.mark_stale_unless_reflected(socket, "policies", socket.assigns.policies, change)
   end
@@ -1191,7 +1313,7 @@ defmodule PortalWeb.Policies do
     def get_policy(id, subject) do
       from(p in Policy, as: :policies)
       |> where([policies: p], p.id == ^id)
-      |> preload(group: [:directory], resource: [])
+      |> preload(group: [:directory], resource: [:site])
       |> Safe.scoped(subject)
       |> Safe.one()
     end
@@ -1275,6 +1397,7 @@ defmodule PortalWeb.Policies do
     def list_group_options(search_query_or_nil, subject) do
       query =
         from(g in Group, as: :groups)
+        |> where([groups: g], is_nil(g.resource_id))
         |> join(:left, [groups: g], d in assoc(g, :directory),
           on: d.account_id == g.account_id,
           as: :directory
@@ -1413,8 +1536,19 @@ defmodule PortalWeb.Policies do
         %Portal.Repo.Filter{
           name: :site_id,
           title: "Site",
-          type: {:string, :uuid},
+          type: {:string, :select},
+          values: &list_sites/1,
           fun: &filter_by_site_id/2
+        },
+        %Portal.Repo.Filter{
+          name: :conditions,
+          title: "Conditions",
+          type: :string,
+          values: [
+            {"With conditions", "with"},
+            {"No conditions", "none"}
+          ],
+          fun: &filter_by_conditions/2
         },
         %Portal.Repo.Filter{
           name: :group_id,
@@ -1486,6 +1620,138 @@ defmodule PortalWeb.Policies do
            fulltext_search(r.name, ^search_term) or
            fulltext_search(r.address, ^search_term)
        )}
+    end
+
+    def filter_by_conditions(queryable, "with") do
+      {queryable, dynamic([policies: p], fragment("cardinality(?) > 0", p.conditions) or not is_nil(p.postures))}
+    end
+
+    def filter_by_conditions(queryable, "none") do
+      {queryable, dynamic([policies: p], fragment("cardinality(?) = 0", p.conditions) and is_nil(p.postures))}
+    end
+
+    def list_sites(subject) do
+      from(s in Site, as: :sites)
+      |> order_by([sites: s], asc: s.name)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _reason} -> []
+        sites -> sites
+      end
+    end
+
+    def search_actors(search, subject) do
+      pattern = "%" <> String.replace(search, ~w[\\ % _], &("\\" <> &1)) <> "%"
+
+      from(a in Actor,
+        where: a.is_disabled == false,
+        where: a.type in [:account_user, :account_admin_user, :service_account],
+        where: ilike(a.name, ^pattern) or ilike(a.email, ^pattern),
+        order_by: [asc: a.name],
+        limit: 10
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _reason} -> []
+        actors -> actors
+      end
+    end
+
+    def get_direct_policy(group_id, resource_id, subject) do
+      from(p in Policy, where: p.group_id == ^group_id and p.resource_id == ^resource_id, limit: 1)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    @member_preview 12
+
+    def policy_details(%Policy{} = policy, subject) do
+      resource = policy.resource
+      {carriers, pool_label} = carriers(resource, subject)
+      direct? = policy.group && PortalWeb.DirectAccess.direct_group?(policy.group)
+      everyone? = policy.group && policy.group.type == :managed and policy.group.name == "Everyone"
+      {members, member_count} = members(policy.group, subject)
+
+      %{
+        people: if(direct?, do: Enum.map(members, & &1.name), else: nil),
+        carriers: carriers,
+        pool_label: pool_label,
+        everyone?: everyone? == true,
+        members: members,
+        member_count: member_count
+      }
+    end
+
+    defp members(nil, _subject), do: {[], 0}
+
+    defp members(group, subject) do
+      query =
+        from(a in Actor,
+          join: m in Portal.Membership,
+          on: m.actor_id == a.id and m.account_id == a.account_id,
+          where: m.group_id == ^group.id
+        )
+
+      limit = if PortalWeb.DirectAccess.direct_group?(group), do: 500, else: @member_preview
+
+      members =
+        query
+        |> order_by([a], asc: a.name)
+        |> limit(^limit)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+
+      case members do
+        {:error, _reason} -> {[], 0}
+        members -> {members, query |> Safe.scoped(subject) |> Safe.aggregate(:count)}
+      end
+    end
+
+    defp carriers(%{type: :device_pool} = resource, subject) do
+      case Portal.Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria) do
+        {:ok, ids} -> {devices_with_presence(from(d in Device, where: d.id in ^ids), subject), nil}
+        :error -> {[], pool_label(resource.device_membership_criteria)}
+      end
+    end
+
+    defp carriers(%{site_id: nil}, _subject), do: {[], nil}
+
+    defp carriers(%{site_id: site_id}, subject) do
+      query =
+        from(d in Device,
+          join: sd in Portal.SiteDevice,
+          on: sd.device_id == d.id and sd.account_id == d.account_id,
+          where: sd.site_id == ^site_id
+        )
+
+      {devices_with_presence(query, subject), nil}
+    end
+
+    defp devices_with_presence(query, subject) do
+      online = MapSet.new(Portal.Presence.Devices.online_ids(subject.account.id))
+
+      query
+      |> order_by([d], asc: d.name)
+      |> limit(50)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _reason} -> []
+        devices -> Enum.map(devices, &%{id: &1.id, name: &1.name, online: MapSet.member?(online, &1.id)})
+      end
+    end
+
+    defp pool_label(nil), do: "No devices"
+
+    defp pool_label(criteria) do
+      case Portal.Resource.DeviceMembershipCriteria.kind(criteria) do
+        :own_devices -> "Each person's own devices"
+        :all_devices -> "Every device in the account"
+        :actor_group -> "The devices of a group's members"
+        _kind -> "Devices picked by the pool"
+      end
     end
 
     def filter_by_status(queryable, "active") do
