@@ -907,8 +907,7 @@ defmodule PortalWeb.DevicesTest do
 
       html = render_async(lv)
 
-      assert html =~ "1"
-      assert html =~ "Total"
+      assert has_element?(lv, "#devices-count", "1")
       refute html =~ "Loading..."
     end
 
@@ -926,9 +925,7 @@ defmodule PortalWeb.DevicesTest do
 
       send(lv.pid, %Change{op: :insert, struct: %Device{type: :client}})
 
-      html = render(lv)
-      assert html =~ "1"
-      assert html =~ "Total"
+      assert has_element?(lv, "#devices-count", "1")
     end
 
     test "decrements count on client delete change", %{
@@ -947,9 +944,7 @@ defmodule PortalWeb.DevicesTest do
 
       send(lv.pid, %Change{op: :delete, old_struct: %Device{type: :client}})
 
-      html = render(lv)
-      assert html =~ "0"
-      assert html =~ "Total"
+      assert has_element?(lv, "#devices-count", "0")
     end
 
     test "marks the table stale on client update change", %{
@@ -990,9 +985,7 @@ defmodule PortalWeb.DevicesTest do
 
       send(lv.pid, %Change{op: :insert, struct: %Device{type: :gateway}})
 
-      html = render(lv)
-      assert html =~ "0"
-      assert html =~ "Total"
+      assert has_element?(lv, "#devices-count", "0")
     end
   end
 
@@ -1980,7 +1973,7 @@ defmodule PortalWeb.DevicesTest do
 
       assert has_element?(lv, "#device-#{client.id}")
       refute has_element?(lv, "#device-#{gateway.id}")
-      refute has_element?(lv, "th", "Routes for")
+      refute has_element?(lv, "#devices th", "Site")
       refute has_element?(lv, "#devices-site_id")
       refute has_element?(lv, "#devices-has_users-toggle")
     end
@@ -2030,13 +2023,14 @@ defmodule PortalWeb.DevicesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/devices")
 
-      assert has_element?(lv, "th", "Routes for")
+      assert has_element?(lv, "th", "Owner or site")
       assert has_element?(lv, "#device-#{gateway.id}", "Gateway")
       assert has_element?(lv, "#device-#{gateway.id} a[href='/#{account.slug}/sites/#{site.id}']", site.name)
       assert has_element?(lv, "#device-#{client.id}")
       refute has_element?(lv, "#device-#{client.id}", "Gateway")
       refute has_element?(lv, "#device-#{client.id} a[href='/#{account.slug}/sites/#{site.id}']")
-      assert render_async(lv) =~ ~r/>\s*2\s*<\/span>\s*<span[^>]*>\s*Total/
+      render_async(lv)
+      assert has_element?(lv, "#devices-count", "2")
     end
 
     test "shows the site of a client that routes for one", %{
@@ -2353,7 +2347,7 @@ defmodule PortalWeb.DevicesTest do
 
       assert has_element?(lv, "#device-#{other_client.id}")
       refute has_element?(lv, "#device-#{other_gateway.id}")
-      refute has_element?(lv, "th", "Routes for")
+      refute has_element?(lv, "#devices th", "Site")
       refute has_element?(lv, "#devices-site_id")
       refute has_element?(lv, "#devices-has_users-toggle")
     end

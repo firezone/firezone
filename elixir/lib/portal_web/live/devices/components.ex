@@ -154,7 +154,7 @@ defmodule PortalWeb.Devices.Components do
 
   def site_chip(%{site: nil} = assigns) do
     ~H"""
-    <span class="text-xs text-subtle">-</span>
+    <span class="text-xs text-muted">-</span>
     """
   end
 
@@ -162,13 +162,33 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <Navigation.link
       navigate={~p"/#{@account}/sites/#{@site.id}"}
-      class="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded border border-border bg-raised text-xs text-body hover:text-heading hover:border-border-strong transition-colors"
+      class="inline-flex items-center gap-1 max-w-full border border-rule px-2 py-px text-xs text-fg hover:bg-fg hover:text-bg transition-colors"
     >
-      <Core.icon name="ri-map-pin-line" class="w-3 h-3 shrink-0 text-subtle" />
+      <Core.icon name="ri-route-line" class="w-3 h-3 shrink-0" />
       <span class="truncate">{@site.name}</span>
     </Navigation.link>
     """
   end
+
+  @doc "Classes for a presence dot: filled when online, a hollow ring when not."
+  @spec presence_dot_class(boolean()) :: String.t()
+  def presence_dot_class(true), do: "inline-block w-[7px] h-[7px] rounded-full shrink-0 bg-fg"
+
+  def presence_dot_class(_online?),
+    do: "inline-block w-[7px] h-[7px] rounded-full shrink-0 ring-[1.5px] ring-inset ring-faint"
+
+  @doc """
+  Whether a device's last seen needs attention: a device that routes for a site and is
+  offline, or any device not seen for 30 days.
+  """
+  @spec stale?(map(), boolean()) :: boolean()
+  def stale?(%{online?: true}, _routes_for_site?), do: false
+  def stale?(%{type: :gateway}, _routes_for_site?), do: true
+  def stale?(_device, true), do: true
+  def stale?(%{last_seen_at: nil}, _routes_for_site?), do: true
+
+  def stale?(%{last_seen_at: last_seen_at}, _routes_for_site?),
+    do: DateTime.diff(DateTime.utc_now(), last_seen_at, :day) >= 30
 
   defp outdated_version?(current, latest) when is_binary(current) and is_binary(latest) do
     with {:ok, current_version} <- Version.parse(current),
@@ -204,19 +224,8 @@ defmodule PortalWeb.Devices.Components do
       |> assign(assigns.confirm_state)
 
     ~H"""
-    <div
-      id="device-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@device, do: "translate-x-0", else: "translate-x-full")
-      ]}
-      phx-window-keydown="handle_keydown"
-      phx-key="Escape"
-    >
-      <div :if={@device} class="flex flex-col h-full overflow-hidden">
+    <Page.detail_modal id="device-panel" size="xl" open={not is_nil(@device)} on_close="handle_keydown">
+      <div :if={@device} class="flex flex-col min-h-0 h-[80vh] overflow-hidden">
         <.device_edit_view
           :if={@panel_view == :edit_device}
           device_edit_form={@device_edit_form}
@@ -241,7 +250,7 @@ defmodule PortalWeb.Devices.Components do
           gateway_panel={@gateway_panel}
         />
       </div>
-    </div>
+    </Page.detail_modal>
     """
   end
 

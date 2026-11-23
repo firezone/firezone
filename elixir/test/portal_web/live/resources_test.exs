@@ -61,10 +61,10 @@ defmodule PortalWeb.ResourcesTest do
       path = ~p"/#{account}/resources?#{%{"resources_filter[site_id]" => site.id}}"
 
       static = conn |> get(path) |> html_response(200)
-      refute static =~ "Viewing Resources for Site"
+      refute static =~ "Resources routed via"
 
       {:ok, _lv, html} = live(conn, path)
-      assert html =~ "Viewing Resources for Site"
+      assert html =~ "Resources routed via"
       assert html =~ "Notice Site"
     end
 
@@ -104,15 +104,15 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources")
 
-      assert html =~ "New Resource"
+      assert html =~ "Add a resource"
 
       render_click(lv, "open_new_form")
       assert_patch(lv, ~p"/#{account}/resources/new")
-      assert render(lv) =~ "Add Resource"
+      assert render(lv) =~ "Add a resource"
 
       render_click(lv, "cancel_resource_form")
       assert_patch(lv, ~p"/#{account}/resources")
-      refute render(lv) =~ "Add Resource"
+      refute has_element?(lv, "#resource-form")
     end
 
     test "shows conventional nil-site copy in the resources table", %{
@@ -128,8 +128,8 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources")
 
       assert html =~ resource.name
-      assert count_occurrences(html, "No Site Associated") == 1
-      refute html =~ "No Site Needed"
+      assert html =~ ~s(data-route="none")
+      refute html =~ ~s(data-route="direct")
     end
 
     test "shows device pool nil-site copy in the resources table", %{
@@ -145,8 +145,8 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources")
 
       assert html =~ resource.name
-      assert count_occurrences(html, "No Site Needed") == 1
-      refute html =~ "No Site Associated"
+      assert html =~ ~s(data-route="direct")
+      refute html =~ ~s(data-route="none")
     end
 
     test "shows an own devices pool with multiple addresses and no site", %{
@@ -163,9 +163,8 @@ defmodule PortalWeb.ResourcesTest do
 
       assert html =~ "Personal devices"
       assert html =~ "My devices"
-      assert html =~ "Multiple Addresses"
       refute html =~ "&lt;slug&gt;"
-      assert html =~ "No Site Needed"
+      assert html =~ ~s(data-route="direct")
     end
 
     test "shows online member count instead of offline for device pools", %{
@@ -184,7 +183,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources")
 
-      assert html =~ "0 / 2 online"
+      assert html =~ "0 of 2 online"
     end
 
     test "shows device pool option in the type filter",
@@ -240,8 +239,8 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/new")
 
-      assert html =~ "Add Resource"
-      assert html =~ "Create Resource"
+      assert html =~ "Add a resource"
+      assert html =~ "Create resource"
     end
 
     test "creates a DNS resource on submit", %{conn: conn, account: account, actor: actor} do
@@ -1056,7 +1055,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       assert html =~ resource.name
-      assert count_occurrences(html, "No Site Needed") == 2
+      assert count_occurrences(html, "No Site Needed") == 1
       refute html =~ "No Site Associated"
     end
 
@@ -1445,7 +1444,7 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ " Edit"
 
       html = render_click(lv, "open_edit_form")
-      refute html =~ "Edit Resource"
+      refute html =~ "Edit #{resource.name}"
 
       html = render_click(lv, "confirm_delete_resource")
       refute html =~ "Delete this resource?"
@@ -1513,8 +1512,8 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}/edit")
 
-      assert html =~ "Edit Resource"
-      assert html =~ "Save Changes"
+      assert html =~ "Edit #{resource.name}"
+      assert html =~ "Save changes"
       assert html =~ resource.name
     end
 
@@ -1849,7 +1848,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}/edit")
 
-      assert html =~ "Edit Resource"
+      assert html =~ "Edit #{resource.name}"
       assert has_element?(lv, "#resource-form-members--own-devices[checked]")
       refute has_element?(lv, "#resource-form_site_id")
 
@@ -2148,8 +2147,7 @@ defmodule PortalWeb.ResourcesTest do
 
       html = render_async(lv)
 
-      assert html =~ "1"
-      assert html =~ "Total"
+      assert has_element?(lv, "#resources-count", "1")
       refute html =~ "Loading..."
     end
 
@@ -2167,9 +2165,7 @@ defmodule PortalWeb.ResourcesTest do
 
       send(lv.pid, %Change{op: :insert, struct: %Resource{type: :dns}})
 
-      html = render(lv)
-      assert html =~ "1"
-      assert html =~ "Total"
+      assert has_element?(lv, "#resources-count", "1")
     end
 
     test "decrements count on resource delete change", %{
@@ -2188,9 +2184,7 @@ defmodule PortalWeb.ResourcesTest do
 
       send(lv.pid, %Change{op: :delete, old_struct: %Resource{type: :dns}})
 
-      html = render(lv)
-      assert html =~ "0"
-      assert html =~ "Total"
+      assert has_element?(lv, "#resources-count", "0")
     end
 
     test "ignores internet resource changes", %{conn: conn, account: account, actor: actor} do
@@ -2203,9 +2197,7 @@ defmodule PortalWeb.ResourcesTest do
 
       send(lv.pid, %Change{op: :insert, struct: %Resource{type: :internet}})
 
-      html = render(lv)
-      assert html =~ "0"
-      assert html =~ "Total"
+      assert has_element?(lv, "#resources-count", "0")
     end
   end
 
@@ -2225,7 +2217,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
+      assert has_element?(lv, "button[role='tab'][aria-selected='true']", "Pool Members")
     end
 
     test "lists pool devices with owner and tunnel IPs", %{
@@ -2427,7 +2419,7 @@ defmodule PortalWeb.ResourcesTest do
       render_click(lv, "switch_resource_tab", %{"tab" => "devices"})
       assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?tab=devices")
 
-      assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
+      assert has_element?(lv, "button[role='tab'][aria-selected='true']", "Pool Members")
     end
 
     test "does not show the devices tab for non-device-pool resources", %{
@@ -2443,7 +2435,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       refute has_element?(lv, "button[role='tab']", "Pool Members")
-      assert has_element?(lv, "button[role='tab'][aria-selected]", "Groups")
+      assert has_element?(lv, "button[role='tab'][aria-selected='true']", "Who can reach it")
     end
 
     test "ignores the devices tab for non-device-pool resources and falls back to groups", %{
@@ -2458,7 +2450,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}?tab=devices")
 
-      assert has_element?(lv, "button[role='tab'][aria-selected]", "Groups")
+      assert has_element?(lv, "button[role='tab'][aria-selected='true']", "Who can reach it")
     end
   end
 
@@ -2671,7 +2663,10 @@ defmodule PortalWeb.ResourcesTest do
           {"disable_policy", %{"group_id" => :group_id}},
           {"enable_policy", %{"group_id" => :group_id}},
           {"remove_group_access", %{"group_id" => :group_id}},
-          {"delete_resource", %{}}
+          {"delete_resource", %{}},
+          {"open_people_form", %{}},
+          {"submit_people_grant", %{}},
+          {"set_served_by", %{"served_by" => "devices"}}
         ] do
       test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
         resource = resource_fixture(account: account)
@@ -2692,5 +2687,205 @@ defmodule PortalWeb.ResourcesTest do
         assert Repo.get_by(Policy, account_id: account.id, id: policy.id).is_disabled == policy.is_disabled
       end
     end
+  end
+
+  describe "served by devices" do
+    setup %{account: account} do
+      %{account: put_unified_devices(account, true)}
+    end
+
+    test "puts a new resource on a new site made of the picked device", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      laptop = device_v1_fixture(account, actor, "laptop-01")
+      site_fixture(account: account, name: "laptop-01")
+
+      lv = open_new_resource_form(authorize_conn(conn, actor), account)
+      lv |> element("#resource-served-by--devices") |> render_click()
+      lv |> element("button[aria-label='Add #{laptop.name}']") |> render_click()
+      assert has_element?(lv, "#served-device-#{laptop.id}")
+
+      html = submit_dns_resource(lv, "Laptop app")
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Resource, account_id: account.id, name: "Laptop app")
+      site = Repo.get_by!(Portal.Site, account_id: account.id, id: resource.site_id)
+      assert site.name == "laptop-01 (2)"
+      assert site_device_ids(site) == [laptop.id]
+    end
+
+    test "names a site of several devices after the first one", %{conn: conn, account: account, actor: actor} do
+      first = device_v1_fixture(account, actor, "laptop-01")
+      second = device_v1_fixture(account, actor, "laptop-02")
+
+      lv = open_new_resource_form(authorize_conn(conn, actor), account)
+      lv |> element("#resource-served-by--devices") |> render_click()
+      render_click(lv, "add_served_device", %{"device_id" => first.id})
+      render_click(lv, "add_served_device", %{"device_id" => second.id})
+      submit_dns_resource(lv, "Two laptops")
+
+      resource = Repo.get_by!(Resource, account_id: account.id, name: "Two laptops")
+      site = Repo.get_by!(Portal.Site, account_id: account.id, id: resource.site_id)
+      assert site.name == "laptop-01 +1"
+      assert Enum.sort(site_device_ids(site)) == Enum.sort([first.id, second.id])
+    end
+
+    test "reuses the site made of exactly the picked devices", %{conn: conn, account: account, actor: actor} do
+      laptop = device_v1_fixture(account, actor, "laptop-01")
+      site = site_fixture(account: account, name: "Laptop site")
+      put_in_site!(site, laptop)
+      sites_before = count_sites(account)
+      conn = authorize_conn(conn, actor)
+
+      lv = open_new_resource_form(conn, account)
+      lv |> element("#resource-served-by--devices") |> render_click()
+      assert render(lv) =~ "Routes for Laptop site"
+      render_click(lv, "add_served_device", %{"device_id" => laptop.id})
+      submit_dns_resource(lv, "Reused")
+
+      resource = Repo.get_by!(Resource, account_id: account.id, name: "Reused")
+      assert resource.site_id == site.id
+      assert count_sites(account) == sites_before
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources/#{resource}/edit")
+      assert has_element?(lv, "#resource-served-by--devices[aria-checked='true']")
+      assert has_element?(lv, "#served-device-#{laptop.id}")
+    end
+
+    test "refuses devices that share a site with other devices", %{conn: conn, account: account, actor: actor} do
+      laptop = device_v1_fixture(account, actor, "laptop-01")
+      other = device_v1_fixture(account, actor, "laptop-02")
+      site = site_fixture(account: account, name: "Shared")
+      put_in_site!(site, laptop)
+      put_in_site!(site, other)
+
+      lv = open_new_resource_form(authorize_conn(conn, actor), account)
+      lv |> element("#resource-served-by--devices") |> render_click()
+      render_click(lv, "add_served_device", %{"device_id" => laptop.id})
+      html = submit_dns_resource(lv, "Refused")
+
+      assert html =~ "route for Shared with other devices"
+      refute Repo.get_by(Resource, account_id: account.id, name: "Refused")
+    end
+
+    test "does not offer or accept a legacy client", %{conn: conn, account: account, actor: actor} do
+      legacy = client_fixture(account: account, actor: actor, name: "legacy-laptop")
+
+      lv = open_new_resource_form(authorize_conn(conn, actor), account)
+      lv |> element("#resource-served-by--devices") |> render_click()
+
+      refute has_element?(lv, "button[aria-label='Add #{legacy.name}']")
+      render_click(lv, "add_served_device", %{"device_id" => legacy.id})
+      refute has_element?(lv, "#served-device-#{legacy.id}")
+    end
+  end
+
+  describe "served by without unified devices" do
+    test "offers only the site picker", %{conn: conn, account: account, actor: actor} do
+      device = device_v1_fixture(account, actor, "laptop-01")
+      lv = open_new_resource_form(authorize_conn(conn, actor), account)
+
+      refute has_element?(lv, "#resource-served-by")
+      assert has_element?(lv, "#resource-form select[name='resource[site_id]']")
+
+      render_click(lv, "set_served_by", %{"served_by" => "devices"})
+      render_click(lv, "add_served_device", %{"device_id" => device.id})
+      refute has_element?(lv, "#resource-served-devices")
+      refute has_element?(lv, "#served-device-#{device.id}")
+    end
+  end
+
+  describe "direct access" do
+    test "gives people access, lists them, and removes them", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      alice = actor_fixture(account: account, name: "Alice Direct")
+      robot = actor_fixture(account: account, type: :service_account, name: "Robot Direct")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/resources/#{resource}")
+
+      lv |> element("#give-people-access-button") |> render_click()
+      assert has_element?(lv, "#people-grant-form")
+
+      lv |> form("#people-grant-form", %{"people_search" => "Direct"}) |> render_change()
+      render_click(lv, "toggle_grant_person", %{"actor_id" => alice.id})
+      render_click(lv, "toggle_grant_person", %{"actor_id" => robot.id})
+      html = lv |> form("#people-grant-form") |> render_submit()
+
+      assert html =~ "2 people can now reach this resource."
+      assert has_element?(lv, "#resource-access-person-#{alice.id}", "Alice Direct")
+      assert has_element?(lv, "#resource-access-person-#{robot.id}", "Robot Direct")
+
+      group = Repo.get_by!(Portal.Group, account_id: account.id, resource_id: resource.id)
+      member_ids = Portal.Membership |> Repo.all() |> Enum.filter(&(&1.group_id == group.id)) |> Enum.map(& &1.actor_id)
+      assert Enum.sort(member_ids) == Enum.sort([alice.id, robot.id])
+
+      render_click(lv, "confirm_revoke_person", %{"actor_id" => alice.id})
+      html = render_click(lv, "revoke_person", %{"actor_id" => alice.id})
+
+      assert html =~ "Access removed."
+      refute has_element?(lv, "#resource-access-person-#{alice.id}")
+      assert has_element?(lv, "#resource-access-person-#{robot.id}")
+    end
+
+    test "never shows the direct access group as a group", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      alice = actor_fixture(account: account, name: "Alice Direct")
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/resources/#{resource}")
+      render_click(lv, "open_people_form")
+      render_click(lv, "toggle_grant_person", %{"actor_id" => alice.id})
+      lv |> form("#people-grant-form") |> render_submit()
+      group = Repo.get_by!(Portal.Group, account_id: account.id, resource_id: resource.id)
+
+      assert has_element?(lv, "#resource-access-person-#{alice.id}")
+      refute has_element?(lv, "#resource-access-group-#{group.id}")
+      refute render(lv) =~ group.name
+
+      html = render_click(lv, "open_grant_form")
+      refute html =~ group.name
+    end
+  end
+
+  defp device_v1_fixture(account, actor, name) do
+    client_fixture(account: account, actor: actor, name: name)
+    |> Ecto.Changeset.change(type: nil)
+    |> Repo.update!()
+  end
+
+  defp put_in_site!(site, device) do
+    Repo.insert!(%Portal.SiteDevice{account_id: site.account_id, site_id: site.id, device_id: device.id})
+  end
+
+  defp count_sites(account) do
+    Portal.Site |> Repo.all() |> Enum.count(&(&1.account_id == account.id))
+  end
+
+  defp site_device_ids(site) do
+    Portal.SiteDevice
+    |> Repo.all()
+    |> Enum.filter(&(&1.account_id == site.account_id and &1.site_id == site.id))
+    |> Enum.map(& &1.device_id)
+  end
+
+  defp open_new_resource_form(conn, account) do
+    {:ok, lv, _html} = live(conn, ~p"/#{account}/resources/new")
+
+    lv
+    |> form("[phx-submit='submit_resource_form']", resource: %{type: "dns"})
+    |> render_change()
+
+    lv
+  end
+
+  defp submit_dns_resource(lv, name) do
+    address = name |> String.downcase() |> String.replace(" ", "-")
+
+    lv
+    |> form("[phx-submit='submit_resource_form']",
+      resource: %{type: "dns", name: name, address: "#{address}.example.com"}
+    )
+    |> render_submit()
   end
 end

@@ -7,22 +7,12 @@ defmodule PortalWeb.Sites.Components do
     assigns = assign(assigns, assigns.state)
 
     ~H"""
-    <div
-      id="new-site-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-96",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@open, do: "translate-x-0", else: "translate-x-full")
-      ]}
-    >
+    <Page.detail_modal id="new-site-panel" size="md" open={@open} on_close="handle_keydown">
       <div :if={@open} class="flex flex-col h-full overflow-hidden">
-        <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 class="text-sm font-semibold text-heading">New Site</h2>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_new_site_panel" />
-        </div>
-        <div class="flex-1 overflow-y-auto px-5 py-4">
+        <Form.panel_header title="Add a site" close_event="close_new_site_panel">
+          <:leading><Core.icon name="ri-route-line" class="w-4 h-4 text-muted" /></:leading>
+        </Form.panel_header>
+        <div class="flex-1 overflow-y-auto px-6 py-5">
           <.form id="new-site-form" for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
             <div class="space-y-4">
               <Form.input
@@ -44,7 +34,76 @@ defmodule PortalWeb.Sites.Components do
           </.form>
         </div>
       </div>
-    </div>
+    </Page.detail_modal>
+    """
+  end
+
+  @doc """
+  Which device routes for which site, as a grid: a site per row, a device per column,
+  a filled square where the device is in the site.
+  """
+  attr :account, :any, required: true
+  attr :sites, :list, required: true
+  attr :attachments, :list, required: true
+  attr :online_ids, :any, required: true
+
+  def attachment_grid(assigns) do
+    devices =
+      assigns.attachments
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.take(16)
+
+    assigns =
+      assign(assigns,
+        devices: devices,
+        attached: MapSet.new(assigns.attachments, fn {device, site_id} -> {site_id, device.id} end)
+      )
+
+    ~H"""
+    <section :if={@devices != []} id="site-attachments" class="px-6 pt-10 pb-6">
+      <h2 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted mb-3">
+        <Core.icon name="ri-grid-line" class="w-3.5 h-3.5" /> Which device routes for which site
+      </h2>
+      <div class="overflow-x-auto">
+        <table class="text-sm">
+          <thead>
+            <tr class="border-b border-rule">
+              <th></th>
+              <th :for={device <- @devices} class="px-4 py-2 text-xs font-normal text-fg whitespace-nowrap">
+                <Navigation.link navigate={~p"/#{@account}/devices/#{device.id}"} class="inline-flex items-center gap-1.5 hover:underline">
+                  <span class={[
+                    "inline-block w-[7px] h-[7px] rounded-full shrink-0",
+                    MapSet.member?(@online_ids, device.id) && "bg-fg",
+                    not MapSet.member?(@online_ids, device.id) && "ring-[1.5px] ring-inset ring-faint"
+                  ]}></span>
+                  {device.name}
+                </Navigation.link>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={site <- @sites} class="border-b border-hair">
+              <td class="py-2 pr-10 text-fg whitespace-nowrap">
+                <Navigation.link navigate={~p"/#{@account}/sites/#{site.id}"} class="hover:underline">
+                  {site.name}
+                </Navigation.link>
+              </td>
+              <td :for={device <- @devices} class="px-4 py-2 text-center">
+                <span
+                  data-attached={to_string(MapSet.member?(@attached, {site.id, device.id}))}
+                  class={[
+                    "inline-block w-2.5 h-2.5",
+                    MapSet.member?(@attached, {site.id, device.id}) && "bg-fg",
+                    not MapSet.member?(@attached, {site.id, device.id}) && "ring-1 ring-inset ring-hair"
+                  ]}
+                ></span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
     """
   end
 
@@ -96,17 +155,8 @@ defmodule PortalWeb.Sites.Components do
     assigns = assign(assigns, :status, status)
 
     ~H"""
-    <div
-      id="site-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@site, do: "translate-x-0", else: "translate-x-full")
-      ]}
-    >
-      <div :if={@site} class="flex flex-col h-full overflow-hidden">
+    <Page.detail_modal id="site-panel" size="xl" open={not is_nil(@site)} on_close="handle_keydown">
+      <div :if={@site} class="flex flex-col min-h-0 h-[80vh] overflow-hidden">
         <.site_panel_header
           :if={@view != :edit_site}
           site={@site}
@@ -150,7 +200,7 @@ defmodule PortalWeb.Sites.Components do
           picker={@devices_picker}
         />
       </div>
-    </div>
+    </Page.detail_modal>
     """
   end
 
@@ -160,16 +210,19 @@ defmodule PortalWeb.Sites.Components do
 
   def site_panel_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
+    <div class="shrink-0 px-6 py-4 border-b border-rule">
       <div class="flex items-center gap-4">
-        <%!-- Left: name + status + ID --%>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold text-heading truncate">{@site.name}</h2>
+            <Core.icon
+              name={if @site.managed_by == :system, do: "ri-earth-line", else: "ri-route-line"}
+              class="w-5 h-5 text-muted shrink-0"
+            />
+            <h2 class="text-lg font-bold text-fg truncate">{@site.name}</h2>
             <Core.badge :if={@site.managed_by == :system} type="accent" size="xs">system</Core.badge>
             <.site_status_badge status={@status} />
           </div>
-          <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@site.id}</p>
+          <p class="font-mono text-xs text-muted mt-1 truncate">{@site.id}</p>
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">

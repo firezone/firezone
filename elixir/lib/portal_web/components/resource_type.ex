@@ -10,7 +10,7 @@ defmodule PortalWeb.Components.ResourceType do
   Imported globally via `PortalWeb.components/0`; no explicit import is needed.
   """
 
-  @base "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase"
+  @base "inline-flex items-center px-1.5 py-px border text-[10px] font-mono font-medium tracking-wider uppercase"
 
   @doc """
   Human-readable label for a resource type.
@@ -29,21 +29,18 @@ defmodule PortalWeb.Components.ResourceType do
   @doc """
   Classes for a resource-type badge.
 
-  Every type needs its own clause: an unmatched type falls through to the neutral catch-all and
-  renders gray, which reads as a missing style rather than a deliberate one.
+  Outlined and monochrome like every chip. A device pool is dashed, as its route is direct.
   """
   @spec type_badge_class(atom()) :: String.t()
-  def type_badge_class(:dns), do: @base <> " bg-badge-dns text-badge-dns-text"
-  def type_badge_class(:ip), do: @base <> " bg-badge-ip text-badge-ip-text"
-  def type_badge_class(:cidr), do: @base <> " bg-badge-cidr text-badge-cidr-text"
+  def type_badge_class(:dns), do: @base <> " border-hair text-muted"
+  def type_badge_class(:ip), do: @base <> " border-hair text-muted"
+  def type_badge_class(:cidr), do: @base <> " border-hair text-muted"
 
-  def type_badge_class(:internet),
-    do: @base <> " bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+  def type_badge_class(:internet), do: @base <> " border-rule text-fg"
 
-  def type_badge_class(:device_pool),
-    do: @base <> " bg-badge-device-pool text-badge-device-pool-text"
+  def type_badge_class(:device_pool), do: @base <> " border-dashed border-rule text-muted"
 
-  def type_badge_class(_), do: @base <> " bg-raised text-body"
+  def type_badge_class(_), do: @base <> " border-hair text-muted"
 
   @doc """
   Width class reserving room for the widest badge among `types`.

@@ -198,23 +198,17 @@ defmodule PortalWeb.Devices do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
       <Page.page_header>
-        <:icon>
-          <Core.icon name="ri-computer-line" class="w-16 h-16 text-brand" />
-        </:icon>
         <:title>Devices</:title>
         <:description>
-          End-user devices and servers that access your protected Resources.
+          User devices, and devices that carry traffic for a site.
         </:description>
         <:action>
           <Navigation.docs_action show_label size="md" path="/deploy/clients" />
         </:action>
         <:stats>
           <.async_result :let={count} assign={@devices_count}>
-            <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
-            <Core.dual_badge type="primary">
-              <:left>{count}</:left>
-              <:right>Total</:right>
-            </Core.dual_badge>
+            <:loading>Loading...</:loading>
+            <span id="devices-count">{count}</span>
           </.async_result>
         </:stats>
       </Page.page_header>
@@ -237,75 +231,66 @@ defmodule PortalWeb.Devices do
           metadata={@devices_metadata}
           class="flex-1 min-h-0"
         >
-          <:col :let={device} field={{:devices, :slug}} label="Device" class="w-80">
-            <div class="flex items-center gap-2">
-              <span class="mr-2">
-                <DeviceComponents.device_os_icon device={device} />
+          <:col :let={device} field={{:devices, :slug}} label="Device">
+            <div class="flex items-center gap-2 min-w-0">
+              <span
+                class={DeviceComponents.presence_dot_class(device.online?)}
+                title={if device.online?, do: "Online", else: "Offline"}
+              >
               </span>
-              <div>
-                <div class="font-medium text-heading group-hover:text-brand transition-colors">
-                  {device.slug}
-                </div>
-                <div class="font-mono text-[10px] text-subtle mt-0.5">
-                  {device.id}
-                </div>
-              </div>
+              <DeviceComponents.device_os_icon device={device} />
+              <span class="font-medium text-fg truncate">{device.slug}</span>
+              <Core.icon
+                :if={device.online? and not is_nil(device.last_attested_at)}
+                name="ri-shield-keyhole-line"
+                title="Attested"
+                class="w-3.5 h-3.5 text-muted shrink-0"
+              />
               <Core.badge :if={@unified_devices? and device.type == :gateway} type="neutral" size="xs">
                 Gateway
               </Core.badge>
             </div>
+            <div :if={Map.get(@serials_by_device, device.id)} class="mt-0.5 pl-[15px] text-muted">
+              <DeviceComponents.serial_cell serial={Map.get(@serials_by_device, device.id)} />
+            </div>
           </:col>
-          <:col :let={device} :if={@unified_devices?} label="Routes for" class="w-40">
+          <:col :let={device} label="Owner or site">
+            <%= if @unified_devices? and (device.type == :gateway or Map.has_key?(@sites_by_device, device.id)) do %>
+              <DeviceComponents.site_chip account={@account} site={Map.get(@sites_by_device, device.id)} />
+            <% else %>
+              <DeviceComponents.actor_name_and_role
+                account={@account}
+                actor={device.actor}
+                class="text-sm"
+                return_to={@return_to}
+              />
+            <% end %>
+          </:col>
+          <:col :let={device} field={{:devices, :last_seen_at}} label="Last seen" class="w-40">
+            <span class={[
+              "text-xs",
+              DeviceComponents.stale?(device, Map.has_key?(@sites_by_device, device.id)) && "text-attn",
+              not DeviceComponents.stale?(device, Map.has_key?(@sites_by_device, device.id)) && "text-muted"
+            ]}>
+              <%= if device.online? do %>
+                Online now
+              <% else %>
+                <Core.relative_datetime datetime={device.last_seen_at} />
+              <% end %>
+            </span>
+          </:col>
+          <:col :let={device} label="Trust level" filter={:attestation} class="w-32">
+            <DeviceComponents.device_verified_status device={device} />
+          </:col>
+          <:col :let={device} label="Site" filter={:site_id} class="w-40">
             <DeviceComponents.site_chip account={@account} site={Map.get(@sites_by_device, device.id)} />
-          </:col>
-          <:col :let={device} label="Owner">
-            <DeviceComponents.actor_name_and_role
-              account={@account}
-              actor={device.actor}
-              class="text-sm"
-              return_to={@return_to}
-            />
-          </:col>
-          <:col :let={device} label="Serial" class="w-44">
-            <DeviceComponents.serial_cell serial={Map.get(@serials_by_device, device.id)} />
-          </:col>
-          <:col :let={device} field={{:devices, :last_seen_version}} label="Version" class="w-32">
-            <DeviceComponents.version
-              current={device.last_seen_version}
-              latest={DeviceComponents.latest_version(device)}
-            />
-          </:col>
-          <:col :let={device} label="Status" class="w-28">
-            <DeviceComponents.device_status_badge device={device} />
-          </:col>
-          <:col
-            :let={device}
-            field={{:devices, :last_seen_at}}
-            label="Last Started"
-            class="hidden lg:table-cell"
-          >
-            <span class="text-xs text-subtle">
-              <Core.relative_datetime datetime={device.last_seen_at} />
-            </span>
-          </:col>
-          <:col
-            :let={device}
-            field={{:devices, :inserted_at}}
-            label="Created"
-            class="hidden lg:table-cell"
-          >
-            <span class="text-xs text-subtle">
-              <Core.relative_datetime datetime={device.inserted_at} />
-            </span>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <Core.icon name="ri-computer-line" class="w-5 h-5 text-subtle" />
-              </div>
+              <Core.icon name="ri-computer-line" class="w-6 h-6 text-faint" />
               <div class="text-center">
-                <p class="text-sm font-medium text-heading">No devices yet</p>
-                <p class="text-xs text-subtle mt-0.5">
+                <p class="text-sm font-medium text-fg">No devices yet</p>
+                <p class="text-xs text-muted mt-0.5">
                   No devices have connected yet.
                 </p>
               </div>
