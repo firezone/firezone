@@ -400,6 +400,15 @@ impl Allocation {
             return true; // The message still indicated that it was for this `Allocation`.
         }
 
+        // `BINDING` responses are not authenticated, so we only act on the one that cannot do any harm.
+        if message.method() == BINDING
+            && (message.class() != MessageClass::SuccessResponse
+                || message.get_attribute::<ErrorCode>().is_some())
+        {
+            tracing::debug!("Ignoring unsuccessful response to BINDING request");
+            return true; // The message still indicated that it was for this `Allocation`.
+        }
+
         let passed_message_integrity_check = self.check_message_integrity(&message);
 
         if message.method() != BINDING && !passed_message_integrity_check {
@@ -2366,6 +2375,26 @@ mod tests {
     }
 
     #[test]
+    fn ignores_error_response_to_binding_request() {
+        let mut now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1, now)
+            .with_allocate_response(&[RELAY_ADDR_IP4], now);
+        let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+
+        now = allocation.poll_timeout().unwrap();
+        allocation.handle_timeout(now);
+        let binding = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(allocation_mismatch(&binding), now);
+
+        assert_eq!(allocation.poll_event(), None);
+        assert_eq!(
+            allocation.current_relay_candidates().collect::<Vec<_>>(),
+            vec![Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()]
+        );
+    }
+
+    #[test]
     fn given_a_request_with_nonce_and_we_are_unauthorized_dont_retry() {
         let mut allocation =
             Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
@@ -2737,10 +2766,11 @@ mod tests {
 
     #[test]
     fn failed_allocation_is_suspended() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now());
+        let mut allocation =
+            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
+        allocation.handle_test_input_ip4(server_error(&allocate), Instant::now());
 
         assert!(allocation.is_suspended())
     }
