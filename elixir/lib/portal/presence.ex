@@ -250,7 +250,6 @@ defmodule Portal.Presence do
 
       # Every device holds tunnel addresses, so the lookup asks for one that
       # can be a device pool target rather than trusting the address alone.
-      # A gateway on `/device/v1` tracks no capabilities but can be one too.
       defp find_by_address(account_id, key, address) do
         account_id
         |> list()
@@ -260,7 +259,7 @@ defmodule Portal.Presence do
         end)
       end
 
-      defp pool_target?(meta), do: :tun in Devices.capabilities(meta) or Map.get(meta, :device_v1, false)
+      defp pool_target?(meta), do: :tun in Devices.capabilities(meta)
     end
   end
 
