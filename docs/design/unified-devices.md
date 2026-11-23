@@ -674,13 +674,21 @@ found by `firezone_id`, so an old release or a forged id cannot land on it.
 A release without identity connects as today, on the API host, and is found
 by `firezone_id` among rows without a key.
 
+**Containers.** mTLS is not required for them. A container without a
+volume cannot keep a key, so the container images do not enroll by default.
+They connect with their token and a stable `FIREZONE_ID` as today, and the
+portal finds them by `firezone_id` among rows without a key, and for a
+Gateway only in its own Site. An operator who mounts a volume can turn
+enrollment on.
+
 **Policies.** The "Require attestation" condition gets a CA qualifier, so a
 policy can require the portal CA (the device is the one that enrolled) or a
 customer trust anchor (MDM, as today).
 
 **`/device/v1` until the unification.** It is on `main` but no release uses
-it. It is turned off until the unified binary ships, and then it requires a
-certificate from its first connect.
+it. It is turned off until the unified binary ships. Then it requires a
+certificate from every device that can keep a key, and accepts a container
+without one on the same terms as the legacy sockets.
 
 **Steps.** Portal, one PR per deploy:
 
@@ -712,10 +720,6 @@ Rust and the apps:
 - Gateways that today reach only `api.firezone.dev` must also reach the mTLS
   host. Customers with strict egress rules have to allow it. The other
   choice is optional client certificates on the API host.
-- Gateways in containers without a volume create a new key on each restart.
-  A new key cannot claim a row that already has one, so each restart makes a
-  new row. Options: keep the key in the volume, or let the operator give the
-  key as a secret the way `FIREZONE_ID` is given today.
 - A reinstalled mobile app may keep its `firezone_id` but not its key. It
   then gets a new row until an admin resets the old one.
 
