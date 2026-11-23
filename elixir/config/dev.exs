@@ -172,7 +172,8 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
        {worker_dev_schedule, Portal.Workers.PartitionLogTables},
-       {worker_dev_schedule, Portal.Workers.SweepAccountDeletions}
+       {worker_dev_schedule, Portal.Workers.SweepAccountDeletions},
+       {worker_dev_schedule, Portal.Workers.ProvisionMissingDeviceCAs}
      ] ++ posture_sync_dev_crontab ++ product_analytics_dev_crontab}
   ],
   queues: [

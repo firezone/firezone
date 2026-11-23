@@ -14,6 +14,7 @@ defmodule Portal.DeviceCertificateAuthority do
   schema "device_certificate_authorities" do
     belongs_to :account, Portal.Account, primary_key: true
     field :key_id, :string
+    field :private_key, :binary, redact: true
     field :certificate, :binary
 
     timestamps(updated_at: false)
@@ -21,7 +22,8 @@ defmodule Portal.DeviceCertificateAuthority do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:account_id, :key_id, :certificate])
+    |> validate_required([:account_id, :certificate])
+    |> check_constraint(:key_id, name: :key_id_or_private_key)
     |> assoc_constraint(:account)
     |> unique_constraint(:account_id, name: :device_certificate_authorities_pkey)
   end

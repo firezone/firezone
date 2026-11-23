@@ -419,6 +419,7 @@ defmodule PortalWeb.Router do
         scope "/trust_anchors", TrustAnchors do
           live "/", Index
           live "/new", Index, :new
+          live "/firezone", Index, :device_ca
           live "/:id/edit", Index, :edit
           live "/:id", Index, :show
         end

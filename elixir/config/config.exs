@@ -55,40 +55,7 @@ config :portal, run_manual_migrations: false
 
 config :portal, data_residency_region: :on_prem
 config :portal, slug_registry_table_url: nil
-config :portal, device_ca_key_vault_url: nil
-
-# A throwaway key for dev and test only.
-config :portal,
-  device_ca_private_key: """
-  -----BEGIN PRIVATE KEY-----
-  MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCdnJW3eYKdJQwP
-  aaH4NQSM/pcdqHVtBmATctV+XVcGvY4hbpzSlehoT96Jz2/GkG6q/Pe277AHGGHu
-  2HHxMlAET39R+4Vi2Ap3yx8pvrRAuYKhD4JemmwEMVwAprZYKDpTHubMgkzk8t62
-  FteVyRIARQvM+wFS0etJC1l9qVs1NZCnqXsgXV7q4cpVzVS1sxkYnaTe4z2aghSx
-  s/GCm6UsaLzm07SWWdNlMaLxApOfHMIw//eCiA6QRqWBlyarEQ1MRPWddq/24xmN
-  1v8aA3hJnn64iBeqjKiNr+MegoIYkFT7KHZ+1n0ChhIGDATVmM/vHDTX0LkTmaRg
-  mMT4YlNTAgMBAAECggEAAPGloeYr5pYItvTqf+qNXuzNaeOO5HrDy4oGBk43zbYH
-  6mJXtRkpvaowyoGACV/nEcYXE7TmyHwYZg5MzGWBPi1dtVd8yoVBtsr0IlNej/6s
-  bhuCK9/f4ryK8QQOloOTKdlHB5WGMV7U/6EuZFrCbVb8hZtBPEY+kv7q58pCXhS0
-  IFUsvZIST+JvKJ+ptKspeNWlE7TnfFFJGDO+P94dsRJxHOOlWTU4yewSv5ZD/RSK
-  9Wjn3B87qMtCIH1sOTQHz7BbaKrPZkj4LCvY7LB0+X9XSTJX8DYF75SLz4yR27y3
-  kGqPZVoFcAIw5pis74qFaOZgbpu1R2JIspb2as7JTQKBgQDexWmkRl13tO379/4v
-  zGJmaP2OnYpRxeZGV/eBwi8tqlt7OOudW88lzHEqSoWZmBY8MoLYd5raZaaEMbkC
-  ySqNbeL7ez04LG2P6jCI7twB50R/lnJLXnpHVUOz2kx44js/FEE2RF5TApjBN0m2
-  BQvc0dtzd5kvpgNVTsbSULj/JQKBgQC1HwlUkmCCeFGy719l6wg1ddOrtm9MNz6Y
-  OTsAJe7fvfhDvwWctHZ2EDMnBGZs65yCw4zszY5yb9DF1oVMPQv+QhBieXr5Mj/B
-  o6MjT8Gbl01rYPDb6kMzfzODBAtgFav2LpFHdeBVBwSHaE8rIHoRKxbL0kQAudtk
-  WXX6oaibFwKBgHlQFgRwkSvEKqlBVnnfGmLcn9/PKOj5FTqPYuiVv61ljSXgTGbH
-  /Vl/KM04AeMvsEQd2aVaFMkD/BcXIMJEnFiiU65RYXg6sXtitAWN1d9vepzkZ99l
-  Vr+Lzi+eHHDj+hGSzSRpPNiFnHvzyL9HpjsdSR1rLs+E32HQYXNcpDHFAoGABls8
-  fJdWg72tQFZeRrlk5FtqPlB8v3QA4l6/z1WFeJy2JcqCa+l5btNKuEfTQGdUatJq
-  E7VzFlkOPqM0smRCE35GDO6ufihhTG5tv0OBS/CXavlP+qfSC/Ce4i42J/0at90S
-  hCuC3/kLE6V5gc31+rxEZIrQkCX1qSPqnA0oWakCgYEAsAzG5HnFsw4D/EgxFj2S
-  4MSYk6GkSUqwJr9Cd26c4vwZvlzsm5tJ2eCZn4PI8F6ELWNjvy8wz12r4uriKWjg
-  f1RK8tRu+JgEV95Fkvgu0FiPhyVJ8KmN2dnLLHDc8MeVs54frWLO9x+bItnilFk3
-  dfX3m0Lm0g0p6mB6ktfs67g=
-  -----END PRIVATE KEY-----
-  """
+config :portal, device_ca_key_storage: :db, device_ca_key_vault_url: nil
 config :portal, region_transfer_outbox_url: nil, region_transfer_inbox_url: nil
 config :portal, avatars_container_url: nil
 

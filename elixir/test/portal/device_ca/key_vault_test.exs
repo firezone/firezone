@@ -9,6 +9,7 @@ defmodule Portal.DeviceCA.KeyVaultTest do
   @vault_url "https://device-ca.vault.example.test"
 
   setup do
+    Portal.Config.put_env_override(:device_ca_key_storage, :azure)
     Portal.Config.put_env_override(:device_ca_key_vault_url, @vault_url)
 
     Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
@@ -51,6 +52,7 @@ defmodule Portal.DeviceCA.KeyVaultTest do
 
     assert {:ok, ca} = DeviceCA.ensure(account.id)
     assert ca.key_id == key_id
+    assert ca.private_key == nil
 
     assert :public_key.pkix_verify(ca.certificate, public_key)
 
@@ -67,7 +69,7 @@ defmodule Portal.DeviceCA.KeyVaultTest do
   test "never sends the token outside the vault" do
     Req.Test.stub(DeviceCA.KeyVault, fn _conn -> flunk("unexpected request") end)
 
-    assert DeviceCA.KeyVault.sign("https://other.example.test/keys/a/1", :crypto.hash(:sha256, "")) ==
+    assert DeviceCA.KeyVault.sign(%{key_id: "https://other.example.test/keys/a/1"}, :crypto.hash(:sha256, "")) ==
              {:error, :key_outside_vault}
   end
 

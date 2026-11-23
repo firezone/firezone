@@ -7,10 +7,17 @@ defmodule Portal.Repo.Migrations.CreateDeviceCertificateAuthorities do
         primary_key: true
       )
 
-      add(:key_id, :text, null: false)
+      add(:key_id, :text)
+      add(:private_key, :binary)
       add(:certificate, :binary, null: false)
 
       timestamps(type: :timestamptz, updated_at: false)
     end
+
+    create(
+      constraint(:device_certificate_authorities, :key_id_or_private_key,
+        check: "num_nonnulls(key_id, private_key) = 1"
+      )
+    )
   end
 end

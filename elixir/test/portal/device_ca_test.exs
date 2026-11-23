@@ -9,7 +9,8 @@ defmodule Portal.DeviceCATest do
       account = account_fixture()
 
       assert {:ok, %DeviceCertificateAuthority{} = ca} = DeviceCA.ensure(account.id)
-      assert ca.key_id == "local"
+      assert ca.key_id == nil
+      assert is_binary(ca.private_key)
       assert :public_key.pkix_is_self_signed(ca.certificate)
 
       certificate = :public_key.pkix_decode_cert(ca.certificate, :otp)
@@ -36,30 +37,39 @@ defmodule Portal.DeviceCATest do
 
   describe "Local" do
     test "signs with the key it created" do
-      {:ok, %{key_id: key_id, public_key: public_key}} = DeviceCA.Local.create_key(Ecto.UUID.generate())
+      {:ok, %{public_key: public_key} = key} = DeviceCA.Local.create_key(Ecto.UUID.generate())
       digest = :crypto.hash(:sha256, "message")
 
-      {:ok, signature} = DeviceCA.Local.sign(key_id, digest)
+      {:ok, signature} = DeviceCA.Local.sign(key, digest)
       assert :public_key.verify({:digest, digest}, :sha256, signature, public_key)
     end
 
-    test "is not configured without a private key" do
-      Portal.Config.put_env_override(:device_ca_private_key, "")
+    test "gives each account its own key" do
+      {:ok, first} = DeviceCA.Local.create_key(Ecto.UUID.generate())
+      {:ok, second} = DeviceCA.Local.create_key(Ecto.UUID.generate())
 
-      assert DeviceCA.Local.sign("local", :crypto.hash(:sha256, "")) == {:error, :not_configured}
-      assert DeviceCA.ensure(account_fixture().id) == {:error, :not_configured}
+      assert first.private_key != second.private_key
     end
 
-    test "refuses a key that is not RSA" do
-      pem = :public_key.pem_encode([:public_key.pem_entry_encode(:ECPrivateKey, :public_key.generate_key({:namedCurve, :secp256r1}))])
-      Portal.Config.put_env_override(:device_ca_private_key, pem)
-
-      assert DeviceCA.Local.sign("local", :crypto.hash(:sha256, "")) == {:error, :invalid_key}
-    end
-
-    test "signs only with its own keys" do
-      assert DeviceCA.Local.sign("https://vault.example.test/keys/a/1", :crypto.hash(:sha256, "")) ==
+    test "signs only with a key from the database" do
+      assert DeviceCA.Local.sign(%{key_id: "https://vault.example.test/keys/a/1", private_key: nil}, :crypto.hash(:sha256, "")) ==
                {:error, :unknown_key}
+    end
+  end
+
+  describe "DeviceCertificateAuthority" do
+    test "keeps the key in exactly one place" do
+      account = account_fixture()
+      {:ok, ca} = DeviceCA.ensure(account.id)
+      Repo.delete!(ca)
+
+      changeset =
+        %DeviceCertificateAuthority{}
+        |> Ecto.Changeset.change(account_id: account.id, key_id: "a", private_key: "b", certificate: "c")
+        |> DeviceCertificateAuthority.changeset()
+
+      assert {:error, changeset} = Repo.insert(changeset)
+      assert "is invalid" in errors_on(changeset).key_id
     end
   end
 end

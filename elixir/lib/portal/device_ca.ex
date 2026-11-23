@@ -5,13 +5,18 @@ defmodule Portal.DeviceCA do
   alias __MODULE__.{Database, KeyVault, Local}
   alias Portal.DeviceCertificateAuthority
 
-  @type key :: %{key_id: String.t(), public_key: {:RSAPublicKey, pos_integer(), pos_integer()}}
+  @type key :: %{key_id: String.t() | nil, private_key: binary() | nil}
+  @type new_key :: %{
+          key_id: String.t() | nil,
+          private_key: binary() | nil,
+          public_key: {:RSAPublicKey, pos_integer(), pos_integer()}
+        }
 
-  @doc "Creates the account's key, or a new version of it, and returns its public key."
-  @callback create_key(account_id :: Ecto.UUID.t()) :: {:ok, key()} | {:error, term()}
+  @doc "Creates the account's key, or a new version of it, and returns it with its public key."
+  @callback create_key(account_id :: Ecto.UUID.t()) :: {:ok, new_key()} | {:error, term()}
 
   @doc "Signs a SHA-256 digest with the key and returns the RSASSA-PKCS1-v1_5 signature."
-  @callback sign(key_id :: String.t(), digest :: binary()) :: {:ok, binary()} | {:error, term()}
+  @callback sign(key :: key(), digest :: binary()) :: {:ok, binary()} | {:error, term()}
 
   @doc "Deletes the account's key. A key that does not exist is already deleted."
   @callback delete_key(account_id :: Ecto.UUID.t()) :: :ok | {:error, term()}
@@ -41,21 +46,21 @@ defmodule Portal.DeviceCA do
 
   @spec adapter() :: module()
   def adapter do
-    case Portal.Config.fetch_env!(:portal, :device_ca_key_vault_url) do
-      nil -> Local
-      _vault_url -> KeyVault
+    case Portal.Config.fetch_env!(:portal, :device_ca_key_storage) do
+      :db -> Local
+      :azure -> KeyVault
     end
   end
 
-  # A racing create loses the insert and returns the CA that won. Its key version stays unused.
+  # A racing create loses the insert and returns the CA that won. Its key stays unused.
   defp create(account_id) do
-    with {:ok, %{key_id: key_id, public_key: public_key}} <- adapter().create_key(account_id),
-         {:ok, certificate} <- self_signed_certificate(account_id, key_id, public_key) do
-      Database.insert(account_id, key_id, certificate)
+    with {:ok, %{public_key: public_key} = key} <- adapter().create_key(account_id),
+         {:ok, certificate} <- self_signed_certificate(account_id, key, public_key) do
+      Database.insert(account_id, key, certificate)
     end
   end
 
-  defp self_signed_certificate(account_id, key_id, public_key) do
+  defp self_signed_certificate(account_id, key, public_key) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     name = ca_name(account_id)
 
@@ -73,7 +78,7 @@ defmodule Portal.DeviceCA do
     tbs_der = :public_key.pkix_encode(:OTPTBSCertificate, tbs, :otp)
 
     with {:ok, <<_::binary-size(@signature_size)>> = signature} <-
-           adapter().sign(key_id, :crypto.hash(:sha256, tbs_der)) do
+           adapter().sign(key, :crypto.hash(:sha256, tbs_der)) do
       {:ok, :public_key.pkix_encode(:OTPCertificate, {:OTPCertificate, tbs, @sha256_with_rsa, signature}, :otp)}
     end
   end
@@ -110,9 +115,14 @@ defmodule Portal.DeviceCA do
       |> Safe.one()
     end
 
-    def insert(account_id, key_id, certificate) do
+    def insert(account_id, key, certificate) do
       %DeviceCertificateAuthority{}
-      |> Ecto.Changeset.change(account_id: account_id, key_id: key_id, certificate: certificate)
+      |> Ecto.Changeset.change(
+        account_id: account_id,
+        key_id: key.key_id,
+        private_key: key.private_key,
+        certificate: certificate
+      )
       |> DeviceCertificateAuthority.changeset()
       |> Safe.unscoped()
       |> Safe.insert(on_conflict: :nothing, conflict_target: [:account_id])

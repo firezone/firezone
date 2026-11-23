@@ -574,16 +574,17 @@ defmodule Portal.Config.Definitions do
   defconfig(:slug_registry_table_url, :string, default: nil)
 
   @doc """
-  URL of the Azure Key Vault that holds the device CA keys. Unset, every account signs with
-  DEVICE_CA_PRIVATE_KEY.
+  Where the device CA key of each account is kept: `db` in this portal's database, or `azure`
+  in the Azure Key Vault at DEVICE_CA_KEY_VAULT_URL.
   """
-  defconfig(:device_ca_key_vault_url, :string, default: nil)
+  defconfig(
+    :device_ca_key_storage,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:db, :azure]),
+    default: :db
+  )
 
-  @doc """
-  PEM-encoded RSA private key of the device CA, for a portal without DEVICE_CA_KEY_VAULT_URL.
-  Every account signs with this one key and has its own CA certificate.
-  """
-  defconfig(:device_ca_private_key, :string, default: nil, sensitive: true)
+  @doc "URL of the Azure Key Vault for the device CA keys, when DEVICE_CA_KEY_STORAGE is `azure`."
+  defconfig(:device_ca_key_vault_url, :string, default: nil)
 
   @doc """
   Blob container in the other Firezone Cloud region that a region transfer

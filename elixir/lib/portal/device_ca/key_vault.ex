@@ -21,7 +21,8 @@ defmodule Portal.DeviceCA.KeyVault do
 
     case request(:post, vault_url() <> "/keys/device-ca-#{account_id}/create", body) do
       {:ok, %{status: 200, body: %{"key" => %{"kid" => key_id, "n" => n, "e" => e}}}} ->
-        {:ok, %{key_id: key_id, public_key: {:RSAPublicKey, unsigned!(n), unsigned!(e)}}}
+        {:ok,
+         %{key_id: key_id, private_key: nil, public_key: {:RSAPublicKey, unsigned!(n), unsigned!(e)}}}
 
       other ->
         failed(:create_key, account_id, other)
@@ -37,7 +38,7 @@ defmodule Portal.DeviceCA.KeyVault do
   end
 
   @impl true
-  def sign(key_id, digest) do
+  def sign(%{key_id: key_id}, digest) when is_binary(key_id) do
     with :ok <- in_vault(key_id) do
       case request(:post, key_id <> "/sign", %{alg: "RS256", value: Base.url_encode64(digest, padding: false)}) do
         {:ok, %{status: 200, body: %{"value" => value}}} -> {:ok, decode!(value)}
@@ -45,6 +46,8 @@ defmodule Portal.DeviceCA.KeyVault do
       end
     end
   end
+
+  def sign(_key, _digest), do: {:error, :unknown_key}
 
   defp in_vault(key_id) do
     if String.starts_with?(key_id, vault_url() <> "/keys/"),

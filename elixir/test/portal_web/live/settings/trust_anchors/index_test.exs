@@ -133,6 +133,36 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
     end
   end
 
+  describe "device CA" do
+    test "lists the account's device CA as read only", %{conn: conn, account: account, actor: actor} do
+      {:ok, ca} = Portal.DeviceCA.ensure(account.id)
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/settings/trust_anchors")
+      assert html =~ "Firezone device CA"
+      refute html =~ "No trust anchors yet"
+
+      lv |> element("#device-ca-row") |> render_click()
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors/firezone")
+
+      panel = lv |> element("#device-ca-panel") |> render()
+      assert panel =~ "Firezone device CA " <> account.id
+      assert panel =~ Base.encode64(X509.pem_encode(ca.certificate))
+      refute panel =~ "Edit"
+      refute panel =~ "Delete"
+      refute panel =~ "PRIVATE KEY"
+    end
+
+    test "does not show another account's device CA", %{conn: conn, account: account, actor: actor} do
+      {:ok, _ca} = Portal.DeviceCA.ensure(account_fixture().id)
+
+      {:ok, _lv, html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/trust_anchors")
+
+      assert html =~ "No trust anchors yet"
+      refute html =~ "Firezone device CA"
+    end
+  end
+
   describe "show panel" do
     test "opens the show panel when a row is clicked and closes it", %{
       conn: conn,
