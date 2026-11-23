@@ -40,7 +40,8 @@ impl Exporter {
         let (config, rx) = watch::channel(None);
 
         async_runtime::spawn_thread("fz-metrics-export", move || async move {
-            select(pin!(run(rx, socket_factory)), pin!(sample_memory_usage())).await;
+            tokio::spawn(sample_memory_usage());
+            run(rx, socket_factory).await;
         })?;
 
         Ok(Self { config })
