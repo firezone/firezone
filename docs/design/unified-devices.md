@@ -614,7 +614,11 @@ reported `firezone_id`.
   current certificate.
 - **The mTLS host is the device trust host** (`mtls_external_url`). Phoenix
   ends the TLS handshake there.
-- **Key storage:** TPM 2.0 on Windows and Linux, Secure Enclave on Apple,
+- **Key storage:** the key belongs to the machine, not to a user. TPM 2.0 on
+  Windows and Linux. On macOS both builds run the tunnel as a system
+  extension, so the key goes in the System keychain, as a software key until
+  the Secure Enclave is shown to work from the system extension. On iOS the
+  app extension keeps it in the app group keychain, in the Secure Enclave.
   Keystore or StrongBox on Android. Where none is available (containers,
   VMs without a vTPM, older Macs), a software key in the state directory or
   keychain. A platform can ship with a software key first and move to its
@@ -641,11 +645,29 @@ certificate. A device calls it only in these cases:
 3. Re-enrollment: the portal refused its certificate (the device was
    deleted, an admin reset its identity, or the certificate expired).
 
-A device with an MDM certificate presents that one when it connects, as
-today, because one TLS handshake carries one client certificate. Its enroll
-request uses mTLS with the MDM certificate, so the portal adds the new key
-to the row that the MDM certificate identifies, and the device keeps its row
-if it later leaves management.
+**Managed devices.** A device uses its MDM identity when it has one (on
+Apple, the `identityReference` of the managed VPN profile, which the client
+already reads), and its Firezone identity otherwise. One TLS handshake
+carries one client certificate, so it shows only one of them.
+
+- A device usually enrolls with Firezone first and becomes managed later.
+  On its first connect with the MDM certificate, it also sends its Firezone
+  certificate and a signature with its Firezone key over the SHA-256 of the
+  MDM certificate. The portal checks the key against the row and records the
+  MDM device id on that row. The signature is useless with any other MDM
+  certificate, so it needs no nonce.
+- The client keeps its Firezone key while it is managed, and renews the
+  Firezone certificate in the background at about day 60 with a separate
+  request. When the MDM certificate is removed or the device leaves
+  management, the client falls back to the Firezone certificate and lands
+  on the same row.
+- "Require attestation" holds only while the device connects with a valid
+  MDM certificate. On the Firezone fallback it is the same device, but not
+  attested.
+- An MDM identity is used only when its certificate carries an MDM device
+  id. Without one, the portal can find the row only by issuer and serial,
+  and every MDM renewal would make a new row, so the device keeps its
+  Firezone identity.
 
 **Claim rules.** Enrollment decides which row a key gets. The first device
 to enroll with a `firezone_id` wins:
