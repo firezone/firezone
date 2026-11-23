@@ -23,13 +23,13 @@ if [ -n "$owned" ]; then
 fi
 
 # CI restores a prebuilt APK where a build would cost the emulator job a toolchain.
-dpc_apk="$(find dpc/build -type f -name '*.apk' -exec ls -t {} + 2>/dev/null | head -1)" || true
+dpc_apk="$(find dpc/build/outputs/apk/debug -type f -name '*.apk' 2>/dev/null | head -1)" || true
 
 if [ -z "$dpc_apk" ]; then
     echo "==> Building the DPC..."
     ./gradlew --quiet :dpc:assembleDebug
 
-    dpc_apk="$(find dpc/build -type f -name '*.apk' -exec ls -t {} + 2>/dev/null | head -1)" || true
+    dpc_apk="$(find dpc/build/outputs/apk/debug -type f -name '*.apk' 2>/dev/null | head -1)" || true
 fi
 
 if [ -z "$dpc_apk" ]; then
