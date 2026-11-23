@@ -3,6 +3,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod pipeline;
+mod process_memory;
 
 use std::{
     io,
@@ -173,8 +174,9 @@ async fn sample_memory_usage() {
     let memory_usage = otel_instruments::process_memory_usage();
 
     loop {
-        if let Some(stats) = memory_stats::memory_stats() {
-            memory_usage.record(stats.physical_mem as u64, &[]);
+        match process_memory::usage() {
+            Ok(bytes) => memory_usage.record(bytes, &[]),
+            Err(e) => tracing::debug!("Failed to read memory usage: {e:#}"),
         }
 
         tokio::time::sleep(MEMORY_SAMPLE_INTERVAL).await;

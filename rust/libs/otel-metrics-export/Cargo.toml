@@ -11,7 +11,6 @@ bytes = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 http-client = { workspace = true }
-memory-stats = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-proto = { workspace = true, features = ["gen-tonic-messages", "metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["metrics", "experimental_metrics_custom_reader"] }
@@ -23,6 +22,15 @@ tokio = { workspace = true, features = ["sync", "time"] }
 tracing = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+mach2 = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_System_ProcessStatus", "Win32_System_Threading"] }
 
 [lints]
 workspace = true
