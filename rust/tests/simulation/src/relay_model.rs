@@ -32,7 +32,7 @@ pub(crate) const PEERS: [SocketAddr; 4] = [
 /// 0, 1, 2.5 and 4.75 seconds.
 const RETRANSMISSION_BUDGET: u8 = 3;
 
-/// The longest partition that the last transmission of every request outlasts, with the
+/// The longest partition or sleep that the last transmission of every request outlasts, with the
 /// latencies that the hosts may have.
 const BRIDGED_PARTITION: Duration = Duration::from_secs(4);
 
@@ -145,6 +145,17 @@ impl RelayModel {
             }
             // Costs every request that is in flight all but its last transmission.
             Transition::Partition { duration } => {
+                self.elapsed += *duration;
+                self.lost_transmissions = self
+                    .lost_transmissions
+                    .saturating_add(RETRANSMISSION_BUDGET);
+            }
+            Transition::Sleep { duration } if *duration > BRIDGED_PARTITION => {
+                self.elapsed += *duration;
+                self.disrupted = true;
+            }
+            // Costs every request that is in flight all but its last transmission.
+            Transition::Sleep { duration } => {
                 self.elapsed += *duration;
                 self.lost_transmissions = self
                     .lost_transmissions

@@ -77,6 +77,8 @@ pub(crate) struct RealRelaySystem {
     allocation_boot: u64,
 
     client: Host<RealAllocation>,
+    /// Whether the client's host sleeps: the client neither handles timeouts nor receives.
+    client_asleep: bool,
     /// A device with credentials of its own for the relay, which sends the injected datagrams.
     foreign: ModelHost,
 
@@ -202,6 +204,7 @@ impl RealRelaySystem {
             relay_boots: 0,
             allocation_boot: 0,
             client: host(RealAllocation::default(), &model.client),
+            client_asleep: false,
             foreign: model.foreign,
             connections: model.connections.keys().copied().collect(),
             at_peers: Vec::new(),
@@ -254,6 +257,18 @@ impl RealRelaySystem {
             Transition::Partition { duration } => {
                 self.client.set_offline();
                 lost_heartbeats = self.advance(*duration, interference);
+                self.client
+                    .update_interface(self.client.ip4, self.client.ip6);
+            }
+            Transition::Sleep { duration } => {
+                self.client.set_offline();
+                self.client_asleep = true;
+
+                let wake_up = now + *duration;
+                self.run(interference, |_| wake_up);
+                self.clock.skip_to(wake_up);
+
+                self.client_asleep = false;
                 self.client
                     .update_interface(self.client.ip4, self.client.ip6);
             }
@@ -645,12 +660,18 @@ impl RealRelaySystem {
                 self.dispatch(transmit, now, interference);
             }
             let wall_clock = self.wall_clock();
-            self.client.step(&mut self.transmits, now);
+            if !self.client_asleep {
+                self.client.step(&mut self.transmits, now);
+            }
             self.relay.step(&mut self.transmits, now, wall_clock);
 
+            let client_timeout = match self.client_asleep {
+                true => None,
+                false => self.client.poll_timeout(),
+            };
             let next = iter::empty()
                 .chain(self.transmits.next_transmit())
-                .chain(self.client.poll_timeout())
+                .chain(client_timeout)
                 .chain(self.relay.poll_timeout())
                 .min();
             let Some(next) = next.filter(|next| *next <= horizon(now)) else {
