@@ -36,10 +36,6 @@ use crate::{
     stun,
 };
 
-/// When the credentials of the devices expire: 2038-01-01T00:00:00Z, which the simulation never
-/// reaches.
-const CREDENTIALS_EXPIRE_AT: Duration = Duration::from_secs(2_145_916_800);
-
 /// A client retransmits a request within this time, so a timer this close belongs to an
 /// exchange that is still going on.
 const RETRANSMISSION: Duration = Duration::from_secs(4);
@@ -66,6 +62,13 @@ const FOREIGN_DEVICE: &str = "foreign";
 pub(crate) struct RealRelaySystem {
     clock: Clock,
     transmits: BufferedTransmits,
+    /// How long the system settled, during which the wall clock stood still.
+    settled_for: Duration,
+    /// When the system started to settle, if it is settling.
+    settling_since: Option<SystemTime>,
+
+    /// When the credentials expire that the portal hands out.
+    credentials_expire_at: SystemTime,
 
     relay: Host<RealRelay>,
     /// How often the relay rebooted. Every boot has a secret of its own.
@@ -168,7 +171,7 @@ pub(crate) fn check_settled(model: &RelayModel, settled: &Settled) {
             .copied()
             .filter(|p| model.can_relay(*p)),
     );
-    if settled.relayed != expected {
+    if !model.credentials_expired() && settled.relayed != expected {
         tracing::error!(target: "assertions", actual = ?settled.relayed, ?expected, "❌ The client does not relay data to and from every peer it is connected to");
     }
 }
@@ -188,11 +191,14 @@ impl RealRelaySystem {
 
         Self {
             relay: host(
-                RealRelay::new(0, relay_ip4, relay_ip6, clock.now()),
+                RealRelay::new(0, relay_ip4, relay_ip6, SystemTime::UNIX_EPOCH),
                 &model.relay,
             ),
             clock,
             transmits: BufferedTransmits::default(),
+            settled_for: Duration::ZERO,
+            settling_since: None,
+            credentials_expire_at: SystemTime::UNIX_EPOCH + model.credentials_expire_at,
             relay_boots: 0,
             allocation_boot: 0,
             client: host(RealAllocation::default(), &model.client),
@@ -234,9 +240,17 @@ impl RealRelaySystem {
                     .drive(&mut self.transmits, now, |a| a.restart(now, seed));
                 self.bind_channels();
             }
+            Transition::RotateCredentials { lifetime } => {
+                self.credentials_expire_at = self.wall_clock() + *lifetime;
+
+                // `Allocations::upsert` replaces an allocation whose credentials changed.
+                if self.client.inner().allocation.is_some() {
+                    self.allocate();
+                }
+            }
             Transition::RebootRelay => {
                 self.relay_boots += 1;
-                self.relay = new_relay(self.relay_boots, &self.relay, self.clock.now());
+                self.relay = new_relay(self.relay_boots, &self.relay, self.wall_clock());
             }
             Transition::Partition { duration } => {
                 self.client.set_offline();
@@ -261,6 +275,32 @@ impl RealRelaySystem {
     /// Lets the system settle while the network still interferes with the control datagrams of
     /// the last transition, then exchanges data once over every connection.
     pub(crate) fn settle(&mut self, interference: &mut Interference) -> Settled {
+        let since = self.clock.now();
+        self.settling_since = Some(since);
+
+        let settled = self.settle_with_wall_clock_stopped(interference);
+
+        self.settled_for += self
+            .clock
+            .now::<SystemTime>()
+            .duration_since(since)
+            .expect("the clock only moves forward");
+        self.settling_since = None;
+
+        settled
+    }
+
+    /// The wall clock of the portal and the relay, which credentials expire by.
+    ///
+    /// Settling stands for the moment between two transitions, so the wall clock stands still
+    /// meanwhile: it shows the time that the transitions let pass.
+    fn wall_clock(&self) -> SystemTime {
+        let now = self.settling_since.unwrap_or_else(|| self.clock.now());
+
+        now - self.settled_for
+    }
+
+    fn settle_with_wall_clock_stopped(&mut self, interference: &mut Interference) -> Settled {
         self.run_until_settled(interference);
         let interference = &mut Interference::default();
 
@@ -504,7 +544,7 @@ impl RealRelaySystem {
     /// Obtains a nonce for `socket` the way a client does: from the relay's answer to a
     /// request without one.
     fn issue_nonce(&mut self, socket: SocketAddr) -> Nonce {
-        let (now, now_utc) = (self.clock.now(), self.clock.now());
+        let (now, now_utc) = (self.clock.now(), self.wall_clock());
         let request = stun::request(ForeignRequest::Allocate, None).expect("request is valid");
 
         let answer = self.relay.exec_mut(|r| {
@@ -527,7 +567,7 @@ impl RealRelaySystem {
             device,
             relay.server.auth_secret(),
             relay.server.public_address(),
-            SystemTime::UNIX_EPOCH + CREDENTIALS_EXPIRE_AT,
+            self.credentials_expire_at,
         )
     }
 
@@ -605,8 +645,9 @@ impl RealRelaySystem {
             while let Some(transmit) = self.transmits.pop(now) {
                 self.dispatch(transmit, now, interference);
             }
+            let wall_clock = self.wall_clock();
             self.client.step(&mut self.transmits, now);
-            self.relay.step(&mut self.transmits, now, self.clock.now());
+            self.relay.step(&mut self.transmits, now, wall_clock);
 
             let next = iter::empty()
                 .chain(self.transmits.next_transmit())

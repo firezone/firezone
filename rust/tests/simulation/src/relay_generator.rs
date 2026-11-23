@@ -52,13 +52,13 @@ impl<'a> RelayGenerator<'a> {
             latency: Duration::ZERO,
         };
 
-        RelayModel::new(relay, client, foreign)
+        RelayModel::new(relay, client, foreign, self.credentials_lifetime())
     }
 
     /// Samples a transition, what the network does to it and whether the system settles and
     /// is checked before the next one.
     pub(crate) fn transition(&mut self, model: &RelayModel) -> (Transition, Interference, bool) {
-        let transition = match self.int(15) {
+        let transition = match self.int(16) {
             0..=5 => Transition::Advance {
                 duration: self.duration(),
             },
@@ -74,6 +74,9 @@ impl<'a> RelayGenerator<'a> {
             },
             10 => Transition::Connect { peer: self.peer() },
             11 => Transition::Disconnect { peer: self.peer() },
+            12 => Transition::RotateCredentials {
+                lifetime: self.credentials_lifetime(),
+            },
             _ => Transition::InjectDatagram(match self.int(3) {
                 0 => Injection::RelayFromForeign(self.relay_datagram()),
                 1 => Injection::RelayFromClient(self.relay_datagram()),
@@ -123,6 +126,19 @@ impl<'a> RelayGenerator<'a> {
             1 => Duration::from_secs(1) * (self.int(255) as u32 + 1),
             _ => Duration::from_secs(60) * (self.int(60) as u32 + 1),
         }
+    }
+
+    /// How long credentials are valid: from minutes, which many runs outlast, to hours, which few
+    /// runs reach.
+    fn credentials_lifetime(&mut self) -> Duration {
+        const LIFETIMES: [Duration; 4] = [
+            Duration::from_secs(10 * 60),
+            Duration::from_secs(60 * 60),
+            Duration::from_secs(2 * 60 * 60),
+            Duration::from_secs(4 * 60 * 60),
+        ];
+
+        LIFETIMES[self.int(3)]
     }
 
     /// How many datagrams the network loses, mostly none.
