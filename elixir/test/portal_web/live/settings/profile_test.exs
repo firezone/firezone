@@ -41,7 +41,7 @@ defmodule PortalWeb.Settings.ProfileTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/profile")
 
-      assert html =~ "Start Page"
+      assert html =~ "Start page"
       assert html =~ "Sites"
       assert html =~ "Resources"
     end
@@ -238,10 +238,10 @@ defmodule PortalWeb.Settings.ProfileTest do
       {:ok, lv, html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/profile")
 
-      assert html =~ "Gateway Upgrade Available"
-      assert html =~ "Seat Limit Warnings"
-      assert html =~ "Product Announcements"
-      assert html =~ "Product Feedback Requests"
+      assert html =~ "Gateway upgrade available"
+      assert html =~ "Seat limit warnings"
+      assert html =~ "Product announcements"
+      assert html =~ "Product feedback requests"
 
       for notification <- ~w[outdated_gateways seat_limit_warnings product_announcements product_feedback_requests] do
         assert has_element?(lv, "#notifications_#{notification}_email[checked]")
@@ -352,7 +352,7 @@ defmodule PortalWeb.Settings.ProfileTest do
         {:ok, lv, html} =
           conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/profile")
 
-        assert html =~ "Seat Limit Warnings"
+        assert html =~ "Seat limit warnings"
         assert html =~ "Seat count warnings are sent on Business plans only."
         assert has_element?(lv, "#notifications_seat_limit_warnings_email[disabled]")
         refute has_element?(lv, "#notifications_seat_limit_warnings_email[checked]")

@@ -37,7 +37,7 @@ defmodule PortalWeb.Settings.DNSTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/dns")
 
-      assert html =~ "DNS Configuration"
+      assert html =~ "How devices resolve names"
       assert html =~ "Not configured"
       assert html =~ "Custom DNS"
       assert html =~ "1.1.1.1"
@@ -92,8 +92,8 @@ defmodule PortalWeb.Settings.DNSTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/dns/edit")
 
-      assert html =~ "Edit DNS Settings"
-      assert html =~ "Add Resolver"
+      assert html =~ "Edit DNS settings"
+      assert html =~ "Add resolver"
 
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/settings/dns")
@@ -295,7 +295,7 @@ defmodule PortalWeb.Settings.DNSTest do
           }
         })
 
-      assert html =~ "Add Resolver"
+      assert html =~ "Add resolver"
     end
   end
 end

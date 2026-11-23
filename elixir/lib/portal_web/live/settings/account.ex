@@ -5,9 +5,9 @@ defmodule PortalWeb.Settings.Account do
   alias Portal.Accounts.Deletion
   alias Portal.Billing
   alias Portal.Mailer.InternalEmail
-  alias PortalWeb.Actors.Components, as: ActorComponents
-  alias PortalWeb.Devices.Components, as: DeviceComponents
-  alias PortalWeb.Settings.Components, as: SettingsComponents
+  alias PortalWeb.Actors
+  alias PortalWeb.Devices
+  alias PortalWeb.Settings
   alias __MODULE__.Database
   require Logger
 
@@ -84,411 +84,412 @@ defmodule PortalWeb.Settings.Account do
 
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col h-full relative">
-      <Navigation.settings_nav
-        account={@account}
-        current_path={@current_path}
-      >
+    <div class="flex flex-col h-full">
+      <Navigation.settings_nav account={@account} current_path={@current_path}>
         <:actions>
-          <Form.button phx-click="open_edit_account" size="xs">
-            <Core.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
+          <Form.button id="edit-account-button" phx-click="open_edit_account" size="sm" icon="ri-pencil-line">
+            Edit
           </Form.button>
         </:actions>
       </Navigation.settings_nav>
 
-      <%!-- Two-column body --%>
-      <div class="flex flex-1 bg-surface overflow-hidden">
-        <%!-- Left column: plan + features + danger zone --%>
-        <div class="w-80 shrink-0 border-r border-border p-6 overflow-y-auto">
-          <%!-- Plan card --%>
-          <div class="rounded border border-border bg-raised p-4 space-y-3">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-semibold tracking-widest uppercase text-subtle">
-                Plan
-              </span>
-              <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
-                {plan_name(@account)}
-              </span>
-            </div>
-            <dl
-              :if={@billing_provisioned}
-              class="space-y-1.5 pt-2 border-t border-border"
-            >
-              <dt class="text-[10px] text-subtle">Billing Email</dt>
-              <dd class="text-xs text-body font-medium">
-                {@account.metadata.stripe.billing_email}
-              </dd>
-              <dt class="text-[10px] text-subtle mt-4">Support Type</dt>
-              <dd class="text-xs text-body capitalize font-medium">
-                {billing_support_label(@account.metadata.stripe.support_type)}
-              </dd>
-              <dt :if={@account.metadata.stripe.add_ons != []} class="text-[10px] text-subtle mt-4">
-                Add-ons
-              </dt>
-              <dd
-                :for={add_on <- @account.metadata.stripe.add_ons}
-                class="text-xs text-body font-medium flex justify-between gap-2"
-              >
-                <span>{add_on.name}</span>
-                <span class="tabular-nums">× {add_on.quantity}</span>
-              </dd>
-            </dl>
-            <p
-              :if={not @billing_provisioned}
-              class="text-xs text-subtle pt-2 border-t border-border"
-            >
-              This account has not had billing provisioned.
-            </p>
-            <div
-              :if={@billing_provisioned and @billing_plan_type == :enterprise}
-              class="pt-2 border-t border-border"
-            >
-              <div class="rounded-lg border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30 p-3 flex gap-2.5 items-start">
-                <Core.icon
-                  name="ri-customer-service-2-line"
-                  class="w-4 h-4 shrink-0 text-link mt-0.5"
-                />
-                <div>
-                  <p class="text-xs font-medium text-violet-700 dark:text-violet-300">
-                    Enterprise Plan
-                  </p>
-                  <p class="text-xs text-violet-600 dark:text-violet-400 mt-0.5">
+      <div class="flex-1 overflow-y-auto px-6 pb-10">
+        <div class="max-w-5xl space-y-8">
+          <section id="plan">
+            <.eyebrow icon="ri-vip-crown-line">Plan</.eyebrow>
+            <Settings.Components.tiles>
+              <Settings.Components.tile id="plan-tile" label="Plan" icon="ri-price-tag-3-line">
+                <p class="text-lg font-bold text-fg">{plan_name(@account)}</p>
+                <p :if={not @billing_provisioned} class="mt-1 text-xs text-muted">
+                  This account has not had billing provisioned.
+                </p>
+                <div
+                  :if={@billing_provisioned and @billing_plan_type == :enterprise}
+                  class="mt-2 flex items-start gap-2 text-xs text-muted"
+                >
+                  <Core.icon name="ri-customer-service-2-line" class="w-4 h-4 shrink-0 text-fg" />
+                  <span>
+                    <span class="block font-semibold text-fg">Enterprise plan</span>
                     Contact your account manager for plan changes.
-                  </p>
+                  </span>
                 </div>
-              </div>
-            </div>
-            <Form.button
-              :if={@billing_provisioned and @billing_plan_type != :enterprise}
-              phx-click="redirect_to_billing_portal"
-              size="xs"
-              class="w-full mt-1"
-            >
-              Manage plan
-            </Form.button>
-          </div>
-
-          <%!-- Plan features (always shown) --%>
-          <div class="mt-6 space-y-1.5">
-            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
-              Plan Features
-            </h3>
-            <.feature_row
-              label="Identity Provider Sync"
-              enabled={feature_enabled?(@account, :idp_sync)}
-            />
-            <.feature_row
-              label="Internet Resource"
-              enabled={feature_enabled?(@account, :internet_resource)}
-            />
-            <.feature_row
-              label="Policy Conditions"
-              enabled={feature_enabled?(@account, :policy_conditions)}
-            />
-            <.feature_row label="Log Sinks" enabled={feature_enabled?(@account, :log_sinks)} />
-            <.feature_row
-              label="Device Posture"
-              enabled={feature_enabled?(@account, :device_posture)}
-            />
-            <.feature_row
-              label="Account Slug Changes"
-              enabled={feature_enabled?(@account, :slug_changes)}
-            />
-          </div>
-
-          <%!-- Actions (pending deletion, self-initiated, not locked) --%>
-          <div
-            :if={not Account.locked?(@account) and Account.pending_deletion?(@account)}
-            class="mt-6"
-          >
-            <div class="border-t border-border mb-4"></div>
-            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-              Actions
-            </h3>
-            <p class="text-xs text-body mb-3">
-              This account is scheduled for deletion on <strong>{Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y")}</strong>.
-            </p>
-            <div
-              :if={Portal.Billing.paid_plan?(@account)}
-              class="mb-3 px-3 py-2 rounded border border-warning/30 bg-warning-light text-xs text-warning"
-            >
-              You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
-            </div>
-            <Form.button type="button" phx-click="cancel_account_deletion" size="xs" class="w-full">
-              Cancel deletion
-            </Form.button>
-            <Core.flash :if={@error} kind={:error} class="mt-2">
-              {@error}
-            </Core.flash>
-          </div>
-
-          <Form.modal
-            :if={@deletion_feedback_form}
-            id="deletion-feedback-modal"
-            on_close="skip_deletion_feedback"
-            on_cancel="skip_deletion_feedback"
-          >
-            <:title>Sorry Firezone didn't work out</:title>
-            <:body>
-              <p class="mb-4">Anything you'd like to share about your experience?</p>
-              <.form
-                id="deletion-feedback-form"
-                for={@deletion_feedback_form}
-                phx-submit="submit_deletion_feedback"
-              >
-                <Form.input
-                  field={@deletion_feedback_form[:feedback]}
-                  type="textarea"
-                  placeholder="Your feedback (optional)"
-                  maxlength={Deletion.feedback_max_length()}
-                />
-              </.form>
-            </:body>
-            <:cancel_button>Skip</:cancel_button>
-            <:confirm_button form="deletion-feedback-form" type="submit">
-              Send feedback
-            </:confirm_button>
-          </Form.modal>
-
-          <%!-- Danger Zone (active, unlocked accounts only) --%>
-          <div :if={Account.active?(@account) and not Account.locked?(@account)} class="mt-6">
-            <div class="border-t border-border mb-4"></div>
-            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
-              Danger Zone
-            </h3>
-
-            <button
-              :if={not @confirm_delete_account}
-              type="button"
-              phx-click="confirm_delete_account"
-              class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
-            >
-              <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete account
-            </button>
-
-            <div
-              :if={@confirm_delete_account}
-              class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
-            >
-              <p class="text-xs font-medium text-error mb-1">
-                Delete this account?
-              </p>
-              <p class="text-xs text-error/70 mb-3">
-                This will <strong>immediately disable</strong>
-                your account and <strong>permanently delete</strong>
-                all data after 7 days.
-              </p>
-              <p class="text-xs text-error/70 mb-1.5">
-                Type <strong>{@account.slug}</strong> to confirm:
-              </p>
-              <form id="delete-account-form" phx-change="update_slug_confirmation" phx-submit="delete_account">
-                <input
-                  type="text"
-                  name="slug_confirmation"
-                  value={@slug_confirmation}
-                  placeholder={@account.slug}
-                  autocomplete="off"
-                  class="w-full mb-2.5 rounded border border-error/30 bg-surface px-2 py-1.5 text-xs text-heading placeholder:text-subtle focus:outline-none focus:ring-1 focus:ring-error/40"
-                />
-                <div class="flex items-center gap-1.5">
-                  <Form.button type="button" phx-click="cancel_delete_account" size="xs">
-                    Cancel
-                  </Form.button>
+                <div :if={@billing_provisioned and @billing_plan_type != :enterprise} class="mt-3">
                   <Form.button
-                    type="submit"
-                    disabled={@slug_confirmation != @account.slug}
-                    style="danger"
+                    phx-click="redirect_to_billing_portal"
                     size="xs"
+                    icon="ri-bank-card-line"
                   >
-                    Delete
+                    Manage plan
                   </Form.button>
                 </div>
-              </form>
+              </Settings.Components.tile>
+
+              <Settings.Components.tile
+                :if={@billing_provisioned}
+                id="billing-email-tile"
+                label="Billing email"
+                icon="ri-mail-line"
+              >
+                <p class="text-sm text-fg break-all">{@account.metadata.stripe.billing_email}</p>
+              </Settings.Components.tile>
+
+              <Settings.Components.tile
+                :if={@billing_provisioned}
+                id="support-tile"
+                label="Support type"
+                icon="ri-customer-service-line"
+              >
+                <p class="text-sm text-fg">
+                  {billing_support_label(@account.metadata.stripe.support_type)}
+                </p>
+              </Settings.Components.tile>
+
+              <Settings.Components.tile
+                :if={@billing_provisioned and @account.metadata.stripe.add_ons != []}
+                id="add-ons-tile"
+                label="Add-ons"
+                icon="ri-add-box-line"
+              >
+                <ul class="space-y-1">
+                  <li
+                    :for={add_on <- @account.metadata.stripe.add_ons}
+                    class="flex justify-between gap-3 text-sm text-fg"
+                  >
+                    <span>{add_on.name}</span>
+                    <span class="tabular-nums text-muted">× {add_on.quantity}</span>
+                  </li>
+                </ul>
+              </Settings.Components.tile>
+            </Settings.Components.tiles>
+          </section>
+
+          <section id="usage-section">
+            <.eyebrow icon="ri-bar-chart-line">Usage</.eyebrow>
+            <Settings.Components.skeleton :if={is_nil(@usage)} id="usage-skeleton" rows={3} />
+            <Settings.Components.tiles :if={@usage} id="usage">
+              <.usage_tile
+                :if={not is_nil(effective_limit(@account, :monthly_active_users_count))}
+                label="Seats"
+                icon="ri-user-star-line"
+                patch={~p"/#{@account}/settings/account/usage/seats"}
+                description="Users and service accounts with a device active in the last month"
+                used={@usage.active_users_count}
+                limit={effective_limit(@account, :monthly_active_users_count)}
+              />
+              <.usage_tile
+                :if={(effective_limit(@account, :adhoc_service_accounts_count) || 0) > 0}
+                label="Ad hoc service accounts"
+                icon="ri-robot-2-line"
+                patch={~p"/#{@account}/settings/account/usage/adhoc_service_accounts"}
+                description="Active service accounts that do not take a seat"
+                used={@usage.adhoc_service_accounts_count}
+                limit={effective_limit(@account, :adhoc_service_accounts_count)}
+              />
+              <.usage_tile
+                label="Users"
+                icon="ri-user-line"
+                patch={~p"/#{@account}/settings/account/usage/users"}
+                used={@usage.users_count}
+                limit={effective_limit(@account, :users_count)}
+              />
+              <.usage_tile
+                label="Service accounts"
+                icon="ri-robot-line"
+                patch={~p"/#{@account}/settings/account/usage/service_accounts"}
+                used={@usage.service_accounts_count}
+                limit={effective_limit(@account, :service_accounts_count)}
+              />
+              <.usage_tile
+                label="Admins"
+                icon="ri-shield-user-line"
+                patch={~p"/#{@account}/settings/account/usage/admins"}
+                used={@usage.admins_count}
+                limit={effective_limit(@account, :account_admin_users_count)}
+              />
+              <.usage_tile
+                label="Sites"
+                icon="ri-building-line"
+                patch={~p"/#{@account}/settings/account/usage/sites"}
+                used={@usage.sites_count}
+                limit={effective_limit(@account, :sites_count)}
+              />
+            </Settings.Components.tiles>
+          </section>
+
+          <section id="plan-features">
+            <.eyebrow icon="ri-function-line">Plan features</.eyebrow>
+            <Settings.Components.tiles>
+              <.feature_tile
+                label="Identity provider sync"
+                icon="ri-loop-left-line"
+                enabled={feature_enabled?(@account, :idp_sync)}
+              />
+              <.feature_tile
+                label="Internet resource"
+                icon="ri-earth-line"
+                enabled={feature_enabled?(@account, :internet_resource)}
+              />
+              <.feature_tile
+                label="Policy conditions"
+                icon="ri-filter-3-line"
+                enabled={feature_enabled?(@account, :policy_conditions)}
+              />
+              <.feature_tile
+                label="Log sinks"
+                icon="ri-upload-cloud-2-line"
+                enabled={feature_enabled?(@account, :log_sinks)}
+              />
+              <.feature_tile
+                label="Device posture"
+                icon="ri-shield-star-line"
+                enabled={feature_enabled?(@account, :device_posture)}
+              />
+              <.feature_tile
+                label="Account slug changes"
+                icon="ri-links-line"
+                enabled={feature_enabled?(@account, :slug_changes)}
+              />
+            </Settings.Components.tiles>
+          </section>
+
+          <section :if={@data_residency_region != :on_prem} id="data-residency">
+            <.eyebrow icon="ri-map-pin-line">Data residency</.eyebrow>
+            <Settings.Components.tiles cols="2">
+              <Settings.Components.tile label="Cloud region" icon="ri-cloud-line">
+                <div class="flex items-center gap-2">
+                  <Page.residency_flag region={@data_residency_region} />
+                  <span class="text-sm text-fg">
+                    Cloud region: <strong>{Page.data_residency_name(@data_residency_region)}</strong>
+                  </span>
+                </div>
+                <p class="mt-2 text-xs text-muted">
+                  <a
+                    href="https://www.firezone.dev/kb/architecture/regional-availability"
+                    target="_blank"
+                    rel="noopener"
+                    class={Core.link_style()}
+                  >
+                    Learn more about Firezone Cloud regions.
+                  </a>
+                </p>
+                <div :if={@region_transfer_enabled} class="mt-3">
+                  <Form.button
+                    id="request-region-transfer"
+                    phx-click="open_region_transfer"
+                    size="xs"
+                    icon="ri-arrow-left-right-line"
+                  >
+                    Request transfer to the {Page.data_residency_name(
+                      Page.other_region(@data_residency_region)
+                    )} region
+                  </Form.button>
+                </div>
+              </Settings.Components.tile>
+              <Settings.Components.tile label="Data stored in" icon="ri-database-2-line">
+                <ul class="space-y-1 text-sm text-fg">
+                  <li
+                    :for={{city, country} <- Page.data_residency_locations(@data_residency_region)}
+                    class="flex items-center gap-1.5"
+                  >
+                    <Core.icon name="ri-map-pin-line" class="w-3.5 h-3.5 text-muted" />
+                    {city}, {country}
+                  </li>
+                </ul>
+              </Settings.Components.tile>
+            </Settings.Components.tiles>
+          </section>
+
+          <section
+            :if={not Account.locked?(@account) and Account.pending_deletion?(@account)}
+            id="pending-deletion"
+          >
+            <.eyebrow icon="ri-time-line">Actions</.eyebrow>
+            <div class="border border-rule px-5 py-4 max-w-2xl">
+              <p class="text-sm text-fg">
+                This account is scheduled for deletion on <strong>{Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y")}</strong>.
+              </p>
+              <p
+                :if={Portal.Billing.paid_plan?(@account)}
+                class="mt-2 flex items-start gap-2 text-xs text-attn"
+              >
+                <Core.icon name="ri-error-warning-line" class="w-4 h-4 shrink-0" />
+                You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
+              </p>
+              <div class="mt-3">
+                <Form.button
+                  type="button"
+                  phx-click="cancel_account_deletion"
+                  size="xs"
+                  icon="ri-arrow-go-back-line"
+                >
+                  Cancel deletion
+                </Form.button>
+              </div>
               <Core.flash :if={@error} kind={:error} class="mt-2">
                 {@error}
               </Core.flash>
             </div>
-          </div>
-        </div>
+          </section>
 
-        <%!-- Right column: usage --%>
-        <div class="flex-1 overflow-y-auto p-6">
-          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-4">
-            Usage
-          </h3>
-          <SettingsComponents.skeleton :if={is_nil(@usage)} id="usage-skeleton" rows={3} class="max-w-2xl" />
-          <div :if={@usage} id="usage" class="space-y-4 max-w-2xl">
-            <.usage_bar
-              :if={not is_nil(effective_limit(@account, :monthly_active_users_count))}
-              label="Seats"
-              patch={~p"/#{@account}/settings/account/usage/seats"}
-              description="Users and service accounts with a device active in the last month"
-              used={@usage.active_users_count}
-              limit={effective_limit(@account, :monthly_active_users_count)}
-            />
-            <.usage_bar
-              :if={(effective_limit(@account, :adhoc_service_accounts_count) || 0) > 0}
-              label="Ad hoc Service Accounts"
-              patch={~p"/#{@account}/settings/account/usage/adhoc_service_accounts"}
-              description="Active service accounts that do not take a seat"
-              used={@usage.adhoc_service_accounts_count}
-              limit={effective_limit(@account, :adhoc_service_accounts_count)}
-            />
-            <.usage_unlimited
-              :if={is_nil(effective_limit(@account, :users_count))}
-              label="Users"
-              patch={~p"/#{@account}/settings/account/usage/users"}
-              used={@usage.users_count}
-            />
-            <.usage_bar
-              :if={not is_nil(effective_limit(@account, :users_count))}
-              label="Users"
-              patch={~p"/#{@account}/settings/account/usage/users"}
-              used={@usage.users_count}
-              limit={effective_limit(@account, :users_count)}
-            />
-            <.usage_unlimited
-              :if={is_nil(effective_limit(@account, :service_accounts_count))}
-              label="Service Accounts"
-              patch={~p"/#{@account}/settings/account/usage/service_accounts"}
-              used={@usage.service_accounts_count}
-            />
-            <.usage_bar
-              :if={not is_nil(effective_limit(@account, :service_accounts_count))}
-              label="Service Accounts"
-              patch={~p"/#{@account}/settings/account/usage/service_accounts"}
-              used={@usage.service_accounts_count}
-              limit={effective_limit(@account, :service_accounts_count)}
-            />
-            <.usage_unlimited
-              :if={is_nil(effective_limit(@account, :account_admin_users_count))}
-              label="Admins"
-              patch={~p"/#{@account}/settings/account/usage/admins"}
-              used={@usage.admins_count}
-            />
-            <.usage_bar
-              :if={not is_nil(effective_limit(@account, :account_admin_users_count))}
-              label="Admins"
-              patch={~p"/#{@account}/settings/account/usage/admins"}
-              used={@usage.admins_count}
-              limit={effective_limit(@account, :account_admin_users_count)}
-            />
-            <.usage_unlimited
-              :if={is_nil(effective_limit(@account, :sites_count))}
-              label="Sites"
-              patch={~p"/#{@account}/settings/account/usage/sites"}
-              used={@usage.sites_count}
-            />
-            <.usage_bar
-              :if={not is_nil(effective_limit(@account, :sites_count))}
-              label="Sites"
-              patch={~p"/#{@account}/settings/account/usage/sites"}
-              used={@usage.sites_count}
-              limit={effective_limit(@account, :sites_count)}
-            />
-          </div>
-
-          <div :if={@data_residency_region != :on_prem} id="data-residency" class="mt-8 max-w-2xl">
-            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-4">
-              Data Residency
-            </h3>
-            <div class="rounded border border-border bg-raised p-4 space-y-3">
-              <div class="flex items-center gap-2">
-                <Page.residency_flag region={@data_residency_region} />
-                <span class="text-sm text-body font-medium">
-                  Cloud region: <strong>{Page.data_residency_name(@data_residency_region)}</strong>
-                </span>
-              </div>
-              <p class="text-xs text-subtle">Your account data is stored in:</p>
-              <ul class="text-xs text-body space-y-1">
-                <li
-                  :for={{city, country} <- Page.data_residency_locations(@data_residency_region)}
-                  class="flex items-center gap-1.5"
+          <section
+            :if={Account.active?(@account) and not Account.locked?(@account)}
+            id="danger-zone"
+          >
+            <.eyebrow icon="ri-alarm-warning-line">Danger zone</.eyebrow>
+            <div class="border border-rule px-5 py-4 max-w-2xl">
+              <div :if={not @confirm_delete_account} class="flex items-center gap-4">
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-fg">Delete this account</p>
+                  <p class="text-xs text-muted">
+                    Disables the account at once and deletes all data after 7 days.
+                  </p>
+                </div>
+                <Form.button
+                  type="button"
+                  phx-click="confirm_delete_account"
+                  style="danger"
+                  size="xs"
+                  icon="ri-delete-bin-line"
+                  class="ml-auto shrink-0"
                 >
-                  <Core.icon name="ri-map-pin-line" class="w-3.5 h-3.5 text-subtle" />
-                  {city}, {country}
-                </li>
-              </ul>
-              <p class="text-xs text-subtle">
-                <a
-                  href="https://www.firezone.dev/kb/architecture/regional-availability"
-                  target="_blank"
-                  rel="noopener"
-                  class={Core.link_style()}
-                >
-                  Learn more about Firezone Cloud regions.
-                </a>
-              </p>
-              <div :if={@region_transfer_enabled} class="pt-3 border-t border-border">
-                <Form.button id="request-region-transfer" phx-click="open_region_transfer" size="xs">
-                  Request transfer to the {Page.data_residency_name(Page.other_region(@data_residency_region))} region
+                  Delete account
                 </Form.button>
               </div>
-            </div>
-          </div>
 
-          <Form.modal
-            :if={@region_transfer_open}
-            id="region-transfer-modal"
-            on_close="close_region_transfer"
-            on_cancel="close_region_transfer"
-            on_confirm="request_region_transfer"
-          >
-            <:title>
-              Transfer your account to the {Page.data_residency_name(Page.other_region(@data_residency_region))} region?
-            </:title>
-            <:body>
-              <div class="space-y-3 text-sm text-body">
-                <p>
-                  This opens a support request to move your account, and all of its data, to the
-                  {Page.data_residency_name(Page.other_region(@data_residency_region))} region.
-                  Firezone support will contact <strong>{@subject.actor.email}</strong>
-                  to schedule the transfer.
+              <div :if={@confirm_delete_account}>
+                <p class="text-sm font-semibold text-attn">Delete this account?</p>
+                <p class="mt-1 text-xs text-muted">
+                  This will <strong class="text-fg">immediately disable</strong>
+                  your account and <strong class="text-fg">permanently delete</strong>
+                  all data after 7 days.
                 </p>
-                <p>
-                  The transfer needs a maintenance window of up to 8 hours. During that window
-                  your account is disabled: nobody can sign in, Clients cannot connect, and
-                  Gateways are offline.
+                <p class="mt-3 mb-1.5 text-xs text-muted">
+                  Type <strong class="font-mono text-fg">{@account.slug}</strong> to confirm:
                 </p>
-                <p>
-                  After the transfer, every session, Gateway token, service account token, and
-                  API token is invalid. Users sign in again, and a sign-in on the old portal
-                  redirects to the new one.
-                </p>
-                <p>
-                  Clients at these versions or later switch to the new region on their own, so
-                  they need no configuration change: macOS and iOS 1.5.24, Android 1.5.18,
-                  Windows and Linux 1.5.20. Older Clients, headless Clients, and Gateways need
-                  the new URLs: set the auth URL to
-                  <code>{Page.portal_url(Page.other_region(@data_residency_region))}</code>
-                  and the API URL to
-                  <code>{Page.api_url(Page.other_region(@data_residency_region))}</code>.
-                  Each Gateway also needs a new token, and headless Clients need new service
-                  account tokens. Recreate every API token and reconnect your MCP clients.
-                </p>
-                <p>
-                  Before the transfer, add
-                  <code>{Page.portal_url(Page.other_region(@data_residency_region))}/auth/oidc/callback</code>
-                  as an additional redirect URI in your identity provider for every Okta and
-                  custom OIDC authentication provider, so users can sign in after the move.
-                </p>
-                <p>
-                  Logs are not moved. They are deleted from the old region when the transfer
-                  completes, and that region's database backups expire 30 days later.
-                </p>
-                <p :if={Portal.Billing.paid_plan?(@account)}>
-                  Your billing moves too. We recreate your subscription under a new billing
-                  customer in the {Page.data_residency_name(Page.other_region(@data_residency_region))} region,
-                  apply any remaining credit at the exchange rate on the day of the transfer, and
-                  bill in {billing_currency(Page.other_region(@data_residency_region))} from then on.
-                </p>
+                <form
+                  id="delete-account-form"
+                  phx-change="update_slug_confirmation"
+                  phx-submit="delete_account"
+                >
+                  <input
+                    type="text"
+                    name="slug_confirmation"
+                    value={@slug_confirmation}
+                    placeholder={@account.slug}
+                    autocomplete="off"
+                    class="w-full max-w-xs mb-3 border border-rule bg-bg px-2 py-1.5 text-sm text-fg placeholder:text-faint focus:outline-none focus:border-attn"
+                  />
+                  <div class="flex items-center gap-2">
+                    <Form.button type="button" phx-click="cancel_delete_account" size="xs">
+                      Cancel
+                    </Form.button>
+                    <Form.button
+                      type="submit"
+                      disabled={@slug_confirmation != @account.slug}
+                      style="danger"
+                      size="xs"
+                    >
+                      Delete
+                    </Form.button>
+                  </div>
+                </form>
+                <Core.flash :if={@error} kind={:error} class="mt-2">
+                  {@error}
+                </Core.flash>
               </div>
-            </:body>
-            <:cancel_button>Cancel</:cancel_button>
-            <:confirm_button>Send request</:confirm_button>
-          </Form.modal>
+            </div>
+          </section>
         </div>
       </div>
+
+      <Form.modal
+        :if={@deletion_feedback_form}
+        id="deletion-feedback-modal"
+        on_close="skip_deletion_feedback"
+        on_cancel="skip_deletion_feedback"
+      >
+        <:title>Sorry Firezone didn't work out</:title>
+        <:body>
+          <p class="mb-4">Anything you'd like to share about your experience?</p>
+          <.form
+            id="deletion-feedback-form"
+            for={@deletion_feedback_form}
+            phx-submit="submit_deletion_feedback"
+          >
+            <Form.input
+              field={@deletion_feedback_form[:feedback]}
+              type="textarea"
+              placeholder="Your feedback (optional)"
+              maxlength={Deletion.feedback_max_length()}
+            />
+          </.form>
+        </:body>
+        <:cancel_button>Skip</:cancel_button>
+        <:confirm_button form="deletion-feedback-form" type="submit">
+          Send feedback
+        </:confirm_button>
+      </Form.modal>
+
+      <Form.modal
+        :if={@region_transfer_open}
+        id="region-transfer-modal"
+        on_close="close_region_transfer"
+        on_cancel="close_region_transfer"
+        on_confirm="request_region_transfer"
+      >
+        <:title>
+          Transfer your account to the {Page.data_residency_name(Page.other_region(@data_residency_region))} region?
+        </:title>
+        <:body>
+          <div class="space-y-3 text-sm text-fg">
+            <p>
+              This opens a support request to move your account, and all of its data, to the
+              {Page.data_residency_name(Page.other_region(@data_residency_region))} region.
+              Firezone support will contact <strong>{@subject.actor.email}</strong>
+              to schedule the transfer.
+            </p>
+            <p>
+              The transfer needs a maintenance window of up to 8 hours. During that window
+              your account is disabled: nobody can sign in, Clients cannot connect, and
+              Gateways are offline.
+            </p>
+            <p>
+              After the transfer, every session, Gateway token, service account token, and
+              API token is invalid. Users sign in again, and a sign-in on the old portal
+              redirects to the new one.
+            </p>
+            <p>
+              Clients at these versions or later switch to the new region on their own, so
+              they need no configuration change: macOS and iOS 1.5.24, Android 1.5.18,
+              Windows and Linux 1.5.20. Older Clients, headless Clients, and Gateways need
+              the new URLs: set the auth URL to
+              <code>{Page.portal_url(Page.other_region(@data_residency_region))}</code>
+              and the API URL to
+              <code>{Page.api_url(Page.other_region(@data_residency_region))}</code>.
+              Each Gateway also needs a new token, and headless Clients need new service
+              account tokens. Recreate every API token and reconnect your MCP clients.
+            </p>
+            <p>
+              Before the transfer, add
+              <code>{Page.portal_url(Page.other_region(@data_residency_region))}/auth/oidc/callback</code>
+              as an additional redirect URI in your identity provider for every Okta and
+              custom OIDC authentication provider, so users can sign in after the move.
+            </p>
+            <p>
+              Logs are not moved. They are deleted from the old region when the transfer
+              completes, and that region's database backups expire 30 days later.
+            </p>
+            <p :if={Portal.Billing.paid_plan?(@account)}>
+              Your billing moves too. We recreate your subscription under a new billing
+              customer in the {Page.data_residency_name(Page.other_region(@data_residency_region))} region,
+              apply any remaining credit at the exchange rate on the day of the transfer, and
+              bill in {billing_currency(Page.other_region(@data_residency_region))} from then on.
+            </p>
+          </div>
+        </:body>
+        <:cancel_button>Cancel</:cancel_button>
+        <:confirm_button>Send request</:confirm_button>
+      </Form.modal>
 
       <.usage_panel account={@account} panel={@usage_panel} />
 
@@ -502,33 +503,46 @@ defmodule PortalWeb.Settings.Account do
     """
   end
 
-  defp feature_row(assigns) do
+  attr :icon, :string, required: true
+  slot :inner_block, required: true
+
+  defp eyebrow(assigns) do
     ~H"""
-    <div class="flex items-center gap-2">
+    <h2 class="flex items-center gap-1.5 mb-3 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+      <Core.icon name={@icon} class="w-3.5 h-3.5" />
+      {render_slot(@inner_block)}
+    </h2>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :icon, :string, required: true
+  attr :enabled, :boolean, required: true
+
+  defp feature_tile(assigns) do
+    ~H"""
+    <div class="flex items-center gap-2.5 px-5 py-3 border-r border-b border-rule">
+      <Core.icon name={@icon} class={["w-4 h-4 shrink-0", feature_icon_class(@enabled)]} />
+      <span class={["text-sm", feature_label_class(@enabled)]}>{@label}</span>
       <Core.icon
         :if={@enabled}
         name="ri-check-line"
-        class="w-3.5 h-3.5 shrink-0 text-success"
+        title="Included"
+        class="ml-auto w-4 h-4 shrink-0 text-fg"
       />
-      <Core.icon
-        :if={not @enabled}
-        name="ri-subtract-line"
-        class="w-3.5 h-3.5 shrink-0 text-subtle"
-      />
-      <span class={[
-        "text-xs",
-        @enabled && "text-heading",
-        not @enabled && "text-subtle"
-      ]}>
-        {@label}
-      </span>
+      <span :if={not @enabled} class="ml-auto text-xs text-faint">Not included</span>
     </div>
     """
   end
 
-  defp usage_bar(assigns) do
-    assigns = assign_new(assigns, :description, fn -> nil end)
+  attr :label, :string, required: true
+  attr :icon, :string, required: true
+  attr :patch, :string, required: true
+  attr :used, :integer, required: true
+  attr :limit, :integer, default: nil
+  attr :description, :string, default: nil
 
+  defp usage_tile(assigns) do
     over? =
       is_integer(assigns.used) and is_integer(assigns.limit) and assigns.used > assigns.limit
 
@@ -537,54 +551,44 @@ defmodule PortalWeb.Settings.Account do
     ~H"""
     <.link
       patch={@patch}
-      class="block -mx-2 px-2 py-1.5 rounded hover:bg-raised transition-colors group/usage"
+      class={[
+        "flex flex-col min-w-0 px-5 py-4 border-r border-b border-rule transition-colors",
+        @over? && "bg-attn-wash hover:bg-attn-wash",
+        not @over? && "hover:bg-hover"
+      ]}
     >
-      <div class="flex items-baseline justify-between mb-1.5">
-        <div class="flex items-center gap-1.5 min-w-0">
-          <span class="text-xs font-medium text-heading">{@label}</span>
-          <span :if={@description} class="text-xs text-subtle truncate">
-            — {@description}
-          </span>
-        </div>
+      <span class="flex items-center gap-1.5 mb-2">
+        <Core.icon
+          name={@icon}
+          class={["w-3.5 h-3.5 shrink-0", (@over? && "text-attn") || "text-muted"]}
+        />
         <span class={[
-          "text-xs tabular-nums shrink-0 ml-4",
-          @over? && "text-danger",
-          not @over? && "text-body"
+          "text-[11px] font-semibold tracking-[.12em] uppercase",
+          (@over? && "text-attn") || "text-muted"
         ]}>
-          {@used} / {@limit}
+          {@label}
         </span>
-      </div>
-      <div class="h-1.5 rounded-full bg-raised border border-border overflow-hidden">
-        <div
+        <Core.icon name="ri-arrow-right-s-line" class="ml-auto w-4 h-4 text-faint" />
+      </span>
+      <span class="flex items-baseline gap-1.5">
+        <span class={["text-2xl font-bold tabular-nums", (@over? && "text-attn") || "text-fg"]}>
+          {@used}
+        </span>
+        <span :if={@limit} class="text-sm tabular-nums text-muted">/ {@limit}</span>
+        <span :if={is_nil(@limit)} class="text-sm text-muted">used · Unlimited</span>
+      </span>
+      <span :if={@limit} class="sr-only">{@used} / {@limit}</span>
+      <span class="mt-2 block h-1 bg-hover overflow-hidden">
+        <span
+          :if={@limit}
           id={"progress-#{@label |> String.downcase() |> String.replace(" ", "-")}"}
           phx-hook="ProgressBar"
           data-pct={bar_pct(@used, @limit)}
-          class={[
-            "h-full rounded-full transition-all",
-            @over? && "bg-danger",
-            not @over? && "bg-brand"
-          ]}
+          class={["block h-full transition-all", (@over? && "bg-attn") || "bg-fg"]}
         >
-        </div>
-      </div>
-    </.link>
-    """
-  end
-
-  defp usage_unlimited(assigns) do
-    ~H"""
-    <.link
-      patch={@patch}
-      class="block -mx-2 px-2 py-1.5 rounded hover:bg-raised transition-colors group/usage"
-    >
-      <div class="flex items-baseline justify-between mb-1.5">
-        <span class="text-xs font-medium text-heading">{@label}</span>
-        <span class="text-xs tabular-nums shrink-0 ml-4 text-body">
-          {@used} used · <span class="text-subtle">Unlimited</span>
         </span>
-      </div>
-      <div class="h-1.5 rounded-full bg-raised border border-border overflow-hidden">
-      </div>
+      </span>
+      <span :if={@description} class="mt-2 text-xs text-muted">{@description}</span>
     </.link>
     """
   end
@@ -600,150 +604,149 @@ defmodule PortalWeb.Settings.Account do
 
   defp usage_panel(assigns) do
     ~H"""
-    <div
-      id="usage-panel"
-      class={[
-        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@panel, do: "translate-x-0", else: "translate-x-full")
-      ]}
-      phx-window-keydown="handle_keydown"
-      phx-key="Escape"
-    >
-      <div :if={@panel} class="flex flex-col h-full overflow-hidden">
-        <Form.panel_header title={@panel.title} close_event="close_usage_panel" />
-        <div class="shrink-0 flex items-center gap-4 px-5 py-3 border-b border-border">
-          <p class="flex-1 min-w-0 text-xs text-subtle">{@panel.description}</p>
-          <form id="usage-filter-form" phx-change="filter_usage" phx-submit="filter_usage">
-            <div class="relative">
-              <Core.icon
-                name="ri-search-line"
-                class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle"
-              />
-              <input
-                type="text"
-                value={@panel.filter}
-                placeholder={if @panel.kind == :sites, do: "Filter by name...", else: "Filter by name or email..."}
-                phx-debounce="300"
-                name="filter"
-                autocomplete="off"
-                data-1p-ignore
-                class="pl-6 pr-2 py-1 text-xs rounded border bg-input border-input-border text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors w-48"
-              />
-            </div>
-          </form>
-        </div>
+    <Page.detail_modal id="usage-panel" open={not is_nil(@panel)} on_close="close_usage_panel">
+      <Form.panel_header :if={@panel} title={@panel.title} close_event="close_usage_panel">
+        <:leading><Core.icon name="ri-bar-chart-line" class="w-4 h-4 text-muted" /></:leading>
+      </Form.panel_header>
+      <div :if={@panel} class="shrink-0 flex items-center gap-4 px-6 py-3 border-b border-hair">
+        <p class="flex-1 min-w-0 text-xs text-muted">{@panel.description}</p>
+        <form id="usage-filter-form" phx-change="filter_usage" phx-submit="filter_usage">
+          <label class="flex items-center gap-1.5 w-56 px-2 py-1 border border-rule bg-bg focus-within:border-fg">
+            <Core.icon name="ri-search-line" class="w-3.5 h-3.5 shrink-0 text-muted" />
+            <input
+              type="text"
+              value={@panel.filter}
+              placeholder={
+                if @panel.kind == :sites, do: "Filter by name...", else: "Filter by name or email..."
+              }
+              phx-debounce="300"
+              name="filter"
+              autocomplete="off"
+              data-1p-ignore
+              class="flex-1 min-w-0 p-0 text-xs bg-transparent border-0 text-fg placeholder:text-faint outline-none focus:ring-0"
+            />
+          </label>
+        </form>
+      </div>
 
-        <div class="flex-1 overflow-y-auto">
-          <SettingsComponents.skeleton
-            :if={is_nil(@panel.rows)}
-            id="usage-panel-skeleton"
-            rows={5}
-            class="p-5"
-          />
-          <p
-            :if={@panel.rows == []}
-            id="usage-panel-empty"
-            class="px-5 py-8 text-center text-sm text-subtle"
-          >
-            {if @panel.filter == "", do: "Nothing to show.", else: "Nothing matches your filter."}
-          </p>
-          <table :if={@panel.rows not in [nil, []] and @panel.kind == :actors} class="w-full text-xs table-fixed">
-            <thead class="sticky top-0 bg-surface z-10">
-              <tr class="border-b border-border text-subtle">
-                <th class="text-left px-5 py-2 font-medium w-2/5">Name</th>
-                <th class="text-left px-4 py-2 font-medium w-2/5">Device</th>
-                <th class="text-left px-4 py-2 font-medium">Last connected</th>
-              </tr>
-            </thead>
-            <tbody id="usage-panel-rows">
-              <tr
-                :for={row <- @panel.rows}
-                id={"usage-actor-#{row.actor.id}"}
-                phx-click={JS.navigate(~p"/#{@account}/actors/#{row.actor}")}
-                class="border-b border-border hover:bg-raised cursor-pointer"
-              >
-                <td class="px-5 py-2">
-                  <.link navigate={~p"/#{@account}/actors/#{row.actor}"} class="flex items-center gap-2.5 min-w-0">
-                    <ActorComponents.actor_avatar account={@account} actor={row.actor} />
-                    <span class="text-sm font-medium text-heading truncate">{row.actor.name}</span>
-                  </.link>
-                </td>
-                <td class="px-4 py-2">
-                  <span
-                    :if={row.device}
-                    class="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded border border-border bg-surface text-body"
-                    title={DeviceComponents.os_name_and_version(row.device.last_seen_user_agent)}
-                  >
-                    <Core.icon
-                      name={DeviceComponents.os_icon_name(row.device.last_seen_user_agent)}
-                      class="w-3.5 h-3.5 shrink-0"
-                    />
-                    <span class="truncate">{row.device.name}</span>
-                  </span>
-                  <span :if={is_nil(row.device)} class="text-subtle">None</span>
-                </td>
-                <td class="px-4 py-2 text-subtle">
-                  <Core.relative_datetime datetime={row.actor.last_seen_at} popover={false} />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <table :if={@panel.rows not in [nil, []] and @panel.kind == :sites} class="w-full text-xs table-fixed">
-            <thead class="sticky top-0 bg-surface z-10">
-              <tr class="border-b border-border text-subtle">
-                <th class="text-left px-5 py-2 font-medium w-4/5">Name</th>
-                <th class="text-left px-4 py-2 font-medium">Gateways</th>
-              </tr>
-            </thead>
-            <tbody id="usage-panel-rows">
-              <tr
-                :for={row <- @panel.rows}
-                id={"usage-site-#{row.site.id}"}
-                phx-click={JS.navigate(~p"/#{@account}/sites/#{row.site}")}
-                class="border-b border-border hover:bg-raised cursor-pointer"
-              >
-                <td class="px-5 py-2.5">
-                  <.link navigate={~p"/#{@account}/sites/#{row.site}"} class="flex items-center gap-2.5 min-w-0">
-                    <Core.icon name="ri-building-line" class="w-4 h-4 text-subtle shrink-0" />
-                    <span class="text-sm font-medium text-heading truncate">{row.site.name}</span>
-                  </.link>
-                </td>
-                <td class="px-4 py-2.5 text-body tabular-nums">{row.gateways_count}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div
-          :if={@panel.pages > 1}
-          class="shrink-0 flex items-center justify-between px-5 py-2.5 border-t border-border bg-raised"
+      <div :if={@panel} class="flex-1 min-h-0 overflow-y-auto">
+        <Settings.Components.skeleton
+          :if={is_nil(@panel.rows)}
+          id="usage-panel-skeleton"
+          rows={5}
+        />
+        <p
+          :if={@panel.rows == []}
+          id="usage-panel-empty"
+          class="px-6 py-10 text-center text-sm text-muted"
         >
-          <span class="text-xs text-subtle">
-            Page {@panel.page} of {@panel.pages}
-            <span class="text-subtle">({@panel.total} total)</span>
-          </span>
-          <div class="flex items-center gap-1">
-            <Form.icon_button
-              style="outline"
-              icon="ri-arrow-left-s-line"
-              title="Previous page"
-              phx-click="prev_usage_page"
-              disabled={@panel.page <= 1}
-            />
-            <Form.icon_button
-              style="outline"
-              icon="ri-arrow-right-s-line"
-              title="Next page"
-              phx-click="next_usage_page"
-              disabled={@panel.page >= @panel.pages}
-            />
-          </div>
+          {if @panel.filter == "", do: "Nothing to show.", else: "Nothing matches your filter."}
+        </p>
+        <table
+          :if={@panel.rows not in [nil, []] and @panel.kind == :actors}
+          class="w-full text-sm table-fixed"
+        >
+          <thead class="sticky top-0 bg-bg z-10">
+            <tr class="border-b border-rule">
+              <th class={[Settings.Components.th_class(), "w-2/5"]}>Name</th>
+              <th class={[Settings.Components.th_class(), "w-2/5"]}>Device</th>
+              <th class={Settings.Components.th_class()}>Last connected</th>
+            </tr>
+          </thead>
+          <tbody id="usage-panel-rows">
+            <tr
+              :for={row <- @panel.rows}
+              id={"usage-actor-#{row.actor.id}"}
+              phx-click={JS.navigate(~p"/#{@account}/actors/#{row.actor}")}
+              class="border-b border-hair hover:bg-hover cursor-pointer"
+            >
+              <td class="px-6 py-2">
+                <.link
+                  navigate={~p"/#{@account}/actors/#{row.actor}"}
+                  class="flex items-center gap-2.5 min-w-0"
+                >
+                  <Actors.Components.actor_avatar account={@account} actor={row.actor} />
+                  <span class="text-sm font-medium text-fg truncate">{row.actor.name}</span>
+                </.link>
+              </td>
+              <td class="px-6 py-2">
+                <Core.badge
+                  :if={row.device}
+                  class="max-w-full"
+                  title={Devices.Components.os_name_and_version(row.device.last_seen_user_agent)}
+                >
+                  <Core.icon
+                    name={Devices.Components.os_icon_name(row.device.last_seen_user_agent)}
+                    class="w-3.5 h-3.5 shrink-0"
+                  />
+                  <span class="truncate">{row.device.name}</span>
+                </Core.badge>
+                <span :if={is_nil(row.device)} class="text-muted">None</span>
+              </td>
+              <td class="px-6 py-2 text-muted">
+                <Core.relative_datetime datetime={row.actor.last_seen_at} popover={false} />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <table
+          :if={@panel.rows not in [nil, []] and @panel.kind == :sites}
+          class="w-full text-sm table-fixed"
+        >
+          <thead class="sticky top-0 bg-bg z-10">
+            <tr class="border-b border-rule">
+              <th class={[Settings.Components.th_class(), "w-4/5"]}>Name</th>
+              <th class={Settings.Components.th_class()}>Gateways</th>
+            </tr>
+          </thead>
+          <tbody id="usage-panel-rows">
+            <tr
+              :for={row <- @panel.rows}
+              id={"usage-site-#{row.site.id}"}
+              phx-click={JS.navigate(~p"/#{@account}/sites/#{row.site}")}
+              class="border-b border-hair hover:bg-hover cursor-pointer"
+            >
+              <td class="px-6 py-2.5">
+                <.link
+                  navigate={~p"/#{@account}/sites/#{row.site}"}
+                  class="flex items-center gap-2.5 min-w-0"
+                >
+                  <Core.icon name="ri-building-line" class="w-4 h-4 text-muted shrink-0" />
+                  <span class="text-sm font-medium text-fg truncate">{row.site.name}</span>
+                </.link>
+              </td>
+              <td class="px-6 py-2.5 text-fg tabular-nums">{row.gateways_count}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div
+        :if={@panel && @panel.pages > 1}
+        class="shrink-0 flex items-center justify-between px-6 py-2.5 border-t border-hair"
+      >
+        <span class="text-xs text-muted">
+          Page {@panel.page} of {@panel.pages}
+          <span class="text-faint">({@panel.total} total)</span>
+        </span>
+        <div class="flex items-center gap-1">
+          <Form.icon_button
+            style="outline"
+            icon="ri-arrow-left-s-line"
+            title="Previous page"
+            phx-click="prev_usage_page"
+            disabled={@panel.page <= 1}
+          />
+          <Form.icon_button
+            style="outline"
+            icon="ri-arrow-right-s-line"
+            title="Next page"
+            phx-click="next_usage_page"
+            disabled={@panel.page >= @panel.pages}
+          />
         </div>
       </div>
-    </div>
+    </Page.detail_modal>
     """
   end
 
@@ -760,18 +763,15 @@ defmodule PortalWeb.Settings.Account do
       )
 
     ~H"""
-    <div class={[
-      "absolute inset-y-0 right-0 z-20",
-      "w-full lg:w-3/4 xl:w-96",
-      "flex flex-col bg-surface border-l border-border shadow-xl",
-      "transition-transform duration-200",
-      @open && "translate-x-0",
-      not @open && "translate-x-full"
-    ]}>
-      <div class="flex items-center justify-between px-5 py-4 border-b border-border">
-        <h2 class="text-sm font-semibold text-heading">Edit Account</h2>
-        <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_edit_account" />
-      </div>
+    <Page.detail_modal
+      id="edit-account-panel"
+      open={@open}
+      on_close="close_edit_account"
+      size="md"
+    >
+      <Form.panel_header title="Edit account" variant="plain" close_event="close_edit_account">
+        <:leading><Core.icon name="ri-building-line" class="w-4 h-4 text-muted" /></:leading>
+      </Form.panel_header>
 
       <.form
         id="account-form"
@@ -779,17 +779,13 @@ defmodule PortalWeb.Settings.Account do
         phx-change="change_account"
         phx-submit="submit_account"
         as={:account}
-        class="flex flex-col flex-1 overflow-hidden"
+        class="flex flex-col flex-1 min-h-0"
       >
-        <div class="flex-1 overflow-y-auto p-5 space-y-5">
-          <Form.input
-            field={@form[:name]}
-            label="Account Name"
-            phx-debounce="300"
-          />
+        <Settings.Components.modal_body class="space-y-5">
+          <Form.input field={@form[:name]} label="Account name" phx-debounce="300" />
           <div :if={not Account.slug_changes_enabled?(@account)}>
-            <Form.input field={@form[:slug]} type="readonly" label="Account Slug" />
-            <p id="slug-help" class="mt-2 text-xs text-subtle">
+            <Form.input field={@form[:slug]} type="readonly" label="Account slug" />
+            <p id="slug-help" class="mt-2 text-xs text-muted">
               The slug is the first part of your portal URL and what users type to sign in.
               Slug changes are available on the Team plan and higher.
             </p>
@@ -797,12 +793,12 @@ defmodule PortalWeb.Settings.Account do
           <div :if={Account.slug_changes_enabled?(@account)}>
             <Form.input
               field={@form[:slug]}
-              label="Account Slug"
+              label="Account slug"
               phx-debounce="300"
               autocomplete="off"
               spellcheck="false"
             />
-            <div id="slug-help" class="mt-2 space-y-1.5 text-xs text-subtle">
+            <div id="slug-help" class="mt-2 space-y-1.5 text-xs text-muted">
               <p>
                 The slug is the first part of your portal URL and what users type to sign in.
                 Lowercase letters, numbers, and underscores only.
@@ -810,22 +806,22 @@ defmodule PortalWeb.Settings.Account do
               <p>
                 Old slugs keep working: links that use them redirect to the new slug,
                 and no other account can claim them. Your account ID
-                <span class="font-mono text-heading">{@account.id}</span>
+                <span class="font-mono text-fg">{@account.id}</span>
                 always works in place of the slug.
               </p>
               <p>
                 You can pick up to {@slug_changes_per_window} new slugs every {@slug_change_window_days} days.
                 Switching back to a slug you used before does not count.
-                <span :if={@slug_changes_left > 0} class="text-heading">
+                <span :if={@slug_changes_left > 0} class="text-fg">
                   {@slug_changes_left} left.
                 </span>
-                <span :if={@slug_changes_left == 0} class="text-warning">
+                <span :if={@slug_changes_left == 0} class="text-attn">
                   None left right now.
                 </span>
               </p>
             </div>
           </div>
-        </div>
+        </Settings.Components.modal_body>
 
         <Form.panel_footer>
           <Form.panel_footer_button type="button" phx-click="close_edit_account">
@@ -836,9 +832,15 @@ defmodule PortalWeb.Settings.Account do
           </Form.panel_footer_button>
         </Form.panel_footer>
       </.form>
-    </div>
+    </Page.detail_modal>
     """
   end
+
+  defp feature_icon_class(true), do: "text-fg"
+  defp feature_icon_class(false), do: "text-faint"
+
+  defp feature_label_class(true), do: "text-fg"
+  defp feature_label_class(false), do: "text-muted"
 
   defp feature_enabled?(account, feature) do
     features = account.features || %Portal.Accounts.Features{}

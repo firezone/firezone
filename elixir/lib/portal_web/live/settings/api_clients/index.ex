@@ -4,8 +4,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   import Ecto.Changeset,
     only: [change: 1, put_change: 3, cast: 3, validate_required: 2, validate_length: 3]
 
-  alias PortalWeb.Settings.ApiClients.Components, as: ApiClientComponents
-  alias PortalWeb.Settings.Components, as: SettingsComponents
+  alias PortalWeb.Settings
 
   alias Portal.{Actor, APIToken, Authentication}
 
@@ -111,7 +110,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
     socket =
       socket
-      |> assign(page_title: "API Tokens")
+      |> assign(page_title: "REST API")
       |> assign(actors_with_tokens: actors_with_tokens)
       |> assign(selected_actor: nil)
       |> assign(form: nil, encoded_token: nil)
@@ -177,199 +176,158 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col h-full" phx-window-keydown="handle_keydown" phx-key="Escape">
-      <Navigation.settings_nav
-        account={@account}
-        current_path={@current_path}
-      />
+    <div class="flex flex-col h-full">
+      <Page.page_header>
+        <:title>REST API</:title>
+        <:stats :if={@actors_with_tokens}>{length(@actors_with_tokens)}</:stats>
+        <:description>API tokens let scripts and tools manage this account.</:description>
+        <:action>
+          <Navigation.docs_action show_label size="md" path="/reference/rest-api" />
+          <Form.button
+            id="add-api-client-button"
+            patch={~p"/#{@account}/settings/api_clients/new"}
+            style="primary"
+            icon="ri-add-line"
+            size="sm"
+          >
+            Add an API client
+          </Form.button>
+        </:action>
+      </Page.page_header>
 
-      <div class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
-          <div class="flex items-center gap-2">
-            <h2 class="text-xs font-semibold text-heading">API Tokens</h2>
-            <span :if={@actors_with_tokens} class="text-xs text-subtle tabular-nums">
-              {length(@actors_with_tokens)}
-            </span>
-          </div>
-          <div class="flex items-center gap-2">
-            <Navigation.docs_action show_label path="/reference/rest-api" />
-            <Navigation.link
-              patch={~p"/#{@account}/settings/api_clients/new"}
-              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-            >
-              <Core.icon name="ri-add-line" class="w-3 h-3" /> Add
-            </Navigation.link>
-          </div>
-        </div>
-
-        <div class="flex-1 overflow-auto">
-          <%= cond do %>
-            <% is_nil(@actors_with_tokens) -> %>
-              <SettingsComponents.skeleton id="api-tokens-skeleton" />
-            <% Enum.empty?(@actors_with_tokens) -> %>
-              <div class="flex items-center justify-center h-full">
-                <div class="flex flex-col items-center gap-3 py-16">
-                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                    <Core.icon name="ri-key-line" class="w-5 h-5 text-subtle" />
-                  </div>
-                  <div class="text-center">
-                    <p class="text-sm font-medium text-heading">No API tokens yet</p>
-                    <p class="text-xs text-subtle mt-0.5">
-                      No API tokens have been configured.
-                    </p>
-                  </div>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/api_clients/new"}
-                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                  >
-                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add an API token
-                  </Navigation.link>
-                </div>
-              </div>
-            <% true -> %>
-              <table class="w-full text-sm border-collapse">
-                <thead class="sticky top-0 z-10 bg-raised">
-                  <tr class="border-b border-border-strong">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-56">
-                      Name
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Status
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                      Created
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                      Expires
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                      Last Used
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                      Last Used IP
-                    </th>
-                    <th class="px-6 py-2.5 w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <.api_client_row
-                    :for={{actor, token} <- @actors_with_tokens}
-                    account={@account}
-                    actor={actor}
-                    token={token}
-                    pending_confirm={@pending_confirm}
-                    open_actor_actions_id={@open_actor_actions_id}
-                  />
-                </tbody>
-              </table>
-          <% end %>
-        </div>
+      <div class="flex-1 overflow-auto">
+        <%= cond do %>
+          <% is_nil(@actors_with_tokens) -> %>
+            <Settings.Components.skeleton id="api-tokens-skeleton" />
+          <% Enum.empty?(@actors_with_tokens) -> %>
+            <Settings.Components.empty_state icon="ri-key-2-line" title="No API tokens yet">
+              Create a token to use the REST API from scripts, CI or Terraform.
+              <:action>
+                <Form.button
+                  patch={~p"/#{@account}/settings/api_clients/new"}
+                  icon="ri-add-line"
+                  size="sm"
+                >
+                  Add an API token
+                </Form.button>
+              </:action>
+            </Settings.Components.empty_state>
+          <% true -> %>
+            <table class="w-full text-sm border-collapse">
+              <thead class="sticky top-0 z-10 bg-bg">
+                <tr class="border-b border-rule">
+                  <th class={Settings.Components.th_class()}>Name</th>
+                  <th class={[Settings.Components.th_class(), "w-28"]}>Status</th>
+                  <th class={[Settings.Components.th_class(), "hidden lg:table-cell w-36"]}>
+                    Created
+                  </th>
+                  <th class={[Settings.Components.th_class(), "w-36"]}>Expires</th>
+                  <th class={[Settings.Components.th_class(), "hidden md:table-cell w-44"]}>
+                    Last used
+                  </th>
+                  <th class="px-6 py-2.5 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <.api_client_row
+                  :for={{actor, token} <- @actors_with_tokens}
+                  account={@account}
+                  actor={actor}
+                  token={token}
+                  pending_confirm={@pending_confirm}
+                  open_actor_actions_id={@open_actor_actions_id}
+                />
+              </tbody>
+            </table>
+        <% end %>
       </div>
 
-    <!-- Creation Panel (:new) -->
-      <div
+      <Page.detail_modal
         id="api-client-new-panel"
-        class={[
-          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-elevated border-l border-border-strong",
-          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-          "transition-transform duration-200 ease-in-out",
-          (@live_action == :new && "translate-x-0") || "translate-x-full"
-        ]}
+        open={@live_action == :new and not is_nil(@form)}
+        on_close="close_panel"
+        size="md"
       >
-        <div :if={@live_action == :new && @form} class="flex flex-col h-full overflow-hidden">
-          <!-- Panel header -->
-          <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-            <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold text-heading">New API Token</h2>
-              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-            </div>
-          </div>
+        <Form.panel_header title="New API token" variant="plain">
+          <:leading><Core.icon name="ri-key-2-line" class="w-4 h-4 text-muted" /></:leading>
+          <:adornment><Navigation.docs_action path="/reference/rest-api" /></:adornment>
+        </Form.panel_header>
 
-          <.form
-            id="api-token-new-form"
-            for={@form}
-            phx-change="validate_new"
-            phx-submit="create_token"
-            class="flex flex-col flex-1 min-h-0 overflow-hidden"
-          >
-            <!-- Panel body -->
-            <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              <%= if is_nil(@encoded_token) do %>
-                <ApiClientComponents.api_token_creation_form form={@form} scopes={@scopes} error={@scopes_error} />
-              <% else %>
-                <ApiClientComponents.api_token_reveal encoded_token={@encoded_token} />
-              <% end %>
-            </div>
-
-    <!-- Panel footer -->
-            <Form.panel_footer>
-              <%= if is_nil(@encoded_token) do %>
-                <Form.panel_footer_button type="button" phx-click="close_panel">
-                  Cancel
-                </Form.panel_footer_button>
-                <Form.panel_footer_button type="submit" style="primary">
-                  Create Token
-                </Form.panel_footer_button>
-              <% else %>
-                <Form.panel_footer_button type="button" phx-click="close_reveal">
-                  Done
-                </Form.panel_footer_button>
-              <% end %>
-            </Form.panel_footer>
-          </.form>
-        </div>
-      </div>
-
-    <!-- Edit Panel (:edit) -->
-      <div
-        id="api-client-edit-panel"
-        class={[
-          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-elevated border-l border-border-strong",
-          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-          "transition-transform duration-200 ease-in-out",
-          (@live_action == :edit && "translate-x-0") || "translate-x-full"
-        ]}
-      >
-        <div
-          :if={@live_action == :edit && @selected_actor && @form}
-          class="flex flex-col h-full overflow-hidden"
+        <.form
+          id="api-token-new-form"
+          for={@form}
+          phx-change="validate_new"
+          phx-submit="create_token"
+          class="flex flex-col flex-1 min-h-0 overflow-hidden"
         >
-          <Form.panel_header title="Edit API Token" />
-
-          <.form
-            id="api-token-edit-form"
-            for={@form}
-            phx-change="validate_edit"
-            phx-submit="update_actor"
-            class="flex flex-col flex-1 min-h-0 overflow-hidden"
-          >
-            <!-- Panel body -->
-            <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              <Form.input
-                label="Name"
-                field={@form[:name]}
-                placeholder="E.g. 'GitHub Actions' or 'Terraform'"
-                phx-debounce="300"
-                required
+          <Settings.Components.modal_body class="space-y-4">
+            <%= if is_nil(@encoded_token) do %>
+              <Settings.ApiClients.Components.api_token_creation_form
+                form={@form}
+                scopes={@scopes}
+                error={@scopes_error}
               />
+            <% else %>
+              <Settings.ApiClients.Components.api_token_reveal encoded_token={@encoded_token} />
+            <% end %>
+          </Settings.Components.modal_body>
 
-              <ApiClientComponents.api_token_scopes scopes={@scopes} error={@scopes_error} />
-            </div>
-
-    <!-- Panel footer -->
-            <Form.panel_footer>
+          <Form.panel_footer>
+            <%= if is_nil(@encoded_token) do %>
               <Form.panel_footer_button type="button" phx-click="close_panel">
                 Cancel
               </Form.panel_footer_button>
               <Form.panel_footer_button type="submit" style="primary">
-                Save
+                Create token
               </Form.panel_footer_button>
-            </Form.panel_footer>
-          </.form>
-        </div>
-      </div>
+            <% else %>
+              <Form.panel_footer_button type="button" phx-click="close_reveal">
+                Done
+              </Form.panel_footer_button>
+            <% end %>
+          </Form.panel_footer>
+        </.form>
+      </Page.detail_modal>
+
+      <Page.detail_modal
+        id="api-client-edit-panel"
+        open={@live_action == :edit and not is_nil(@selected_actor) and not is_nil(@form)}
+        on_close="close_panel"
+        size="md"
+      >
+        <Form.panel_header title="Edit API token" variant="plain">
+          <:leading><Core.icon name="ri-key-2-line" class="w-4 h-4 text-muted" /></:leading>
+        </Form.panel_header>
+
+        <.form
+          id="api-token-edit-form"
+          for={@form}
+          phx-change="validate_edit"
+          phx-submit="update_actor"
+          class="flex flex-col flex-1 min-h-0 overflow-hidden"
+        >
+          <Settings.Components.modal_body class="space-y-4">
+            <Form.input
+              label="Name"
+              field={@form[:name]}
+              placeholder="E.g. 'GitHub Actions' or 'Terraform'"
+              phx-debounce="300"
+              required
+            />
+
+            <Settings.ApiClients.Components.api_token_scopes scopes={@scopes} error={@scopes_error} />
+          </Settings.Components.modal_body>
+
+          <Form.panel_footer>
+            <Form.panel_footer_button type="button" phx-click="close_panel">
+              Cancel
+            </Form.panel_footer_button>
+            <Form.panel_footer_button type="submit" style="primary">
+              Save
+            </Form.panel_footer_button>
+          </Form.panel_footer>
+        </.form>
+      </Page.detail_modal>
     </div>
     """
   end
@@ -390,28 +348,34 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
     ~H"""
     <tr class={[
-      "border-b transition-colors",
-      @is_pending_delete && "border-danger/30 bg-danger-light",
-      @is_pending_toggle && "border-warning/30 bg-warning-light",
-      !@is_pending_delete && !@is_pending_toggle &&
-        "border-border hover:bg-raised"
+      "border-b border-hair transition-colors",
+      (@is_pending_delete || @is_pending_toggle) && "bg-attn-wash",
+      !@is_pending_delete && !@is_pending_toggle && "hover:bg-hover"
     ]}>
+      <td class="px-6 py-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <Core.icon name="ri-key-2-line" class="w-4 h-4 shrink-0 text-muted" />
+          <div class="min-w-0">
+            <div class={[
+              "text-sm font-medium truncate",
+              (@is_pending_delete || @is_pending_toggle) && "text-attn",
+              !@is_pending_delete && !@is_pending_toggle && "text-fg"
+            ]}>
+              {@actor.name}
+            </div>
+            <div class="font-mono text-xs text-muted mt-0.5 truncate">{@actor.id}</div>
+          </div>
+        </div>
+      </td>
       <%= if @is_pending_delete do %>
-        <td class="px-6 py-3 w-56">
-          <div class="text-sm font-medium text-danger truncate">{@actor.name}</div>
-          <div class="font-mono text-[10px] text-danger/80 mt-0.5 truncate">{@actor.id}</div>
-        </td>
-        <td colspan="6" class="px-6 py-3">
+        <td colspan="5" class="px-6 py-3">
           <div class="flex items-center gap-4">
-            <span class="text-xs text-danger">
+            <span class="text-xs text-attn">
               Delete this API Token? This will remove it along with all associated credentials and cannot be undone.
             </span>
             <div class="flex items-center gap-2 ml-auto shrink-0">
-              <Form.button
-                phx-click="cancel_confirm"
-                size="xs"
-              >
-              Cancel
+              <Form.button phx-click="cancel_confirm" size="xs">
+                Cancel
               </Form.button>
               <Form.button
                 phx-click="delete"
@@ -427,22 +391,15 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         </td>
       <% else %>
         <%= if @is_pending_toggle do %>
-          <td class="px-6 py-3 w-56">
-            <div class="text-sm font-medium text-warning truncate">{@actor.name}</div>
-            <div class="font-mono text-[10px] text-warning/80 mt-0.5 truncate">{@actor.id}</div>
-          </td>
-          <td colspan="6" class="px-6 py-3">
+          <td colspan="5" class="px-6 py-3">
             <div class="flex items-center gap-4">
-              <span class="text-xs text-warning">
+              <span class="text-xs text-attn">
                 {if !@actor.is_disabled,
                   do: "Disable this API Token? It will no longer be able to authenticate.",
                   else: "Enable this API Token?"}
               </span>
               <div class="flex items-center gap-2 ml-auto shrink-0">
-                <Form.button
-                  phx-click="cancel_confirm"
-                  size="xs"
-                >
+                <Form.button phx-click="cancel_confirm" size="xs">
                   Cancel
                 </Form.button>
                 <Form.button
@@ -457,46 +414,31 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </div>
           </td>
         <% else %>
-          <td class="px-6 py-3 w-56">
-            <div class="text-sm font-medium text-heading truncate">{@actor.name}</div>
-            <div class="font-mono text-[10px] text-subtle mt-0.5 truncate">
-              {@actor.id}
-            </div>
-          </td>
-          <td class="px-6 py-3 w-28">
-            <%= if !@actor.is_disabled do %>
-            <Core.badge type="success" class="text-[10px]">
-                Active
-            </Core.badge>
+          <td class="px-6 py-3">
+            <%= if @actor.is_disabled do %>
+              <Core.status_badge style={:neutral}>Disabled</Core.status_badge>
             <% else %>
-            <Core.badge class="text-[10px]">
-                Disabled
-            </Core.badge>
+              <Core.status_badge style={:success}>Active</Core.status_badge>
             <% end %>
           </td>
-          <td class="px-6 py-3 w-36">
-            <span class="text-sm text-body">
-              {PortalWeb.Format.short_date(@actor.inserted_at)}
-            </span>
+          <td class="px-6 py-3 hidden lg:table-cell text-muted">
+            {PortalWeb.Format.short_date(@actor.inserted_at)}
           </td>
-          <td class="px-6 py-3 w-36">
-            <span class="text-sm text-body">
-              {if @token, do: PortalWeb.Format.short_date(@token.expires_at), else: "—"}
-            </span>
+          <td class="px-6 py-3 text-muted">
+            {if @token, do: PortalWeb.Format.short_date(@token.expires_at), else: "Never"}
           </td>
-          <td class="px-6 py-3 w-36">
-            <span class="text-sm text-body">
-              <%= if @token && @token.last_seen_at do %>
-                <Core.relative_datetime datetime={@token.last_seen_at} />
-              <% else %>
-                —
-              <% end %>
-            </span>
-          </td>
-          <td class="px-6 py-3 w-36">
-            <span class="text-sm text-body">
-              {if @token && @token.last_seen_remote_ip, do: @token.last_seen_remote_ip, else: "—"}
-            </span>
+          <td class="px-6 py-3 hidden md:table-cell text-muted">
+            <%= if @token && @token.last_seen_at do %>
+              <Core.relative_datetime datetime={@token.last_seen_at} />
+            <% else %>
+              Never
+            <% end %>
+            <div
+              :if={@token && @token.last_seen_remote_ip}
+              class="font-mono text-xs text-muted mt-0.5"
+            >
+              {@token.last_seen_remote_ip}
+            </div>
           </td>
           <td class="px-6 py-3 w-10">
             <div class="flex justify-end">
@@ -505,19 +447,21 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                 close_event="close_actor_actions"
                 phx-click="toggle_actor_actions"
                 phx-value-id={@actor.id}
+                button_class="flex items-center justify-center w-7 h-7 text-muted hover:text-fg hover:bg-hover transition-colors"
+                menu_class="absolute right-0 top-full mt-1 w-44 border border-rule bg-bg shadow-md z-10 py-1"
               >
                 <Navigation.link
                   patch={~p"/#{@account}/settings/api_clients/#{@actor}/edit"}
-                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
                 >
                   <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
                 </Navigation.link>
-                <div class="my-1 border-t border-border"></div>
+                <div class="my-1 border-t border-hair"></div>
                 <button
                   phx-click="request_confirm"
                   phx-value-id={@actor.id}
                   phx-value-action="toggle"
-                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-hover transition-colors text-fg"
                 >
                   <Core.icon
                     name={
@@ -529,12 +473,12 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                   />
                   {if !@actor.is_disabled, do: "Disable", else: "Enable"}
                 </button>
-                <div class="my-1 border-t border-border"></div>
+                <div class="my-1 border-t border-hair"></div>
                 <button
                   phx-click="request_confirm"
                   phx-value-id={@actor.id}
                   phx-value-action="delete"
-                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-attn-wash transition-colors text-attn"
                 >
                   <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
                 </button>

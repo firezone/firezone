@@ -16,14 +16,14 @@ defmodule PortalWeb.Settings.ApiClients.Components do
         phx-debounce="300"
         required
       />
-      <p class="mt-2 text-xs text-subtle">
+      <p class="mt-2 text-xs text-muted">
         Describe what this API token will be used for. This can be changed later if needed.
       </p>
     </div>
 
     <div class="mt-4">
       <Form.input
-        label="Expires At"
+        label="Expires at"
         type="date"
         field={@form[:expires_at]}
         value={Date.utc_today() |> Date.add(365)}
@@ -53,16 +53,20 @@ defmodule PortalWeb.Settings.ApiClients.Components do
   def api_token_reveal(assigns) do
     ~H"""
     <div class="flex flex-col gap-4">
-      <p class="text-sm font-semibold text-heading">Your API Token</p>
+      <p class="flex items-center gap-2 text-sm font-semibold text-fg">
+        <Core.icon name="ri-key-2-line" class="w-4 h-4 text-muted" /> Your API token
+      </p>
 
       <Core.code_block
         id="code-api-token"
-        class="text-xs rounded-md [&_code]:overflow-x-auto [&_code]:whitespace-pre-wrap [&_code]:break-all [&_code]:p-2"
+        class="text-xs [&_code]:overflow-x-auto [&_code]:whitespace-pre-wrap [&_code]:break-all [&_code]:p-2"
         phx-no-format
       ><%= @encoded_token %></Core.code_block>
 
-      <div class="rounded border border-warning-light bg-warning-light px-4 py-3 text-xs text-warning">
-        Store this token in a safe place. <strong>It won't be shown again.</strong>
+      <div class="flex items-start gap-2 border border-attn bg-attn-wash px-4 py-3 text-xs text-attn">
+        <Core.icon name="ri-error-warning-line" class="w-4 h-4 shrink-0" />
+        <span>
+        Store this token in a safe place. <strong>It won't be shown again.</strong></span>
       </div>
     </div>
     """

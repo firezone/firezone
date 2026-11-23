@@ -142,7 +142,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks")
 
-      assert html =~ "Log Sinks"
+      assert html =~ "Log sinks"
       assert html =~ "No log sinks yet"
       assert html =~ "Add a log sink"
     end
@@ -1808,7 +1808,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       render_click(lv, "submit_sink", %{"log_sink" => %{"name" => "Late"}})
 
-      assert render(lv) =~ "Log Sinks"
+      assert render(lv) =~ "Log sinks"
     end
 
     for event <- ["delete_sink", "toggle_sink"] do
