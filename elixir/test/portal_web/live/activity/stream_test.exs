@@ -185,10 +185,15 @@ defmodule PortalWeb.Activity.StreamTest do
 
     {:ok, lv, _html} = conn |> authorize_conn(admin) |> live(~p"/#{account}/activity")
 
-    lv |> element("#activity-event-flow-#{flow.log_id}") |> render_click()
+    html = lv |> element("#activity-event-flow-#{flow.log_id}") |> render_click()
     assert_patch(lv)
 
+    assert html =~ "activity-related-loading"
     assert has_element?(lv, "#activity-event-panel [role='dialog']")
+
+    render_async(lv)
+
+    refute has_element?(lv, "#activity-related-loading")
     assert has_element?(lv, "#related-flow-#{flow.log_id}")
     assert has_element?(lv, "#related-session-#{session.log_id}")
     refute has_element?(lv, "#related-flow-#{unrelated.log_id}")
@@ -199,6 +204,50 @@ defmodule PortalWeb.Activity.StreamTest do
     assert_patch(lv)
     refute has_element?(lv, "#activity-event-panel [role='dialog']")
     assert has_element?(lv, "#activity-pivot-actor-#{person.id}")
+  end
+
+  test "never shows the previous event's related events while the next one loads", %{
+    conn: conn,
+    account: account,
+    admin: admin,
+    person: person
+  } do
+    device_id = Ecto.UUID.generate()
+
+    session =
+      session_log_fixture(
+        account: account,
+        timestamp: ago(120),
+        subject: subject_for(person) |> Map.put("device_id", device_id)
+      )
+
+    flow =
+      flow_log_fixture(
+        account: account,
+        flow_start: ago(60),
+        initiator_actor_id: person.id,
+        initiator_device_id: device_id,
+        initiator_actor_name: person.name
+      )
+
+    other = api_request_log_fixture(account: account, actor_id: admin.id, inserted_at: ago(30))
+
+    {:ok, lv, _html} =
+      conn |> authorize_conn(admin) |> live(~p"/#{account}/activity?event=flow:#{flow.log_id}")
+
+    render_async(lv)
+    assert has_element?(lv, "#related-session-#{session.log_id}")
+
+    html = render_patch(lv, ~p"/#{account}/activity?event=api:#{other.log_id}")
+
+    refute html =~ "related-session-#{session.log_id}"
+    assert html =~ "activity-related-loading"
+
+    render_async(lv)
+
+    assert has_element?(lv, "#related-api-#{other.log_id}")
+    refute has_element?(lv, "#related-session-#{session.log_id}")
+    refute has_element?(lv, "#related-flow-#{flow.log_id}")
   end
 
   test "opens an event from a direct link and closes it", %{conn: conn, account: account, admin: admin} do

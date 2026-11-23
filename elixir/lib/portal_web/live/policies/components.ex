@@ -2,6 +2,7 @@ defmodule PortalWeb.Policies.Components do
   use PortalWeb, :component_library
   alias PortalWeb.Policies.{Database, Postures}
   alias PortalWeb.Policies.PostureComponents
+  alias Phoenix.LiveView.AsyncResult
 
   @days_of_week [
     {"M", "Monday"},
@@ -97,11 +98,10 @@ defmodule PortalWeb.Policies.Components do
   attr :conditions_state, :map, required: true
   attr :postures, :map, required: true
   attr :confirm_state, :map, required: true
-  attr :policy_authorizations, :list, default: []
+  attr :policy_authorizations, AsyncResult, required: true
   attr :policy_authorizations_page, :integer, default: 1
-  attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
-  attr :details, :map, default: nil
+  attr :details, AsyncResult, required: true
   attr :who, :map, required: true
 
   def policy_panel(assigns) do
@@ -197,7 +197,6 @@ defmodule PortalWeb.Policies.Components do
         confirm_delete_policy={@confirm_state.confirm_delete_policy}
         policy_authorizations={@policy_authorizations}
         policy_authorizations_page={@policy_authorizations_page}
-        policy_authorizations_has_next={@policy_authorizations_has_next}
         policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
         details={@details}
       />
@@ -895,15 +894,14 @@ defmodule PortalWeb.Policies.Components do
   attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
-  attr :policy_authorizations, :list, default: []
+  attr :policy_authorizations, AsyncResult, required: true
   attr :policy_authorizations_page, :integer, default: 1
-  attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :connected_posture_providers, :list, default: nil
-  attr :details, :map, default: nil
+  attr :details, AsyncResult, required: true
 
   def policy_details_view(assigns) do
-    assigns = assign(assigns, :who, who_label(assigns.policy, assigns.details))
+    assigns = assign(assigns, :who, who_label(assigns.policy, loaded_details(assigns.details)))
 
     ~H"""
     <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -941,7 +939,7 @@ defmodule PortalWeb.Policies.Components do
         </button>
       </div>
       <div :if={@tab == :overview} class="flex-1 overflow-y-auto px-6 py-5">
-        <.policy_sentence account={@account} policy={@policy} details={@details} who={@who} />
+        <.policy_sentence account={@account} policy={@policy} who={@who} />
         <Table.vertical_table id="policy-details">
           <Table.vertical_table_row>
             <:label>Conditions</:label>
@@ -961,13 +959,25 @@ defmodule PortalWeb.Policies.Components do
             <:label>Route</:label>
             <:value><.policy_route account={@account} policy={@policy} /></:value>
           </Table.vertical_table_row>
-          <Table.vertical_table_row :if={@details}>
+          <Table.vertical_table_row>
             <:label>Carried by</:label>
-            <:value><.policy_carriers account={@account} details={@details} /></:value>
+            <:value>
+              <.async_result :let={details} assign={@details}>
+                <:loading><.loading_bars id="policy-carriers-loading" /></:loading>
+                <:failed><.load_failed /></:failed>
+                <.policy_carriers account={@account} details={details} />
+              </.async_result>
+            </:value>
           </Table.vertical_table_row>
-          <Table.vertical_table_row :if={@details}>
+          <Table.vertical_table_row>
             <:label>Who gets this access</:label>
-            <:value><.policy_members account={@account} policy={@policy} details={@details} /></:value>
+            <:value>
+              <.async_result :let={details} assign={@details}>
+                <:loading><.loading_bars id="policy-members-loading" /></:loading>
+                <:failed><.load_failed /></:failed>
+                <.policy_members account={@account} policy={@policy} details={details} />
+              </.async_result>
+            </:value>
           </Table.vertical_table_row>
           <Table.vertical_table_row :if={@policy.description}>
             <:label>Description</:label>
@@ -1001,7 +1011,6 @@ defmodule PortalWeb.Policies.Components do
         policy={@policy}
         policy_authorizations={@policy_authorizations}
         page={@policy_authorizations_page}
-        has_next={@policy_authorizations_has_next}
         expanded_id={@policy_authorizations_expanded_id}
       />
     </div>
@@ -1012,16 +1021,35 @@ defmodule PortalWeb.Policies.Components do
   def who_label(%{group: nil}, _details), do: "Deleted group"
 
   def who_label(%{group: group}, details) do
-    if PortalWeb.DirectAccess.direct_group?(group) do
-      PortalWeb.Access.Components.people_label((details && details.people) || [])
-    else
-      group.name
+    cond do
+      not PortalWeb.DirectAccess.direct_group?(group) -> group.name
+      is_nil(details) -> "People"
+      true -> PortalWeb.Access.Components.people_label(details.people || [])
     end
+  end
+
+  defp loaded_details(%AsyncResult{ok?: true, result: details}), do: details
+  defp loaded_details(_details), do: nil
+
+  attr :id, :string, required: true
+
+  defp loading_bars(assigns) do
+    ~H"""
+    <span id={@id} class="flex flex-col gap-1.5 py-0.5 animate-pulse" aria-busy="true">
+      <span class="block h-3 w-48 bg-hover"></span>
+      <span class="block h-3 w-32 bg-hair"></span>
+    </span>
+    """
+  end
+
+  defp load_failed(assigns) do
+    ~H"""
+    <span class="text-xs text-muted">Could not load this. Reload the page to try again.</span>
+    """
   end
 
   attr :account, :any, required: true
   attr :policy, :any, required: true
-  attr :details, :map, default: nil
   attr :who, :string, required: true
 
   defp policy_sentence(assigns) do
@@ -1343,23 +1371,54 @@ defmodule PortalWeb.Policies.Components do
 
   attr :account, :any, required: true
   attr :policy, :any, required: true
-  attr :policy_authorizations, :list, default: []
+  attr :policy_authorizations, AsyncResult, required: true
   attr :page, :integer, default: 1
-  attr :has_next, :boolean, default: false
   attr :expanded_id, :string, default: nil
 
   def policy_authorizations_tab(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
       <Authorization.authorization_flow_logs_notice account={@account} />
+      <.async_result :let={authorizations} assign={@policy_authorizations}>
+        <:loading>
+          <div id="policy-authorizations-loading" class="flex flex-col gap-3 px-4 py-4 animate-pulse" aria-busy="true">
+            <span :for={_ <- 1..4} class="block h-3 w-full bg-hover"></span>
+          </div>
+        </:loading>
+        <:failed>
+          <p class="px-4 py-4"><.load_failed /></p>
+        </:failed>
+        <.policy_authorizations_table
+          account={@account}
+          policy={@policy}
+          rows={authorizations.rows}
+          page={@page}
+          has_next={authorizations.has_next}
+          expanded_id={@expanded_id}
+        />
+      </.async_result>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :policy, :any, required: true
+  attr :rows, :list, required: true
+  attr :page, :integer, required: true
+  attr :has_next, :boolean, required: true
+  attr :expanded_id, :string, default: nil
+
+  defp policy_authorizations_table(assigns) do
+    ~H"""
+    <div class="contents">
       <div
-        :if={@policy_authorizations == []}
+        :if={@rows == []}
         class="flex flex-1 flex-col items-center justify-center gap-2 text-subtle"
       >
         <Core.icon name="ri-shield-check-line" class="w-8 h-8" />
         <p class="text-sm">No recent authorizations</p>
       </div>
-      <div :if={@policy_authorizations != []} class="flex-1 flex flex-col overflow-hidden">
+      <div :if={@rows != []} class="flex-1 flex flex-col overflow-hidden">
         <div class="flex-1 overflow-y-auto">
           <table class="w-full text-xs">
             <thead class="sticky top-0 bg-surface z-10">
@@ -1371,7 +1430,7 @@ defmodule PortalWeb.Policies.Components do
               </tr>
             </thead>
             <tbody>
-              <%= for row <- @policy_authorizations do %>
+              <%= for row <- @rows do %>
                 <tr
                   phx-click="toggle_policy_authorization_row"
                   phx-keydown="toggle_policy_authorization_row"

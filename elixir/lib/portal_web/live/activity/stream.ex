@@ -2,6 +2,7 @@ defmodule PortalWeb.Activity.Stream do
   use PortalWeb, :live_view
 
   alias PortalWeb.Logs
+  alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   @types [
@@ -41,7 +42,8 @@ defmodule PortalWeb.Activity.Stream do
        has_more?: false,
        pivots: [],
        selected: nil,
-       related: []
+       related: AsyncResult.loading(),
+       related_key: nil
      )}
   end
 
@@ -341,26 +343,36 @@ defmodule PortalWeb.Activity.Stream do
           <p class="mb-3 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
             Related events
           </p>
-          <ol id="activity-related" class="border-l border-rule ml-1 pl-[18px]">
-            <li :for={event <- @related} id={"related-#{event.type}-#{event.log_id}"} class="relative pb-4 last:pb-0">
-              <span class={[
-                "absolute -left-[22px] top-[5px] w-[7px] h-[7px]",
-                (event.bad? && "bg-attn") || "bg-fg"
-              ]}>
-              </span>
-              <.link
-                patch={stream_path(@account, @filter, event.key)}
-                class={["block hover:underline underline-offset-2", event.key == @selected.key && "font-semibold"]}
-              >
-                <time class="block font-mono text-[11px] font-normal text-muted">
-                  {clock(event.at, @browser_tz)} · {String.downcase(type_label(event.type))}
-                </time>
-                <span class={event.bad? && "text-attn"}>
-                  {event.who}: <.sentence parts={event.what} plain />
+          <.async_result :let={related} assign={@related}>
+            <:loading>
+              <div id="activity-related-loading" class="flex flex-col gap-3 animate-pulse" aria-busy="true">
+                <span :for={_ <- 1..3} class="block h-3 w-56 bg-hover"></span>
+              </div>
+            </:loading>
+            <:failed>
+              <p class="text-xs text-muted">Could not load related events. Reload the page to try again.</p>
+            </:failed>
+            <ol id="activity-related" class="border-l border-rule ml-1 pl-[18px]">
+              <li :for={event <- related} id={"related-#{event.type}-#{event.log_id}"} class="relative pb-4 last:pb-0">
+                <span class={[
+                  "absolute -left-[22px] top-[5px] w-[7px] h-[7px]",
+                  (event.bad? && "bg-attn") || "bg-fg"
+                ]}>
                 </span>
-              </.link>
-            </li>
-          </ol>
+                <.link
+                  patch={stream_path(@account, @filter, event.key)}
+                  class={["block hover:underline underline-offset-2", event.key == @selected.key && "font-semibold"]}
+                >
+                  <time class="block font-mono text-[11px] font-normal text-muted">
+                    {clock(event.at, @browser_tz)} · {String.downcase(type_label(event.type))}
+                  </time>
+                  <span class={event.bad? && "text-attn"}>
+                    {event.who}: <.sentence parts={event.what} plain />
+                  </span>
+                </.link>
+              </li>
+            </ol>
+          </.async_result>
         </section>
 
         <section :if={pivotable(@selected) != []}>
@@ -500,7 +512,9 @@ defmodule PortalWeb.Activity.Stream do
     }
   end
 
-  defp select_event(socket, nil), do: assign(socket, selected: nil, related: [])
+  defp select_event(socket, nil), do: assign(socket, selected: nil, related_key: nil)
+
+  defp select_event(%{assigns: %{selected: %{key: key}, related_key: key}} = socket, key), do: socket
 
   defp select_event(socket, key) do
     subject = socket.assigns.subject
@@ -509,8 +523,13 @@ defmodule PortalWeb.Activity.Stream do
       Enum.find(socket.assigns.events, &(&1.key == key)) || Database.fetch_event(subject, key)
 
     case event do
-      nil -> assign(socket, selected: nil, related: [])
-      event -> assign(socket, selected: event, related: Database.related(subject, event))
+      nil ->
+        assign(socket, selected: nil, related_key: nil)
+
+      event ->
+        socket
+        |> assign(selected: event, related_key: key)
+        |> assign_async(:related, fn -> {:ok, %{related: Database.related(subject, event)}} end, reset: true)
     end
   end
 
