@@ -14,14 +14,14 @@ use std::{io, net::SocketAddr};
 #[macro_export]
 macro_rules! service_name {
     () => {
-        ::opentelemetry::KeyValue::new("service.name", env!("CARGO_PKG_NAME"))
+        $crate::KeyValue::new("service.name", env!("CARGO_PKG_NAME"))
     };
 }
 
 #[macro_export]
 macro_rules! service_version {
     () => {
-        ::opentelemetry::KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))
+        $crate::KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))
     };
 }
 

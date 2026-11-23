@@ -2279,6 +2279,7 @@ defmodule PortalWeb.DevicesTest do
 
       refute Repo.get_by(Device, account_id: account.id, id: gateway.id)
       refute Repo.get_by(Portal.DeviceToken, account_id: account.id, device_id: gateway.id)
+      render_async(lv)
       refute has_element?(lv, "#device-#{gateway.id}")
     end
 
