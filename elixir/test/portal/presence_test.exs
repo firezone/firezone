@@ -173,5 +173,13 @@ defmodule Portal.PresenceTest do
       assert {id, _meta} = Presence.Devices.Account.find_by_ipv4(account.id, address)
       assert id == client.id
     end
+
+    test "does not find a `/device/v1` device without a TUN interface" do
+      account = account_fixture()
+      client = client_fixture(account: account, actor: actor_fixture(account: account))
+
+      :ok = Presence.Devices.connect(client, Ecto.UUID.generate(), %{capabilities: [], device_v1: true})
+      assert Presence.Devices.Account.find_by_ipv4(account.id, client.ipv4.address) == nil
+    end
   end
 end
