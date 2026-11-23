@@ -6,13 +6,15 @@ defmodule Portal.Changes.Hooks.Accounts do
   import Portal.SchemaHelpers
 
   @impl true
-  def on_insert(lsn, %{"is_disabled" => false} = data) do
-    account = struct_from_params(Portal.Account, data)
-    change = %Change{lsn: lsn, op: :insert, struct: account}
+  def on_insert(lsn, %{"id" => account_id} = data) do
+    {:ok, _job} = %{account_id: account_id} |> ProvisionDeviceCA.new() |> Oban.insert()
 
-    {:ok, _job} = %{account_id: account.id} |> ProvisionDeviceCA.new() |> Oban.insert()
-
-    PubSub.Changes.broadcast_account(change)
+    if data["is_disabled"] == false do
+      account = struct_from_params(Portal.Account, data)
+      PubSub.Changes.broadcast_account(%Change{lsn: lsn, op: :insert, struct: account})
+    else
+      :ok
+    end
   end
 
   def on_insert(_lsn, _data), do: :ok

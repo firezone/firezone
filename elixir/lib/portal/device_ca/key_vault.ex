@@ -1,8 +1,6 @@
 defmodule Portal.DeviceCA.KeyVault do
   @moduledoc """
-  Keeps each account's CA key in Azure Key Vault as a non-exportable, software-protected RSA-2048
-  key named `device-ca-<account id>`. The portal signs with its managed identity and never sees
-  the key. An account that needs a FIPS 140 Level 3 key gets a new CA from an HSM key later.
+  Keeps each account's device CA key in Azure Key Vault.
   """
   @behaviour Portal.DeviceCA
 
@@ -48,7 +46,6 @@ defmodule Portal.DeviceCA.KeyVault do
     end
   end
 
-  # The managed identity token is only ever sent to the configured vault.
   defp in_vault(key_id) do
     if String.starts_with?(key_id, vault_url() <> "/keys/"),
       do: :ok,

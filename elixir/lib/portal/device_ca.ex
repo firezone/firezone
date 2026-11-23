@@ -1,11 +1,6 @@
 defmodule Portal.DeviceCA do
   @moduledoc """
   The CA of each account that issues the certificates its devices connect with.
-
-  Each account has its own RSA-2048 key. Device keys can still be P-256: the CA key type does not
-  limit them. With a Key Vault URL, the key is a non-exportable key in Azure Key Vault and every
-  signature is made there. Without one, the default for on-prem, dev and test, the `Local`
-  adapter signs for every account with the one key from `DEVICE_CA_PRIVATE_KEY`.
   """
   alias __MODULE__.{Database, KeyVault, Local}
   alias Portal.DeviceCertificateAuthority

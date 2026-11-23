@@ -32,10 +32,10 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       assert_receive %Change{op: :insert, struct: %Portal.Account{id: ^account_id}, lsn: 0}
     end
 
-    test "queues the device CA of an enabled account" do
+    test "queues the device CA of a disabled account too" do
       account_id = Ecto.UUID.generate()
 
-      assert :ok == on_insert(0, %{"id" => account_id, "is_disabled" => false})
+      assert :ok == on_insert(0, %{"id" => account_id, "is_disabled" => true})
 
       assert_enqueued(worker: Portal.Workers.ProvisionDeviceCA, args: %{account_id: account_id})
     end

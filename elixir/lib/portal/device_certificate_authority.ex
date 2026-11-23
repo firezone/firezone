@@ -1,7 +1,6 @@
 defmodule Portal.DeviceCertificateAuthority do
   @moduledoc """
-  The CA of one account that issues the certificates its devices connect with. Its private key
-  never leaves the key store that `key_id` names, and `certificate` is the CA certificate in DER.
+  The CA of one account that issues the certificates its devices connect with.
   """
   use Ecto.Schema
   import Ecto.Changeset

@@ -57,8 +57,7 @@ config :portal, data_residency_region: :on_prem
 config :portal, slug_registry_table_url: nil
 config :portal, device_ca_key_vault_url: nil
 
-# A throwaway key for dev and test only. Production sets DEVICE_CA_KEY_VAULT_URL or
-# DEVICE_CA_PRIVATE_KEY.
+# A throwaway key for dev and test only.
 config :portal,
   device_ca_private_key: """
   -----BEGIN PRIVATE KEY-----

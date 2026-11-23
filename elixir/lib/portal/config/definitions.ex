@@ -574,10 +574,8 @@ defmodule Portal.Config.Definitions do
   defconfig(:slug_registry_table_url, :string, default: nil)
 
   @doc """
-  URL of the Azure Key Vault that holds the device CA key of each account, for example
-  https://firezone-device-ca.vault.azure.net. Each key is non-exportable and software-protected,
-  and the portal signs with its managed identity. Unset, the default for on-prem, every account
-  signs with DEVICE_CA_PRIVATE_KEY.
+  URL of the Azure Key Vault that holds the device CA keys. Unset, every account signs with
+  DEVICE_CA_PRIVATE_KEY.
   """
   defconfig(:device_ca_key_vault_url, :string, default: nil)
 

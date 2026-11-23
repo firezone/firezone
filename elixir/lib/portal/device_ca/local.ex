@@ -1,7 +1,6 @@
 defmodule Portal.DeviceCA.Local do
   @moduledoc """
-  The device CA key for a portal without Key Vault: one RSA key from `DEVICE_CA_PRIVATE_KEY`
-  for every account. Each account still has its own CA certificate, which names the account.
+  Signs for every account with the one key in `DEVICE_CA_PRIVATE_KEY`.
   """
   @behaviour Portal.DeviceCA
 
