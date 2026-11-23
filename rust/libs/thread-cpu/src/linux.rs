@@ -75,13 +75,4 @@ mod tests {
 
         assert_eq!(parse_stat(stat).unwrap(), ("a) b (c)", 30));
     }
-
-    #[test]
-    fn lists_the_current_thread() {
-        let name = std::thread::current().name().unwrap().to_owned();
-
-        let threads = threads().unwrap();
-
-        assert!(threads.iter().any(|thread| name.starts_with(&thread.name)));
-    }
 }

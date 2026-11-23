@@ -45,3 +45,21 @@ pub struct Thread {
 pub fn threads() -> anyhow::Result<Vec<Thread>> {
     platform::threads()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lists_the_calling_thread() {
+        let threads = std::thread::Builder::new()
+            .name("fz-thread-cpu".to_owned())
+            .spawn(threads)
+            .unwrap()
+            .join()
+            .unwrap()
+            .unwrap();
+
+        assert!(threads.iter().any(|thread| thread.name == "fz-thread-cpu"));
+    }
+}

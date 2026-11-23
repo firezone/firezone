@@ -42,7 +42,7 @@ pub enum Thread {
 }
 
 impl Thread {
-    pub const ALL: [Thread; 5] = [
+    const ALL: [Thread; 5] = [
         Thread::UdpV4,
         Thread::UdpV6,
         Thread::TunTx,
