@@ -129,10 +129,11 @@ defmodule Portal.MetricsRule do
             d.id,
             d.type
           ),
-        select: count(d.id, :distinct)
+        distinct: true,
+        select: d.id
       )
       |> Safe.unscoped()
-      |> Safe.one()
+      |> Safe.aggregate(:count)
     end
   end
 end
