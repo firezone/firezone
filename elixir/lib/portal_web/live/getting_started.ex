@@ -110,7 +110,7 @@ defmodule PortalWeb.GettingStarted do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="getting-started" class={offered_state?(@goal) && "border-t border-border py-2 px-2 shrink-0"}>
+    <div id="getting-started" class={offered_state?(@goal) && "border-t border-hair py-2 shrink-0"}>
       <.sidebar_entry
         :if={offered_state?(@goal)}
         progress={progress(assigns)}
@@ -173,10 +173,10 @@ defmodule PortalWeb.GettingStarted do
       phx-target={@target}
       data-sidebar-nav-item
       title="Getting started"
-      class="w-full px-2 py-1.5 rounded text-left text-sm text-body hover:text-heading hover:bg-raised transition-colors"
+      class="w-full pl-[18px] pr-5 py-2 text-left text-sm border-l-2 border-transparent text-muted hover:text-fg overflow-hidden transition-colors"
     >
-      <span class="flex items-center gap-2.5">
-        <Core.icon name="ri-rocket-2-line" class="w-4 h-4 shrink-0 text-brand" />
+      <span class="flex items-center gap-3">
+        <Core.icon name="ri-rocket-2-line" class="w-4 h-4 shrink-0" />
         <span
           data-sidebar-label
           class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
@@ -187,7 +187,7 @@ defmodule PortalWeb.GettingStarted do
           :if={@progress}
           id="getting-started-sidebar-count"
           data-sidebar-label
-          class="text-xs text-subtle tabular-nums"
+          class="text-xs text-muted tabular-nums"
         >
           {elem(@progress, 0)}/{elem(@progress, 1)}
         </span>
@@ -195,14 +195,14 @@ defmodule PortalWeb.GettingStarted do
       <span
         :if={@progress}
         data-sidebar-label
-        class="flex gap-0.5 mt-1.5 ml-6.5"
+        class="flex gap-0.5 mt-2 ml-7"
         aria-hidden="true"
       >
         <span
           :for={i <- 1..elem(@progress, 1)}
           class={[
-            "flex-1 h-1 rounded-full",
-            if(i <= elem(@progress, 0), do: "bg-brand", else: "bg-border-strong")
+            "flex-1 h-0.5",
+            if(i <= elem(@progress, 0), do: "bg-fg", else: "bg-hair")
           ]}
         >
         </span>
@@ -224,16 +224,15 @@ defmodule PortalWeb.GettingStarted do
 
   defp chooser(assigns) do
     ~H"""
-    <p class="text-base font-semibold text-heading">What would you like to do first?</p>
-    <p class="mt-1 text-sm text-subtle">
+    <p class="text-base font-semibold text-fg">What would you like to do first?</p>
+    <p class="mt-1 text-sm text-muted">
       Pick one for a quick, guided setup. You can always do the other later.
     </p>
 
-    <div class="mt-5 grid auto-rows-fr gap-3">
+    <div class="mt-5 grid auto-rows-fr border-t border-rule">
       <.goal
         goal="device_mesh"
         icon="ri-share-line"
-        icon_class="bg-brand-subtle text-brand-strong"
         title="Connect my devices"
         steps={3}
         minutes={3}
@@ -244,7 +243,6 @@ defmodule PortalWeb.GettingStarted do
       <.goal
         goal="remote_access"
         icon="ri-building-line"
-        icon_class="bg-accent-wash text-accent-strong"
         title="Reach a remote network or service"
         steps={4}
         minutes={5}
@@ -260,7 +258,7 @@ defmodule PortalWeb.GettingStarted do
         type="button"
         phx-click="explore"
         phx-target={@target}
-        class="px-3 py-1.5 rounded text-sm text-subtle hover:text-heading hover:bg-raised transition-colors"
+        class="px-3 py-1.5 text-sm text-muted hover:text-fg hover:bg-hover transition-colors"
       >
         I'll explore on my own
       </button>
@@ -270,7 +268,6 @@ defmodule PortalWeb.GettingStarted do
 
   attr :goal, :string, required: true
   attr :icon, :string, required: true
-  attr :icon_class, :string, required: true
   attr :title, :string, required: true
   attr :steps, :integer, required: true
   attr :minutes, :integer, required: true
@@ -286,18 +283,18 @@ defmodule PortalWeb.GettingStarted do
       phx-value-goal={@goal}
       phx-target={@target}
       class={[
-        "group flex items-center gap-4 w-full h-full px-4 py-3.5 text-left",
-        "rounded-lg border border-border-strong bg-surface",
-        "hover:border-brand hover:bg-brand-muted transition-colors"
+        "group flex items-center gap-4 w-full h-full px-3 py-4 text-left",
+        "border-b border-hair bg-bg",
+        "hover:bg-hover transition-colors"
       ]}
     >
-      <div class={["shrink-0 w-10 h-10 rounded-lg flex items-center justify-center", @icon_class]}>
+      <div class="shrink-0 w-10 h-10 border border-hair flex items-center justify-center text-fg">
         <Core.icon name={@icon} class="w-5 h-5" />
       </div>
       <div class="flex-1 min-w-0">
-        <p class="text-sm font-semibold text-heading">{@title}</p>
-        <p class="mt-0.5 text-xs text-subtle">{render_slot(@inner_block)}</p>
-        <p class="mt-1.5 flex items-center gap-3 text-xs text-subtle">
+        <p class="text-sm font-semibold text-fg">{@title}</p>
+        <p class="mt-0.5 text-xs text-muted">{render_slot(@inner_block)}</p>
+        <p class="mt-1.5 flex items-center gap-3 text-xs text-muted">
           <span class="inline-flex items-center gap-1">
             <Core.icon name="ri-list-check-2" class="w-3.5 h-3.5" />{@steps} steps
           </span>
@@ -308,7 +305,7 @@ defmodule PortalWeb.GettingStarted do
       </div>
       <Core.icon
         name="ri-arrow-right-line"
-        class="shrink-0 w-5 h-5 text-subtle group-hover:text-brand transition-colors"
+        class="shrink-0 w-5 h-5 text-muted group-hover:text-fg group-hover:translate-x-0.5 transition-all"
       />
     </button>
     """
@@ -345,8 +342,8 @@ defmodule PortalWeb.GettingStarted do
       </div>
 
       <div :if={@step == 1} id="getting-started-mesh-step-1">
-        <h4 class="text-base font-semibold text-heading">Install Firezone on another computer</h4>
-        <p class="mt-1 mb-4 text-sm text-body">
+        <h4 class="text-base font-semibold text-fg">Install Firezone on another computer</h4>
+        <p class="mt-1 mb-4 text-sm text-muted">
           On a second computer, install Firezone and sign in to the same account.
         </p>
         <.client_install account={@account} client_tab={@client_tab} target={@target} />
@@ -361,13 +358,13 @@ defmodule PortalWeb.GettingStarted do
       </div>
 
       <div :if={@step == 2 and @second} id="getting-started-mesh-step-2">
-        <h4 class="text-base font-semibold text-heading">
+        <h4 class="text-base font-semibold text-fg">
           Ping {@second.name} from {@first.name}
         </h4>
-        <p class="mt-1 mb-4 text-sm text-body">
-          Open a terminal on <span class="font-medium text-heading">{@first.name}</span> and run:
+        <p class="mt-1 mb-4 text-sm text-muted">
+          Open a terminal on <span class="font-medium text-fg">{@first.name}</span> and run:
         </p>
-        <Core.code_block id="getting-started-ping" class="mb-4 rounded">ping {@second.fqdn}</Core.code_block>
+        <Core.code_block id="getting-started-ping" class="mb-4">ping {@second.fqdn}</Core.code_block>
         <.live_status
           id="getting-started-status-2"
           done?={@connected?}
@@ -381,8 +378,8 @@ defmodule PortalWeb.GettingStarted do
       <div :if={@step == 3} id="getting-started-mesh-done">
         <.finished title="Your devices are connected">
           <:lead :if={@second}>
-            <span class="font-medium text-heading">{@first.name}</span>
-            reached <span class="font-medium text-heading">{@second.name}</span>
+            <span class="font-medium text-fg">{@first.name}</span>
+            reached <span class="font-medium text-fg">{@second.name}</span>
             over an encrypted tunnel. Any device you sign in on joins the same network.
           </:lead>
           <:link website="/kb/client-apps" icon="ri-device-line">
@@ -438,8 +435,8 @@ defmodule PortalWeb.GettingStarted do
       </div>
 
       <div :if={@step == 1} id="getting-started-remote-step-1">
-        <h4 class="text-base font-semibold text-heading">What do you want to reach?</h4>
-        <p class="mt-1 mb-4 text-sm text-body">
+        <h4 class="text-base font-semibold text-fg">What do you want to reach?</h4>
+        <p class="mt-1 mb-4 text-sm text-muted">
           Enter the address of a private app or network, as you'd type it at the office.
         </p>
         <.form
@@ -465,12 +462,12 @@ defmodule PortalWeb.GettingStarted do
             <span
               :if={@address_type}
               id="getting-started-address-type"
-              class="shrink-0 mt-2 px-2 py-1 rounded text-xs font-medium bg-badge-dns text-badge-dns-text"
+              class="shrink-0 mt-2 px-2 py-0.5 border border-rule text-xs font-medium font-mono text-fg"
             >
               {@address_type |> Atom.to_string() |> String.upcase()}
             </span>
           </div>
-          <p class="mt-3 flex items-center flex-wrap gap-1.5 text-xs text-subtle">
+          <p class="mt-3 flex items-center flex-wrap gap-1.5 text-xs text-muted">
             Examples:
             <button
               :for={example <- ~w[wiki.example.internal 10.0.1.20 10.0.0.0/16]}
@@ -478,12 +475,12 @@ defmodule PortalWeb.GettingStarted do
               phx-click="example_address"
               phx-value-address={example}
               phx-target={@target}
-              class="px-2 py-0.5 rounded-full border border-border-strong font-mono text-body hover:border-brand hover:text-heading"
+              class="px-2 py-0.5 border border-hair font-mono text-muted hover:border-rule hover:text-fg transition-colors"
             >
               {example}
             </button>
           </p>
-          <p class="mt-4 flex gap-1.5 text-xs text-subtle">
+          <p class="mt-4 flex gap-1.5 text-xs text-muted">
             <Core.icon name="ri-information-line" class="shrink-0 w-4 h-4" />
             We'll add it to your Default Site and let everyone in your account reach it.
             You can change both later.
@@ -501,10 +498,10 @@ defmodule PortalWeb.GettingStarted do
       </div>
 
       <div :if={@step == 2 and @resource} id="getting-started-remote-step-2">
-        <h4 class="text-base font-semibold text-heading">Install a Gateway</h4>
-        <p class="mt-1 mb-4 text-sm text-body">
+        <h4 class="text-base font-semibold text-fg">Install a Gateway</h4>
+        <p class="mt-1 mb-4 text-sm text-muted">
           Run this on a Linux machine that can already reach
-          <span class="font-medium text-heading">{@resource.address}</span>.
+          <span class="font-medium text-fg">{@resource.address}</span>.
           It only makes outbound connections, so you don't need to open firewall ports.
         </p>
         <.gateway_install
@@ -524,12 +521,12 @@ defmodule PortalWeb.GettingStarted do
       </div>
 
       <div :if={@step == 3 and @resource} id="getting-started-remote-step-3">
-        <h4 class="text-base font-semibold text-heading">{@try_heading}</h4>
-        <p class="mt-1 mb-4 text-sm text-body">
-          From <span class="font-medium text-heading">{if @first, do: @first.name, else: "this computer"}</span>,
+        <h4 class="text-base font-semibold text-fg">{@try_heading}</h4>
+        <p class="mt-1 mb-4 text-sm text-muted">
+          From <span class="font-medium text-fg">{if @first, do: @first.name, else: "this computer"}</span>,
           connect to it the way you normally would{if @try_command, do: ". For example:", else: "."}
         </p>
-        <Core.code_block :if={@try_command} id="getting-started-try" class="mb-4 rounded">{@try_command}</Core.code_block>
+        <Core.code_block :if={@try_command} id="getting-started-try" class="mb-4">{@try_command}</Core.code_block>
         <.live_status
           id="getting-started-status-reach"
           done?={@reached?}
@@ -543,7 +540,7 @@ defmodule PortalWeb.GettingStarted do
       <div :if={@step == 4 and @resource} id="getting-started-remote-done">
         <.finished title="You're connected">
           <:lead>
-            You reached <span class="font-medium text-heading">{@resource.address}</span>
+            You reached <span class="font-medium text-fg">{@resource.address}</span>
             through your Gateway. Everyone in your account can now do the same.
           </:lead>
           <:link navigate={~p"/#{@account}/actors"} icon="ri-user-add-line">
@@ -579,33 +576,33 @@ defmodule PortalWeb.GettingStarted do
       <.tabs id="getting-started-gateway-tabs" tabs={@tabs} selected={@deploy_tab} event="deploy_tab" target={@target} />
 
       <div :if={@deploy_tab == "debian"} class="space-y-2">
-        <p class="text-xs text-body">1. Install the Gateway:</p>
+        <p class="text-xs text-muted">1. Install the Gateway:</p>
         <Core.code_block
           id="getting-started-gateway-debian-install"
-          class="text-xs rounded"
+          class="text-xs"
         >{SiteComponents.gateway_debian_install_commands(@gateway_env) |> String.trim()}</Core.code_block>
-        <p class="pt-1 text-xs text-body">2. Connect it, and paste this token when asked:</p>
+        <p class="pt-1 text-xs text-muted">2. Connect it, and paste this token when asked:</p>
         <Core.code_block
           id="getting-started-gateway-debian-connect"
-          class="text-xs rounded"
+          class="text-xs"
         >sudo firezone-gateway authenticate && sudo firezone-gateway enable-service</Core.code_block>
         <Core.code_block
           id="getting-started-gateway-debian-token"
-          class="text-xs rounded"
+          class="text-xs"
         >{SiteComponents.gateway_token(@gateway_env)}</Core.code_block>
       </div>
 
       <div :if={@deploy_tab == "docker"}>
         <Core.code_block
           id="getting-started-gateway-docker"
-          class="text-xs rounded"
+          class="text-xs"
         >{SiteComponents.gateway_docker_command(@gateway_env)}</Core.code_block>
       </div>
 
       <div :if={@deploy_tab == "systemd"}>
         <Core.code_block
           id="getting-started-gateway-systemd"
-          class="text-xs rounded"
+          class="text-xs"
         >{SiteComponents.gateway_systemd_command(@gateway_env) |> String.trim()}</Core.code_block>
       </div>
     </div>
@@ -622,8 +619,8 @@ defmodule PortalWeb.GettingStarted do
 
   defp install_this_computer(assigns) do
     ~H"""
-    <h4 class="text-base font-semibold text-heading">Install Firezone on this computer</h4>
-    <p class="mt-1 mb-4 text-sm text-body">{@lead}</p>
+    <h4 class="text-base font-semibold text-fg">Install Firezone on this computer</h4>
+    <p class="mt-1 mb-4 text-sm text-muted">{@lead}</p>
     <.client_install account={@account} client_tab={@client_tab} target={@target} />
     <.live_status
       id="getting-started-status-0"
@@ -654,34 +651,34 @@ defmodule PortalWeb.GettingStarted do
     ~H"""
     <div class="mb-4">
       <.tabs id="getting-started-client-tabs" tabs={@tabs} selected={@client_tab} event="client_tab" target={@target} />
-      <ol id={"getting-started-client-#{@client_tab}"} class="space-y-2 text-sm text-body list-decimal list-inside">
+      <ol id={"getting-started-client-#{@client_tab}"} class="space-y-2 text-sm text-muted list-decimal list-inside">
         <li>
           <a
             href={@client.download}
-            class="inline-flex items-center gap-1.5 font-medium text-link hover:underline"
+            class="inline-flex items-center gap-1.5 font-medium text-fg underline underline-offset-3 hover:no-underline"
           >
             <Core.icon name="ri-download-2-line" class="w-4 h-4" />Download Firezone for {@client.label}
           </a>
-          <span :if={@client[:download_arm]} class="text-subtle">
-            (or for <a href={@client.download_arm} class="text-link hover:underline">ARM64</a>)
+          <span :if={@client[:download_arm]} class="text-muted">
+            (or for <a href={@client.download_arm} class="text-fg underline underline-offset-3 hover:no-underline">ARM64</a>)
           </span>
         </li>
         <li>{@client.install}</li>
         <li :if={@auth_url || @api_url} id="getting-started-client-urls">
           In the Advanced settings, set
           <span :if={@auth_url}>
-            Auth Base URL to <code class="font-mono text-heading">{@auth_url}</code>
+            Auth Base URL to <code class="font-mono text-fg">{@auth_url}</code>
           </span>
           <span :if={@auth_url && @api_url}>and</span>
           <span :if={@api_url}>
-            API URL to <code class="font-mono text-heading">{@api_url}</code>
+            API URL to <code class="font-mono text-fg">{@api_url}</code>
           </span>
         </li>
         <li>
-          {@client.open} and sign in to <span class="font-medium text-heading">{@account.slug}</span>.
+          {@client.open} and sign in to <span class="font-medium text-fg">{@account.slug}</span>.
         </li>
       </ol>
-      <p class="mt-2 text-xs text-subtle">
+      <p class="mt-2 text-xs text-muted">
         <Navigation.website_link path={@client.docs}>Other ways to install</Navigation.website_link>
       </p>
     </div>
@@ -738,10 +735,10 @@ defmodule PortalWeb.GettingStarted do
         phx-value-tab={tab}
         phx-target={@target}
         class={[
-          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors",
+          "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border transition-colors",
           if(@selected == tab,
-            do: "border-brand bg-brand-muted text-heading",
-            else: "border-border text-body hover:text-heading hover:bg-raised"
+            do: "border-fg bg-fg text-bg",
+            else: "border-hair text-muted hover:text-fg hover:bg-hover"
           )
         ]}
       >
@@ -764,31 +761,32 @@ defmodule PortalWeb.GettingStarted do
   defp finished(assigns) do
     ~H"""
     <div class="text-center">
-      <div class="mx-auto mb-3 w-12 h-12 rounded-full flex items-center justify-center bg-success text-white">
+      <div class="mx-auto mb-3 w-12 h-12 flex items-center justify-center bg-fg text-bg">
         <Core.icon name="ri-check-line" class="w-6 h-6" />
       </div>
-      <h4 class="text-base font-semibold text-heading">{@title}</h4>
-      <p :for={lead <- @lead} class="mt-1 mb-5 text-sm text-body">{render_slot(lead)}</p>
+      <h4 class="text-base font-semibold text-fg">{@title}</h4>
+      <p :for={lead <- @lead} class="mt-1 mb-5 text-sm text-muted">{render_slot(lead)}</p>
     </div>
-    <ul class="border-t border-border pt-3 space-y-1">
+    <p class="mb-2 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">Next steps</p>
+    <ul class="border-t border-rule">
       <li :for={link <- @link}>
         <Navigation.website_link
           :if={link[:website]}
           path={link[:website]}
-          class="flex items-center gap-3 p-2 rounded text-sm text-body hover:bg-raised hover:text-heading"
+          class="flex items-center gap-3 px-2 py-2.5 border-b border-hair text-sm text-fg hover:bg-hover"
         >
-          <Core.icon name={link.icon} class="w-4 h-4 text-subtle" />
+          <Core.icon name={link.icon} class="w-4 h-4 text-muted" />
           {render_slot(link)}
-          <Core.icon name="ri-external-link-line" class="w-4 h-4 ml-auto text-subtle" />
+          <Core.icon name="ri-external-link-line" class="w-4 h-4 ml-auto text-muted" />
         </Navigation.website_link>
         <.link
           :if={link[:navigate]}
           navigate={link[:navigate]}
-          class="flex items-center gap-3 p-2 rounded text-sm text-body hover:bg-raised hover:text-heading"
+          class="flex items-center gap-3 px-2 py-2.5 border-b border-hair text-sm text-fg hover:bg-hover"
         >
-          <Core.icon name={link.icon} class="w-4 h-4 text-subtle" />
+          <Core.icon name={link.icon} class="w-4 h-4 text-muted" />
           {render_slot(link)}
-          <Core.icon name="ri-arrow-right-line" class="w-4 h-4 ml-auto text-subtle" />
+          <Core.icon name="ri-arrow-right-line" class="w-4 h-4 ml-auto text-muted" />
         </.link>
       </li>
     </ul>
@@ -806,17 +804,13 @@ defmodule PortalWeb.GettingStarted do
         <div
           :for={i <- 0..(@total - 1)}
           class={[
-            "flex-1 h-1 rounded-full transition-colors",
-            cond do
-              i < @done -> "bg-success"
-              i == @step -> "bg-brand"
-              true -> "bg-border-strong"
-            end
+            "flex-1 h-0.5 transition-colors",
+            if(i < @done or i == @step, do: "bg-fg", else: "bg-hair")
           ]}
         >
         </div>
       </div>
-      <p class="mt-2 text-xs font-semibold tracking-wider uppercase text-subtle">
+      <p class="mt-2 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
         Step {@step + 1} of {@total}
       </p>
     </div>
@@ -838,29 +832,26 @@ defmodule PortalWeb.GettingStarted do
       aria-live="polite"
       data-done={to_string(@done?)}
       class={[
-        "flex items-center gap-3 px-4 py-3 rounded-lg border text-sm transition-colors",
+        "flex items-center gap-3 px-4 py-3 border text-sm transition-colors",
         if(@done?,
-          do: "border-success bg-success-light",
-          else: "border-dashed border-border-emphasis bg-raised"
+          do: "border-rule bg-bg",
+          else: "border-dashed border-hair bg-hover"
         )
       ]}
     >
       <span :if={not @done?} class="relative flex shrink-0 w-2.5 h-2.5">
-        <span class="absolute inline-flex w-full h-full rounded-full bg-brand opacity-60 animate-ping">
+        <span class="absolute inline-flex w-full h-full rounded-full bg-fg opacity-40 animate-ping">
         </span>
-        <span class="relative inline-flex w-2.5 h-2.5 rounded-full bg-brand"></span>
+        <span class="relative inline-flex w-2.5 h-2.5 rounded-full bg-fg"></span>
       </span>
-      <span
-        :if={@done?}
-        class="shrink-0 w-6 h-6 rounded-full flex items-center justify-center bg-success text-white"
-      >
+      <span :if={@done?} class="shrink-0 w-6 h-6 flex items-center justify-center bg-fg text-bg">
         <Core.icon name="ri-check-line" class="w-4 h-4" />
       </span>
       <div>
-        <p class={["font-medium", if(@done?, do: "text-success", else: "text-heading")]}>
+        <p class="font-medium text-fg">
           {if @done?, do: @done, else: @waiting}
         </p>
-        <p class="text-xs text-subtle">{if @done?, do: @done_hint, else: @waiting_hint}</p>
+        <p class="text-xs text-muted">{if @done?, do: @done_hint, else: @waiting_hint}</p>
       </div>
     </div>
     """
@@ -899,7 +890,7 @@ defmodule PortalWeb.GettingStarted do
     <div class="flex items-center gap-4">
       <Navigation.website_link
         path={@doc_path}
-        class="inline-flex items-center gap-1 text-sm text-subtle hover:text-heading"
+        class="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"
       >
         <Core.icon name="ri-book-open-line" class="w-4 h-4" />
         {@doc_label}

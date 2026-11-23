@@ -20,7 +20,7 @@ defmodule PortalWeb.Components.Turnstile do
       class="my-1"
     >
       <div data-turnstile-widget></div>
-      <p data-turnstile-error role="alert" hidden class="text-sm text-error mt-1">
+      <p data-turnstile-error role="alert" hidden class="text-sm text-attn mt-1">
         We couldn't load the verification check. If a blocker is on, allow challenges.cloudflare.com and reload this page.
       </p>
     </div>

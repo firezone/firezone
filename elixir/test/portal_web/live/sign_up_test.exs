@@ -88,7 +88,7 @@ defmodule PortalWeb.SignUpTest do
       refute has_element?(lv, "#sign-up-options-label")
 
       for id <- ["#google-sign-up button", "#github-sign-up button", "#email-sign-up-toggle"] do
-        assert has_element?(lv, "#sign-up-options #{id}.w-full .ri-arrow-right-s-line")
+        assert has_element?(lv, "#sign-up-options #{id}.w-full .ri-arrow-right-line")
       end
     end
 

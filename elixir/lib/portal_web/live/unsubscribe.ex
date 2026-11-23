@@ -2,6 +2,7 @@ defmodule PortalWeb.Unsubscribe do
   use PortalWeb, {:live_view, layout: false}
   alias Portal.UnsubscribeToken
   alias __MODULE__.Database
+  alias PortalWeb.Components.AuthPage
 
   @notification_labels %{
     outdated_gateways: "Gateway upgrade available",
@@ -24,9 +25,9 @@ defmodule PortalWeb.Unsubscribe do
 
   def render(%{result: :pending} = assigns) do
     ~H"""
-    <div class="min-h-screen flex items-center justify-center px-4 bg-surface">
-      <div class="flex items-center gap-2 text-subtle">
-        <Core.icon name="ri-loader-4-line" class="w-5 h-5 animate-spin" />
+    <div class="min-h-screen flex items-center justify-center px-4 bg-bg">
+      <div class="flex items-center gap-2 text-sm text-muted" role="status">
+        <Core.icon name="ri-loader-4-line" class="w-4 h-4 animate-spin" />
         <span>Turning off notifications...</span>
       </div>
     </div>
@@ -37,25 +38,27 @@ defmodule PortalWeb.Unsubscribe do
     assigns = assign(assigns, :label, Map.fetch!(@notification_labels, notification))
 
     ~H"""
-    <Core.result_page success title="Notifications turned off">
-      <p class="mt-2 text-base text-subtle">
-        You will no longer get <span class="font-semibold text-heading">{@label}</span>
-        emails for the <span class="font-semibold text-heading">{@account.name}</span>
+    <AuthPage.result success title="Notifications turned off">
+      <p>
+        You will no longer get <span class="font-semibold text-fg">{@label}</span>
+        emails for the <span class="font-semibold text-fg">{@account.name}</span>
         account.
       </p>
-      <.notification_settings_link account={@account} />
-    </Core.result_page>
+      <:actions>
+        <.notification_settings_link account={@account} />
+      </:actions>
+    </AuthPage.result>
     """
   end
 
   def render(%{result: :error} = assigns) do
     ~H"""
-    <Core.result_page success={false} title="Link not valid">
-      <p class="mt-2 text-base text-subtle">
-        This link is not valid or has expired.
-      </p>
-      <.notification_settings_link :if={assigns[:account]} account={@account} />
-    </Core.result_page>
+    <AuthPage.result success={false} title="Link not valid">
+      <p>This link is not valid or has expired.</p>
+      <:actions :if={assigns[:account]}>
+        <.notification_settings_link account={@account} />
+      </:actions>
+    </AuthPage.result>
     """
   end
 
@@ -63,14 +66,9 @@ defmodule PortalWeb.Unsubscribe do
 
   defp notification_settings_link(assigns) do
     ~H"""
-    <p class="mt-6">
-      <.link
-        navigate={~p"/#{@account}/settings/profile"}
-        class="text-sm font-medium text-brand hover:underline"
-      >
-        Manage your notifications
-      </.link>
-    </p>
+    <.link navigate={~p"/#{@account}/settings/profile"} class={AuthPage.outline_button_class()}>
+      <Core.icon name="ri-notification-3-line" class="w-4 h-4 text-muted" /> Manage your notifications
+    </.link>
     """
   end
 

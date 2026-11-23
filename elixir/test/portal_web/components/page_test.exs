@@ -15,7 +15,7 @@ defmodule PortalWeb.Components.PageTest do
 
       assert Floki.attribute(html, "a", "href") == ["/acme/sign_in"]
       assert Floki.text(html) =~ "Acme"
-      assert [_chevron] = Floki.find(html, ".ri-arrow-right-s-line")
+      assert [_chevron] = Floki.find(html, ".ri-arrow-right-line")
     end
 
     test "hides the chevron and adds classes when asked", %{account: account} do
@@ -28,7 +28,7 @@ defmodule PortalWeb.Components.PageTest do
         )
         |> Floki.parse_fragment!()
 
-      assert Floki.find(html, ".ri-arrow-right-s-line") == []
+      assert Floki.find(html, ".ri-arrow-right-line") == []
       assert [class] = Floki.attribute(html, "a", "class")
       assert class =~ "pr-14"
     end

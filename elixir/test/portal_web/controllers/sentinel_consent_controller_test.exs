@@ -46,10 +46,10 @@ defmodule PortalWeb.SentinelConsentControllerTest do
         })
 
       html = html_response(conn, 200)
-      assert html =~ "Consent Was Not Granted"
+      assert html =~ "Consent was not granted"
       assert html =~ "Admin consent was declined"
       refute html =~ "AADSTS650056"
-      refute html =~ "Admin Consent Granted"
+      refute html =~ "Admin consent granted"
     end
 
     test "continues to the tenant proof when the service principal already exists", %{
@@ -143,7 +143,7 @@ defmodule PortalWeb.SentinelConsentControllerTest do
       conn = complete_tenant_proof(conn)
 
       html = html_response(conn, 200)
-      assert html =~ "Admin Consent Granted"
+      assert html =~ "Admin consent granted"
       assert html =~ @tenant_id
       assert html =~ ~s(data-auto-close-window-after-ms="1000")
 
@@ -169,7 +169,7 @@ defmodule PortalWeb.SentinelConsentControllerTest do
       conn = complete_tenant_proof(conn)
 
       html = html_response(conn, 200)
-      assert html =~ "Consent Was Not Granted"
+      assert html =~ "Consent was not granted"
       assert html =~ "could not confirm which Microsoft Entra tenant"
       refute_received {:sentinel_log_sink_complete, _tenant_id, _verification_ref}
     end
@@ -181,7 +181,7 @@ defmodule PortalWeb.SentinelConsentControllerTest do
       conn = complete_tenant_proof(conn)
 
       html = html_response(conn, 200)
-      assert html =~ "Consent Was Not Granted"
+      assert html =~ "Consent was not granted"
       assert html =~ "Global Administrator"
       refute_received {:sentinel_log_sink_complete, _tenant_id, _verification_ref}
     end
@@ -202,7 +202,7 @@ defmodule PortalWeb.SentinelConsentControllerTest do
       conn = complete_tenant_proof(conn, %{"error" => "interaction_required", "code" => nil})
 
       html = html_response(conn, 200)
-      assert html =~ "Consent Was Not Granted"
+      assert html =~ "Consent was not granted"
       assert html =~ "did not grant admin consent"
       refute html =~ "interaction_required"
     end
@@ -218,7 +218,7 @@ defmodule PortalWeb.SentinelConsentControllerTest do
         })
 
       html = html_response(conn, 200)
-      assert html =~ "Consent Was Not Granted"
+      assert html =~ "Consent was not granted"
       assert html =~ "Admin consent was declined"
       refute html =~ "AADSTS65004"
     end
@@ -234,7 +234,7 @@ defmodule PortalWeb.SentinelConsentControllerTest do
         })
 
       html = html_response(conn, 200)
-      assert html =~ "Consent Was Not Granted"
+      assert html =~ "Consent was not granted"
       assert html =~ "lost the consent session"
     end
 
@@ -245,7 +245,7 @@ defmodule PortalWeb.SentinelConsentControllerTest do
       conn = complete_tenant_proof(conn)
 
       html = html_response(conn, 200)
-      assert html =~ "Consent Was Not Granted"
+      assert html =~ "Consent was not granted"
       assert html =~ "could not verify your Microsoft Entra tenant"
     end
   end
