@@ -125,10 +125,28 @@ defmodule Portal.Endpoint do
     |> Enum.map(&to_string/1)
   end
 
-  defp forward(conn, endpoint) do
-    conn
-    |> endpoint.call(endpoint.init([]))
-    |> Plug.Conn.halt()
+  @doc false
+  # A connection opened before shutdown can still send a request after the
+  # endpoint behind it stops.
+  def forward(%Plug.Conn{} = conn, endpoint) do
+    if Process.whereis(endpoint) do
+      conn
+      |> endpoint.call(endpoint.init([]))
+      |> Plug.Conn.halt()
+    else
+      conn
+      |> close_http1()
+      |> Plug.Conn.send_resp(:service_unavailable, "Service Unavailable")
+      |> Plug.Conn.halt()
+    end
+  end
+
+  defp close_http1(conn) do
+    if Plug.Conn.get_http_protocol(conn) == :"HTTP/1.1" do
+      Plug.Conn.put_resp_header(conn, "connection", "close")
+    else
+      conn
+    end
   end
 
   defp websocket_upgrade?(conn) do
