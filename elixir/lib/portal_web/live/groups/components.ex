@@ -240,7 +240,7 @@ defmodule PortalWeb.Groups.Components do
         </div>
         <div class="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
           <Form.button
-            navigate={~p"/#{@account}/activity?#{[group_id: @group.id]}"}
+            navigate={~p"/#{@account}/activity?#{[pivot: ["group:#{@group.id}"]]}"}
             size="sm"
             icon="ri-pulse-line"
           >

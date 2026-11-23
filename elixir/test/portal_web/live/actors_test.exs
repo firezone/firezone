@@ -1545,7 +1545,8 @@ defmodule PortalWeb.ActorsTest do
 
       render_click(lv, "change_tab", %{"tab" => "groups"})
 
-      html = render(lv)
+      # The list behind the modal reloads on its own; only the modal is checked here.
+      html = lv |> element("#actor-panel") |> render()
       assert html =~ added_group.name
       refute html =~ current_group.name
     end

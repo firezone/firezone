@@ -164,7 +164,7 @@ defmodule PortalWeb.Actors.Components do
         </div>
         <div class="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
           <Form.button
-            navigate={~p"/#{@account}/activity?#{[actor_id: @actor.id]}"}
+            navigate={~p"/#{@account}/activity?#{[pivot: ["actor:#{@actor.id}"]]}"}
             size="sm"
             icon="ri-pulse-line"
           >
