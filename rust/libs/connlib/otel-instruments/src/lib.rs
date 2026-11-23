@@ -127,6 +127,27 @@ pub fn connection_count() -> Gauge<u64> {
         .build()
 }
 
+/// How long a connection took to establish, from its creation until it can send packets.
+pub fn connection_setup_duration() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("connlib.connection.setup.duration")
+        .with_description("Time from creating a connection until it is established.")
+        .with_unit("s")
+        .with_boundaries(vec![
+            0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, 30.0, 60.0,
+        ])
+        .build()
+}
+
+/// Number of connections that failed, by reason.
+pub fn connection_failed() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("connlib.connection.failed")
+        .with_description("Number of connections that failed, by reason.")
+        .with_unit("{connection}")
+        .build()
+}
+
 /// Measures how long connlib takes to recursively resolve a DNS query against an upstream resolver.
 pub fn dns_lookup_duration() -> Histogram<f64> {
     connlib_meter()

@@ -64,6 +64,11 @@ pub fn connection_socket(socket: &'static str) -> KeyValue {
     KeyValue::new("connection.socket", socket)
 }
 
+/// The agent a connection uses to select its network path, i.e. `ice` or `frostlink`.
+pub fn connection_agent(agent: &'static str) -> KeyValue {
+    KeyValue::new("connection.agent", agent)
+}
+
 pub fn io_error_code(e: &io::Error) -> KeyValue {
     KeyValue::new("error.code", e.raw_os_error().unwrap_or_default() as i64)
 }
