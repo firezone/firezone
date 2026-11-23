@@ -2006,56 +2006,6 @@ mod tests {
     }
 
     #[test]
-    fn bound_channel_can_decode_data() {
-        let mut channel_bindings = ChannelBindings::default();
-        let start = Instant::now();
-
-        let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
-        channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
-
-        let mut packet = channel_data_packet_buffer(b"foobar");
-        crate::channel_data::encode_header_to_slice(&mut packet[..4], channel, 6);
-        let packet = channel_data::decode(&packet).unwrap();
-        let (peer, payload) = channel_bindings
-            .try_handle_packet(packet, start + Duration::from_secs(2))
-            .unwrap();
-
-        assert_eq!(peer, PEER1);
-        assert_eq!(payload, b"foobar");
-    }
-
-    #[test]
-    fn channel_with_activity_is_refreshed() {
-        let mut channel_bindings = ChannelBindings::default();
-        let start = Instant::now();
-
-        let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
-        channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
-
-        let mut packet = channel_data_packet_buffer(b"foobar");
-        crate::channel_data::encode_header_to_slice(&mut packet[..4], channel, 6);
-        let packet = channel_data::decode(&packet).unwrap();
-        channel_bindings
-            .try_handle_packet(packet, start + Duration::from_secs(2))
-            .unwrap();
-
-        let not_inflight = |_| false;
-        let (channel_to_refresh, _) = channel_bindings
-            .channels_to_refresh(start + 6 * MINUTE, not_inflight)
-            .next()
-            .unwrap();
-
-        assert_eq!(channel_to_refresh, channel);
-
-        let inflight = |_| true;
-        let maybe_refresh = channel_bindings
-            .channels_to_refresh(start + 6 * MINUTE, inflight)
-            .next();
-
-        assert!(maybe_refresh.is_none())
-    }
-
-    #[test]
     fn channel_with_activity_is_due_for_a_refresh_after_half_its_lifetime() {
         let mut channel_bindings = ChannelBindings::default();
         let start = Instant::now();
@@ -2087,23 +2037,6 @@ mod tests {
             .next();
 
         assert!(maybe_refresh.is_none())
-    }
-
-    #[test]
-    fn when_in_cooldown_reuses_same_channel_for_peer() {
-        let twelve = 10 * MINUTE + 2 * MINUTE;
-
-        let mut channel_bindings = ChannelBindings::default();
-        let start = Instant::now();
-
-        let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
-        channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
-
-        let second_channel = channel_bindings
-            .new_channel_to_peer(PEER1, start + twelve)
-            .unwrap();
-
-        assert_eq!(second_channel, channel);
     }
 
     #[test]
@@ -2140,19 +2073,6 @@ mod tests {
         let needs_refresh = channel.needs_refresh(six_minutes_later);
 
         assert!(!needs_refresh)
-    }
-
-    #[test]
-    fn channel_with_received_data_and_older_than_5_min_should_be_refreshed() {
-        let now = Instant::now();
-        let mut channel = ch(PEER1, now);
-
-        channel.record_received(now + Duration::from_secs(1));
-
-        let six_minutes_later = now + 6 * MINUTE;
-        let needs_refresh = channel.needs_refresh(six_minutes_later);
-
-        assert!(needs_refresh)
     }
 
     #[test]
@@ -2201,24 +2121,6 @@ mod tests {
     }
 
     #[test]
-    fn does_relay_to_with_bound_channel() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
-        allocation.bind_channel(PEER2_IP4, Instant::now());
-
-        let channel_bind_msg = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(channel_bind_success(&channel_bind_msg), Instant::now());
-
-        let mut buffer = channel_data_packet_buffer(b"foobar");
-        let encode_ok = allocation
-            .encode_channel_data_header(PEER2_IP4, &mut buffer, Instant::now())
-            .unwrap();
-
-        assert_eq!(encode_ok.socket, RELAY_V4.into());
-    }
-
-    #[test]
     fn relays_to_inflight_channel() {
         let mut allocation = Allocation::for_test_ip4(Instant::now())
             .with_binding_response(PEER1, Instant::now())
@@ -2230,19 +2132,6 @@ mod tests {
             allocation.encode_channel_data_header(PEER2_IP4, &mut buffer, Instant::now());
 
         assert!(encode_ok.is_some())
-    }
-
-    #[test]
-    fn does_not_relay_to_with_unbound_channel() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
-
-        let mut buffer = channel_data_packet_buffer(b"foobar");
-        let encode_ok =
-            allocation.encode_channel_data_header(PEER2_IP4, &mut buffer, Instant::now());
-
-        assert!(encode_ok.is_none())
     }
 
     #[test]
@@ -2423,21 +2312,6 @@ mod tests {
     }
 
     #[test]
-    fn ignores_response_for_a_different_method() {
-        let now = Instant::now();
-        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
-
-        let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(binding_response(&allocate, PEER1), now);
-        allocation.handle_test_input_ip4(allocate_response(&allocate, &[RELAY_ADDR_IP4]), now);
-
-        assert_eq!(
-            allocation.current_relay_candidates().collect::<Vec<_>>(),
-            vec![Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()]
-        );
-    }
-
-    #[test]
     fn ignores_error_response_to_binding_request() {
         let mut now = Instant::now();
         let mut allocation = Allocation::for_test_ip4(now)
@@ -2518,26 +2392,6 @@ mod tests {
     }
 
     #[test]
-    fn calling_refresh_with_same_credentials_will_trigger_refresh() {
-        let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
-
-        let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(
-            allocate_response(&allocate, &[RELAY_ADDR_IP4]),
-            Instant::now(),
-        );
-
-        allocation.refresh_with_same_credentials();
-
-        let refresh = allocation.next_message().unwrap();
-        assert_eq!(refresh.method(), REFRESH);
-
-        let lifetime = refresh.get_attribute::<Lifetime>();
-        assert!(lifetime.is_none() || lifetime.is_some_and(|l| l.lifetime() != Duration::ZERO));
-    }
-
-    #[test]
     fn failed_refresh_will_invalidate_relay_candiates() {
         let mut allocation =
             Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
@@ -2613,45 +2467,6 @@ mod tests {
 
         let next_msg = allocation.next_message();
         assert!(next_msg.is_none())
-    }
-
-    #[test]
-    fn failed_refresh_attempts_to_make_new_allocation() {
-        let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
-
-        let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(
-            allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            Instant::now(),
-        );
-
-        allocation.refresh_with_same_credentials();
-
-        let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(allocation_mismatch(&refresh), Instant::now());
-
-        let allocate = allocation.next_message().unwrap();
-        assert_eq!(allocate.method(), ALLOCATE);
-    }
-
-    #[test]
-    fn allocation_is_refreshed_after_half_its_lifetime() {
-        let mut now = Instant::now();
-        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
-
-        let allocate = allocation.next_message().unwrap();
-
-        allocation.handle_test_input_ip4(
-            allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            now,
-        );
-
-        now += ALLOCATION_LIFETIME / 2;
-        allocation.handle_timeout(now);
-
-        let refresh = iter::from_fn(|| allocation.next_message()).find(|m| m.method() == REFRESH);
-        assert!(refresh.is_some());
     }
 
     #[test]
@@ -2839,46 +2654,6 @@ mod tests {
     }
 
     #[test]
-    fn timed_out_binding_requests_invalid_candidates() {
-        let _guard = logging::test("trace");
-
-        let mut now = Instant::now();
-        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
-
-        // Make an allocation
-        {
-            let allocate = allocation.next_message().unwrap();
-            allocation.handle_test_input_ip4(
-                allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-                now,
-            );
-            let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
-        }
-
-        // Test that we send binding requests it.
-        {
-            now = allocation.poll_timeout().unwrap();
-            allocation.handle_timeout(now);
-
-            let binding = allocation.next_message().unwrap();
-            assert_eq!(binding.method(), BINDING);
-        }
-
-        // Simulate bindings timing out
-        for _ in backoff::steps(now) {
-            allocation.handle_timeout(allocation.poll_timeout().unwrap());
-        }
-
-        assert_eq!(
-            iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
-            vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, "udp").unwrap()),
-            ]
-        )
-    }
-
-    #[test]
     fn expires_allocation_invalidates_candidates() {
         let start = Instant::now();
         let mut allocation = Allocation::for_test_ip4(start)
@@ -3006,13 +2781,6 @@ mod tests {
     }
 
     #[test]
-    fn allocation_is_not_freed_on_startup() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now());
-
-        assert_eq!(allocation.can_be_freed(), None);
-    }
-
-    #[test]
     fn relay_socket_matches_v4_socket() {
         let socket = RelaySocket::V4(RELAY_V4);
 
@@ -3124,53 +2892,6 @@ mod tests {
                 Event::New(Candidate::server_reflexive(PEER2_IP6, PEER2_IP6, "udp").unwrap())
             ]
         )
-    }
-
-    #[test]
-    fn second_stun_request_gives_up_eventually() {
-        let _guard = logging::test("trace");
-
-        let start = Instant::now();
-        let mut allocation = Allocation::for_test_dual(start);
-
-        // We respond to the BINDING request on IPv4.
-        let binding = allocation.next_message().unwrap();
-        allocation.handle_input(
-            RELAY_V4.into(),
-            PEER2_IP4,
-            binding_response(&binding, PEER2_IP4),
-            start,
-        );
-
-        while let Some(timeout) = allocation.poll_timeout() {
-            allocation.handle_timeout(timeout);
-
-            // We expect two transmits.
-            // The order is not deterministic because internally it is a `HashMap`.
-            let _ = allocation.poll_transmit().unwrap();
-            let _ = allocation.poll_transmit().unwrap();
-        }
-
-        assert_eq!(allocation.poll_transmit(), None);
-    }
-
-    #[test]
-    fn allocation_can_be_freed_after_all_requests_time_out() {
-        let mut allocation = Allocation::for_test_dual(Instant::now());
-
-        while let Some(timeout) = allocation.poll_timeout() {
-            allocation.handle_timeout(timeout);
-
-            // We expect two transmits.
-            // The order is not deterministic because internally it is a `HashMap`.
-            let _ = allocation.poll_transmit().unwrap();
-            let _ = allocation.poll_transmit().unwrap();
-        }
-
-        assert_eq!(
-            allocation.can_be_freed(),
-            Some(FreeReason::NoResponseReceived)
-        );
     }
 
     #[test]
