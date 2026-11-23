@@ -17,4 +17,13 @@ defmodule Portal.Workers.ProvisionMissingDeviceCAsTest do
     assert_enqueued(worker: ProvisionDeviceCA, args: %{account_id: disabled.id})
     refute_enqueued(worker: ProvisionDeviceCA, args: %{account_id: with_ca.id})
   end
+
+  test "queues nothing when no key storage is set" do
+    Portal.Config.put_env_override(:device_ca_key_storage, nil)
+    account = account_fixture()
+
+    assert :ok = perform_job(ProvisionMissingDeviceCAs, %{})
+
+    refute_enqueued(worker: ProvisionDeviceCA, args: %{account_id: account.id})
+  end
 end

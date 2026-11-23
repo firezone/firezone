@@ -33,6 +33,16 @@ defmodule Portal.DeviceCATest do
     test "fails for an account that does not exist" do
       assert {:error, %Ecto.Changeset{}} = DeviceCA.ensure(Ecto.UUID.generate())
     end
+
+    test "creates nothing when no key storage is set" do
+      Portal.Config.put_env_override(:device_ca_key_storage, nil)
+      account = account_fixture()
+
+      assert DeviceCA.ensure(account.id) == {:error, :no_key_storage}
+      refute Repo.get_by(DeviceCertificateAuthority, account_id: account.id)
+      refute DeviceCA.enabled?()
+      assert DeviceCA.delete_key(account.id) == :ok
+    end
   end
 
   describe "Local" do

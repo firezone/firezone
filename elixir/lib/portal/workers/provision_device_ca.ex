@@ -13,6 +13,7 @@ defmodule Portal.Workers.ProvisionDeviceCA do
       {:ok, _ca} -> :ok
       {:error, %Ecto.Changeset{}} -> {:cancel, :account_deleted}
       {:error, :not_found} -> {:cancel, :account_deleted}
+      {:error, :no_key_storage} -> {:cancel, :no_key_storage}
       {:error, reason} -> {:error, reason}
     end
   end

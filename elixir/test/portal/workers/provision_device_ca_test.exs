@@ -16,6 +16,12 @@ defmodule Portal.Workers.ProvisionDeviceCATest do
     assert {:cancel, :account_deleted} = perform_job(ProvisionDeviceCA, %{account_id: Ecto.UUID.generate()})
   end
 
+  test "cancels when no key storage is set" do
+    Portal.Config.put_env_override(:device_ca_key_storage, nil)
+
+    assert {:cancel, :no_key_storage} = perform_job(ProvisionDeviceCA, %{account_id: account_fixture().id})
+  end
+
   test "deletes the key of a deleted account" do
     assert :ok = perform_job(DeleteDeviceCA, %{account_id: Ecto.UUID.generate()})
   end

@@ -15,10 +15,14 @@ defmodule Portal.Workers.ProvisionMissingDeviceCAs do
 
   @impl Oban.Worker
   def perform(_job) do
-    Database.account_ids_without_ca(@batch_size)
-    |> Enum.each(fn account_id ->
-      {:ok, _job} = %{account_id: account_id} |> ProvisionDeviceCA.new() |> Oban.insert()
-    end)
+    if Portal.DeviceCA.enabled?() do
+      Database.account_ids_without_ca(@batch_size)
+      |> Enum.each(fn account_id ->
+        {:ok, _job} = %{account_id: account_id} |> ProvisionDeviceCA.new() |> Oban.insert()
+      end)
+    end
+
+    :ok
   end
 
   defmodule Database do

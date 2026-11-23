@@ -66,6 +66,42 @@ defmodule Portal.DeviceCA.KeyVaultTest do
     assert_received {"POST", ^sign_path, %{"alg" => "RS256"}, ["Bearer vault-token"]}
   end
 
+  test "deletes the new key when the account is gone", %{public_key: public_key, private_key: private_key} do
+    account_id = Ecto.UUID.generate()
+    key_id = "#{@vault_url}/keys/device-ca-#{account_id}/v1"
+    test_pid = self()
+    {:RSAPublicKey, modulus, exponent} = public_key
+
+    Req.Test.stub(DeviceCA.KeyVault, fn conn ->
+      {:ok, body, conn} = read_body(conn)
+      send(test_pid, {conn.method, conn.request_path})
+
+      cond do
+        conn.method == "DELETE" ->
+          Req.Test.json(conn, %{})
+
+        String.ends_with?(conn.request_path, "/create") ->
+          Req.Test.json(conn, %{
+            "key" => %{
+              "kid" => key_id,
+              "n" => b64(:binary.encode_unsigned(modulus)),
+              "e" => b64(:binary.encode_unsigned(exponent))
+            }
+          })
+
+        true ->
+          digest = Base.url_decode64!(Jason.decode!(body)["value"], padding: false)
+          signature = :public_key.sign({:digest, digest}, :sha256, private_key)
+          Req.Test.json(conn, %{"kid" => key_id, "value" => b64(signature)})
+      end
+    end)
+
+    assert {:error, %Ecto.Changeset{}} = DeviceCA.ensure(account_id)
+
+    delete_path = "/keys/device-ca-#{account_id}"
+    assert_received {"DELETE", ^delete_path}
+  end
+
   test "never sends the token outside the vault" do
     Req.Test.stub(DeviceCA.KeyVault, fn _conn -> flunk("unexpected request") end)
 

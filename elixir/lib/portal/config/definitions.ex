@@ -575,12 +575,12 @@ defmodule Portal.Config.Definitions do
 
   @doc """
   Where the device CA key of each account is kept: `db` in this portal's database, or `azure`
-  in the Azure Key Vault at DEVICE_CA_KEY_VAULT_URL.
+  in the Azure Key Vault at DEVICE_CA_KEY_VAULT_URL. Unset, the portal creates no device CAs.
   """
   defconfig(
     :device_ca_key_storage,
     Ecto.ParameterizedType.init(Ecto.Enum, values: [:db, :azure]),
-    default: :db
+    default: nil
   )
 
   @doc "URL of the Azure Key Vault for the device CA keys, when DEVICE_CA_KEY_STORAGE is `azure`."

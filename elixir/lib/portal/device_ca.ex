@@ -34,33 +34,51 @@ defmodule Portal.DeviceCA do
   @doc "The account's CA, created with its key the first time it is asked for."
   @spec ensure(Ecto.UUID.t()) :: {:ok, DeviceCertificateAuthority.t()} | {:error, term()}
   def ensure(account_id) do
-    case Database.fetch(account_id) do
-      %DeviceCertificateAuthority{} = ca -> {:ok, ca}
-      nil -> create(account_id)
+    case {Database.fetch(account_id), adapter()} do
+      {%DeviceCertificateAuthority{} = ca, _adapter} -> {:ok, ca}
+      {nil, nil} -> {:error, :no_key_storage}
+      {nil, adapter} -> create(adapter, account_id)
     end
   end
 
   @doc "Deletes the key of a deleted account. Its CA row went with the account."
   @spec delete_key(Ecto.UUID.t()) :: :ok | {:error, term()}
-  def delete_key(account_id), do: adapter().delete_key(account_id)
+  def delete_key(account_id) do
+    case adapter() do
+      nil -> :ok
+      adapter -> adapter.delete_key(account_id)
+    end
+  end
 
-  @spec adapter() :: module()
-  def adapter do
+  @doc "True when DEVICE_CA_KEY_STORAGE is set."
+  @spec enabled?() :: boolean()
+  def enabled?, do: adapter() != nil
+
+  defp adapter do
     case Portal.Config.fetch_env!(:portal, :device_ca_key_storage) do
       :db -> Local
       :azure -> KeyVault
+      nil -> nil
     end
   end
 
   # A racing create loses the insert and returns the CA that won. Its key stays unused.
-  defp create(account_id) do
-    with {:ok, %{public_key: public_key} = key} <- adapter().create_key(account_id),
-         {:ok, certificate} <- self_signed_certificate(account_id, key, public_key) do
-      Database.insert(account_id, key, certificate)
+  # A failed insert means the account is gone, so its new key goes too.
+  defp create(adapter, account_id) do
+    with {:ok, %{public_key: public_key} = key} <- adapter.create_key(account_id),
+         {:ok, certificate} <- self_signed_certificate(adapter, account_id, key, public_key) do
+      case Database.insert(account_id, key, certificate) do
+        {:ok, ca} ->
+          {:ok, ca}
+
+        {:error, _reason} = error ->
+          _ = adapter.delete_key(account_id)
+          error
+      end
     end
   end
 
-  defp self_signed_certificate(account_id, key, public_key) do
+  defp self_signed_certificate(adapter, account_id, key, public_key) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     name = ca_name(account_id)
 
@@ -78,7 +96,7 @@ defmodule Portal.DeviceCA do
     tbs_der = :public_key.pkix_encode(:OTPTBSCertificate, tbs, :otp)
 
     with {:ok, <<_::binary-size(@signature_size)>> = signature} <-
-           adapter().sign(key, :crypto.hash(:sha256, tbs_der)) do
+           adapter.sign(key, :crypto.hash(:sha256, tbs_der)) do
       {:ok, :public_key.pkix_encode(:OTPCertificate, {:OTPCertificate, tbs, @sha256_with_rsa, signature}, :otp)}
     end
   end
