@@ -846,6 +846,11 @@ impl Allocation {
             tracing::debug!("Allocation is expired");
 
             self.invalidate_allocation();
+            self.authenticate_and_queue(
+                MessagePrototype::allocate(self.software.clone()),
+                None,
+                now,
+            );
         }
 
         if self.has_allocation()
