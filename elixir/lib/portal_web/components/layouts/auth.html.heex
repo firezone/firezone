@@ -1,55 +1,52 @@
-<%!-- Below lg the showcase fills the viewport and the content floats on it in a card --%>
-<div class="min-h-screen lg:h-screen flex lg:overflow-hidden auth-showcase">
-  <%!-- Left panel --%>
-  <div class="hidden lg:flex lg:w-[460px] shrink-0 auth-showcase flex-col justify-between p-12 relative overflow-hidden">
-    <div class="absolute inset-0 pointer-events-none auth-showcase-dots"></div>
-    <div id="auth-brand" class="relative flex items-center gap-3">
-      <img src="/images/logo.svg" class="h-10 w-auto shrink-0" alt="Firezone Logo" />
-      <span class="text-4xl leading-none font-bold text-showcase-text tracking-tight">Firezone</span>
+<div class="min-h-screen lg:h-screen flex flex-col lg:flex-row lg:overflow-hidden bg-bg">
+  <aside class="hidden lg:flex lg:w-[440px] shrink-0 flex-col justify-between p-12 bg-showcase text-showcase-text border-r border-hair">
+    <div id="auth-brand" class="flex items-center gap-3">
+      <img src="/images/logo.svg" class="h-8 w-auto shrink-0" alt="Firezone Logo" />
+      <span class="text-2xl leading-none font-bold tracking-tight">Firezone</span>
     </div>
-    <div class="relative">
-      <p class="text-3xl font-bold text-showcase-text leading-tight tracking-tight">
-        Secure access.<br /><span class="text-showcase-highlight">Zero complexity.</span>
+
+    <div>
+      <p class="text-[11px] font-semibold tracking-[.12em] uppercase text-showcase-icon">
+        Zero trust access
       </p>
-      <p class="text-sm text-showcase-text/70 mt-4 leading-relaxed">
+      <p class="mt-4 text-4xl font-bold leading-[1.1] tracking-tight">
+        Secure access.<br />
+        <span class="text-showcase-highlight">Zero complexity.</span>
+      </p>
+      <p class="mt-4 text-sm leading-relaxed text-showcase-icon">
         Connect your team to the infrastructure they need without opening holes in your network.
       </p>
-      <div class="mt-8 space-y-3">
-        <div class="flex items-center gap-3">
-          <div class="w-7 h-7 rounded-lg bg-showcase-icon/10 border border-showcase-icon/25 flex items-center justify-center shrink-0">
-            <Core.icon name="ri-lock-2-line" class="w-3.5 h-3.5 text-showcase-icon" />
-          </div>
-          <span class="text-sm text-showcase-text/85">End-to-end encrypted with WireGuard</span>
-        </div>
-        <div class="flex items-center gap-3">
-          <div class="w-7 h-7 rounded-lg bg-showcase-icon/10 border border-showcase-icon/25 flex items-center justify-center shrink-0">
-            <Core.icon name="ri-shield-check-line" class="w-3.5 h-3.5 text-showcase-icon" />
-          </div>
-          <span class="text-sm text-showcase-text/85">Fine-grained access policies</span>
-        </div>
-        <div class="flex items-center gap-3">
-          <div class="w-7 h-7 rounded-lg bg-showcase-icon/10 border border-showcase-icon/25 flex items-center justify-center shrink-0">
-            <Core.icon name="ri-id-card-line" class="w-3.5 h-3.5 text-showcase-icon" />
-          </div>
-          <span class="text-sm text-showcase-text/85">Works with your existing identity provider</span>
-        </div>
-      </div>
+      <ul class="mt-10 border-t border-showcase-icon/30">
+        <li class="flex items-center gap-3 py-3 border-b border-showcase-icon/20 text-sm">
+          <Core.icon name="ri-lock-2-line" class="w-4 h-4 shrink-0 text-showcase-icon" />
+          End-to-end encrypted with WireGuard
+        </li>
+        <li class="flex items-center gap-3 py-3 border-b border-showcase-icon/20 text-sm">
+          <Core.icon name="ri-shield-check-line" class="w-4 h-4 shrink-0 text-showcase-icon" />
+          Fine-grained access policies
+        </li>
+        <li class="flex items-center gap-3 py-3 border-b border-showcase-icon/20 text-sm">
+          <Core.icon name="ri-id-card-line" class="w-4 h-4 shrink-0 text-showcase-icon" />
+          Works with your existing identity provider
+        </li>
+      </ul>
     </div>
-  </div>
-  <%!-- Right panel --%>
-  <div class="flex-1 flex items-start sm:items-center justify-center lg:bg-surface lg:overflow-y-auto">
-    <div class="w-full max-w-lg px-3 sm:px-6 pt-8 pb-10 lg:py-12">
-      <%!-- The left panel is hidden on small screens, so show the lockup here instead --%>
-      <div id="auth-brand-mobile" class="flex lg:hidden items-center justify-center gap-3 mb-6">
-        <img src="/images/logo.svg" class="h-8 w-auto shrink-0" alt="Firezone Logo" />
-        <span class="text-3xl leading-none font-bold text-showcase-text tracking-tight">Firezone</span>
-      </div>
+
+    <p class="text-xs text-showcase-icon">
+      Built on WireGuard. Open source.
+    </p>
+  </aside>
+
+  <main class="flex-1 flex items-start sm:items-center justify-center lg:overflow-y-auto bg-bg">
+    <div class="w-full max-w-md px-4 sm:px-6 pt-10 pb-12 lg:py-12">
       <div
-        id="auth-card"
-        class="relative overflow-hidden rounded-lg lg:rounded-none bg-surface lg:bg-transparent border border-showcase-card-border lg:border-0 shadow-2xl lg:shadow-none px-4 py-6 sm:p-8 lg:p-0"
+        id="auth-brand-mobile"
+        class="flex lg:hidden items-center gap-2.5 pb-6 mb-8 border-b border-rule"
       >
-        <div class="lg:hidden absolute inset-x-0 top-0 h-[3px] bg-linear-to-r from-showcase-glow-warm to-showcase-glow">
-        </div>
+        <img src="/images/logo.svg" class="h-7 w-auto shrink-0" alt="Firezone Logo" />
+        <span class="text-xl leading-none font-bold tracking-tight text-fg">Firezone</span>
+      </div>
+      <div id="auth-card" class="text-fg">
         {@inner_content}
       </div>
       <Page.data_residency_footer
@@ -61,21 +58,18 @@
       />
       <div
         id="auth-trust-mobile"
-        class="flex lg:hidden flex-wrap justify-center gap-x-4 gap-y-2 mt-6 text-xs text-showcase-text/70"
+        class="flex lg:hidden flex-wrap justify-center gap-x-4 gap-y-2 mt-6 text-xs text-muted"
       >
         <span class="flex items-center gap-1">
-          <Core.icon name="ri-lock-2-line" class="w-3.5 h-3.5 text-showcase-highlight" />
-          WireGuard encrypted
+          <Core.icon name="ri-lock-2-line" class="w-3.5 h-3.5" /> WireGuard encrypted
         </span>
         <span class="flex items-center gap-1">
-          <Core.icon name="ri-shield-check-line" class="w-3.5 h-3.5 text-showcase-highlight" />
-          Fine-grained policies
+          <Core.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Fine-grained policies
         </span>
         <span class="flex items-center gap-1">
-          <Core.icon name="ri-id-card-line" class="w-3.5 h-3.5 text-showcase-highlight" />
-          Bring your own IdP
+          <Core.icon name="ri-id-card-line" class="w-3.5 h-3.5" /> Bring your own IdP
         </span>
       </div>
     </div>
-  </div>
+  </main>
 </div>

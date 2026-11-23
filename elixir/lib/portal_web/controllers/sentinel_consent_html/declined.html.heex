@@ -1,9 +1,7 @@
-<Core.result_page success={false} title="Consent Was Not Granted">
-  <p class="mt-2 text-base text-danger">
-    {@error}
-  </p>
-  <p class="mt-2 text-base text-subtle">
+<AuthPage.result success={false} title="Consent was not granted">
+  <p class="text-attn">{@error}</p>
+  <p class="mt-2">
     You can close this window and retry the admin consent link from the Firezone log
     sink settings.
   </p>
-</Core.result_page>
+</AuthPage.result>

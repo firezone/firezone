@@ -17,6 +17,7 @@ defmodule PortalWeb.OAuthConsent do
   alias Portal.Authentication
   alias Portal.OAuth
   alias Portal.Scope
+  alias PortalWeb.Components.AuthPage
 
   def mount(params, _session, socket) do
     socket = assign(socket, page_title: "Connect an app")
@@ -42,13 +43,13 @@ defmodule PortalWeb.OAuthConsent do
 
     <Page.oauth_client_header client={@request.client} />
 
-    <p class="text-sm text-body mb-6">
+    <p class="text-sm text-muted leading-relaxed mb-8">
       Select the permissions
-      <span class="font-semibold text-heading">{@request.client.client_name}</span>
+      <span class="font-semibold text-fg">{@request.client.client_name}</span>
       should be able to access in the
-      <span class="font-semibold text-heading">{@account.name}</span>
+      <span class="font-semibold text-fg">{@account.name}</span>
       organization on behalf of
-      <span class="font-semibold text-heading">{@subject.actor.name}</span>.
+      <span class="font-semibold text-fg">{@subject.actor.name}</span>.
     </p>
 
     <.form for={%{}} phx-submit="allow">
@@ -59,30 +60,23 @@ defmodule PortalWeb.OAuthConsent do
         error={@error}
       />
 
-      <p class="text-xs text-subtle leading-relaxed my-6">
+      <p class="text-xs text-muted leading-relaxed my-6">
         You can disconnect this app at any time from Your settings, which immediately
         stops any access it still holds.
       </p>
 
-      <div class="flex gap-2.5">
-        <button
-          type="button"
-          phx-click="deny"
-          class="flex-1 px-4 py-2.5 rounded border-2 border-border bg-surface text-sm font-semibold text-heading hover:border-brand transition-all duration-150"
-        >
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" phx-click="deny" class={AuthPage.outline_button_class()}>
           Cancel
         </button>
-        <button
-          type="submit"
-          class="flex-1 px-4 py-2.5 rounded border-2 border-brand bg-brand text-sm font-semibold text-white hover:opacity-90 transition-all duration-150"
-        >
-          Connect
+        <button type="submit" class={AuthPage.primary_button_class()}>
+          <Core.icon name="ri-link" class="w-4 h-4" /> Connect
         </button>
       </div>
     </.form>
 
-    <p class="text-xs text-subtle text-center mt-6 break-all">
-      Returning you to {redirect_host(@request.redirect_uri)}
+    <p class="mt-6 pt-4 border-t border-hair text-xs text-muted break-all">
+      Returning you to <span class="font-mono text-fg">{redirect_host(@request.redirect_uri)}</span>
     </p>
     """
   end

@@ -21,38 +21,46 @@ defmodule PortalWeb.Components.Page do
 
     ~H"""
     <fieldset>
-      <div class="flex items-center justify-between mb-1">
-        <legend class="block text-xs font-medium text-body">Permissions</legend>
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <legend class="block text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+          Permissions
+        </legend>
 
         <div class="flex items-center gap-2 text-xs">
           <.scope_preset_button preset="none">Select none</.scope_preset_button>
-          <span class="text-subtle">·</span>
+          <span class="text-faint">·</span>
           <.scope_preset_button preset="read">Select read-only</.scope_preset_button>
-          <span class="text-subtle">·</span>
+          <span class="text-faint">·</span>
           <.scope_preset_button preset="all">Select all</.scope_preset_button>
         </div>
       </div>
 
-      <p class="mb-3 text-xs text-subtle">
+      <p class="mb-3 text-xs text-muted">
         Always allow only the minimum permissions you need for this integration.
       </p>
       <!-- Submits the key even when nothing is ticked. -->
       <input type="hidden" name={@field_name} value="" />
 
       <div class={[
-        "rounded border divide-y divide-border",
-        (@error && "border-error ring-1 ring-error/30") || "border-border"
+        "border-t",
+        (@error && "border-attn") || "border-rule"
       ]}>
-        <div class="flex items-center px-3 py-2 bg-raised">
-          <span class="flex-1 text-xs font-medium text-subtle">Scope</span>
-          <span class="w-16 text-center text-xs font-medium text-subtle">Read</span>
-          <span class="w-16 text-center text-xs font-medium text-subtle">Write</span>
+        <div class="flex items-center py-2 border-b border-rule">
+          <span class="flex-1 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+            Scope
+          </span>
+          <span class="w-16 text-center text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+            Read
+          </span>
+          <span class="w-16 text-center text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+            Write
+          </span>
         </div>
 
-        <div :for={{entity, levels} <- @entities} class="flex items-center px-3 py-2">
+        <div :for={{entity, levels} <- @entities} class="flex items-center py-2.5 border-b border-hair">
           <div class="flex-1 pr-4">
-            <span class="block text-sm text-heading">{Portal.Scope.label(entity)}</span>
-            <span class="block text-xs text-subtle">{Portal.Scope.description(entity)}</span>
+            <span class="block text-sm text-fg">{Portal.Scope.label(entity)}</span>
+            <span class="block text-xs text-muted">{Portal.Scope.description(entity)}</span>
           </div>
 
           <span :for={level <- [:read, :write]} class="w-16 flex justify-center">
@@ -63,14 +71,14 @@ defmodule PortalWeb.Components.Page do
               value={Portal.Scope.to_string(entity, level)}
               checked={scope_checked?(@scopes, entity, level)}
               disabled={scope_locked?(@scopes, entity, level)}
-              class="w-4 h-4 text-brand border-border rounded disabled:opacity-50"
+              class="w-4 h-4 bg-bg text-fg border-rule focus:ring-fg disabled:opacity-50"
             />
           </span>
         </div>
       </div>
 
-      <p :if={@error} class="mt-2 flex items-center gap-2 text-sm text-error">
-        <Core.icon name="ri-alert-line" class="h-4 w-4 flex-none" />{@error}
+      <p :if={@error} class="mt-2 flex items-center gap-2 text-sm text-attn">
+        <Core.icon name="ri-error-warning-line" class="h-4 w-4 flex-none" />{@error}
       </p>
     </fieldset>
     """
@@ -85,7 +93,7 @@ defmodule PortalWeb.Components.Page do
       type="button"
       phx-click="select_scopes"
       phx-value-preset={@preset}
-      class="text-brand hover:underline"
+      class="font-medium text-fg underline underline-offset-[3px] decoration-faint hover:decoration-fg"
     >
       {render_slot(@inner_block)}
     </button>
@@ -139,31 +147,31 @@ defmodule PortalWeb.Components.Page do
 
   def oauth_client_header(assigns) do
     ~H"""
-    <div class="mb-8 rounded border border-border bg-raised px-4 py-4">
+    <div class="mb-8 border border-rule px-4 py-4">
       <div class="flex items-center gap-3">
         <.client_icon client={@client} class="w-11 h-11" />
 
         <div class="min-w-0">
-          <p class="text-base font-semibold text-heading truncate">
+          <p class="text-base font-semibold text-fg truncate">
             {@client.client_name}
           </p>
-          <p class="text-sm text-body">wants to connect to Firezone</p>
+          <p class="text-sm text-muted">wants to connect to Firezone</p>
         </div>
       </div>
 
-      <div class="mt-3 pt-3 border-t border-border">
-        <p class="text-xs font-medium text-body uppercase tracking-wide mb-1.5">
+      <div class="mt-4 pt-3 border-t border-hair">
+        <p class="mb-1.5 text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
           Verified address
         </p>
 
         <p class="flex items-center gap-2">
-          <Core.icon name="ri-lock-line" class="w-4 h-4 text-brand shrink-0" />
-          <span class="text-base font-semibold font-mono text-heading break-all">
+          <Core.icon name="ri-lock-line" class="w-4 h-4 text-fg shrink-0" />
+          <span class="text-base font-semibold font-mono text-fg break-all">
             {client_host(@client.client_id)}
           </span>
         </p>
 
-        <div :if={@client.resolved_ips != []} class="mt-1.5 text-xs text-body">
+        <div :if={@client.resolved_ips != []} class="mt-1.5 text-xs text-muted">
           <p>Served from</p>
           <ul class="mt-1 space-y-1">
             <li :for={ip <- @client.resolved_ips} class="break-all">
@@ -173,7 +181,7 @@ defmodule PortalWeb.Components.Page do
         </div>
       </div>
 
-      <p class="mt-3 text-xs text-body leading-relaxed">
+      <p class="mt-3 text-xs text-muted leading-relaxed">
         Only this address is checked. The name and icon are supplied by the app
         itself. If you do not recognize it, close this window.
       </p>
@@ -205,7 +213,7 @@ defmodule PortalWeb.Components.Page do
 
     ~H"""
     <div class={[
-      "rounded-xl border border-border bg-surface overflow-hidden flex items-center justify-center shrink-0",
+      "border border-hair bg-bg overflow-hidden flex items-center justify-center shrink-0",
       @class
     ]}>
       <img
@@ -214,7 +222,7 @@ defmodule PortalWeb.Components.Page do
         alt={@client.client_name}
         class="w-full h-full object-contain"
       />
-      <span :if={is_nil(@src)} class="text-xl font-bold text-brand">
+      <span :if={is_nil(@src)} class="text-xl font-bold text-fg">
         {String.upcase(String.first(@client.client_name))}
       </span>
     </div>
@@ -253,15 +261,18 @@ defmodule PortalWeb.Components.Page do
 
   def account_slug_form(assigns) do
     ~H"""
-    <div class="rounded border border-border bg-raised p-4">
-      <p class="text-xs font-semibold text-body mb-3">
+    <div class="pt-2">
+      <p class="mb-1.5 text-xs font-medium text-muted">
         Your organization's sign-in URL
       </p>
       <.form :let={f} for={%{}} action={@action}>
         <div class="flex gap-2">
           <%!-- One box: the host is plain text in front of the input, and clicking it focuses the input --%>
-          <label class="flex flex-1 min-w-0 items-center rounded border bg-input border-input-border cursor-text focus-within:border-border-focus focus-within:ring-1 focus-within:ring-border-focus/30 transition-colors">
-            <span id="account-slug-host" class="pl-3 text-sm text-subtle whitespace-nowrap select-none">
+          <label class="flex flex-1 min-w-0 h-10 items-center border border-rule bg-bg cursor-text focus-within:ring-1 focus-within:ring-fg transition-colors">
+            <span
+              id="account-slug-host"
+              class="pl-3 font-mono text-sm text-muted whitespace-nowrap select-none"
+            >
               {portal_base_url()}/
             </span>
             <input
@@ -272,14 +283,14 @@ defmodule PortalWeb.Components.Page do
               aria-describedby="account-slug-host"
               autofocus={@autofocus}
               required
-              class="flex-1 min-w-0 pl-0 pr-3 py-2 text-sm bg-transparent border-0 text-heading outline-none focus:outline-none focus:ring-0 placeholder:text-subtle"
+              class="flex-1 min-w-0 pl-0 pr-3 py-2 font-mono text-sm bg-transparent border-0 text-fg outline-none focus:outline-none focus:ring-0 placeholder:text-faint"
             />
           </label>
           <button
             type="submit"
-            class="px-4 py-2 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap"
+            class="inline-flex items-center gap-2 h-10 px-4 text-sm font-semibold whitespace-nowrap bg-fg text-bg border border-fg hover:opacity-85 transition-opacity"
           >
-            Continue →
+            Continue <Core.icon name="ri-arrow-right-line" class="w-4 h-4" />
           </button>
         </div>
       </.form>
@@ -313,25 +324,24 @@ defmodule PortalWeb.Components.Page do
     <a
       href={@href}
       class={[
-        "w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm transition-all duration-150 group",
+        "group w-full flex items-center gap-3 px-4 py-3 border border-rule bg-bg hover:bg-hover transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg",
         @class
       ]}
     >
-      <div class="w-9 h-9 rounded bg-brand/10 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
-        <span class="text-sm font-bold text-brand">
+      <div class="w-9 h-9 flex items-center justify-center shrink-0 bg-fg text-bg">
+        <span class="text-sm font-bold">
           {String.upcase(String.first(@account.name))}
         </span>
       </div>
       <div class="flex-1 min-w-0">
-        <p class="text-sm font-semibold text-heading group-hover:text-brand transition-colors truncate">
-          {@account.name}
-        </p>
-        <p class="text-xs text-subtle truncate">{@account.slug}</p>
+        <p class="text-sm font-semibold text-fg truncate">{@account.name}</p>
+        <p class="text-xs font-mono text-muted truncate">{@account.slug}</p>
       </div>
       <Core.icon
         :if={@arrow}
-        name="ri-arrow-right-s-line"
-        class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+        name="ri-arrow-right-line"
+        class="w-4 h-4 text-muted group-hover:text-fg group-hover:translate-x-0.5 transition-transform shrink-0"
       />
     </a>
     """
@@ -610,7 +620,7 @@ defmodule PortalWeb.Components.Page do
     <p
       :if={@region != :on_prem}
       id="data-residency"
-      class="flex flex-wrap items-center justify-center gap-1.5 mt-6 text-xs text-showcase-text/70 lg:text-subtle"
+      class="flex flex-wrap items-center justify-center gap-1.5 mt-8 pt-4 border-t border-hair text-xs text-muted"
     >
       <.residency_flag region={@region} class="w-5 h-auto" />
       <span>Cloud region: <strong>{data_residency_name(@region)}</strong></span>

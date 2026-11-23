@@ -11,7 +11,7 @@ defmodule PortalWeb.SignUp do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
   import Ecto.Changeset
   alias __MODULE__.Database
-  alias PortalWeb.Components.Turnstile
+  alias PortalWeb.Components.{AuthPage, Turnstile}
   alias PortalWeb.PublicEmailRateLimit
   require Logger
 
@@ -283,7 +283,9 @@ defmodule PortalWeb.SignUp do
 
   defp chooser(assigns) do
     ~H"""
-    <.step_header title="Let's get started!" subtitle="Set up Firezone for you or your team." />
+    <AuthPage.heading title="Let's get started!">
+      Set up Firezone for you or your team.
+    </AuthPage.heading>
 
     <.region_picker query_params={@query_params} website_attribution={@website_attribution} />
 
@@ -292,7 +294,7 @@ defmodule PortalWeb.SignUp do
     <div id="sign-up-options" role="group" aria-label="Sign up options" class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
         <Turnstile.token_input id="google-turnstile-token" />
-        <button type="submit" class={option_button_style()}>
+        <button type="submit" class={AuthPage.option_button_class()}>
           <Core.provider_icon provider="google" size="md" />
           <span class="flex-1 text-left">Continue with <strong>Google</strong></span>
           <.option_arrow />
@@ -301,7 +303,7 @@ defmodule PortalWeb.SignUp do
 
       <.form for={%{}} id="github-sign-up" action={~p"/sign_up/github"} method="post">
         <Turnstile.token_input id="github-turnstile-token" />
-        <button type="submit" class={option_button_style()}>
+        <button type="submit" class={AuthPage.option_button_class()}>
           <Core.provider_icon provider="github" size="md" />
           <span class="flex-1 text-left">Continue with <strong>GitHub</strong></span>
           <.option_arrow />
@@ -318,7 +320,7 @@ defmodule PortalWeb.SignUp do
           |> JS.toggle_attribute({"aria-expanded", "true", "false"})
           |> JS.focus(to: "#email_form_email")
         }
-        class={option_button_style()}
+        class={[AuthPage.option_button_class(), "aria-expanded:bg-hover"]}
       >
         <Core.icon name="ri-mail-line" class="w-5 h-5" />
         <span class="flex-1 text-left">Continue with <strong>Email</strong></span>
@@ -331,10 +333,12 @@ defmodule PortalWeb.SignUp do
       for={@form}
       phx-submit="submit_email"
       phx-change="validate_email"
-      class={["flex flex-col gap-3 mt-5", !email_form_open?(@form, @turnstile_error) && "hidden"]}
+      class={["flex flex-col gap-3 mt-4", !email_form_open?(@form, @turnstile_error) && "hidden"]}
     >
       <div>
-        <Core.label for={@form[:email].id}>Work email</Core.label>
+        <label for={@form[:email].id} class="block mb-1.5 text-xs font-medium text-muted">
+          Work email
+        </label>
         <div id="email-sign-up-row" class="flex items-start gap-2">
           <div class="flex-1 min-w-0">
             <Form.input
@@ -343,12 +347,13 @@ defmodule PortalWeb.SignUp do
               placeholder="you@company.com"
               required
               phx-debounce="blur"
+              class="h-10"
             />
           </div>
           <button
             type="submit"
             phx-disable-with="Sending..."
-            class="shrink-0 px-4 py-2 rounded border border-transparent text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
+            class={[AuthPage.primary_button_class(), "shrink-0"]}
           >
             Continue
           </button>
@@ -368,14 +373,14 @@ defmodule PortalWeb.SignUp do
       </div>
 
       <Turnstile.token_input id="email-turnstile-token" />
-      <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-error">
+      <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-attn">
         {@turnstile_error}
       </p>
     </.form>
 
     <.terms_notice />
 
-    <div id="sign-in-link" class="mt-1 text-center">
+    <div id="sign-in-link" class="mt-1">
       <.sign_in_links />
     </div>
     """
@@ -389,7 +394,9 @@ defmodule PortalWeb.SignUp do
 
   defp details_form(assigns) do
     ~H"""
-    <.step_header title="Almost there" subtitle="Tell us about your organization to finish signing up." />
+    <AuthPage.heading title="Almost there">
+      Tell us about your organization to finish signing up.
+    </AuthPage.heading>
 
     <.selected_region />
 
@@ -407,14 +414,14 @@ defmodule PortalWeb.SignUp do
         phx-submit="submit_identity"
         phx-change="validate"
         phx-trigger-action={@trigger_submit}
-        class="flex flex-col gap-3"
+        class="flex flex-col gap-4"
       >
         <div>
-          <label class="block text-sm font-medium text-heading mb-1">Work email</label>
-          <div class="w-full px-3 py-2 text-sm rounded border bg-raised border-border text-body flex items-center gap-2">
-            <Core.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-brand shrink-0" />
+          <span class="block mb-1.5 text-xs font-medium text-muted">Work email</span>
+          <div class="w-full h-10 px-3 text-sm border border-hair bg-hover text-fg flex items-center gap-2">
+            <Core.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-fg shrink-0" />
             <span class="truncate">{@email}</span>
-            <span class="ml-auto text-xs text-subtle shrink-0">{verified_label(@provider)}</span>
+            <span class="ml-auto text-xs text-muted shrink-0">{verified_label(@provider)}</span>
           </div>
         </div>
 
@@ -443,12 +450,17 @@ defmodule PortalWeb.SignUp do
           />
         </.inputs_for>
 
+        <p class="mt-2 pb-2 border-b border-rule text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
+          About you
+        </p>
+
         <.survey_fields form={@form} seed={@survey_seed} />
 
         <button
           type="submit"
           class={[
-            "w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors mt-1",
+            AuthPage.primary_button_class(),
+            "w-full mt-2",
             "phx-submit-loading:opacity-75 group-data-submitting/submit:opacity-75"
           ]}
         >
@@ -462,10 +474,10 @@ defmodule PortalWeb.SignUp do
 
     <.terms_notice />
 
-    <div id="start-over-link" class="mt-1 text-center">
-      <p class="text-sm text-subtle leading-relaxed">
+    <div id="start-over-link" class="mt-1">
+      <p class="text-sm text-muted leading-relaxed">
         {wrong_identity_prompt(@provider)}
-        <Navigation.link href={~p"/sign_up"}>Start over.</Navigation.link>
+        <Navigation.link href={~p"/sign_up"} class={AuthPage.link_class()}>Start over.</Navigation.link>
       </p>
     </div>
     """
@@ -645,21 +657,30 @@ defmodule PortalWeb.SignUp do
 
   defp existing_accounts(assigns) do
     ~H"""
-    <.step_header
-      title="You already have an account"
-      subtitle={"#{owner_prefix(@provider)} is the owner of the organizations below. Sign in to continue."} />
+    <AuthPage.heading title="You already have an account">
+      {owner_prefix(@provider)} is the owner of the organizations below. Sign in to continue.
+    </AuthPage.heading>
 
     <div class="flex flex-col gap-2">
-      <Navigation.link :for={account <- @accounts} href={~p"/#{account}/sign_in"} class={method_button_style()}>
-        <span class="flex-1 text-left truncate">{account.name}</span>
-        <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+      <Navigation.link
+        :for={account <- @accounts}
+        href={~p"/#{account}/sign_in"}
+        class={AuthPage.option_button_class()}
+      >
+        <span class="w-6 h-6 shrink-0 flex items-center justify-center bg-fg text-bg text-xs font-bold">
+          {String.upcase(String.first(account.name))}
+        </span>
+        <span class="flex-1 text-left font-medium truncate">{account.name}</span>
+        <.option_arrow />
       </Navigation.link>
     </div>
 
     <.footer>
-      <p class="text-xs text-subtle leading-relaxed">
+      <p class="text-xs text-muted leading-relaxed">
         Want a separate organization?
-        <Navigation.link patch={~p"/sign_up"}>Sign up with a different email.</Navigation.link>
+        <Navigation.link patch={~p"/sign_up"} class={AuthPage.link_class()}>
+          Sign up with a different email.
+        </Navigation.link>
       </p>
     </.footer>
     """
@@ -688,15 +709,18 @@ defmodule PortalWeb.SignUp do
       )
 
     ~H"""
-    <div :if={@region != :on_prem} id="region-picker">
-      <span id="region-picker-label" class="block text-xs font-medium text-body mb-1.5">
-        Cloud Region
+    <div :if={@region != :on_prem} id="region-picker" class="mb-8">
+      <span
+        id="region-picker-label"
+        class="block pb-2 mb-3 border-b border-rule text-[11px] font-semibold tracking-[.12em] uppercase text-muted"
+      >
+        Cloud region
       </span>
       <ul
         role="radiogroup"
         aria-labelledby="region-picker-label"
         aria-describedby="region-picker-help"
-        class="grid w-full gap-3 grid-cols-1 sm:grid-cols-2"
+        class="grid w-full gap-2 grid-cols-1 sm:grid-cols-2"
       >
         <li :for={option <- [:us, :eu]} class="flex flex-col">
           <a
@@ -725,12 +749,13 @@ defmodule PortalWeb.SignUp do
           </label>
         </li>
       </ul>
-      <p id="region-picker-help" class="mt-1.5 mb-6 text-xs text-subtle">
+      <p id="region-picker-help" class="mt-2 text-xs text-muted">
         Changing regions later requires scheduled downtime.
         <Navigation.link
           href="https://www.firezone.dev/kb/architecture/regional-availability"
           target="_blank"
           rel="noopener noreferrer"
+          class={AuthPage.link_class()}
         >
           Learn about regional availability
         </Navigation.link>
@@ -744,11 +769,11 @@ defmodule PortalWeb.SignUp do
 
     ~H"""
     <div :if={@region != :on_prem} id="selected-region" class="mb-6">
-      <span class="block text-xs font-medium text-body mb-1.5">Cloud Region</span>
+      <span class="block mb-1.5 text-xs font-medium text-muted">Cloud region</span>
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <Core.icon name="ri-checkbox-circle-fill" class="w-4 h-4 text-brand shrink-0" />
-        <Page.residency_flag region={@region} class="w-6 h-auto shadow-sm" />
-        <span class="text-sm font-semibold text-heading">{Page.data_residency_name(@region)}</span>
+        <Core.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-fg shrink-0" />
+        <Page.residency_flag region={@region} class="w-6 h-auto" />
+        <span class="text-sm font-semibold text-fg">{Page.data_residency_name(@region)}</span>
       </div>
     </div>
     """
@@ -759,13 +784,15 @@ defmodule PortalWeb.SignUp do
   defp region_option_content(assigns) do
     ~H"""
     <div class="block min-w-0">
-      <div class="w-full font-semibold mb-1 text-xs flex items-center gap-2 whitespace-nowrap">
-        <span class="shrink-0 w-8 h-[22px] flex items-center">
-          <Page.residency_flag region={@region} class="w-8 h-auto shadow-sm" />
+      <div class="w-full mb-1 text-sm font-semibold flex items-center gap-2 whitespace-nowrap">
+        <span class="shrink-0 w-7 h-5 flex items-center">
+          <Page.residency_flag region={@region} class="w-7 h-auto" />
         </span>
         {Page.data_residency_name(@region)}
       </div>
-      <div class="w-full text-[10px] whitespace-nowrap">{region_option_description(@region)}</div>
+      <div class="w-full text-[11px] text-muted whitespace-nowrap">
+        {region_option_description(@region)}
+      </div>
     </div>
     """
   end
@@ -774,26 +801,16 @@ defmodule PortalWeb.SignUp do
   defp region_option_description(:eu), do: "Data is stored in Sweden and France"
 
   defp region_option_class do
-    "inline-flex items-center justify-between w-full h-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
-  end
-
-  attr :title, :string, required: true
-  attr :subtitle, :string, required: true
-  defp step_header(assigns) do
-    ~H"""
-    <div class="text-center mb-6">
-      <h1 class="text-2xl font-bold text-heading tracking-tight">{@title}</h1>
-      <p class="text-sm text-subtle mt-1.5">{@subtitle}</p>
-    </div>
-    """
+    "inline-flex items-center justify-between w-full h-full p-3 text-fg bg-bg border border-hair cursor-pointer peer-checked:border-fg peer-checked:ring-1 peer-checked:ring-fg hover:bg-hover transition-colors"
   end
 
   defp terms_notice(assigns) do
     ~H"""
-    <div class="mt-2 pt-2 text-center">
-      <p id="terms-notice" class="text-sm text-subtle mt-1.5">
+    <div class="mt-6 pt-2">
+      <p id="terms-notice" class="text-sm text-muted">
         By signing up you agree to our <Navigation.link
           href="https://www.firezone.dev/terms"
+          class={AuthPage.link_class()}
         >Terms of Use</Navigation.link>.
       </p>
     </div>
@@ -804,7 +821,7 @@ defmodule PortalWeb.SignUp do
 
   defp footer(assigns) do
     ~H"""
-    <div class="mt-12 pt-4 border-t border-border text-center">
+    <div class="mt-10 pt-4 border-t border-hair">
       {render_slot(@inner_block)}
     </div>
     """
@@ -812,27 +829,16 @@ defmodule PortalWeb.SignUp do
 
   defp sign_in_links(assigns) do
     ~H"""
-    <p class="text-sm text-subtle leading-relaxed">
-      Already have an account? <Navigation.link href={~p"/sign_in"}>Sign in</Navigation.link>
+    <p class="text-sm text-muted leading-relaxed">
+      Already have an account?
+      <Navigation.link href={~p"/sign_in"} class={AuthPage.link_class()}>Sign in</Navigation.link>
     </p>
     """
   end
 
-  defp method_button_style do
-    "w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm transition-all duration-150 group text-sm font-medium text-heading"
-  end
-
-  # Matches the provider buttons on the account sign-in page.
-  defp option_button_style do
-    "w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm aria-expanded:border-brand aria-expanded:bg-brand-muted transition-all duration-150 group text-sm font-medium text-heading"
-  end
-
   defp option_arrow(assigns) do
     ~H"""
-    <Core.icon
-      name="ri-arrow-right-s-line"
-      class="w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
-    />
+    <Core.icon name="ri-arrow-right-line" class={AuthPage.option_arrow_class()} />
     """
   end
 
@@ -840,126 +846,66 @@ defmodule PortalWeb.SignUp do
   # the person has typed in it or a submission failed, so errors are never hidden.
   defp email_form_open?(form, turnstile_error), do: form.params != %{} or turnstile_error != nil
 
-  defp method_button_arrow_style do
-    "w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
-  end
-
   defp email_sent(assigns) do
     ~H"""
-    <.step_header title="Check your email" subtitle="We've sent you a link to finish signing up." />
+    <AuthPage.heading title="Check your email">
+      We've sent you a link to finish signing up.
+    </AuthPage.heading>
 
-    <div class="rounded border border-border bg-raised p-4 mb-6">
-      <ol class="space-y-4">
-        <li class="flex gap-3">
-          <.step_number>1</.step_number>
-          <div>
-            <p class="text-sm font-medium text-heading">Open "Finish signing up"</p>
-            <p class="text-xs text-subtle mt-0.5 leading-relaxed">
-              It should arrive within a minute or two. Check your spam folder too.
-            </p>
-          </div>
-        </li>
-        <li class="flex gap-3">
-          <.step_number>2</.step_number>
-          <div>
-            <p class="text-sm font-medium text-heading">Use this browser</p>
-            <p class="text-xs text-subtle mt-0.5 leading-relaxed">
-              For your security, the link only works here. It expires in 24 hours.
-            </p>
-          </div>
-        </li>
-        <li class="flex gap-3">
-          <.step_number>3</.step_number>
-          <div>
-            <p class="text-sm font-medium text-heading">Tell us about your organization</p>
-            <p class="text-xs text-subtle mt-0.5 leading-relaxed">
-              A few quick details, then you're in.
-            </p>
-          </div>
-        </li>
-      </ol>
-    </div>
+    <AuthPage.steps>
+      <:step title={"Open \"Finish signing up\""}>
+        It should arrive within a minute or two. Check your spam folder too.
+      </:step>
+      <:step title="Use this browser">
+        For your security, the link only works here. It expires in 24 hours.
+      </:step>
+      <:step title="Tell us about your organization">
+        A few quick details, then you're in.
+      </:step>
+    </AuthPage.steps>
 
-    <div id="email-sent-footer" class="text-center">
-      <p class="text-sm text-subtle">
+    <div id="email-sent-footer">
+      <p class="text-sm text-muted">
         Wrong address or didn't receive it?
-        <Navigation.link href={~p"/sign_up"}>Start over.</Navigation.link>
+        <Navigation.link href={~p"/sign_up"} class={AuthPage.link_class()}>Start over.</Navigation.link>
       </p>
-    </div>
-    """
-  end
-
-  slot :inner_block, required: true
-
-  defp step_number(assigns) do
-    ~H"""
-    <div class="shrink-0 w-6 h-6 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center">
-      <span class="text-xs font-bold text-brand">{render_slot(@inner_block)}</span>
     </div>
     """
   end
 
   defp pending_review(assigns) do
     ~H"""
-    <.step_header
-      title="Thanks for signing up"
-      subtitle="Your account is being created. We are checking a few things first." />
+    <AuthPage.heading title="Thanks for signing up">
+      Your account is being created. We are checking a few things first.
+    </AuthPage.heading>
 
-    <div class="rounded border border-border bg-raised p-4 mb-6">
-      <p class="text-sm text-body leading-relaxed">
-        This can take up to 24 hours. We will email you when your account is ready.
-        You can close this page.
-      </p>
-    </div>
+    <AuthPage.notice icon="ri-time-line">
+      This can take up to 24 hours. We will email you when your account is ready.
+      You can close this page.
+    </AuthPage.notice>
     """
   end
 
   defp different_browser(assigns) do
     ~H"""
-    <.step_header
-      title="Open this link in the same browser"
-      subtitle="For your security, sign-up links only work in the browser that requested them." />
+    <AuthPage.heading title="Open this link in the same browser">
+      For your security, sign-up links only work in the browser that requested them.
+    </AuthPage.heading>
 
-    <div class="rounded border border-border bg-raised p-4 mb-6">
-      <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
-        What you can do
-      </p>
-      <ul class="space-y-2">
-        <li class="flex items-start gap-2.5">
-          <Core.icon
-            name="ri-arrow-right-s-line"
-            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
-          />
-          <span class="text-sm text-body">
-            Open the link from your email in the browser where you entered your email address.
-          </span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <Core.icon
-            name="ri-arrow-right-s-line"
-            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
-          />
-          <span class="text-sm text-body">
-            Can't get back to that browser? Start again here and we'll email you a new link.
-          </span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <Core.icon
-            name="ri-arrow-right-s-line"
-            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
-          />
-          <span class="text-sm text-body">
-            Already finished signing up?
-            <Navigation.link href={~p"/sign_in"}>Sign in here.</Navigation.link>
-          </span>
-        </li>
-      </ul>
-    </div>
+    <AuthPage.checklist title="What you can do">
+      <:item icon="ri-arrow-right-line">
+        Open the link from your email in the browser where you entered your email address.
+      </:item>
+      <:item icon="ri-arrow-right-line">
+        Can't get back to that browser? Start again here and we'll email you a new link.
+      </:item>
+      <:item icon="ri-arrow-right-line">
+        Already finished signing up?
+        <Navigation.link href={~p"/sign_in"} class={AuthPage.link_class()}>Sign in here.</Navigation.link>
+      </:item>
+    </AuthPage.checklist>
 
-    <Navigation.link
-      href={~p"/sign_up"}
-      class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-brand text-white hover:bg-brand-dark transition-colors"
-    >
+    <Navigation.link href={~p"/sign_up"} class={[AuthPage.primary_button_class(), "w-full"]}>
       Start again
     </Navigation.link>
     """
@@ -967,53 +913,29 @@ defmodule PortalWeb.SignUp do
 
   defp sign_up_error(assigns) do
     ~H"""
-    <.step_header title="Something went wrong" subtitle="We weren't able to complete your sign up." />
+    <AuthPage.heading title="Something went wrong">
+      We weren't able to complete your sign up.
+    </AuthPage.heading>
 
-    <div class="rounded border border-danger/30 bg-danger-light p-4 mb-6">
-      <p class="text-sm text-danger">{@error_message}</p>
-    </div>
+    <AuthPage.notice attn>
+      {@error_message}
+    </AuthPage.notice>
 
-    <div class="rounded border border-border bg-raised p-4 mb-6">
-      <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
-        What you can do
-      </p>
-      <ul class="space-y-2">
-        <li class="flex items-start gap-2.5">
-          <Core.icon
-            name="ri-arrow-right-s-line"
-            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
-          />
-          <span class="text-sm text-body">
-            Try signing up again — your verification link may have expired.
-          </span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <Core.icon
-            name="ri-arrow-right-s-line"
-            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
-          />
-          <span class="text-sm text-body">
-            If you already have an account,
-            <Navigation.link href={~p"/sign_in"}>sign in here.</Navigation.link>
-          </span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <Core.icon
-            name="ri-arrow-right-s-line"
-            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
-          />
-          <span class="text-sm text-body">
-            Still having trouble?
-            <a class={Core.link_style()} href="mailto:support@firezone.dev">Contact support.</a>
-          </span>
-        </li>
-      </ul>
-    </div>
+    <AuthPage.checklist title="What you can do">
+      <:item icon="ri-arrow-right-line">
+        Try signing up again. Your verification link may have expired.
+      </:item>
+      <:item icon="ri-arrow-right-line">
+        If you already have an account,
+        <Navigation.link href={~p"/sign_in"} class={AuthPage.link_class()}>sign in here.</Navigation.link>
+      </:item>
+      <:item icon="ri-arrow-right-line">
+        Still having trouble?
+        <a class={AuthPage.link_class()} href="mailto:support@firezone.dev">Contact support.</a>
+      </:item>
+    </AuthPage.checklist>
 
-    <Navigation.link
-      href={~p"/sign_up"}
-      class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-brand text-white hover:bg-brand-dark transition-colors"
-    >
+    <Navigation.link href={~p"/sign_up"} class={[AuthPage.primary_button_class(), "w-full"]}>
       Try again
     </Navigation.link>
     """

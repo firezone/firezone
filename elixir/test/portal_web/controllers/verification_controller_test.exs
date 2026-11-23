@@ -41,7 +41,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Verification Successful"
+      assert conn.resp_body =~ "Verification successful"
       assert conn.resp_body =~ "data-auto-close-window-after-ms=\"1000\""
       refute conn.resp_body =~ "setTimeout(function()"
       assert_received {:oidc_verify_complete_received, "https://example.com", ^verification_ref}
@@ -79,7 +79,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Verification Successful"
+      assert conn.resp_body =~ "Verification successful"
 
       assert_received {:google_directory_sync_complete_received, "verified.example.com",
                        ^verification_ref}
@@ -101,7 +101,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
-      assert conn.resp_body =~ "Verification Failed"
+      assert conn.resp_body =~ "Verification failed"
       assert conn.resp_body =~ "not an administrator"
 
       assert_received {:verification_failed, "The Google account is not an administrator",
@@ -125,7 +125,7 @@ defmodule PortalWeb.VerificationControllerTest do
         issuer: "https://accounts.google.com", domains: @google_domains, name: @google_name,
         lv_pid: serialize_pid(lv_pid), verification_ref: verification_ref})
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
-      assert conn.resp_body =~ "Verification Successful"
+      assert conn.resp_body =~ "Verification successful"
       assert_received {:google_verified, "https://accounts.google.com", @google_domains,
         @google_name, ^verification_ref}
     end
@@ -141,7 +141,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Verification Failed"
+      assert conn.resp_body =~ "Verification failed"
       assert conn.resp_body =~ "invalid_grant"
       refute conn.resp_body =~ "window.close()"
       assert_received {:oidc_verify_failed, "invalid_grant"}
@@ -159,7 +159,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Verification Failed"
+      assert conn.resp_body =~ "Verification failed"
       refute_received {:oidc_verify_complete, _issuer, _verification_ref, _ack_to}
     end
 
@@ -170,7 +170,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Verification Failed"
+      assert conn.resp_body =~ "Verification failed"
       assert conn.resp_body =~ "Invalid or expired verification result"
       refute_received {:oidc_verify_complete, _issuer, _verification_ref, _ack_to}
     end
@@ -182,7 +182,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
       conn = get(recycle(conn), ~p"/verification/oidc", %{})
       assert conn.status == 200
-      assert conn.resp_body =~ "Verification Failed"
+      assert conn.resp_body =~ "Verification failed"
     end
   end
 
@@ -222,7 +222,7 @@ defmodule PortalWeb.VerificationControllerTest do
         })
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Verification Successful"
+      assert conn.resp_body =~ "Verification successful"
       assert_received {:entra_verify_complete_received, @issuer, @tenant_id, ^verification_ref}
     end
 
@@ -306,7 +306,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn = get(conn, ~p"/verification/entra", %{"result" => token})
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Verification Successful"
+      assert conn.resp_body =~ "Verification successful"
 
       assert_received {:entra_directory_sync_complete_received, @tenant_id,
                        ^verification_ref}
@@ -341,7 +341,7 @@ defmodule PortalWeb.VerificationControllerTest do
           "result" => directory_result_token(conn, lv_pid, Ecto.UUID.generate(), principal_id)
         })
 
-      assert conn.resp_body =~ "Verification Successful"
+      assert conn.resp_body =~ "Verification successful"
 
       assert "/v1.0/users/#{principal_id}/transitiveMemberOf/microsoft.graph.directoryRole" in
                drain_entra_api_request_paths()
@@ -353,7 +353,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
       conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(conn, lv_pid)})
 
-      assert conn.resp_body =~ "Verification Successful"
+      assert conn.resp_body =~ "Verification successful"
       paths = drain_entra_api_request_paths()
 
       role_path =
@@ -459,7 +459,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn = get(conn, ~p"/verification/entra", %{"result" => token})
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Verification Successful"
+      assert conn.resp_body =~ "Verification successful"
 
       assert_received {:intune_posture_provider_complete_received, @tenant_id,
                        ^verification_ref}
