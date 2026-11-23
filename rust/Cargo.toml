@@ -169,7 +169,7 @@ ingot = { version = "0.2.1", default-features = false }
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
-is = "0.11.0"
+is = "0.12.0"
 itertools = "0.15.0"
 jiff = { version = "0.2.24", default-features = false }
 jsonschema = { version = "0.59.0", default-features = false }
@@ -255,7 +255,7 @@ socket-factory = { path = "libs/connlib/socket-factory" }
 socket2 = { version = "0.6.4" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
-str0m-proto = { version = "0.7", default-features = false }
+str0m-proto = { version = "0.8", default-features = false }
 strum = "0.28.0"
 stun_codec = "0.4.0"
 subprocess = "1.1.0"
