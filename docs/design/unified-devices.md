@@ -1348,8 +1348,7 @@ hosts. Collect them here and use them for the release notes and the email.
 12. **Device identity before the unification (2026-11-22).** The token says
     who acts and a portal-issued certificate says which machine connects.
     Phase I ships it on `/client` and `/gateway` first: one CA per account
-    (RSA-2048 in Key Vault Standard, or one key from `DEVICE_CA_PRIVATE_KEY`
-    without Key Vault), 90-day certificates, the device trust host for mTLS,
+    (RSA-2048 in Key Vault Standard, or in the database without Key Vault), 90-day certificates, the device trust host for mTLS,
     hardware keys where the platform has them. A row with a key is found
     only by its certificate.
 
