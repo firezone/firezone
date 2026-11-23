@@ -205,6 +205,27 @@ defmodule Portal.EndpointTest do
     end
   end
 
+  describe "forward/2" do
+    test "returns 503 and closes HTTP/1.1 connections when the endpoint has stopped" do
+      conn = Endpoint.forward(conn(:get, "https://app.firezone.test/"), __MODULE__.Stopped)
+
+      assert conn.status == 503
+      assert conn.halted
+      assert get_resp_header(conn, "connection") == ["close"]
+    end
+
+    test "returns 503 on HTTP/2 without a connection header when the endpoint has stopped" do
+      conn =
+        :get
+        |> conn("https://app.firezone.test/")
+        |> put_http_protocol(:"HTTP/2")
+        |> Endpoint.forward(__MODULE__.Stopped)
+
+      assert conn.status == 503
+      assert get_resp_header(conn, "connection") == []
+    end
+  end
+
   test "dispatches the web hostname to the web endpoint" do
     conn = Endpoint.call(conn(:get, "https://app.firezone.test/not-found"), [])
 
