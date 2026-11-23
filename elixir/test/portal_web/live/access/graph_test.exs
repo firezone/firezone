@@ -127,10 +127,38 @@ defmodule PortalWeb.Access.GraphTest do
   end
 
   test "caps very large maps with a note", %{conn: conn, account: account, site: site} do
-    for i <- 1..61, do: resource_fixture(account: account, site: site, name: "Bulk #{i}")
+    now = DateTime.utc_now()
+
+    rows =
+      for i <- 1..2_501 do
+        %{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          site_id: site.id,
+          name: "Bulk #{i}",
+          type: :ip,
+          address: "10.#{div(i, 256)}.#{rem(i, 256)}.1",
+          filters: [],
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    Repo.insert_all(Portal.Resource, rows)
 
     {:ok, lv, _html} = live(conn, ~p"/#{account}/access")
 
-    assert has_element?(lv, "#access-graph-cap", "Showing 60 of 62 resources.")
+    assert has_element?(lv, "#access-graph-cap", "Showing 2500 of 2502 resources.")
+
+    # A column this long wraps into sub-columns so the map keeps a usable shape.
+    xs =
+      lv
+      |> render()
+      |> Floki.parse_document!()
+      |> Floki.find("g[data-node^='resource:'] rect")
+      |> Floki.attribute("x")
+      |> Enum.uniq()
+
+    assert length(xs) > 1
   end
 end

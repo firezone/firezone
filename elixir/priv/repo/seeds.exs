@@ -245,6 +245,102 @@ defmodule Portal.Repo.Seeds do
     [all_devices, group_devices]
   end
 
+  @graph_sites 40
+  @graph_gateways 160
+  @graph_groups 300
+  @graph_resources 1_500
+  @graph_policies_per_resource 2
+
+  # Enough sites, gateways, groups, resources and policies to see how the Access
+  # graph behaves at scale. Set SEED_GRAPH=false to skip.
+  defp seed_access_graph_load(account) do
+    now = DateTime.utc_now()
+    row = fn attrs -> Map.merge(%{account_id: account.id, inserted_at: now, updated_at: now}, attrs) end
+
+    sites =
+      for i <- 1..@graph_sites do
+        row.(%{id: Ecto.UUID.generate(), name: "Region #{div(i - 1, 4) + 1} site #{rem(i - 1, 4) + 1}", managed_by: :account})
+      end
+
+    Repo.insert_all(Site, sites)
+
+    gateways =
+      for i <- 1..@graph_gateways do
+        row.(%{
+          id: Ecto.UUID.generate(),
+          type: :gateway,
+          name: "edge-gw-#{i}",
+          firezone_id: "graph-gateway-#{i}",
+          slug: "edge-gw-#{i}",
+          ipv4: {100, 96, div(i, 256), rem(i, 256)},
+          ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x1A, i}
+        })
+      end
+
+    Repo.insert_all(Device, gateways)
+
+    # Four gateways per site.
+    site_devices =
+      gateways
+      |> Enum.with_index()
+      |> Enum.map(fn {gateway, i} ->
+        site = Enum.at(sites, rem(i, @graph_sites))
+        %{account_id: account.id, site_id: site.id, device_id: gateway.id, inserted_at: now}
+      end)
+
+    Repo.insert_all(Portal.SiteDevice, site_devices)
+
+    teams = ~w[Platform Payments Data Security Mobile Web Infra Growth Support Sales]
+
+    groups =
+      for i <- 1..@graph_groups do
+        row.(%{id: Ecto.UUID.generate(), name: "#{Enum.at(teams, rem(i, 10))} squad #{i}", type: :static})
+      end
+
+    Repo.insert_all(Group, groups)
+
+    resources =
+      for i <- 1..@graph_resources do
+        site = Enum.at(sites, rem(i * 7, @graph_sites))
+
+        {type, address, ip_stack} =
+          case rem(i, 3) do
+            0 -> {:dns, "svc-#{i}.graph.example.com", :dual}
+            1 -> {:ip, "10.#{div(i, 256)}.#{rem(i, 256)}.10", nil}
+            2 -> {:cidr, "10.#{100 + div(i, 256)}.#{rem(i, 256)}.0/24", nil}
+          end
+
+        row.(%{
+          id: Ecto.UUID.generate(),
+          name: "Service #{i}",
+          type: type,
+          address: address,
+          ip_stack: ip_stack,
+          site_id: site.id,
+          filters: []
+        })
+      end
+
+    resources |> Enum.chunk_every(500) |> Enum.each(&Repo.insert_all(Resource, &1))
+
+    policies =
+      resources
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {resource, i} ->
+        for k <- 0..(@graph_policies_per_resource - 1) do
+          group = Enum.at(groups, rem(i * 13 + k * 101, @graph_groups))
+          row.(%{id: Ecto.UUID.generate(), group_id: group.id, resource_id: resource.id})
+        end
+      end)
+      |> Enum.uniq_by(&{&1.group_id, &1.resource_id})
+
+    policies |> Enum.chunk_every(1_000) |> Enum.each(&Repo.insert_all(Policy, &1))
+
+    IO.puts("Access graph load: #{@graph_sites} sites, #{@graph_gateways} gateways, #{@graph_groups} groups,")
+    IO.puts("  #{@graph_resources} resources and #{length(policies)} policies (SEED_GRAPH=false to skip)")
+    IO.puts("")
+  end
+
   # Helper function to create gateway directly without context module
   defp create_gateway(attrs, context) do
     # Extract version from user agent
@@ -3219,6 +3315,10 @@ defmodule Portal.Repo.Seeds do
     IO.puts("")
 
     load_device_pools = seed_device_pool_load(account, admin_subject, everyone_group)
+
+    if System.get_env("SEED_GRAPH") != "false" do
+      seed_access_graph_load(account)
+    end
 
     # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, user_iphone} =

@@ -37,7 +37,7 @@ defmodule PortalWeb.Access.Graph do
         </:action>
       </Page.page_header>
 
-      <div class="flex-1 min-h-0 overflow-y-auto px-6 pb-8">
+      <div class="flex-1 min-h-0 flex flex-col px-6 pb-6">
         <div class="flex flex-wrap items-center gap-3 mb-4">
           <Components.search_box
             id="access-graph-search"
@@ -68,18 +68,74 @@ defmodule PortalWeb.Access.Graph do
           <p :if={@search != ""} class="text-sm text-muted">Nothing matches "{@search}".</p>
         </div>
 
-        <div :if={@graph && @graph.nodes != []} class="overflow-x-auto">
+        <div :if={@graph && @graph.nodes != []} class="flex-1 min-h-[420px] flex flex-col">
+          <div
+            id="access-graph-viewport"
+            tabindex="0"
+            aria-label="Access map. Drag or scroll to move, hold Ctrl or Command and scroll to zoom, plus and minus keys zoom, 0 fits."
+            class="relative flex-1 min-h-[420px] border border-hair overflow-hidden outline-none focus-visible:border-rule"
+          >
+            <div
+              id="access-graph-controls"
+              class="absolute top-3 right-3 z-10 flex items-stretch border border-rule bg-bg text-sm"
+            >
+              <button
+                type="button"
+                data-graph-zoom="in"
+                title="Zoom in (+)"
+                aria-label="Zoom in"
+                class="w-8 h-8 flex items-center justify-center text-fg hover:bg-hover"
+              >
+                <Core.icon name="ri-zoom-in-line" class="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                data-graph-zoom="out"
+                title="Zoom out (-)"
+                aria-label="Zoom out"
+                class="w-8 h-8 flex items-center justify-center text-fg hover:bg-hover border-l border-hair"
+              >
+                <Core.icon name="ri-zoom-out-line" class="w-4 h-4" />
+              </button>
+              <span
+                data-graph-scale
+                class="min-w-14 px-2 flex items-center justify-center border-l border-hair text-xs text-muted tabular-nums"
+              >
+                100%
+              </span>
+              <button
+                type="button"
+                data-graph-zoom="fit"
+                title="Fit the whole map (0)"
+                aria-label="Fit the whole map"
+                class="w-8 h-8 flex items-center justify-center text-fg hover:bg-hover border-l border-hair"
+              >
+                <Core.icon name="ri-fullscreen-exit-line" class="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                data-graph-zoom="reset"
+                title="Actual size, back to the top (1)"
+                aria-label="Actual size"
+                class="w-8 h-8 flex items-center justify-center text-fg hover:bg-hover border-l border-hair"
+              >
+                <Core.icon name="ri-focus-3-line" class="w-4 h-4" />
+              </button>
+            </div>
           <svg
             id="access-graph"
             phx-hook="AccessGraph"
             data-pinned={@pinned}
-            viewBox={"0 0 #{Layout.width()} #{@graph.height}"}
-            class="block w-full min-w-[760px] max-w-[1100px] h-auto select-none"
+            data-width={@graph.width}
+            data-height={@graph.height}
+            viewBox={"0 0 #{@graph.width} #{@graph.height}"}
+            preserveAspectRatio="xMinYMin meet"
+            class="absolute inset-0 block w-full h-full select-none touch-none cursor-grab active:cursor-grabbing"
             role="img"
             aria-label="Access map"
           >
             <text
-              :for={{title, x} <- Layout.headings()}
+              :for={{title, x} <- @graph.headings}
               x={x}
               y="12"
               class="fill-muted text-[10.5px] font-semibold tracking-[.12em]"
@@ -109,7 +165,7 @@ defmodule PortalWeb.Access.Graph do
                 y={node.y + 0.5}
                 width={node.w}
                 height={Layout.node_height()}
-                stroke-width={if @pinned == node.id, do: "2.5", else: "1"}
+                stroke-width="1"
                 stroke-dasharray={node.dashed && "4 3"}
                 class="fill-bg stroke-rule"
               />
@@ -147,6 +203,7 @@ defmodule PortalWeb.Access.Graph do
               </text>
             </g>
           </svg>
+          </div>
           <p class="mt-3 text-xs text-muted flex flex-wrap items-center gap-x-4 gap-y-1">
             <span class="inline-flex items-center gap-1.5">
               <span class="inline-block w-2 h-2 rounded-full bg-fg"></span> Online
@@ -157,6 +214,10 @@ defmodule PortalWeb.Access.Graph do
             <span class="inline-flex items-center gap-1.5">
               <span class="inline-block w-5 border-t border-dashed border-muted"></span>
               Direct to devices, no site
+            </span>
+            <span class="inline-flex items-center gap-1.5 sm:ml-auto">
+              <Core.icon name="ri-drag-move-2-line" class="w-3.5 h-3.5" />
+              Drag or scroll to move. Ctrl or Cmd + scroll, or + and -, to zoom. Arrows move, Shift moves faster, 0 fits.
             </span>
           </p>
         </div>
@@ -285,23 +346,25 @@ defmodule PortalWeb.Access.Graph do
     @row 48
     @top 26
     @gap 34
-    @width 1042
-    @cap 60
-    @x %{g: 0, r: 250, s: 550, d: 820}
+    @cap 2_500
+    @columns [:g, :r, :s, :d]
+    @titles %{g: "WHO", r: "CAN REACH", s: "THROUGH SITE", d: "CARRIED BY DEVICE"}
     @w %{g: 170, r: 210, s: 170, d: 220}
     @chars %{g: 22, r: 28, s: 22, d: 22}
+    # Space for the curves between two columns, and between wrapped sub-columns.
+    @column_gap 80
+    @wrap_gap 24
+    # A long column wraps into sub-columns until the map is about this much wider than tall.
+    @aspect 1.4
+    @min_rows 12
 
-    def width, do: @width
     def node_height, do: @node_height
 
-    def headings do
-      [{"WHO", @x.g}, {"CAN REACH", @x.r}, {"THROUGH SITE", @x.s}, {"CARRIED BY DEVICE", @x.d}]
-    end
-
-    @doc "Every node reachable from `id` downstream, plus every node that reaches it."
-    def reach(edges, id) do
-      down = walk(edges, id, :from, :to)
-      up = walk(edges, id, :to, :from)
+    @doc "Every node reachable downstream of `ids` (one id or a list), plus every node that reaches them."
+    def reach(edges, ids) do
+      ids = List.wrap(ids)
+      down = edges |> Enum.group_by(& &1.from, & &1.to) |> walk(ids)
+      up = edges |> Enum.group_by(& &1.to, & &1.from) |> walk(ids)
       MapSet.union(down, up)
     end
 
@@ -311,13 +374,15 @@ defmodule PortalWeb.Access.Graph do
       {nodes, notes} = cap(nodes)
       ids = MapSet.new(nodes, & &1.id)
       edges = Enum.filter(edges, &(MapSet.member?(ids, &1.from) and MapSet.member?(ids, &1.to)))
-      {nodes, height} = place(nodes)
+      {nodes, height, width, headings} = place(nodes)
       by_id = Map.new(nodes, &{&1.id, &1})
 
       %{
         nodes: nodes,
         edges: Enum.map(edges, &Map.put(&1, :d, curve(by_id[&1.from], by_id[&1.to]))),
         height: height,
+        width: width,
+        headings: headings,
         notes: notes
       }
     end
@@ -344,6 +409,8 @@ defmodule PortalWeb.Access.Graph do
         |> Enum.sort_by(&{&1.kind == :people, String.downcase(&1.title)})
 
       {pools, routed} = Enum.split_with(data.resources, &(&1.type == :device_pool))
+
+      routed = Enum.sort_by(routed, &{&1.site_id || "", String.downcase(&1.name)})
 
       resources =
         Enum.map(routed, &make_node("resource:#{&1.id}", :resource, :r, &1.name, href(account, :resources, &1.id), resource_sub(&1))) ++
@@ -483,7 +550,8 @@ defmodule PortalWeb.Access.Graph do
       keep =
         nodes
         |> Enum.filter(&matches?(&1, needle))
-        |> Enum.reduce(MapSet.new(), fn node, acc -> MapSet.union(acc, reach(edges, node.id)) end)
+        |> Enum.map(& &1.id)
+        |> then(&reach(edges, &1))
 
       {Enum.filter(nodes, &MapSet.member?(keep, &1.id)),
        Enum.filter(edges, &(MapSet.member?(keep, &1.from) and MapSet.member?(keep, &1.to)))}
@@ -515,33 +583,80 @@ defmodule PortalWeb.Access.Graph do
     defp col_name(:d), do: "devices"
 
     # Pools and the devices they reach sit below the rest, since they skip the site column.
+    # Columns too tall for the map's shape wrap into sub-columns; both sections share
+    # the same columns so the headings line up.
     defp place(nodes) do
       first = Enum.filter(nodes, &(&1.section == 1))
       second = Enum.filter(nodes, &(&1.section == 2))
+      counts = [count_by_col(first), count_by_col(second)]
+      rows = rows_per_column(counts)
+      {xs, width} = column_positions(counts, rows)
 
-      {first, bottom} = place_section(first, @top)
+      {first, bottom} = place_section(first, @top, rows, xs)
       second_top = if first == [], do: @top, else: bottom + @gap
-      {second, bottom} = place_section(second, second_top)
+      {second, bottom} = place_section(second, second_top, rows, xs)
 
-      {first ++ second, max(bottom, @top) + 10}
+      headings = Enum.map(@columns, &{@titles[&1], xs[&1]})
+      {first ++ second, max(bottom, @top) + 10, width, headings}
     end
 
-    defp place_section([], top), do: {[], top}
+    defp count_by_col(nodes) do
+      nodes |> Enum.frequencies_by(& &1.col)
+    end
 
-    defp place_section(nodes, top) do
+    defp rows_per_column(counts) do
+      tallest = counts |> Enum.flat_map(&Map.values/1) |> Enum.max(fn -> 1 end)
+
+      if tallest <= @min_rows do
+        tallest
+      else
+        Enum.find(tallest..@min_rows//-1, @min_rows, fn rows ->
+          {_xs, width} = column_positions(counts, rows)
+          height = Enum.sum(Enum.map(counts, &section_rows(&1, rows))) * @row
+          width >= height * @aspect
+        end)
+      end
+    end
+
+    defp section_rows(counts, rows) do
+      counts |> Map.values() |> Enum.map(&min(&1, rows)) |> Enum.max(fn -> 0 end)
+    end
+
+    defp wraps(counts, col, rows) do
+      counts |> Enum.map(&ceil_div(Map.get(&1, col, 0), rows)) |> Enum.max() |> max(1)
+    end
+
+    defp column_positions(counts, rows) do
+      {xs, right} =
+        Enum.reduce(@columns, {%{}, 0}, fn col, {xs, x} ->
+          span = wraps(counts, col, rows) * (@w[col] + @wrap_gap) - @wrap_gap
+          {Map.put(xs, col, x), x + span + @column_gap}
+        end)
+
+      {xs, right - @column_gap}
+    end
+
+    defp ceil_div(0, _rows), do: 0
+    defp ceil_div(count, rows), do: div(count + rows - 1, rows)
+
+    defp place_section([], top, _rows, _xs), do: {[], top}
+
+    defp place_section(nodes, top, rows, xs) do
       by_col = Enum.group_by(nodes, & &1.col)
-      tallest = by_col |> Map.values() |> Enum.map(&length/1) |> Enum.max()
+      tallest = by_col |> Map.values() |> Enum.map(&min(length(&1), rows)) |> Enum.max()
       span = (tallest - 1) * @row
 
       placed =
         Enum.flat_map(by_col, fn {col, col_nodes} ->
           count = length(col_nodes)
-          offset = div(span - (count - 1) * @row, 2)
+          offset = if count < rows, do: div(span - (count - 1) * @row, 2), else: 0
 
           col_nodes
           |> Enum.with_index()
           |> Enum.map(fn {node, index} ->
-            Map.merge(node, %{x: @x[col], w: @w[col], y: top + offset + index * @row})
+            wrap = div(index, rows)
+            x = xs[col] + wrap * (@w[col] + @wrap_gap)
+            Map.merge(node, %{x: x, w: @w[col], y: top + offset + rem(index, rows) * @row})
           end)
         end)
 
@@ -557,22 +672,13 @@ defmodule PortalWeb.Access.Graph do
       "M#{x1},#{y1} C#{m},#{y1} #{m},#{y2} #{x2},#{y2}"
     end
 
-    defp walk(edges, start, from, to) do
-      do_walk(edges, [start], MapSet.new([start]), from, to)
-    end
+    defp walk(adjacency, starts), do: do_walk(adjacency, starts, MapSet.new(starts))
 
-    defp do_walk(_edges, [], seen, _from, _to), do: seen
+    defp do_walk(_adjacency, [], seen), do: seen
 
-    defp do_walk(edges, [id | rest], seen, from, to) do
-      next =
-        for edge <- edges,
-            Map.fetch!(edge, from) == id,
-            target = Map.fetch!(edge, to),
-            not MapSet.member?(seen, target),
-            uniq: true,
-            do: target
-
-      do_walk(edges, rest ++ next, Enum.reduce(next, seen, &MapSet.put(&2, &1)), from, to)
+    defp do_walk(adjacency, [id | rest], seen) do
+      next = adjacency |> Map.get(id, []) |> Enum.reject(&MapSet.member?(seen, &1))
+      do_walk(adjacency, next ++ rest, Enum.reduce(next, seen, &MapSet.put(&2, &1)))
     end
   end
 
