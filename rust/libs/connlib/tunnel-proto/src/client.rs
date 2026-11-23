@@ -203,7 +203,6 @@ pub struct ClientState {
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
-    authorization_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
 impl ClientState {
@@ -247,7 +246,6 @@ impl ClientState {
             resource_list: Default::default(),
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
-            authorization_duration: otel_instruments::authorization_duration(),
         }
     }
 
@@ -1093,14 +1091,6 @@ impl ClientState {
             return Ok(());
         }
 
-        for pending in &pending_authorizations {
-            self.authorization_duration.record(
-                now.saturating_duration_since(pending.first_seen_at())
-                    .as_secs_f64(),
-                &[],
-            );
-        }
-
         self.node.upsert_connection(
             ClientOrGatewayId::Gateway(gid),
             gateway_key,
@@ -1275,12 +1265,6 @@ impl ClientState {
             .pending_authorizations
             .remove_device_authorizations(|addr| client_tun.is_ip(addr))
         {
-            self.authorization_duration.record(
-                now.saturating_duration_since(pending.first_seen_at())
-                    .as_secs_f64(),
-                &[],
-            );
-
             let (packets, _) = pending.into_buffers();
             buffered_packets.extend(packets);
         }
