@@ -278,14 +278,18 @@ defmodule PortalAPI.Sockets do
   def notify_public_key_changed(%Portal.Device{}, nil), do: :ok
 
   def notify_public_key_changed(%Portal.Device{} = device, _previous_public_key) do
-    message = {:public_key_changed, device.type, device.id, device.public_key}
-
-    for peer_id <- Database.authorized_peer_ids(device) do
-      Portal.PG.deliver(peer_id, message)
+    for {peer_id, role} <- authorized_peers(device) do
+      Portal.PG.deliver(peer_id, {:public_key_changed, role, device.id, device.public_key})
     end
 
     :ok
   end
+
+  # A device without a type has a role per peer: it serves a site to some and is a client to others.
+  defp authorized_peers(%Portal.Device{type: nil} = device), do: Database.authorized_peer_roles(device)
+
+  defp authorized_peers(%Portal.Device{} = device),
+    do: device |> Database.authorized_peer_ids() |> Enum.map(&{&1, device.type})
 
   defp changeset_error_detail(%Ecto.Changeset{} = changeset) do
     changeset
@@ -353,6 +357,37 @@ defmodule PortalAPI.Sockets do
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.all()
+    end
+
+    def authorized_peer_roles(%Portal.Device{account_id: account_id, id: device_id}) do
+      now = DateTime.utc_now()
+
+      active =
+        from(pa in Portal.PolicyAuthorization,
+          where: pa.account_id == ^account_id,
+          where: pa.expires_at > ^now
+        )
+
+      from(pa in active,
+        where: pa.initiating_device_id == ^device_id,
+        select: {pa.receiving_device_id, fragment("'client'")}
+      )
+      |> union(
+        ^from(pa in active,
+          left_join: r in Portal.Resource,
+          on: r.account_id == pa.account_id and r.id == pa.resource_id,
+          where: pa.receiving_device_id == ^device_id,
+          select:
+            {pa.initiating_device_id,
+             fragment("CASE WHEN ? = 'device_pool' THEN 'client' ELSE 'gateway' END", r.type)}
+        )
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.all()
+      |> Enum.map(fn
+        {peer_id, "client"} -> {peer_id, :client}
+        {peer_id, "gateway"} -> {peer_id, :gateway}
+      end)
     end
   end
 end

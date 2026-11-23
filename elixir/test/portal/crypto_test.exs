@@ -4,7 +4,7 @@ defmodule Portal.CryptoTest do
   import Portal.AccountFixtures
   import Portal.DeviceFixtures
 
-  describe "psk/4" do
+  describe "psk/5" do
     setup do
       account = account_fixture()
       client = client_fixture(account: account)
@@ -27,7 +27,7 @@ defmodule Portal.CryptoTest do
       gateway: gateway,
       gateway_public_key: gateway_public_key
     } do
-      psk = psk(client, client_public_key, gateway, gateway_public_key)
+      psk = psk(:site, client, client_public_key, gateway, gateway_public_key)
       assert is_binary(psk)
       # 32 bytes base64 encoded = 44 characters
       assert 44 == String.length(psk)
@@ -39,7 +39,7 @@ defmodule Portal.CryptoTest do
       gateway: gateway,
       gateway_public_key: gateway_public_key
     } do
-      psk = psk(client, client_public_key, gateway, gateway_public_key)
+      psk = psk(:site, client, client_public_key, gateway, gateway_public_key)
       assert {:ok, decoded} = Base.decode64(psk)
       assert byte_size(decoded) == 32
     end
@@ -51,13 +51,13 @@ defmodule Portal.CryptoTest do
       gateway: gateway,
       gateway_public_key: gateway_public_key
     } do
-      psk1 = psk(client, client_public_key, gateway, gateway_public_key)
+      psk1 = psk(:site, client, client_public_key, gateway, gateway_public_key)
 
       other_client = client_fixture(account: account)
       other_public_key = Portal.DeviceFixtures.generate_public_key()
 
       other_psk =
-        psk(other_client, other_public_key, gateway, gateway_public_key)
+        psk(:site, other_client, other_public_key, gateway, gateway_public_key)
 
       assert other_psk != psk1
 
@@ -66,6 +66,7 @@ defmodule Portal.CryptoTest do
 
       other_psk =
         psk(
+          :site,
           client,
           client_public_key,
           other_gateway,
@@ -81,8 +82,8 @@ defmodule Portal.CryptoTest do
       gateway: gateway,
       gateway_public_key: gateway_public_key
     } do
-      psk1 = psk(client, client_public_key, gateway, gateway_public_key)
-      psk2 = psk(client, client_public_key, gateway, gateway_public_key)
+      psk1 = psk(:site, client, client_public_key, gateway, gateway_public_key)
+      psk2 = psk(:site, client, client_public_key, gateway, gateway_public_key)
       assert psk1 == psk2
     end
 
@@ -92,7 +93,7 @@ defmodule Portal.CryptoTest do
       gateway: gateway,
       gateway_public_key: gateway_public_key
     } do
-      result = psk(client, client_public_key, gateway, gateway_public_key)
+      result = psk(:site, client, client_public_key, gateway, gateway_public_key)
 
       # Manually compute expected result to verify algorithm
       secret_bytes = client.psk_base <> gateway.psk_base
@@ -115,8 +116,8 @@ defmodule Portal.CryptoTest do
       client2 = client_fixture(account: account)
       public_key = Portal.DeviceFixtures.generate_public_key()
 
-      psk1 = psk(client1, public_key, gateway, gateway_public_key)
-      psk2 = psk(client2, public_key, gateway, gateway_public_key)
+      psk1 = psk(:site, client1, public_key, gateway, gateway_public_key)
+      psk2 = psk(:site, client2, public_key, gateway, gateway_public_key)
 
       refute psk1 == psk2
     end
@@ -131,6 +132,7 @@ defmodule Portal.CryptoTest do
 
       psk1 =
         psk(
+          :site,
           client,
           client_public_key,
           gateway1,
@@ -139,6 +141,7 @@ defmodule Portal.CryptoTest do
 
       psk2 =
         psk(
+          :site,
           client,
           client_public_key,
           gateway2,
@@ -146,6 +149,34 @@ defmodule Portal.CryptoTest do
         )
 
       refute psk1 == psk2
+    end
+
+    test "uses the pool salt for a receiver in a device pool", %{account: account, client: client} do
+      client_public_key = Portal.DeviceFixtures.generate_public_key()
+      receiver = client_fixture(account: account)
+      receiver_public_key = Portal.DeviceFixtures.generate_public_key()
+
+      salt =
+        "WG_PSK_CC|CA_ID:#{client.id}|CB_ID:#{receiver.id}|CA_PK:#{client_public_key}|CB_PK:#{receiver_public_key}"
+
+      expected =
+        :crypto.pbkdf2_hmac(:sha256, client.psk_base <> receiver.psk_base, salt, 1, 32)
+        |> Base.encode64()
+
+      assert psk(:pool, client, client_public_key, receiver, receiver_public_key) == expected
+    end
+
+    test "derives a key for devices without a type", %{account: account} do
+      initiator = typeless_device_fixture(account: account)
+      receiver = typeless_device_fixture(account: account)
+      initiator_public_key = Portal.DeviceFixtures.generate_public_key()
+      receiver_public_key = Portal.DeviceFixtures.generate_public_key()
+
+      site_psk = psk(:site, initiator, initiator_public_key, receiver, receiver_public_key)
+      pool_psk = psk(:pool, initiator, initiator_public_key, receiver, receiver_public_key)
+
+      assert byte_size(Base.decode64!(site_psk)) == 32
+      assert site_psk != pool_psk
     end
   end
 

@@ -82,7 +82,7 @@ defmodule Portal.Workers.DeleteStalePostureAuthorizations do
         join: p in Policy,
         on: p.account_id == a.account_id and p.id == a.policy_id,
         where: a.account_id == ^account_id and a.expires_at > ^now,
-        where: d.type == :client and not is_nil(p.postures),
+        where: (d.type == :client or is_nil(d.type)) and not is_nil(p.postures),
         distinct: true,
         select: {d, p}
       )

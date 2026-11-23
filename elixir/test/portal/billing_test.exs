@@ -569,6 +569,15 @@ defmodule Portal.BillingTest do
       assert connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
     end
 
+    test "counts devices without a type", %{account: account, actor: actor} do
+      for _ <- 1..2 do
+        device = typeless_device_fixture(account: account, actor: actor)
+        :ok = Portal.Presence.Devices.connect(device, Ecto.UUID.generate())
+      end
+
+      assert connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
+    end
+
     test "never counts the device itself", %{account: account, actor: actor} do
       connect_device(account, actor)
       device = connect_device(account, actor)

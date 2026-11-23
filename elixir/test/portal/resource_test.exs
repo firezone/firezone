@@ -352,6 +352,17 @@ defmodule Portal.ResourceTest do
     end
   end
 
+  describe "adapt_resource_for_version/2" do
+    test "keeps resources for a device without a type" do
+      device = %Portal.Device{type: nil, last_seen_version: "1.7.0", last_seen_user_agent: "Linux/6.8 firezone/1.7.0"}
+      pool = %Portal.Resource{type: :device_pool}
+      dns = %Portal.Resource{type: :dns, address: "*.example.com"}
+
+      assert Resource.adapt_resource_for_version(pool, device) == pool
+      assert Resource.adapt_resource_for_version(dns, device) == dns
+    end
+  end
+
   describe "matches_dns_pattern?/2" do
     test "matches single-label wildcard" do
       assert Portal.Resource.matches_dns_pattern?("*.devices.example.com", "host.devices.example.com")

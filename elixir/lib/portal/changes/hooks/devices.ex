@@ -24,7 +24,7 @@ defmodule Portal.Changes.Hooks.Devices do
       change = %Change{lsn: lsn, op: :update, old_struct: old_device, struct: device}
 
       # Unverifying a client device - delete associated policy_authorizations
-      if device.type == :client and
+      if device.type != :gateway and
            not is_nil(old_device.verified_at) and is_nil(device.verified_at) do
         Database.delete_policy_authorizations_for_device(device)
       end

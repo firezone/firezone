@@ -1360,7 +1360,7 @@ defmodule PortalWeb.Settings.Account do
         on: d.account_id == da.account_id and d.id == da.device_id,
         as: :device
       )
-      |> where([device: d], d.type == :client)
+      |> where([device: d], d.type == :client or is_nil(d.type))
       |> distinct([device_actors: da], da.actor_id)
       |> order_by([device_actors: da, device: d], desc_nulls_last: da.last_seen_at, asc: d.id)
       |> select([device_actors: da, device: d], {

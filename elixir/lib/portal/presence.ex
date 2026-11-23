@@ -94,7 +94,7 @@ defmodule Portal.Presence do
       account_id
       |> __MODULE__.Account.list()
       |> Enum.flat_map(fn
-        {id, %{metas: [%{type: :client, actor_id: ^actor_id} | _]}} when id != except_device_id ->
+        {id, %{metas: [%{type: type, actor_id: ^actor_id} | _]}} when id != except_device_id and type != :gateway ->
           [id]
 
         _ ->
