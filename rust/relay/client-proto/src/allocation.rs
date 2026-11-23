@@ -898,6 +898,7 @@ impl Allocation {
         for message in channel_refresh_messages {
             self.authenticate_and_queue(message, None, now);
         }
+        self.channel_bindings.schedule_next_refresh(now);
 
         // TODO: Clean up unused channels
     }
@@ -931,6 +932,7 @@ impl Allocation {
         iter::empty()
             .chain(next_refresh)
             .chain(next_keepalive)
+            .chain(self.channel_bindings.next_refresh)
             .chain(next_timeout)
             .min()
     }
@@ -1605,6 +1607,8 @@ stun_codec::define_attribute_enums!(
 struct ChannelBindings {
     inner: HashMap<u16, Channel, FastRandomState>,
     next_channel: u16,
+    /// No channel is due for a refresh before this.
+    next_refresh: Option<Instant>,
 }
 
 impl Default for ChannelBindings {
@@ -1612,6 +1616,7 @@ impl Default for ChannelBindings {
         Self {
             inner: Default::default(),
             next_channel: Self::FIRST_CHANNEL,
+            next_refresh: None,
         }
     }
 }
@@ -1639,6 +1644,13 @@ impl ChannelBindings {
             return None;
         }
 
+        if channel.no_activity() {
+            let refresh_at = channel.refresh_at();
+            self.next_refresh = Some(
+                self.next_refresh
+                    .map_or(refresh_at, |next| next.min(refresh_at)),
+            );
+        }
         channel.record_received(now);
 
         Some((channel.peer, packet.payload()))
@@ -1699,6 +1711,23 @@ impl ChannelBindings {
             .map(|(number, channel)| (*number, channel.peer))
     }
 
+    /// Looks for the next channel that is due for a refresh after `now`.
+    ///
+    /// Must be called after refreshing the channels returned from [`ChannelBindings::channels_to_refresh`].
+    fn schedule_next_refresh(&mut self, now: Instant) {
+        if self.next_refresh.is_none_or(|at| now < at) {
+            return;
+        }
+
+        self.next_refresh = self
+            .inner
+            .values()
+            .filter(|channel| !channel.no_activity())
+            .map(Channel::refresh_at)
+            .filter(|at| *at > now)
+            .min();
+    }
+
     fn connected_channel_to_peer(&self, peer: SocketAddr, now: Instant) -> Option<u16> {
         self.inner
             .iter()
@@ -1740,6 +1769,7 @@ impl ChannelBindings {
 
     fn clear(&mut self) {
         self.inner.clear();
+        self.next_refresh = None;
     }
 }
 
@@ -1793,17 +1823,12 @@ impl Channel {
     /// - are older than 5 minutes
     /// - we have received data on since we created / refreshed them
     fn needs_refresh(&self, now: Instant) -> bool {
-        let channel_refresh_threshold = Self::CHANNEL_LIFETIME / 2;
+        !self.no_activity() && now >= self.refresh_at()
+    }
 
-        if self.age(now) < channel_refresh_threshold {
-            return false;
-        }
-
-        if self.no_activity() {
-            return false;
-        }
-
-        true
+    /// Returns when this channel is due for a refresh, if it received data by then.
+    fn refresh_at(&self) -> Instant {
+        self.bound_at + Self::CHANNEL_LIFETIME / 2
     }
 
     /// Returns `true` if no data has been received since we created this channel.
@@ -2009,6 +2034,25 @@ mod tests {
             .next();
 
         assert!(maybe_refresh.is_none())
+    }
+
+    #[test]
+    fn channel_with_activity_is_due_for_a_refresh_after_half_its_lifetime() {
+        let mut channel_bindings = ChannelBindings::default();
+        let start = Instant::now();
+        let bound_at = start + Duration::from_secs(1);
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
+        channel_bindings.set_confirmed(channel, bound_at);
+
+        let mut packet = channel_data_packet_buffer(b"foobar");
+        crate::channel_data::encode_header_to_slice(&mut packet[..4], channel, 6);
+        let packet = channel_data::decode(&packet).unwrap();
+        channel_bindings
+            .try_handle_packet(packet, start + Duration::from_secs(2))
+            .unwrap();
+
+        assert_eq!(channel_bindings.next_refresh, Some(bound_at + 5 * MINUTE));
     }
 
     #[test]
