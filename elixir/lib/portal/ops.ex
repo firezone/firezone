@@ -673,7 +673,8 @@ defmodule Portal.Ops do
 
         with {:ok, account} <- account |> Safe.unscoped() |> Safe.delete(),
              {:ok, _job} <- maybe_insert_delete_subscription_job(account),
-             {:ok, _job} <- Portal.Avatars.DeleteAccount.insert(account.id) do
+             {:ok, _job} <- Portal.Avatars.DeleteAccount.insert(account.id),
+             {:ok, _job} <- Portal.Workers.DeleteDeviceCA.insert(account.id) do
           {:ok, account}
         end
       end)

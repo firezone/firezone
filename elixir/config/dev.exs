@@ -177,6 +177,7 @@ config :portal, Oban,
   ],
   queues: [
     default: 10,
+    device_ca: 2,
     crl_scheduler: 1,
     crl_sync: 5,
     ocsp_scheduler: 1,

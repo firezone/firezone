@@ -193,6 +193,12 @@ config :portal, Portal.OTLP.TracesExporter,
     retry: false
   ]
 
+config :portal, Portal.DeviceCA.KeyVault,
+  req_opts: [
+    plug: {Req.Test, Portal.DeviceCA.KeyVault},
+    retry: false
+  ]
+
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
     plug: {Req.Test, Portal.SlugRegistry.AzureTable},

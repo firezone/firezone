@@ -262,6 +262,7 @@ if config_env() == :prod do
   config :portal, data_residency_region: env_var_to_config!(:data_residency_region)
 
   config :portal, slug_registry_table_url: env_var_to_config!(:slug_registry_table_url)
+  config :portal, device_ca_key_vault_url: env_var_to_config!(:device_ca_key_vault_url)
 
   config :portal,
     region_transfer_outbox_url: env_var_to_config!(:region_transfer_outbox_url),
@@ -485,6 +486,7 @@ if config_env() == :prod do
     ],
     queues: [
       default: 10,
+      device_ca: 2,
       crl_scheduler: 1,
       crl_sync: 5,
       ocsp_scheduler: 1,

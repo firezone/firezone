@@ -1,7 +1,7 @@
 defmodule Portal.Changes.Hooks.Accounts do
   @behaviour Portal.Changes.Hooks
   alias Portal.{Accounts.Limits, Changes.Change, PubSub}
-  alias Portal.Workers.SyncStripeCustomer
+  alias Portal.Workers.{ProvisionDeviceCA, SyncStripeCustomer}
   alias __MODULE__.Database
   import Portal.SchemaHelpers
 
@@ -9,6 +9,8 @@ defmodule Portal.Changes.Hooks.Accounts do
   def on_insert(lsn, %{"is_disabled" => false} = data) do
     account = struct_from_params(Portal.Account, data)
     change = %Change{lsn: lsn, op: :insert, struct: account}
+
+    {:ok, _job} = %{account_id: account.id} |> ProvisionDeviceCA.new() |> Oban.insert()
 
     PubSub.Changes.broadcast_account(change)
   end
