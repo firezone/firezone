@@ -40,18 +40,19 @@ defmodule PortalWeb.Devices do
       |> assign(page_title: "Devices")
       |> assign(selected_device: nil)
       |> assign(unified_devices?: unified_devices?)
-      |> assign(device_site: nil, sites: [], gateway_panel: base_gateway_panel())
+      |> assign(device_site: nil, sites: %AsyncResult{}, gateway_panel: base_gateway_panel())
       |> assign(stale: false)
       |> assign_async(:devices_count, fn -> {:ok, %{devices_count: Database.count_devices(subject)}} end)
       |> assign(
-        device_pools: [],
-        policy_authorizations: [],
-        policy_authorizations_page: 1,
-        policy_authorizations_has_next: false,
+        loaded_device_id: nil,
+        device_pools: %AsyncResult{},
+        gateway_tokens: %AsyncResult{},
+        policy_authorizations: %AsyncResult{},
+        policy_authorizations_key: nil,
         policy_authorizations_expanded_id: nil,
-        device_posture: [],
+        device_posture: %AsyncResult{},
+        device_posture_key: nil,
         device_certificate: nil,
-        posture_providers_connected?: false,
         serials_by_device: %{},
         sites_by_device: %{},
         devices: [],
@@ -78,34 +79,28 @@ defmodule PortalWeb.Devices do
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
     socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
-    case Database.get_device_for_panel(id, socket.assigns.subject) do
-      nil ->
-        redirect_to_devices_index(socket, "Device does not exist.")
+    case socket.assigns do
+      %{loaded_device_id: ^id, selected_device: %Device{} = device} ->
+        {:noreply, show_device_tab(socket, device, params)}
 
-      device ->
-        page = parse_page(params)
-        tab = device_tab(device, parse_device_tab(Map.get(params, "tab", "overview")))
+      _ ->
+        case Database.get_device_for_panel(id, socket.assigns.subject) do
+          nil ->
+            redirect_to_devices_index(socket, "Device does not exist.")
 
-        {policy_authorizations, has_next} =
-          Database.list_policy_authorizations_for_device(device, socket.assigns.subject, page)
-
-        {:noreply,
-         socket
-         |> assign(selected_device: device)
-         |> assign(show_device_assigns(tab))
-         |> assign(
-           device_pools: Database.list_device_pools(device, socket.assigns.subject),
-           policy_authorizations: policy_authorizations,
-           policy_authorizations_page: page,
-           policy_authorizations_has_next: has_next,
-           policy_authorizations_expanded_id: nil,
-           device_posture: Database.list_posture_for_device(device, socket.assigns.subject),
-           device_certificate: Database.certificate_status(device, socket.assigns.subject),
-           posture_providers_connected?:
-             Database.posture_providers_connected?(socket.assigns.subject)
-         )
-         |> assign_site_assignment(device)
-         |> assign_gateway_panel(device)}
+          device ->
+            {:noreply,
+             socket
+             |> assign(
+               selected_device: device,
+               loaded_device_id: device.id,
+               policy_authorizations_expanded_id: nil,
+               device_certificate: Database.certificate_status(device, socket.assigns.subject)
+             )
+             |> assign_device_site(device)
+             |> load_device_details(device)
+             |> show_device_tab(device, params)}
+        end
     end
   end
 
@@ -124,7 +119,7 @@ defmodule PortalWeb.Devices do
 
         {:noreply,
          socket
-         |> assign(selected_device: device)
+         |> assign(selected_device: device, loaded_device_id: nil)
          |> assign(edit_device_assigns(to_form(changeset)))}
     end
   end
@@ -134,40 +129,127 @@ defmodule PortalWeb.Devices do
 
     {:noreply,
      socket
-     |> assign(
-       selected_device: nil,
-       device_pools: [],
-       device_posture: [],
-       device_certificate: nil
-     )
+     |> assign(selected_device: nil, loaded_device_id: nil, device_certificate: nil)
      |> assign(base_device_assigns())}
   end
 
-  defp assign_site_assignment(%{assigns: %{unified_devices?: true}} = socket, device) do
+  defp assign_device_site(%{assigns: %{unified_devices?: true}} = socket, device) do
+    assign(socket, device_site: Database.get_device_site(device, socket.assigns.subject))
+  end
+
+  defp assign_device_site(socket, _device), do: assign(socket, device_site: nil)
+
+  defp load_device_details(socket, device) do
     subject = socket.assigns.subject
 
-    assign(socket,
-      device_site: Database.get_device_site(device, subject),
-      sites: Database.list_sites(subject)
+    socket
+    |> assign(gateway_panel: base_gateway_panel())
+    |> reset_lazy_tab(:policy_authorizations, :policy_authorizations_key)
+    |> reset_lazy_tab(:device_posture, :device_posture_key)
+    |> assign_async(:device_pools, fn -> {:ok, %{device_pools: Database.list_device_pools(device, subject)}} end,
+      reset: true
+    )
+    |> load_sites()
+    |> assign_gateway_tokens(device)
+  end
+
+  defp load_sites(%{assigns: %{unified_devices?: true}} = socket) do
+    subject = socket.assigns.subject
+    assign_async(socket, :sites, fn -> {:ok, %{sites: Database.list_sites(subject)}} end)
+  end
+
+  defp load_sites(socket), do: socket
+
+  defp assign_gateway_tokens(%{assigns: %{device_site: %Portal.Site{} = site}} = socket, %Device{type: :gateway} = gateway) do
+    subject = socket.assigns.subject
+
+    assign_async(
+      socket,
+      :gateway_tokens,
+      fn ->
+        legacy_tokens = Portal.Devices.list_gateway_tokens_for_site(site.id, subject)
+
+        {:ok,
+         %{
+           gateway_tokens: %{
+             device_tokens: load_gateway_tokens(gateway, site, subject),
+             legacy_token_ids: MapSet.new(legacy_tokens, & &1.id)
+           }
+         }}
+      end,
+      reset: true
     )
   end
 
-  defp assign_site_assignment(socket, _device), do: socket
-
-  defp assign_gateway_panel(%{assigns: %{device_site: %Portal.Site{} = site}} = socket, %Device{type: :gateway} = gateway) do
-    subject = socket.assigns.subject
-    legacy_tokens = Portal.Devices.list_gateway_tokens_for_site(site.id, subject)
-
-    assign(socket,
-      gateway_panel: %{
-        base_gateway_panel()
-        | device_tokens: load_gateway_tokens(gateway, site, subject),
-          legacy_token_ids: MapSet.new(legacy_tokens, & &1.id)
-      }
-    )
+  defp assign_gateway_tokens(socket, _device) do
+    socket
+    |> cancel_async(socket.assigns.gateway_tokens)
+    |> assign(gateway_tokens: %AsyncResult{})
   end
 
-  defp assign_gateway_panel(socket, _device), do: assign(socket, gateway_panel: base_gateway_panel())
+  defp show_device_tab(socket, device, params) do
+    tab = device_tab(device, parse_device_tab(Map.get(params, "tab", "overview")))
+
+    socket
+    |> assign(show_device_assigns(tab))
+    |> maybe_load_tab(device, tab, parse_page(params))
+  end
+
+  defp reset_lazy_tab(socket, key, key_assign) do
+    socket
+    |> cancel_async(Map.fetch!(socket.assigns, key))
+    |> assign([{key, %AsyncResult{}}, {key_assign, nil}])
+  end
+
+  defp maybe_load_tab(socket, device, :authorizations, page) do
+    device_id = device.id
+    key = {device_id, page}
+
+    case socket.assigns do
+      %{policy_authorizations_key: ^key, policy_authorizations: %AsyncResult{failed: nil}} ->
+        socket
+
+      %{policy_authorizations: loaded} ->
+        subject = socket.assigns.subject
+        same_device? = match?(%AsyncResult{ok?: true, result: %{device_id: ^device_id}}, loaded)
+
+        socket
+        |> assign(policy_authorizations_key: key)
+        |> assign_async(
+          :policy_authorizations,
+          fn ->
+            {rows, has_next} = Database.list_policy_authorizations_for_device(device, subject, page)
+            {:ok, %{policy_authorizations: %{device_id: device.id, page: page, rows: rows, has_next: has_next}}}
+          end,
+          reset: not same_device?
+        )
+    end
+  end
+
+  defp maybe_load_tab(socket, device, :posture, _page) do
+    case socket.assigns do
+      %{device_posture_key: id, device_posture: %AsyncResult{failed: nil}} when id == device.id ->
+        socket
+
+      _ ->
+        subject = socket.assigns.subject
+
+        socket
+        |> assign(device_posture_key: device.id)
+        |> assign_async(:device_posture, fn ->
+          {:ok,
+           %{
+             device_posture: %{
+               device_id: device.id,
+               entries: Database.list_posture_for_device(device, subject),
+               providers_connected?: Database.posture_providers_connected?(subject)
+             }
+           }}
+        end, reset: true)
+    end
+  end
+
+  defp maybe_load_tab(socket, _device, _tab, _page), do: socket
 
   defp load_gateway_tokens(gateway, site, subject) do
     site.id
@@ -308,16 +390,14 @@ defmodule PortalWeb.Devices do
         query_params={@query_params}
         device_pools={@device_pools}
         posture={@device_posture}
-        posture_providers_connected?={@posture_providers_connected?}
         certificate={@device_certificate}
         policy_authorizations={@policy_authorizations}
-        policy_authorizations_page={@policy_authorizations_page}
-        policy_authorizations_has_next={@policy_authorizations_has_next}
         policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
         site_assignment={
           if @unified_devices?, do: %{site: @device_site, sites: @sites}, else: nil
         }
         gateway_panel={@gateway_panel}
+        gateway_tokens={@gateway_tokens}
       />
     </div>
     """
@@ -344,8 +424,6 @@ defmodule PortalWeb.Devices do
 
   defp base_gateway_panel do
     %{
-      device_tokens: %{},
-      legacy_token_ids: MapSet.new(),
       rename_gateway_id: nil,
       confirm_rotate_gateway_id: nil,
       rotated_gateway_token: nil
@@ -441,7 +519,7 @@ defmodule PortalWeb.Devices do
         {:noreply,
          socket
          |> put_flash(:success, "Device added to the site.")
-         |> assign_site_assignment(device)}
+         |> assign_device_site(device)}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Could not add the device to the site.")}
@@ -458,7 +536,7 @@ defmodule PortalWeb.Devices do
         {:noreply,
          socket
          |> put_flash(:success, "Device removed from the site.")
-         |> assign_site_assignment(device)}
+         |> assign_device_site(device)}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Could not remove the device from the site.")}
@@ -666,7 +744,8 @@ defmodule PortalWeb.Devices do
 
     with {:ok, gateway} <- Portal.Devices.fetch_gateway(device.id, site, subject),
          {:ok, _token, encoded_token} <- Portal.Devices.rotate_gateway_token(gateway, subject) do
-      prior_tokens = Map.get(socket.assigns.gateway_panel.device_tokens, gateway.id, [])
+      gateway_tokens = loaded_gateway_tokens(socket)
+      prior_tokens = Map.get(gateway_tokens.device_tokens, gateway.id, [])
       device_tokens = load_gateway_tokens(gateway, site, subject)
 
       replaced_unused? =
@@ -681,9 +760,10 @@ defmodule PortalWeb.Devices do
            gateway_id: gateway.id,
            encoded: encoded_token,
            replaced_unused: replaced_unused?
-         },
-         device_tokens: device_tokens
-       )}
+         }
+       )
+       |> cancel_async(socket.assigns.gateway_tokens)
+       |> assign(gateway_tokens: AsyncResult.ok(%{gateway_tokens | device_tokens: device_tokens}))}
     else
       _ ->
         {:noreply,
@@ -695,6 +775,13 @@ defmodule PortalWeb.Devices do
 
   defp handle_gateway_event("dismiss_rotated_gateway_token", _params, socket) do
     {:noreply, merge_state(socket, :gateway_panel, rotated_gateway_token: nil)}
+  end
+
+  defp loaded_gateway_tokens(socket) do
+    case socket.assigns.gateway_tokens do
+      %AsyncResult{ok?: true, result: tokens} -> tokens
+      _ -> %{device_tokens: %{}, legacy_token_ids: MapSet.new()}
+    end
   end
 
   defp delete_gateway(%{device_site: %Portal.Site{} = site} = assigns) do

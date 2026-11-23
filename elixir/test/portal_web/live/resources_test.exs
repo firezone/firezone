@@ -2130,6 +2130,127 @@ defmodule PortalWeb.ResourcesTest do
     end
   end
 
+  describe "async details" do
+    test "renders the header before the details load", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account, name: "Async Docs")
+      group = group_fixture(account: account, name: "Async Readers")
+      policy_fixture(account: account, resource: resource, group: group)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/resources/#{resource.id}")
+
+      assert html =~ "Async Docs"
+      assert html =~ "resource-access-loading"
+      refute html =~ "Async Readers"
+
+      html = render_async(lv)
+      assert html =~ "Async Readers"
+      refute html =~ "resource-access-loading"
+    end
+
+    test "never shows the previous resource's details on the next one", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first = resource_fixture(account: account, name: "First Resource")
+      first_group = group_fixture(account: account, name: "First Readers")
+      policy_fixture(account: account, resource: first, group: first_group)
+      second = resource_fixture(account: account, name: "Second Resource")
+      second_group = group_fixture(account: account, name: "Second Readers")
+      policy_fixture(account: account, resource: second, group: second_group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/resources/#{first.id}")
+
+      html = render_patch(lv, ~p"/#{account}/resources/#{second.id}")
+      refute html =~ "First Readers"
+
+      html = render_async(lv)
+      assert html =~ "Second Readers"
+      refute html =~ "First Readers"
+    end
+
+    test "loads authorizations only for the resource they belong to", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      named_actor = actor_fixture(account: account, name: "Alice Smith")
+      first = resource_fixture(account: account)
+      second = resource_fixture(account: account)
+      group = group_fixture(account: account)
+      membership = membership_fixture(account: account, actor: named_actor, group: group)
+      policy = policy_fixture(account: account, group: group, resource: first)
+
+      policy_authorization_fixture(
+        account: account,
+        actor: named_actor,
+        resource: first,
+        group: group,
+        policy: policy,
+        membership: membership
+      )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/resources/#{first.id}?tab=authorizations")
+
+      render_patch(lv, ~p"/#{account}/resources/#{second.id}")
+      html = render_patch(lv, ~p"/#{account}/resources/#{second.id}?tab=authorizations")
+      refute html =~ "Alice Smith"
+
+      html = render_async(lv)
+      assert html =~ "No recent policy authorizations"
+      refute html =~ "Alice Smith"
+    end
+
+    test "keeps loaded details when switching tabs", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account, name: "Tab Readers")
+      policy_fixture(account: account, resource: resource, group: group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      render_click(lv, "switch_resource_tab", %{"tab" => "authorizations"})
+      render_async(lv)
+      render_click(lv, "switch_resource_tab", %{"tab" => "groups"})
+
+      html = render(lv)
+      assert html =~ "Tab Readers"
+      refute html =~ "resource-access-loading"
+    end
+
+    test "opens the edit form before the pool members load", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      device = client_fixture(account: account, name: "Pool Laptop")
+      resource = device_pool_resource_fixture(account: account, devices: [device], name: "Lab")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/resources/#{resource.id}/edit")
+
+      assert html =~ "Edit Lab"
+      assert html =~ "resource-form-devices-loading"
+
+      html = render_async(lv)
+      refute html =~ "resource-form-devices-loading"
+      assert html =~ "Pool Laptop"
+    end
+  end
+
   describe "count badge" do
     test "shows total resource count after async load", %{
       conn: conn,

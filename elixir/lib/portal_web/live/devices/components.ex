@@ -3,6 +3,8 @@ defmodule PortalWeb.Devices.Components do
   alias PortalWeb.Components.Core
   alias Portal.ComponentVersions
   alias PortalWeb.Sites
+  alias PortalWeb.Settings
+  alias Phoenix.LiveView.AsyncResult
 
   def actor_show_url(account, actor, return_to \\ nil)
 
@@ -206,16 +208,14 @@ defmodule PortalWeb.Devices.Components do
   attr :panel, :map, required: true
   attr :confirm_state, :map, required: true
   attr :query_params, :map, default: %{}
-  attr :device_pools, :list, default: []
-  attr :posture, :list, default: []
-  attr :posture_providers_connected?, :boolean, default: false
+  attr :device_pools, AsyncResult, required: true
+  attr :posture, AsyncResult, required: true
   attr :certificate, :map, default: nil
-  attr :policy_authorizations, :list, default: []
-  attr :policy_authorizations_page, :integer, default: 1
-  attr :policy_authorizations_has_next, :boolean, default: false
+  attr :policy_authorizations, AsyncResult, required: true
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :site_assignment, :map, default: nil
   attr :gateway_panel, :map, default: nil
+  attr :gateway_tokens, AsyncResult, required: true
 
   def device_panel(assigns) do
     assigns =
@@ -240,14 +240,12 @@ defmodule PortalWeb.Devices.Components do
           confirm_unverify_device={@confirm_unverify_device}
           device_pools={@device_pools}
           posture={@posture}
-          posture_providers_connected?={@posture_providers_connected?}
           certificate={@certificate}
           policy_authorizations={@policy_authorizations}
-          policy_authorizations_page={@policy_authorizations_page}
-          policy_authorizations_has_next={@policy_authorizations_has_next}
           policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
           site_assignment={@site_assignment}
           gateway_panel={@gateway_panel}
+          gateway_tokens={@gateway_tokens}
         />
       </div>
     </Page.detail_modal>
@@ -337,16 +335,14 @@ defmodule PortalWeb.Devices.Components do
   attr :tab, :atom, default: :overview
   attr :confirm_delete_device, :boolean, default: false
   attr :confirm_unverify_device, :boolean, default: false
-  attr :device_pools, :list, default: []
-  attr :posture, :list, default: []
-  attr :posture_providers_connected?, :boolean, default: false
+  attr :device_pools, AsyncResult, required: true
+  attr :posture, AsyncResult, required: true
   attr :certificate, :map, default: nil
-  attr :policy_authorizations, :list, default: []
-  attr :policy_authorizations_page, :integer, default: 1
-  attr :policy_authorizations_has_next, :boolean, default: false
+  attr :policy_authorizations, AsyncResult, required: true
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :site_assignment, :map, default: nil
   attr :gateway_panel, :map, default: nil
+  attr :gateway_tokens, AsyncResult, required: true
 
   def device_details_view(assigns) do
     ~H"""
@@ -373,17 +369,26 @@ defmodule PortalWeb.Devices.Components do
           </div>
           <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
             <.device_owner_section :if={@device.actor} account={@account} device={@device} />
-            <.device_pools_section
-              :if={@device_pools != []}
-              account={@account}
-              device_pools={@device_pools}
-            />
+            <.async_result :let={device_pools} assign={@device_pools}>
+              <:loading>
+                <Settings.Components.skeleton id="device-pools-loading" rows={1} class="border-b border-hair" />
+              </:loading>
+              <:failed>
+                <.load_error id="device-pools-error">Could not load the device pools.</.load_error>
+              </:failed>
+              <.device_pools_section
+                :if={device_pools != []}
+                account={@account}
+                device_pools={device_pools}
+              />
+            </.async_result>
             <.gateway_site_section
               :if={@device.type == :gateway}
               account={@account}
               device={@device}
               site={@site_assignment.site}
               gateway_panel={@gateway_panel}
+              gateway_tokens={@gateway_tokens}
             />
             <.device_site_section
               :if={@site_assignment && @device.type != :gateway}
@@ -400,27 +405,50 @@ defmodule PortalWeb.Devices.Components do
             />
             <.device_network_section device={@device} />
           </div>
-          <.device_posture_tab
-            :if={@tab == :posture and @device.type != :gateway}
-            account={@account}
-            posture={@posture}
-            providers_connected?={@posture_providers_connected?}
-          />
-          <.device_policy_authorizations_tab
-            :if={@tab == :authorizations}
-            account={@account}
-            device={@device}
-            policy_authorizations={@policy_authorizations}
-            page={@policy_authorizations_page}
-            has_next={@policy_authorizations_has_next}
-            expanded_id={@policy_authorizations_expanded_id}
-          />
+          <.async_result
+            :let={posture}
+            :if={@tab == :posture and @device.type != :gateway and @posture != %AsyncResult{}}
+            assign={@posture}
+          >
+            <:loading>
+              <Settings.Components.skeleton id="device-posture-loading" rows={3} />
+            </:loading>
+            <:failed>
+              <.load_error id="device-posture-error">Could not load the posture data.</.load_error>
+            </:failed>
+            <.device_posture_tab
+              account={@account}
+              posture={posture.entries}
+              providers_connected?={posture.providers_connected?}
+            />
+          </.async_result>
+          <.async_result
+            :let={authorizations}
+            :if={@tab == :authorizations and @policy_authorizations != %AsyncResult{}}
+            assign={@policy_authorizations}
+          >
+            <:loading>
+              <Settings.Components.skeleton id="device-authorizations-loading" rows={3} />
+            </:loading>
+            <:failed>
+              <.load_error id="device-authorizations-error">Could not load the authorizations.</.load_error>
+            </:failed>
+            <.device_policy_authorizations_tab
+              account={@account}
+              device={@device}
+              policy_authorizations={authorizations.rows}
+              page={authorizations.page}
+              has_next={authorizations.has_next}
+              expanded_id={@policy_authorizations_expanded_id}
+            />
+          </.async_result>
         </div>
         <.device_sidebar
           device={@device}
           confirm_delete_device={@confirm_delete_device}
           confirm_unverify_device={@confirm_unverify_device}
           gateway_panel={@gateway_panel}
+          gateway_tokens={@gateway_tokens}
           site={@site_assignment && @site_assignment.site}
         />
       </div>
@@ -664,7 +692,7 @@ defmodule PortalWeb.Devices.Components do
 
   attr :account, :any, required: true
   attr :site, :any, default: nil
-  attr :sites, :list, default: []
+  attr :sites, AsyncResult, required: true
   attr :device_v1?, :boolean, default: false
 
   def device_site_section(assigns) do
@@ -695,23 +723,31 @@ defmodule PortalWeb.Devices.Components do
         <p :if={not @device_v1?} class="mb-2 text-xs text-attn">
           Update to the latest Firezone client to route for a site.
         </p>
-        <.form
-          for={@form}
-          id="device-site-form"
-          phx-submit="put_device_in_site"
-          class="flex items-end gap-2"
-        >
-          <Form.input
-            field={@form[:site_id]}
-            type="select"
-            prompt="Select a site"
-            options={Enum.map(@sites, &{&1.name, &1.id})}
-            disabled={not @device_v1?}
-          />
-          <Form.button type="submit" size="sm" style="primary" disabled={not @device_v1?}>
-            Add to site
-          </Form.button>
-        </.form>
+        <.async_result :let={sites} assign={@sites}>
+          <:loading>
+            <div id="device-site-loading" aria-hidden="true" class="h-8 w-56 bg-hover animate-pulse"></div>
+          </:loading>
+          <:failed>
+            <p id="device-site-error" class="text-xs text-muted">Could not load the sites.</p>
+          </:failed>
+          <.form
+            for={@form}
+            id="device-site-form"
+            phx-submit="put_device_in_site"
+            class="flex items-end gap-2"
+          >
+            <Form.input
+              field={@form[:site_id]}
+              type="select"
+              prompt="Select a site"
+              options={Enum.map(sites, &{&1.name, &1.id})}
+              disabled={not @device_v1?}
+            />
+            <Form.button type="submit" size="sm" style="primary" disabled={not @device_v1?}>
+              Add to site
+            </Form.button>
+          </.form>
+        </.async_result>
       </div>
     </div>
     """
@@ -721,6 +757,7 @@ defmodule PortalWeb.Devices.Components do
   attr :device, :any, required: true
   attr :site, :any, default: nil
   attr :gateway_panel, :map, required: true
+  attr :gateway_tokens, AsyncResult, required: true
 
   def gateway_site_section(assigns) do
     ~H"""
@@ -734,27 +771,35 @@ defmodule PortalWeb.Devices.Components do
         >
           {@site.name}
         </Navigation.link>
-        <dl>
-          <.device_detail_row label="Token">
-            <span class="text-xs text-fg">
-              {Sites.Components.gateway_token_status(
-                @device,
-                Map.get(@gateway_panel.device_tokens, @device.id),
-                @gateway_panel.legacy_token_ids
-              )}
-            </span>
-          </.device_detail_row>
-        </dl>
-        <div class="space-y-2">
-          <Sites.Components.gateway_token_controls
-            gateway={@device}
-            device_tokens={@gateway_panel.device_tokens}
-            legacy_token_ids={@gateway_panel.legacy_token_ids}
-            rotated_gateway_token={@gateway_panel.rotated_gateway_token}
-            rename_gateway_id={@gateway_panel.rename_gateway_id}
-            confirm_rotate_gateway_id={@gateway_panel.confirm_rotate_gateway_id}
-          />
-        </div>
+        <.async_result :let={tokens} assign={@gateway_tokens}>
+          <:loading>
+            <div id="gateway-tokens-loading" aria-hidden="true" class="h-2 w-40 bg-hair animate-pulse"></div>
+          </:loading>
+          <:failed>
+            <p id="gateway-tokens-error" class="text-xs text-muted">Could not load the tokens.</p>
+          </:failed>
+          <dl>
+            <.device_detail_row label="Token">
+              <span class="text-xs text-fg">
+                {Sites.Components.gateway_token_status(
+                  @device,
+                  Map.get(tokens.device_tokens, @device.id),
+                  tokens.legacy_token_ids
+                )}
+              </span>
+            </.device_detail_row>
+          </dl>
+          <div class="space-y-2">
+            <Sites.Components.gateway_token_controls
+              gateway={@device}
+              device_tokens={tokens.device_tokens}
+              legacy_token_ids={tokens.legacy_token_ids}
+              rotated_gateway_token={@gateway_panel.rotated_gateway_token}
+              rename_gateway_id={@gateway_panel.rename_gateway_id}
+              confirm_rotate_gateway_id={@gateway_panel.confirm_rotate_gateway_id}
+            />
+          </div>
+        </.async_result>
       </div>
     </div>
     """
@@ -1150,6 +1195,7 @@ defmodule PortalWeb.Devices.Components do
   attr :confirm_delete_device, :boolean, default: false
   attr :confirm_unverify_device, :boolean, default: false
   attr :gateway_panel, :map, default: nil
+  attr :gateway_tokens, AsyncResult, default: %AsyncResult{}
   attr :site, :any, default: nil
 
   def device_sidebar(%{device: %{type: :gateway}} = assigns) do
@@ -1157,7 +1203,12 @@ defmodule PortalWeb.Devices.Components do
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
       <.device_details_card device={@device} />
       <div :if={@site} class="border-t border-hair"></div>
-      <.gateway_actions :if={@site} device={@device} gateway_panel={@gateway_panel} />
+      <.async_result :let={tokens} :if={@site && @gateway_tokens != %AsyncResult{}} assign={@gateway_tokens}>
+        <:loading>
+          <Settings.Components.skeleton id="gateway-actions-loading" rows={2} class="-mx-4" />
+        </:loading>
+        <.gateway_actions device={@device} gateway_panel={@gateway_panel} tokens={tokens} />
+      </.async_result>
       <div :if={@site} class="border-t border-hair"></div>
       <.device_danger_zone :if={@site} confirm_delete_device={@confirm_delete_device} gateway? />
     </div>
@@ -1308,13 +1359,14 @@ defmodule PortalWeb.Devices.Components do
 
   attr :device, :any, required: true
   attr :gateway_panel, :map, required: true
+  attr :tokens, :map, required: true
 
   def gateway_actions(assigns) do
     action =
       Sites.Components.token_action(
-        assigns.gateway_panel.device_tokens,
+        assigns.tokens.device_tokens,
         assigns.device,
-        assigns.gateway_panel.legacy_token_ids
+        assigns.tokens.legacy_token_ids
       )
 
     revealed? = match?(%{gateway_id: id} when id == assigns.device.id, assigns.gateway_panel.rotated_gateway_token)
@@ -1789,5 +1841,14 @@ defmodule PortalWeb.Devices.Components do
       "" -> nil
       joined -> joined
     end
+  end
+
+  attr :id, :string, required: true
+  slot :inner_block, required: true
+
+  defp load_error(assigns) do
+    ~H"""
+    <p id={@id} class="px-5 py-4 text-xs text-muted">{render_slot(@inner_block)}</p>
+    """
   end
 end

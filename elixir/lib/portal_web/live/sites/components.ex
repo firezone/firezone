@@ -1,6 +1,8 @@
 defmodule PortalWeb.Sites.Components do
   use PortalWeb, :component_library
 
+  alias PortalWeb.Settings
+
   attr :state, :map, required: true
 
   def new_site_panel(assigns) do
@@ -144,15 +146,7 @@ defmodule PortalWeb.Sites.Components do
 
     assigns = assign(assigns, :filter_ports, filter_ports)
 
-    # The listed gateways include every online one, and device_tokens is keyed
-    # by the id of each gateway holding a single-owner token
-    {status, _offline_count} =
-      site_health(
-        assigns.gateways |> Enum.filter(& &1.online?) |> MapSet.new(& &1.id),
-        assigns.device_tokens |> Map.keys() |> MapSet.new()
-      )
-
-    assigns = assign(assigns, :status, status)
+    assigns = assign(assigns, :status, panel_status(assigns))
 
     ~H"""
     <Page.detail_modal id="site-panel" size="xl" open={not is_nil(@site)} on_close="handle_keydown">
@@ -206,7 +200,7 @@ defmodule PortalWeb.Sites.Components do
 
   attr :site, :any, required: true
   attr :view, :atom, required: true
-  attr :status, :atom, required: true
+  attr :status, :atom, default: nil
 
   def site_panel_header(assigns) do
     ~H"""
@@ -220,7 +214,14 @@ defmodule PortalWeb.Sites.Components do
             />
             <h2 class="text-lg font-bold text-fg truncate">{@site.name}</h2>
             <Core.badge :if={@site.managed_by == :system} type="accent" size="xs">system</Core.badge>
-            <.site_status_badge status={@status} />
+            <.site_status_badge :if={@status} status={@status} />
+            <span
+              :if={is_nil(@status)}
+              id="site-status-loading"
+              aria-hidden="true"
+              class="inline-block h-2 w-16 bg-hair animate-pulse"
+            >
+            </span>
           </div>
           <p class="font-mono text-xs text-muted mt-1 truncate">{@site.id}</p>
         </div>
@@ -268,10 +269,16 @@ defmodule PortalWeb.Sites.Components do
           confirm_revoke_all_tokens={@confirm_revoke_all_tokens}
           unified_devices?={@unified_devices?}
           device_count={length(@devices)}
+          loaded?={@details == :ok}
         />
 
+        <Settings.Components.skeleton :if={@details == :loading} id="site-details-loading" rows={3} />
+        <p :if={@details == :failed} id="site-details-error" class="px-6 py-4 text-xs text-muted">
+          Could not load this site's devices and resources.
+        </p>
+
         <.site_gateways_tab
-          :if={@tab == :gateways}
+          :if={@details == :ok and @tab == :gateways}
           site={@site}
           gateways={@gateways}
           total_gateway_count={@total_gateway_count}
@@ -290,14 +297,14 @@ defmodule PortalWeb.Sites.Components do
         />
 
         <.site_resources_tab
-          :if={@tab == :resources}
+          :if={@details == :ok and @tab == :resources}
           site={@site}
           account={@account}
           resources={@resources}
         />
 
         <.site_tokens_tab
-          :if={@tab == :tokens}
+          :if={@details == :ok and @tab == :tokens}
           site={@site}
           gateway_tokens={@gateway_tokens}
           legacy_token_connections={@legacy_token_connections}
@@ -320,6 +327,7 @@ defmodule PortalWeb.Sites.Components do
   attr :confirm_revoke_all_tokens, :boolean, required: true
   attr :unified_devices?, :boolean, default: false
   attr :device_count, :integer, default: 0
+  attr :loaded?, :boolean, default: true
 
   def site_panel_tabs(assigns) do
     ~H"""
@@ -338,7 +346,7 @@ defmodule PortalWeb.Sites.Components do
         ]}
       >
         Devices
-        <span class={[
+        <span :if={@loaded?} class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :gateways, do: "bg-hover text-fg", else: "bg-hover text-muted")
         ]}>
@@ -359,7 +367,7 @@ defmodule PortalWeb.Sites.Components do
         ]}
       >
         Gateways
-        <span class={[
+        <span :if={@loaded?} class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :gateways,
             do: "bg-hover text-fg",
@@ -382,7 +390,7 @@ defmodule PortalWeb.Sites.Components do
         ]}
       >
         Resources
-        <span class={[
+        <span :if={@loaded?} class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :resources,
             do: "bg-hover text-fg",
@@ -2269,4 +2277,18 @@ defmodule PortalWeb.Sites.Components do
     sudo ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || sudo ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
     """
   end
+
+  # The listed gateways include every online one, and device_tokens is keyed
+  # by the id of each gateway holding a single-owner token
+  defp panel_status(%{details: :ok} = assigns) do
+    {status, _offline_count} =
+      site_health(
+        assigns.gateways |> Enum.filter(& &1.online?) |> MapSet.new(& &1.id),
+        assigns.device_tokens |> Map.keys() |> MapSet.new()
+      )
+
+    status
+  end
+
+  defp panel_status(_assigns), do: nil
 end

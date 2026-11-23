@@ -6,6 +6,9 @@ defmodule PortalWeb.Resources.Components do
 
   alias PortalWeb.Devices.Components, as: DeviceComponents
 
+  alias PortalWeb.Settings
+  alias Phoenix.LiveView.AsyncResult
+
   alias __MODULE__.Database
   alias PortalWeb.Format
 
@@ -1060,8 +1063,18 @@ defmodule PortalWeb.Resources.Components do
 
         <.resource_core_fields form={@resource_form} resource={@resource} />
 
+        <Settings.Components.skeleton
+          :if={@resource_form_devices_load == :loading}
+          id="resource-form-devices-loading"
+          rows={2}
+          class="-mx-6"
+        />
+        <p :if={@resource_form_devices_load == :failed} id="resource-form-devices-error" class="text-xs text-muted">
+          Could not load the devices of this resource. Close the form and try again.
+        </p>
+
         <.resource_pool_members_section
-          :if={to_string(@resource_form[:type].value) == "device_pool"}
+          :if={@resource_form_devices_load == :ok and to_string(@resource_form[:type].value) == "device_pool"}
           form={@resource_form}
           subject={@subject}
           selected_devices={@resource_form_selected_devices}
@@ -1070,7 +1083,7 @@ defmodule PortalWeb.Resources.Components do
 
         <.resource_device_pool_section
           :if={
-            to_string(@resource_form[:type].value) == "device_pool" and
+            @resource_form_devices_load == :ok and to_string(@resource_form[:type].value) == "device_pool" and
               pool_members(@resource_form) == :listed
           }
           selected_devices={@resource_form_selected_devices}
@@ -1102,7 +1115,7 @@ defmodule PortalWeb.Resources.Components do
         />
 
         <.resource_served_by_section
-          :if={@resource_form_unified_devices?}
+          :if={@resource_form_devices_load == :ok and @resource_form_unified_devices?}
           form={@resource_form}
           sites={@resource_form_sites}
           served_by={@resource_form_served_by}
@@ -1116,7 +1129,7 @@ defmodule PortalWeb.Resources.Components do
         <Form.panel_footer_button type="button" phx-click="cancel_resource_form">
           Cancel
         </Form.panel_footer_button>
-        <Form.panel_footer_button type="submit" style="primary">
+        <Form.panel_footer_button type="submit" style="primary" disabled={@resource_form_devices_load != :ok}>
           {if @panel_view == :new_form, do: "Create resource", else: "Save changes"}
         </Form.panel_footer_button>
       </Form.panel_footer>
@@ -1250,19 +1263,14 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
-  attr :pool_member_ids, :list, default: []
-  attr :pool_devices, :list, default: []
+  attr :pool_devices, AsyncResult, required: true
   attr :devices_expanded_id, :string, default: nil
   attr :online_ids, :any, default: %MapSet{}
   attr :online_site_ids, :any, default: %MapSet{}
   attr :pool_group_ids, :any, default: nil
-  attr :groups, :list, default: []
-  attr :people, :list, default: []
-  attr :hits, :map, default: %{}
-  attr :route_devices, :list, default: []
-  attr :policy_authorizations, :list, default: []
-  attr :policy_authorizations_page, :integer, default: 1
-  attr :policy_authorizations_has_next, :boolean, default: false
+  attr :access, AsyncResult, required: true
+  attr :route_devices, AsyncResult, required: true
+  attr :policy_authorizations, AsyncResult, required: true
   attr :policy_authorizations_expanded_id, :string, default: nil
   attr :panel_view, :atom, required: true
   attr :tab, :atom, default: :groups
@@ -1271,7 +1279,14 @@ defmodule PortalWeb.Resources.Components do
   attr :ui_state, :map, required: true
 
   def resource_details_panel(assigns) do
-    assigns = assign(assigns, assigns.ui_state)
+    assigns =
+      assigns
+      |> assign(assigns.ui_state)
+      |> assign(
+        pool_member_ids: async_ok(assigns.pool_devices, &Enum.map(&1, fn device -> device.id end)),
+        groups_count: async_ok(assigns.access, &(length(&1.groups) + length(&1.people))),
+        devices_count: async_ok(assigns.pool_devices, &length/1)
+      )
 
     ~H"""
     <div class="shrink-0 px-6 py-4 border-b border-rule">
@@ -1325,27 +1340,41 @@ defmodule PortalWeb.Resources.Components do
         <.resource_tabs
           resource={@resource}
           tab={@tab}
-          groups_count={length(@groups) + length(@people)}
-          devices_count={length(@pool_devices)}
+          groups_count={@groups_count}
+          devices_count={@devices_count}
           panel_view={@panel_view}
         />
-        <.resource_devices_tab
-          :if={@tab == :devices}
-          account={@account}
-          devices={@pool_devices}
-          online_ids={@online_ids}
-          online_site_ids={@online_site_ids}
-          expanded_id={@devices_expanded_id}
-        />
-        <.resource_access_list
-          :if={@tab == :groups && @panel_view == :list}
-          account={@account}
-          groups={@groups}
-          people={@people}
-          hits={@hits}
-          people_state={@people_state}
-          ui_state={@ui_state}
-        />
+        <.async_result :let={devices} :if={@tab == :devices} assign={@pool_devices}>
+          <:loading>
+            <Settings.Components.skeleton id="resource-devices-loading" rows={3} />
+          </:loading>
+          <:failed>
+            <.load_error id="resource-devices-error">Could not load the pool members.</.load_error>
+          </:failed>
+          <.resource_devices_tab
+            account={@account}
+            devices={devices}
+            online_ids={@online_ids}
+            online_site_ids={@online_site_ids}
+            expanded_id={@devices_expanded_id}
+          />
+        </.async_result>
+        <.async_result :let={access} :if={@tab == :groups && @panel_view == :list} assign={@access}>
+          <:loading>
+            <Settings.Components.skeleton id="resource-access-loading" rows={3} />
+          </:loading>
+          <:failed>
+            <.load_error id="resource-access-error">Could not load who can reach this resource.</.load_error>
+          </:failed>
+          <.resource_access_list
+            account={@account}
+            groups={access.groups}
+            people={access.people}
+            hits={access.hits}
+            people_state={@people_state}
+            ui_state={@ui_state}
+          />
+        </.async_result>
         <.resource_grant_form
           :if={@tab == :groups && @panel_view == :grant_form}
           account={@account}
@@ -1356,15 +1385,26 @@ defmodule PortalWeb.Resources.Components do
           :if={@tab == :groups && @panel_view == :people_form}
           state={@people_state}
         />
-        <.resource_policy_authorizations_tab
-          :if={@tab == :authorizations}
-          policy_authorizations={@policy_authorizations}
-          page={@policy_authorizations_page}
-          has_next={@policy_authorizations_has_next}
-          expanded_id={@policy_authorizations_expanded_id}
-          account={@account}
-          resource={@resource}
-        />
+        <.async_result
+          :let={authorizations}
+          :if={@tab == :authorizations and @policy_authorizations != %AsyncResult{}}
+          assign={@policy_authorizations}
+        >
+          <:loading>
+            <Settings.Components.skeleton id="resource-authorizations-loading" rows={3} />
+          </:loading>
+          <:failed>
+            <.load_error id="resource-authorizations-error">Could not load the authorizations.</.load_error>
+          </:failed>
+          <.resource_policy_authorizations_tab
+            policy_authorizations={authorizations.rows}
+            page={authorizations.page}
+            has_next={authorizations.has_next}
+            expanded_id={@policy_authorizations_expanded_id}
+            account={@account}
+            resource={@resource}
+          />
+        </.async_result>
       </div>
       <.resource_sidebar
         account={@account}
@@ -2305,14 +2345,11 @@ defmodule PortalWeb.Resources.Components do
   attr :account, :any, required: true
   attr :resource, :any, required: true
   attr :online_site_ids, :any, default: %MapSet{}
-  attr :route_devices, :list, default: []
+  attr :route_devices, AsyncResult, required: true
   attr :ui_state, :map, required: true
 
   def resource_sidebar(assigns) do
-    assigns =
-      assigns
-      |> assign(assigns.ui_state)
-      |> assign(shown_devices: Enum.take(assigns.route_devices, 8))
+    assigns = assign(assigns, assigns.ui_state)
 
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto px-5 py-4 space-y-6">
@@ -2330,36 +2367,17 @@ defmodule PortalWeb.Resources.Components do
         <p :if={@resource.type != :device_pool and is_nil(@resource.site)} class="text-xs text-attn">
           {nil_site_label(@resource)}
         </p>
-        <ul :if={@shown_devices != []} class="mt-2 border-t border-hair">
-          <li
-            :for={device <- @shown_devices}
-            id={"route-device-#{device.id}"}
-            class="flex items-center gap-2 py-1.5 border-b border-hair text-xs"
-          >
-            <span class={presence_dot_class(device.online?)}></span>
-            <Navigation.link
-              navigate={~p"/#{@account}/devices/#{device.id}"}
-              class="flex-1 min-w-0 truncate text-fg hover:underline"
-            >
-              {device.name}
-            </Navigation.link>
-            <span :if={device.online?} class="text-muted">online</span>
-            <span :if={not device.online?} class="text-attn">offline</span>
-          </li>
-        </ul>
-        <p
-          :if={@resource.type != :device_pool and not is_nil(@resource.site) and @route_devices == []}
-          class="mt-2 text-xs text-attn"
-        >
-          No device carries this site yet.
-        </p>
-        <Navigation.link
-          :if={length(@route_devices) > length(@shown_devices)}
-          navigate={~p"/#{@account}/sites/#{@resource.site_id}"}
-          class="mt-1.5 inline-block text-xs text-muted hover:text-fg"
-        >
-          {length(@route_devices) - length(@shown_devices)} more
-        </Navigation.link>
+        <.async_result :let={route_devices} assign={@route_devices}>
+          <:loading>
+            <div id="route-devices-loading" aria-hidden="true" class="mt-2 space-y-2 animate-pulse">
+              <div :for={width <- ~w[w-32 w-24 w-28]} class={["h-2 bg-hair", width]}></div>
+            </div>
+          </:loading>
+          <:failed>
+            <p id="route-devices-error" class="mt-2 text-xs text-muted">Could not load the devices.</p>
+          </:failed>
+          <.route_device_list account={@account} resource={@resource} route_devices={route_devices} />
+        </.async_result>
       </section>
 
       <section>
@@ -2600,14 +2618,22 @@ defmodule PortalWeb.Resources.Components do
           }
         } = assigns
       ) do
-    online = Enum.count(assigns.pool_member_ids, &MapSet.member?(assigns.online_ids, &1))
-    assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
+    member_ids = assigns.pool_member_ids || []
+    online = Enum.count(member_ids, &MapSet.member?(assigns.online_ids, &1))
+    assigns = assign(assigns, online: online, total: length(member_ids))
 
     ~H"""
-    <Core.status_badge :if={@total == 0} style={:warning}>
+    <span
+      :if={is_nil(@pool_member_ids)}
+      id="resource-status-loading"
+      aria-hidden="true"
+      class="inline-block h-2 w-16 bg-hair animate-pulse"
+    >
+    </span>
+    <Core.status_badge :if={@pool_member_ids && @total == 0} style={:warning}>
       No devices
     </Core.status_badge>
-    <Core.status_badge :if={@total > 0} style={if @online > 0, do: :success, else: :neutral}>
+    <Core.status_badge :if={@pool_member_ids && @total > 0} style={if @online > 0, do: :success, else: :neutral}>
       {@online} / {@total} online
     </Core.status_badge>
     """
@@ -2653,6 +2679,59 @@ defmodule PortalWeb.Resources.Components do
   defp pool_kind_label(:all_devices), do: "All devices"
   defp pool_kind_label(:actor_group), do: "Group's devices"
   defp pool_kind_label(:listed), do: "Static list"
+
+  attr :account, :any, required: true
+  attr :resource, :any, required: true
+  attr :route_devices, :list, required: true
+
+  defp route_device_list(assigns) do
+    assigns = assign(assigns, shown_devices: Enum.take(assigns.route_devices, 8))
+
+    ~H"""
+    <ul :if={@shown_devices != []} class="mt-2 border-t border-hair">
+      <li
+        :for={device <- @shown_devices}
+        id={"route-device-#{device.id}"}
+        class="flex items-center gap-2 py-1.5 border-b border-hair text-xs"
+      >
+        <span class={presence_dot_class(device.online?)}></span>
+        <Navigation.link
+          navigate={~p"/#{@account}/devices/#{device.id}"}
+          class="flex-1 min-w-0 truncate text-fg hover:underline"
+        >
+          {device.name}
+        </Navigation.link>
+        <span :if={device.online?} class="text-muted">online</span>
+        <span :if={not device.online?} class="text-attn">offline</span>
+      </li>
+    </ul>
+    <p
+      :if={@resource.type != :device_pool and not is_nil(@resource.site) and @route_devices == []}
+      class="mt-2 text-xs text-attn"
+    >
+      No device carries this site yet.
+    </p>
+    <Navigation.link
+      :if={length(@route_devices) > length(@shown_devices)}
+      navigate={~p"/#{@account}/sites/#{@resource.site_id}"}
+      class="mt-1.5 inline-block text-xs text-muted hover:text-fg"
+    >
+      {length(@route_devices) - length(@shown_devices)} more
+    </Navigation.link>
+    """
+  end
+
+  attr :id, :string, required: true
+  slot :inner_block, required: true
+
+  defp load_error(assigns) do
+    ~H"""
+    <p id={@id} class="px-6 py-4 text-xs text-muted">{render_slot(@inner_block)}</p>
+    """
+  end
+
+  defp async_ok(%AsyncResult{ok?: true, result: result}, fun), do: fun.(result)
+  defp async_ok(_async, _fun), do: nil
 
   defmodule Database do
     import Ecto.Query
