@@ -249,100 +249,102 @@ defmodule PortalWeb.Components.Navigation do
       )
 
     ~H"""
-    <aside
-      id="sidebar"
-      class="flex flex-col shrink-0 border-r border-rule bg-bg overflow-hidden transition-[width] duration-200 ease-in-out w-56 z-20"
-    >
-      <div data-sidebar-wordmark class="flex items-center h-14 px-5 shrink-0">
-        <a
-          href={PortalWeb.Session.Redirector.default_portal_path(@account, @subject.actor)}
-          class="flex items-center gap-2.5 min-w-0"
-        >
-          <img src={~p"/images/logo.svg"} class="h-5 w-auto shrink-0" alt="Firezone Logo" />
-          <span
-            data-sidebar-label
-            class="font-semibold text-[15px] text-fg whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
-          >
-            Firezone
-          </span>
-          <span
-            data-sidebar-label
-            class="text-[15px] text-muted truncate transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
-          >
-            {@account.name}
-          </span>
-        </a>
-      </div>
-
-      <nav class="flex-1 overflow-y-auto py-3" aria-label="Main">
-        <ul>
-          <.sidebar_item
-            :for={section <- @sections}
-            navigate={section_landing(section)}
-            icon={section.icon}
-            active?={section.key == @active_key}
-            id={"nav-#{section.key}"}
-          >
-            {section.label}
-          </.sidebar_item>
-        </ul>
-      </nav>
-
-      <.live_component module={PortalWeb.GettingStarted} id="getting-started" subject={@subject} />
-
-      <div class="border-t border-hair py-2 shrink-0">
-        <ul>
-          <.sidebar_item
-            navigate={~p"/#{@account}/settings/account"}
-            icon="ri-settings-3-line"
-            active?={@active_key == :settings}
-            id="nav-settings"
-          >
-            Settings
-          </.sidebar_item>
-        </ul>
-      </div>
-
-      <div
-        data-sidebar-label
-        class="flex items-center gap-3 px-5 pb-2 text-xs text-muted transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+    <div class="relative flex shrink-0 z-20">
+      <aside
+        id="sidebar"
+        class="flex flex-col shrink-0 border-r border-rule bg-bg overflow-hidden transition-[width] duration-200 ease-in-out w-56 z-20"
       >
-        <.live_component module={PortalWeb.SupportForm} id="support" subject={@subject} />
-      </div>
-
-      <div class="border-t border-hair px-3 py-2 shrink-0 flex items-center gap-1">
-        <.dropdown id="user-menu" placement="top-start">
-          <:button>
-            <span class="sr-only">Open user menu</span>
-            <Core.avatar account={@subject.account} actor={@subject.actor} class="w-6 h-6" />
+        <div data-sidebar-wordmark class="flex items-center h-14 px-5 shrink-0">
+          <a
+            href={PortalWeb.Session.Redirector.default_portal_path(@account, @subject.actor)}
+            class="flex items-center gap-2.5 min-w-0"
+          >
+            <img src={~p"/images/logo.svg"} class="h-5 w-auto shrink-0" alt="Firezone Logo" />
             <span
               data-sidebar-label
-              class="min-w-0 flex-1 text-left truncate text-sm text-fg transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+              class="font-semibold text-[15px] text-fg whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
             >
-              {@subject.actor.name}
+              Firezone
             </span>
-          </:button>
-          <:dropdown>
-            <.subject_dropdown subject={@subject} />
-          </:dropdown>
-        </.dropdown>
-        <button
-          id="sidebar-toggle"
-          phx-hook="SidebarCollapse"
+            <span
+              data-sidebar-label
+              class="text-[15px] text-muted truncate transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+            >
+              {@account.name}
+            </span>
+          </a>
+        </div>
+
+        <nav class="flex-1 overflow-y-auto py-3" aria-label="Main">
+          <ul>
+            <.sidebar_item
+              :for={section <- @sections}
+              navigate={section_landing(section)}
+              icon={section.icon}
+              active?={section.key == @active_key}
+              id={"nav-#{section.key}"}
+            >
+              {section.label}
+            </.sidebar_item>
+          </ul>
+        </nav>
+
+        <.live_component module={PortalWeb.GettingStarted} id="getting-started" subject={@subject} />
+
+        <div class="border-t border-hair py-2 shrink-0">
+          <ul>
+            <.sidebar_item
+              navigate={~p"/#{@account}/settings/account"}
+              icon="ri-settings-3-line"
+              active?={@active_key == :settings}
+              id="nav-settings"
+            >
+              Settings
+            </.sidebar_item>
+          </ul>
+        </div>
+
+        <div
           data-sidebar-label
-          type="button"
-          class="ml-auto shrink-0 flex items-center justify-center w-7 h-7 text-muted hover:text-fg hover:bg-hover transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
-          title="Collapse sidebar"
-          aria-label="Collapse sidebar"
+          class="flex items-center gap-3 px-5 pb-2 text-xs text-muted transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
         >
-          <Core.icon
-            name="ri-side-bar-line"
-            data-sidebar-chevron
-            class="w-4 h-4 shrink-0 transition-transform duration-200"
-          />
-        </button>
-      </div>
-    </aside>
+          <.live_component module={PortalWeb.SupportForm} id="support" subject={@subject} />
+        </div>
+
+        <div class="border-t border-hair px-3 py-2 shrink-0 flex items-center gap-1">
+          <.dropdown id="user-menu" placement="top-start">
+            <:button>
+              <span class="sr-only">Open user menu</span>
+              <Core.avatar account={@subject.account} actor={@subject.actor} class="w-6 h-6" />
+              <span
+                data-sidebar-label
+                class="min-w-0 flex-1 text-left truncate text-sm text-fg transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+              >
+                {@subject.actor.name}
+              </span>
+            </:button>
+            <:dropdown>
+              <.subject_dropdown subject={@subject} />
+            </:dropdown>
+          </.dropdown>
+        </div>
+      </aside>
+      <button
+        id="sidebar-toggle"
+        phx-hook="SidebarCollapse"
+        type="button"
+        class="absolute top-1/2 -right-3 -translate-y-1/2 z-30 flex items-center justify-center w-6 h-6 rounded-full border border-rule bg-bg text-muted hover:text-fg hover:bg-hover transition-colors"
+        title="Collapse or expand the sidebar"
+        aria-label="Collapse or expand the sidebar"
+        aria-controls="sidebar"
+      >
+        <Core.icon
+          name="ri-arrow-left-s-line"
+          data-sidebar-chevron
+          class="w-4 h-4 shrink-0 transition-transform duration-200"
+        />
+      </button>
+    </div>
     """
   end
 
