@@ -57,7 +57,7 @@ defmodule PortalWeb.UserpassControllerTest do
           "userpass" => %{"idp_id" => actor.email, "secret" => @password}
         })
 
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
     end
 
     test "redirects to portal redirect_to when it is scoped to the signed-in account", %{
@@ -123,10 +123,10 @@ defmodule PortalWeb.UserpassControllerTest do
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
           "userpass" => %{"idp_id" => actor.email, "secret" => @password},
-          "redirect_to" => ~p"/#{other_account}/sites"
+          "redirect_to" => ~p"/#{other_account}/activity"
         })
 
-      assert redirected_to(conn) == ~p"/#{account}/sites"
+      assert redirected_to(conn) == ~p"/#{account}/activity"
     end
 
     test "falls back when portal redirect_to only prefixes the signed-in account slug", %{
@@ -143,10 +143,10 @@ defmodule PortalWeb.UserpassControllerTest do
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
           "userpass" => %{"idp_id" => actor.email, "secret" => @password},
-          "redirect_to" => ~p"/#{prefix_account}/sites"
+          "redirect_to" => ~p"/#{prefix_account}/activity"
         })
 
-      assert redirected_to(conn) == ~p"/#{account}/sites"
+      assert redirected_to(conn) == ~p"/#{account}/activity"
     end
 
     test "rejects account_user in portal context", %{
@@ -453,7 +453,7 @@ defmodule PortalWeb.UserpassControllerTest do
         })
 
       # Portal sign-in should still be allowed so admins can manage billing
-      assert redirected_to(conn) =~ "/sites"
+      assert redirected_to(conn) =~ "/activity"
     end
 
     test "rejects portal sign-in when provider context is clients_only", %{
@@ -726,7 +726,7 @@ defmodule PortalWeb.UserpassControllerTest do
       other =
         actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
-      assert redirected_to(sign_in.(conn, other.email, @password)) =~ "/sites"
+      assert redirected_to(sign_in.(conn, other.email, @password)) =~ "/activity"
 
       other_account = account_fixture()
       other_provider = userpass_provider_fixture(account: other_account, context: :clients_and_portal)

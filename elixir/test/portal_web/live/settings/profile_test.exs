@@ -64,7 +64,7 @@ defmodule PortalWeb.Settings.ProfileTest do
   end
 
   describe "sidebar wordmark link" do
-    test "defaults to sites when no start page preference is set", %{
+    test "defaults to activity when no start page preference is set", %{
       conn: conn,
       account: account,
       actor: actor
@@ -74,7 +74,7 @@ defmodule PortalWeb.Settings.ProfileTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/profile")
 
-      assert has_element?(lv, "[data-sidebar-wordmark] a[href='#{~p"/#{account}/sites"}']")
+      assert has_element?(lv, "[data-sidebar-wordmark] a[href='#{~p"/#{account}/activity"}']")
     end
 
     test "links to the actor's preferred start page", %{
@@ -90,7 +90,9 @@ defmodule PortalWeb.Settings.ProfileTest do
             policies: ~p"/#{account}/policies",
             devices: ~p"/#{account}/devices",
             actors: ~p"/#{account}/actors",
-            sites: ~p"/#{account}/sites"
+            sites: ~p"/#{account}/sites",
+            activity: ~p"/#{account}/activity",
+            access: ~p"/#{account}/access"
           ] do
         actor
         |> Ecto.Changeset.change()

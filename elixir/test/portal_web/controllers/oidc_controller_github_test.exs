@@ -73,7 +73,7 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
       {pending_identity_id, code} = pending_code(conn, actor)
       conn = submit_code(conn, ctx, pending_identity_id, code)
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
 
       identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
@@ -113,7 +113,7 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
       {pending_identity_id, code} = pending_code(conn, actor)
       conn = submit_code(conn, ctx, pending_identity_id, code)
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
 
       identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
       assert identity.actor_id == actor.id
@@ -167,7 +167,7 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
 
       conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
       refute_received {:email, _email}
     end
@@ -188,7 +188,7 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
 
       conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
 
       assert_enqueued(
         worker: Portal.Avatars.Picture,
@@ -217,7 +217,7 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
 
       conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       refute_received {:email, _email}
 
       identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
@@ -277,7 +277,7 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
 
       conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert conn.resp_cookies["sess_#{ctx.account.id}"].max_age > 0
       refute_received {:email, _email}
 
@@ -298,7 +298,7 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
 
       conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       refute_received {:email, _email}
       assert Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id).actor_id == actor.id
     end
@@ -320,7 +320,7 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
 
       conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id).actor_id == actor.id
     end
 

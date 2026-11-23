@@ -7,12 +7,14 @@ defmodule PortalWeb.Settings.Profile do
   @form_channels [:email]
 
   @start_page_options [
-    %{value: "sites", label: "Sites", icon: "ri-global-line"},
+    %{value: "activity", label: "Activity", icon: "ri-pulse-line"},
+    %{value: "access", label: "Access", icon: "ri-shield-keyhole-line"},
+    %{value: "sites", label: "Sites", icon: "ri-map-pin-line"},
     %{value: "resources", label: "Resources", icon: "ri-server-line"},
     %{value: "groups", label: "Groups", icon: "ri-team-line"},
     %{value: "policies", label: "Policies", icon: "ri-shield-check-line"},
     %{value: "devices", label: "Devices", icon: "ri-computer-line"},
-    %{value: "actors", label: "Actors", icon: "ri-user-line"}
+    %{value: "actors", label: "People", icon: "ri-user-line"}
   ]
 
   def mount(_params, _session, socket) do

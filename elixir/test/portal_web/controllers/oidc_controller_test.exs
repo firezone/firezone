@@ -1527,7 +1527,7 @@ defmodule PortalWeb.OIDCControllerTest do
         |> get(~p"/auth/oidc/callback", %{"state" => "test-state", "code" => "test-code"})
 
       location = get_resp_header(conn, "location") |> List.first()
-      refute location == ~p"/#{account}/sites"
+      refute location == ~p"/#{account}/activity"
     end
 
     test "authenticated user can access legacy callback without being redirected to portal", %{
@@ -1545,7 +1545,7 @@ defmodule PortalWeb.OIDCControllerTest do
         })
 
       location = get_resp_header(conn, "location") |> List.first()
-      refute location == ~p"/#{account}/sites"
+      refute location == ~p"/#{account}/activity"
     end
   end
 
@@ -1924,7 +1924,7 @@ defmodule PortalWeb.OIDCControllerTest do
       setup_successful_auth(ctx, actor, sub: "new-object-id", email: actor.email)
 
       conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
 
       assert Repo.get_by(Portal.ExternalIdentity,
                account_id: ctx.account.id,
@@ -2002,7 +2002,7 @@ defmodule PortalWeb.OIDCControllerTest do
       setup_successful_auth(ctx, actor, sub: "stable-subject", email: "new-address@example.com")
 
       conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
 
       identity =
         Repo.get_by!(Portal.ExternalIdentity,
@@ -2033,7 +2033,7 @@ defmodule PortalWeb.OIDCControllerTest do
       setup_successful_auth(ctx, actor, sub: "stable-subject", email: actor.email)
 
       conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
 
       assert new_identity =
                Repo.get_by(Portal.ExternalIdentity,
@@ -2188,7 +2188,7 @@ defmodule PortalWeb.OIDCControllerTest do
       send(self(), {:conn, perform_callback(ctx.conn, cookie)})
       assert_receive {:conn, conn}
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
     end
 
     test "successful sign-in matches actor email using citext semantics", ctx do
@@ -2265,7 +2265,7 @@ defmodule PortalWeb.OIDCControllerTest do
         |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
           "secret" => code,
           "pending_identity_id" => pending_cookie.pending_identity_id,
-          "redirect_to" => "/#{ctx.account.slug}/sites"
+          "redirect_to" => "/#{ctx.account.slug}/activity"
         })
 
       assert redirected_to(conn) == "/#{ctx.account.slug}/actors"
@@ -2437,7 +2437,7 @@ defmodule PortalWeb.OIDCControllerTest do
           "pending_identity_id" => pending_cookie.pending_identity_id
         })
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
 
       assert Repo.get_by(Portal.ExternalIdentity,
@@ -2486,7 +2486,7 @@ defmodule PortalWeb.OIDCControllerTest do
           "pending_identity_id" => first_cookie.pending_identity_id
         })
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
 
       assert identity =
                Repo.get_by(Portal.ExternalIdentity,
@@ -2558,7 +2558,7 @@ defmodule PortalWeb.OIDCControllerTest do
           "as" => "headless-client",
           "state" => "submitted-state",
           "nonce" => "submitted-nonce",
-          "redirect_to" => "/#{ctx.account.slug}/sites"
+          "redirect_to" => "/#{ctx.account.slug}/activity"
         })
 
       location = redirected_to(conn)
@@ -2841,7 +2841,7 @@ defmodule PortalWeb.OIDCControllerTest do
           "pending_identity_id" => first_cookie.pending_identity_id
         })
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
 
       assert conn.resp_cookies[pending_identity_cookie_key(first_cookie.pending_identity_id)].max_age == 0
@@ -2875,7 +2875,7 @@ defmodule PortalWeb.OIDCControllerTest do
       setup_successful_auth(ctx, actor, email_verified: false)
       conn = assert_portal_sign_in_success(ctx)
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       refute_received {:email, _email}
       refute conn.resp_cookies["pending_identity"]
     end
@@ -3074,7 +3074,7 @@ defmodule PortalWeb.OIDCControllerTest do
       conn = perform_callback(ctx.conn, cookie)
 
       # Portal sign-in should still be allowed so admins can manage billing
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
     end
 
     test "redirects with error when OIDC callback state does not match cookie state", ctx do
@@ -3386,7 +3386,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
     end
 
@@ -3398,7 +3398,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
     end
 
@@ -3409,7 +3409,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
       refute_received {:email, _email}
       identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
@@ -3471,7 +3471,7 @@ defmodule PortalWeb.OIDCControllerTest do
           "pending_identity_id" => pending_cookie.pending_identity_id
         })
 
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
       identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
       assert identity.actor_id == ctx.actor.id
@@ -4899,7 +4899,7 @@ defmodule PortalWeb.OIDCControllerTest do
     auth_state = build_oidc_auth_state(ctx.account, ctx.provider, opts)
     conn = perform_callback(ctx.conn, auth_state)
 
-    assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+    assert redirected_to(conn) =~ "/#{ctx.account.slug}/activity"
     assert conn.resp_cookies["sess_#{ctx.account.id}"]
 
     conn

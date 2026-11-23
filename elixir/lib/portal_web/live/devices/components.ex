@@ -25,7 +25,7 @@ defmodule PortalWeb.Devices.Components do
 
   def actor_name_and_role(%{actor: nil} = assigns) do
     ~H"""
-    <span class={["text-subtle", @class]}>No user</span>
+    <span class={["text-muted", @class]}>No user</span>
     """
   end
 
@@ -33,7 +33,7 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <Navigation.link
       navigate={actor_show_url(@account, @actor, @return_to)}
-      class={["text-brand hover:underline", @class]}
+      class={["text-fg hover:underline", @class]}
     >
       {@actor.name}
     </Navigation.link>
@@ -57,7 +57,7 @@ defmodule PortalWeb.Devices.Components do
     assigns = assign(assigns, :user_agent, device_user_agent(assigns.device))
 
     ~H"""
-    <div class="flex items-center text-xs text-body">
+    <div class="flex items-center text-xs text-fg">
       <span class="flex mr-1"><.device_os_icon device={@device} /></span>
       {os_name_and_version(@user_agent)}
     </div>
@@ -103,7 +103,7 @@ defmodule PortalWeb.Devices.Components do
 
   def version(%{current: nil} = assigns) do
     ~H"""
-    <span class="text-xs text-subtle">—</span>
+    <span class="text-xs text-muted">—</span>
     """
   end
 
@@ -117,8 +117,8 @@ defmodule PortalWeb.Devices.Components do
         <span class={[
           "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium font-mono",
           if(@outdated?,
-            do: "text-warning bg-warning-light",
-            else: "text-success bg-success-light"
+            do: "text-attn bg-attn-wash",
+            else: "text-fg bg-hover"
           )
         ]}>
           <Core.icon
@@ -283,9 +283,9 @@ defmodule PortalWeb.Devices.Components do
       <div>
         <label
           for={@device_edit_form[:name].id}
-          class="block text-xs font-medium text-body mb-1.5"
+          class="block text-xs font-medium text-fg mb-1.5"
         >
-          Name <span class="text-error">*</span>
+          Name <span class="text-attn">*</span>
         </label>
         <Form.input
           field={@device_edit_form[:name]}
@@ -298,9 +298,9 @@ defmodule PortalWeb.Devices.Components do
       <div :if={@device_edit_form.data.type == :client}>
         <label
           for={@device_edit_form[:slug].id}
-          class="block text-xs font-medium text-body mb-1.5"
+          class="block text-xs font-medium text-fg mb-1.5"
         >
-          Slug <span class="text-error">*</span>
+          Slug <span class="text-attn">*</span>
         </label>
         <Form.input
           field={@device_edit_form[:slug]}
@@ -310,7 +310,7 @@ defmodule PortalWeb.Devices.Components do
           suffix={".#{Portal.Device.domain()}"}
           required
         />
-        <p class="mt-1 text-xs text-subtle">
+        <p class="mt-1 text-xs text-muted">
           Used to reach this device directly through a
           <Navigation.website_link path="/kb/concepts/resources" fragment="device-pools">device pool</Navigation.website_link>. Must be unique in the account.
         </p>
@@ -352,11 +352,11 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.device_details_header device={@device} />
-      <div class="flex flex-1 min-h-0 divide-x divide-border">
+      <div class="flex flex-1 min-h-0 divide-x divide-hair">
         <div class="flex-1 flex flex-col overflow-hidden">
           <div
             role="tablist"
-            class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
+            class="flex items-end gap-0 px-5 border-b border-hair bg-hover shrink-0"
           >
             <.device_tab tab="overview" label="Overview" selected={@tab == :overview} />
             <.device_tab
@@ -441,7 +441,7 @@ defmodule PortalWeb.Devices.Components do
       <Authorization.authorization_flow_logs_notice account={@account} />
       <div
         :if={@policy_authorizations == []}
-        class="flex flex-1 flex-col items-center justify-center gap-2 text-subtle"
+        class="flex flex-1 flex-col items-center justify-center gap-2 text-muted"
       >
         <Core.icon name="ri-shield-check-line" class="w-8 h-8" />
         <p class="text-sm">No recent authorizations</p>
@@ -449,8 +449,8 @@ defmodule PortalWeb.Devices.Components do
       <div :if={@policy_authorizations != []} class="flex-1 flex flex-col overflow-hidden">
         <div class="flex-1 overflow-y-auto">
           <table class="w-full text-xs">
-            <thead class="sticky top-0 bg-surface z-10">
-              <tr class="border-b border-border text-subtle">
+            <thead class="sticky top-0 bg-bg z-10">
+              <tr class="border-b border-hair text-muted">
                 <th class="text-left px-4 py-2 font-medium">Resource</th>
                 <th class="text-left px-4 py-2 font-medium">Group</th>
                 <th class="text-left px-4 py-2 font-medium">Authorized</th>
@@ -466,21 +466,21 @@ defmodule PortalWeb.Devices.Components do
                   phx-key="Enter"
                   phx-value-id={row.authorization.id}
                   tabindex="0"
-                  class="border-b border-border hover:bg-raised cursor-pointer focus:outline-none focus:bg-raised"
+                  class="border-b border-hair hover:bg-hover cursor-pointer focus:outline-none focus:bg-hover"
                 >
-                  <td class="px-4 py-2 text-heading">
+                  <td class="px-4 py-2 text-fg">
                     {row.resource.name}
                   </td>
-                  <td class="px-4 py-2 text-body">
+                  <td class="px-4 py-2 text-fg">
                     {if row.group, do: row.group.name, else: "Everyone"}
                   </td>
-                  <td class="px-4 py-2 text-subtle">
+                  <td class="px-4 py-2 text-muted">
                     <Core.relative_datetime datetime={row.authorization.inserted_at} />
                   </td>
-                  <td class="px-4 py-2 text-subtle">
+                  <td class="px-4 py-2 text-muted">
                     <Core.relative_datetime datetime={row.authorization.expires_at} />
                   </td>
-                  <td class="px-4 py-2 text-subtle">
+                  <td class="px-4 py-2 text-muted">
                     <Core.icon
                       name={
                         if @expanded_id == row.authorization.id,
@@ -493,55 +493,55 @@ defmodule PortalWeb.Devices.Components do
                 </tr>
                 <tr
                   :if={@expanded_id == row.authorization.id}
-                  class="border-b border-border bg-raised"
+                  class="border-b border-hair bg-hover"
                 >
                   <td colspan="5" class="px-4 py-3">
                     <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-xs">
                       <div>
-                        <p class="text-subtle font-medium mb-1">
+                        <p class="text-muted font-medium mb-1">
                           {case row.initiating_device && row.initiating_device.type do
                             :gateway -> "Initiator (Gateway)"
                             :client -> "Initiator (Client)"
                             _ -> "Initiator"
                           end}
                         </p>
-                        <p class="text-heading">
+                        <p class="text-fg">
                           {if row.initiating_device, do: row.initiating_device.name, else: "—"}
                         </p>
-                        <p class="text-subtle font-mono mt-0.5">
+                        <p class="text-muted font-mono mt-0.5">
                           {if row.authorization.initiator_remote_ip,
                             do: Portal.Types.INET.to_string(row.authorization.initiator_remote_ip),
                             else: "—"}
                         </p>
                       </div>
                       <div>
-                        <p class="text-subtle font-medium mb-1">
+                        <p class="text-muted font-medium mb-1">
                           {case row.receiving_device && row.receiving_device.type do
                             :gateway -> "Receiver (Gateway)"
                             :client -> "Receiver (Client)"
                             _ -> "Receiver"
                           end}
                         </p>
-                        <p class="text-heading">
+                        <p class="text-fg">
                           {if row.receiving_device, do: row.receiving_device.name, else: "—"}
                         </p>
-                        <p class="text-subtle font-mono mt-0.5">
+                        <p class="text-muted font-mono mt-0.5">
                           {if row.authorization.receiver_remote_ip,
                             do: Portal.Types.INET.to_string(row.authorization.receiver_remote_ip),
                             else: "—"}
                         </p>
                       </div>
                       <div>
-                        <p class="text-subtle font-medium mb-1">Owner</p>
-                        <p class="text-heading">
+                        <p class="text-muted font-medium mb-1">Owner</p>
+                        <p class="text-fg">
                           {if @device.actor, do: @device.actor.name, else: "—"}
                         </p>
                       </div>
                       <div>
-                        <p class="text-subtle font-medium mb-1">Policy</p>
+                        <p class="text-muted font-medium mb-1">Policy</p>
                         <Navigation.link
                           navigate={~p"/#{@account}/policies/#{row.authorization.policy_id}"}
-                          class="text-brand hover:underline"
+                          class="text-fg hover:underline"
                         >
                           {if row.group, do: row.group.name, else: "Everyone"} → {row.resource.name}
                         </Navigation.link>
@@ -553,21 +553,21 @@ defmodule PortalWeb.Devices.Components do
             </tbody>
           </table>
         </div>
-        <div class="flex items-center justify-between px-4 py-2 border-t border-border shrink-0">
+        <div class="flex items-center justify-between px-4 py-2 border-t border-hair shrink-0">
           <button
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page - 1}
             disabled={@page == 1}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-faint disabled:cursor-not-allowed text-fg hover:enabled:text-fg"
           >
             <Core.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
           </button>
-          <span class="text-xs text-subtle">Page {@page}</span>
+          <span class="text-xs text-muted">Page {@page}</span>
           <button
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page + 1}
             disabled={not @has_next}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-faint disabled:cursor-not-allowed text-fg hover:enabled:text-fg"
           >
             Next <Core.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
           </button>
@@ -581,16 +581,16 @@ defmodule PortalWeb.Devices.Components do
 
   def device_details_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
+    <div class="shrink-0 px-5 py-4 border-b border-hair bg-bg">
       <div class="flex items-center gap-4">
         <%!-- Left: slug + status + ID --%>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold text-heading truncate">{@device.slug}</h2>
+            <h2 class="text-sm font-semibold text-fg truncate">{@device.slug}</h2>
             <.device_status_badge device={@device} />
             <Core.badge :if={@device.type == :gateway} type="neutral" size="xs">Gateway</Core.badge>
           </div>
-          <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@device.id}</p>
+          <p class="font-mono text-xs text-muted mt-0.5 truncate">{@device.id}</p>
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
@@ -609,20 +609,20 @@ defmodule PortalWeb.Devices.Components do
 
   def device_owner_section(assigns) do
     ~H"""
-    <div class="px-5 pt-4 pb-3 border-b border-border">
+    <div class="px-5 pt-4 pb-3 border-b border-hair">
       <.section_heading title="Owner" />
       <Navigation.link
         navigate={~p"/#{@account}/actors/#{@device.actor.id}"}
-        class="flex items-center gap-3 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-strong transition-colors group"
+        class="flex items-center gap-3 px-3 py-2.5 rounded border border-hair bg-hover hover:border-hair transition-colors group"
       >
-        <div class="flex items-center justify-center w-8 h-8 rounded-full shrink-0 text-xs font-semibold bg-brand-muted text-brand">
+        <div class="flex items-center justify-center w-8 h-8 rounded-full shrink-0 text-xs font-semibold bg-hover text-fg">
           {String.slice(@device.actor.name, 0, 2) |> String.upcase()}
         </div>
         <div class="min-w-0">
-          <p class="text-sm font-medium text-heading group-hover:text-brand truncate transition-colors">
+          <p class="text-sm font-medium text-fg group-hover:text-fg truncate transition-colors">
             {@device.actor.name}
           </p>
-          <p :if={@device.actor.email} class="text-xs text-subtle truncate">
+          <p :if={@device.actor.email} class="text-xs text-muted truncate">
             {@device.actor.email}
           </p>
         </div>
@@ -636,19 +636,19 @@ defmodule PortalWeb.Devices.Components do
 
   def device_pools_section(assigns) do
     ~H"""
-    <div class="px-5 pt-4 pb-3 border-b border-border">
+    <div class="px-5 pt-4 pb-3 border-b border-hair">
       <.section_heading title="Device Pools" />
-      <p class="mb-2 text-xs text-subtle">
+      <p class="mb-2 text-xs text-muted">
         Anyone granted access to these pools can reach this device directly on its tunnel address or DNS name.
       </p>
       <ul class="space-y-1">
         <li :for={pool <- @device_pools}>
           <Navigation.link
             navigate={~p"/#{@account}/resources/#{pool.id}"}
-            class="flex items-center gap-2 px-3 py-2 rounded border border-border bg-raised hover:border-border-strong transition-colors group"
+            class="flex items-center gap-2 px-3 py-2 rounded border border-hair bg-hover hover:border-hair transition-colors group"
           >
-            <Core.icon name="ri-computer-line" class="w-4 h-4 shrink-0 text-subtle" />
-            <span class="text-sm text-heading group-hover:text-brand truncate transition-colors">
+            <Core.icon name="ri-computer-line" class="w-4 h-4 shrink-0 text-muted" />
+            <span class="text-sm text-fg group-hover:text-fg truncate transition-colors">
               {pool.name}
             </span>
           </Navigation.link>
@@ -667,12 +667,12 @@ defmodule PortalWeb.Devices.Components do
     assigns = assign(assigns, :form, to_form(%{"site_id" => ""}, as: :site_device))
 
     ~H"""
-    <div id="device-site" class="px-5 pt-4 pb-3 border-b border-border">
+    <div id="device-site" class="px-5 pt-4 pb-3 border-b border-hair">
       <.section_heading title="Site" />
       <div :if={@site} class="flex items-center justify-between gap-3">
         <Navigation.link
           navigate={~p"/#{@account}/sites/#{@site.id}"}
-          class="text-sm font-medium text-heading hover:text-brand truncate transition-colors"
+          class="text-sm font-medium text-muted hover:text-fg truncate transition-colors"
         >
           {@site.name}
         </Navigation.link>
@@ -685,10 +685,10 @@ defmodule PortalWeb.Devices.Components do
         </Form.button>
       </div>
       <div :if={is_nil(@site)}>
-        <p :if={@device_v1?} class="mb-2 text-xs text-subtle">
+        <p :if={@device_v1?} class="mb-2 text-xs text-muted">
           This device serves the resources of the site you add it to.
         </p>
-        <p :if={not @device_v1?} class="mb-2 text-xs text-warning">
+        <p :if={not @device_v1?} class="mb-2 text-xs text-attn">
           Update to the latest Firezone client to route for a site.
         </p>
         <.form
@@ -720,19 +720,19 @@ defmodule PortalWeb.Devices.Components do
 
   def gateway_site_section(assigns) do
     ~H"""
-    <div id="gateway-site" class="px-5 pt-4 pb-3 border-b border-border">
+    <div id="gateway-site" class="px-5 pt-4 pb-3 border-b border-hair">
       <.section_heading title="Site" />
-      <p :if={is_nil(@site)} class="text-xs text-subtle">This gateway is not in a site.</p>
+      <p :if={is_nil(@site)} class="text-xs text-muted">This gateway is not in a site.</p>
       <div :if={@site} class="space-y-3">
         <Navigation.link
           navigate={~p"/#{@account}/sites/#{@site.id}"}
-          class="text-sm font-medium text-heading hover:text-brand truncate transition-colors"
+          class="text-sm font-medium text-muted hover:text-fg truncate transition-colors"
         >
           {@site.name}
         </Navigation.link>
         <dl>
           <.device_detail_row label="Token">
-            <span class="text-xs text-body">
+            <span class="text-xs text-fg">
               {Sites.Components.gateway_token_status(
                 @device,
                 Map.get(@gateway_panel.device_tokens, @device.id),
@@ -761,7 +761,7 @@ defmodule PortalWeb.Devices.Components do
 
   def device_section(assigns) do
     ~H"""
-    <div class="px-5 pt-4 pb-3 border-b border-border">
+    <div class="px-5 pt-4 pb-3 border-b border-hair">
       <.section_heading title="Reported by Client">
         <:info>
           <Core.popover class="flex" placement="right">
@@ -777,7 +777,7 @@ defmodule PortalWeb.Devices.Components do
                 Set up
                 <Navigation.link
                   navigate={~p"/#{@account}/settings/trust_anchors"}
-                  class="text-brand hover:underline"
+                  class="text-fg hover:underline"
                 >
                   X.509 Device Trust
                 </Navigation.link>
@@ -792,22 +792,22 @@ defmodule PortalWeb.Devices.Components do
           <.device_os device={@device} />
         </.device_detail_row>
         <.device_detail_row :if={@device.device_serial} label="Serial Number">
-          <span class="font-mono text-sm text-heading font-medium">
+          <span class="font-mono text-sm text-fg font-medium">
             {@device.device_serial}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.device_uuid} label="Device UUID">
-          <span class="font-mono text-xs text-body break-all">
+          <span class="font-mono text-xs text-fg break-all">
             {@device.device_uuid}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.identifier_for_vendor} label="App Installation ID">
-          <span class="font-mono text-xs text-body break-all">
+          <span class="font-mono text-xs text-fg break-all">
             {@device.identifier_for_vendor}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.firebase_installation_id} label="App Installation ID">
-          <span class="font-mono text-xs text-body break-all">
+          <span class="font-mono text-xs text-fg break-all">
             {@device.firebase_installation_id}
           </span>
         </.device_detail_row>
@@ -824,7 +824,7 @@ defmodule PortalWeb.Devices.Components do
       <.section_heading title="Network" />
       <dl class="space-y-3">
         <.device_detail_row :if={@device.last_seen_remote_ip} label="Remote IP">
-          <span class="text-xs text-body">
+          <span class="text-xs text-fg">
             <Core.last_seen schema={@device} />
           </span>
         </.device_detail_row>
@@ -856,8 +856,8 @@ defmodule PortalWeb.Devices.Components do
       class={[
         "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
         if(@selected,
-          do: "border-brand text-brand",
-          else: "border-transparent text-body hover:text-heading"
+          do: "border-fg text-fg",
+          else: "border-transparent text-muted hover:text-fg"
         )
       ]}
     >
@@ -881,7 +881,7 @@ defmodule PortalWeb.Devices.Components do
       <.posture_locked :if={@state == :locked} account={@account} />
       <div
         :if={@state in [:no_records, :no_providers]}
-        class="flex flex-col items-center justify-center gap-2 px-5 py-16 text-center text-subtle"
+        class="flex flex-col items-center justify-center gap-2 px-5 py-16 text-center text-muted"
       >
         <Core.icon name="ri-shield-star-line" class="w-8 h-8" />
         <p :if={@state == :no_records} class="text-xs">
@@ -890,7 +890,7 @@ defmodule PortalWeb.Devices.Components do
         <p :if={@state == :no_providers} class="text-xs">
           <Navigation.link
             navigate={~p"/#{@account}/settings/device_posture/new"}
-            class="text-brand hover:underline"
+            class="text-fg hover:underline"
           >
             Connect a posture provider
           </Navigation.link>
@@ -911,12 +911,12 @@ defmodule PortalWeb.Devices.Components do
       |> assign(:dom_id, "posture-#{assigns.entry.type}-#{assigns.entry.provider.id}")
 
     ~H"""
-    <div class="px-5 pt-4 pb-3 border-b border-border">
+    <div class="px-5 pt-4 pb-3 border-b border-hair">
       <div class="flex items-center justify-between gap-3 mb-3">
         <div class="flex items-center gap-2 min-w-0">
           <Core.provider_icon provider={to_string(@entry.type)} size="sm" />
-          <span class="text-sm font-medium text-heading truncate">{@entry.provider.name}</span>
-          <span class="text-xs text-subtle shrink-0">
+          <span class="text-sm font-medium text-fg truncate">{@entry.provider.name}</span>
+          <span class="text-xs text-muted shrink-0">
             {posture_provider_label(@entry.type)}
           </span>
         </div>
@@ -948,7 +948,7 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <Core.popover placement="left">
       <:target>
-        <span class="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-warning bg-warning-light">
+        <span class="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-attn bg-attn-wash">
           <Core.icon name="ri-error-warning-line" class="w-2.5 h-2.5" /> Self-reported serial
         </span>
       </:target>
@@ -965,7 +965,7 @@ defmodule PortalWeb.Devices.Components do
           Set up
           <Navigation.link
             navigate={~p"/#{@account}/settings/trust_anchors"}
-            class="text-brand hover:underline"
+            class="text-fg hover:underline"
           >
             X.509 Device Trust
           </Navigation.link>
@@ -982,7 +982,7 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <Core.popover placement="left">
       <:target>
-        <span class="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light">
+        <span class="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-fg bg-hover">
           <Core.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5" />{@label}
         </span>
       </:target>
@@ -1001,7 +1001,7 @@ defmodule PortalWeb.Devices.Components do
 
   def posture_value(%{value: value} = assigns) when is_struct(value, DateTime) do
     ~H"""
-    <span class="text-xs text-body">
+    <span class="text-xs text-fg">
       <Core.relative_datetime datetime={@value} />
     </span>
     """
@@ -1009,13 +1009,13 @@ defmodule PortalWeb.Devices.Components do
 
   def posture_value(%{value: value} = assigns) when is_boolean(value) do
     ~H"""
-    <span class="text-xs text-body">{if @value, do: "Yes", else: "No"}</span>
+    <span class="text-xs text-fg">{if @value, do: "Yes", else: "No"}</span>
     """
   end
 
   def posture_value(assigns) do
     ~H"""
-    <span class="font-mono text-xs text-body break-all">{@value}</span>
+    <span class="font-mono text-xs text-fg break-all">{@value}</span>
     """
   end
 
@@ -1023,7 +1023,7 @@ defmodule PortalWeb.Devices.Components do
 
   def serial_cell(%{serial: nil} = assigns) do
     ~H"""
-    <span class="text-xs text-subtle">—</span>
+    <span class="text-xs text-muted">—</span>
     """
   end
 
@@ -1036,12 +1036,12 @@ defmodule PortalWeb.Devices.Components do
           <Core.icon
             :if={is_nil(@serial.provider)}
             name="ri-shield-keyhole-line"
-            class="w-4 h-4 shrink-0 text-success"
+            class="w-4 h-4 shrink-0 text-fg"
           />
         </:target>
         <:content>{serial_source_hint(@serial)}</:content>
       </Core.popover>
-      <span class="font-mono text-xs text-body truncate">{@serial.value}</span>
+      <span class="font-mono text-xs text-fg truncate">{@serial.value}</span>
     </div>
     """
   end
@@ -1053,35 +1053,35 @@ defmodule PortalWeb.Devices.Components do
     assigns = assign(assigns, :issuer, describe_issuer(assigns.device.last_attested_cert_issuer))
 
     ~H"""
-    <div class="px-5 pt-4 pb-3 border-b border-border">
+    <div class="px-5 pt-4 pb-3 border-b border-hair">
       <.section_heading title="Certificate" />
       <dl class="space-y-3">
         <.device_detail_row label="Status">
           <.certificate_status_badge certificate={@certificate} />
         </.device_detail_row>
         <.device_detail_row :if={@issuer} label="Issuer">
-          <span class="text-xs text-body break-all">{@issuer}</span>
+          <span class="text-xs text-fg break-all">{@issuer}</span>
         </.device_detail_row>
         <.device_detail_row :if={@device.last_attested_cert_serial} label="Serial">
-          <span class="font-mono text-xs text-body break-all">
+          <span class="font-mono text-xs text-fg break-all">
             {@device.last_attested_cert_serial}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.last_attested_cert_fingerprint} label="SHA-256 Fingerprint">
-          <span class="font-mono text-xs text-body break-all">
+          <span class="font-mono text-xs text-fg break-all">
             {@device.last_attested_cert_fingerprint}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@certificate && @certificate.revoked_at} label="Revoked">
-          <span class="text-xs text-body">
+          <span class="text-xs text-fg">
             <Core.relative_datetime datetime={@certificate.revoked_at} />
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@certificate && @certificate.reason} label="Revocation Reason">
-          <span class="text-xs text-body">{@certificate.reason}</span>
+          <span class="text-xs text-fg">{@certificate.reason}</span>
         </.device_detail_row>
         <.device_detail_row :if={@device.last_attested_at} label="Last Attested">
-          <span class="text-xs text-body">
+          <span class="text-xs text-fg">
             <Core.relative_datetime datetime={@device.last_attested_at} />
           </span>
         </.device_detail_row>
@@ -1096,7 +1096,7 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <Core.popover>
       <:target>
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-error bg-error-light">
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-attn bg-attn-wash">
           <Core.icon name="ri-close-circle-line" class="w-2.5 h-2.5" /> Revoked
         </span>
       </:target>
@@ -1111,7 +1111,7 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <Core.popover>
       <:target>
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light">
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-fg bg-hover">
           <Core.icon name="ri-check-line" class="w-2.5 h-2.5" /> Valid
         </span>
       </:target>
@@ -1130,7 +1130,7 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <Core.popover>
       <:target>
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-subtle bg-raised">
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-hover">
           <Core.icon name="ri-question-line" class="w-2.5 h-2.5" /> Unknown
         </span>
       </:target>
@@ -1152,9 +1152,9 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
       <.device_details_card device={@device} />
-      <div :if={@site} class="border-t border-border"></div>
+      <div :if={@site} class="border-t border-hair"></div>
       <.gateway_actions :if={@site} device={@device} gateway_panel={@gateway_panel} />
-      <div :if={@site} class="border-t border-border"></div>
+      <div :if={@site} class="border-t border-hair"></div>
       <.device_danger_zone :if={@site} confirm_delete_device={@confirm_delete_device} gateway? />
     </div>
     """
@@ -1164,9 +1164,9 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
       <.device_details_card device={@device} />
-      <div class="border-t border-border"></div>
+      <div class="border-t border-hair"></div>
       <.device_actions device={@device} confirm_unverify_device={@confirm_unverify_device} />
-      <div class="border-t border-border"></div>
+      <div class="border-t border-hair"></div>
       <.device_danger_zone confirm_delete_device={@confirm_delete_device} />
     </div>
     """
@@ -1183,31 +1183,31 @@ defmodule PortalWeb.Devices.Components do
           <.copyable_value id={"device-id-#{@device.id}"} value={@device.id} />
         </.device_detail_row>
         <.device_detail_row label="Name">
-          <span class="text-xs text-body break-all">{@device.name}</span>
+          <span class="text-xs text-fg break-all">{@device.name}</span>
         </.device_detail_row>
         <.device_detail_row :if={@device.firezone_id} label="Firezone ID">
-          <span class="font-mono text-[11px] text-body break-all">
+          <span class="font-mono text-[11px] text-fg break-all">
             {@device.firezone_id}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.last_attested_mdm_device_id} label="MDM Device ID">
-          <span class="font-mono text-[11px] text-body break-all">
+          <span class="font-mono text-[11px] text-fg break-all">
             {@device.last_attested_mdm_device_id}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.last_attested_device_serial} label="Attested Serial">
-          <span class="font-mono text-[11px] text-body break-all">
+          <span class="font-mono text-[11px] text-fg break-all">
             {@device.last_attested_device_serial}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.last_attested_device_uuid} label="Attested UUID">
-          <span class="font-mono text-[11px] text-body break-all">
+          <span class="font-mono text-[11px] text-fg break-all">
             {@device.last_attested_device_uuid}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.last_attested_at} label="Last Attested">
-          <span class="inline-flex items-center gap-1 text-xs text-body">
-            <Core.icon name="ri-shield-keyhole-line" class="w-3 h-3 text-success" />
+          <span class="inline-flex items-center gap-1 text-xs text-fg">
+            <Core.icon name="ri-shield-keyhole-line" class="w-3 h-3 text-fg" />
             <Core.relative_datetime datetime={@device.last_attested_at} />
           </span>
         </.device_detail_row>
@@ -1226,12 +1226,12 @@ defmodule PortalWeb.Devices.Components do
           <.version current={@device.last_seen_version} latest={latest_version(@device)} />
         </.device_detail_row>
         <.device_detail_row label="Last Seen">
-          <span class="text-xs text-body">
+          <span class="text-xs text-fg">
             <Core.relative_datetime datetime={@device.last_seen_at} />
           </span>
         </.device_detail_row>
         <.device_detail_row label="Created">
-          <span class="text-xs text-body">
+          <span class="text-xs text-fg">
             <Core.relative_datetime datetime={@device.inserted_at} />
           </span>
         </.device_detail_row>
@@ -1280,12 +1280,12 @@ defmodule PortalWeb.Devices.Components do
         </Form.action_button>
         <div
           :if={@action == :confirm_unverify}
-          class="px-3 py-2.5 rounded border border-border bg-raised"
+          class="px-3 py-2.5 rounded border border-hair bg-hover"
         >
-          <p class="text-xs font-medium text-heading mb-1">
+          <p class="text-xs font-medium text-fg mb-1">
             Revoke verification for this device?
           </p>
-          <p class="text-xs text-body mb-3">
+          <p class="text-xs text-fg mb-3">
             Current authorizations for this device may be revoked.
           </p>
           <div class="flex items-center gap-1.5">
@@ -1342,25 +1342,25 @@ defmodule PortalWeb.Devices.Components do
   def device_danger_zone(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-attn mb-3">
         Danger Zone
       </h3>
       <button
         :if={not @confirm_delete_device}
         type="button"
         phx-click="confirm_delete_device"
-        class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded border border-attn/20 text-xs text-attn hover:bg-attn-wash transition-colors"
       >
         <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete {if @gateway?, do: "gateway", else: "device"}
       </button>
       <div
         :if={@confirm_delete_device}
-        class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
+        class="px-3 py-2.5 rounded border border-attn/20 bg-attn-wash"
       >
-        <p class={["text-xs font-medium text-error", if(@gateway?, do: "mb-3", else: "mb-1")]}>
+        <p class={["text-xs font-medium text-attn", if(@gateway?, do: "mb-3", else: "mb-1")]}>
           Delete this {if @gateway?, do: "gateway", else: "device"}?
         </p>
-        <p :if={not @gateway?} class="text-xs text-error/70 mb-3">
+        <p :if={not @gateway?} class="text-xs text-attn/70 mb-3">
           This won't prevent the owner from signing in again; to block access, disable the owning actor instead.
         </p>
         <div class="flex items-center gap-1.5">
@@ -1413,7 +1413,7 @@ defmodule PortalWeb.Devices.Components do
     </span>
     <span
       :if={is_nil(@trust)}
-      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-subtle bg-raised"
+      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-hover"
     >
       Unverified
     </span>
@@ -1425,7 +1425,7 @@ defmodule PortalWeb.Devices.Components do
 
   def section_heading(assigns) do
     ~H"""
-    <h3 class="flex items-center gap-1 text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
+    <h3 class="flex items-center gap-1 text-[10px] font-semibold tracking-widest uppercase text-muted mb-3">
       {@title}
       {render_slot(@info)}
     </h3>
@@ -1439,7 +1439,7 @@ defmodule PortalWeb.Devices.Components do
   def device_detail_row(assigns) do
     ~H"""
     <div>
-      <dt class="flex items-center gap-1 text-[10px] text-subtle mb-0.5">
+      <dt class="flex items-center gap-1 text-[10px] text-muted mb-0.5">
         {@label}
         {render_slot(@info)}
       </dt>
@@ -1456,17 +1456,17 @@ defmodule PortalWeb.Devices.Components do
   defp copyable_value(assigns) do
     ~H"""
     <div id={@id} phx-hook="CopyClipboard" class="flex items-center gap-1.5 min-w-0">
-      <span id={"#{@id}-code"} class="font-mono text-[11px] text-body break-all">{@value}</span>
+      <span id={"#{@id}-code"} class="font-mono text-[11px] text-fg break-all">{@value}</span>
       <button
         type="button"
-        class="flex shrink-0 text-subtle hover:text-heading cursor-pointer rounded"
+        class="flex shrink-0 text-muted hover:text-fg cursor-pointer rounded"
         data-copy-to-clipboard-target={"#{@id}-code"}
         title="Copy to clipboard"
       >
         <span id={"#{@id}-default-message"} class="inline-flex">
           <Core.icon name="ri-clipboard-line" class="h-3.5 w-3.5" />
         </span>
-        <span id={"#{@id}-success-message"} class="hidden text-success">
+        <span id={"#{@id}-success-message"} class="hidden text-fg">
           <Core.icon name="ri-check-line" class="h-3.5 w-3.5" />
         </span>
       </button>
@@ -1516,7 +1516,7 @@ defmodule PortalWeb.Devices.Components do
     %{
       label: "Attested",
       icon: "ri-shield-keyhole-line",
-      class: "text-success bg-success-light",
+      class: "text-fg bg-hover",
       title: "This device is attested through an X.509 certificate."
     }
   end
@@ -1525,7 +1525,7 @@ defmodule PortalWeb.Devices.Components do
     %{
       label: "Verified",
       icon: "ri-shield-check-line",
-      class: "text-success bg-success-light",
+      class: "text-fg bg-hover",
       title: "An admin vouched for the values this Device reports."
     }
   end
@@ -1564,15 +1564,15 @@ defmodule PortalWeb.Devices.Components do
         <div class="flex items-center justify-between gap-3 mb-3">
           <div class="flex items-center gap-2">
             <Core.provider_icon provider={sample.provider} size="sm" />
-            <span class="text-sm font-medium text-heading">{sample.name}</span>
+            <span class="text-sm font-medium text-fg">{sample.name}</span>
           </div>
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light">
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-fg bg-hover">
             <Core.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5" /> Attested device ID
           </span>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
           <.device_detail_row :for={{label, value} <- sample.attributes} label={label}>
-            <span class="font-mono text-xs text-body">{value}</span>
+            <span class="font-mono text-xs text-fg">{value}</span>
           </.device_detail_row>
         </dl>
       </div>
