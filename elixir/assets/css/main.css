@@ -157,6 +157,18 @@
 }
 /* End */
 
+/* Tailwind writes `rounded` and its side variants as literal sizes, not theme
+   values, so the square-corner theme above does not reach them. Unlayered
+   rules win over every layer. */
+.rounded,
+.rounded-t,
+.rounded-b,
+.rounded-l,
+.rounded-r,
+.rounded-\[2px\] {
+  border-radius: 0;
+}
+
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

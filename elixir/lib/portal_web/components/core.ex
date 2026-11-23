@@ -50,7 +50,7 @@ defmodule PortalWeb.Components.Core do
       assign(
         assigns,
         :class,
-        "#{assigns.class} font-semibold px-2 p-[0.15rem] bg-neutral-100 rounded-sm"
+        "#{assigns.class} font-mono text-[0.9em] px-1.5 py-px bg-hover border border-hair"
       )
 
     # Important: leave the </code> on the same line as the render_slot call, otherwise there will be
@@ -79,10 +79,10 @@ defmodule PortalWeb.Components.Core do
     ~H"""
     <div id={@id} class="relative" phx-hook="CopyClipboard">
       <div id={"#{@id}-nested"} class={[~w[
-        text-sm text-left text-neutral-50
+        text-sm text-left text-bg font-mono
         flex items-center max-w-full
         space-x-4 p-4 pl-6
-        bg-neutral-800
+        bg-fg
         overflow-x-auto
       ], @class]} {@rest}>
         <code
@@ -96,9 +96,9 @@ defmodule PortalWeb.Components.Core do
         type="button"
         data-copy-to-clipboard-target={"#{@id}-code"}
         class={~w[
-          absolute end-1 top-1 text-gray-900 hover:bg-gray-100
-          rounded-sm py-2 px-2.5 inline-flex items-center justify-center
-          bg-white border-neutral-200 border h-8
+          absolute end-1 top-1 text-fg hover:bg-hover
+          py-2 px-2.5 inline-flex items-center justify-center
+          bg-bg border-rule border h-8
         ]}
       >
         <span id={"#{@id}-default-message"} class="inline-flex items-center">
@@ -106,8 +106,8 @@ defmodule PortalWeb.Components.Core do
           <span class="text-xs font-semibold">Copy</span>
         </span>
         <span id={"#{@id}-success-message"} class="hidden items-center">
-          <.icon name="ri-check-line" data-icon class="text-green-700 h-4 w-4 me-1.5" />
-          <span class="text-xs font-semibold text-green-700">Copied</span>
+          <.icon name="ri-check-line" data-icon class="h-4 w-4 me-1.5" />
+          <span class="text-xs font-semibold">Copied</span>
         </span>
       </button>
     </div>
@@ -501,13 +501,16 @@ defmodule PortalWeb.Components.Core do
         ~p"/#{@account}/avatars/#{@actor.avatar_identity_id}?#{[v: Portal.Avatars.version(@actor.avatar_etag)]}"
       }
       alt=""
-      class={["rounded-full object-cover bg-neutral-100", @class]}
+      class={["rounded-full object-cover bg-hover", @class]}
     />
     <span
       :if={is_nil(@actor.avatar_identity_id)}
-      class={["inline-flex items-center justify-center rounded-full bg-neutral-100", @class]}
+      class={[
+        "inline-flex items-center justify-center rounded-full bg-hover border border-hair",
+        @class
+      ]}
     >
-      <.icon name="ri-user-line" class="w-4 h-4 text-neutral-600" />
+      <.icon name="ri-user-line" class="w-3.5 h-3.5 text-muted" />
     </span>
     """
   end
@@ -835,10 +838,9 @@ defmodule PortalWeb.Components.Core do
       class={[
         connection_status_size(@size),
         "flex items-center",
-        "text-white",
-        "rounded",
+        "text-bg",
         "transition-colors",
-        (@connected? && "bg-accent hover:bg-accent-dark") || "bg-primary-500 cursor-progress"
+        (@connected? && "bg-fg hover:opacity-85") || "bg-muted cursor-progress"
       ]}
       navigate={@navigate}
       {
@@ -1104,10 +1106,10 @@ defmodule PortalWeb.Components.Core do
 
   defp ping_icon_color(color) do
     case color do
-      "info" -> {"bg-accent", "bg-accent-light"}
-      "success" -> {"bg-success", "bg-green-400"}
-      "warning" -> {"bg-warning", "bg-amber-400"}
-      "danger" -> {"bg-danger", "bg-red-400"}
+      "info" -> {"bg-muted", "bg-faint"}
+      "success" -> {"bg-fg", "bg-muted"}
+      "warning" -> {"bg-attn", "bg-attn"}
+      "danger" -> {"bg-attn", "bg-attn"}
     end
   end
 
@@ -1549,7 +1551,7 @@ defmodule PortalWeb.Components.Core do
         "peer-checked:bg-brand peer-checked:border-brand",
         "peer-focus-visible:ring-2 peer-focus-visible:ring-border-focus",
         "after:content-[''] after:absolute after:top-[1px] after:start-[1px]",
-        "after:bg-white after:rounded-full after:shadow-sm after:transition-transform",
+        "after:bg-bg after:border after:border-input-border after:rounded-full after:transition-transform",
         "peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full",
         toggle_size(@size)
       ]}>
