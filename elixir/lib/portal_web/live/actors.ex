@@ -1,8 +1,9 @@
 defmodule PortalWeb.Actors do
   use PortalWeb, :live_view
 
+  alias __MODULE__.Components
   alias __MODULE__.Database
-  alias PortalWeb.Actors.Components, as: ActorComponents
+  alias __MODULE__.Details
 
   alias Portal.Actor
   alias Portal.Authentication
@@ -20,7 +21,7 @@ defmodule PortalWeb.Actors do
 
   @form_events ~w[validate save create_user create_service_account]
 
-  @selected_actor_events ~w[open_actor_edit_form cancel_actor_edit_form save delete_token delete_session delete_identity send_welcome_email]
+  @selected_actor_events ~w[open_actor_edit_form cancel_actor_edit_form save delete_token delete_session delete_identity send_welcome_email add_actor_to_group remove_actor_from_group]
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
@@ -54,7 +55,7 @@ defmodule PortalWeb.Actors do
     {:ok, socket}
   end
 
-  # New Person Panel — skip type selection, go straight to user form
+  # New person panel: skip type selection, go straight to the user form
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
     socket = LiveTable.handle_live_tables_params(socket, params, uri)
     changeset = changeset(%Actor{}, %{type: :account_user})
@@ -330,6 +331,32 @@ defmodule PortalWeb.Actors do
       Enum.reject(socket.assigns.actor_group_membership.pending_group_removals, &(&1 == group_id))
 
     {:noreply, merge_state(socket, :actor_group_membership, pending_group_removals: removals)}
+  end
+
+  def handle_event("add_actor_to_group", %{"group_id" => group_id}, socket) do
+    actor = socket.assigns.selected_actor
+    subject = socket.assigns.subject
+
+    result =
+      case Details.fetch_manual_group(group_id, subject) do
+        %Portal.Group{} = group -> Database.add_group_member(group.id, actor, subject)
+        _ -> {:error, :not_found}
+      end
+
+    {:noreply, after_inline_membership_change(socket, result, "Could not add to the group.")}
+  end
+
+  def handle_event("remove_actor_from_group", %{"group_id" => group_id}, socket) do
+    actor = socket.assigns.selected_actor
+    subject = socket.assigns.subject
+
+    result =
+      case Details.fetch_manual_group(group_id, subject) do
+        %Portal.Group{} = group -> Database.remove_group_member(group.id, actor, subject)
+        _ -> {:error, :not_found}
+      end
+
+    {:noreply, after_inline_membership_change(socket, result, "Could not remove from the group.")}
   end
 
   def handle_event("create_user", %{"actor" => attrs}, socket) do
@@ -816,7 +843,8 @@ defmodule PortalWeb.Actors do
       topic == "presences:account_devices:" <> socket.assigns.account.id and
           Presence.Devices.diff_includes_actor?(payload, actor.id) ->
         tokens = Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject)
-        {:noreply, merge_state(socket, :actor_related, tokens: tokens)}
+        devices = Details.list_devices(actor.id, socket.assigns.subject)
+        {:noreply, merge_state(socket, :actor_related, tokens: tokens, devices: devices)}
 
       true ->
         {:noreply, socket}
@@ -1010,6 +1038,8 @@ defmodule PortalWeb.Actors do
            groups: groups,
            tokens: tokens,
            sessions: sessions,
+           devices: Details.list_devices(actor.id, subject),
+           reach: Details.list_reach(actor.id, subject),
            created_token: created_token
          )}
 
@@ -1033,19 +1063,16 @@ defmodule PortalWeb.Actors do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
       <Page.page_header>
-        <:icon>
-          <Core.icon name="ri-user-line" class="w-16 h-16 text-brand" />
-        </:icon>
         <:title>People</:title>
         <:description>
-          Admin users and regular users in this account.
+          Admins and users in this account, the groups they are in, and when they were last active.
         </:description>
         <:action>
           <Navigation.docs_action show_label size="md" path="/deploy/users" />
         </:action>
         <:action>
-          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_actor_panel">
-            New Person
+          <Form.button style="primary" icon="ri-user-add-line" phx-click="open_new_actor_panel">
+            Add a person
           </Form.button>
         </:action>
         <:stats>
@@ -1076,35 +1103,47 @@ defmodule PortalWeb.Actors do
           metadata={@actors_metadata}
           class="flex-1 min-h-0"
         >
-          <:col :let={actor} field={{:actors, :name}} label="name">
-            <div class="flex items-center gap-2.5">
-              <ActorComponents.actor_avatar account={@account} actor={actor} />
-              <div class="min-w-0 flex items-center gap-1.5">
-                <span class="font-medium text-heading group-hover:text-brand transition-colors truncate">
-                  {actor.name}
-                </span>
-                <ActorComponents.identity_provider_icons actor={actor} />
+          <:col :let={actor} field={{:actors, :name}} label="Name">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <Components.actor_avatar account={@account} actor={actor} />
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-medium text-fg truncate">{actor.name}</span>
+                  <Core.badge :if={actor.type == :account_admin_user} size="xs">Admin</Core.badge>
+                </div>
+                <div class="text-xs text-muted truncate" title={actor.email}>
+                  {actor.email || "No email"}
+                </div>
               </div>
             </div>
           </:col>
-          <:col :let={actor} field={{:actors, :email}} label="email" class="w-72">
-            <span class="text-body block truncate" title={actor.email}>
-              {actor.email || "-"}
-            </span>
+          <:col :let={actor} label="Groups" class="w-1/3">
+            <Components.group_links account={@account} groups={actor.groups} />
           </:col>
-          <:col :let={actor} label="status" class="w-32">
-            <ActorComponents.actor_status_badge
+          <:col :let={actor} label="Status" filter={:status} class="w-28">
+            <Components.actor_status_badge
               is_disabled={actor.is_disabled}
               disabled_by_directory={not is_nil(actor.disabled_by_directory_id)}
             />
           </:col>
+          <:col :let={actor} label="Role" filter={:type} class="w-24">
+            <span class="text-muted">{if actor.type == :account_admin_user, do: "Admin", else: "User"}</span>
+          </:col>
+          <:col :let={actor} label="Directory" filter={:directory_id} class="w-28">
+            <Components.identity_provider_icons actor={actor} />
+          </:col>
+          <:col :let={actor} label="Last active" class="w-36 text-right">
+            <Components.last_active actor={actor} />
+          </:col>
           <:empty>
-            <span class="text-sm text-subtle">No people to display.</span>
+            <div class="flex flex-col items-center gap-2 py-16 text-sm text-muted">
+              <Core.icon name="ri-user-line" class="w-6 h-6 text-faint" /> No people to display.
+            </div>
           </:empty>
         </LiveTable.live_table>
       </div>
 
-      <ActorComponents.actor_panel
+      <Components.actor_panel
         account={@account}
         actor={@selected_actor}
         query_params={@query_params}
@@ -1161,6 +1200,8 @@ defmodule PortalWeb.Actors do
       groups: [],
       tokens: [],
       sessions: [],
+      devices: [],
+      reach: [],
       created_token: nil
     }
     |> Map.merge(Map.new(overrides))
@@ -1222,8 +1263,6 @@ defmodule PortalWeb.Actors do
         Database.remove_group_member(group_id, actor, subject)
       end)
 
-    groups = Database.get_groups_for_actor(actor.id, subject)
-
     errors =
       (addition_results ++ removal_results)
       |> Enum.filter(&match?({:error, _}, &1))
@@ -1231,7 +1270,7 @@ defmodule PortalWeb.Actors do
     socket =
       socket
       |> assign(actor_group_membership: actor_group_membership_state())
-      |> merge_state(:actor_related, groups: groups)
+      |> refresh_actor_groups(actor, subject)
 
     if Enum.empty?(errors) do
       socket
@@ -1240,7 +1279,24 @@ defmodule PortalWeb.Actors do
     end
   end
 
-  # Helper functions
+  defp after_inline_membership_change(socket, {:ok, _membership}, _message) do
+    socket
+    |> assign(actor_group_membership: actor_group_membership_state())
+    |> refresh_actor_groups(socket.assigns.selected_actor, socket.assigns.subject)
+    |> LiveTable.reload_live_table!("actors")
+  end
+
+  defp after_inline_membership_change(socket, _result, message) do
+    put_flash(socket, :error, message)
+  end
+
+  defp refresh_actor_groups(socket, actor, subject) do
+    merge_state(socket, :actor_related,
+      groups: Database.get_groups_for_actor(actor.id, subject),
+      reach: Details.list_reach(actor.id, subject)
+    )
+  end
+
   defp parse_date_to_datetime(date_string) do
     case Date.from_iso8601(date_string) do
       {:ok, date} ->
@@ -1287,6 +1343,7 @@ defmodule PortalWeb.Actors do
 
   defmodule Database do
     import Ecto.Query
+    import Ecto.Changeset, only: [change: 2]
     import Portal.Repo.Query
     alias Portal.ExternalIdentity
     alias Portal.Actor
@@ -1340,7 +1397,7 @@ defmodule PortalWeb.Actors do
       [
         %Filter{
           name: :name_or_email,
-          title: "Name or Email",
+          title: "Name or email",
           type: {:string, :websearch},
           fun: &filter_by_name_or_email/2
         },
@@ -1508,6 +1565,7 @@ defmodule PortalWeb.Actors do
       actor_ids
       |> Enum.map(&Map.get(actors_by_id, &1))
       |> Enum.reject(&is_nil/1)
+      |> PortalWeb.Actors.Details.put_list_details(subject)
     end
 
     def fetch_account(subject) do
@@ -1705,6 +1763,7 @@ defmodule PortalWeb.Actors do
         as: :okta_directory
       )
       |> where([membership: m], m.actor_id == ^actor_id)
+      |> where([groups: g], is_nil(g.resource_id))
       |> select(
         [groups: g, directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
         %{
@@ -1796,7 +1855,7 @@ defmodule PortalWeb.Actors do
     def search_groups_for_actor(search_term, actor_id, subject) do
       query =
         from(g in Portal.Group, as: :groups)
-        |> where([groups: g], g.type == :static)
+        |> where([groups: g], g.type == :static and is_nil(g.resource_id))
         |> where([groups: g], ilike(g.name, ^"%#{search_term}%"))
         |> limit(10)
 
@@ -1822,8 +1881,6 @@ defmodule PortalWeb.Actors do
     @spec add_group_member(Ecto.UUID.t(), Portal.Actor.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Portal.Membership.t()} | {:error, Ecto.Changeset.t()}
     def add_group_member(group_id, actor, subject) do
-      import Ecto.Changeset
-
       %Portal.Membership{}
       |> change(%{account_id: actor.account_id, group_id: group_id, actor_id: actor.id})
       |> Portal.Membership.changeset()
