@@ -124,7 +124,7 @@ impl Client {
                     host.to_owned(),
                     443,
                     addresses,
-                    TlsConfig::webpki_roots(),
+                    Some(TlsConfig::webpki_roots()),
                     tcp,
                 )
                 .await

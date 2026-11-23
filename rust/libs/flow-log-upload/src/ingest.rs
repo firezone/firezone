@@ -123,7 +123,7 @@ async fn connect(
         host,
         443,
         addresses,
-        TlsConfig::webpki_roots(),
+        Some(TlsConfig::webpki_roots()),
         socket_factory,
     )
     .await

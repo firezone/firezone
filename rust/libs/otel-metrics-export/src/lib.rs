@@ -26,6 +26,12 @@ pub use pipeline::install_meter_provider;
 const MIN_EXPORT_INTERVAL: Duration = Duration::from_secs(10);
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Debug builds also accept plaintext HTTP so that a local endpoint can be tested.
+#[cfg(debug_assertions)]
+const ENDPOINT_SCHEMES: &[&str] = &["https", "http"];
+#[cfg(not(debug_assertions))]
+const ENDPOINT_SCHEMES: &[&str] = &["https"];
+
 /// Handle to the thread exporting metrics to the portal.
 ///
 /// Dropping it stops the thread.
@@ -88,7 +94,7 @@ impl Config {
         let endpoint = Url::parse(endpoint)
             .with_context(|| format!("Invalid metrics endpoint `{endpoint}`"))?;
         anyhow::ensure!(
-            endpoint.scheme() == "https",
+            ENDPOINT_SCHEMES.contains(&endpoint.scheme()),
             "Metrics endpoint must use HTTPS"
         );
 
@@ -291,7 +297,7 @@ impl Connection {
             host,
             port,
             addresses,
-            TlsConfig::webpki_roots(),
+            (endpoint.scheme() == "https").then(TlsConfig::webpki_roots),
             self.socket_factory.clone(),
         )
         .await
@@ -307,14 +313,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_rejects_plain_http_and_clamps_the_interval() {
-        assert!(Config::new("http://otlp.firezone.dev/v1/metrics", 60, token(), vec![]).is_err());
+    fn config_rejects_other_schemes_and_clamps_the_interval() {
+        assert!(Config::new("ftp://otlp.firezone.dev/v1/metrics", 60, token(), vec![]).is_err());
         assert_eq!(
             Config::new("https://otlp.firezone.dev/v1/metrics", 0, token(), vec![])
                 .unwrap()
                 .interval,
             MIN_EXPORT_INTERVAL
         );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_builds_accept_plain_http() {
+        assert!(Config::new("http://localhost:4318/v1/metrics", 60, token(), vec![]).is_ok());
     }
 
     #[test]
