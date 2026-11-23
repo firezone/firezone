@@ -42,7 +42,7 @@ use tracing_subscriber::{
 use crate::{
     assertions::check_invariants,
     clock::Clock,
-    real_relay_system::{RealRelaySystem, check_settled},
+    real_relay_system::{RealRelaySystem, check_heartbeats, check_settled},
     real_tunnel_system::RealTunnelSystem,
     relay_generator::RelayGenerator,
     tunnel_generator::TunnelGenerator,
@@ -119,7 +119,7 @@ pub fn run_relay(data: &[u8], now: Instant) {
     let mut model = generator.model();
 
     let mut system = RealRelaySystem::new(&model, now);
-    let settled = system.settle(&model);
+    let settled = system.settle();
     check_settled(&model, &settled);
     model.settle();
 
@@ -135,19 +135,20 @@ pub fn run_relay(data: &[u8], now: Instant) {
         );
 
         model.apply(&transition, &interference);
-        system.apply(&model, &transition, interference);
+        let lost_heartbeats = system.apply(&model, &transition, interference);
+        check_heartbeats(&model, &lost_heartbeats);
 
         // The next transition meets whatever the client and the relay are in the middle of.
         if !settle {
             continue;
         }
 
-        let settled = system.settle(&model);
+        let settled = system.settle();
         check_settled(&model, &settled);
         model.settle();
     }
 
-    let settled = system.settle(&model);
+    let settled = system.settle();
     check_settled(&model, &settled);
 }
 

@@ -76,6 +76,11 @@ pub(crate) struct RealRelaySystem {
 
     client: Host<RealAllocation>,
 
+    /// The peers that the client is connected to.
+    connections: BTreeSet<SocketAddr>,
+    /// The peers whose data got lost on a heartbeat since the last transition.
+    lost_heartbeats: BTreeSet<SocketAddr>,
+
     /// The data that arrived at the peers.
     at_peers: Vec<Transmit>,
     /// The data that was injected into the relay's channels.
@@ -113,40 +118,52 @@ pub(crate) struct Settled {
     relay_addresses_changed: bool,
     /// The peers whose data arrived in both directions.
     relayed: BTreeSet<SocketAddr>,
+    /// The peers whose data got lost on a heartbeat while the system settled.
+    lost_heartbeats: BTreeSet<SocketAddr>,
 }
 
-/// Holds what the system looked like once it settled against what the model expects.
+/// Checks the peers whose data got lost on a heartbeat against the connections that the model
+/// expects to be established.
+pub(crate) fn check_heartbeats(model: &RelayModel, lost: &BTreeSet<SocketAddr>) {
+    for peer in lost {
+        if model.connections.get(peer) == Some(&true) {
+            tracing::error!(target: "assertions", %peer, "❌ An established connection lost data although nothing disrupted relaying");
+        }
+    }
+}
+
+/// Checks what the system looked like once it settled against what the model expects.
 pub(crate) fn check_settled(model: &RelayModel, settled: &Settled) {
-    assert!(
-        model.disrupted() || !settled.relay_addresses_changed,
-        "The client's relay addresses changed although nothing disrupted relaying"
-    );
+    check_heartbeats(model, &settled.lost_heartbeats);
+
+    if settled.relay_addresses_changed && !model.disrupted() {
+        tracing::error!(target: "assertions", "❌ The client's relay addresses changed although nothing disrupted relaying");
+    }
 
     if model.must_relay() {
         let (ip4, ip6) = model.relay.interfaces(model.relay.stack);
-
-        assert_eq!(
-            Vec::from_iter(settled.relay_addresses.iter().map(|a| a.ip())),
-            Vec::from_iter(
-                iter::empty()
-                    .chain(ip4.map(IpAddr::from))
-                    .chain(ip6.map(IpAddr::from))
-            ),
-            "The client does not hold one relay address per address family of the relay"
+        let actual = Vec::from_iter(settled.relay_addresses.iter().map(|a| a.ip()));
+        let expected = Vec::from_iter(
+            iter::empty()
+                .chain(ip4.map(IpAddr::from))
+                .chain(ip6.map(IpAddr::from)),
         );
+
+        if actual != expected {
+            tracing::error!(target: "assertions", ?actual, ?expected, "❌ The client does not hold one relay address per address family of the relay");
+        }
     }
 
-    assert_eq!(
-        settled.relayed,
-        BTreeSet::from_iter(
-            model
-                .connections
-                .keys()
-                .copied()
-                .filter(|p| model.can_relay(*p))
-        ),
-        "The client does not relay data to and from every peer it is connected to"
+    let expected = BTreeSet::from_iter(
+        model
+            .connections
+            .keys()
+            .copied()
+            .filter(|p| model.can_relay(*p)),
     );
+    if settled.relayed != expected {
+        tracing::error!(target: "assertions", actual = ?settled.relayed, ?expected, "❌ The client does not relay data to and from every peer it is connected to");
+    }
 }
 
 /// Where a data message is going.
@@ -168,6 +185,8 @@ impl RealRelaySystem {
             relay_boots: 0,
             allocation_boot: 0,
             client: host(RealAllocation::default(), &model.client, model.client.stack),
+            connections: model.connections.keys().copied().collect(),
+            lost_heartbeats: BTreeSet::new(),
             at_peers: Vec::new(),
             injected_data: Vec::new(),
             data_messages: 0,
@@ -176,17 +195,18 @@ impl RealRelaySystem {
         }
     }
 
+    /// Applies a transition, returning the peers whose data got lost on a heartbeat meanwhile.
     pub(crate) fn apply(
         &mut self,
         model: &RelayModel,
         transition: &Transition,
         interference: Interference,
-    ) {
+    ) -> BTreeSet<SocketAddr> {
         let now = self.clock.now::<Instant>();
         self.interference = interference;
 
         match transition {
-            Transition::Advance { duration } => self.advance(model, *duration),
+            Transition::Advance { duration } => self.advance(*duration),
             Transition::Refresh => {
                 self.client
                     .drive(&mut self.transmits, now, |a| a.refresh(now));
@@ -202,7 +222,7 @@ impl RealRelaySystem {
                 self.client.update_interface(ip4, ip6);
                 self.client
                     .drive(&mut self.transmits, now, |a| a.restart(now, seed));
-                self.bind_channels(model);
+                self.bind_channels();
             }
             Transition::RebootRelay => {
                 self.relay_boots += 1;
@@ -210,22 +230,27 @@ impl RealRelaySystem {
             }
             Transition::Partition { duration } => {
                 self.client.set_offline();
-                self.advance(model, *duration);
+                self.advance(*duration);
                 self.client
                     .update_interface(self.client.ip4, self.client.ip6);
             }
             Transition::Connect { peer } => {
+                self.connections.insert(*peer);
                 self.client
                     .drive(&mut self.transmits, now, |a| a.bind_channel(*peer, now));
             }
-            Transition::Disconnect { peer: _ } => {}
+            Transition::Disconnect { peer } => {
+                self.connections.remove(peer);
+            }
             Transition::InjectDatagram(injection) => self.inject(model, injection),
         }
+
+        mem::take(&mut self.lost_heartbeats)
     }
 
     /// Lets the system settle, then exchanges data once over every connection.
-    pub(crate) fn settle(&mut self, model: &RelayModel) -> Settled {
-        self.run_until_settled(model);
+    pub(crate) fn settle(&mut self) -> Settled {
+        self.run_until_settled();
         self.interference = Interference::default();
 
         let relay_addresses_changed = self
@@ -234,46 +259,43 @@ impl RealRelaySystem {
         let relay_addresses = self.client.inner().relay_addresses.clone();
 
         // Has the client bind the channels that it lacks.
-        self.heartbeat(model);
-        self.run_until_settled(model);
+        self.heartbeat();
+        self.run_until_settled();
 
-        let relayed = self.exchange(model);
+        let relayed = self.exchange();
         self.injected_data.clear();
 
         Settled {
             relay_addresses,
             relay_addresses_changed,
             relayed,
+            lost_heartbeats: mem::take(&mut self.lost_heartbeats),
         }
     }
 
-    /// Exchanges data over every connection. The established ones must relay it unless the
-    /// network is partitioned.
-    fn heartbeat(&mut self, model: &RelayModel) {
-        let relayed = self.exchange(model);
+    /// Exchanges data over every connection and records those that lost it, unless the network
+    /// is partitioned.
+    fn heartbeat(&mut self) {
+        let relayed = self.exchange();
 
         if self.client.is_offline() {
             return;
         }
 
-        for (peer, established) in &model.connections {
-            assert!(
-                !established || relayed.contains(peer),
-                "The established connection to {peer} lost data although nothing disrupted relaying"
-            );
-        }
+        self.lost_heartbeats
+            .extend(self.connections.difference(&relayed).copied());
     }
 
     /// Sends data from the client to every peer it is connected to and back, returning the
     /// peers for which both arrived.
     ///
-    /// Panics on data that arrives where nobody sent it to.
-    fn exchange(&mut self, model: &RelayModel) -> BTreeSet<SocketAddr> {
+    /// Data that arrives where nobody sent it to is an error.
+    fn exchange(&mut self) -> BTreeSet<SocketAddr> {
         let now = self.clock.now::<Instant>();
         let mut to_peers = Vec::new();
         let mut to_client = Vec::new();
 
-        for peer in model.connections.keys().copied() {
+        for peer in self.connections.clone() {
             let relay_address = self.client.inner().relay_address_for(peer);
 
             let data = self.next_data(Direction::ToPeer, peer);
@@ -303,16 +325,14 @@ impl RealRelaySystem {
         let at_client = self.client.exec_mut(|c| mem::take(&mut c.received));
 
         for arrival in &at_peers {
-            assert!(
-                to_peers.contains(arrival) || self.injected_data.contains(&arrival.2),
-                "A peer received data that the client did not send to it from its relay address: {arrival:?}"
-            );
+            if !to_peers.contains(arrival) && !self.injected_data.contains(&arrival.2) {
+                tracing::error!(target: "assertions", ?arrival, "❌ A peer received data that the client did not send to it from its relay address");
+            }
         }
         for arrival in &at_client {
-            assert!(
-                to_client.contains(arrival),
-                "The client received data that no peer it is connected to sent to its relay address: {arrival:?}"
-            );
+            if !to_client.contains(arrival) {
+                tracing::error!(target: "assertions", ?arrival, "❌ The client received data that no peer it is connected to sent to its relay address");
+            }
         }
 
         to_peers.retain(|sent| at_peers.contains(sent));
@@ -361,7 +381,7 @@ impl RealRelaySystem {
     }
 
     /// Gives the client a new allocation, with credentials for the running relay.
-    fn allocate(&mut self, model: &RelayModel) {
+    fn allocate(&mut self) {
         let now = self.clock.now();
 
         let (server, username, password, realm) = self.credentials(CLIENT_DEVICE);
@@ -379,16 +399,17 @@ impl RealRelaySystem {
             c.forget_relay_addresses();
         });
         self.allocation_boot = self.relay_boots;
-        self.bind_channels(model);
+        self.bind_channels();
     }
 
     /// Has the client bind a channel to every peer it is connected to, as it does whenever
     /// its allocation starts from scratch.
-    fn bind_channels(&mut self, model: &RelayModel) {
+    fn bind_channels(&mut self) {
         let now = self.clock.now();
+        let connections = &self.connections;
 
         self.client.drive(&mut self.transmits, now, |a| {
-            for peer in model.connections.keys() {
+            for peer in connections {
                 a.bind_channel(*peer, now);
             }
         });
@@ -516,7 +537,7 @@ impl RealRelaySystem {
     ///
     /// Time only passes for the network and for retransmissions; everything else waits for
     /// `advance`.
-    fn run_until_settled(&mut self, model: &RelayModel) {
+    fn run_until_settled(&mut self) {
         let deadline = self.clock.now::<Instant>() + MAX_SETTLE;
         let mut allocations = 0;
 
@@ -534,13 +555,13 @@ impl RealRelaySystem {
             }
 
             allocations += 1;
-            self.allocate(model);
+            self.allocate();
         }
     }
 
     /// Lets time pass, stopping at everything that is due on the way and for a heartbeat
     /// every [`HEARTBEAT`].
-    fn advance(&mut self, model: &RelayModel, duration: Duration) {
+    fn advance(&mut self, duration: Duration) {
         let target = self.clock.now::<Instant>() + duration;
 
         while self.next_heartbeat <= target {
@@ -548,7 +569,7 @@ impl RealRelaySystem {
 
             self.run(|_| next_heartbeat);
             self.clock.skip_to(next_heartbeat);
-            self.heartbeat(model);
+            self.heartbeat();
             self.next_heartbeat = self.clock.now::<Instant>() + HEARTBEAT;
         }
 
@@ -688,10 +709,9 @@ impl Host<RealAllocation> {
                     return;
                 };
 
-                assert!(
-                    self.inner().confirmed_channels.contains(&channel),
-                    "The client accepted data on a channel that the relay did not confirm"
-                );
+                if !self.inner().confirmed_channels.contains(&channel) {
+                    tracing::error!(target: "assertions", %channel, "❌ The client accepted data on a channel that the relay did not confirm");
+                }
                 self.exec_mut(|c| c.received.push((peer, socket.address(), data)));
             }
             _ => {}
@@ -841,10 +861,11 @@ mod tests {
 
     #[test]
     fn client_relays_data_on_a_working_network() {
+        let _guard = crate::init_subscriber();
         let model = RelayGenerator::new(&[]).model();
         let mut system = RealRelaySystem::new(&model, Instant::now());
 
-        let settled = system.settle(&model);
+        let settled = system.settle();
 
         check_settled(&model, &settled);
         assert_eq!(settled.relay_addresses.len(), 2);
