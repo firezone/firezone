@@ -26,6 +26,7 @@ defmodule Portal.Changes.Consumer do
     "accounts" => Hooks.Accounts,
     "account_slugs" => Hooks.AccountSlugs,
     "account_metrics" => Hooks.AccountMetrics,
+    "metrics_diagnostics" => Hooks.MetricsDiagnostics,
     "actors" => Hooks.Actors,
     "groups" => Hooks.Groups,
     "memberships" => Hooks.Memberships,

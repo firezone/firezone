@@ -4,7 +4,10 @@ defmodule PortalAPI.MetricsConfig do
   metrics, how often, the metric name patterns their token allows, and the token
   itself. A `nil` token means metrics export is off.
   """
-  alias Portal.{Account, AccountMetrics, Device, MetricsToken}
+  alias Portal.{Account, AccountMetrics, Device, MetricsDiagnostics, MetricsToken}
+
+  # The shortest interval Clients accept.
+  @diagnostics_export_interval_secs 10
 
   @doc """
   How often channels push a fresh token, so devices never hold an expired one.
@@ -13,17 +16,20 @@ defmodule PortalAPI.MetricsConfig do
 
   def render(%Account{} = account, %Device{} = device) do
     endpoint = Portal.Config.get_env(:portal, :otlp_metrics_ingest_url)
+    export_interval_secs = Portal.Config.fetch_env!(:portal, :otlp_metrics_export_interval_secs)
 
-    patterns =
-      if endpoint && MetricsToken.enabled?(),
-        do: AccountMetrics.effective_patterns(account),
-        else: []
+    {patterns, export_interval_secs, actor_id} =
+      cond do
+        is_nil(endpoint) or not MetricsToken.enabled?() -> {[], export_interval_secs, nil}
+        MetricsDiagnostics.active?(device) -> {["*"], @diagnostics_export_interval_secs, device.actor_id}
+        true -> {AccountMetrics.effective_patterns(account), export_interval_secs, nil}
+      end
 
     %{
       endpoint: endpoint,
-      export_interval_secs: Portal.Config.fetch_env!(:portal, :otlp_metrics_export_interval_secs),
+      export_interval_secs: export_interval_secs,
       patterns: patterns,
-      token: if(patterns != [], do: MetricsToken.mint(account, device, patterns))
+      token: if(patterns != [], do: MetricsToken.mint(account, device, patterns, actor_id: actor_id))
     }
   end
 end

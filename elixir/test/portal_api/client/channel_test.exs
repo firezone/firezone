@@ -768,6 +768,55 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "metrics_config", _payload
     end
 
+    test "sends every metric every 10 seconds, naming the actor, while the actor has diagnostics", %{
+      account: account,
+      actor: actor,
+      client: client,
+      subject: subject
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      account_metrics_fixture(account, ["b"])
+      metrics_diagnostics_fixture(actor)
+      join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{export_interval_secs: 10, patterns: ["*"], token: token}
+
+      claims = JOSE.JWT.peek_payload(token).fields
+      assert claims["actor_id"] == actor.id
+      assert claims["device_id"] == client.id
+      assert claims["metrics"] == ["*"]
+    end
+
+    test "pushes the metrics config when the diagnostics of the client's actor change", %{
+      account: account,
+      actor: actor,
+      client: client,
+      subject: subject
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      account_metrics_fixture(account, ["b"])
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{patterns: ["b"]}
+
+      other = metrics_diagnostics_fixture(actor_fixture(account: account))
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: other})
+      refute_push "metrics_config", _payload
+
+      diagnostics = metrics_diagnostics_fixture(actor)
+      send(socket.channel_pid, %Changes.Change{lsn: 101, op: :insert, struct: diagnostics})
+
+      assert_push "metrics_config", %{export_interval_secs: 10, patterns: ["*"], token: token}
+      assert JOSE.JWT.peek_payload(token).fields["actor_id"] == actor.id
+
+      Repo.delete!(diagnostics)
+      send(socket.channel_pid, %Changes.Change{lsn: 102, op: :delete, old_struct: diagnostics})
+
+      assert_push "metrics_config", %{export_interval_secs: 60, patterns: ["b"], token: token}
+      refute Map.has_key?(JOSE.JWT.peek_payload(token).fields, "actor_id")
+    end
+
     test "sends actor name in init message", %{
       actor: actor,
       client: client,

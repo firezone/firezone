@@ -2,10 +2,11 @@ defmodule PortalAPI.Client.V4.Channel do
   @moduledoc """
   The v4 client control protocol: v3 plus metrics export. Clients on this channel
   receive `metrics_config` pushes after joining, when their token is refreshed,
-  and when the account's metric patterns change.
+  when the account's metric patterns change, and when their actor's diagnostics
+  change.
   """
   use PortalAPI, :channel
-  alias Portal.{AccountMetrics, Changes.Change}
+  alias Portal.{AccountMetrics, Changes.Change, MetricsDiagnostics}
   alias PortalAPI.MetricsConfig
   alias PortalAPI.Client.Channel.Shared
 
@@ -37,6 +38,24 @@ defmodule PortalAPI.Client.V4.Channel do
   end
 
   def handle_info(%Change{} = change, socket) when is_struct(change.struct, AccountMetrics) or is_struct(change.old_struct, AccountMetrics) do
+    handle_metrics_change(change, socket)
+  end
+
+  def handle_info(%Change{} = change, socket)
+      when is_struct(change.struct, MetricsDiagnostics) or is_struct(change.old_struct, MetricsDiagnostics) do
+    %MetricsDiagnostics{actor_id: actor_id} = change.struct || change.old_struct
+
+    if actor_id == socket.assigns.client.actor_id,
+      do: handle_metrics_change(change, socket),
+      else: Shared.handle_info(change, socket)
+  end
+
+  def handle_info(message, socket), do: Shared.handle_info(message, socket)
+
+  @impl true
+  defdelegate handle_in(message, payload, socket), to: Shared
+
+  defp handle_metrics_change(change, socket) do
     last_lsn = Map.get(socket.assigns, :last_lsn, 0)
 
     with {:noreply, socket} <- Shared.handle_info(change, socket) do
@@ -45,11 +64,6 @@ defmodule PortalAPI.Client.V4.Channel do
       {:noreply, socket}
     end
   end
-
-  def handle_info(message, socket), do: Shared.handle_info(message, socket)
-
-  @impl true
-  defdelegate handle_in(message, payload, socket), to: Shared
 
   defp push_metrics_config(socket) do
     push(socket, "metrics_config", MetricsConfig.render(socket.assigns.subject.account, socket.assigns.client))

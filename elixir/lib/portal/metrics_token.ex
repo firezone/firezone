@@ -5,6 +5,8 @@ defmodule Portal.MetricsToken do
   A token is an EdDSA JWT signed with `otel_ingest_jwt_private_key`. It names
   the account (id and slug) the metrics are attributed to, the device (id, type
   and version) it was minted for, and the metric name patterns it may export.
+  With `actor_id`, it also names the actor, so the proxy labels the metrics with
+  the actor and device.
   """
   alias Portal.{Account, Device}
 
@@ -21,8 +23,8 @@ defmodule Portal.MetricsToken do
   @doc """
   Mints a token for `device` of `account` allowing the metrics matching `patterns`.
   """
-  @spec mint(Account.t(), Device.t(), [String.t()]) :: String.t()
-  def mint(%Account{} = account, %Device{} = device, patterns) when is_list(patterns) do
+  @spec mint(Account.t(), Device.t(), [String.t()], actor_id: Ecto.UUID.t() | nil) :: String.t()
+  def mint(%Account{} = account, %Device{} = device, patterns, opts \\ []) when is_list(patterns) do
     now = DateTime.utc_now() |> DateTime.to_unix()
 
     claims =
@@ -32,6 +34,7 @@ defmodule Portal.MetricsToken do
         "device_id" => device.id,
         "device_type" => Atom.to_string(device.type),
         "device_version" => device.last_seen_version,
+        "actor_id" => opts[:actor_id],
         "metrics" => patterns,
         "iat" => now,
         "exp" => now + @ttl_seconds

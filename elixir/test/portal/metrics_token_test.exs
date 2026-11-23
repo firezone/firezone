@@ -35,6 +35,18 @@ defmodule Portal.MetricsTokenTest do
            } = claims
 
     assert exp - iat == 3600
+    refute Map.has_key?(claims, "actor_id")
+  end
+
+  test "names the actor when given one" do
+    device = %Device{id: "00000000-0000-0000-0000-000000000002", type: :client}
+
+    token = MetricsToken.mint(@account, device, ["*"], actor_id: "00000000-0000-0000-0000-000000000004")
+
+    assert {true, %JOSE.JWT{fields: claims}, _jws} =
+             @public_key |> JOSE.JWK.from_pem() |> JOSE.JWT.verify_strict(["EdDSA"], token)
+
+    assert claims["actor_id"] == "00000000-0000-0000-0000-000000000004"
   end
 
   test "omits an unknown device version" do

@@ -53,6 +53,7 @@ defmodule Portal.PubSub do
             | :directories
             | :groups
             | :memberships
+            | :metrics_diagnostics
             | :policies
             | :policy_authorizations
             | :intune_devices

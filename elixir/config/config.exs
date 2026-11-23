@@ -182,6 +182,7 @@ config :portal, Portal.Changes.Consumer,
     accounts
     account_slugs
     account_metrics
+    metrics_diagnostics
     actors
     groups
     memberships
