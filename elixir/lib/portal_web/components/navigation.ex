@@ -131,7 +131,6 @@ defmodule PortalWeb.Components.Navigation do
     """
   end
 
-
   @doc """
   The portal's four places, in sidebar order, plus Settings.
 
@@ -529,7 +528,6 @@ defmodule PortalWeb.Components.Navigation do
     </div>
     """
   end
-
 
   @doc """
   Renders a back navigation link.

@@ -39,7 +39,7 @@ defmodule PortalWeb.DirectAccess do
   def grant(_resource, [], _subject), do: {:error, :no_actors}
 
   def grant(%Portal.Resource{} = resource, actor_ids, %Subject{} = subject) do
-    Portal.Safe.transact(fn ->
+    Database.transact(fn ->
       with {:ok, group} <- ensure_group(resource, subject),
            {:ok, _policy} <- ensure_policy(group, resource, subject),
            :ok <- add_members(group, Enum.uniq(actor_ids), subject) do
@@ -53,19 +53,23 @@ defmodule PortalWeb.DirectAccess do
   """
   @spec revoke(Portal.Resource.t(), Ecto.UUID.t(), Subject.t()) :: :ok | {:error, term()}
   def revoke(%Portal.Resource{} = resource, actor_id, %Subject{} = subject) do
-    Portal.Safe.transact(fn ->
+    Database.transact(fn ->
       with %Portal.Group{} = group <- Database.get_group(resource.id, subject) || {:error, :not_found},
            {:ok, _membership} <- Database.delete_membership(group.id, actor_id, subject) do
-        if Database.count_members(group.id, subject) == 0 do
-          delete_group(group, resource, subject)
-        else
-          {:ok, :ok}
-        end
+        maybe_delete_group(group, resource, subject)
       end
     end)
     |> case do
       {:ok, :ok} -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp maybe_delete_group(group, resource, subject) do
+    if Database.count_members(group.id, subject) == 0 do
+      delete_group(group, resource, subject)
+    else
+      {:ok, :ok}
     end
   end
 
@@ -116,6 +120,8 @@ defmodule PortalWeb.DirectAccess do
     import Ecto.Query
     import Ecto.Changeset
     alias Portal.Safe
+
+    def transact(fun), do: Safe.transact(fun)
 
     def get_group(resource_id, subject) do
       from(g in Portal.Group, where: g.resource_id == ^resource_id)
