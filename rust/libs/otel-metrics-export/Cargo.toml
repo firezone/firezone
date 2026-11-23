@@ -21,8 +21,8 @@ process-memory = { workspace = true }
 prost = { workspace = true, features = ["std"] }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync", "time"] }
 thread-cpu = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
