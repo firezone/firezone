@@ -1,6 +1,7 @@
 # Unified devices: merging the Client and Gateway roles
 
-Status: draft plan, no code yet. Revised 2026-10-22 against `main` at 698b4b457.
+Status: draft plan. Revised 2026-10-22 against `main` at 698b4b457. Device
+identity replanned 2026-11-22 as Phase I, before the unification.
 
 How to read this: section 1 is the current split, section 2 the target model
 (2.1 data, 2.2 control plane, 2.3 data plane, 2.4 Linux binaries, 2.5 admin
@@ -15,8 +16,9 @@ Settled so far:
   actors is not a supported configuration.
 - A device row is the machine, not (machine x user). Users are recorded against
   the device, not duplicated into it.
-- Tokens stay the universal credential. The per-account CA, keystore enrollment
-  and TPM work are parked; the existing MDM-certificate attestation is unchanged.
+- The token says who acts, and a portal-issued certificate says which machine
+  connects. Device identity ships first, in today's Clients and Gateways
+  (Phase I), before the unification merges.
 
 ## 1. Where we are
 
@@ -409,7 +411,9 @@ switches to it, and the old one is dropped in a later release. Deployed
 binaries keep working through every step; the portal still serves `/gateway`
 v1, so legacy endpoints are a long-lived cost.
 
-Ordering constraint to keep in mind: the portal must serve `/device/v1`
+Ordering constraints to keep in mind: device identity (Phase I) ships in
+today's Clients and Gateways before any unification step that users can
+see. The portal must serve `/device/v1`
 (phase 4) before any binary that speaks it ships (phase 5). The gateway
 classification fix (0.4) is not an ordering constraint: co-hosting on a
 pre-fix gateway is warned about at assignment time (2.12b), not prevented.
@@ -527,10 +531,10 @@ Decisions:
   selected to serve, even if its device row has a `site_devices` row from an
   earlier `/device/v1` connect. Refusing to assign such a device to a site is
   UX only.
-- **`type` stays until 6.4.** A `/device/v1` device gets `:gateway` when its
-  token belongs to the `legacy_gateway` actor and `:client` otherwise. No new
-  code reads `type`; existing reads move to user agent, `site_ids`,
-  `device_actors` or `tun`, one area per PR, after `/device/v1` ships.
+- **`type` is legacy.** A row with `type = NULL` is a device from a unified
+  binary, found only by its certificate. A row with `client` or `gateway`
+  is a legacy record from an older binary. An enrolled legacy record that a
+  unified binary connects with becomes `type = NULL` and keeps its id.
 - **Ranges are declared** (decision 10): `proto_min` and `proto_max` connect
   parameters, stored as declared (no portal floor); the pair's minor travels in the
   `:authorize` request as an added key.
@@ -577,147 +581,143 @@ B3 and B4 test every pair with a legacy peer: the device initiates to a
 gateway, a client initiates to the serving device, and client to client with
 a pool target. In each, the legacy side gets the payloads it gets today.
 
-### Device identity with mTLS (2026-11-21)
+### Phase I: device identity, before the unification (replanned 2026-11-22)
 
-**Blocks the release of the unified binary.** The connect parameters freeze
-with the first release, so this ships before it.
+**This comes first, on today's binaries.** Thomas and Jamil agreed to ship
+strong device identity in the current Client and Gateway releases, on
+`/client` and `/gateway`, before any unification work merges. The
+unification then only merges roles. The 1.7 PRs (#16645, #16719, #16720)
+stay drafts until this phase is done.
 
 Problem: a device reports its own `firezone_id`, and the portal trusts it
 (GHSA-2gj4-h7fw-gcp5). A lookup that finds a row by `firezone_id` alone lets
-one credential land on another device's row. For example, a laptop can take
-the row of a gateway and serve its site. This is also why a gateway host
-cannot change from its Gateway token to a service account token today: the
-client path finds only `type: :client` rows, so the host gets a new row and
-loses its site, pools and DNS setting.
+one credential land on another device's row. Some Gateways share a
+`firezone_id` across Sites, and some Clients share one across actors, so
+merging the two kinds of rows today needs many special cases.
 
-Fix: every device on the new binaries has a key that it holds, and a
-certificate that the portal issues for that key. The certificate says which
-machine connects. The token says who acts. The portal finds the row by the
-certificate and never by the reported `firezone_id`.
+Fix: every device on a new release holds a private key that never leaves
+it, and a certificate that the portal issues for that key. The certificate
+says which machine connects. The token says who acts. When a device shows
+its certificate, the portal finds its row by the certificate and ignores the
+reported `firezone_id`.
 
-**Devices and legacy records.** A row with `type = NULL` is a device: a
-1.7 or later binary enrolled it, and the portal finds it only by its
-certificate. Every 1.7 build connects on `/device/v1`, so `type = NULL` also
-means "1.7 or later". A row with `type = 'client'` or `type = 'gateway'` is a
-legacy record from an older binary, found by `firezone_id` as today. The
-`type` column is legacy, and the docs say so. Nothing new is called a client
-or a gateway: the UI, REST (`/devices`) and docs say device, and the roles in
-one connection are initiator and receiver (6.9). Device pools target
-`type = 'client' OR type IS NULL`. Until this step writes the first null,
-that is only legacy client records, so a gateway on a pre-release 1.7 build
-cannot join a pool. `last_seen_device_v1` is gone.
+**Decisions (2026-11-22).**
 
-**Precedence.** A device trust certificate from the customer's CA (MDM) comes
-first. A device that has one presents it, as today. Every other device on the
-new binaries presents its portal certificate. A TLS handshake carries one
-client certificate, so the device presents the MDM certificate when it has
-one, and the portal certificate when it does not.
+- **One CA per account.** In the cloud each account has its own RSA-2048
+  key in Azure Key Vault Standard: software-protected, not exportable, and
+  every signature is made in Key Vault with the portal's managed identity.
+  A new account gets its CA from a background job; a migration queues the
+  same job for existing accounts. Without Key Vault (on-prem, dev and test)
+  one RSA key from `DEVICE_CA_PRIVATE_KEY` signs for every account, and each
+  account still has its own CA certificate. A customer that needs a FIPS 140
+  Level 3 key gets a new CA with an `RSA-HSM` key in a Premium vault later;
+  during that change the portal accepts both CAs. Device keys can be P-256:
+  the CA key type does not limit them.
+- **Certificates live 90 days.** The device renews at about day 60 with its
+  current certificate.
+- **The mTLS host is the device trust host** (`mtls_external_url`). Phoenix
+  ends the TLS handshake there.
+- **Key storage:** TPM 2.0 on Windows and Linux, Secure Enclave on Apple,
+  Keystore or StrongBox on Android. Where none is available (containers,
+  VMs without a vTPM, older Macs), a software key in the state directory or
+  keychain. A platform can ship with a software key first and move to its
+  hardware store later without a protocol change. The portal records
+  `hardware` or `software`, and the admin UI does not show it until
+  hardware attestation proves it.
+- **No certificate list.** The device row stores the SHA-256 of the
+  device's public key. A certificate is valid only while its key matches
+  the row, so deleting the device or resetting its identity ends every
+  certificate for it. The portal keeps no CRL of its own certificates.
+- **`type` does not change in this phase.** An enrolled Client stays
+  `client` and an enrolled Gateway stays `gateway`. The `type = NULL` switch
+  comes with the unified binary.
 
-**Keys.** The device creates a key on first enrollment and never exports it:
+**Enrollment.** `POST /device/enroll` on the API host. The device sends its
+token as today and a CSR, and gets back its certificate and the CA
+certificate. A device calls it only in these cases:
 
-| Platform                                                               | Key store                                       |
-| ---------------------------------------------------------------------- | ----------------------------------------------- |
-| Windows                                                                | TPM 2.0 through CNG (Platform Crypto Provider)  |
-| macOS (Apple silicon and T2), iOS                                      | Secure Enclave, P-256                           |
-| Android                                                                | Keystore or StrongBox                           |
-| Linux with a TPM or vTPM                                               | TPM 2.0                                         |
-| Linux without a TPM (Docker, Kubernetes, VMs without vTPM), older Macs | Software key in the state directory or keychain |
+1. First enrollment: it has a token and no certificate (a new install, an
+   upgrade from a release without identity, or a wiped state directory).
+2. Renewal, on the mTLS host: a new CSR for the same key, at about two
+   thirds of the lifetime. The current certificate authenticates it, so no
+   token or sign-in is needed.
+3. Re-enrollment: the portal refused its certificate (the device was
+   deleted, an admin reset its identity, or the certificate expired).
 
-The portal records `hardware` or `software` for each device. A software key
-still stops a takeover, but a copy of the file clones the identity. Later, a
-CSR can carry a hardware attestation (TPM, App Attest, Managed Device
-Attestation, Android Key Attestation) that proves the key cannot leave the
-device. Policies can then require a hardware key without device trust.
-
-On Apple, the existing device trust path does the work. rustls presents the
-certificate and asks Swift for each handshake signature through the FFI
-`sign` callback (`client-ffi`, `X509Identity.swift`), which calls
-`SecKeyCreateSignature`. The new parts create the key in the Secure Enclave
-(`kSecAttrTokenIDSecureEnclave`, readable after first unlock, this device
-only, in the keychain group that the app and the Network Extension share) and
-sign the CSR through the same callback. On Linux and Windows,
-`x509-keystore` already gives signatures to the keystore.
-
-**`POST /device/v1/enroll`.** The device sends its credential and a CSR, and
-the portal returns a certificate. The device calls it only in these cases,
-never on a normal connect:
-
-1. First enrollment: the device has a credential and no certificate (a new
-   install, an upgrade from an old binary, or a wiped state directory).
-2. Renewal: at about two thirds of the certificate lifetime, a new CSR for the
-   same key. The current certificate authenticates it over mTLS, so renewal
-   needs no sign-in and no token.
-3. Re-enrollment: the portal refused the certificate (the device was deleted,
-   an admin reset its identity, or the certificate expired or was revoked).
-   The device enrolls again with its credential, and the claim rules decide
-   the row.
-4. Linking: on a device with an MDM certificate, the enroll request uses mTLS
-   with that certificate. The portal adds the new key to the row that the
-   MDM certificate identifies, so the device keeps its row if it leaves
-   management.
+A device with an MDM certificate presents that one when it connects, as
+today, because one TLS handshake carries one client certificate. Its enroll
+request uses mTLS with the MDM certificate, so the portal adds the new key
+to the row that the MDM certificate identifies, and the device keeps its row
+if it later leaves management.
 
 **Claim rules.** Enrollment decides which row a key gets. This is where a
-takeover is stopped:
+takeover stops:
 
-- A Gateway token adopts only its own legacy gateway record: the bound row of
-  a device-bound token, or the record in the token's site for a site token.
-- A user or service account token adopts a legacy client record only when its
-  actor is in that record's `device_actors`.
-- A legacy record that a key adopts keeps its id and becomes a device
-  (`type = NULL`). When no record passes the rules, the key gets a new device
-  row, and any legacy record stays as it is.
-- A row that already has a certificate cannot be claimed again. Only the old
-  key (renewal) or an admin reset of that device can replace it.
-- A row with a portal certificate keeps it when its token changes. A gateway
-  host that changes to a service account token keeps its row, site, pools
-  and DNS setting, and then acts as the service account.
+- A Gateway token claims only its own row: the bound row of a device-bound
+  token, or, for a Site token, the row in that Site with the reported
+  `firezone_id`. Clones that share a `firezone_id` across Sites each claim
+  the row in their own Site.
+- A user or service account token claims a Client row with the reported
+  `firezone_id` only when its actor is in that row's `device_actors`.
+- A row that already has a key cannot be claimed again. Only the old key
+  (renewal) or an admin reset can replace it. When no row passes the rules,
+  the key gets a new row, and the old row stays as it is.
+- A row keeps its key when its token changes. A Gateway host that moves to
+  a service account token keeps its row once the unified binary can carry
+  it.
 
-**Certificates.** A device CA run by the portal, one per region, with its
-private key in the cloud key service, not in an application secret. The
-certificate names the device id as a URI in the SAN, and the account. Its
-lifetime is short enough that revocation is rarely needed, and long enough
-that a device that stays offline for a long time can still renew (to decide,
-about 30 to 90 days). Deleting a device or resetting its identity revokes its
-certificate through the CRL and OCSP checks that exist now. The CA accepts
-P-256 and RSA CSRs.
+**Connect.** A new release connects to `/client` or `/gateway` on the mTLS
+host with its certificate. The socket checks the certificate against the
+account's CA and the key hash on the row, finds the row from the
+certificate, and then checks the token as today. A row with a key is never
+found by `firezone_id`, so an old release or a forged id cannot land on it.
+A release without identity connects as today, on the API host, and is found
+by `firezone_id` among rows without a key.
 
-**Connect.** The `/device/v1` socket takes a client certificate in the TLS
-handshake, on a host that accepts mTLS (the device trust host, or optional
-client certificates on the API host). The socket checks the certificate,
-finds the row from it, and then checks the token as today. A device trust
-certificate goes through the existing attestation path.
+**Policies.** The "Require attestation" condition gets a CA qualifier, so a
+policy can require the portal CA (the device is the one that enrolled) or a
+customer trust anchor (MDM, as today).
 
-**Old binaries.** `/client` and `/gateway` keep the `firezone_id` lookup,
-only over legacy records, until the compat window ends. A host that upgrades
-gets its certificate on its first `/device/v1` connect, with the claim rules
-above. A host that goes back to an older binary gets a new legacy record,
-because a device row is never found by `firezone_id`.
+**`/device/v1` until the unification.** It is on `main` but no release uses
+it. It is turned off until the unified binary ships, and then it requires a
+certificate from its first connect.
 
-**Release gate.** Turn on `unified_devices` for every account before the first
-1.7 binary ships. `/device/v1` does not check the flag, so this order is what
-keeps device rows out of accounts whose UI does not show them.
+**Steps.** Portal, one PR per deploy:
 
-**Steps.** In the portal:
+- I.1 Device CA per account, with the Key Vault and local adapters (#16722).
+  Infra first: a Key Vault Standard per region and the "Key Vault Crypto
+  Officer" role for the portal identity.
+- I.2 Backfill: queue the CA job for every existing account.
+- I.3 Turn off `/device/v1` until the unified binary ships.
+- I.4 Device key columns: key hash and key storage on `devices`.
+- I.5 `POST /device/enroll` with the claim rules, and renewal on the mTLS
+  host.
+- I.6 Certificate lookup on `/client` and `/gateway`, on the mTLS host. The
+  `firezone_id` lookup skips rows with a key.
+- I.7 Reset identity on the device panel, and the key cleared when a device
+  is deleted.
+- I.8 The CA qualifier on "Require attestation".
 
-- the device CA and its keys;
-- the enroll endpoint with the claim rules;
-- the certificate lookup on the `/device/v1` socket;
-- revocation on device delete and identity reset;
-- an admin "Reset identity" action on the device panel;
-- `hardware` or `software` on the device panel.
+Rust and the apps:
 
-In Rust:
+- I.9 Software key, CSR, enroll and renewal in the shared client and Gateway
+  code, and the certificate in the connect handshake.
+- I.10 Gateway release with identity.
+- I.11 Client releases with identity: Apple (the device trust signing path
+  through Swift already exists), Android, Windows and Linux GUI, headless.
+- I.12 Hardware keys per platform, one release each.
 
-- key creation per platform;
-- the CSR;
-- the enroll and renewal flows;
-- the certificate in the connect handshake.
+**Open.**
 
-Open:
-
-- the mTLS host for gateways that use `api.firezone.dev` today;
-- the certificate lifetime;
-- whether a hardware key is shown to admins before attestation exists.
+- Gateways that today reach only `api.firezone.dev` must also reach the mTLS
+  host. Customers with strict egress rules have to allow it. The other
+  choice is optional client certificates on the API host.
+- Gateways in containers without a volume create a new key on each restart.
+  A new key cannot claim a row that already has one, so each restart makes a
+  new row. Options: keep the key in the volume, or let the operator give the
+  key as a secret the way `FIREZONE_ID` is given today.
+- A reinstalled mobile app may keep its `firezone_id` but not its key. It
+  then gets a new row until an admin resets the old one.
 
 ### Phase 0: prep, no behaviour change
 
@@ -1219,17 +1219,18 @@ firezone` and `firezone authenticate`. Depends 3.7.
 
 The portal deploys on every merge. These are the points where order matters.
 
-| Point | Must be live                               | Release                                                                                     |
-| ----- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| D1    | 0.6, 0.7                                   | R1: the next gateway release (1.6.6) with 0.4 and 0.5                                       |
-| D2    | 1.1 to 1.7, 1.12 to 1.14                   | none                                                                                        |
-| D3    | 1.8, 1.9, 1.11, after D2 settled           | none                                                                                        |
-| D4    | 2.1 to 2.21                                | none                                                                                        |
-| D5    | 3.0, 3.8                                   | R2: `firezone` 1.7.0 and Linux GUI 1.7.0, legacy sockets, interim role switch; cutover 3.8b |
-| D6    | 4.1 to 4.13                                | R3: `firezone` 1.8.0 on `DeviceState` over `/device/v1`                                     |
-| D7    | 5.11 after R3 is in the fleet              | cutover 5.12                                                                                |
-| D8    | 6.1 to 6.7 after 2.9 and 2.17 settled      | R4: `firezone` minor dropping alias bins (3.10)                                             |
-| D9    | 6.8 once 0.9 has cleared the old protocols | none                                                                                        |
+| Point | Must be live                               | Release                                                                                   |
+| ----- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| DI    | I.1 to I.8                                 | RI: Client and Gateway releases with device identity (I.10, I.11), before every R below   |
+| D1    | 0.6, 0.7                                   | R1: the next gateway release (1.6.6) with 0.4 and 0.5                                     |
+| D2    | 1.1 to 1.7, 1.12 to 1.14                   | none                                                                                      |
+| D3    | 1.8, 1.9, 1.11, after D2 settled           | none                                                                                      |
+| D4    | 2.1 to 2.21                                | none                                                                                      |
+| D5    | 3.0, 3.8, RI in the fleet                  | R2: `firezone` 1.7.0 over `/device/v1` with its certificate; `unified_devices` on for all |
+| D6    | 4.1 to 4.13                                | R3: `firezone` 1.8.0 on `DeviceState` over `/device/v1`                                   |
+| D7    | 5.11 after R3 is in the fleet              | cutover 5.12                                                                              |
+| D8    | 6.1 to 6.7 after 2.9 and 2.17 settled      | R4: `firezone` minor dropping alias bins (3.10)                                           |
+| D9    | 6.8 once 0.9 has cleared the old protocols | none                                                                                      |
 
 **Customer-facing compatibility.** Today's rule: a Gateway must be within one
 minor version of the Client in either direction, and Clients connecting to
@@ -1342,8 +1343,19 @@ hosts. Collect them here and use them for the release notes and the email.
     to `/device/v1` never needs a new token: it accepts every salt and every
     shape, and serving a Site comes from `site_devices`, not the token.
 
+12. **Device identity before the unification (2026-11-22).** The token says
+    who acts and a portal-issued certificate says which machine connects.
+    Phase I ships it on `/client` and `/gateway` first: one CA per account
+    (RSA-2048 in Key Vault Standard, or one key from `DEVICE_CA_PRIVATE_KEY`
+    without Key Vault), 90-day certificates, the device trust host for mTLS,
+    hardware keys where the platform has them. A row with a key is found
+    only by its certificate.
+
 ## 5. Risks
 
+- Phase I: Gateways must reach the mTLS host, and devices that lose their
+  key (containers without a volume, reinstalled apps) get a new row. See
+  the open items in Phase I.
 - `firezone_id` collisions when identity stops being actor-scoped: a small
   number of groups on both sides, handled by 2.15.
 - DNS self-recursion on a device that is both client and router.
@@ -1369,6 +1381,7 @@ hosts. Collect them here and use them for the release notes and the email.
 
 | Phase | Steps | Size      |
 | ----- | ----- | --------- |
+| I     | 12    | large     |
 | 0     | 9     | small     |
 | 1     | 15    | medium    |
 | 2     | 25    | medium    |
