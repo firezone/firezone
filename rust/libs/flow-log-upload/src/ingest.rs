@@ -46,10 +46,14 @@ impl IngestClient {
 
     /// POSTs `body` to the current endpoint, authorized by `token`.
     pub async fn send(&self, token: &str, body: Bytes) -> Result<http::Response<Bytes>> {
+        let mut authorization = header::HeaderValue::from_str(&format!("Bearer {token}"))
+            .context("Invalid flow-log authorization header")?;
+        authorization.set_sensitive(true);
+
         let request = http::Request::builder()
             .method(http::Method::POST)
             .uri(self.url.as_str())
-            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(header::AUTHORIZATION, authorization)
             .header(header::CONTENT_TYPE, "application/json")
             .body(body)
             .context("Failed to build flow-log request")?;
@@ -100,10 +104,6 @@ pub fn retry_after(response: &http::Response<Bytes>) -> Option<Duration> {
         .ok()?;
 
     Some(Duration::from_secs(seconds))
-}
-
-pub fn body_string(response: &http::Response<Bytes>) -> String {
-    String::from_utf8_lossy(response.body()).into_owned()
 }
 
 /// Opens a tunnel-bypassing HTTP client to the ingest host, re-resolved on every

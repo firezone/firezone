@@ -860,8 +860,6 @@ where
                     continue;
                 }
                 Poll::Ready(Some(Ok(Message::Text(message)))) => {
-                    tracing::trace!(target: "wire::api::recv", %message);
-
                     let message =
                         match serde_json::from_str::<PhoenixMessage<TInboundMsg>>(&message) {
                             Ok(m) => m,
@@ -877,6 +875,13 @@ where
                                 continue;
                             }
                         };
+
+                    tracing::trace!(
+                        target: "wire::api::recv",
+                        topic = %message.topic,
+                        reference = ?message.reference,
+                        "Received portal message"
+                    );
 
                     match (message.payload, message.reference) {
                         (Payload::Message(msg), _) => {
