@@ -12,6 +12,7 @@ defmodule PortalWeb.Logs.Components do
   alias PortalWeb.Devices
   alias PortalWeb.Components.Core
   alias PortalWeb.Components.Navigation
+  alias PortalWeb.Components.Page
 
   @doc """
   Options every logs list query runs with. PostgreSQL cancels a query after
@@ -40,7 +41,7 @@ defmodule PortalWeb.Logs.Components do
         <span
           id={"#{@id_prefix}-#{@log_id}"}
           data-tz-mode={@tz_mode}
-          class="text-xs text-heading tabular-nums underline underline-offset-2 decoration-1 decoration-dotted"
+          class="font-mono text-xs text-muted tabular-nums underline underline-offset-2 decoration-1 decoration-dotted"
         >
           {PortalWeb.Format.short_datetime(@timestamp, @display_tz)}
         </span>
@@ -63,9 +64,7 @@ defmodule PortalWeb.Logs.Components do
 
   def actor_cell(%{subject: nil} = assigns) do
     ~H"""
-    <span class="inline-flex items-center gap-1.5 text-xs text-subtle italic">
-      <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-subtle"></span> system
-    </span>
+    <span class="text-sm text-muted italic">system</span>
     """
   end
 
@@ -78,22 +77,22 @@ defmodule PortalWeb.Logs.Components do
 
     ~H"""
     <div :if={@name not in [nil, ""]} class="min-w-0">
-      <div class="text-sm font-medium text-heading truncate">{@name}</div>
-      <div :if={@email not in [nil, ""]} class="text-xs text-subtle truncate">
+      <div class="text-sm text-fg truncate">{@name}</div>
+      <div :if={@email not in [nil, ""]} class="text-xs text-muted truncate">
         {@email}
       </div>
     </div>
     <span
       :if={@name in [nil, ""] and @email not in [nil, ""]}
-      class="text-sm text-body truncate"
+      class="block text-sm text-fg truncate"
     >
       {@email}
     </span>
     <span
       :if={@name in [nil, ""] and @email in [nil, ""]}
-      class="inline-flex items-center gap-1.5 text-xs text-subtle italic"
+      class="text-sm text-muted italic"
     >
-      <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-subtle"></span> system
+      system
     </span>
     """
   end
@@ -108,7 +107,7 @@ defmodule PortalWeb.Logs.Components do
     assigns = assign(assigns, :ip, format_ip(assigns.ip))
 
     ~H"""
-    <span class="block truncate font-mono text-xs text-body">
+    <span class="block truncate font-mono text-xs text-muted">
       {@ip || "-"}
     </span>
     """
@@ -122,43 +121,6 @@ defmodule PortalWeb.Logs.Components do
   def format_ip(ip) when is_binary(ip), do: ip
 
   def format_ip(other), do: to_string(other)
-
-  @doc "Renders an initiating device and its first observed outer source IP."
-  attr :device_name, :string, required: true
-  attr :ip, :any, required: true
-
-  def flow_client_cell(assigns) do
-    ~H"""
-    <div class="min-w-0">
-      <div class="truncate text-xs text-heading">{@device_name}</div>
-      <div class="truncate font-mono text-xs text-subtle">
-        {format_ip(@ip) || "-"}
-      </div>
-    </div>
-    """
-  end
-
-  @doc "Renders a Resource and its protocol/application destination."
-  attr :name, :string, required: true
-  attr :domain, :string, default: nil
-  attr :protocol, :atom, required: true
-  attr :ip, :any, required: true
-  attr :port, :integer, required: true
-
-  def flow_resource_cell(assigns) do
-    assigns = assign(assigns, :endpoint, format_endpoint(assigns.domain || assigns.ip, assigns.port))
-
-    ~H"""
-    <div class="min-w-0">
-      <div class="truncate text-xs text-heading">{@name}</div>
-      <div class="flex min-w-0 items-center gap-1.5 font-mono text-xs text-subtle">
-        <span class="shrink-0 uppercase">{@protocol}</span>
-        <span class="shrink-0">·</span>
-        <span class="truncate">{@endpoint}</span>
-      </div>
-    </div>
-    """
-  end
 
   def format_endpoint(nil, nil), do: "-"
 
@@ -204,7 +166,7 @@ defmodule PortalWeb.Logs.Components do
   def detail_row(assigns) do
     ~H"""
     <div>
-      <dt class="text-[10px] text-subtle mb-0.5">{@label}</dt>
+      <dt class="text-xs text-muted mb-0.5">{@label}</dt>
       <dd>{render_slot(@inner_block)}</dd>
     </div>
     """
@@ -219,19 +181,19 @@ defmodule PortalWeb.Logs.Components do
   def section_heading(assigns) do
     ~H"""
     <div class="mb-3 flex items-center justify-between gap-3">
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+      <h3 class="text-[11px] font-semibold tracking-[.12em] uppercase text-muted">
         {@label}
       </h3>
-      <span :if={@hint} class="text-[10px] text-subtle">{@hint}</span>
+      <span :if={@hint} class="text-xs text-muted">{@hint}</span>
     </div>
     """
   end
 
   @doc """
-  Slide-in show panel container. Triggered open when `open?` is true.
-  Renders the close button + Escape handler; body comes from the slot.
-  Callers provide the header via the `title` slot so operation badges,
-  method chips, etc. can be rendered inline.
+  The modal a log entry opens in. Escape, the veil and the close button all
+  send `close_panel`. The body comes from the slot, usually a main column and
+  a `show_panel_sidebar/1`. Callers provide the header via the `title` slot so
+  operation badges, method chips, etc. can be rendered inline.
   """
   attr :id, :string, required: true
   attr :open?, :boolean, required: true
@@ -240,48 +202,36 @@ defmodule PortalWeb.Logs.Components do
 
   def show_panel(assigns) do
     ~H"""
-    <div
-      id={@id}
-      class={[
-        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-elevated border-l border-border-strong",
-        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-        "transition-transform duration-200 ease-in-out",
-        if(@open?, do: "translate-x-0", else: "translate-x-full")
-      ]}
-      phx-window-keydown="handle_keydown"
-      phx-key="Escape"
-    >
-      <div :if={@open?} class="flex flex-col h-full overflow-hidden">
-        <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated flex items-center justify-between gap-3">
-          <div class="flex items-center gap-3 min-w-0">
-            {render_slot(@title)}
-          </div>
-          <button
-            phx-click="close_panel"
-            class="shrink-0 flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-            title="Close (Esc)"
-          >
-            <Core.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+    <Page.detail_modal id={@id} open={@open?} on_close="close_panel" size="xl">
+      <div class="shrink-0 flex items-center justify-between gap-3 border-b border-hair px-6 py-4">
+        <div class="flex items-center gap-3 min-w-0">
+          {render_slot(@title)}
         </div>
-        <div class="flex flex-1 min-h-0 divide-x divide-border">
-          {render_slot(@inner_block)}
-        </div>
+        <button
+          type="button"
+          phx-click="close_panel"
+          class="shrink-0 flex items-center justify-center w-7 h-7 text-muted hover:text-fg hover:bg-hover"
+          title="Close (Esc)"
+        >
+          <Core.icon name="ri-close-line" class="w-4 h-4" />
+        </button>
       </div>
-    </div>
+      <div class="flex flex-1 min-h-0 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden lg:divide-x lg:divide-hair">
+        {render_slot(@inner_block)}
+      </div>
+    </Page.detail_modal>
     """
   end
 
   @doc """
-  Right-side sidebar column inside a show panel. Width and overflow handled
-  here so callers just render sections inside.
+  Side column inside a show panel. Width and overflow handled here so callers
+  just render sections inside.
   """
   slot :inner_block, required: true
 
   def show_panel_sidebar(assigns) do
     ~H"""
-    <div class="w-80 shrink-0 overflow-y-auto p-5 space-y-5 bg-elevated">
+    <div class="w-full lg:w-80 shrink-0 overflow-y-auto p-6 space-y-5 border-t border-hair lg:border-t-0">
       {render_slot(@inner_block)}
     </div>
     """
@@ -310,51 +260,32 @@ defmodule PortalWeb.Logs.Components do
 
     ~H"""
     <section class="flex flex-col">
-      <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
-        Actor
-      </div>
-      <div class="rounded border border-border bg-surface p-4">
-        <div class="flex items-start gap-3">
-          <div class={[
-            "shrink-0 w-10 h-10 rounded-full flex items-center justify-center",
-            actor_type_bg(@type_str)
-          ]}>
-            <Core.icon
-              name={actor_type_icon(@type_str)}
-              class={"w-5 h-5 #{actor_type_fg(@type_str)}"}
-            />
-          </div>
-          <div class="min-w-0 flex-1">
-            <%= if @name not in [nil, ""] or @email not in [nil, ""] do %>
-              <div class="flex items-center gap-2 flex-wrap">
-                <span
-                  :if={@name not in [nil, ""]}
-                  class="text-sm font-semibold text-heading truncate"
-                >
-                  {@name}
-                </span>
-                <.actor_type_badge :if={@type_str} type={@type_str} />
-              </div>
-              <div
-                :if={@email not in [nil, ""]}
-                class="mt-1 flex items-center gap-1.5 text-xs text-body min-w-0"
-              >
-                <Core.icon
-                  name="ri-mail-line"
-                  class="w-3.5 h-3.5 shrink-0 text-subtle"
-                />
-                <span class="truncate">{@email}</span>
-              </div>
-            <% else %>
-              <div class="text-sm italic text-subtle">Deleted actor</div>
-              <div
-                :if={@fallback_id not in [nil, ""]}
-                class="mt-1 font-mono text-[10px] text-subtle break-all"
-              >
-                {@fallback_id}
-              </div>
-            <% end %>
-          </div>
+      <.section_heading label="Actor" />
+      <div class="flex items-start gap-3 border-t border-rule pt-3">
+        <div class="shrink-0 w-9 h-9 rounded-full border border-hair flex items-center justify-center">
+          <Core.icon name={actor_type_icon(@type_str)} class="w-4 h-4 text-muted" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <%= if @name not in [nil, ""] or @email not in [nil, ""] do %>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span :if={@name not in [nil, ""]} class="text-sm font-semibold text-fg truncate">
+                {@name}
+              </span>
+              <Core.badge :if={@type_str} size="xs">{actor_type_label(@type_str)}</Core.badge>
+            </div>
+            <div
+              :if={@email not in [nil, ""]}
+              class="mt-1 flex items-center gap-1.5 text-xs text-muted min-w-0"
+            >
+              <Core.icon name="ri-mail-line" class="w-3.5 h-3.5 shrink-0" />
+              <span class="truncate">{@email}</span>
+            </div>
+          <% else %>
+            <div class="text-sm italic text-muted">Deleted actor</div>
+            <div :if={@fallback_id not in [nil, ""]} class="mt-1 font-mono text-[10px] text-muted break-all">
+              {@fallback_id}
+            </div>
+          <% end %>
         </div>
       </div>
     </section>
@@ -365,45 +296,10 @@ defmodule PortalWeb.Logs.Components do
   defp actor_type_to_string(atom) when is_atom(atom), do: to_string(atom)
   defp actor_type_to_string(str) when is_binary(str), do: str
 
-  attr :type, :string, required: true
-
-  defp actor_type_badge(assigns) do
-    ~H"""
-    <span class={[
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase",
-      actor_type_badge_class(@type)
-    ]}>
-      {actor_type_label(@type)}
-    </span>
-    """
-  end
-
   defp actor_type_icon("account_admin_user"), do: "ri-shield-user-line"
   defp actor_type_icon("service_account"), do: "ri-server-line"
   defp actor_type_icon("api_client"), do: "ri-terminal-line"
   defp actor_type_icon(_), do: "ri-user-line"
-
-  defp actor_type_bg("account_admin_user"), do: "bg-purple-100 dark:bg-purple-900/40"
-  defp actor_type_bg("service_account"), do: "bg-blue-100 dark:bg-blue-900/40"
-  defp actor_type_bg("api_client"), do: "bg-amber-100 dark:bg-amber-900/40"
-  defp actor_type_bg(_), do: "bg-neutral-100 dark:bg-neutral-800"
-
-  defp actor_type_fg("account_admin_user"), do: "text-purple-700 dark:text-purple-300"
-  defp actor_type_fg("service_account"), do: "text-blue-700 dark:text-blue-300"
-  defp actor_type_fg("api_client"), do: "text-amber-700 dark:text-amber-300"
-  defp actor_type_fg(_), do: "text-neutral-700 dark:text-neutral-300"
-
-  defp actor_type_badge_class("account_admin_user"),
-    do: "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200"
-
-  defp actor_type_badge_class("service_account"),
-    do: "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200"
-
-  defp actor_type_badge_class("api_client"),
-    do: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200"
-
-  defp actor_type_badge_class(_),
-    do: "bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200"
 
   defp actor_type_label("account_admin_user"), do: "Admin"
   defp actor_type_label("account_user"), do: "User"
@@ -503,16 +399,15 @@ defmodule PortalWeb.Logs.Components do
       |> assign(:land_svg, @world_map_paths)
 
     ~H"""
-    <div class="rounded border border-border overflow-hidden bg-raised">
+    <div class="border border-hair overflow-hidden">
       <svg
         viewBox="0 0 1000 500"
         preserveAspectRatio="xMidYMid meet"
-        class="w-full block aspect-[2/1] text-subtle"
+        class="w-full block aspect-[2/1] text-faint"
         role="img"
         aria-label="Location map"
       >
-        <rect width="1000" height="500" fill="var(--surface-raised)" />
-        <g stroke="var(--border)" stroke-width="1" opacity="0.35" fill="none">
+        <g stroke="var(--hair)" stroke-width="1" fill="none">
           <line x1="0" y1="125" x2="1000" y2="125" />
           <line x1="0" y1="375" x2="1000" y2="375" />
           <line x1="250" y1="0" x2="250" y2="500" />
@@ -520,18 +415,18 @@ defmodule PortalWeb.Logs.Components do
           <line x1="750" y1="0" x2="750" y2="500" />
         </g>
         <g fill="currentColor" opacity="0.55">{@land_svg}</g>
-        <circle cx={@marker_x} cy={@marker_y} r="16" fill="var(--brand)" opacity="0.2" />
-        <circle cx={@marker_x} cy={@marker_y} r="7" fill="var(--brand)" />
-        <circle cx={@marker_x} cy={@marker_y} r="2.5" fill="white" />
+        <circle cx={@marker_x} cy={@marker_y} r="16" fill="var(--attn)" opacity="0.15" />
+        <circle cx={@marker_x} cy={@marker_y} r="6" fill="var(--attn)" />
+        <circle cx={@marker_x} cy={@marker_y} r="2.5" fill="var(--bg)" />
       </svg>
-      <div :if={@caption != []} class="px-3 py-2 border-t border-border bg-surface">
+      <div :if={@caption != []} class="px-3 py-2 border-t border-hair">
         {render_slot(@caption)}
       </div>
       <a
         href={"https://www.google.com/maps/place/#{@lat},#{@lon}"}
         target="_blank"
         rel="noopener noreferrer"
-        class="flex items-center justify-center gap-1 px-3 py-2 border-t border-border text-[11px] text-body hover:text-brand hover:bg-surface transition-colors"
+        class="flex items-center justify-center gap-1 px-3 py-2 border-t border-hair text-xs text-muted hover:text-fg hover:bg-hover"
       >
         <Core.icon name="ri-external-link-line" class="w-3 h-3" />
         View on Google Maps
@@ -542,12 +437,12 @@ defmodule PortalWeb.Logs.Components do
 
   def location_map(assigns) do
     ~H"""
-    <div class="rounded border border-dashed border-border bg-raised overflow-hidden">
+    <div class="border border-dashed border-hair overflow-hidden">
       <div class="aspect-[2/1] flex flex-col items-center justify-center gap-2 text-center">
-        <Core.icon name="ri-map-pin-line" class="w-6 h-6 text-subtle" />
-        <p class="text-xs text-subtle">Location unknown</p>
+        <Core.icon name="ri-map-pin-line" class="w-6 h-6 text-faint" />
+        <p class="text-xs text-muted">Location unknown</p>
       </div>
-      <div :if={@caption != []} class="px-3 py-2 border-t border-border bg-surface">
+      <div :if={@caption != []} class="px-3 py-2 border-t border-hair">
         {render_slot(@caption)}
       </div>
     </div>
