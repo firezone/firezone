@@ -1361,4 +1361,71 @@ defmodule PortalWeb.ServiceAccountsTest do
       assert Repo.get_by(Portal.Membership, group_id: other.id, actor_id: service_account.id)
     end
   end
+
+  describe "modal lists load after the service account" do
+    test "renders the header first, then the lists", %{conn: conn, account: account, actor: actor} do
+      service_account = service_account_fixture(account: account, name: "Async Robot")
+      group = group_fixture(account: account, name: "Async Robots")
+      membership_fixture(account: account, actor: service_account, group: group)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/service_accounts/#{service_account}")
+
+      [header] = html |> Floki.parse_document!() |> Floki.find("#actor-panel h2")
+      assert Floki.text(header) =~ "Async Robot"
+      assert html =~ "actor-token-expiry-loading"
+      assert html =~ "actor-tokens-loading"
+      assert html =~ "actor-groups-loading"
+
+      html = render_async(lv)
+
+      assert has_element?(lv, "#actor-group-#{group.id}")
+      assert html =~ "No tokens. Add one to authenticate this service account."
+      refute has_element?(lv, "#actor-token-expiry-loading")
+      refute has_element?(lv, "#actor-groups-loading")
+    end
+
+    test "never shows one service account's lists on another", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first = service_account_fixture(account: account)
+      second = service_account_fixture(account: account)
+      first_group = group_fixture(account: account)
+      second_group = group_fixture(account: account)
+      membership_fixture(account: account, actor: first, group: first_group)
+      membership_fixture(account: account, actor: second, group: second_group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/service_accounts/#{first}")
+
+      render_patch(lv, ~p"/#{account}/service_accounts/#{second}")
+      render_async(lv)
+
+      assert has_element?(lv, "#actor-group-#{second_group.id}")
+      refute has_element?(lv, "#actor-group-#{first_group.id}")
+    end
+
+    test "drops a result for a service account that is no longer selected" do
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{
+          __changed__: %{},
+          selected_actor: %Actor{id: Ecto.UUID.generate(), type: :service_account},
+          actor_related: PortalWeb.Actors.Details.related_state()
+        }
+      }
+
+      stale = {:ok, {Ecto.UUID.generate(), []}}
+
+      assert {:noreply, socket} =
+               PortalWeb.ServiceAccounts.handle_async({:actor_related, :tokens}, stale, socket)
+
+      refute socket.assigns.actor_related.tokens.ok?
+    end
+  end
 end

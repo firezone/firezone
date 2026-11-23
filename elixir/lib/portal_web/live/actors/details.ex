@@ -5,13 +5,72 @@ defmodule PortalWeb.Actors.Details do
   reach and the groups it can be added to in the modal.
 
   Groups owned by a resource (direct access) are never returned as groups.
+
+  The modal's lists load after the actor itself, each as an `{:actor_related, key}`
+  async task that returns `{actor_id, records}`. A result for an actor that is no
+  longer selected is dropped.
   """
   alias __MODULE__.Database
+  alias Phoenix.LiveView.AsyncResult
+
+  require Phoenix.LiveView
+
+  @related_keys ~w[identities groups tokens sessions devices reach]a
 
   defdelegate put_list_details(actors, subject), to: Database
   defdelegate list_devices(actor_id, subject), to: Database
   defdelegate list_reach(actor_id, subject), to: Database
   defdelegate fetch_manual_group(group_id, subject), to: Database
+
+  def related_state(created_token \\ nil) do
+    @related_keys
+    |> Map.new(&{&1, AsyncResult.loading()})
+    |> Map.put(:created_token, created_token)
+  end
+
+  def start_related(socket, actor, keys, loader) do
+    subject = socket.assigns.subject
+    actor_id = actor.id
+
+    Enum.reduce(keys, socket, fn key, acc ->
+      Phoenix.LiveView.start_async(acc, {:actor_related, key}, fn ->
+        {actor_id, loader.(key, actor_id, subject)}
+      end)
+    end)
+  end
+
+  def put_related(socket, key, records) do
+    socket
+    |> Phoenix.LiveView.cancel_async({:actor_related, key})
+    |> update_related(key, &AsyncResult.ok(&1, records))
+  end
+
+  def handle_related_async({:actor_related, key}, {:ok, {actor_id, result}}, socket) do
+    cond do
+      not match?(%{id: ^actor_id}, socket.assigns.selected_actor) ->
+        socket
+
+      is_list(result) ->
+        update_related(socket, key, &AsyncResult.ok(&1, result))
+
+      true ->
+        update_related(socket, key, &AsyncResult.failed(&1, result))
+    end
+  end
+
+  def handle_related_async({:actor_related, _key}, {:exit, {:shutdown, :cancel}}, socket),
+    do: socket
+
+  def handle_related_async({:actor_related, key}, {:exit, reason}, socket) do
+    update_related(socket, key, &AsyncResult.failed(&1, {:exit, reason}))
+  end
+
+  def loaded(%AsyncResult{ok?: true, result: records}), do: records
+  def loaded(_result), do: []
+
+  defp update_related(socket, key, fun) do
+    Phoenix.Component.update(socket, :actor_related, &Map.update!(&1, key, fun))
+  end
 
   defmodule Database do
     import Ecto.Query

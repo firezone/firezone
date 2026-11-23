@@ -578,7 +578,7 @@ defmodule PortalWeb.ActorsTest do
         }
       })
 
-      assert render(lv) =~ "Online"
+      assert render_async(lv) =~ "Online"
     end
 
     test "shows portal session details in the portal sessions tab", %{
@@ -2204,6 +2204,87 @@ defmodule PortalWeb.ActorsTest do
 
       render_click(lv, "remove_actor_from_group", %{"group_id" => direct_group.id})
       assert Portal.Repo.get_by(Portal.Membership, group_id: direct_group.id, actor_id: person.id)
+    end
+  end
+
+  describe "modal lists load after the actor" do
+    test "renders the header first, then the lists", %{conn: conn, account: account, actor: actor} do
+      person = actor_fixture(account: account, name: "Async Person")
+      group = group_fixture(account: account, name: "Async Group")
+      membership_fixture(account: account, actor: person, group: group)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/actors/#{person}")
+
+      [header] = html |> Floki.parse_document!() |> Floki.find("#actor-panel h2")
+      assert Floki.text(header) =~ "Async Person"
+      assert html =~ "actor-groups-loading"
+      assert html =~ "actor-identities-loading"
+      refute html =~ "actor-group-#{group.id}"
+
+      render_async(lv)
+
+      assert has_element?(lv, "#actor-group-#{group.id}")
+      refute has_element?(lv, "#actor-groups-loading")
+      refute has_element?(lv, "#actor-identities-loading")
+    end
+
+    test "never shows one actor's lists on another", %{conn: conn, account: account, actor: actor} do
+      first = actor_fixture(account: account, name: "First Person")
+      second = actor_fixture(account: account, name: "Second Person")
+      first_group = group_fixture(account: account, name: "First Group")
+      second_group = group_fixture(account: account, name: "Second Group")
+      membership_fixture(account: account, actor: first, group: first_group)
+      membership_fixture(account: account, actor: second, group: second_group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/actors/#{first}")
+
+      render_patch(lv, ~p"/#{account}/actors/#{second}")
+      render_async(lv)
+
+      assert has_element?(lv, "#actor-group-#{second_group.id}")
+      refute has_element?(lv, "#actor-group-#{first_group.id}")
+    end
+
+    test "drops a result for an actor that is no longer selected" do
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{
+          __changed__: %{},
+          selected_actor: %Actor{id: Ecto.UUID.generate()},
+          actor_related: PortalWeb.Actors.Details.related_state()
+        }
+      }
+
+      stale = {:ok, {Ecto.UUID.generate(), [%{group: %{id: Ecto.UUID.generate()}}]}}
+
+      assert {:noreply, socket} =
+               PortalWeb.Actors.handle_async({:actor_related, :groups}, stale, socket)
+
+      assert socket.assigns.actor_related.groups.loading
+      refute socket.assigns.actor_related.groups.ok?
+
+      current = {:ok, {socket.assigns.selected_actor.id, []}}
+
+      assert {:noreply, socket} =
+               PortalWeb.Actors.handle_async({:actor_related, :groups}, current, socket)
+
+      assert socket.assigns.actor_related.groups.ok?
+      assert socket.assigns.actor_related.groups.result == []
+    end
+
+    test "keeps loaded lists when switching tabs", %{conn: conn, account: account, actor: actor} do
+      person = actor_fixture(account: account)
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors/#{person}")
+
+      html = render_patch(lv, ~p"/#{account}/actors/#{person}?tab=client_sessions")
+      refute html =~ "actor-client-sessions-loading"
+      refute html =~ "actor-groups-loading"
     end
   end
 end
