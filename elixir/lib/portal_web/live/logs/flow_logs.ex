@@ -2,6 +2,7 @@ defmodule PortalWeb.Logs.FlowLogs do
   use PortalWeb, :live_view
 
   alias PortalWeb.Logs.Components
+  alias Phoenix.LiveView.AsyncResult
 
   alias __MODULE__.Database
 
@@ -15,6 +16,7 @@ defmodule PortalWeb.Logs.FlowLogs do
       socket
       |> assign(page_title: "Flow Logs")
       |> assign(selected_report: nil, selected_report_json: nil, browser_tz: browser_tz)
+      |> assign(matching_logs: AsyncResult.loading(), matching_logs_id: nil)
       |> assign(flow_logs: [], flow_logs_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> LiveTable.assign_live_table(@table_id,
@@ -43,10 +45,12 @@ defmodule PortalWeb.Logs.FlowLogs do
     case Database.fetch_report(log_id, socket.assigns.subject) do
       {:ok, report} ->
         {:noreply,
-         assign(socket,
+         socket
+         |> assign(
            selected_report: report,
            selected_report_json: flow_log_json(report.log)
-         )}
+         )
+         |> load_matching_logs(report.log)}
 
       {:error, :not_found} ->
         {:noreply,
@@ -65,7 +69,7 @@ defmodule PortalWeb.Logs.FlowLogs do
   def handle_params(params, uri, socket) do
     socket =
       socket
-      |> assign(selected_report: nil, selected_report_json: nil)
+      |> assign(selected_report: nil, selected_report_json: nil, matching_logs_id: nil)
       |> Components.assign_tz(params, @filter_key)
       |> LiveTable.handle_live_tables_params(params, uri)
 
@@ -92,6 +96,25 @@ defmodule PortalWeb.Logs.FlowLogs do
   end
 
   def handle_event("handle_keydown", _params, socket), do: {:noreply, socket}
+
+  defp load_matching_logs(%{assigns: %{matching_logs_id: log_id}} = socket, %{log_id: log_id}), do: socket
+
+  defp load_matching_logs(socket, log) do
+    subject = socket.assigns.subject
+
+    socket
+    |> assign(matching_logs_id: log.log_id)
+    |> assign_async(
+      :matching_logs,
+      fn ->
+        case Database.matching_logs(log, subject) do
+          logs when is_list(logs) -> {:ok, %{matching_logs: logs}}
+          {:error, reason} -> {:error, reason}
+        end
+      end,
+      reset: true
+    )
+  end
 
   defp load_logs(subject, list_opts) do
     list_opts =
@@ -367,21 +390,29 @@ defmodule PortalWeb.Logs.FlowLogs do
 
           <.role_fieldset
             role={counterpart_role(@selected_report.log.role)}
-            label={matching_heading(@selected_report.matching_logs)}
+            label={matching_heading(@matching_logs)}
           >
-            <.match_notice
-              matching_logs={@selected_report.matching_logs}
-              selected_role={@selected_report.log.role}
-            />
-            <div :if={@selected_report.matching_logs != []} class="mt-2 space-y-2">
-              <.matching_log_card
-                :for={log <- @selected_report.matching_logs}
-                log={log}
-                path={~p"/#{@account}/logs/flow_logs/#{log.log_id}?#{@query_params}"}
-                tz_mode={@tz_mode}
-                display_tz={@display_tz}
-              />
-            </div>
+            <.async_result :let={matching_logs} assign={@matching_logs}>
+              <:loading>
+                <div id="flow-log-matching-loading" class="flex flex-col gap-1.5 animate-pulse" aria-busy="true">
+                  <span class="block h-3 w-64 bg-hover"></span>
+                  <span class="block h-3 w-40 bg-hair"></span>
+                </div>
+              </:loading>
+              <:failed>
+                <p class="text-xs text-muted">Could not load matching logs. Reload the page to try again.</p>
+              </:failed>
+              <.match_notice matching_logs={matching_logs} selected_role={@selected_report.log.role} />
+              <div :if={matching_logs != []} class="mt-2 space-y-2">
+                <.matching_log_card
+                  :for={log <- matching_logs}
+                  log={log}
+                  path={~p"/#{@account}/logs/flow_logs/#{log.log_id}?#{@query_params}"}
+                  tz_mode={@tz_mode}
+                  display_tz={@display_tz}
+                />
+              </div>
+            </.async_result>
           </.role_fieldset>
 
           <JSONView.json_view id="flow-log-json" value={@selected_report_json} label="Flow log JSON" />
@@ -828,7 +859,7 @@ defmodule PortalWeb.Logs.FlowLogs do
     """
   end
 
-  defp matching_heading([_, _ | _]), do: "Matching logs"
+  defp matching_heading(%AsyncResult{ok?: true, result: [_, _ | _]}), do: "Matching logs"
   defp matching_heading(_matching_logs), do: "Matching log"
 
   defp counterpart_role(:initiator), do: :responder
@@ -1013,10 +1044,9 @@ defmodule PortalWeb.Logs.FlowLogs do
 
     def fetch_report(log_id, subject) do
       with {:ok, log_id} <- LogId.parse(log_id),
-           %FlowLog{} = log <- fetch_log(log_id, subject),
-           matching_logs when is_list(matching_logs) <- matching_logs(log, subject) do
+           %FlowLog{} = log <- fetch_log(log_id, subject) do
         [report] = enrich([log], subject)
-        {:ok, Map.put(report, :matching_logs, matching_logs)}
+        {:ok, report}
       else
         :error -> {:error, :not_found}
         nil -> {:error, :not_found}
@@ -1083,7 +1113,7 @@ defmodule PortalWeb.Logs.FlowLogs do
     # (its own bound socket address and the peer address it observes), so NAT on
     # either end, or a relay in between, leaves the two sides disagreeing on
     # every outer address in the common case.
-    defp matching_logs(log, subject) do
+    def matching_logs(log, subject) do
       opposite_role = if log.role == :initiator, do: :responder, else: :initiator
       {selected_min, selected_max} = normalized_bounds(log)
 

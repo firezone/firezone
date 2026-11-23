@@ -421,6 +421,110 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ resource.name
     end
 
+    test "renders the header at once and loads members and carriers async", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      member = actor_fixture(account: account, name: "Async Member")
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: member, group: group)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/policies/#{policy.id}")
+
+      assert html =~ "policy-sentence"
+      assert html =~ resource.name
+      assert html =~ "policy-members-loading"
+      assert html =~ "policy-carriers-loading"
+      refute html =~ "Async Member"
+
+      html = render_async(lv)
+
+      assert html =~ "Async Member"
+      refute html =~ "policy-members-loading"
+    end
+
+    test "never shows the previous policy's details while the next one loads", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first_member = actor_fixture(account: account, name: "First Member")
+      first_group = group_fixture(account: account)
+      membership_fixture(account: account, actor: first_member, group: first_group)
+      first = policy_fixture(account: account, group: first_group, resource: resource_fixture(account: account))
+
+      second_member = actor_fixture(account: account, name: "Second Member")
+      second_group = group_fixture(account: account)
+      membership_fixture(account: account, actor: second_member, group: second_group)
+      second = policy_fixture(account: account, group: second_group, resource: resource_fixture(account: account))
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{first.id}")
+
+      assert html =~ "First Member"
+
+      html = render_patch(lv, ~p"/#{account}/policies/#{second.id}")
+
+      refute html =~ "First Member"
+      assert html =~ "policy-members-loading"
+
+      html = render_async(lv)
+
+      assert html =~ "Second Member"
+      refute html =~ "First Member"
+    end
+
+    test "keeps loaded details across tab switches and loads authorizations on their tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      member = actor_fixture(account: account, name: "Tab Member")
+      group = group_fixture(account: account)
+      membership = membership_fixture(account: account, actor: member, group: group)
+      resource = resource_fixture(account: account, site: site_fixture(account: account))
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      policy_authorization_fixture(
+        account: account,
+        actor: member,
+        resource: resource,
+        group: group,
+        policy: policy,
+        membership: membership
+      )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}")
+
+      html = render_click(lv, "switch_policy_tab", %{"tab" => "authorizations"})
+      assert_patch(lv, ~p"/#{account}/policies/#{policy.id}?tab=authorizations")
+      assert html =~ "policy-authorizations-loading"
+
+      html = render_async(lv)
+      refute html =~ "policy-authorizations-loading"
+      assert html =~ "Tab Member"
+
+      html = render_click(lv, "switch_policy_tab", %{"tab" => "overview"})
+      assert_patch(lv, ~p"/#{account}/policies/#{policy.id}?tab=overview")
+      refute html =~ "policy-members-loading"
+      assert html =~ "Tab Member"
+
+      html = render_click(lv, "switch_policy_tab", %{"tab" => "authorizations"})
+      assert_patch(lv, ~p"/#{account}/policies/#{policy.id}?tab=authorizations")
+      refute html =~ "policy-authorizations-loading"
+    end
+
     test "closes panel, opens edit form, disables, enables, and cancels delete", %{
       conn: conn,
       account: account,
@@ -2049,6 +2153,7 @@ defmodule PortalWeb.PoliciesTest do
 
       render_click(lv, "switch_policy_tab", %{"tab" => "authorizations"})
       assert_patch(lv, ~p"/#{account}/policies/#{policy.id}?tab=authorizations")
+      render_async(lv)
     end
 
     test "switching back to Overview tab patches URL", %{

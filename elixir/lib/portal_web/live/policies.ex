@@ -41,10 +41,12 @@ defmodule PortalWeb.Policies do
       |> assign(selected_policy: nil, policy_providers: [], policy_disabled_providers: [])
       |> assign(x509_auth_assigns(socket, subject))
       |> assign(
-        policy_authorizations: [],
+        policy_authorizations: AsyncResult.loading(),
+        policy_authorizations_key: nil,
         policy_authorizations_page: 1,
-        policy_authorizations_has_next: false,
-        policy_authorizations_expanded_id: nil
+        policy_authorizations_expanded_id: nil,
+        policy_details: AsyncResult.loading(),
+        policy_details_id: nil
       )
       |> assign(base_policy_assigns(socket))
       |> assign(policies: [], policy_people: %{}, policies_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
@@ -75,24 +77,18 @@ defmodule PortalWeb.Policies do
         page = parse_page(params)
         tab = parse_show_tab(params)
 
-        {policy_authorizations, has_next} =
-          Database.list_policy_authorizations_for_policy(policy, socket.assigns.subject, page)
-
         {:noreply,
-         assign(
-           socket,
+         socket
+         |> assign(
            [
              selected_policy: policy,
-             return_to: uri_path(uri),
-             policy_authorizations: policy_authorizations,
-             policy_authorizations_page: page,
-             policy_authorizations_has_next: has_next,
-             policy_authorizations_expanded_id: nil
+             return_to: uri_path(uri)
            ] ++ provider_assigns(socket.assigns.subject) ++
              policy_filter_assigns(params, socket.assigns.subject) ++
-             show_policy_assigns(socket, tab) ++
-             [policy_details: Database.policy_details(policy, socket.assigns.subject)]
-         )}
+             show_policy_assigns(socket, tab)
+         )
+         |> load_policy_details(policy)
+         |> load_policy_authorizations(policy, tab, page)}
     end
   end
 
@@ -339,7 +335,6 @@ defmodule PortalWeb.Policies do
         confirm_state={policy_confirm_state(assigns)}
         policy_authorizations={@policy_authorizations}
         policy_authorizations_page={@policy_authorizations_page}
-        policy_authorizations_has_next={@policy_authorizations_has_next}
         policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
         details={@policy_details}
         who={@policy_who}
@@ -465,7 +460,8 @@ defmodule PortalWeb.Policies do
       },
       policy_postures: Postures.for_account(socket.assigns.account),
       policy_who: @who_empty,
-      policy_details: nil
+      policy_details_id: nil,
+      policy_authorizations_key: nil
     ]
   end
 
@@ -481,9 +477,53 @@ defmodule PortalWeb.Policies do
   defp default_policy_assigns(socket), do: base_policy_assigns(socket)
 
   defp show_policy_assigns(socket, tab) do
-    assigns = base_policy_assigns(socket)
-    Keyword.update!(assigns, :policy_panel, &Map.put(&1, :tab, tab))
+    socket
+    |> base_policy_assigns()
+    |> Keyword.drop([:policy_details_id, :policy_authorizations_key])
+    |> Keyword.update!(:policy_panel, &Map.put(&1, :tab, tab))
   end
+
+  # A tab switch or a page change patches back to the same policy, so keep what is already loaded.
+  defp load_policy_details(%{assigns: %{policy_details_id: id}} = socket, %Policy{id: id}), do: socket
+
+  defp load_policy_details(socket, policy) do
+    subject = socket.assigns.subject
+
+    socket
+    |> assign(policy_details_id: policy.id)
+    |> assign_async(
+      :policy_details,
+      fn -> {:ok, %{policy_details: Database.policy_details(policy, subject)}} end,
+      reset: true
+    )
+  end
+
+  defp load_policy_authorizations(socket, policy, :authorizations, page) do
+    key = {policy.id, page}
+
+    if socket.assigns.policy_authorizations_key == key do
+      socket
+    else
+      subject = socket.assigns.subject
+
+      socket
+      |> assign(
+        policy_authorizations_key: key,
+        policy_authorizations_page: page,
+        policy_authorizations_expanded_id: nil
+      )
+      |> assign_async(
+        :policy_authorizations,
+        fn ->
+          {rows, has_next} = Database.list_policy_authorizations_for_policy(policy, subject, page)
+          {:ok, %{policy_authorizations: %{rows: rows, has_next: has_next}}}
+        end,
+        reset: true
+      )
+    end
+  end
+
+  defp load_policy_authorizations(socket, _policy, _tab, _page), do: socket
 
   defp new_policy_assigns(socket, form) do
     Keyword.put(base_policy_assigns(socket), :policy_panel, %{
