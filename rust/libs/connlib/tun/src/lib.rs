@@ -267,7 +267,7 @@ impl InboundTx {
         batch: PacketBatch,
     ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         let depth = len(&self.tx);
-        self.tx.send(batch).await?;
+        io_bottleneck::send(&self.tx, batch, io_bottleneck::Site::TunRead).await?;
         self.queue_depth.record(depth);
 
         Ok(())
@@ -278,7 +278,7 @@ impl InboundTx {
         batch: PacketBatch,
     ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         let depth = len(&self.tx);
-        self.tx.blocking_send(batch)?;
+        io_bottleneck::blocking_send(&self.tx, batch, io_bottleneck::Site::TunRead)?;
         self.queue_depth.record(depth);
 
         Ok(())

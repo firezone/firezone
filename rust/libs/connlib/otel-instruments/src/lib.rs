@@ -272,16 +272,38 @@ impl<const N: usize> Clone for QueueDepth<N> {
     }
 }
 
-/// How often the IO loop started holding back a source because the stage it feeds was full.
-pub fn io_backpressure() -> Counter<u64> {
+/// Share of a busy 1 s window in which the IO pipeline waited for a thread, one record per thread and window.
+pub fn io_blocked_ratio() -> Histogram<f64> {
     connlib_meter()
-        .u64_counter("connlib.io.backpressure")
-        .with_description(
-            "Number of times the IO loop started holding back a source because the stage it feeds was full.",
-        )
-        .with_unit("{episode}")
+        .f64_histogram("connlib.io.blocked.ratio")
+        .with_description("Share of a busy window in which the IO pipeline waited for a thread.")
+        .with_unit("1")
+        .with_boundaries(RATIO_BOUNDARIES.to_vec())
         .build()
 }
+
+/// Number of busy 1 s windows by the thread the IO pipeline waited for the most, `none` if it barely waited.
+pub fn io_bottleneck() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("connlib.io.bottleneck")
+        .with_description(
+            "Number of busy windows by the thread the IO pipeline waited for the most.",
+        )
+        .with_unit("{window}")
+        .build()
+}
+
+/// Share of a busy 1 s window that a thread spent on the CPU, one record per thread and window.
+pub fn thread_busy_ratio() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("connlib.thread.busy.ratio")
+        .with_description("Share of a busy window that a thread spent on the CPU.")
+        .with_unit("1")
+        .with_boundaries(RATIO_BOUNDARIES.to_vec())
+        .build()
+}
+
+const RATIO_BOUNDARIES: [f64; 8] = [0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0];
 
 /// The number of buffers allocated in a buffer pool.
 pub fn buffer_count() -> UpDownCounter<i64> {

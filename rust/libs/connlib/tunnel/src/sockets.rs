@@ -2,6 +2,7 @@ use crate::otel;
 use crate::packet_counts::UdpPacketCounts;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use futures::{FutureExt as _, future::BoxFuture, ready};
+use io_bottleneck::{Backpressure, Site};
 use ip_packet::IpVersion;
 use opentelemetry::metrics::Counter;
 use snownet::Transmit;
@@ -64,6 +65,11 @@ pub(crate) struct ReceivedDatagrams {
 }
 
 impl ReceivedDatagrams {
+    /// How many datagrams were received.
+    pub fn len(&self) -> usize {
+        self.batches.iter().map(DatagramBatch::len).sum()
+    }
+
     /// Moves out every received datagram, in the order the sockets received them.
     pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn> + '_ {
         self.batches.iter_mut().flat_map(|batch| batch.drain())
@@ -111,6 +117,8 @@ pub(crate) struct Sockets {
     /// were sent.
     overflow_v4: VecDeque<Outbound>,
     overflow_v6: VecDeque<Outbound>,
+    backpressure_v4: Backpressure,
+    backpressure_v6: Backpressure,
     /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
     bind_errors: VecDeque<anyhow::Error>,
     /// Shared with the send task of every socket, so it outlives [`Sockets::rebind`].
@@ -144,6 +152,8 @@ impl Sockets {
             socket_v6: None,
             overflow_v4: VecDeque::new(),
             overflow_v6: VecDeque::new(),
+            backpressure_v4: Backpressure::new(Site::UdpSendV4),
+            backpressure_v6: Backpressure::new(Site::UdpSendV6),
             bind_errors: VecDeque::new(),
             force_relayed_connections: Arc::default(),
             packet_counter: otel_instruments::network_packets(),
@@ -206,6 +216,8 @@ impl Sockets {
     pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let v4 = poll_flush_overflow(self.socket_v4.as_mut(), &mut self.overflow_v4, "IPv4", cx);
         let v6 = poll_flush_overflow(self.socket_v6.as_mut(), &mut self.overflow_v6, "IPv6", cx);
+        self.backpressure_v4.record(v4.is_ready());
+        self.backpressure_v6.record(v6.is_ready());
 
         match (v4, v6) {
             (Poll::Ready(Err(e)), _) | (_, Poll::Ready(Err(e))) => Poll::Ready(Err(e)),
@@ -511,9 +523,9 @@ impl ThreadedUdpSocket {
         ) = channels(preferred_addr);
         let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
-        let thread_name = match preferred_addr {
-            SocketAddr::V4(_) => "fz-udp-v4".to_owned(),
-            SocketAddr::V6(_) => "fz-udp-v6".to_owned(),
+        let (thread_name, recv_site) = match preferred_addr {
+            SocketAddr::V4(_) => ("fz-udp-v4".to_owned(), Site::UdpRecvV4),
+            SocketAddr::V6(_) => ("fz-udp-v6".to_owned(), Site::UdpRecvV6),
         };
         let join_handle = std::thread::Builder::new()
             .name(thread_name.clone())
@@ -678,7 +690,10 @@ impl ThreadedUdpSocket {
 
                             let depth = inbound_tx.max_capacity() - inbound_tx.capacity();
 
-                            if inbound_tx.send(batch).await.is_err() {
+                            if io_bottleneck::send(&inbound_tx, batch, recv_site)
+                                .await
+                                .is_err()
+                            {
                                 tracing::debug!(
                                     "Channel for inbound datagrams closed; exiting UDP recv task"
                                 );

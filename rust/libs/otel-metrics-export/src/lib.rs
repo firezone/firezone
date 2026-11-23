@@ -27,6 +27,7 @@ pub use pipeline::install_meter_provider;
 const MIN_EXPORT_INTERVAL: Duration = Duration::from_secs(10);
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 const MEMORY_SAMPLE_INTERVAL: Duration = Duration::from_secs(10);
+const IO_WINDOW: Duration = Duration::from_secs(1);
 
 /// Handle to the thread exporting metrics to the portal.
 ///
@@ -36,12 +37,13 @@ pub struct Exporter {
 }
 
 impl Exporter {
-    /// Spawns the export thread, which samples the process' memory usage and exports nothing until [`Exporter::configure`] provides a token.
+    /// Spawns the export thread, which samples the process' memory usage and IO bottlenecks and exports nothing until [`Exporter::configure`] provides a token.
     pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> io::Result<Self> {
         let (config, rx) = watch::channel(None);
 
         async_runtime::spawn_thread("fz-metrics-export", move || async move {
             tokio::spawn(sample_memory_usage());
+            tokio::spawn(sample_io_windows());
             run(rx, socket_factory).await;
         })?;
 
@@ -191,6 +193,67 @@ async fn sample_memory_usage() {
         }
 
         tokio::time::sleep(MEMORY_SAMPLE_INTERVAL).await;
+    }
+}
+
+/// Records where the IO pipeline waited and how busy its threads were, for every busy window while packets flow.
+async fn sample_io_windows() {
+    let blocked_ratio = otel_instruments::io_blocked_ratio();
+    let bottleneck = otel_instruments::io_bottleneck();
+    let busy_ratio = otel_instruments::thread_busy_ratio();
+
+    loop {
+        let mut windows = io_bottleneck::Windows::wait_for_traffic().await;
+        let mut threads = fz_threads();
+
+        loop {
+            tokio::time::sleep(IO_WINDOW).await;
+
+            let window = windows.close();
+            let previous = std::mem::replace(&mut threads, fz_threads());
+
+            if window.is_idle() {
+                break;
+            }
+
+            if !window.is_busy() {
+                continue;
+            }
+
+            for (thread, ratio) in window.blocked_ratios() {
+                blocked_ratio.record(ratio, &[otel_attributes::thread(thread.name())]);
+            }
+
+            let verdict = window
+                .bottleneck()
+                .map_or("none", io_bottleneck::Thread::name);
+            bottleneck.add(1, &[otel_attributes::thread(verdict)]);
+
+            for thread in &threads {
+                let Some(before) = previous.iter().find(|before| before.id == thread.id) else {
+                    continue;
+                };
+
+                busy_ratio.record(
+                    window.ratio(thread.cpu_time.saturating_sub(before.cpu_time)),
+                    &[otel_attributes::thread(&thread.name)],
+                );
+            }
+        }
+    }
+}
+
+fn fz_threads() -> Vec<thread_cpu::Thread> {
+    match thread_cpu::threads() {
+        Ok(threads) => threads
+            .into_iter()
+            .filter(|thread| thread.name.starts_with("fz-"))
+            .collect(),
+        Err(e) => {
+            tracing::debug!("Failed to read CPU time of threads: {e:#}");
+
+            Vec::new()
+        }
     }
 }
 

@@ -15,8 +15,8 @@ use crate::{
 use anyhow::Result;
 use crypto::{DecryptJobs, DecryptedJobs, Decrypting, EncryptJobs};
 use fast_random_state::FastRandomState;
+use io_bottleneck::{Backpressure, Site};
 use ip_packet::IpPacket;
-use opentelemetry::{KeyValue, metrics::Counter};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::HashMap,
@@ -43,7 +43,6 @@ pub struct Io {
 
     tun: Device,
 
-    udp_send_backpressure: Backpressure,
     tun_write_backpressure: Backpressure,
     decrypt_backpressure: Backpressure,
 }
@@ -90,33 +89,6 @@ where
     }
 }
 
-/// Counts the episodes in which [`Io::poll`] holds back a source because the stage it feeds is full.
-///
-/// A stage stays full across many consecutive polls under load, so only the transition is counted.
-struct Backpressure {
-    counter: Counter<u64>,
-    stage: [KeyValue; 1],
-    full: bool,
-}
-
-impl Backpressure {
-    fn new(stage: &'static str) -> Self {
-        Self {
-            counter: otel_instruments::io_backpressure(),
-            stage: [KeyValue::new("io.stage", stage)],
-            full: false,
-        }
-    }
-
-    fn record(&mut self, has_room: bool) {
-        if !has_room && !self.full {
-            self.counter.add(1, &self.stage);
-        }
-
-        self.full = !has_room;
-    }
-}
-
 /// The state of a single [`Io::poll`] call.
 struct PollState<'a, 'cx> {
     io: &'a mut Io,
@@ -146,7 +118,6 @@ impl<'a, 'cx> PollState<'a, 'cx> {
 
     fn flush_udp(&mut self) {
         let poll = self.io.sockets.poll_flush(self.cx);
-        self.io.udp_send_backpressure.record(poll.is_ready());
 
         self.udp_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
     }
@@ -238,6 +209,11 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             return Poll::Pending;
         }
 
+        io_bottleneck::count_packets(
+            input.device.as_ref().map_or(0, |batch| batch.len())
+                + input.network.as_ref().map_or(0, ReceivedDatagrams::len),
+        );
+
         Poll::Ready(input)
     }
 }
@@ -260,9 +236,8 @@ impl Io {
             tcp_socket_factory,
             udp_socket_factory,
             tun: Device::new(),
-            udp_send_backpressure: Backpressure::new("udp_send"),
-            tun_write_backpressure: Backpressure::new("tun_write"),
-            decrypt_backpressure: Backpressure::new("decrypt"),
+            tun_write_backpressure: Backpressure::new(Site::TunWrite),
+            decrypt_backpressure: Backpressure::new(Site::Decrypt),
         }
     }
 

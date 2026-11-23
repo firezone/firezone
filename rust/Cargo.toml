@@ -24,6 +24,7 @@ members = [
     "libs/connlib/etc-hosts-dns-client",
     "libs/connlib/flow-tracker",
     "libs/connlib/frostlink",
+    "libs/connlib/io-bottleneck",
     "libs/connlib/ip-packet",
     "libs/connlib/l3-tcp",
     "libs/connlib/l3-udp-dns-client",
@@ -61,6 +62,7 @@ members = [
     "libs/prefetch",
     "libs/process-memory",
     "libs/telemetry",
+    "libs/thread-cpu",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
     "libs/x509-claims",
@@ -166,6 +168,7 @@ hyper = "1.10.1"
 hyper-util = "0.1.20"
 incremental-inet-checksum = { path = "libs/incremental-inet-checksum" }
 ingot = { version = "0.2.1", default-features = false }
+io-bottleneck = { path = "libs/connlib/io-bottleneck" }
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
@@ -274,6 +277,7 @@ tempfile = "3.26.0"
 test-case = "3.3.1"
 test-strategy = "0.4.5"
 thiserror = "2.0.18"
+thread-cpu = { path = "libs/thread-cpu" }
 time = "0.3.46"
 tokio = "1.52.3"
 tokio-rustls = { version = "0.26.4", default-features = false }
