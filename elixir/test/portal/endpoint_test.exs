@@ -58,6 +58,57 @@ defmodule Portal.EndpointTest do
     end
   end
 
+  describe "while the host drains this node" do
+    setup do
+      draining_file_path =
+        Path.join(System.tmp_dir!(), "firezone-draining-#{System.unique_integer([:positive])}")
+
+      Portal.Config.put_env_override(:portal, Portal.Health, draining_file_path: draining_file_path)
+      on_exit(fn -> File.rm(draining_file_path) end)
+
+      {:ok, draining_file_path: draining_file_path}
+    end
+
+    test "keeps HTTP/1.1 connections open before draining starts" do
+      conn = Endpoint.call(conn(:get, "http://unknown.firezone.test/"), [])
+
+      assert get_resp_header(conn, "connection") == []
+    end
+
+    test "closes HTTP/1.1 connections after the response", %{draining_file_path: path} do
+      File.write!(path, "")
+
+      conn = Endpoint.call(conn(:get, "http://unknown.firezone.test/"), [])
+
+      assert conn.status == 404
+      assert get_resp_header(conn, "connection") == ["close"]
+    end
+
+    test "does not set the connection header on HTTP/2", %{draining_file_path: path} do
+      File.write!(path, "")
+
+      conn =
+        :get
+        |> conn("http://unknown.firezone.test/")
+        |> put_http_protocol(:"HTTP/2")
+        |> Endpoint.call([])
+
+      assert get_resp_header(conn, "connection") == []
+    end
+
+    test "keeps WebSocket upgrades open", %{draining_file_path: path} do
+      File.write!(path, "")
+
+      conn =
+        :get
+        |> conn("http://unknown.firezone.test/")
+        |> put_req_header("upgrade", "websocket")
+        |> Endpoint.call([])
+
+      assert get_resp_header(conn, "connection") == []
+    end
+  end
+
   describe "when a reverse proxy terminates TLS" do
     test "serves plain HTTP requests instead of redirecting" do
       conn = Endpoint.call(conn(:get, "http://api.firezone.test/client"), [])
@@ -151,6 +202,27 @@ defmodule Portal.EndpointTest do
       assert conn.status == 404
       assert conn.remote_ip == {127, 0, 0, 1}
       assert get_req_header(conn, "x-forwarded-for") == []
+    end
+  end
+
+  describe "forward/2" do
+    test "returns 503 and closes HTTP/1.1 connections when the endpoint has stopped" do
+      conn = Endpoint.forward(conn(:get, "https://app.firezone.test/"), __MODULE__.Stopped)
+
+      assert conn.status == 503
+      assert conn.halted
+      assert get_resp_header(conn, "connection") == ["close"]
+    end
+
+    test "returns 503 on HTTP/2 without a connection header when the endpoint has stopped" do
+      conn =
+        :get
+        |> conn("https://app.firezone.test/")
+        |> put_http_protocol(:"HTTP/2")
+        |> Endpoint.forward(__MODULE__.Stopped)
+
+      assert conn.status == 503
+      assert get_resp_header(conn, "connection") == []
     end
   end
 

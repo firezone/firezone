@@ -2,7 +2,7 @@
 //!
 //! Edge coverage tells AFL++ which control-flow paths an input reaches, but not
 //! whether those paths occur in a meaningful combination of protocol states.
-//! [`Recorder`] inspects the reference and simulated states after their
+//! [`Recorder`] inspects the model and the real system after their
 //! invariants have been checked and records selected combinations as IJON set
 //! features. It also logs each change a transition makes with the routes it
 //! affects. Whenever a route carries traffic, each kind of change it has
@@ -27,19 +27,19 @@ use snownet::ConnectionPath;
 use tunnel_proto::dns;
 
 use crate::{
+    fake_portal::FakePortal,
+    network::{EdgeConfig, FilterMode, Mapping},
     probe::{
         Answer, DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome,
         ExpectedProbe, FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionRemote, Remote,
         Route, SubmittedRequest,
     },
-    reference::ReferenceState,
+    real_gateway::DnsResolution,
+    real_tunnel_system::RealTunnelSystem,
     resource::{EditEffect, Resource, ResourceEdit, classify},
-    sim_gateway::DnsResolution,
-    sim_net::EdgeConfig,
     site_network::RouteType,
-    stub_portal::StubPortal,
-    sut::TunnelTest,
-    transition::{Destination, DnsQuery, DnsTransport, Transition},
+    tunnel_model::TunnelModel,
+    tunnel_transition::{Destination, DnsQuery, DnsTransport, Transition},
 };
 
 /// Records a numeric state category as feedback for the fuzzer.
@@ -117,7 +117,7 @@ pub struct Recorder {
 
 impl Recorder {
     /// Logs changes whose recovery can be demonstrated by later traffic.
-    pub fn observe(&mut self, transition: &Transition, reference: &ReferenceState, now: Instant) {
+    pub fn observe(&mut self, transition: &Transition, model: &TunnelModel, now: Instant) {
         self.current_probe_on_idled_flow = None;
         self.current_dns_queries.clear();
         self.current_tcp_flow = None;
@@ -230,11 +230,7 @@ impl Recorder {
             }
             Transition::Idle { duration } => {
                 self.changes.push((Scope::Everything, Change::Idled));
-                for flow in reference
-                    .icmp_flows
-                    .keys()
-                    .chain(reference.udp_flows.keys())
-                {
+                for flow in model.icmp_flows.keys().chain(model.udp_flows.keys()) {
                     *self.idled_flows.entry(*flow).or_default() += *duration;
                 }
             }
@@ -268,7 +264,7 @@ impl Recorder {
                 probe_id,
                 ..
             } => {
-                let resumed = reference.resumed_icmp_flow(*client_id, *src, dst, *identifier, now);
+                let resumed = model.resumed_icmp_flow(*client_id, *src, dst, *identifier, now);
                 self.observe_resumed_flow(resumed, *probe_id);
             }
             Transition::SendUdpPacketOnNewFlow {
@@ -280,8 +276,7 @@ impl Recorder {
                 probe_id,
                 ..
             } => {
-                let resumed =
-                    reference.resumed_udp_flow(*client_id, *src, dst, (*sport, *dport), now);
+                let resumed = model.resumed_udp_flow(*client_id, *src, dst, (*sport, *dport), now);
                 self.observe_resumed_flow(resumed, *probe_id);
             }
             Transition::AddResource(_)
@@ -298,26 +293,27 @@ impl Recorder {
     }
 
     /// Records observed state combinations that should guide future fuzzing.
-    pub fn record(&mut self, reference: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
-        record_translated_icmp_error_feedback(reference, state);
-        record_site_network_feedback(reference, state);
-        record_dns_refresh_feedback(reference, state);
+    pub fn record(&mut self, model: &TunnelModel, state: &RealTunnelSystem, portal: &FakePortal) {
+        record_translated_icmp_error_feedback(model, state);
+        record_site_network_feedback(model, state);
+        record_dns_refresh_feedback(model, state);
         record_dns_proxy_ip_subset_feedback(state);
-        record_shared_dns_resource_gateway_feedback(reference);
-        record_live_dns_flow_feedback(reference, state);
-        self.record_dns_query_feedback(reference, state, portal);
+        record_shared_dns_resource_gateway_feedback(model);
+        record_shared_nat_feedback(model);
+        record_live_dns_flow_feedback(model, state);
+        self.record_dns_query_feedback(model, state, portal);
         for _ in self
             .tcp_flows_opened
-            .extract_if(.., |flow, _| !reference.tcp_flows.contains_key(flow))
+            .extract_if(.., |flow, _| !model.tcp_flows.contains_key(flow))
         {}
 
-        for expected in reference.expected_probes.values() {
-            record_tcp_connect_outcome(reference, state, expected);
+        for expected in model.expected_probes.values() {
+            record_tcp_connect_outcome(model, state, expected);
             let Some(completed) = completed_round_trip(expected, state) else {
                 continue;
             };
             let Some(path) =
-                remote_path_feedback(reference, state, expected.origin, completed.route.remote())
+                remote_path_feedback(model, state, expected.origin, completed.route.remote())
             else {
                 continue;
             };
@@ -331,17 +327,17 @@ impl Recorder {
                     matches!(expected.request.destination(), Destination::DomainName { .. }),
                 );
             }
-            self.record_recovery(reference, expected.origin, completed.route, path);
+            self.record_recovery(model, expected.origin, completed.route, path);
             self.record_existing_flow_after_idle(&completed, path);
             self.record_gateway_failover(&completed, path);
-            self.record_tcp_survival(reference, &completed, path);
+            self.record_tcp_survival(model, &completed, path);
         }
     }
 
     /// Records the kinds of change a route has recovered from since it last carried traffic.
     fn record_recovery(
         &mut self,
-        reference: &ReferenceState,
+        model: &TunnelModel,
         origin: ClientId,
         route: Route,
         path: PathFeedback,
@@ -351,7 +347,7 @@ impl Recorder {
             .recovered
             .insert(route, self.changes.len())
             .unwrap_or(0);
-        let kinds = self.changes_since(since, route, reference);
+        let kinds = self.changes_since(since, route, model);
 
         for &kind in &kinds {
             record_value!((kind as u16) << 2 | path.code());
@@ -366,11 +362,11 @@ impl Recorder {
         &self,
         since: usize,
         route: RouteKey,
-        reference: &ReferenceState,
+        model: &TunnelModel,
     ) -> BTreeSet<Change> {
         self.changes[since..]
             .iter()
-            .filter(|(scope, _)| scope.covers(route, reference))
+            .filter(|(scope, _)| scope.covers(route, model))
             .map(|(_, change)| *change)
             .collect()
     }
@@ -378,7 +374,7 @@ impl Recorder {
     /// Records the kinds of change a TCP connection has survived since it was opened.
     fn record_tcp_survival(
         &mut self,
-        reference: &ReferenceState,
+        model: &TunnelModel,
         completed: &CompletedRoundTrip<'_>,
         path: PathFeedback,
     ) {
@@ -395,7 +391,7 @@ impl Recorder {
             return;
         };
         let route = RouteKey::new(completed.expected.origin, completed.route);
-        for kind in self.changes_since(since, route, reference) {
+        for kind in self.changes_since(since, route, model) {
             record_value!((kind as u16) << 2 | path.code());
         }
     }
@@ -431,17 +427,11 @@ impl Recorder {
             ),
         );
 
-        let origin = nat_feedback(path.origin, attempt.duration);
-        let remote = nat_feedback(path.remote, attempt.duration);
-        if !origin.behind_nat && !remote.behind_nat {
-            return;
-        }
-
         record_with_path!(path;
-            origin.expiry_elapsed,
-            remote.expiry_elapsed,
-            origin.inbound_refreshes,
-            remote.inbound_refreshes,
+            attempt.duration >= path.origin.expiry.timeout,
+            attempt.duration >= path.remote.expiry.timeout,
+            path.origin.expiry.inbound_refreshes,
+            path.remote.expiry.inbound_refreshes,
         );
     }
 
@@ -476,18 +466,18 @@ impl Recorder {
 
     fn record_dns_query_feedback(
         &self,
-        reference: &ReferenceState,
-        state: &TunnelTest,
-        portal: &StubPortal,
+        model: &TunnelModel,
+        state: &RealTunnelSystem,
+        portal: &FakePortal,
     ) {
         for (client_id, query) in &self.current_dns_queries {
-            let Some(reference_client) = reference.clients.get(client_id) else {
+            let Some(model_client) = model.clients.get(client_id) else {
                 continue;
             };
             let Some(simulated_client) = state.clients.get(client_id) else {
                 continue;
             };
-            let reference_client = reference_client.inner();
+            let model_client = model_client.inner();
             let simulated_client = simulated_client.inner();
             let response_received = match query.transport {
                 DnsTransport::Udp { local_port } => simulated_client
@@ -501,12 +491,12 @@ impl Recorder {
                 continue;
             }
 
-            let site_specific = reference_client.is_site_specific_dns_query(query).is_some();
+            let site_specific = model_client.is_site_specific_dns_query(query).is_some();
             let via_resource = site_specific
-                || reference_client
+                || model_client
                     .dns_query_via_resource(query, portal.upstream_do53())
                     .is_some();
-            let learned_records = reference_client
+            let learned_records = model_client
                 .dns_records
                 .get(&query.domain)
                 .is_some_and(|types| types.contains(&query.r_type));
@@ -527,8 +517,7 @@ impl Recorder {
                 matches!(query.r_type, dns_types::RecordType::PTR),
             );
 
-            let matching =
-                reference_client.dns_resources_by_domain(&query.domain, |_| true, |_| true);
+            let matching = model_client.dns_resources_by_domain(&query.domain, |_| true, |_| true);
             let sites = matching
                 .iter()
                 .flat_map(|resource| &resource.sites)
@@ -581,7 +570,7 @@ enum Scope {
 }
 
 impl Scope {
-    fn covers(self, route: RouteKey, reference: &ReferenceState) -> bool {
+    fn covers(self, route: RouteKey, model: &TunnelModel) -> bool {
         match (self, route) {
             (Scope::Client(client), RouteKey::Resource(origin, _)) => client == origin,
             (Scope::Client(client), RouteKey::Peer(origin, peer)) => {
@@ -589,7 +578,7 @@ impl Scope {
             }
             (Scope::Resource(resource), RouteKey::Resource(_, target)) => resource == target,
             (Scope::Resource(pool), RouteKey::Peer(origin, peer)) => {
-                reference.clients.get(&origin).is_some_and(|client| {
+                model.clients.get(&origin).is_some_and(|client| {
                     client
                         .inner()
                         .authorized_pools_towards(peer)
@@ -653,7 +642,7 @@ impl CompletedRoundTrip<'_> {
 
 fn completed_round_trip<'a>(
     expected: &'a ExpectedProbe,
-    state: &'a TunnelTest,
+    state: &'a RealTunnelSystem,
 ) -> Option<CompletedRoundTrip<'a>> {
     let ExpectedOutcome::RoundTripCompleted(route, _) = expected.outcome else {
         return None;
@@ -700,72 +689,50 @@ impl PathFeedback {
 }
 
 fn remote_path_feedback(
-    reference: &ReferenceState,
-    state: &TunnelTest,
+    model: &TunnelModel,
+    state: &RealTunnelSystem,
     origin: ClientId,
     remote: Remote,
 ) -> Option<PathFeedback> {
     let peer = match remote {
         Remote::Gateway(gateway) => {
-            return gateway_path_feedback(reference, state, origin, gateway);
+            return gateway_path_feedback(model, state, origin, gateway);
         }
         Remote::Client(peer) => peer,
     };
-    let origin_edge = reference.clients.get(&origin)?.edge_config();
-    let remote_edge = reference.clients.get(&peer)?.edge_config();
+    let origin_edge = model.network.edge_config(origin);
+    let remote_edge = model.network.edge_config(peer);
     let selected = state
         .clients
         .get(&origin)?
         .inner()
-        .sut()
+        .state()
         .connection_path(ClientOrGatewayId::Client(peer))?;
 
     Some(PathFeedback::new(origin_edge, remote_edge, selected))
 }
 
-struct NatFeedback {
-    behind_nat: bool,
-    inbound_refreshes: bool,
-    expiry_elapsed: bool,
-}
-
-fn nat_feedback(edge: EdgeConfig, idle: Duration) -> NatFeedback {
-    let EdgeConfig::Nat(_, _, expiry) = edge else {
-        return NatFeedback {
-            behind_nat: false,
-            inbound_refreshes: false,
-            expiry_elapsed: false,
-        };
-    };
-
-    NatFeedback {
-        behind_nat: true,
-        inbound_refreshes: expiry.inbound_refreshes,
-        expiry_elapsed: idle >= expiry.timeout,
-    }
-}
-
 fn gateway_path_feedback(
-    reference: &ReferenceState,
-    state: &TunnelTest,
+    model: &TunnelModel,
+    state: &RealTunnelSystem,
     origin: ClientId,
     gateway: GatewayId,
 ) -> Option<PathFeedback> {
-    let origin_edge = reference.clients.get(&origin)?.edge_config();
-    let gateway_edge = reference.gateways.get(&gateway)?.edge_config();
+    let origin_edge = model.network.edge_config(origin);
+    let gateway_edge = model.network.edge_config(gateway);
     let selected = state
         .clients
         .get(&origin)?
         .inner()
-        .sut()
+        .state()
         .connection_path(ClientOrGatewayId::Gateway(gateway))?;
     Some(PathFeedback::new(origin_edge, gateway_edge, selected))
 }
 
 /// Records whether a TCP connect was answered by a SYN-ACK, a reset or an ICMP error.
 fn record_tcp_connect_outcome(
-    reference: &ReferenceState,
-    state: &TunnelTest,
+    model: &TunnelModel,
+    state: &RealTunnelSystem,
     expected: &ExpectedProbe,
 ) {
     let ProbeRequest::Tcp {
@@ -791,15 +758,15 @@ fn record_tcp_connect_outcome(
     match expected
         .outcome
         .remote()
-        .and_then(|remote| remote_path_feedback(reference, state, expected.origin, remote))
+        .and_then(|remote| remote_path_feedback(model, state, expected.origin, remote))
     {
         Some(path) => record_with_path!(path; reset, icmp_error, ipv6),
         None => record!(reset, icmp_error, ipv6),
     }
 }
 
-fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &TunnelTest) {
-    for expected in reference.expected_probes.values() {
+fn record_translated_icmp_error_feedback(model: &TunnelModel, state: &RealTunnelSystem) {
+    for expected in model.expected_probes.values() {
         let Some(completed) = completed_round_trip(expected, state) else {
             continue;
         };
@@ -810,7 +777,7 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
         let Remote::Gateway(gateway) = remote else {
             continue;
         };
-        let Some(path) = remote_path_feedback(reference, state, expected.origin, remote) else {
+        let Some(path) = remote_path_feedback(model, state, expected.origin, remote) else {
             continue;
         };
         let destination_was_translated =
@@ -820,7 +787,7 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
         }
 
         let responds_with_icmp_error = matches!(
-            reference.gateways[&gateway]
+            model.gateways[&gateway]
                 .inner()
                 .routes
                 .route(received.packet.destination()),
@@ -837,8 +804,8 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
 }
 
 /// Records probes sent through a Gateway that cannot reach or resolve their destination.
-fn record_site_network_feedback(reference: &ReferenceState, state: &TunnelTest) {
-    for expected in reference.expected_probes.values() {
+fn record_site_network_feedback(model: &TunnelModel, state: &RealTunnelSystem) {
+    for expected in model.expected_probes.values() {
         let gateway = match expected.outcome {
             ExpectedOutcome::RoundTripCompleted(Route::Resource { gateway, .. }, _) => gateway,
             ExpectedOutcome::Rejected {
@@ -849,10 +816,10 @@ fn record_site_network_feedback(reference: &ReferenceState, state: &TunnelTest) 
             | ExpectedOutcome::Rejected { .. }
             | ExpectedOutcome::Dropped => continue,
         };
-        let gateway = reference.gateways[&gateway].inner();
+        let gateway = model.gateways[&gateway].inner();
         let resolves = match expected.request.destination() {
             Destination::DomainName { name, .. } => gateway
-                .resolve(name, &reference.global_dns_records)
+                .resolve(name, &model.global_dns_records)
                 .next()
                 .is_some(),
             Destination::IpAddr(_) => true,
@@ -877,20 +844,19 @@ fn record_site_network_feedback(reference: &ReferenceState, state: &TunnelTest) 
     }
 }
 
-fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest) {
+fn record_live_dns_flow_feedback(model: &TunnelModel, state: &RealTunnelSystem) {
     for observation in state.dns_nat_observations() {
         if observation.response_received_at.is_none()
             || state.now().duration_since(observation.received.at) >= DNS_NAT_SESSION_TTL
-            || !(reference.udp_flows.contains_key(&observation.flow_id)
-                || reference.icmp_flows.contains_key(&observation.flow_id))
+            || !(model.udp_flows.contains_key(&observation.flow_id)
+                || model.icmp_flows.contains_key(&observation.flow_id))
         {
             continue;
         }
         let Remote::Gateway(gateway) = observation.received.remote else {
             continue;
         };
-        let Some(path) =
-            gateway_path_feedback(reference, state, observation.submitted.client, gateway)
+        let Some(path) = gateway_path_feedback(model, state, observation.submitted.client, gateway)
         else {
             continue;
         };
@@ -904,7 +870,7 @@ fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest)
         }
 
         let ipv6 = observation.submitted.packet.destination().is_ipv6();
-        let addresses = reference
+        let addresses = model
             .global_dns_records
             .domain_ips_iter(&observation.domain)
             .filter(|ip| ip.is_ipv6() == ipv6)
@@ -922,7 +888,7 @@ fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest)
     }
 }
 
-fn record_dns_refresh_feedback(reference: &ReferenceState, state: &TunnelTest) {
+fn record_dns_refresh_feedback(model: &TunnelModel, state: &RealTunnelSystem) {
     let sessions = DnsNatSessions::new(state.dns_nat_observations()).sessions;
 
     for session in sessions {
@@ -936,7 +902,7 @@ fn record_dns_refresh_feedback(reference: &ReferenceState, state: &TunnelTest) {
             continue;
         };
         let Some(path) =
-            gateway_path_feedback(reference, state, session.key.client, session.key.gateway)
+            gateway_path_feedback(model, state, session.key.client, session.key.gateway)
         else {
             continue;
         };
@@ -1026,7 +992,7 @@ fn record_dns_refresh_session_feedback<'a>(
 }
 
 /// Records the IP families of a domain's proxy IPs before and after a Client changes them.
-fn record_dns_proxy_ip_subset_feedback(state: &TunnelTest) {
+fn record_dns_proxy_ip_subset_feedback(state: &RealTunnelSystem) {
     for gateway in state.gateways.values() {
         for (previous, next) in gateway
             .inner()
@@ -1053,9 +1019,22 @@ fn record_dns_proxy_ip_subset_feedback(state: &TunnelTest) {
     }
 }
 
+/// Records the mode of each NAT device that two or more Clients share.
+fn record_shared_nat_feedback(model: &TunnelModel) {
+    for edge in model.network.edges_shared_by_clients() {
+        let flags = pack(&[
+            edge.mapping == Mapping::EndpointDependent,
+            edge.filter == FilterMode::AddressRestricted,
+            edge.filter == FilterMode::PortRestricted,
+            edge.expiry.inbound_refreshes,
+        ]);
+        record_value!(flags | (edge.expiry.timeout.as_secs() as u16) << 4);
+    }
+}
+
 /// Records the IP stacks of DNS resources sharing a Gateway for a domain the Client resolved.
-fn record_shared_dns_resource_gateway_feedback(reference: &ReferenceState) {
-    for client in reference.clients.values() {
+fn record_shared_dns_resource_gateway_feedback(model: &TunnelModel) {
+    for client in model.clients.values() {
         let client = client.inner();
         let resources = client
             .all_resources()

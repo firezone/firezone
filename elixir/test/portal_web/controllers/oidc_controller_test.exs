@@ -1,5 +1,6 @@
 defmodule PortalWeb.OIDCControllerTest do
   use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -235,11 +236,16 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "Google Workspace provider setup" do
+    setup :authorize_verification_conn
+
     test "a Workspace account that cannot list its domains fails verification", %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       lv_pid = pending_verification_process(Map.new(oidc_config()), verification_ref)
       state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
-        "google-auth-provider", %{verification_ref: verification_ref})
+        "google-auth-provider", %{
+          verification_ref: verification_ref,
+          session: verification_session(conn)
+        })
       token = Mocks.OIDC.default_claims() |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
       Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "setup-secret"})
       Req.Test.expect(Portal.Google.APIClient, fn conn -> Plug.Conn.send_resp(conn, 403, "forbidden") end)
@@ -253,7 +259,10 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       lv_pid = pending_verification_process(config, verification_ref)
       state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
-        "google-auth-provider", %{verification_ref: verification_ref})
+        "google-auth-provider", %{
+          verification_ref: verification_ref,
+          session: verification_session(conn)
+        })
       token = Mocks.OIDC.default_claims() |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
       Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "setup-secret"})
       Req.Test.expect(Portal.Google.APIClient, fn conn ->
@@ -270,7 +279,10 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       lv_pid = pending_verification_process(Map.new(oidc_config()), verification_ref)
       state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
-        "google-auth-provider", %{verification_ref: verification_ref})
+        "google-auth-provider", %{
+          verification_ref: verification_ref,
+          session: verification_session(conn)
+        })
       Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must not read domains for personal accounts") end)
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "code"})
       assert {:ok, %{ok: true, domains: nil, name: nil, verification_ref: ^verification_ref} = result} =
@@ -282,15 +294,66 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "callback/2 with Entra verification state" do
+    setup :authorize_verification_conn
+
     @tenant_id "12345678-1234-1234-1234-123456789012"
     @tenant_issuer "https://login.microsoftonline.com/#{@tenant_id}/v2.0"
     @principal_id "87654321-4321-4321-4321-210987654321"
+
+    test "requires the portal session that started the verification", %{conn: conn} do
+      lv_pid = verification_spy()
+      state = entra_verification_state(conn, lv_pid, "entra-directory-sync", Ecto.UUID.generate())
+
+      conn = complete_entra_admin_consent(build_conn(), state)
+
+      assert {:ok, %{ok: false, lv_pid: nil, error: error}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "browser where you are signed in"
+      refute_received {:verification_spy, _message}
+    end
+
+    test "rejects the tenant proof from another portal session", %{conn: conn} do
+      lv_pid = verification_spy()
+      state = entra_tenant_proof_state(conn, lv_pid, "entra-directory-sync", Ecto.UUID.generate())
+      browser = put_req_header(build_conn(), "user-agent", "testing")
+      browser = %{browser | secret_key_base: conn.secret_key_base}
+      %{conn: other_conn} = authorize_verification_conn(%{conn: browser})
+      flush_oidc_requests()
+
+      conn =
+        get(other_conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: false, lv_pid: nil}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      refute_received {:verification_spy, _message}
+      refute_received {:oidc_request, _path, _conn}
+    end
+
+    test "rejects a verification state without a portal session", %{conn: conn} do
+      lv_pid = verification_spy()
+
+      state =
+        PortalWeb.OIDC.sign_verification_state(
+          PortalWeb.OIDC.serialize_pid(lv_pid),
+          "entra-auth-provider",
+          %{verification_ref: Ecto.UUID.generate()}
+        )
+
+      conn = complete_entra_admin_consent(conn, state)
+
+      assert {:ok, %{ok: false, lv_pid: nil}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      refute_received {:verification_spy, _message}
+    end
 
     test "derives the auth-provider tenant from a verified ID token", %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
       assert_tenant_proof_redirect(conn, "openid email profile", "none")
@@ -315,7 +378,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
       conn = complete_entra_admin_consent(conn, state)
       set_entra_token_response("entra-client-id")
       conn = complete_entra_tenant_proof(conn)
@@ -327,7 +390,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-sync-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-directory-sync", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-directory-sync", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
       assert_tenant_proof_redirect(conn, "openid profile", "none")
@@ -349,7 +412,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-sync-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-directory-sync", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-directory-sync", verification_ref)
 
       conn =
         complete_entra_admin_consent(conn, state, %{
@@ -368,7 +431,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
       other_tenant_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
       conn = complete_entra_admin_consent(conn, state, %{"tenant" => other_tenant_id})
@@ -387,7 +450,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn =
         complete_entra_admin_consent(conn, state, %{
@@ -404,7 +467,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
 
@@ -424,7 +487,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
 
@@ -450,7 +513,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
 
@@ -468,7 +531,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
 
@@ -489,7 +552,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
       set_entra_claims_response(entra_claims("other-client-id"))
@@ -505,7 +568,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
 
@@ -529,7 +592,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       consent_conn = complete_entra_admin_consent(conn, state)
       tenant_proof_state = callback_state_from_redirect(consent_conn)
@@ -560,7 +623,7 @@ defmodule PortalWeb.OIDCControllerTest do
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, current_ref)
 
-      state = entra_tenant_proof_state(lv_pid, "entra-auth-provider", stale_ref)
+      state = entra_tenant_proof_state(conn, lv_pid, "entra-auth-provider", stale_ref)
       flush_oidc_requests()
 
       conn =
@@ -583,7 +646,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn =
         get(conn, ~p"/auth/oidc/callback", %{
@@ -612,7 +675,7 @@ defmodule PortalWeb.OIDCControllerTest do
         verification_ref = Ecto.UUID.generate()
         config = entra_verification_config(unquote(client_id))
         lv_pid = pending_verification_process(config, verification_ref)
-        state = entra_verification_state(lv_pid, unquote(type), verification_ref)
+        state = entra_verification_state(conn, lv_pid, unquote(type), verification_ref)
 
         conn =
           get(conn, ~p"/auth/oidc/callback", %{
@@ -630,7 +693,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn =
         get(conn, ~p"/auth/oidc/callback", %{
@@ -649,7 +712,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
       silent_state = callback_state_from_redirect(conn)
@@ -675,7 +738,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-sync-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-directory-sync", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-directory-sync", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
       silent_state = callback_state_from_redirect(conn)
@@ -694,7 +757,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
       set_entra_token_response("entra-client-id", %{"oid" => nil})
@@ -710,7 +773,7 @@ defmodule PortalWeb.OIDCControllerTest do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
       lv_pid = pending_verification_process(config, verification_ref)
-      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      state = entra_verification_state(conn, lv_pid, "entra-auth-provider", verification_ref)
 
       conn = complete_entra_admin_consent(conn, state)
       silent_state = callback_state_from_redirect(conn)
@@ -752,6 +815,8 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "callback/2 with OIDC verification state" do
+    setup :authorize_verification_conn
+
     test "exchanges code and redirects to /verification/oidc with signed result on success", %{
       conn: conn
     } do
@@ -782,7 +847,9 @@ defmodule PortalWeb.OIDCControllerTest do
         end)
 
       lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider", %{
+        session: verification_session(conn)
+      })
 
       conn =
         get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -812,7 +879,9 @@ defmodule PortalWeb.OIDCControllerTest do
         end)
 
       lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider", %{
+        session: verification_session(conn)
+      })
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "bad-code"})
 
@@ -864,7 +933,9 @@ defmodule PortalWeb.OIDCControllerTest do
         end)
 
       lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider", %{
+        session: verification_session(conn)
+      })
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
 
@@ -918,7 +989,9 @@ defmodule PortalWeb.OIDCControllerTest do
         end)
 
       lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider", %{
+        session: verification_session(conn)
+      })
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
 
@@ -969,7 +1042,9 @@ defmodule PortalWeb.OIDCControllerTest do
         end)
 
       lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider", %{
+        session: verification_session(conn)
+      })
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
 
@@ -1017,7 +1092,9 @@ defmodule PortalWeb.OIDCControllerTest do
         end)
 
       lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider", %{
+        session: verification_session(conn)
+      })
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
 
@@ -1066,7 +1143,9 @@ defmodule PortalWeb.OIDCControllerTest do
         end)
 
       lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider", %{
+        session: verification_session(conn)
+      })
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
 
@@ -1086,7 +1165,9 @@ defmodule PortalWeb.OIDCControllerTest do
       # Use a dead PID — no process listening, so request_pending_verification times out
       dead_pid = spawn(fn -> :ok end)
       lv_pid_string = PortalWeb.OIDC.serialize_pid(dead_pid)
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider", %{
+        session: verification_session(conn)
+      })
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "any-code"})
 
@@ -1101,6 +1182,8 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "callback/2 with Google directory verification state" do
+    setup :authorize_verification_conn
+
     setup do
       configure_google_directory_workload_identity()
       test_pid = self()
@@ -1123,7 +1206,7 @@ defmodule PortalWeb.OIDCControllerTest do
     } do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
-      state = google_directory_verification_state(lv_pid, verification_ref)
+      state = google_directory_verification_state(conn, lv_pid, verification_ref)
 
       set_google_directory_id_token(%{
         "email" => "workspace-admin@verified.example.com",
@@ -1157,7 +1240,7 @@ defmodule PortalWeb.OIDCControllerTest do
     test "rejects authorization from a different Workspace", %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C-victim")
-      state = google_directory_verification_state(lv_pid, verification_ref)
+      state = google_directory_verification_state(conn, lv_pid, verification_ref)
 
       set_google_directory_id_token(%{
         "email" => "attacker@attacker.example.com",
@@ -1192,7 +1275,7 @@ defmodule PortalWeb.OIDCControllerTest do
     } do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
-      state = google_directory_verification_state(lv_pid, verification_ref)
+      state = google_directory_verification_state(conn, lv_pid, verification_ref)
 
       set_google_directory_id_token(%{
         "email" => "member@verified.example.com",
@@ -1218,7 +1301,7 @@ defmodule PortalWeb.OIDCControllerTest do
     test "rejects a missing Google ID token before requesting delegated access", %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
-      state = google_directory_verification_state(lv_pid, verification_ref)
+      state = google_directory_verification_state(conn, lv_pid, verification_ref)
 
       Mocks.OIDC.set_token_response(%{"access_token" => "unused-interactive-token"})
 
@@ -1238,7 +1321,7 @@ defmodule PortalWeb.OIDCControllerTest do
     } do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
-      state = google_directory_verification_state(lv_pid, verification_ref)
+      state = google_directory_verification_state(conn, lv_pid, verification_ref)
 
       Mocks.OIDC.set_token_response(%{"id_token" => "not-a-signed-token"})
 
@@ -1256,7 +1339,7 @@ defmodule PortalWeb.OIDCControllerTest do
     test "rejects a Google ID token for another OAuth client", %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
-      state = google_directory_verification_state(lv_pid, verification_ref)
+      state = google_directory_verification_state(conn, lv_pid, verification_ref)
 
       set_google_directory_id_token(%{
         "aud" => "another-google-client",
@@ -1277,7 +1360,7 @@ defmodule PortalWeb.OIDCControllerTest do
     test "rejects a Google ID token whose nonce is not bound to the verification", %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
-      state = google_directory_verification_state(lv_pid, verification_ref)
+      state = google_directory_verification_state(conn, lv_pid, verification_ref)
 
       set_google_directory_id_token(%{
         "nonce" => "nonce-from-another-verification",
@@ -1305,7 +1388,7 @@ defmodule PortalWeb.OIDCControllerTest do
           ] do
         verification_ref = Ecto.UUID.generate()
         lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
-        state = google_directory_verification_state(lv_pid, verification_ref)
+        state = google_directory_verification_state(conn, lv_pid, verification_ref)
         set_google_directory_id_token(claims)
 
         callback_conn =
@@ -1328,7 +1411,7 @@ defmodule PortalWeb.OIDCControllerTest do
          %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
-      state = google_directory_verification_state(lv_pid, verification_ref)
+      state = google_directory_verification_state(conn, lv_pid, verification_ref)
 
       set_google_directory_id_token(%{
         "email" => "workspace-admin@verified.example.com",
@@ -1369,7 +1452,7 @@ defmodule PortalWeb.OIDCControllerTest do
       stale_ref = Ecto.UUID.generate()
       current_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(current_ref, "C0123")
-      state = google_directory_verification_state(lv_pid, stale_ref)
+      state = google_directory_verification_state(conn, lv_pid, stale_ref)
       flush_oidc_requests()
 
       conn =
@@ -1391,7 +1474,7 @@ defmodule PortalWeb.OIDCControllerTest do
     test "returns a signed failure when Google authorization is denied", %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
-      state = google_directory_verification_state(lv_pid, verification_ref)
+      state = google_directory_verification_state(conn, lv_pid, verification_ref)
 
       conn =
         get(conn, ~p"/auth/oidc/callback", %{
@@ -1754,6 +1837,33 @@ defmodule PortalWeb.OIDCControllerTest do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
       setup_successful_auth(ctx, actor)
       assert_portal_sign_in_success(ctx)
+    end
+
+    test "keeps the picture claim on a synced identity and queues its photo", ctx do
+      Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "admin-user-123",
+          email: actor.email
+        )
+
+      picture = "https://idp.example.com/photo.jpg"
+      setup_successful_auth(ctx, actor, picture: picture)
+
+      assert_portal_sign_in_success(ctx)
+
+      assert Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id, id: identity.id).picture ==
+               picture
+
+      assert_enqueued(
+        worker: Portal.Avatars.Picture,
+        args: %{account_id: ctx.account.id, identity_id: identity.id, picture: picture}
+      )
     end
 
     test "rejects an ID token whose nonce is not bound to the sign-in session", ctx do
@@ -4548,11 +4658,31 @@ defmodule PortalWeb.OIDCControllerTest do
     spawn(fn -> pending_verification_loop(pending) end)
   end
 
-  defp google_directory_verification_state(lv_pid, verification_ref) do
+  defp authorize_verification_conn(%{conn: conn}) do
+    account = account_fixture()
+    actor = admin_actor_fixture(account: account)
+    %{conn: authorize_conn(conn, actor)}
+  end
+
+  defp verification_spy do
+    test_pid = self()
+
+    spawn(fn ->
+      receive do
+        message -> send(test_pid, {:verification_spy, message})
+      end
+    end)
+  end
+
+  defp verification_session(conn),
+    do: PortalWeb.OIDC.verification_session(conn.assigns.subject)
+
+  defp google_directory_verification_state(conn, lv_pid, verification_ref) do
     lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
 
     PortalWeb.OIDC.sign_verification_state(lv_pid_string, "google-directory-sync", %{
-      verification_ref: verification_ref
+      verification_ref: verification_ref,
+      session: verification_session(conn)
     })
   end
 
@@ -4591,19 +4721,21 @@ defmodule PortalWeb.OIDCControllerTest do
     end
   end
 
-  defp entra_verification_state(lv_pid, type, verification_ref) do
+  defp entra_verification_state(conn, lv_pid, type, verification_ref) do
     lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
 
     PortalWeb.OIDC.sign_verification_state(lv_pid_string, type, %{
-      verification_ref: verification_ref
+      verification_ref: verification_ref,
+      session: verification_session(conn)
     })
   end
 
-  defp entra_tenant_proof_state(lv_pid, type, verification_ref) do
+  defp entra_tenant_proof_state(conn, lv_pid, type, verification_ref) do
     lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
 
     PortalWeb.OIDC.sign_verification_state(lv_pid_string, "#{type}-tenant-proof", %{
       verification_ref: verification_ref,
+      session: verification_session(conn),
       tenant_id: @tenant_id,
       silent: true
     })
@@ -4694,6 +4826,7 @@ defmodule PortalWeb.OIDCControllerTest do
       |> maybe_add_claim("preferred_username", opts)
       |> maybe_add_claim("nickname", opts)
       |> maybe_add_claim("tid", opts)
+      |> maybe_add_claim("picture", opts)
 
     Mocks.OIDC.sign_openid_connect_token(claims)
   end

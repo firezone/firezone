@@ -278,7 +278,6 @@ skip = [
     "jni-sys",
     "libloading",
     "mach2", # smbios-lib 0.9.4 uses mach2 0.6; its own io-kit-sys 0.5 dependency is still on 0.5.
-    "nix",
     "nom",
     "object",
     "png",

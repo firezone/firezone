@@ -192,15 +192,16 @@ defmodule PortalWeb.SignIn do
 
     <div
       :if={!PortalWeb.Authentication.client_sign_in?(@params) and is_nil(@connecting_client)}
-      class="mt-8 pt-6 border-t border-border text-center"
+      id="sign-in-footer"
+      class="mt-8 text-center"
     >
-      <p class="text-xs text-subtle leading-relaxed">
+      <p class="text-sm text-subtle">
         Meant to sign in from a client instead?
         <Navigation.website_link path="/kb/client-apps">Read the docs.</Navigation.website_link>
       </p>
-      <p class="text-xs text-subtle mt-1.5">
+      <p class="text-sm text-subtle mt-1">
         Looking for a different account?
-        <Navigation.link href={~p"/"}>See recently used accounts.</Navigation.link>
+        <Navigation.link href={~p"/sign_in"}>See recently used accounts.</Navigation.link>
       </p>
     </div>
     """

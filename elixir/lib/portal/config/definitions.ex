@@ -103,16 +103,6 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:oban_enabled, :boolean, default: true)
 
-  @doc """
-  Enable or disable the Changes (CDC) replication consumer for this app instance.
-  """
-  defconfig(:changes_replication_enabled, :boolean, default: false)
-
-  @doc """
-  Enable or disable the ChangeLogs replication consumer for this app instance.
-  """
-  defconfig(:change_logs_replication_enabled, :boolean, default: false)
-
   ##############################################
   ## Web Server
   ##############################################
@@ -278,6 +268,32 @@ defmodule Portal.Config.Definitions do
       |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
       |> Portal.Changeset.normalize_url(key)
     end
+  )
+
+  @doc """
+  The URL Clients and Gateways POST OTLP metrics to, e.g. `https://otlp.firezone.dev/v1/metrics`.
+  Metrics export is off while unset.
+  """
+  defconfig(:otlp_metrics_ingest_url, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
+    end
+  )
+
+  @doc """
+  How often Clients and Gateways export OTLP metrics.
+  """
+  defconfig(:otlp_metrics_export_interval_secs, :integer, default: 60)
+
+  @doc """
+  Base64-encoded PEM of the Ed25519 private key that signs the tokens Clients
+  and Gateways present to the OTLP ingest proxy. Metrics export is off while unset.
+  """
+  defconfig(:otel_ingest_jwt_private_key, :string,
+    default: nil,
+    sensitive: true,
+    changeset: &Portal.Changeset.validate_base64/2
   )
 
   @doc """
@@ -501,6 +517,29 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_name, :string, default: "firezone")
 
   @doc """
+  Name of the PostgreSQL database of the private ops dashboard, on the same server.
+  It is only used where the dashboard is compiled in.
+  """
+  defconfig(:ops_database_name, :string, default: "firezone_ops")
+
+  @doc """
+  User for the ops database. It has no access to the portal's database, and the
+  portal's user has none to the ops database.
+  """
+  defconfig(:ops_database_user, :string, default: "postgres", sensitive: true)
+
+  @doc """
+  Password for the ops database user, when DATABASE_ENTRA_AUTH is disabled.
+  """
+  defconfig(:ops_database_password, :string, default: nil, sensitive: true)
+
+  @doc """
+  Client ID of the Azure user-assigned managed identity of the ops database user,
+  used when DATABASE_ENTRA_AUTH is enabled. It must be attached to the VM.
+  """
+  defconfig(:ops_azure_client_id, :string, default: nil)
+
+  @doc """
   User that will be used to access the PostgreSQL database.
   """
   defconfig(:database_user, :string, default: "postgres", sensitive: true)
@@ -547,6 +586,14 @@ defmodule Portal.Config.Definitions do
   https://firezonetransferus.blob.core.windows.net/transfers.
   """
   defconfig(:region_transfer_inbox_url, :string, default: nil)
+
+  @doc """
+  Blob container in this region that holds the profile photos that directory
+  sync copies from Entra and Google, for example
+  https://firezoneavatarsus.blob.core.windows.net/avatars. Unset, the default
+  for on-prem, turns photo sync off and people show an icon instead.
+  """
+  defconfig(:avatars_container_url, :string, default: nil)
 
   @doc """
   Size of the connection pool to the PostgreSQL database.
@@ -820,6 +867,19 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:ops_admin_password, :string, sensitive: true)
 
+  @doc """
+  Client ID of the Google OAuth client that ops admins sign in with. It is not the
+  portal's Google OAuth client.
+  Maps to the `OPS_GOOGLE_OIDC_CLIENT_ID` environment variable.
+  """
+  defconfig(:ops_google_oidc_client_id, :string, default: nil)
+
+  @doc """
+  Client secret of the ops Google OAuth client.
+  Maps to the `OPS_GOOGLE_OIDC_CLIENT_SECRET` environment variable.
+  """
+  defconfig(:ops_google_oidc_client_secret, :string, default: nil, sensitive: true)
+
   ##############################################
   ## Userpass / SAML / OIDC / Email authentication
   ##############################################
@@ -897,13 +957,6 @@ defmodule Portal.Config.Definitions do
   ##############################################
   ## Health
   ##############################################
-
-  @doc """
-  Path to the file that signals the service is draining.
-
-  When this file exists, the `/readyz` endpoint will return 503 with status "draining".
-  """
-  defconfig(:draining_file_path, :string, default: "/var/run/firezone/draining")
 
   ##############################################
   ## Telemetry
@@ -1040,16 +1093,6 @@ defmodule Portal.Config.Definitions do
       value -> value
     end
   )
-
-  @doc """
-  Enable or disable the Firezone telemetry collection.
-  """
-  defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)
-
-  @doc """
-  Name of the bucket to store client-, relay- and gateway-submitted instrumentation logs in.
-  """
-  defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
 
   @doc """
   Reporter to use for sending metrics to the telemetry backend.
@@ -1343,6 +1386,27 @@ defmodule Portal.Config.Definitions do
   defconfig(:stripe_webhook_signing_secret, :string, sensitive: true, default: nil)
   defconfig(:stripe_default_price_id, :string, default: nil)
   defconfig(:stripe_plan_product_ids, {:json_array, :string}, default: [])
+
+  ##############################################
+  ## YC Deals
+  ##############################################
+
+  @doc """
+  JSON object of YC deal ID to the secret YC Deals uses to sign that deal's
+  redemption webhook with HMAC-SHA256.
+  """
+  defconfig(:yc_deal_webhook_secrets, :map, sensitive: true, default: %{})
+
+  @doc """
+  JSON object of YC deal ID to the Stripe coupon its single-use promotion codes apply.
+  """
+  defconfig(:yc_deal_coupon_ids, :map, default: %{})
+
+  @doc """
+  YC deal webhook URL of another region's portal. Each redemption is sent
+  there too, so the same code works in that region's Stripe account.
+  """
+  defconfig(:yc_deal_mirror_url, :string, default: nil)
 
   ##############################################
   ## Local development and Staging Helpers

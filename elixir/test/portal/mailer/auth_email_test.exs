@@ -224,4 +224,76 @@ defmodule Portal.Mailer.AuthEmailTest do
       refute email.text_body =~ "secret=abc12"
     end
   end
+
+  describe "existing_accounts_email/3" do
+    setup do
+      %{account: %Portal.Account{name: "Acme", slug: "acme"}}
+    end
+
+    test "links each account's sign-in page by default", %{account: account} do
+      email = existing_accounts_email("a@example.com", [{account, "https://app.firezone.dev/acme/sign_in"}])
+
+      assert email.text_body =~ "Sign in: https://app.firezone.dev/acme/sign_in"
+      assert email.html_body =~ ~s(href="https://app.firezone.dev/acme/sign_in")
+      assert email.html_body =~ "Click an account below to sign in."
+      assert email.subject == "Your Firezone accounts"
+    end
+
+    test "lists the sign-in URLs as text for clients", %{account: account} do
+      email = existing_accounts_email("a@example.com", [{account, "https://app.firezone.dev/acme"}], client: true)
+
+      assert email.subject == "Your Firezone sign-in URL"
+      assert email.text_body =~ "Your Firezone sign-in URL\n"
+      assert email.text_body =~ "Acme\n    https://app.firezone.dev/acme\n"
+      assert email.text_body =~ "Enter this URL on the sign-in page the Firezone app opened."
+      refute email.html_body =~ ~s(href="https://app.firezone.dev/acme")
+      refute email.html_body =~ "Sign In &rarr;"
+      assert email.html_body =~ "Enter this URL on the sign-in page the Firezone app opened."
+
+      html = Floki.parse_document!(email.html_body)
+      assert html |> Floki.find("h1") |> Floki.text() |> String.trim() == "Your Firezone sign-in URL"
+      assert html |> Floki.find("code .url-host") |> Floki.text() == "https://app.firezone.dev/"
+      assert html |> Floki.find("code strong") |> Floki.text() == "acme"
+    end
+
+    test "asks clients to pick an organization when there are several", %{account: account} do
+      other = %Portal.Account{name: "Globex", slug: "globex"}
+
+      email =
+        existing_accounts_email(
+          "a@example.com",
+          [{account, "https://app.firezone.dev/acme"}, {other, "https://app.firezone.dev/globex"}],
+          client: true
+        )
+
+      assert email.subject == "Your Firezone sign-in URLs"
+      assert email.text_body =~ "Enter one of these on the sign-in page the Firezone app opened."
+      assert email.html_body |> Floki.parse_document!() |> Floki.find("code strong") |> Enum.map(&Floki.text/1) ==
+               ["acme", "globex"]
+    end
+
+    test "shows the whole URL when it doesn't end in the slug", %{account: account} do
+      email = existing_accounts_email("a@example.com", [{account, "https://app.firezone.dev/other"}], client: true)
+
+      html = Floki.parse_document!(email.html_body)
+      assert html |> Floki.find("code") |> Floki.text() == "https://app.firezone.dev/other"
+    end
+  end
+
+  describe "no_accounts_found_email/2" do
+    test "offers sign-up with a sign-up URL" do
+      email = no_accounts_found_email("a@example.com", "https://app.firezone.dev/sign_up")
+
+      assert email.text_body =~ "Create an account: https://app.firezone.dev/sign_up"
+      assert email.html_body =~ "Create an organization"
+    end
+
+    test "leaves sign-up out without one" do
+      email = no_accounts_found_email("a@example.com", nil)
+
+      refute email.text_body =~ "Create an account"
+      refute email.html_body =~ "Create an organization"
+      assert email.text_body =~ "contact your Firezone administrator"
+    end
+  end
 end

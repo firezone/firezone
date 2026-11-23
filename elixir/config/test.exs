@@ -42,6 +42,12 @@ for repo <- [
     queue_target: 1000
 end
 
+config :portal, PortalOps.Repo,
+  database: "#{database}_ops",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 5,
+  queue_target: 1000
+
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,
@@ -160,6 +166,12 @@ config :portal, Portal.HTTP.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Workers.MirrorYCDealRedemption,
+  req_opts: [
+    plug: {Req.Test, Portal.Workers.MirrorYCDealRedemption},
+    retry: false
+  ]
+
 config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
 
 config :portal, Portal.Azure.ManagedIdentity,
@@ -190,6 +202,24 @@ config :portal, Portal.SlugRegistry.AzureTable,
 config :portal, Portal.Ops.RegionTransfer.Storage,
   req_opts: [
     plug: {Req.Test, Portal.Ops.RegionTransfer.Storage},
+    retry: false
+  ]
+
+config :portal, Portal.Avatars.Picture,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Picture},
+    retry: false
+  ],
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
+  ]
+
+config :portal, Portal.Avatars.Storage,
+  req_opts: [
+    plug: {Req.Test, Portal.Avatars.Storage},
     retry: false
   ]
 
@@ -331,6 +361,10 @@ config :portal, Portal.Google.AuthProvider,
     plug: {Req.Test, PortalWeb.OIDC}
   ]
 
+config :portal, PortalOps.Google,
+  client_id: "test-ops-client",
+  client_secret: "test-ops-secret"
+
 config :portal, Portal.GitHub.AuthProvider,
   client_id: "test_github_client_id",
   client_secret: "test_github_client_secret",
@@ -414,10 +448,14 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+config :portal,
+  otel_ingest_jwt_private_key:
+    "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUZYellNWTBXekx0QmlrRkI4c2k2UkFaVjE1djB3UGhhajNQeDZLVlhXM1YKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo="
+
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
+    "img-src 'self' data: https://firezone.statuspage.io",
     "style-src 'self'",
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",

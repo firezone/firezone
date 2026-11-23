@@ -88,7 +88,7 @@ defmodule Portal.Ops.RegionTransferTest do
         |> Enum.filter(&(&1["nulled_columns"] != []))
         |> Map.new(&{&1["name"], Enum.sort(&1["nulled_columns"])})
 
-      assert nulled == %{"devices" => ["token_id"]}
+      assert nulled == %{"devices" => ["token_id"], "external_identities" => ["avatar_etag", "avatar_source"]}
     end
 
     test "refuses an account disabled for another reason", %{account: account, store: store} do
@@ -182,9 +182,13 @@ defmodule Portal.Ops.RegionTransferTest do
       assert imported.is_disabled
 
       assert is_nil(fetch_device(gateway.id).token_id)
-      imported_client = fetch_device(client.id)
-      assert imported_client.actor_id == client.actor_id
-      assert is_nil(imported_client.token_id)
+      assert is_nil(fetch_device(client.id).token_id)
+
+      assert Portal.Repo.get_by(Portal.DeviceActor,
+               account_id: account.id,
+               device_id: client.id,
+               actor_id: client.actor_id
+             )
 
       Portal.Config.put_env_override(:data_residency_region, :eu)
       assert {:ok, enabled} = RegionTransfer.enable(account.id, confirm: false)

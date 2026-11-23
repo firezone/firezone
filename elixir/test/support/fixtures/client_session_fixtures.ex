@@ -53,5 +53,23 @@ defmodule Portal.ClientSessionFixtures do
     )
     |> Ecto.Changeset.change(token_id: token.id)
     |> Portal.Repo.update!()
+    |> tap(&record_device_actor(&1, session_attrs[:inserted_at]))
+  end
+
+  defp record_device_actor(client, seen_at) do
+    Portal.Repo.insert_all(
+      Portal.DeviceActor,
+      [
+        %{
+          account_id: client.account_id,
+          device_id: client.id,
+          actor_id: client.actor_id,
+          first_seen_at: seen_at,
+          last_seen_at: seen_at
+        }
+      ],
+      on_conflict: {:replace, [:last_seen_at]},
+      conflict_target: [:account_id, :device_id, :actor_id]
+    )
   end
 end

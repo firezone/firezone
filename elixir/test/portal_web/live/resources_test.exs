@@ -635,6 +635,14 @@ defmodule PortalWeb.ResourcesTest do
       assert id == own.id
     end
 
+    test "device picker search leaves out gateways", %{account: account, actor: actor} do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      gateway_fixture(account: account, name: "Picker Gateway")
+
+      assert %{devices: [], total: 0} = Database.search_devices("Picker Gateway", subject, [])
+    end
+
     test "device picker search filters by online and recently seen", %{account: account, actor: actor} do
       subject = admin_subject_fixture(account: account, actor: actor)
 

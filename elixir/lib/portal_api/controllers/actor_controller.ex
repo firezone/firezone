@@ -167,7 +167,8 @@ defmodule PortalAPI.ActorController do
     and will not unlink identities.
 
     **Setting `is_disabled` to `true` immediately revokes all of the Actor's
-    active Client tokens and portal sessions.** An Actor cannot disable itself.
+    authorizations, disconnects its Clients, and prevents it from
+    authenticating.** An Actor cannot disable itself.
 
     Admins and API clients can only be changed in the portal, and users can only
     be promoted to admin there.
@@ -297,7 +298,6 @@ defmodule PortalAPI.ActorController do
     alias Portal.Actor
     alias Portal.APIToken
     alias Portal.DeviceToken
-    alias Portal.Device
     alias Portal.ExternalIdentity
     alias Portal.OAuthToken
     alias Portal.PortalSession
@@ -437,11 +437,10 @@ defmodule PortalAPI.ActorController do
 
     defp select_last_seen_at(queryable) do
       client_seen_at =
-        from(d in Device,
-          where: d.account_id == parent_as(:actors).account_id,
-          where: d.actor_id == parent_as(:actors).id,
-          where: d.type == :client,
-          select: max(d.last_seen_at)
+        from(da in Portal.DeviceActor,
+          where: da.account_id == parent_as(:actors).account_id,
+          where: da.actor_id == parent_as(:actors).id,
+          select: max(da.last_seen_at)
         )
 
       portal_signed_in_at =

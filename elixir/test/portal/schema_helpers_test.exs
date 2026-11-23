@@ -397,7 +397,7 @@ defmodule Portal.SchemaHelpersTest do
       merged = SchemaHelpers.merge_broadcast(current, broadcast)
 
       assert merged.site == site
-      assert %Ecto.Association.NotLoaded{} = merged.actor
+      assert %Ecto.Association.NotLoaded{} = merged.account
     end
 
     test "keeps only the persisted columns named in preserve", %{

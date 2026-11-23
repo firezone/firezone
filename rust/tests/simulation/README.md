@@ -10,5 +10,12 @@ A fuzzer is one way of driving a simulation: a target of the [fuzzing harness](.
 
 ## `tunnel`
 
-Clients, gateways, relays and the portal, with the tunnel state machines checked against a reference model.
+`run_tunnel` simulates clients, gateways, relays and the portal, with the tunnel state machines checked against a model.
 Built with the `ijon` feature for AFL++ discovery, it records [IJON feedback](https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/IJON.md) for meaningful observed states.
+
+## `relay`
+
+`run_relay` simulates a relay client and a relay that relays data between the client and its peers.
+The model says which transitions may disrupt relaying.
+Everything else must leave the client's relay addresses and its connections alone, and whatever happens, the client has to end up with a working allocation again.
+Data must only ever arrive where it was sent.

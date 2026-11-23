@@ -1732,9 +1732,8 @@ defmodule PortalWeb.Resources do
         end
 
       from(c in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> where([devices: d], d.id in ^device_ids)
-      |> preload(:actor)
       |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
@@ -1742,7 +1741,9 @@ defmodule PortalWeb.Resources do
           []
 
         devices ->
-          Portal.Presence.Devices.preload_presence(devices)
+          devices
+          |> Portal.Devices.put_latest_actor(subject)
+          |> Portal.Presence.Devices.preload_presence()
       end
     end
 
@@ -1825,7 +1826,7 @@ defmodule PortalWeb.Resources do
 
     defp count_criteria_devices(criteria, subject) do
       from(d in Portal.Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      |> where(^Resource.DeviceMembershipCriteria.targets())
       |> Resource.DeviceMembershipCriteria.where_members(
         criteria,
         Resource.DeviceMembershipCriteria.scope(criteria, subject)

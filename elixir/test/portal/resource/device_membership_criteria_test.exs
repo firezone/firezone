@@ -159,6 +159,17 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
       refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.own_devices(), device, subject)
     end
 
+    test "admits a device the subject connected from, whoever connected first", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      device = client_fixture(account: account, actor: actor_fixture(account: account))
+      add_device_actor(device, actor)
+
+      assert DeviceMembershipCriteria.member?(DeviceMembershipCriteria.own_devices(), device, subject)
+    end
+
     test "admits every device in the account", %{account: account, subject: subject} do
       device = client_fixture(account: account, actor: actor_fixture(account: account))
       elsewhere = client_fixture(account: account_fixture())
@@ -178,6 +189,16 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
       assert DeviceMembershipCriteria.member?(criteria, in_group, subject)
       refute DeviceMembershipCriteria.member?(criteria, outside, subject)
       refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.actor_group(Ecto.UUID.generate()), in_group, subject)
+    end
+
+    test "admits a device that any of the group's members connected from", %{account: account, subject: subject} do
+      group = group_fixture(account: account)
+      member = actor_fixture(account: account)
+      membership_fixture(account: account, actor: member, group: group)
+      shared = client_fixture(account: account, actor: actor_fixture(account: account))
+      add_device_actor(shared, member)
+
+      assert DeviceMembershipCriteria.member?(DeviceMembershipCriteria.actor_group(group.id), shared, subject)
     end
 
     test "admits every signed-in actor's devices through the Everyone group", %{
@@ -270,5 +291,17 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
 
       assert DeviceMembershipCriteria.member?(criteria, unwritten, subject)
     end
+  end
+
+  defp add_device_actor(device, actor) do
+    now = DateTime.utc_now()
+
+    Repo.insert!(%Portal.DeviceActor{
+      account_id: device.account_id,
+      device_id: device.id,
+      actor_id: actor.id,
+      first_seen_at: now,
+      last_seen_at: now
+    })
   end
 end

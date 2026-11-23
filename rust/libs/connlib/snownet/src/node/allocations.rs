@@ -10,6 +10,7 @@ use fast_random_state::FastRandomState;
 use ip_packet::Ecn;
 use is::Candidate;
 use itertools::Itertools as _;
+use otel_instruments::Counter;
 use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
 use relay_client_proto::{Allocation, FreeReason};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -26,6 +27,7 @@ pub(crate) struct Allocations<RId> {
     previous_relays_by_ip: AllocRingBuffer<IpAddr>,
     /// Relays we freed an allocation of because of a failure, and until when we ignore them.
     blocked: HashMap<RId, Instant, FastRandomState>,
+    freed: Counter<u64>,
 
     rng: StdRng,
 }
@@ -42,6 +44,7 @@ where
             inner: HashMap::default(),
             previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries
             blocked: HashMap::default(),
+            freed: otel_instruments::relay_allocations_freed(),
             rng: StdRng::from_seed(seed),
         }
     }
@@ -294,6 +297,7 @@ where
             .extract_if(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
                     tracing::info!(%rid, "Disconnecting from relay; {e}");
+                    self.freed.add(1, &[otel_attributes::error_type(&e)]);
 
                     self.previous_relays_by_ip
                         .extend(server_addresses(allocation));

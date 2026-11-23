@@ -47,7 +47,8 @@ defmodule PortalWeb.SentinelConsentControllerTest do
 
       html = html_response(conn, 200)
       assert html =~ "Consent Was Not Granted"
-      assert html =~ "AADSTS650056"
+      assert html =~ "Admin consent was declined"
+      refute html =~ "AADSTS650056"
       refute html =~ "Admin Consent Granted"
     end
 
@@ -91,23 +92,36 @@ defmodule PortalWeb.SentinelConsentControllerTest do
       assert html_response(conn, 200) =~ "missing or invalid"
     end
 
-    test "keeps the Entra error when the state can no longer be verified", %{conn: conn} do
+    test "shows a fixed message when the state can no longer be verified", %{conn: conn} do
       conn =
         get(conn, ~p"/auth/sentinel/consent", %{
           "state" => "acme",
           "error" => "access_denied",
-          "error_description" => "AADSTS65004: User declined to consent."
+          "error_description" => "Provider text"
         })
 
       html = html_response(conn, 200)
-      assert html =~ "Consent Was Not Granted"
-      assert html =~ "AADSTS65004"
+      assert html =~ "missing or invalid"
+      refute html =~ "Provider text"
     end
 
     test "declines a response with no state", %{conn: conn} do
       conn = get(conn, ~p"/auth/sentinel/consent", %{})
 
       assert html_response(conn, 200) =~ "missing or invalid"
+    end
+
+    test "shows a fixed message when there is no state", %{conn: conn} do
+      conn =
+        get(conn, ~p"/auth/sentinel/consent", %{
+          "error" => "Provider text",
+          "error_description" => "Provider details"
+        })
+
+      html = html_response(conn, 200)
+      assert html =~ "missing or invalid"
+      refute html =~ "Provider text"
+      refute html =~ "Provider details"
     end
 
     test "declines an authorization code carrying the admin consent state", %{conn: conn} do
@@ -189,7 +203,8 @@ defmodule PortalWeb.SentinelConsentControllerTest do
 
       html = html_response(conn, 200)
       assert html =~ "Consent Was Not Granted"
-      assert html =~ "interaction_required"
+      assert html =~ "did not grant admin consent"
+      refute html =~ "interaction_required"
     end
 
     test "declines an error the silent retry cannot recover from", %{conn: conn} do
@@ -204,7 +219,8 @@ defmodule PortalWeb.SentinelConsentControllerTest do
 
       html = html_response(conn, 200)
       assert html =~ "Consent Was Not Granted"
-      assert html =~ "AADSTS65004"
+      assert html =~ "Admin consent was declined"
+      refute html =~ "AADSTS65004"
     end
 
     test "declines when the browser no longer holds the code verifier", %{conn: conn} do

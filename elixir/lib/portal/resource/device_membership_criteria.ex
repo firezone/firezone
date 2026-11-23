@@ -3,17 +3,18 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
   The criteria a device pool uses to decide which devices it holds, stored as JSON in
   `resources.device_membership_criteria`.
 
-  It is one leaf that compares a column against a literal or an attribute of the
-  subject asking for access. Wire shapes:
+  It is one leaf that compares a device attribute against a literal or an
+  attribute of the subject asking for access. Wire shapes:
 
       {"device": {"field": "id", "op": "in", "value": ["<device id>", ...]}}
       {"device": {"field": "actor_id", "op": "eq", "value": {"subject": "actor_id"}}}
       {"device": {"field": "account_id", "op": "eq", "value": {"subject": "account_id"}}}
       {"actor_group": {"field": "id", "op": "eq", "value": "<group id>"}}
 
-  The top-level key names where the field lives: `device` is the devices table and
-  `actor_group` the groups the device's actor is a member of. Other sources,
-  combinators and values can be added later without changing stored criteria.
+  The top-level key names where the field lives: `device` is the device, where
+  `actor_id` matches any actor that has connected from it, and `actor_group` the
+  groups those actors are members of. Other sources, combinators and values can be
+  added later without changing stored criteria.
   """
   use Ecto.Type
   import Ecto.Query
@@ -37,7 +38,7 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
 
   @subject_attrs %{"actor_id" => :actor_id, "account_id" => :account_id}
 
-  @doc "The criteria that hold every client device in the account."
+  @doc "The criteria that hold every client in the account and every gateway last seen on `/device/v1`."
   @spec all_devices() :: t()
   def all_devices do
     %__MODULE__{provider: :device, field: :account_id, op: :eq, value: {:subject, :account_id}}
@@ -95,10 +96,15 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
 
   `device` is a row, or a map with the same `id`, `actor_id` and `account_id` plus the
   actor's `group_ids`, as a client's presence carries them, so the answer needs no query.
+  For a row, the actors come from `device_actors`.
   """
   @spec member?(t(), Portal.Device.t() | map(), Subject.t()) :: boolean()
   def member?(%__MODULE__{provider: :device, field: field, op: :in, value: {:literal, values}}, device, _subject) do
     Map.fetch!(device, field) in values
+  end
+
+  def member?(%__MODULE__{provider: :device, field: :actor_id} = criteria, %Portal.Device{} = device, subject) do
+    Database.member?(criteria, device, subject)
   end
 
   def member?(%__MODULE__{provider: :device, field: field, op: :eq, value: value}, device, subject) do
@@ -123,6 +129,15 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
   @spec where_members(Ecto.Query.t(), t(), scope()) :: Ecto.Query.t()
   def where_members(query, criteria, scope), do: where(query, ^members(criteria, scope))
 
+  @doc """
+  The devices, bound as `:devices`, that any pool may hold: legacy client records, and devices
+  enrolled by a 1.7 or later binary, which have no `type`.
+  """
+  @spec targets() :: Ecto.Query.dynamic_expr()
+  def targets do
+    dynamic([devices: d], d.type == :client or is_nil(d.type))
+  end
+
   @doc "The condition `where_members/3` adds, to combine the members of several pools."
   @spec members(t(), scope()) :: Ecto.Query.dynamic_expr()
   def members(%__MODULE__{provider: :device, field: :id, op: :in, value: {:literal, ids}}, _scope) do
@@ -130,7 +145,17 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
   end
 
   def members(%__MODULE__{provider: :device, field: :actor_id, value: {:subject, :actor_id}}, {:actor, actor_id}) do
-    dynamic([devices: d], d.actor_id == ^actor_id)
+    dynamic(
+      [devices: d],
+      exists(
+        from(da in Portal.DeviceActor,
+          where:
+            da.account_id == parent_as(:devices).account_id and
+              da.device_id == parent_as(:devices).id and
+              da.actor_id == ^actor_id
+        )
+      )
+    )
   end
 
   def members(%__MODULE__{provider: :device, field: :account_id, value: {:subject, :account_id}}, :all) do
@@ -144,19 +169,24 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
     dynamic(
       [devices: d],
       exists(
-        from(m in Portal.Membership,
+        from(da in Portal.DeviceActor,
+          join: m in Portal.Membership,
+          on: m.account_id == da.account_id and m.actor_id == da.actor_id,
           where:
-            m.account_id == parent_as(:devices).account_id and
-              m.actor_id == parent_as(:devices).actor_id and
+            da.account_id == parent_as(:devices).account_id and
+              da.device_id == parent_as(:devices).id and
               m.group_id == ^group_id
         )
       ) or
         exists(
-          from(g in Portal.Group,
+          from(da in Portal.DeviceActor,
             join: a in Portal.Actor,
-            on: a.account_id == g.account_id and a.id == parent_as(:devices).actor_id,
+            on: a.account_id == da.account_id and a.id == da.actor_id,
+            join: g in Portal.Group,
+            on: g.account_id == da.account_id,
             where:
-              g.account_id == parent_as(:devices).account_id and
+              da.account_id == parent_as(:devices).account_id and
+                da.device_id == parent_as(:devices).id and
                 g.id == ^group_id and
                 g.type == :managed and
                 g.name == "Everyone" and
@@ -263,7 +293,7 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
     def member?(criteria, %Portal.Device{} = device, subject) do
       from(d in Portal.Device, as: :devices)
       |> where([devices: d], d.account_id == ^subject.account.id and d.id == ^device.id)
-      |> DeviceMembershipCriteria.where_members(criteria, :all)
+      |> DeviceMembershipCriteria.where_members(criteria, DeviceMembershipCriteria.scope(criteria, subject))
       |> Safe.unscoped()
       |> Safe.exists?()
     end

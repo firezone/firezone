@@ -13,10 +13,8 @@ use bin_shared::{
 use clap::Parser;
 
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
-use telemetry::SentryMeterProvider;
 use tunnel::GatewayTunnel;
 
 use clock::Clock;
@@ -220,38 +218,27 @@ async fn try_main(cli: Cli) -> Result<()> {
         }
     }
 
-    if let Some(backend) = cli.metrics {
-        let resource = telemetry::otel::default_resource_with([
-            otel_attributes::service_name!(),
-            otel_attributes::service_version!(),
-            telemetry::otel::service_instance_id(firezone_id.clone()),
-        ]);
+    let resource = telemetry::otel::default_resource_with([
+        otel_attributes::service_name!(),
+        otel_attributes::service_version!(),
+        telemetry::otel::service_instance_id(firezone_id.clone()),
+    ]);
 
-        match (backend, cli.otlp_grpc_endpoint) {
-            (MetricsExporter::Sentry, _) => {
-                // Sentry has name and version already configured via the global SDK parameters.
+    let otlp_exporter = cli
+        .otlp_grpc_endpoint
+        .map(tonic_otlp_exporter)
+        .transpose()?;
+    otel_metrics_export::install_meter_provider(|builder| {
+        let builder = builder.with_resource(resource);
 
-                opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
-            }
-            (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                SdkMeterProvider::builder()
-                    .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                    .with_resource(resource)
-                    .build(),
-            ),
-            (MetricsExporter::OtelCollector, Some(endpoint)) => {
-                opentelemetry::global::set_meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                        .with_resource(resource)
-                        .build(),
-                )
-            }
-            (MetricsExporter::OtelCollector, None) => opentelemetry::global::set_meter_provider(
-                SdkMeterProvider::builder().with_resource(resource).build(),
-            ),
+        match otlp_exporter {
+            Some(exporter) => builder.with_periodic_exporter(exporter),
+            None => builder,
         }
-    }
+    });
+
+    let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
+        .context("Failed to spawn metrics exporter")?;
 
     let login = LoginUrl::gateway(
         cli.api_url,
@@ -274,8 +261,8 @@ async fn try_main(cli: Cli) -> Result<()> {
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
 
     let max_partition_time = cli
+        .partition
         .max_partition_time
-        .map(|d| d.into())
         .unwrap_or(DEFAULT_MAX_PARTITION_TIME);
 
     let portal = PhoenixChannel::disconnected(
@@ -324,6 +311,7 @@ async fn try_main(cli: Cli) -> Result<()> {
             flow_logs_dir,
             local_flow_logs,
             account_slug,
+            metrics_exporter,
         )?
         .run()
         .await
@@ -437,16 +425,7 @@ struct Cli {
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
 
-    /// Where to export metrics to.
-    ///
-    /// This configuration option is private API and has no stability guarantees.
-    /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value = "sentry")]
-    metrics: Option<MetricsExporter>,
-
-    /// Send metrics to a custom OTLP collector.
-    ///
-    /// By default, Firezone's hosted OTLP collector is used.
+    /// Also send metrics to an OTLP collector over gRPC.
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
@@ -471,10 +450,8 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NO_INC_BUF", hide = true)]
     no_inc_buf: bool,
 
-    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
-    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
-    #[arg(short, long, env = "FIREZONE_MAX_PARTITION_TIME")]
-    max_partition_time: Option<humantime::Duration>,
+    #[command(flatten)]
+    partition: bin_shared::max_partition_time::MaxPartitionTimeArgs,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -490,13 +467,6 @@ impl fmt::Display for LogFormat {
             LogFormat::Human => write!(f, "human"),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, clap::ValueEnum)]
-enum MetricsExporter {
-    Stdout,
-    OtelCollector,
-    Sentry,
 }
 
 impl Cli {

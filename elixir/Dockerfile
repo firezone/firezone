@@ -63,10 +63,14 @@ RUN mix compile --force
 # i.e. an environment with deps + assets + beams compiled but no release built,
 # so mix tasks (test, ecto.migrate, etc.) can run against it.
 
-# Only built for the portal-ops image. mix.exs compiles ops/lib when it exists.
+# Only built for the portal-ops image. mix.exs compiles ops/lib when it exists. The
+# ops database migrations go where `Portal.Release.migrate/1` finds them.
 FROM compiler AS ops-compiler
 
-COPY ops/lib ops/lib
+COPY ops ops
+RUN if [ -d ops/priv/migrations ]; then \
+      mkdir -p priv/ops_repo && cp -R ops/priv/migrations priv/ops_repo/migrations; \
+    fi
 RUN mix compile
 
 FROM ${COMPILER} AS builder

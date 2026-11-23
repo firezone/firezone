@@ -53,7 +53,7 @@ defmodule PortalWeb.SignIn.Email do
         socket =
           socket
           |> put_flash(:error, "Account not found.")
-          |> redirect(to: ~p"/")
+          |> redirect(to: ~p"/sign_in")
 
         {:ok, socket}
 

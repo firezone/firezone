@@ -141,6 +141,17 @@ defmodule PortalWeb.SignInControllerTest do
     end
   end
 
+  describe "client_account_disabled/2" do
+    test "shows the message with no icon above it", %{conn: conn} do
+      account = Portal.AccountFixtures.account_fixture()
+
+      html = conn |> get(~p"/#{account}/sign_in/client_account_disabled") |> html_response(200)
+
+      assert html =~ "<h1"
+      refute html =~ "<svg"
+    end
+  end
+
   describe "unknown account" do
     test "returns 404 for every client page", %{conn: conn} do
       for page <- ~w(client_redirect client_auth_error client_account_disabled) do

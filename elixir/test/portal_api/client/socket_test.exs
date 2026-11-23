@@ -191,6 +191,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
+      assert client.actor_id == token.actor_id
 
       assert is_reference(socket.assigns.session_ref)
       assert client.public_key == attrs["public_key"]
@@ -201,6 +202,19 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.last_seen_remote_ip_location_lat == 50.4333
       assert client.last_seen_remote_ip_location_lon == 30.5167
       assert client.last_seen_version == "1.3.0"
+    end
+
+    test "records the connecting actor on a new client before the session flush" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(ip: @client_remote_ip, token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      client = Map.fetch!(socket.assigns, :client)
+
+      assert Repo.get_by!(Portal.DeviceActor, device_id: client.id).actor_id == token.actor_id
     end
 
     test "creates a new client for service account identity" do
@@ -1335,6 +1349,35 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
       assert client.id == existing.id
+    end
+
+    test "an unattested connect resolves another actor's device with the same firezone_id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing = client_fixture(account: account, actor: actor_fixture(account: account), firezone_id: "fz-shared")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Shared", "firezone_id" => "fz-shared"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.id == existing.id
+    end
+
+    test "an unattested connect never resolves a gateway with the same firezone_id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      gateway = gateway_fixture(account: account, firezone_id: "fz-gateway")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-gateway"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.id != gateway.id
+      assert client.type == :client
     end
 
     test "an unattested connect with no match inserts a new device", %{

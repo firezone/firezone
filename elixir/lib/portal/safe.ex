@@ -874,11 +874,15 @@ defmodule Portal.Safe do
   end
 
   # Ahead of the wildcard grants below, so this type gets nothing it is not
-  # given here: a Gateway reads its Site and registers and updates itself.
+  # given here: a Gateway reads its Site and registers, updates and moves itself.
   def permit(:read, Portal.Site, :legacy_gateway), do: :ok
 
   def permit(action, Portal.Device, :legacy_gateway) when action in [:read, :insert, :update],
     do: :ok
+
+  # A gateway connecting with another site's token moves there.
+  def permit(:update_all, Portal.SiteDevice, :legacy_gateway), do: :ok
+  def permit(:delete_all, Portal.PolicyAuthorization, :legacy_gateway), do: :ok
 
   def permit(_action, _schema, :legacy_gateway), do: {:error, :unauthorized}
 
@@ -978,6 +982,8 @@ defmodule Portal.Safe do
   # Device permissions (union of Client + Gateway); non-admin actors can
   # insert because clients create their own device row at first connect
   def permit(_action, Portal.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.DeviceActor, :account_admin_user), do: :ok
+  def permit(:read, Portal.DeviceActor, :api_client), do: :ok
   def permit(_action, Portal.Device, :api_client), do: :ok
   def permit(:read, Portal.Device, :account_user), do: :ok
   def permit(:insert, Portal.Device, :account_user), do: :ok
@@ -992,6 +998,7 @@ defmodule Portal.Safe do
 
   # Site permissions
   def permit(_action, Portal.Site, :account_admin_user), do: :ok
+  def permit(_action, Portal.SiteDevice, :account_admin_user), do: :ok
   def permit(_action, Portal.Site, :api_client), do: :ok
   def permit(:read, Portal.Site, _), do: :ok
 

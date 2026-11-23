@@ -8,7 +8,7 @@ defmodule Portal.Policies.Evaluator do
   Checks a policy's attestation requirement, conditions and postures together.
   All must hold, and the result expires when the first of them stops holding.
   """
-  def ensure_policy_conforms(policy, %Device{type: :client} = client, auth_provider_id) do
+  def ensure_policy_conforms(policy, %Device{} = client, auth_provider_id) do
     conditions = ensure_conforms(policy.conditions, client, auth_provider_id)
     postures = Postures.Evaluator.evaluate(policy.postures, client, current_time())
 
@@ -43,13 +43,13 @@ defmodule Portal.Policies.Evaluator do
 
   defp attested_until(%Device{}), do: nil
 
-  def ensure_conforms([], %Device{type: :client}, _auth_provider_id) do
+  def ensure_conforms([], %Device{}, _auth_provider_id) do
     {:ok, nil}
   end
 
   def ensure_conforms(
         conditions,
-        %Device{type: :client} = client,
+        %Device{} = client,
         auth_provider_id
       )
       when is_list(conditions) do
@@ -89,7 +89,7 @@ defmodule Portal.Policies.Evaluator do
   # When region is unknown (nil), geo-based policies should fail conservatively
   def fetch_conformation_expiration(
         %{property: :remote_ip_location_region},
-        %Device{type: :client, last_seen_remote_ip_location_region: nil},
+        %Device{last_seen_remote_ip_location_region: nil},
         _auth_provider_id
       ) do
     :error
@@ -97,7 +97,7 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip_location_region, operator: :is_in, values: values},
-        %Device{type: :client} = client,
+        %Device{} = client,
         _auth_provider_id
       ) do
     if client.last_seen_remote_ip_location_region in values do
@@ -109,7 +109,7 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip_location_region, operator: :is_not_in, values: values},
-        %Device{type: :client} = client,
+        %Device{} = client,
         _auth_provider_id
       ) do
     if client.last_seen_remote_ip_location_region in values do
@@ -121,7 +121,7 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip, operator: :is_in_cidr, values: values},
-        %Device{type: :client} = client,
+        %Device{} = client,
         _auth_provider_id
       ) do
     remote_ip = normalize_remote_ip(client.last_seen_remote_ip)
@@ -140,7 +140,7 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip, operator: :is_not_in_cidr, values: values},
-        %Device{type: :client} = client,
+        %Device{} = client,
         _auth_provider_id
       ) do
     remote_ip = normalize_remote_ip(client.last_seen_remote_ip)
@@ -159,7 +159,7 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :auth_provider_id, operator: :is_in, values: values},
-        %Device{type: :client},
+        %Device{},
         auth_provider_id
       ) do
     if auth_provider_id in values do
@@ -171,7 +171,7 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :auth_provider_id, operator: :is_not_in, values: values},
-        %Device{type: :client},
+        %Device{},
         auth_provider_id
       ) do
     if auth_provider_id in values do
@@ -183,7 +183,7 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :client_verified},
-        %Device{type: :client, verified_at: verified_at},
+        %Device{verified_at: verified_at},
         _auth_provider_id
       ) do
     if is_nil(verified_at) do
@@ -199,7 +199,7 @@ defmodule Portal.Policies.Evaluator do
           operator: :is_in_day_of_week_time_ranges,
           values: values
         },
-        %Device{type: :client},
+        %Device{},
         _auth_provider_id
       ) do
     case find_day_of_the_week_time_range(values, current_time()) do

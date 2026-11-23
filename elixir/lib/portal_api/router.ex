@@ -186,7 +186,8 @@ defmodule PortalAPI.Router do
     resources "/defender_posture_providers", DefenderPostureProviderController,
       only: [:index, :show, :update, :delete]
 
-    resources "/defender_devices", DefenderDeviceController, only: [:index, :show]
+    resources "/defender_devices", DefenderDeviceController, only: [:index]
+    get "/defender_devices/:defender_device", DefenderDeviceController, :show
 
     resources "/santa_posture_providers", SantaPostureProviderController,
       only: [:index, :show, :update, :delete]
@@ -230,6 +231,10 @@ defmodule PortalAPI.Router do
     end
 
     scope "/stripe", Stripe do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
+
+    scope "/yc", YC do
       post "/webhooks", WebhookController, :handle_webhook
     end
   end

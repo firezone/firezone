@@ -282,9 +282,6 @@ pub struct PerfUdpSocket {
     /// The socket(s) we send and receive on; see [`SocketPool`].
     pool: SocketPool,
 
-    /// How many bytes each buffer of a batched receive holds.
-    recv_buf_size: usize,
-
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
     send_retry_histogram: opentelemetry::metrics::Histogram<u64>,
     #[cfg(apple)]
@@ -328,8 +325,7 @@ impl UdpSocket {
         let wildcard = OwnedSocket::new(self.inner, quinn_state, false);
 
         PerfUdpSocket {
-            pool: SocketPool::new(wildcard),
-            recv_buf_size,
+            pool: SocketPool::new(wildcard, recv_buf_size),
             batch_histogram: otel_instruments::network_packets_batch_count(),
             send_retry_histogram: otel_instruments::network_retries(),
             #[cfg(apple)]
@@ -424,55 +420,8 @@ impl DatagramOut {
 impl PerfUdpSocket {
     /// Receives a batch of datagrams from whichever of our sockets becomes ready first.
     pub async fn recv_from(&self) -> Result<DatagramBatch> {
-        std::future::poll_fn(|cx| {
-            self.pool
-                .poll_recv(cx, |socket| self.try_recv_batch(socket))
-        })
-        .await
-    }
+        let batch = std::future::poll_fn(|cx| self.pool.poll_recv(cx)).await?;
 
-    /// Attempts to receive a batch of datagrams from the given socket without blocking.
-    ///
-    /// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
-    /// readiness in the process so that waiting for readiness actually suspends.
-    fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramBatch> {
-        let mut batch = RecvBatch::pull(self.recv_buf_size);
-
-        let len = socket.inner.try_io(Interest::READABLE, || {
-            // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
-            // ICMP errors on receive that we skip past; hence the `never_loop` allow elsewhere.
-            #[cfg_attr(not(apple), allow(clippy::never_loop))]
-            loop {
-                let (mut io_bufs, metas) = batch.recv_slices();
-
-                match socket.recv(&mut io_bufs, metas) {
-                    // Connected sockets surface (one-shot) ICMP errors on receive; they are not fatal.
-                    #[cfg(apple)]
-                    Err(e) if socket.connected && is_icmp_unreachable(&e) => {
-                        tracing::trace!("Ignoring ICMP error on connected UDP socket: {e}");
-                        continue;
-                    }
-                    result => break result,
-                }
-            }
-        })?;
-
-        #[cfg(windows)]
-        if uro::detect_broken_coalescing(
-            batch
-                .buffers
-                .iter()
-                .map(|b| &b[..])
-                .zip(batch.metas.iter_mut())
-                .take(len),
-        ) {
-            socket.disable_gro();
-        }
-
-        let batch = DatagramBatch::new(batch.buffers, batch.metas, self.port, len);
-
-        // `len` only counts the buffers the syscall filled; with GRO a single buffer holds
-        // several datagrams, so the segments across all buffers are what we want here.
         self.batch_histogram.record(
             batch.len() as u64,
             &[
@@ -494,9 +443,9 @@ impl PerfUdpSocket {
         )?;
 
         let datagrams = transmit.contents.len().div_ceil(datagram.segment_size);
-        let pooled =
-            self.pool
-                .get_send_socket(transmit.src_ip, datagram.dst, datagrams, self.recv_buf_size);
+        let pooled = self
+            .pool
+            .get_send_socket(transmit.src_ip, datagram.dst, datagrams);
 
         self.send_transmit(pooled.as_socket(), &transmit).await
     }

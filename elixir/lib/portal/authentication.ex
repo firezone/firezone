@@ -404,6 +404,38 @@ defmodule Portal.Authentication do
     end
   end
 
+  @doc """
+  Whether a socket token is a Gateway token, without verifying its secret. Gateway tokens
+  minted today share the `device` salt with client tokens, so for that salt the token's actor
+  decides.
+  """
+  def gateway_token?(encoded_token) when is_binary(encoded_token) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    base_salt = Keyword.fetch!(config, :salt)
+
+    case String.split(encoded_token, ".", parts: 2) do
+      [_nonce, signed] -> signed_gateway_token?(signed, key_base, base_salt)
+      _other -> false
+    end
+  end
+
+  defp signed_gateway_token?(signed, key_base, base_salt) do
+    case decode_infrastructure_token(signed, key_base, base_salt, ["gateway", "gateway_group"]) do
+      {:ok, _decoded} ->
+        true
+
+      {:error, :invalid} ->
+        case decode_infrastructure_token(signed, key_base, base_salt, ["device"]) do
+          {:ok, {account_id, id, _fragment}} when is_binary(account_id) and is_binary(id) ->
+            Database.legacy_gateway_token?(account_id, id)
+
+          _other ->
+            false
+        end
+    end
+  end
+
   # The gateway presenting the active token proves it received the rotation
   # replacement, which completes the rotation: the rotated sibling is deleted,
   # disconnecting any straggler still using it via the delete hook.
@@ -750,6 +782,17 @@ defmodule Portal.Authentication do
         nil -> {:error, :not_found}
         gateway_token -> {:ok, gateway_token}
       end
+    end
+
+    def legacy_gateway_token?(account_id, id) do
+      from(t in Portal.DeviceToken,
+        join: actor in Actor,
+        on: actor.account_id == t.account_id and actor.id == t.actor_id,
+        where: t.account_id == ^account_id and t.id == ^id,
+        where: actor.type == :legacy_gateway
+      )
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     def delete_gateway_tokens(queryable, subject) do

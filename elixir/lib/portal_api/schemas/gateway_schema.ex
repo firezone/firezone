@@ -9,6 +9,7 @@ defmodule PortalAPI.Schemas.Gateway do
              for: Portal.Device,
              internal: [
                :account_id,
+               :actor,
                :actor_id,
                :attested?,
                :attested_until,
@@ -32,6 +33,7 @@ defmodule PortalAPI.Schemas.Gateway do
                :last_attested_device_uuid,
                :last_attested_mdm_device_id,
                :online?,
+               :proto_range,
                :provisioned_token,
                :type,
                :updated_at,

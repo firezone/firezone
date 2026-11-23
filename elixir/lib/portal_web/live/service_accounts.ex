@@ -668,7 +668,7 @@ defmodule PortalWeb.ServiceAccounts do
         >
           <:col :let={actor} field={{:actors, :name}} label="name">
             <div class="flex items-center gap-2.5">
-              <ActorComponents.actor_type_icon_with_badge actor={actor} />
+              <ActorComponents.actor_avatar account={@account} actor={actor} />
               <div>
                 <div class="font-medium text-heading group-hover:text-brand transition-colors">
                   {actor.name}
@@ -973,7 +973,6 @@ defmodule PortalWeb.ServiceAccounts do
         |> where([actors: a], a.id in ^actor_ids)
         |> Safe.scoped(subject)
         |> Safe.all()
-        |> Enum.map(&%{&1 | identity_count: 0})
 
       actors_by_id = Map.new(actors, &{&1.id, &1})
 

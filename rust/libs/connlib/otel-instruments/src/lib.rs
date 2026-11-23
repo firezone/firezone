@@ -100,6 +100,30 @@ pub fn flow_socket_evictions() -> Counter<u64> {
         .build()
 }
 
+/// Round-trip time of a request to a relay.
+pub fn relay_rtt() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("connlib.relay.rtt")
+        .with_description(
+            "Round-trip time of a request to a relay, measured from its first transmission.",
+        )
+        .with_unit("s")
+        .with_boundaries(vec![
+            0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0, 2.5,
+            5.0, 10.0,
+        ])
+        .build()
+}
+
+/// Number of relay allocations that were freed, by reason.
+pub fn relay_allocations_freed() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("connlib.relay.allocation.freed")
+        .with_description("Number of relay allocations that were freed, by reason.")
+        .with_unit("{allocation}")
+        .build()
+}
+
 /// Number of errors encountered while processing a packet batch.
 pub fn tunnel_errors() -> Counter<u64> {
     connlib_meter()
@@ -127,6 +151,27 @@ pub fn connection_count() -> Gauge<u64> {
         .build()
 }
 
+/// How long a connection took to establish, from its creation until it can send packets.
+pub fn connection_setup_duration() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("connlib.connection.setup.duration")
+        .with_description("Time from creating a connection until it is established.")
+        .with_unit("s")
+        .with_boundaries(vec![
+            0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, 30.0, 60.0,
+        ])
+        .build()
+}
+
+/// Number of connections that failed, by reason.
+pub fn connection_failed() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("connlib.connection.failed")
+        .with_description("Number of connections that failed, by reason.")
+        .with_unit("{connection}")
+        .build()
+}
+
 /// Measures how long connlib takes to recursively resolve a DNS query against an upstream resolver.
 pub fn dns_lookup_duration() -> Histogram<f64> {
     connlib_meter()
@@ -136,6 +181,38 @@ pub fn dns_lookup_duration() -> Histogram<f64> {
         .with_boundaries(vec![
             0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0,
         ])
+        .build()
+}
+
+/// Duration of exporting a batch of metrics to the portal, one record per attempt.
+pub fn metrics_export_duration() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("otel.sdk.exporter.operation.duration")
+        .with_description("The duration of exporting a batch of telemetry records.")
+        .with_unit("s")
+        .with_boundaries(vec![
+            0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0,
+        ])
+        .build()
+}
+
+/// Memory of the process that the platform enforces limits on, sampled periodically to show its distribution and peaks.
+///
+/// That is the resident set on Linux and Android, the physical footprint on Apple platforms and the private bytes on Windows.
+///
+/// The semantic conventions define `process.memory.usage` as an up-down counter, hence the different name.
+pub fn process_memory_usage() -> Histogram<u64> {
+    connlib_meter()
+        .u64_histogram("connlib.process.memory.usage")
+        .with_description("The amount of memory in use.")
+        .with_unit("By")
+        .with_boundaries(
+            [
+                8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 512,
+            ]
+            .map(|mib| f64::from(mib) * 1024.0 * 1024.0)
+            .to_vec(),
+        )
         .build()
 }
 
@@ -193,6 +270,17 @@ impl<const N: usize> Clone for QueueDepth<N> {
             enqueued: AtomicU32::new(0),
         }
     }
+}
+
+/// How often the IO loop started holding back a source because the stage it feeds was full.
+pub fn io_backpressure() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("connlib.io.backpressure")
+        .with_description(
+            "Number of times the IO loop started holding back a source because the stage it feeds was full.",
+        )
+        .with_unit("{episode}")
+        .build()
 }
 
 /// The number of buffers allocated in a buffer pool.

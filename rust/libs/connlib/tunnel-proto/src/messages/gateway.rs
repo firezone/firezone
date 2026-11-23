@@ -1,8 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{
-    Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
-    SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
+    Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, MetricsConfig, Relay,
+    RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use ip_network::IpNetwork;
@@ -134,6 +134,7 @@ pub enum IngressMessages {
     ResourceUpdated(ResourceDescription),
     CreateAuthorization(CreateAuthorization),
     PublicKeyChanged(PublicKeyChanged),
+    MetricsConfig(MetricsConfig),
     /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
@@ -217,6 +218,8 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod tests {
+    use secrecy::ExposeSecret as _;
+
     use crate::messages::PortRange;
 
     use super::*;
@@ -346,6 +349,20 @@ mod tests {
         assert_eq!(init.flow_logs.api_url, "https://flow-api.firezone.dev");
         assert_eq!(init.flow_logs.upload_interval_secs, 60);
         assert_eq!(init.flow_logs.upload_batch_size, 1000);
+    }
+
+    #[test]
+    fn can_deserialize_metrics_config_message() {
+        let json = r#"{"event":"metrics_config","ref":null,"topic":"gateway","payload":{"endpoint":"https://otlp.firezone.dev/v1/metrics","export_interval_secs":30,"token":"metrics-token","patterns":["connlib.*","tunnel.error"]}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::MetricsConfig(config) = message else {
+            panic!("expected MetricsConfig");
+        };
+        assert_eq!(config.export_interval_secs, 30);
+        assert_eq!(config.token.unwrap().expose_secret(), "metrics-token");
+        assert_eq!(config.patterns, ["connlib.*", "tunnel.error"]);
     }
 
     #[test]
