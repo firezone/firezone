@@ -660,6 +660,13 @@ to enroll with a `firezone_id` wins:
   on that machine uses the same key and row.
 - A row that already has a key cannot be claimed again. Only the old key
   (renewal) or an admin reset can replace it.
+- A claim never moves a row between Sites. The legacy move between Sites
+  stays only for rows without a key, and goes away with Site tokens.
+- Copies of a machine made after it enrolled (a VM image, a copied state
+  directory or vTPM) share its key and so its row. The portal refuses a
+  second live connection with the same key, and the device logs that its
+  identity is in use by another machine. The fix is to clear the state
+  directory on the copy, or to build images before the first start.
 - A row keeps its key when its token changes. A Gateway host that moves to
   a service account token keeps its row once the unified binary can carry
   it.
