@@ -863,6 +863,10 @@ defmodule PortalWeb.Sites do
     {:noreply, merge_state(socket, :site_panel, %{gateways: gateways, show_all_gateways: false})}
   end
 
+  # With unified devices, sites are served by enrolled devices; nothing is deployed.
+  def handle_event("deploy_gateway", _params, %{assigns: %{unified_devices?: true}} = socket),
+    do: {:noreply, socket}
+
   def handle_event("deploy_gateway", _params, socket) do
     site = socket.assigns.selected_site
     subject = socket.assigns.subject

@@ -1982,6 +1982,25 @@ defmodule PortalWeb.SitesTest do
       %{account: put_unified_devices(account, true)}
     end
 
+    test "an empty site offers devices, not a gateway deploy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert has_element?(lv, "#site-devices-empty button[phx-click='open_add_devices']")
+      refute has_element?(lv, "button[phx-click='deploy_gateway']")
+
+      refute render_click(lv, "deploy_gateway") =~ "FIREZONE_API_URL"
+      assert Repo.all(from d in Portal.Device, where: d.account_id == ^account.id) == []
+    end
+
     test "lists gateways and other devices in one Devices tab", %{
       conn: conn,
       account: account,
@@ -2000,7 +2019,7 @@ defmodule PortalWeb.SitesTest do
       assert has_element?(lv, "#site-panel-devices-tab", "2")
       refute has_element?(lv, "button[phx-value-tab='gateways']")
       assert has_element?(lv, "#site-add-devices-button")
-      assert has_element?(lv, "button[phx-click='deploy_gateway']", "Deploy gateway")
+      refute has_element?(lv, "button[phx-click='deploy_gateway']")
       assert has_element?(lv, "#site-device-#{client.id}", client.name)
       assert has_element?(lv, "#site-device-#{client.id} button", "Remove from site")
 

@@ -409,7 +409,11 @@ defmodule PortalWeb.Sites.Components do
         </span>
       </button>
       <div class="ml-auto pb-2 flex items-center gap-2">
-        <Form.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
+        <Form.button
+          :if={not @unified_devices? and @tab == :gateways}
+          phx-click="deploy_gateway"
+          size="xs"
+        >
           <Core.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
         </Form.button>
         <Form.button
@@ -748,7 +752,18 @@ defmodule PortalWeb.Sites.Components do
         </li>
       </ul>
       <div
-        :if={@gateways == [] and @total_gateway_count == 0 and @devices == []}
+        :if={@unified_devices? and @gateways == [] and @total_gateway_count == 0 and @devices == []}
+        id="site-devices-empty"
+        class="flex flex-col items-center justify-center gap-3 py-16"
+      >
+        <Core.icon name="ri-computer-line" class="w-6 h-6 text-faint" />
+        <p class="text-sm text-muted">No devices serve this site yet.</p>
+        <Form.button phx-click="open_add_devices" size="sm" icon="ri-add-line">
+          Add devices
+        </Form.button>
+      </div>
+      <div
+        :if={not @unified_devices? and @gateways == [] and @total_gateway_count == 0 and @devices == []}
         class="flex flex-col items-center justify-center gap-3 py-16"
       >
         <p class="text-sm text-muted">No gateways deployed to this site.</p>
@@ -764,7 +779,9 @@ defmodule PortalWeb.Sites.Components do
         class="flex items-center justify-center py-16"
       >
         <p class="text-sm text-muted">
-          No gateways are currently online.
+          {if @unified_devices?,
+            do: "None of this site's devices are online.",
+            else: "No gateways are currently online."}
         </p>
       </div>
     </div>
