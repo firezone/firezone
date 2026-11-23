@@ -472,7 +472,6 @@ defmodule PortalWeb.Components.Page do
 
       <tr phx-click={Page.open_modal(~p"/#{@account}/sites/#{site}", title: site.name)}>
   """
-  @spec open_modal(String.t(), keyword()) :: Phoenix.LiveView.JS.t()
   def open_modal(path, opts \\ []) do
     detail =
       opts
@@ -491,7 +490,6 @@ defmodule PortalWeb.Components.Page do
 
       <Form.button phx-click={Page.instant("Add a policy") |> JS.push("open_new_policy_form")}>
   """
-  @spec instant(String.t(), keyword()) :: Phoenix.LiveView.JS.t()
   def instant(title, opts \\ []) do
     detail = opts |> Keyword.take([:subtitle, :size]) |> Map.new() |> Map.put(:title, title)
     JS.dispatch("fz:instant-modal", detail: detail)
@@ -504,14 +502,12 @@ defmodule PortalWeb.Components.Page do
   server keeps the modal open (for example Escape in an edit form goes back to
   the details) the next render shows it again.
   """
-  @spec close_modal(String.t() | {:closest, String.t()}, String.t() | Phoenix.LiveView.JS.t() | nil) ::
-          Phoenix.LiveView.JS.t()
   def close_modal(target, on_close) do
     js = JS.dispatch("fz:modal-hide", to: target)
 
     case on_close do
       nil -> js
-      %JS{ops: ops} -> %JS{ops: js.ops ++ ops}
+      %JS{} = then -> JS.concat(js, then)
       event when is_binary(event) -> JS.push(js, event)
     end
   end

@@ -694,7 +694,7 @@ defmodule PortalWeb.GroupsTest do
       |> form("#group-form", group: %{name: group.name, member_search: ""})
       |> render_submit()
 
-      html = render(lv)
+      html = render_async(lv)
       assert html =~ added_member.name
       refute html =~ current_member.name
     end
