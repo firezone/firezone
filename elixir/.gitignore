@@ -61,3 +61,4 @@ priv/repo/structure.sql
 
 # The private ops dashboard (firezone/portal-ops), checked out here by CI.
 /ops/
+/ops

@@ -425,7 +425,7 @@ defmodule PortalAPI.GatewayController do
       end
     end
 
-    # Mirrors PortalWeb.Live.Sites.Database.rename_gateway/3. Safe.update/1
+    # Mirrors Portal.Devices.rename_gateway/3. Safe.update/1
     # re-applies Device.changeset/1 centrally regardless of this bypass,
     # but that's fine - :firezone_id is only required for :client devices
     # (a gateway legitimately has none until first connect).

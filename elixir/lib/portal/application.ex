@@ -72,17 +72,17 @@ defmodule Portal.Application do
         # Builds the MCP tool table from the API spec; must be ready before the
         # API endpoint starts serving /mcp.
         PortalAPI.MCP.Tools,
-        # Give Phoenix socket drain enough time to gracefully close channel topics
+        # The public listener owns the socket transports, so it must stop after
+        # the endpoints it dispatches into have drained their sockets.
+        {Portal.Endpoint, shutdown: 40_000},
+        # Give Phoenix socket drain enough time to close sockets in batches
         # before transports are force-terminated.
-        {PortalWeb.Endpoint, shutdown: 40_000},
-        {PortalAPI.Endpoint, shutdown: 40_000}
-      ] ++
-        ops_endpoint() ++
-        [
-          # The public listener stops first during reverse-order shutdown, before
-          # the endpoints it dispatches into begin draining.
-          {Portal.Endpoint, shutdown: 40_000}
-        ]
+        {PortalWeb.Endpoint, shutdown: 70_000},
+        {PortalAPI.Endpoint, shutdown: 70_000},
+        # Stops first, so that no new connection reaches an endpoint that drains
+        # or has already stopped.
+        Portal.Endpoint.Admission
+      ] ++ ops_endpoint()
 
     # Child order is chosen to make reverse-order shutdown graceful:
     # 1) Replication slot pollers stop while BEAM is still fully alive.
@@ -268,8 +268,15 @@ defmodule Portal.Application do
 
   # The ops dashboard is only compiled in from the private firezone/portal-ops repo.
   defp ops_endpoint do
+    repo =
+      if Code.ensure_loaded?(PortalOps.Repo) do
+        [PortalOps.Repo]
+      else
+        []
+      end
+
     if Code.ensure_loaded?(PortalOps.Endpoint) do
-      [{PortalOps.Endpoint, shutdown: 40_000}]
+      repo ++ [{PortalOps.Endpoint, shutdown: 40_000}]
     else
       []
     end

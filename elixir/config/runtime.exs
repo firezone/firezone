@@ -115,6 +115,34 @@ if config_env() == :prod do
            {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
          ] ++ direct_pool_base_opts
 
+  # The private ops dashboard's own database on the same server, with its own user
+  ops_database_password_opts =
+    cond do
+      env_var_to_config!(:database_entra_auth) ->
+        [
+          {:configure,
+           {Portal.Azure.ManagedIdentity, :put_database_token, [env_var_to_config(:ops_azure_client_id)]}}
+        ]
+
+      env_var_to_config(:ops_database_password) ->
+        [{:password, env_var_to_config!(:ops_database_password)}]
+
+      true ->
+        []
+    end
+
+  config :portal,
+         PortalOps.Repo,
+         direct_pool_base_opts
+         |> Keyword.drop([:configure, :password])
+         |> Keyword.merge(
+           database: env_var_to_config!(:ops_database_name),
+           username: env_var_to_config!(:ops_database_user),
+           pool_size: 2,
+           parameters: Keyword.merge(database_parameters, application_name: "ops")
+         )
+         |> Kernel.++(ops_database_password_opts)
+
   config :portal, Portal.ChangeLogs.Consumer,
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name)
@@ -138,6 +166,10 @@ if config_env() == :prod do
   config :portal, Portal.Google.AuthProvider,
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
+
+  config :portal, PortalOps.Google,
+    client_id: env_var_to_config!(:ops_google_oidc_client_id),
+    client_secret: env_var_to_config!(:ops_google_oidc_client_secret)
 
   config :portal, Portal.GitHub.AuthProvider,
     client_id: env_var_to_config!(:github_oauth_client_id),
@@ -253,6 +285,11 @@ if config_env() == :prod do
   config :portal,
     flow_logs_api_url: env_var_to_config!(:flow_logs_api_url),
     flow_logs_upload_interval_secs: env_var_to_config!(:flow_logs_upload_interval_secs)
+
+  config :portal,
+    otlp_metrics_ingest_url: env_var_to_config!(:otlp_metrics_ingest_url),
+    otlp_metrics_export_interval_secs: env_var_to_config!(:otlp_metrics_export_interval_secs),
+    otel_ingest_jwt_private_key: env_var_to_config!(:otel_ingest_jwt_private_key)
 
   config :portal, Portal.S3.APIClient,
     access_key_id: env_var_to_config!(:log_sinks_aws_access_key_id),

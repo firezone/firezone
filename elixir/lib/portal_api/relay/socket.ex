@@ -77,16 +77,14 @@ defmodule PortalAPI.Relay.Socket do
   end
 
   defp build_relay(attrs, %Authentication.Context{} = context) do
-    ipv4 = attrs["ipv4"]
-    ipv6 = attrs["ipv6"]
-
-    if is_nil(ipv4) and is_nil(ipv6) do
-      {:error, :missing_ip}
-    else
+    with {:ok, ipv4} <- parse_address(attrs["ipv4"], &:inet.parse_ipv4strict_address/1),
+         {:ok, ipv6} <- parse_address(attrs["ipv6"], &:inet.parse_ipv6strict_address/1),
+         :ok <- require_address(ipv4, ipv6),
+         {:ok, port} <- parse_port(attrs["port"]) do
       relay = %Relay{
         ipv4: ipv4,
         ipv6: ipv6,
-        port: attrs["port"] || 3478,
+        port: port,
         lat: context.remote_ip_location_lat,
         lon: context.remote_ip_location_lon
       }
@@ -94,4 +92,30 @@ defmodule PortalAPI.Relay.Socket do
       {:ok, relay}
     end
   end
+
+  defp parse_address(nil, _parse), do: {:ok, nil}
+
+  defp parse_address(address, parse) when is_binary(address) do
+    case parse.(String.to_charlist(address)) do
+      {:ok, _ip} -> {:ok, address}
+      {:error, _reason} -> {:error, :invalid_ip}
+    end
+  end
+
+  defp parse_address(_address, _parse), do: {:error, :invalid_ip}
+
+  defp require_address(nil, nil), do: {:error, :missing_ip}
+  defp require_address(_ipv4, _ipv6), do: :ok
+
+  defp parse_port(nil), do: {:ok, 3478}
+  defp parse_port(port) when is_integer(port) and port in 1..65_535, do: {:ok, port}
+
+  defp parse_port(port) when is_binary(port) do
+    case Integer.parse(port) do
+      {port, ""} -> parse_port(port)
+      _ -> {:error, :invalid_port}
+    end
+  end
+
+  defp parse_port(_port), do: {:error, :invalid_port}
 end

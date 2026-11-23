@@ -172,6 +172,69 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
       assert [] == [worker: Portal.Workers.OutboundEmail] |> Oban.Job.query() |> Repo.all()
     end
 
+    test "accepts the current batch deal until the end of the batch's quarter", %{conn: conn} do
+      stub_stripe()
+
+      body =
+        payload(%{
+          "companies" => [%{"batch" => "Summer 2026"}],
+          "redeemed_at" => "2026-09-30T23:59:59Z"
+        })
+
+      assert json_response(post_signed(conn, body), 200)["message"] =~ @code
+    end
+
+    test "accepts the current batch deal when any company is in a current batch", %{conn: conn} do
+      stub_stripe()
+
+      body = payload(%{"companies" => [%{"batch" => "W24"}, %{"batch" => "X27"}]})
+
+      assert json_response(post_signed(conn, body), 200)["message"] =~ @code
+    end
+
+    test "rejects the current batch deal after the batch's quarter ends", %{conn: conn} do
+      for {batch, redeemed_at} <- [
+            {"W26", "2026-04-01T00:00:00Z"},
+            {"X26", "2026-07-01T00:00:00Z"},
+            {"Sp26", "2026-07-01T00:00:00Z"},
+            {"S26", "2026-10-01T00:00:00Z"},
+            {"F25", "2026-01-01T00:00:00Z"}
+          ] do
+        body = payload(%{"companies" => [%{"batch" => batch}], "redeemed_at" => redeemed_at})
+
+        assert json_response(post_signed(conn, body), 422) == %{
+                 "message" =>
+                   "Oops! It looks like the batch has ended. Please use the alumni deal instead."
+               }
+      end
+    end
+
+    test "rejects the current batch deal without a known batch", %{conn: conn} do
+      for companies <- [[], [%{"batch" => nil}], [%{"batch" => "IK12"}], nil] do
+        body = payload(%{"companies" => companies})
+
+        assert json_response(post_signed(conn, body), 422)["message"] =~
+                 "Please use the alumni deal instead."
+      end
+    end
+
+    test "accepts the alumni deal from any batch", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, :yc_deal_coupon_ids, %{
+        "2417" => "coupon_yc",
+        "23974" => "coupon_alumni"
+      })
+
+      stub_stripe()
+
+      body = payload(%{"deal_id" => 23_974, "companies" => [%{"batch" => "W24"}]})
+
+      conn =
+        post_raw(conn, body, [{"x-yc-signature", WebhookController.sign("alumni-secret", body)}])
+
+      assert json_response(conn, 200)
+      assert_receive {:stripe, "POST", "/v1/promotion_codes", _conn, %{"coupon" => "coupon_alumni"}}
+    end
+
     test "rejects redemptions of a deal without a coupon", %{conn: conn} do
       body = payload(%{"deal_id" => 1})
       conn = post_raw(conn, body, [{"x-yc-signature", WebhookController.sign("unmapped-secret", body)}])
@@ -228,7 +291,7 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
       "first_name" => "Alice",
       "last_name" => "Whysee",
       "email" => "alice@example.com",
-      "companies" => [],
+      "companies" => [%{"id" => 67_890, "name" => "Example", "batch" => "F26"}],
       "redeemed_at" => "2026-11-13T16:54:57.268Z",
       "custom_responses" => %{},
       "webhook_status" => nil

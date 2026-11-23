@@ -14,6 +14,17 @@ defmodule PortalWeb.SignUpReviewTest do
 
   @sign_up_token_salt "sign_up_email_v1"
   @approvers ["alice@firezone.dev", "bob@firezone.dev"]
+  @registration %{
+    "account" => %{"name" => "Review Corp"},
+    "actor" => %{"name" => "Review User"},
+    "sign_up_survey" => %{
+      "referral_source" => "github",
+      "motivation" => "security",
+      "use_case" => "servers",
+      "role" => "devops",
+      "switching" => "false"
+    }
+  }
 
   setup do
     Portal.Config.put_env_override(:portal, SignUpReviewRequest, approvers: @approvers)
@@ -116,9 +127,10 @@ defmodule PortalWeb.SignUpReviewTest do
       assert {:ok, %{mail_servers: [{"review.test", :unknown}]}} = SignUpReview.decrypt_review(review)
     end
 
-    test "holds an email without a domain", %{conn: conn} do
+    # The sign-up pages only accept valid addresses, so these call the check directly.
+    test "holds an email without a domain" do
       stub_resolve(fn _domain -> flunk("no lookup expected") end)
-      assert redirected_to(verify(conn, "no-at-sign")) == ~p"/sign_up/pending"
+      assert check("no-at-sign") == :pending_review
     end
 
     test "holds the sign-up when the domain has a null MX", %{conn: conn} do
@@ -131,7 +143,7 @@ defmodule PortalWeb.SignUpReviewTest do
       assert redirected_to(verify(conn, unique_email())) == ~p"/sign_up/pending"
     end
 
-    test "looks up the absolute domain name in lowercase ASCII", %{conn: conn} do
+    test "looks up the absolute domain name in lowercase ASCII" do
       test_pid = self()
 
       stub_resolve(fn domain ->
@@ -139,7 +151,7 @@ defmodule PortalWeb.SignUpReviewTest do
         {:error, :nxdomain}
       end)
 
-      verify(conn, "user@Bücher.Test")
+      check("user@Bücher.Test")
 
       assert_received {:resolved, "xn--bcher-kva.test."}
     end
@@ -154,14 +166,16 @@ defmodule PortalWeb.SignUpReviewTest do
       assert length(all_enqueued(worker: SignUpReviewRequest)) == 2
     end
 
-    test "sends an existing owner to sign in without a check", %{conn: conn} do
+    test "shows an existing owner their accounts without a check", %{conn: conn} do
       stub_mx(["mx.disposable.test"])
       email = unique_email()
       account = account_fixture(metadata: %{stripe: %{billing_email: email}})
 
       conn = verify(conn, email)
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/sign_up/email"
+      {:ok, _lv, html} = conn |> recycle() |> live(~p"/sign_up/email")
+      assert html =~ account.name
       assert [] == all_enqueued(worker: SignUpReviewRequest)
     end
 
@@ -206,7 +220,7 @@ defmodule PortalWeb.SignUpReviewTest do
   end
 
   defp assert_blocked(conn) do
-    assert redirected_to(conn) =~ "/verify_sign_up?token="
+    assert redirected_to(conn) == ~p"/sign_up/email"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not allowed"
   end
 
@@ -214,19 +228,26 @@ defmodule PortalWeb.SignUpReviewTest do
     Enum.find(all_enqueued(worker: SignUpReviewRequest), &(&1.args["approver"] == approver))
   end
 
+  # Opens an email sign-up link in the browser that asked for it and submits the details.
   defp verify(conn, email) do
     conn = get(conn, ~p"/sign_up")
     {conn, browser_id} = {recycle(conn), conn.private.sign_up_browser_id}
 
-    claims = %{
-      email: email,
-      company_name: "Review Corp",
-      actor_name: "Review User",
-      browser: PortalWeb.Cookie.SignUpBrowser.token_claim(browser_id)
-    }
-
+    claims = %{email: email, browser: PortalWeb.Cookie.SignUpBrowser.token_claim(browser_id)}
     token = Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, claims)
-    post(conn, ~p"/verify_sign_up", %{"token" => token})
+
+    conn = get(conn, ~p"/verify_sign_up?token=#{token}")
+    assert redirected_to(conn) == ~p"/sign_up/email"
+
+    conn |> recycle() |> post(~p"/sign_up/email/complete", %{"registration" => @registration})
+  end
+
+  defp check(email) do
+    SignUpReview.check(
+      %{email: email, company_name: "Review Corp", actor_name: "Review User"},
+      "test",
+      {127, 0, 0, 1}
+    )
   end
 
   defp stub_mx(hosts) do

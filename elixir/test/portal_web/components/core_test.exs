@@ -3,6 +3,32 @@ defmodule PortalWeb.Components.CoreTest do
 
   alias PortalWeb.Components.Core
 
+  describe "Core.provider_icon/1" do
+    test "adds icon_class to image icons" do
+      html =
+        render_component(&Core.provider_icon/1, provider: "google", size: "lg", icon_class: "sm:size-8")
+        |> Floki.parse_fragment!()
+
+      assert [class] = Floki.attribute(html, "img", "class")
+      assert class =~ "size-6"
+      assert class =~ "sm:size-8"
+    end
+
+    test "adds icon_class to font icons" do
+      html =
+        render_component(&Core.provider_icon/1, provider: "github", size: "lg", icon_class: "sm:size-8")
+        |> Floki.parse_fragment!()
+
+      assert [_icon] = Floki.find(html, ".ri-github-fill.size-6.sm\\:size-8")
+    end
+
+    test "only uses the size classes without icon_class" do
+      html = render_component(&Core.provider_icon/1, provider: "google", size: "lg") |> Floki.parse_fragment!()
+
+      assert Floki.attribute(html, "img", "class") == ["size-6"]
+    end
+  end
+
   describe "Core.avatar/1" do
     test "links the stored photo by its version" do
       account = %Portal.Account{id: Ecto.UUID.generate(), slug: "acme"}

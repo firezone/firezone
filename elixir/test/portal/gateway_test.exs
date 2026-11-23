@@ -36,6 +36,27 @@ defmodule Portal.GatewayTest do
       changeset = build_changeset(%{name: "Gateway", firezone_id: String.duplicate("a", 256)})
       assert %{firezone_id: ["should be at most 255 character(s)"]} = errors_on(changeset)
     end
+
+    test "bounds device identifiers like any other device" do
+      changeset =
+        %Device{type: :gateway}
+        |> cast(
+          %{name: "Gateway", identifier_for_vendor: String.duplicate("a", 256)},
+          [:name, :identifier_for_vendor]
+        )
+        |> Device.changeset()
+
+      assert %{identifier_for_vendor: ["should be at most 255 character(s)"]} = errors_on(changeset)
+    end
+
+    test "cannot be verified" do
+      changeset =
+        %Device{type: :gateway}
+        |> cast(%{name: "Gateway", verified_at: DateTime.utc_now()}, [:name, :verified_at])
+        |> Device.changeset()
+
+      assert %{verified_at: ["can only be set for client devices"]} = errors_on(changeset)
+    end
   end
 
   describe "changeset/1 firezone_id uniqueness" do

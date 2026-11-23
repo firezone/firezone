@@ -50,6 +50,40 @@ defmodule Portal.RoutingTest do
                {:error, :version_mismatch}
     end
 
+    test "never picks the initiator", %{account: account, site: site} = ctx do
+      device = online_gateway(account, site, "1.5.0", @berlin)
+
+      assert Routing.select_receiver(
+               ctx.resource,
+               %{initiator(account) | device_id: device.id},
+               [device.id]
+             ) == {:error, :offline}
+    end
+
+    test "uses the range a device states", %{account: account, site: site} = ctx do
+      device = online_gateway(account, site, "1.9.0", @paris, %{proto_min: 4, proto_max: 9})
+
+      assert {:ok, %{id: id}} = Routing.select_receiver(ctx.resource, initiator(account), [])
+      assert id == device.id
+    end
+
+    test "uses the range an initiator states", %{account: account, site: site} = ctx do
+      online_gateway(account, site, "1.5.0", @paris)
+
+      assert {:ok, _device} =
+               Routing.select_receiver(
+                 ctx.resource,
+                 Map.put(initiator(account), :proto_range, %{min: 3, max: 4}),
+                 []
+               )
+
+      assert Routing.select_receiver(
+               ctx.resource,
+               Map.put(initiator(account), :proto_range, %{min: 1, max: 2}),
+               []
+             ) == {:error, :version_mismatch}
+    end
+
     test "picks the nearest", %{account: account, site: site, resource: resource} do
       online_gateway(account, site, "1.5.0", @tokyo)
       paris = online_gateway(account, site, "1.5.0", @paris)
@@ -100,10 +134,12 @@ defmodule Portal.RoutingTest do
   end
 
   defp initiator(account) do
-    %{account_id: account.id, version: "1.5.0", location: @berlin}
+    %{account_id: account.id, device_id: Ecto.UUID.generate(), version: "1.5.0", location: @berlin}
   end
 
-  defp online_gateway(account, site, version, {lat, lon}) do
+  defp online_gateway(account, site, version, location, meta \\ %{})
+
+  defp online_gateway(account, site, version, {lat, lon}, meta) do
     gateway =
       gateway_fixture(
         account: account,
@@ -113,7 +149,7 @@ defmodule Portal.RoutingTest do
         last_seen_remote_ip_location_lon: lon
       )
 
-    :ok = Portal.Presence.Devices.connect(gateway, Ecto.UUID.generate())
+    :ok = Portal.Presence.Devices.connect(gateway, Ecto.UUID.generate(), meta)
     gateway
   end
 

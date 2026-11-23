@@ -43,10 +43,6 @@ defmodule PortalWeb.OAuthHTML do
   def error(assigns) do
     ~H"""
     <div class="text-center">
-      <div class="w-12 h-12 rounded mx-auto mb-4 flex items-center justify-center bg-danger/10">
-        <Core.icon name="ri-error-warning-line" class="w-7 h-7 text-danger" />
-      </div>
-
       <h1 class="text-2xl font-bold text-heading tracking-tight">This request is not valid</h1>
       <p class="text-sm text-body mt-2">{@description}</p>
       <p class="text-xs text-subtle mt-6">
