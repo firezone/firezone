@@ -606,10 +606,7 @@ reported `firezone_id`.
 - **One CA per account.** In the cloud each account has its own RSA-2048
   key in Azure Key Vault Standard: software-protected, not exportable, and
   every signature is made in Key Vault with the portal's managed identity.
-  A new account gets its CA from a background job; a migration queues the
-  same job for existing accounts. Without Key Vault (on-prem, dev and test)
-  one RSA key from `DEVICE_CA_PRIVATE_KEY` signs for every account, and each
-  account still has its own CA certificate. A customer that needs a FIPS 140
+  A new account gets its CA from a background job; a periodic job queues the same job for every account without a CA. Without Key Vault (on-prem, dev and test) each account has its own RSA key in the database. A customer that needs a FIPS 140
   Level 3 key gets a new CA with an `RSA-HSM` key in a Premium vault later;
   during that change the portal accepts both CAs. Device keys can be P-256:
   the CA key type does not limit them.
@@ -692,10 +689,11 @@ without one on the same terms as the legacy sockets.
 
 **Steps.** Portal, one PR per deploy:
 
-- I.1 Device CA per account, with the Key Vault and local adapters (#16722).
+- I.1 Device CA per account (#16722): `DEVICE_CA_KEY_STORAGE` is `db` or
+  `azure`, a periodic job backfills every account without a CA (disabled or
+  not), and the CA shows read only on the Trust Anchors page.
   Infra first: a Key Vault Standard per region and the "Key Vault Crypto
   Officer" role for the portal identity.
-- I.2 Backfill: queue the CA job for every existing account, disabled or not, so an account that is enabled again already has its CA.
 - I.3 Turn off `/device/v1` until the unified binary ships.
 - I.4 Device key columns: key hash and key storage on `devices`.
 - I.5 `POST /device/enroll` with the claim rules, and renewal on the mTLS
