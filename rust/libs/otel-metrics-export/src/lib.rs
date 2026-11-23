@@ -3,7 +3,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod pipeline;
-mod process_memory;
 
 use std::{
     io,

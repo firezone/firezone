@@ -59,6 +59,7 @@ members = [
     "libs/otel-metric-patterns",
     "libs/otel-metrics-export",
     "libs/prefetch",
+    "libs/process-memory",
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
@@ -212,6 +213,7 @@ phoenix-channel = { path = "libs/connlib/phoenix-channel" }
 png = "0.18.1"
 prefetch = { path = "libs/prefetch" }
 proc-macro2 = "1.0.106"
+process-memory = { path = "libs/process-memory" }
 proptest = "1.9.0"
 prost = { version = "0.14.3", default-features = false }
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }

@@ -1,3 +1,5 @@
+//! How much memory the current process uses, as the platform counts it when enforcing memory limits.
+
 use anyhow::Result;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
