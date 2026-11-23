@@ -647,18 +647,19 @@ request uses mTLS with the MDM certificate, so the portal adds the new key
 to the row that the MDM certificate identifies, and the device keeps its row
 if it later leaves management.
 
-**Claim rules.** Enrollment decides which row a key gets. This is where a
-takeover stops:
+**Claim rules.** Enrollment decides which row a key gets. The first device
+to enroll with a `firezone_id` wins:
 
-- A Gateway token claims only its own row: the bound row of a device-bound
-  token, or, for a Site token, the row in that Site with the reported
-  `firezone_id`. Clones that share a `firezone_id` across Sites each claim
-  the row in their own Site.
-- A user or service account token claims a Client row with the reported
-  `firezone_id` only when its actor is in that row's `device_actors`.
+- The key claims the row with the reported `firezone_id` that has no key
+  yet: for a Gateway on a Site token, only in that Site; for a Gateway on a
+  device-bound token, the bound row. The claim stores the key hash and sets
+  the row's `firezone_id` to NULL, so the id finds nothing after that.
+- A later enrollment with the same `firezone_id` gets a new row. This covers
+  the Gateway clones that share an id across Sites.
+- The key belongs to the machine, not to the user, so everyone who signs in
+  on that machine uses the same key and row.
 - A row that already has a key cannot be claimed again. Only the old key
-  (renewal) or an admin reset can replace it. When no row passes the rules,
-  the key gets a new row, and the old row stays as it is.
+  (renewal) or an admin reset can replace it.
 - A row keeps its key when its token changes. A Gateway host that moves to
   a service account token keeps its row once the unified binary can carry
   it.
