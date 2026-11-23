@@ -17,6 +17,7 @@ defmodule PortalWeb.PoliciesTest do
   import Portal.AccountFixtures
   import Portal.DevicePostureFixtures
   import Portal.ActorFixtures
+  import Portal.SubjectFixtures
   import Portal.AuthProviderFixtures
   import Portal.FeaturesFixtures
   import Portal.GroupFixtures
@@ -108,11 +109,11 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies")
 
-      assert html =~ "New Policy"
+      assert html =~ "Add a policy"
 
       render_click(lv, "open_new_policy_form")
       assert_patch(lv, ~p"/#{account}/policies/new")
-      assert render(lv) =~ "Add Policy"
+      assert render(lv) =~ "Add a policy"
 
       render_click(lv, "cancel_policy_form")
       assert_patch(lv, ~p"/#{account}/policies")
@@ -126,7 +127,7 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/new")
 
-      assert html =~ "Add Policy"
+      assert html =~ "Add a policy"
       assert html =~ "Group"
       assert html =~ "Resource"
     end
@@ -583,7 +584,7 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      assert html =~ "Edit Policy"
+      assert html =~ "Edit policy"
       assert html =~ "Group"
       assert html =~ "Resource"
     end
@@ -753,7 +754,7 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      assert html =~ "Edit Policy"
+      assert html =~ "Edit policy"
       assert html =~ "Existing Internet Resource"
     end
 
@@ -2173,8 +2174,7 @@ defmodule PortalWeb.PoliciesTest do
 
       html = render_async(lv)
 
-      assert html =~ "1"
-      assert html =~ "Total"
+      assert has_element?(lv, "#policies-count", "1")
       refute html =~ "Loading..."
     end
 
@@ -2192,9 +2192,8 @@ defmodule PortalWeb.PoliciesTest do
 
       send(lv.pid, %Change{op: :insert, struct: %Policy{}})
 
-      html = render(lv)
-      assert html =~ "1"
-      assert html =~ "Total"
+      render(lv)
+      assert has_element?(lv, "#policies-count", "1")
     end
 
     test "decrements count on policy delete change", %{
@@ -2215,9 +2214,8 @@ defmodule PortalWeb.PoliciesTest do
 
       send(lv.pid, %Change{op: :delete, old_struct: %Policy{}})
 
-      html = render(lv)
-      assert html =~ "0"
-      assert html =~ "Total"
+      render(lv)
+      assert has_element?(lv, "#policies-count", "0")
     end
   end
   describe "live table filters across panel operations" do
@@ -2379,6 +2377,115 @@ defmodule PortalWeb.PoliciesTest do
       render_click(lv, "submit_policy_form", %{"policy" => %{"description" => "Late"}})
 
       assert Repo.get_by(Policy, account_id: account.id, id: policy.id).description == policy.description
+    end
+  end
+
+  describe "direct access" do
+    setup %{conn: conn, account: account, actor: actor} do
+      subject = subject_fixture(account: account, actor: actor)
+      conn = authorize_conn_with_provider(conn, actor, %{id: subject.credential.auth_provider_id})
+      resource = resource_fixture(account: account, name: "Prod DB")
+      alice = actor_fixture(account: account, name: "Alice")
+      bob = actor_fixture(account: account, name: "Bob")
+      %{conn: conn, subject: subject, resource: resource, alice: alice, bob: bob}
+    end
+
+    test "lists a direct-access policy by its people, not the group name", %{
+      conn: conn,
+      account: account,
+
+      subject: subject,
+      resource: resource,
+      alice: alice,
+      bob: bob
+    } do
+      {:ok, group} = PortalWeb.DirectAccess.grant(resource, [alice.id, bob.id], subject)
+      policy = Repo.get_by!(Policy, group_id: group.id)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/policies")
+
+      assert has_element?(lv, "#policies-#{policy.id} [data-direct-access]", "People: Alice, Bob")
+      refute html =~ group.name
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      assert has_element?(lv, "#policy-sentence", "People: Alice, Bob")
+      refute html =~ group.name
+    end
+
+    test "the detail modal reads as a sentence with the site", %{conn: conn, account: account} do
+      site = site_fixture(account: account, name: "Production")
+      group = group_fixture(account: account, name: "Engineering")
+      resource = resource_fixture(account: account, site: site, name: "GitLab")
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+
+      assert has_element?(lv, "#policy-panel [role=dialog]")
+      sentence = lv |> element("#policy-sentence") |> render()
+      assert sentence =~ "Engineering"
+      assert sentence =~ "can reach"
+      assert sentence =~ "GitLab"
+      assert sentence =~ "Production"
+      assert has_element?(lv, "#policy-details", "Who gets this access")
+    end
+
+    test "the group pickers never offer direct-access groups", %{
+      account: account,
+      subject: subject,
+      resource: resource,
+      alice: alice
+    } do
+      {:ok, direct} = PortalWeb.DirectAccess.grant(resource, [alice.id], subject)
+      group_fixture(account: account, name: "Engineering")
+
+      for list <- [
+            &PortalWeb.Policies.Database.list_group_options/2,
+            &PortalWeb.Policies.Components.Database.list_group_options/2
+          ] do
+        {:ok, grouped, _metadata} = list.(nil, subject)
+        ids = for {_label, options} <- grouped, {id, _name, _row} <- options, do: id
+        refute direct.id in ids
+        assert ids != []
+      end
+    end
+
+    test "grants people access from the policy form", %{
+      conn: conn,
+      account: account,
+
+      subject: subject,
+      resource: resource,
+      alice: alice
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/new")
+
+      lv |> element("#policy-who-people") |> render_click()
+      assert has_element?(lv, "#policy-people-note")
+      refute has_element?(lv, "#policy-postures-require-attestation")
+
+      lv |> form("#policy-form", %{"_people_search" => "Ali"}) |> render_change()
+      lv |> element("#policy-people-results button", "Alice") |> render_click()
+      assert has_element?(lv, "#policy-person-#{alice.id}")
+
+      html =
+        lv
+        |> form("#policy-form", policy: %{resource_id: resource.id})
+        |> render_submit()
+
+      assert html =~ "Access granted."
+      assert [%{name: "Alice"}] = PortalWeb.DirectAccess.list_people(resource, subject)
+    end
+
+    test "asks for people before granting", %{conn: conn, account: account, resource: resource} do
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/new")
+
+      lv |> element("#policy-who-people") |> render_click()
+
+      lv
+      |> form("#policy-form", policy: %{resource_id: resource.id})
+      |> render_submit()
+
+      assert has_element?(lv, "#policy-people-error", "Pick at least one person.")
     end
   end
 end

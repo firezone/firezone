@@ -13,6 +13,7 @@ import { DatetimeRangeFilter } from "./hooks/datetime_range_filter";
 import { PostureJsonEditor } from "./hooks/posture_json_editor";
 import { Turnstile } from "./hooks/turnstile";
 import { ActivityMap } from "./hooks/activity_map";
+import { AccessGraph } from "./hooks/access_graph";
 import {
   PageSizePreference,
   getPageSizePreference,
@@ -26,6 +27,7 @@ Hooks.DatetimeRangeFilter = DatetimeRangeFilter;
 Hooks.PostureJsonEditor = PostureJsonEditor;
 Hooks.Turnstile = Turnstile;
 Hooks.ActivityMap = ActivityMap;
+Hooks.AccessGraph = AccessGraph;
 Hooks.PageSizePreference = PageSizePreference;
 Hooks.SupportForm = {
   mounted() {
