@@ -8,17 +8,12 @@ publish = false
 [dependencies]
 anyhow = { workspace = true }
 arbitrary = { workspace = true, features = ["derive"] }
-bytecodec = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 ip-packet = { workspace = true, features = ["arbitrary"] }
 libc = { workspace = true }
-rand = { workspace = true }
-relay-server-proto = { workspace = true }
 seeded-rng = { workspace = true }
 sha2 = { workspace = true }
 simulation = { workspace = true, features = ["ijon"] }
-stun_codec = { workspace = true }
-uuid = { workspace = true }
 x509-claims = { workspace = true }
 
 [target.'cfg(fuzzing)'.dependencies]
