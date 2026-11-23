@@ -42,9 +42,10 @@ use tracing_subscriber::{
 use crate::{
     assertions::check_invariants,
     clock::Clock,
-    real_relay_system::{RealRelaySystem, check_heartbeats, check_settled},
+    real_relay_system::{RealRelaySystem, check_applied, check_settled},
     real_tunnel_system::RealTunnelSystem,
     relay_generator::RelayGenerator,
+    relay_transition::Interference,
     tunnel_generator::TunnelGenerator,
 };
 
@@ -119,36 +120,38 @@ pub fn run_relay(data: &[u8], now: Instant) {
     let mut model = generator.model();
 
     let mut system = RealRelaySystem::new(&model, now);
-    let settled = system.settle();
+    let mut interference = Interference::default();
+    let settled = system.settle(&mut interference);
     check_settled(&model, &settled);
     model.settle();
 
-    for applied in 0..MAX_RELAY_TRANSITIONS {
+    for index in 0..MAX_RELAY_TRANSITIONS {
         if generator.is_empty() {
             break;
         }
 
-        let (transition, interference, settle) = generator.transition(&model);
+        let (transition, next_interference, settle) = generator.transition(&model);
+        interference = next_interference;
 
         tracing::debug!(
-            "Applying transition {applied}: {transition:?} with {interference:?}, settle: {settle}"
+            "Applying transition {index}: {transition:?} with {interference:?}, settle: {settle}"
         );
 
         model.apply(&transition, &interference);
-        let lost_heartbeats = system.apply(&transition, interference);
-        check_heartbeats(&model, &lost_heartbeats);
+        let applied = system.apply(&transition, &mut interference);
+        check_applied(&model, &applied);
 
         // The next transition meets whatever the client and the relay are in the middle of.
         if !settle {
             continue;
         }
 
-        let settled = system.settle();
+        let settled = system.settle(&mut interference);
         check_settled(&model, &settled);
         model.settle();
     }
 
-    let settled = system.settle();
+    let settled = system.settle(&mut interference);
     check_settled(&model, &settled);
 }
 

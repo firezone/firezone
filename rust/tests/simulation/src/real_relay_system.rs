@@ -79,8 +79,6 @@ pub(crate) struct RealRelaySystem {
 
     /// The peers that the client is connected to.
     connections: BTreeSet<SocketAddr>,
-    /// The peers whose data got lost on a heartbeat since the last transition.
-    lost_heartbeats: BTreeSet<SocketAddr>,
 
     /// The data that arrived at the peers.
     at_peers: Vec<Transmit>,
@@ -89,9 +87,6 @@ pub(crate) struct RealRelaySystem {
     /// How many data messages were sent. Each one carries its number.
     data_messages: u64,
     next_heartbeat: Instant,
-
-    /// What the network still does to the control datagrams of the current transition.
-    interference: Interference,
 }
 
 /// The relay client: an [`Allocation`], with what it announced and received.
@@ -113,6 +108,12 @@ struct RealAllocation {
     confirmed_channels: BTreeSet<u16>,
 }
 
+/// What happened while a transition was applied.
+pub(crate) struct Applied {
+    /// The peers whose data got lost on a heartbeat.
+    lost_heartbeats: BTreeSet<SocketAddr>,
+}
+
 /// What the system looked like once it settled, and what happened since it last did.
 pub(crate) struct Settled {
     relay_addresses: BTreeSet<SocketAddr>,
@@ -123,9 +124,14 @@ pub(crate) struct Settled {
     lost_heartbeats: BTreeSet<SocketAddr>,
 }
 
+/// Checks what happened while a transition was applied against what the model expects.
+pub(crate) fn check_applied(model: &RelayModel, applied: &Applied) {
+    check_heartbeats(model, &applied.lost_heartbeats);
+}
+
 /// Checks the peers whose data got lost on a heartbeat against the connections that the model
 /// expects to be established.
-pub(crate) fn check_heartbeats(model: &RelayModel, lost: &BTreeSet<SocketAddr>) {
+fn check_heartbeats(model: &RelayModel, lost: &BTreeSet<SocketAddr>) {
     for peer in lost {
         if model.connections.get(peer) == Some(&true) {
             tracing::error!(target: "assertions", %peer, "❌ An established connection lost data although nothing disrupted relaying");
@@ -192,26 +198,26 @@ impl RealRelaySystem {
             client: host(RealAllocation::default(), &model.client),
             foreign: model.foreign,
             connections: model.connections.keys().copied().collect(),
-            lost_heartbeats: BTreeSet::new(),
             at_peers: Vec::new(),
             injected_data: Vec::new(),
             data_messages: 0,
             next_heartbeat: start,
-            interference: Interference::default(),
         }
     }
 
-    /// Applies a transition, returning the peers whose data got lost on a heartbeat meanwhile.
+    /// Applies a transition while the network interferes with its control datagrams.
     pub(crate) fn apply(
         &mut self,
         transition: &Transition,
-        interference: Interference,
-    ) -> BTreeSet<SocketAddr> {
+        interference: &mut Interference,
+    ) -> Applied {
         let now = self.clock.now::<Instant>();
-        self.interference = interference;
+        let mut lost_heartbeats = BTreeSet::new();
 
         match transition {
-            Transition::Advance { duration } => self.advance(*duration),
+            Transition::Advance { duration } => {
+                lost_heartbeats = self.advance(*duration, interference);
+            }
             Transition::Refresh => {
                 self.client
                     .drive(&mut self.transmits, now, |a| a.refresh(now));
@@ -234,7 +240,7 @@ impl RealRelaySystem {
             }
             Transition::Partition { duration } => {
                 self.client.set_offline();
-                self.advance(*duration);
+                lost_heartbeats = self.advance(*duration, interference);
                 self.client
                     .update_interface(self.client.ip4, self.client.ip6);
             }
@@ -249,13 +255,14 @@ impl RealRelaySystem {
             Transition::InjectDatagram(injection) => self.inject(injection),
         }
 
-        mem::take(&mut self.lost_heartbeats)
+        Applied { lost_heartbeats }
     }
 
-    /// Lets the system settle, then exchanges data once over every connection.
-    pub(crate) fn settle(&mut self) -> Settled {
-        self.run_until_settled();
-        self.interference = Interference::default();
+    /// Lets the system settle while the network still interferes with the control datagrams of
+    /// the last transition, then exchanges data once over every connection.
+    pub(crate) fn settle(&mut self, interference: &mut Interference) -> Settled {
+        self.run_until_settled(interference);
+        let interference = &mut Interference::default();
 
         let relay_addresses_changed = self
             .client
@@ -263,38 +270,37 @@ impl RealRelaySystem {
         let relay_addresses = self.client.inner().relay_addresses.clone();
 
         // Has the client bind the channels that it lacks.
-        self.heartbeat();
-        self.run_until_settled();
+        let lost_heartbeats = self.heartbeat(interference);
+        self.run_until_settled(interference);
 
-        let relayed = self.exchange();
+        let relayed = self.exchange(interference);
         self.injected_data.clear();
 
         Settled {
             relay_addresses,
             relay_addresses_changed,
             relayed,
-            lost_heartbeats: mem::take(&mut self.lost_heartbeats),
+            lost_heartbeats,
         }
     }
 
-    /// Exchanges data over every connection and records those that lost it, unless the network
+    /// Exchanges data over every connection, returning those that lost it unless the network
     /// is partitioned.
-    fn heartbeat(&mut self) {
-        let relayed = self.exchange();
+    fn heartbeat(&mut self, interference: &mut Interference) -> BTreeSet<SocketAddr> {
+        let relayed = self.exchange(interference);
 
         if self.client.is_offline() {
-            return;
+            return BTreeSet::new();
         }
 
-        self.lost_heartbeats
-            .extend(self.connections.difference(&relayed).copied());
+        self.connections.difference(&relayed).copied().collect()
     }
 
     /// Sends data from the client to every peer it is connected to and back, returning the
     /// peers for which both arrived.
     ///
     /// Data that arrives where nobody sent it to is an error.
-    fn exchange(&mut self) -> BTreeSet<SocketAddr> {
+    fn exchange(&mut self, interference: &mut Interference) -> BTreeSet<SocketAddr> {
         let now = self.clock.now::<Instant>();
         let mut to_peers = Vec::new();
         let mut to_client = Vec::new();
@@ -320,7 +326,7 @@ impl RealRelaySystem {
         }
 
         let arrived = now + self.client.latency() + 2 * self.relay.latency();
-        self.run(|_| arrived);
+        self.run(interference, |_| arrived);
 
         let at_peers = mem::take(&mut self.at_peers)
             .into_iter()
@@ -541,12 +547,12 @@ impl RealRelaySystem {
     ///
     /// Time only passes for the network and for retransmissions; everything else waits for
     /// `advance`.
-    fn run_until_settled(&mut self) {
+    fn run_until_settled(&mut self, interference: &mut Interference) {
         let deadline = self.clock.now::<Instant>() + MAX_SETTLE;
         let mut allocations = 0;
 
         loop {
-            self.run(|now| {
+            self.run(interference, |now| {
                 assert!(now <= deadline, "The client and the relay do not settle");
 
                 now + RETRANSMISSION
@@ -565,30 +571,39 @@ impl RealRelaySystem {
 
     /// Lets time pass, stopping at everything that is due on the way and for a heartbeat
     /// every [`HEARTBEAT`].
-    fn advance(&mut self, duration: Duration) {
+    ///
+    /// Returns the connections that lost data on a heartbeat.
+    fn advance(
+        &mut self,
+        duration: Duration,
+        interference: &mut Interference,
+    ) -> BTreeSet<SocketAddr> {
         let target = self.clock.now::<Instant>() + duration;
+        let mut lost = BTreeSet::new();
 
         while self.next_heartbeat <= target {
             let next_heartbeat = self.next_heartbeat;
 
-            self.run(|_| next_heartbeat);
+            self.run(interference, |_| next_heartbeat);
             self.clock.skip_to(next_heartbeat);
-            self.heartbeat();
+            lost.extend(self.heartbeat(interference));
             self.next_heartbeat = self.clock.now::<Instant>() + HEARTBEAT;
         }
 
-        self.run(|_| target);
+        self.run(interference, |_| target);
         self.clock.skip_to(target);
+
+        lost
     }
 
     /// Steps the hosts and the network through everything that is due until the horizon, which
     /// may move with the clock.
-    fn run(&mut self, horizon: impl Fn(Instant) -> Instant) {
+    fn run(&mut self, interference: &mut Interference, horizon: impl Fn(Instant) -> Instant) {
         loop {
             let now = self.clock.now::<Instant>();
 
             while let Some(transmit) = self.transmits.pop(now) {
-                self.dispatch(transmit, now);
+                self.dispatch(transmit, now, interference);
             }
             self.client.step(&mut self.transmits, now);
             self.relay.step(&mut self.transmits, now, self.clock.now());
@@ -610,9 +625,9 @@ impl RealRelaySystem {
         }
     }
 
-    /// Routes a datagram by its destination, losing and forging the control datagrams that the
-    /// current transition asks for.
-    fn dispatch(&mut self, transmit: Transmit, now: Instant) {
+    /// Routes a datagram by its destination, losing and forging the control datagrams that
+    /// `interference` asks for.
+    fn dispatch(&mut self, transmit: Transmit, now: Instant, interference: &mut Interference) {
         let src = transmit
             .src
             .expect("datagrams on the network have a source");
@@ -629,9 +644,9 @@ impl RealRelaySystem {
         {
             if is_control
                 && self.client.sending_socket_for(src.ip()) == Some(src)
-                && self.interference.lose_to_relay > 0
+                && interference.lose_to_relay > 0
             {
-                self.interference.lose_to_relay -= 1;
+                interference.lose_to_relay -= 1;
                 return;
             }
 
@@ -645,12 +660,12 @@ impl RealRelaySystem {
             return;
         }
 
-        if is_control && self.interference.lose_to_client > 0 {
-            self.interference.lose_to_client -= 1;
+        if is_control && interference.lose_to_client > 0 {
+            interference.lose_to_client -= 1;
             return;
         }
 
-        let forgery = self.interference.forge_to_client.take_if(|_| is_control);
+        let forgery = interference.forge_to_client.take_if(|_| is_control);
         if let Some(forged) = forgery.and_then(|f| f.apply_to(&transmit.payload)) {
             self.forge_to_client(datagram(Some(src), dst, &forged), now);
         }
@@ -875,7 +890,7 @@ mod tests {
         let model = RelayGenerator::new(&[]).model();
         let mut system = RealRelaySystem::new(&model, Instant::now());
 
-        let settled = system.settle();
+        let settled = system.settle(&mut Interference::default());
 
         check_settled(&model, &settled);
         assert_eq!(settled.relay_addresses.len(), 2);
