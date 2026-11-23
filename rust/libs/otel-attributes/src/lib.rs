@@ -69,6 +69,11 @@ pub fn portal_message_type(event: &'static str) -> KeyValue {
     KeyValue::new("portal.message.type", event)
 }
 
+/// The agent a connection uses to select its network path, i.e. `ice` or `frostlink`.
+pub fn connection_agent(agent: &'static str) -> KeyValue {
+    KeyValue::new("connection.agent", agent)
+}
+
 pub fn io_error_code(e: &io::Error) -> KeyValue {
     KeyValue::new("error.code", e.raw_os_error().unwrap_or_default() as i64)
 }
