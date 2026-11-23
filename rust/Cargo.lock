@@ -6630,6 +6630,8 @@ dependencies = [
  "hex-display",
  "is",
  "logging",
+ "otel-attributes",
+ "otel-instruments",
  "rand 0.10.4",
  "ringbuffer",
  "smallvec",

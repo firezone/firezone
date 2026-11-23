@@ -100,6 +100,30 @@ pub fn flow_socket_evictions() -> Counter<u64> {
         .build()
 }
 
+/// Round-trip time of a request to a relay.
+pub fn relay_rtt() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("connlib.relay.rtt")
+        .with_description(
+            "Round-trip time of a request to a relay, measured from its first transmission.",
+        )
+        .with_unit("s")
+        .with_boundaries(vec![
+            0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0, 2.5,
+            5.0, 10.0,
+        ])
+        .build()
+}
+
+/// Number of relay allocations that were freed, by reason.
+pub fn relay_allocations_freed() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("connlib.relay.allocation.freed")
+        .with_description("Number of relay allocations that were freed, by reason.")
+        .with_unit("{allocation}")
+        .build()
+}
+
 /// Number of errors encountered while processing a packet batch.
 pub fn tunnel_errors() -> Counter<u64> {
     connlib_meter()

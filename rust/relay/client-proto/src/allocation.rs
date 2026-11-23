@@ -8,6 +8,7 @@ use fast_random_state::FastRandomState;
 use hex_display::HexDisplayExt as _;
 use is::Candidate;
 use logging::err_with_src;
+use otel_instruments::Histogram;
 use rand::{SeedableRng as _, rngs::StdRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use smallvec::SmallVec;
@@ -105,6 +106,7 @@ pub struct Allocation {
     /// Smoothed round-trip time to the relay, computed via an exponential moving
     /// average over response times. `None` until we receive the first response.
     rtt: Option<Duration>,
+    rtt_histogram: Histogram<f64>,
 
     rng: StdRng,
 }
@@ -243,6 +245,18 @@ pub enum FreeReason {
     AllocationQuotaReached,
 }
 
+impl From<&FreeReason> for otel_attributes::Value {
+    fn from(reason: &FreeReason) -> Self {
+        match reason {
+            FreeReason::AuthenticationError => Self::from("AuthenticationError"),
+            FreeReason::NoResponseReceived => Self::from("NoResponseReceived"),
+            FreeReason::ProtocolFailure => Self::from("ProtocolFailure"),
+            FreeReason::UnhandledResponse => Self::from("UnhandledResponse"),
+            FreeReason::AllocationQuotaReached => Self::from("AllocationQuotaReached"),
+        }
+    }
+}
+
 impl Allocation {
     pub fn new(
         server: RelaySocket,
@@ -277,6 +291,7 @@ impl Allocation {
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
             rtt: None,
+            rtt_histogram: otel_instruments::relay_rtt(),
             rng: StdRng::from_seed(seed),
         };
 
@@ -437,6 +452,10 @@ impl Allocation {
         Span::current().record("rtt", field::debug(rtt));
 
         self.update_rtt(rtt);
+        self.rtt_histogram.record(
+            rtt.as_secs_f64(),
+            &[otel_attributes::network_type_for_addr(from)],
+        );
 
         if tracing::enabled!(target: "wire::turn", tracing::Level::DEBUG) {
             let request = original_request
