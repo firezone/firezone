@@ -1635,18 +1635,16 @@ impl ChannelBindings {
             return None;
         }
 
-        let peer = channel.peer;
-        let had_activity = !channel.no_activity();
-        channel.record_received(now);
-
-        if !had_activity && let Some(refresh_at) = channel.refresh_at() {
+        if channel.no_activity() {
+            let refresh_at = channel.refresh_at();
             self.next_refresh = Some(
                 self.next_refresh
                     .map_or(refresh_at, |next| next.min(refresh_at)),
             );
         }
+        channel.record_received(now);
 
-        Some((peer, packet.payload()))
+        Some((channel.peer, packet.payload()))
     }
 
     fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<u16> {
@@ -1697,18 +1695,11 @@ impl ChannelBindings {
         now: Instant,
         is_inflight: impl Fn(u16) -> bool + 's,
     ) -> impl Iterator<Item = (u16, SocketAddr)> + 's {
-        let any_due = self.next_refresh.is_some_and(|at| now >= at);
-
-        any_due
-            .then(|| {
-                self.inner
-                    .iter()
-                    .filter(move |(_, channel)| channel.needs_refresh(now))
-                    .filter(move |(number, _)| !is_inflight(**number))
-                    .map(|(number, channel)| (*number, channel.peer))
-            })
-            .into_iter()
-            .flatten()
+        self.inner
+            .iter()
+            .filter(move |(_, channel)| channel.needs_refresh(now))
+            .filter(move |(number, _)| !is_inflight(**number))
+            .map(|(number, channel)| (*number, channel.peer))
     }
 
     /// Looks for the next channel that is due for a refresh after `now`.
@@ -1722,7 +1713,8 @@ impl ChannelBindings {
         self.next_refresh = self
             .inner
             .values()
-            .filter_map(Channel::refresh_at)
+            .filter(|channel| !channel.no_activity())
+            .map(Channel::refresh_at)
             .filter(|at| *at > now)
             .min();
     }
@@ -1822,17 +1814,12 @@ impl Channel {
     /// - are older than 5 minutes
     /// - we have received data on since we created / refreshed them
     fn needs_refresh(&self, now: Instant) -> bool {
-        self.refresh_at()
-            .is_some_and(|refresh_at| now >= refresh_at)
+        !self.no_activity() && now >= self.refresh_at()
     }
 
-    /// Returns when this channel is due for a refresh, if at all.
-    fn refresh_at(&self) -> Option<Instant> {
-        if self.no_activity() {
-            return None;
-        }
-
-        Some(self.bound_at + Self::CHANNEL_LIFETIME / 2)
+    /// Returns when this channel is due for a refresh, if it received data by then.
+    fn refresh_at(&self) -> Instant {
+        self.bound_at + Self::CHANNEL_LIFETIME / 2
     }
 
     /// Returns `true` if no data has been received since we created this channel.
