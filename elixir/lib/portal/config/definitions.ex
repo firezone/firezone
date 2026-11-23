@@ -576,10 +576,16 @@ defmodule Portal.Config.Definitions do
   @doc """
   URL of the Azure Key Vault that holds the device CA key of each account, for example
   https://firezone-device-ca.vault.azure.net. Each key is non-exportable and software-protected,
-  and the portal signs with its managed identity. Unset, the default for on-prem, derives each account's
-  key from the tokens key base.
+  and the portal signs with its managed identity. Unset, the default for on-prem, every account
+  signs with DEVICE_CA_PRIVATE_KEY.
   """
   defconfig(:device_ca_key_vault_url, :string, default: nil)
+
+  @doc """
+  PEM-encoded RSA private key of the device CA, for a portal without DEVICE_CA_KEY_VAULT_URL.
+  Every account signs with this one key and has its own CA certificate.
+  """
+  defconfig(:device_ca_private_key, :string, default: nil, sensitive: true)
 
   @doc """
   Blob container in the other Firezone Cloud region that a region transfer

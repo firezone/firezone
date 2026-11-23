@@ -9,7 +9,7 @@ defmodule Portal.DeviceCATest do
       account = account_fixture()
 
       assert {:ok, %DeviceCertificateAuthority{} = ca} = DeviceCA.ensure(account.id)
-      assert "local:" <> _encrypted = ca.key_id
+      assert ca.key_id == "local"
       assert :public_key.pkix_is_self_signed(ca.certificate)
 
       certificate = :public_key.pkix_decode_cert(ca.certificate, :otp)
@@ -43,8 +43,18 @@ defmodule Portal.DeviceCATest do
       assert :public_key.verify({:digest, digest}, :sha256, signature, public_key)
     end
 
-    test "refuses a key id that was not encrypted with this key base" do
-      assert DeviceCA.Local.sign("local:tampered", :crypto.hash(:sha256, "")) == {:error, :unknown_key}
+    test "is not configured without a private key" do
+      Portal.Config.put_env_override(:device_ca_private_key, "")
+
+      assert DeviceCA.Local.sign("local", :crypto.hash(:sha256, "")) == {:error, :not_configured}
+      assert DeviceCA.ensure(account_fixture().id) == {:error, :not_configured}
+    end
+
+    test "refuses a key that is not RSA" do
+      pem = :public_key.pem_encode([:public_key.pem_entry_encode(:ECPrivateKey, :public_key.generate_key({:namedCurve, :secp256r1}))])
+      Portal.Config.put_env_override(:device_ca_private_key, pem)
+
+      assert DeviceCA.Local.sign("local", :crypto.hash(:sha256, "")) == {:error, :invalid_key}
     end
 
     test "signs only with its own keys" do

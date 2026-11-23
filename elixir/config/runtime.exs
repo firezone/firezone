@@ -263,6 +263,7 @@ if config_env() == :prod do
 
   config :portal, slug_registry_table_url: env_var_to_config!(:slug_registry_table_url)
   config :portal, device_ca_key_vault_url: env_var_to_config!(:device_ca_key_vault_url)
+  config :portal, device_ca_private_key: env_var_to_config!(:device_ca_private_key)
 
   config :portal,
     region_transfer_outbox_url: env_var_to_config!(:region_transfer_outbox_url),
