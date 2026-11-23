@@ -10,8 +10,6 @@ use crate::stun;
 pub(crate) enum Transition {
     /// Time passes on a working network.
     Advance { duration: Duration },
-    /// The client calls `Allocation::refresh`.
-    Refresh,
     /// The client moves to new sockets on these interfaces and calls `Allocation::restart`.
     Roam {
         ip4: Option<Ipv4Addr>,

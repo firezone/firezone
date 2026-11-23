@@ -351,43 +351,11 @@ impl Allocation {
             .flatten()
     }
 
-    /// Refresh this allocation.
-    ///
-    /// In case refreshing the allocation fails, we will attempt to make a new one.
-    #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
-    pub fn refresh(&mut self, now: Instant) {
-        if !self.has_allocation() && self.allocate_in_flight() {
-            tracing::debug!("Not refreshing allocation because we are already making one");
-            return;
-        }
-
-        if self.is_suspended() {
-            tracing::debug!("Attempting to make a new allocation");
-
-            self.active_socket = None;
-            self.send_binding_requests(now);
-            return;
-        }
-
-        tracing::debug!("Refreshing allocation");
-
-        // By using the `REQUEST_TIMEOUT` for timeout and max_elapsed, we effectively only perform
-        // a single request.
-        //
-        // When pro-actively refreshing the allocation, we don't want to timeout after 8s but much earlier.
-        let backoff = backoff::new(now, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
-
-        self.authenticate_and_queue(
-            MessagePrototype::refresh(self.software.clone()),
-            Some(backoff),
-            now,
-        );
-    }
-
     /// Updates the credentials and refreshes the allocation with them.
     ///
-    /// The refresh also checks that the relay still has the allocation. Requests in flight are
-    /// signed with the new credentials when they are retransmitted.
+    /// The refresh also checks that the relay still has the allocation, and an allocation that
+    /// gave up starts over. Requests in flight are signed with the new credentials when they are
+    /// retransmitted.
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn update_credentials(
         &mut self,
@@ -1136,7 +1104,7 @@ impl Allocation {
         self.credentials.is_some()
     }
 
-    pub fn matches_credentials(&self, username: &Username, password: &str) -> bool {
+    fn matches_credentials(&self, username: &Username, password: &str) -> bool {
         self.credentials
             .as_ref()
             .is_some_and(|c| &c.username == username && c.password == password)
@@ -2745,7 +2713,7 @@ mod tests {
             Some(Nonce::new("nonce1".to_owned()).unwrap()); // Assume we had a nonce.
 
         let now = now + Duration::from_secs(1);
-        allocation.refresh(now);
+        allocation.refresh_with_same_credentials();
 
         // If the relay is restarted, our current credentials will be invalid. Simulate with an "unauthorized" response".
         let now = now + Duration::from_secs(1);
@@ -2795,7 +2763,7 @@ mod tests {
             .with_binding_response(PEER1, now)
             .with_allocate_response(&[RELAY_ADDR_IP4], now);
 
-        allocation.refresh(now);
+        allocation.refresh_with_same_credentials();
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(server_error(&refresh), now);
 
@@ -3179,7 +3147,12 @@ mod tests {
         }
 
         fn refresh_with_same_credentials(&mut self) {
-            self.refresh(Instant::now());
+            self.update_credentials(
+                Username::new("foobar".to_owned()).unwrap(),
+                "baz".to_owned(),
+                Realm::new("firezone".to_owned()).unwrap(),
+                Instant::now(),
+            );
         }
     }
 }

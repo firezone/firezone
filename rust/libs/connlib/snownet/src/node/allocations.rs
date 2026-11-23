@@ -159,10 +159,6 @@ where
             .rev()
     }
 
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&RId, &mut Allocation)> {
-        self.inner.iter_mut()
-    }
-
     pub(crate) fn remove_by_id(&mut self, id: &RId) -> Option<Allocation> {
         let allocation = self.inner.remove(id)?;
 
@@ -201,10 +197,6 @@ where
                 let allocation = o.get_mut();
 
                 if allocation.matches_socket(&server) {
-                    if allocation.matches_credentials(&username, &password) {
-                        return UpsertResult::Skipped;
-                    }
-
                     allocation.update_credentials(username, password, realm, now);
 
                     return UpsertResult::Updated;
@@ -413,8 +405,7 @@ fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
 
 pub(crate) enum UpsertResult {
     Added,
-    Skipped,
-    /// The allocation got new credentials.
+    /// The allocation got the credentials and checks that the relay still has it.
     Updated,
     Blocked,
     Replaced(Allocation),

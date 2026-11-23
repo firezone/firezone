@@ -19,7 +19,6 @@ use crate::node::timeout_cache::TimeoutCache;
 use anyhow::{Context, Result, anyhow};
 use bufferpool::Bytes;
 use core::fmt;
-use fast_random_state::FastRandomState;
 use ip_packet::{Ecn, IpPacket};
 use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
@@ -32,7 +31,7 @@ use relay_client_proto::channel_data::channel_data_packet_buffer;
 use relay_client_proto::{Allocation, RelaySocket, Socket};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::hash::Hash;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
@@ -875,7 +874,7 @@ where
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
         }
 
-        // Second, insert new relays.
+        // Second, insert new relays and update the ones we know.
         for (rid, server, username, password, realm) in to_add {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -893,11 +892,8 @@ where
                 allocations::UpsertResult::Added => {
                     tracing::info!(%rid, address = ?server, "Added new TURN server")
                 }
-                allocations::UpsertResult::Skipped => {
-                    tracing::info!(%rid, address = ?server, "Skipping known TURN server")
-                }
                 allocations::UpsertResult::Updated => {
-                    tracing::info!(%rid, address = ?server, "Updated credentials of TURN server")
+                    tracing::info!(%rid, address = ?server, "Updated known TURN server")
                 }
                 allocations::UpsertResult::Blocked => {
                     tracing::debug!(%rid, address = ?server, "Ignoring blocked TURN server")
@@ -915,21 +911,7 @@ where
             }
         }
 
-        let newly_added_relays = to_add
-            .iter()
-            .map(|(id, _, _, _, _)| *id)
-            .collect::<HashSet<_, FastRandomState>>();
-
-        // Third, check if other relays are still present.
-        for (_, previous_allocation) in self
-            .allocations
-            .iter_mut()
-            .filter(|(id, _)| !newly_added_relays.contains(id))
-        {
-            previous_allocation.refresh(now);
-        }
-
-        // Fourth, detach existing connections from removed relays.
+        // Third, detach existing connections from removed relays.
         self.connections.clear_relays(to_remove.into_iter());
     }
 

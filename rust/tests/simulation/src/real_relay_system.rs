@@ -224,10 +224,6 @@ impl RealRelaySystem {
             Transition::Advance { duration } => {
                 lost_heartbeats = self.advance(*duration, interference);
             }
-            Transition::Refresh => {
-                self.client
-                    .drive(&mut self.transmits, now, |a| a.refresh(now));
-            }
             Transition::Roam { ip4, ip6 } => {
                 let seed = self.client.exec_mut(|c| {
                     c.forget_relay_addresses();

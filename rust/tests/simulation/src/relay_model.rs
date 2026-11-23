@@ -51,8 +51,6 @@ pub(crate) struct RelayModel {
     disrupted: bool,
     /// How many transmissions a request may have lost since the system last settled.
     lost_transmissions: u8,
-    /// Whether the client called `Allocation::refresh` since the system last settled.
-    refreshed: bool,
 
     /// How much time the transitions let pass.
     elapsed: Duration,
@@ -85,7 +83,6 @@ impl RelayModel {
             connections: PEERS.into_iter().map(|peer| (peer, false)).collect(),
             disrupted: true,
             lost_transmissions: 0,
-            refreshed: false,
             elapsed: Duration::ZERO,
             credentials_expire_at: expiry(Duration::ZERO, credentials_lifetime),
         }
@@ -154,7 +151,6 @@ impl RelayModel {
                     .saturating_add(RETRANSMISSION_BUDGET);
             }
             Transition::Advance { duration } => self.elapsed += *duration,
-            Transition::Refresh => self.refreshed = true,
             Transition::RotateCredentials { lifetime } => {
                 self.credentials_expire_at = expiry(self.elapsed, *lifetime);
             }
@@ -170,13 +166,7 @@ impl RelayModel {
         // Expired credentials cost the client its allocation once it or the relay notices.
         self.disrupted |= credentials_were_expired || self.credentials_expired();
 
-        // An exception for `Allocation::refresh`: it sends its request only once, so a single
-        // lost datagram makes the client give up on the allocation.
-        let budget = match self.refreshed {
-            true => 0,
-            false => RETRANSMISSION_BUDGET,
-        };
-        self.disrupted |= self.lost_transmissions > budget;
+        self.disrupted |= self.lost_transmissions > RETRANSMISSION_BUDGET;
 
         if self.disrupted {
             for established in self.connections.values_mut() {
@@ -196,7 +186,6 @@ impl RelayModel {
         }
         self.disrupted = false;
         self.lost_transmissions = 0;
-        self.refreshed = false;
     }
 }
 
