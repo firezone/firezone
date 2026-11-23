@@ -80,7 +80,7 @@ defmodule PortalWeb.Actors.Components do
 
     assigns =
       assigns
-      |> assign(:disabling_directory_name, disabling_directory_name(assigns.actor, assigns.identities))
+      |> assign(:disabling_directory_name, disabling_directory_name(assigns.actor, loaded(assigns.identities)))
       |> assign(:tab, normalize_tab(assigns.actor, assigns.active_tab))
 
     ~H"""
@@ -132,7 +132,7 @@ defmodule PortalWeb.Actors.Components do
   attr :account, :any, required: true
   attr :actor, :any, required: true
   attr :subject, :any, required: true
-  attr :tokens, :list, required: true
+  attr :tokens, Phoenix.LiveView.AsyncResult, required: true
   attr :confirm_disable_actor, :boolean, required: true
   attr :confirm_delete_actor, :boolean, required: true
   attr :disabling_directory_name, :string, default: nil
@@ -156,7 +156,13 @@ defmodule PortalWeb.Actors.Components do
           </h2>
           <p class="mt-1 text-sm text-muted truncate">
             <%= if @actor.type == :service_account do %>
-              <.token_expiry tokens={@tokens} />
+              <.async_result :let={tokens} assign={@tokens}>
+                <:loading>
+                  <span id="actor-token-expiry-loading" class="inline-block h-2.5 w-32 bg-hover animate-pulse"></span>
+                </:loading>
+                <:failed>Could not load tokens.</:failed>
+                <.token_expiry tokens={tokens} />
+              </.async_result>
             <% else %>
               {@actor.email || "No email"}
             <% end %>
@@ -271,16 +277,19 @@ defmodule PortalWeb.Actors.Components do
   end
 
   attr :account, :any, required: true
-  attr :groups, :list, required: true
+  attr :groups, Phoenix.LiveView.AsyncResult, required: true
   attr :search_results, :any, default: nil
 
   defp actor_groups_section(assigns) do
     ~H"""
     <section id="actor-groups" class="min-w-0">
       <.eyebrow icon="ri-team-line">Groups</.eyebrow>
+      <.async_result :let={groups} assign={@groups}>
+        <:loading><.section_skeleton id="actor-groups-loading" /></:loading>
+        <:failed><.load_failed>Could not load groups.</.load_failed></:failed>
       <ul class="border-t border-rule">
         <li
-          :for={row <- @groups}
+          :for={row <- groups}
           id={"actor-group-#{row.group.id}"}
           class="flex items-center justify-between gap-3 py-2 border-b border-hair"
         >
@@ -308,9 +317,10 @@ defmodule PortalWeb.Actors.Components do
           </span>
         </li>
       </ul>
-      <p :if={@groups == []} class="flex items-center gap-2 py-3 text-sm text-muted">
+      <p :if={groups == []} class="flex items-center gap-2 py-3 text-sm text-muted">
         <Core.icon name="ri-team-line" class="w-4 h-4 text-faint" /> Not in any group.
       </p>
+      </.async_result>
       <div class="relative mt-3" phx-click-away="blur_group_search">
         <Core.icon
           name="ri-add-line"
@@ -352,15 +362,18 @@ defmodule PortalWeb.Actors.Components do
   end
 
   attr :account, :any, required: true
-  attr :devices, :list, required: true
+  attr :devices, Phoenix.LiveView.AsyncResult, required: true
 
   defp actor_devices_section(assigns) do
     ~H"""
     <section id="actor-devices" class="min-w-0">
       <.eyebrow icon="ri-macbook-line">Devices</.eyebrow>
+      <.async_result :let={devices} assign={@devices}>
+        <:loading><.section_skeleton id="actor-devices-loading" /></:loading>
+        <:failed><.load_failed>Could not load devices.</.load_failed></:failed>
       <ul class="border-t border-rule">
         <li
-          :for={device <- @devices}
+          :for={device <- devices}
           id={"actor-device-#{device.id}"}
           class="flex items-center justify-between gap-3 py-2 border-b border-hair"
         >
@@ -382,23 +395,27 @@ defmodule PortalWeb.Actors.Components do
           </span>
         </li>
       </ul>
-      <p :if={@devices == []} class="flex items-center gap-2 py-3 text-sm text-muted">
+      <p :if={devices == []} class="flex items-center gap-2 py-3 text-sm text-muted">
         <Core.icon name="ri-macbook-line" class="w-4 h-4 text-faint" /> No devices yet.
       </p>
+      </.async_result>
     </section>
     """
   end
 
   attr :account, :any, required: true
-  attr :reach, :list, required: true
+  attr :reach, Phoenix.LiveView.AsyncResult, required: true
 
   defp actor_reach_section(assigns) do
     ~H"""
     <section id="actor-reach" class="min-w-0">
       <.eyebrow icon="ri-route-line">Can reach</.eyebrow>
+      <.async_result :let={reach} assign={@reach}>
+        <:loading><.section_skeleton id="actor-reach-loading" /></:loading>
+        <:failed><.load_failed>Could not load resources.</.load_failed></:failed>
       <ul class="border-t border-rule">
         <li
-          :for={row <- @reach}
+          :for={row <- reach}
           class="flex items-start justify-between gap-3 py-2 border-b border-hair"
         >
           <div class="min-w-0">
@@ -422,9 +439,10 @@ defmodule PortalWeb.Actors.Components do
           <.route_chip resource={row.resource} site_name={row.site_name} />
         </li>
       </ul>
-      <p :if={@reach == []} class="flex items-center gap-2 py-3 text-sm text-muted">
+      <p :if={reach == []} class="flex items-center gap-2 py-3 text-sm text-muted">
         <Core.icon name="ri-route-line" class="w-4 h-4 text-faint" /> Nothing yet.
       </p>
+      </.async_result>
     </section>
     """
   end
@@ -539,12 +557,14 @@ defmodule PortalWeb.Actors.Components do
 
     ~H"""
     <div>
-      <div :if={@tab == "identities"}>
-        <.empty_tab :if={@identities == []} icon="ri-id-card-line">
+      <.async_result :let={identities} :if={@tab == "identities"} assign={@identities}>
+        <:loading><.tab_skeleton id="actor-identities-loading" /></:loading>
+        <:failed><.load_failed class="px-6">Could not load identities.</.load_failed></:failed>
+        <.empty_tab :if={identities == []} icon="ri-id-card-line">
           No identity provider accounts linked.
         </.empty_tab>
-        <ul :if={@identities != []}>
-          <li :for={identity <- @identities} class="border-b border-hair">
+        <ul :if={identities != []}>
+          <li :for={identity <- identities} class="border-b border-hair">
             <.confirm_row
               :if={@confirm_delete_identity_id == identity.id}
               question="Delete this identity?"
@@ -604,12 +624,14 @@ defmodule PortalWeb.Actors.Components do
             </details>
           </li>
         </ul>
-      </div>
+      </.async_result>
 
-      <div :if={@tab == "client_sessions"}>
-        <.empty_tab :if={@tokens == []} icon="ri-smartphone-line">No active client sessions.</.empty_tab>
-        <ul :if={@tokens != []}>
-          <li :for={token <- @tokens} class="border-b border-hair">
+      <.async_result :let={tokens} :if={@tab == "client_sessions"} assign={@tokens}>
+        <:loading><.tab_skeleton id="actor-client-sessions-loading" /></:loading>
+        <:failed><.load_failed class="px-6">Could not load client sessions.</.load_failed></:failed>
+        <.empty_tab :if={tokens == []} icon="ri-smartphone-line">No active client sessions.</.empty_tab>
+        <ul :if={tokens != []}>
+          <li :for={token <- tokens} class="border-b border-hair">
             <.confirm_row
               :if={@confirm_delete_token_id == token.id}
               question="Revoke this session?"
@@ -648,12 +670,14 @@ defmodule PortalWeb.Actors.Components do
             </details>
           </li>
         </ul>
-      </div>
+      </.async_result>
 
-      <div :if={@tab == "portal_sessions"}>
-        <.empty_tab :if={@sessions == []} icon="ri-computer-line">No active portal sessions.</.empty_tab>
-        <ul :if={@sessions != []}>
-          <li :for={session <- @sessions} class="border-b border-hair">
+      <.async_result :let={sessions} :if={@tab == "portal_sessions"} assign={@sessions}>
+        <:loading><.tab_skeleton id="actor-portal-sessions-loading" /></:loading>
+        <:failed><.load_failed class="px-6">Could not load portal sessions.</.load_failed></:failed>
+        <.empty_tab :if={sessions == []} icon="ri-computer-line">No active portal sessions.</.empty_tab>
+        <ul :if={sessions != []}>
+          <li :for={session <- sessions} class="border-b border-hair">
             <.confirm_row
               :if={@confirm_delete_session_id == session.id}
               question="Revoke this session?"
@@ -703,7 +727,7 @@ defmodule PortalWeb.Actors.Components do
             </details>
           </li>
         </ul>
-      </div>
+      </.async_result>
 
       <div :if={@tab == "tokens"}>
         <div :if={@created_token} class="px-6 py-5 space-y-4">
@@ -761,12 +785,14 @@ defmodule PortalWeb.Actors.Components do
           </form>
         </div>
 
-        <div :if={is_nil(@created_token) and not @adding_token}>
-          <.empty_tab :if={@tokens == []} icon="ri-key-line">
+        <.async_result :let={tokens} :if={is_nil(@created_token) and not @adding_token} assign={@tokens}>
+          <:loading><.tab_skeleton id="actor-tokens-loading" /></:loading>
+          <:failed><.load_failed class="px-6">Could not load tokens.</.load_failed></:failed>
+          <.empty_tab :if={tokens == []} icon="ri-key-line">
             No tokens. Add one to authenticate this service account.
           </.empty_tab>
-          <ul :if={@tokens != []}>
-            <li :for={token <- @tokens} class="border-b border-hair">
+          <ul :if={tokens != []}>
+            <li :for={token <- tokens} class="border-b border-hair">
               <.confirm_row
                 :if={@confirm_delete_token_id == token.id}
                 question="Delete this token?"
@@ -808,7 +834,7 @@ defmodule PortalWeb.Actors.Components do
               </details>
             </li>
           </ul>
-        </div>
+        </.async_result>
       </div>
     </div>
     """
@@ -925,14 +951,14 @@ defmodule PortalWeb.Actors.Components do
         <.role_picker :if={@actor.type != :service_account} form={@form} is_last_admin={@is_last_admin} />
         <div :if={@actor.type != :service_account}>
           <.otp_toggle id="edit-allow-email-otp-checkbox" form={@form} />
-          <p :if={@identities == []} class="mt-1 text-xs text-attn">
+          <p :if={@identities.ok? and @identities.result == []} class="mt-1 text-xs text-attn">
             This actor has no SSO identity. Disabling Email OTP will lock them out.
           </p>
         </div>
         <.actor_group_picker
           pending_additions={@pending_group_additions}
           pending_removals={@pending_group_removals}
-          current_groups={@groups}
+          current_groups={loaded(@groups)}
           search_results={@group_search_results}
         />
       </div>
@@ -1478,6 +1504,56 @@ defmodule PortalWeb.Actors.Components do
     """
   end
 
+  @doc """
+  Pulsing bars under a modal section's eyebrow while its rows load.
+  """
+  attr :id, :string, required: true
+  attr :rows, :integer, default: 3
+
+  def section_skeleton(assigns) do
+    ~H"""
+    <ul id={@id} aria-hidden="true" class="border-t border-rule animate-pulse">
+      <li
+        :for={width <- Enum.take(Stream.cycle(~w[w-32 w-24 w-28]), @rows)}
+        class="py-3 border-b border-hair"
+      >
+        <div class={["h-2.5 bg-hover max-w-full", width]}></div>
+      </li>
+    </ul>
+    """
+  end
+
+  @doc """
+  A short muted line where a modal section could not load.
+  """
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def load_failed(assigns) do
+    ~H"""
+    <p class={["flex items-center gap-2 py-3 text-xs text-muted", @class]}>
+      <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 text-faint" />
+      {render_slot(@inner_block)}
+    </p>
+    """
+  end
+
+  attr :id, :string, required: true
+
+  defp tab_skeleton(assigns) do
+    ~H"""
+    <div id={@id} aria-hidden="true" class="animate-pulse">
+      <div :for={width <- ~w[w-40 w-32 w-36]} class="flex items-center gap-3 px-6 py-3.5 border-b border-hair">
+        <div class="w-4 h-4 bg-hover shrink-0"></div>
+        <div class="flex-1 min-w-0">
+          <div class={["h-2.5 bg-hover max-w-full", width]}></div>
+          <div class="mt-2 h-2 w-24 bg-hair"></div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   attr :icon, :string, required: true
   slot :inner_block, required: true
 
@@ -1732,6 +1808,8 @@ defmodule PortalWeb.Actors.Components do
 
   # The directory's identity of the actor is kept while the directory has it
   # disabled, so its name is already loaded with the identities.
+  defp loaded(result), do: PortalWeb.Actors.Details.loaded(result)
+
   defp disabling_directory_name(%{disabled_by_directory_id: nil}, _identities), do: nil
 
   defp disabling_directory_name(%{disabled_by_directory_id: directory_id}, identities) do

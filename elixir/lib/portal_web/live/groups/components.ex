@@ -302,7 +302,7 @@ defmodule PortalWeb.Groups.Components do
 
   attr :account, :any, required: true
   attr :group, :any, required: true
-  attr :panel_members, :list, required: true
+  attr :panel_members, Phoenix.LiveView.AsyncResult, required: true
   attr :member_total, :integer, required: true
   attr :member_pages, :integer, required: true
   attr :member_page, :integer, required: true
@@ -315,7 +315,7 @@ defmodule PortalWeb.Groups.Components do
     ~H"""
     <section id="group-members" class="min-w-0">
       <div class="flex items-center justify-between gap-3 mb-2.5">
-        <.eyebrow icon="ri-user-line">Members · {@member_total}</.eyebrow>
+        <.eyebrow icon="ri-user-line">Members{if @panel_members.ok?, do: " · #{@member_total}"}</.eyebrow>
         <form id="filter-members-form" phx-change="filter_show_members" class="relative">
           <Core.icon
             name="ri-search-line"
@@ -333,9 +333,12 @@ defmodule PortalWeb.Groups.Components do
           />
         </form>
       </div>
+      <.async_result :let={panel_members} assign={@panel_members}>
+        <:loading><Actors.Components.section_skeleton id="group-members-loading" /></:loading>
+        <:failed><Actors.Components.load_failed>Could not load members.</Actors.Components.load_failed></:failed>
       <ul class="border-t border-rule">
         <li
-          :for={actor <- @panel_members}
+          :for={actor <- panel_members}
           id={"group-member-#{actor.id}"}
           class="flex items-center justify-between gap-3 py-2 border-b border-hair"
         >
@@ -366,7 +369,7 @@ defmodule PortalWeb.Groups.Components do
         </li>
       </ul>
       <p
-        :if={@panel_members == [] && @member_total == 0}
+        :if={panel_members == [] && @member_total == 0}
         class="flex items-center gap-2 py-3 text-sm text-muted"
       >
         <Core.icon name="ri-user-line" class="w-4 h-4 text-faint" />
@@ -397,6 +400,7 @@ defmodule PortalWeb.Groups.Components do
           />
         </div>
       </div>
+      </.async_result>
       <div :if={@editable?} class="relative mt-3" phx-click-away="blur_members_to_add">
         <form id="add-member-form" phx-change="search_members_to_add" phx-submit="search_members_to_add">
           <Core.icon
@@ -436,7 +440,7 @@ defmodule PortalWeb.Groups.Components do
   end
 
   attr :account, :any, required: true
-  attr :resources, :list, required: true
+  attr :resources, Phoenix.LiveView.AsyncResult, required: true
   attr :resource_access_actions_open_id, :any, default: nil
   attr :confirm_remove_resource_access_id, :any, default: nil
 
@@ -444,8 +448,11 @@ defmodule PortalWeb.Groups.Components do
     ~H"""
     <section id="group-reach" class="min-w-0">
       <.eyebrow icon="ri-route-line">Can reach</.eyebrow>
+      <.async_result :let={resources} assign={@resources}>
+        <:loading><Actors.Components.section_skeleton id="group-reach-loading" /></:loading>
+        <:failed><Actors.Components.load_failed>Could not load resources.</Actors.Components.load_failed></:failed>
       <ul class="border-t border-rule">
-        <li :for={row <- @resources} class="border-b border-hair">
+        <li :for={row <- resources} class="border-b border-hair">
           <div
             :if={@confirm_remove_resource_access_id == row.resource.id}
             class="flex items-center justify-between gap-2 px-2 py-2.5 bg-attn-wash"
@@ -538,13 +545,14 @@ defmodule PortalWeb.Groups.Components do
           </div>
         </li>
       </ul>
-      <div :if={@resources == []} class="flex items-start gap-2 py-3 text-sm text-muted">
+      <div :if={resources == []} class="flex items-start gap-2 py-3 text-sm text-muted">
         <Core.icon name="ri-route-line" class="w-4 h-4 text-faint mt-0.5" />
         <div>
           <p>No resource access</p>
           <p class="text-xs">Grant access to let this group reach a resource.</p>
         </div>
       </div>
+      </.async_result>
     </section>
     """
   end

@@ -85,7 +85,7 @@ defmodule PortalWeb.Groups do
     if selected_group_matches?(socket, id) do
       show_selected_group_panel(socket, tab)
     else
-      case Database.get_group_with_actors(id, socket.assigns.subject) do
+      case Database.get_group(id, socket.assigns.subject) do
         nil ->
           redirect_to_groups_index(socket, "Group does not exist.")
 
@@ -130,6 +130,41 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  def handle_async(:group_members, {:ok, {group_id, {members, total}}}, socket) do
+    if selected_group_matches?(socket, group_id) do
+      {:noreply,
+       socket
+       |> update(:group_members, &%{&1 | panel_members: AsyncResult.ok(&1.panel_members, members)})
+       |> merge_state(:group_panel,
+         member_total: total,
+         member_pages: max(1, ceil(total / @member_page_size))
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_async(:group_resources, {:ok, {group_id, resources}}, socket) do
+    if selected_group_matches?(socket, group_id) do
+      {:noreply,
+       update(socket, :group_resources, &%{&1 | resources: AsyncResult.ok(&1.resources, resources)})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_async(_name, {:exit, {:shutdown, :cancel}}, socket), do: {:noreply, socket}
+
+  def handle_async(:group_members, {:exit, reason}, socket) do
+    {:noreply,
+     update(socket, :group_members, &%{&1 | panel_members: AsyncResult.failed(&1.panel_members, {:exit, reason})})}
+  end
+
+  def handle_async(:group_resources, {:exit, reason}, socket) do
+    {:noreply,
+     update(socket, :group_resources, &%{&1 | resources: AsyncResult.failed(&1.resources, {:exit, reason})})}
+  end
 
   def handle_event(event, params, socket)
       when event in [
@@ -273,7 +308,7 @@ defmodule PortalWeb.Groups do
   def handle_event("search_members_to_add", %{"q" => search}, socket) do
     results =
       if has_content?(search) do
-        Database.search_actors(search, socket.assigns.subject, socket.assigns.selected_group.actors)
+        Database.search_non_members(search, socket.assigns.selected_group, socket.assigns.subject)
       end
 
     {:noreply, merge_state(socket, :group_panel, add_member_results: results)}
@@ -331,7 +366,7 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("open_grant_resource_form", _params, socket) do
-    existing_ids = Enum.map(socket.assigns.group_resources.resources, & &1.resource.id)
+    existing_ids = Enum.map(loaded(socket.assigns.group_resources.resources), & &1.resource.id)
     available = Database.list_available_resources(existing_ids, socket.assigns.subject)
     providers = Database.list_providers(socket.assigns.subject)
 
@@ -430,11 +465,10 @@ defmodule PortalWeb.Groups do
 
     case result do
       :ok ->
-        resources = Database.list_resources_for_group(group, socket.assigns.subject)
-
         {:noreply,
          socket
-         |> assign(group_resources: group_resources_state(resources: resources))
+         |> assign(group_resources: group_resources_state(resources: socket.assigns.group_resources.resources))
+         |> refresh_group_resources([])
          |> assign(grant_conditions: grant_conditions_state(socket))}
 
       {:error, changeset} ->
@@ -809,32 +843,32 @@ defmodule PortalWeb.Groups do
     end
   end
 
+  defp show_selected_group_panel(%{assigns: %{group_panel: %{view: :list}}} = socket, tab) do
+    {:noreply, merge_state(socket, :group_panel, tab: tab)}
+  end
+
   defp show_selected_group_panel(socket, tab) do
     socket =
       socket
       |> assign(base_group_assigns(socket))
       |> assign(
-        selected_group: socket.assigns.selected_group,
         group_panel: group_panel_state(tab: tab),
         group_resources:
           group_resources_state(resources: socket.assigns.group_resources.resources)
       )
-      |> load_panel_members_from_selected_group()
+      |> load_group_resources()
+      |> load_panel_members()
 
     {:noreply, socket}
   end
 
   defp show_group_panel(socket, group, tab) do
-    resources = Database.list_resources_for_group(group, socket.assigns.subject)
-
     socket =
       socket
       |> assign(selected_group: group)
       |> assign(base_group_assigns(socket))
-      |> assign(
-        group_panel: group_panel_state(tab: tab),
-        group_resources: group_resources_state(resources: resources)
-      )
+      |> assign(group_panel: group_panel_state(tab: tab))
+      |> load_group_resources()
       |> load_panel_members()
 
     {:noreply, socket}
@@ -1001,14 +1035,12 @@ defmodule PortalWeb.Groups do
     )
   end
 
-  defp group_members_state(overrides \\ []) do
-    Map.merge(%{panel_members: []}, Map.new(overrides))
-  end
+  defp group_members_state, do: %{panel_members: AsyncResult.loading()}
 
   defp group_resources_state(overrides \\ []) do
     Map.merge(
       %{
-        resources: [],
+        resources: AsyncResult.loading(),
         tab_view: :list,
         available_resources: [],
         grant_selected_resource_ids: [],
@@ -1073,52 +1105,28 @@ defmodule PortalWeb.Groups do
   defp editable_group?(%{idp_id: nil}), do: true
   defp editable_group?(_group), do: false
 
-  @spec load_panel_members(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   defp load_panel_members(socket) do
     group = socket.assigns.selected_group
     subject = socket.assigns.subject
     page = socket.assigns.group_panel.member_page
     filter = socket.assigns.group_panel.show_member_filter
-    {members, total} =
-      Database.list_group_members(group, subject, page, @member_page_size, filter)
 
-    socket
-    |> assign(group_members: group_members_state(panel_members: members))
-    |> merge_state(:group_panel,
-      member_total: total,
-      member_pages: max(1, ceil(total / @member_page_size))
-    )
+    start_async(socket, :group_members, fn ->
+      {group.id, Database.list_group_members(group, subject, page, @member_page_size, filter)}
+    end)
   end
 
-  defp load_panel_members_from_selected_group(socket) do
+  defp load_group_resources(socket) do
     group = socket.assigns.selected_group
-    page = socket.assigns.group_panel.member_page
-    filter = socket.assigns.group_panel.show_member_filter
+    subject = socket.assigns.subject
 
-    members =
-      group.actors
-      |> Enum.filter(fn actor ->
-        if filter == "" do
-          true
-        else
-          normalized = String.downcase(filter)
-          String.contains?(String.downcase(actor.name || ""), normalized) or
-            String.contains?(String.downcase(actor.email || ""), normalized)
-        end
-      end)
-      |> Enum.sort_by(&actor_sort_key/1)
-
-    total = length(members)
-    offset = max(page - 1, 0) * @member_page_size
-    paged_members = Enum.slice(members, offset, @member_page_size)
-
-    socket
-    |> assign(group_members: group_members_state(panel_members: paged_members))
-    |> merge_state(:group_panel,
-      member_total: total,
-      member_pages: max(1, ceil(total / @member_page_size))
-    )
+    start_async(socket, :group_resources, fn ->
+      {group.id, Database.list_resources_for_group(group, subject)}
+    end)
   end
+
+  defp loaded(%AsyncResult{ok?: true, result: result}), do: result
+  defp loaded(_result), do: []
 
   defp group_source(%{group: %{type: :managed}}), do: "Built in"
   defp group_source(%{directory_name: name}) when not is_nil(name), do: "Synced from #{name}"
@@ -1140,7 +1148,7 @@ defmodule PortalWeb.Groups do
     if selected_group_matches?(socket, id) do
       socket.assigns.group_resources.resources
     else
-      []
+      AsyncResult.loading()
     end
   end
 
@@ -1320,17 +1328,10 @@ defmodule PortalWeb.Groups do
   end
 
   defp after_inline_membership_change(socket, {:ok, _membership}, _message) do
-    case Database.get_group_with_actors(socket.assigns.selected_group.id, socket.assigns.subject) do
-      %Group{} = group ->
-        socket
-        |> assign(selected_group: group)
-        |> merge_state(:group_panel, add_member_results: nil)
-        |> load_panel_members()
-        |> LiveTable.reload_live_table!("groups")
-
-      _ ->
-        put_flash(socket, :error, "Group does not exist.")
-    end
+    socket
+    |> merge_state(:group_panel, add_member_results: nil)
+    |> load_panel_members()
+    |> LiveTable.reload_live_table!("groups")
   end
 
   defp after_inline_membership_change(socket, _result, message) do
@@ -1370,7 +1371,11 @@ defmodule PortalWeb.Groups do
     resources =
       Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
 
-    merge_state(socket, :group_resources, Keyword.put(ui_state, :resources, resources))
+    result = AsyncResult.ok(socket.assigns.group_resources.resources, resources)
+
+    socket
+    |> cancel_async(:group_resources)
+    |> merge_state(:group_resources, Keyword.put(ui_state, :resources, result))
   end
 
   defp maybe_put_stale_flash(socket, nil, message) do
@@ -1663,6 +1668,27 @@ defmodule PortalWeb.Groups do
       end
     end
 
+    def search_non_members(search_term, group, subject) do
+      member_ids =
+        from(m in Portal.Membership,
+          where: m.group_id == ^group.id and m.account_id == ^group.account_id,
+          select: m.actor_id
+        )
+
+      case from(a in Portal.Actor, as: :actors)
+           |> where(
+             [actors: a],
+             (fulltext_search(a.name, ^search_term) or fulltext_search(a.email, ^search_term)) and
+               a.id not in subquery(member_ids)
+           )
+           |> limit(10)
+           |> Safe.scoped(subject)
+           |> Safe.all() do
+        actors when is_list(actors) -> actors
+        {:error, _} -> []
+      end
+    end
+
     def disable_policy_for_resource(group, resource_id, subject) do
       with %Portal.Policy{} = policy <-
              fetch_policy_for_resource(group, resource_id, subject, state: :enabled) do
@@ -1820,48 +1846,57 @@ defmodule PortalWeb.Groups do
       end
     end
 
-    def get_group_with_actors(id, subject) do
-      query =
-        from(g in Portal.Group, as: :groups)
-        |> where([groups: groups], groups.id == ^id and is_nil(groups.resource_id))
-        |> join(:left, [groups: g], d in assoc(g, :directory),
-          on: d.account_id == g.account_id,
-          as: :directory
-        )
-        |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
-          as: :google_directory
-        )
-        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
-          as: :entra_directory
-        )
-        |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
-          as: :okta_directory
-        )
-        |> join(:left, [groups: g], m in assoc(g, :memberships),
-          on: m.account_id == g.account_id,
-          as: :memberships
-        )
-        |> join(:left, [memberships: m], a in assoc(m, :actor),
-          on: a.account_id == m.account_id,
-          as: :actors
-        )
-        |> join(:left, [groups: g], gss in Portal.GroupSyncState,
-          on: gss.group_id == g.id and gss.account_id == g.account_id,
-          as: :sync_state
-        )
-        |> preload(
-          [memberships: m, actors: a, directory: d, google_directory: gd,
-           entra_directory: ed, okta_directory: od, sync_state: gss],
-          memberships: m,
-          actors: a,
-          directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od},
-          sync_state: gss
-        )
+    def get_group(id, subject) do
+      id
+      |> group_detail_query()
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
 
-      query |> Safe.scoped(subject) |> Safe.one()
+    def get_group_with_actors(id, subject) do
+      id
+      |> group_detail_query()
+      |> join(:left, [groups: g], m in assoc(g, :memberships),
+        on: m.account_id == g.account_id,
+        as: :memberships
+      )
+      |> join(:left, [memberships: m], a in assoc(m, :actor),
+        on: a.account_id == m.account_id,
+        as: :actors
+      )
+      |> preload([memberships: m, actors: a], memberships: m, actors: a)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    defp group_detail_query(id) do
+      from(g in Portal.Group, as: :groups)
+      |> where([groups: groups], groups.id == ^id and is_nil(groups.resource_id))
+      |> join(:left, [groups: g], d in assoc(g, :directory),
+        on: d.account_id == g.account_id,
+        as: :directory
+      )
+      |> join(:left, [directory: d], gd in Portal.Google.Directory,
+        on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
+        as: :google_directory
+      )
+      |> join(:left, [directory: d], ed in Portal.Entra.Directory,
+        on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
+        as: :entra_directory
+      )
+      |> join(:left, [directory: d], od in Portal.Okta.Directory,
+        on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
+        as: :okta_directory
+      )
+      |> join(:left, [groups: g], gss in Portal.GroupSyncState,
+        on: gss.group_id == g.id and gss.account_id == g.account_id,
+        as: :sync_state
+      )
+      |> preload(
+        [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od, sync_state: gss],
+        directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od},
+        sync_state: gss
+      )
     end
 
     def add_membership(group, actor_id, subject) do

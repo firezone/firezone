@@ -105,8 +105,8 @@ defmodule PortalWeb.Actors do
         actor.type == :account_admin_user and
           not other_enabled_admins_exist?(actor, socket.assigns.subject)
 
-      identities = Database.get_identities_for_actor(actor.id, socket.assigns.subject)
-      groups = Database.get_groups_for_actor(actor.id, socket.assigns.subject)
+      same_actor? = selected_actor_matches?(socket, actor.id)
+      related = socket.assigns.actor_related
 
       {:noreply,
        socket
@@ -115,9 +115,9 @@ defmodule PortalWeb.Actors do
        |> assign(
          actor_panel: actor_panel_state(view: :edit, is_last_admin: is_last_admin),
          actor_form: actor_form_state(to_form(changeset)),
-         actor_related: actor_related_state(identities: identities, groups: groups),
          actor_group_membership: actor_group_membership_state()
-       )}
+       )
+       |> restore_or_load_related(actor, same_actor?, related)}
     else
       {:error, :not_found} ->
         {:noreply,
@@ -258,7 +258,7 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("add_pending_group", %{"group_id" => group_id}, socket) do
-    existing_group_ids = Enum.map(socket.assigns.actor_related.groups, & &1.group.id)
+    existing_group_ids = Enum.map(Details.loaded(socket.assigns.actor_related.groups), & &1.group.id)
     pending_ids = Enum.map(socket.assigns.actor_group_membership.pending_group_additions, & &1.id)
 
     already_exists = group_id in existing_group_ids or group_id in pending_ids
@@ -609,7 +609,8 @@ defmodule PortalWeb.Actors do
 
         {:noreply,
          socket
-         |> merge_state(:actor_related, created_token: encoded_token, tokens: tokens)
+         |> merge_state(:actor_related, created_token: encoded_token)
+         |> Details.put_related(:tokens, tokens)
          |> merge_state(:actor_token, adding_token: false)}
 
       _ ->
@@ -680,7 +681,7 @@ defmodule PortalWeb.Actors do
 
           {:noreply,
            socket
-           |> merge_state(:actor_related, tokens: tokens)
+           |> Details.put_related(:tokens, tokens)
            |> merge_state(:actor_panel, confirm_delete_token_id: nil)}
 
         {:error, _} ->
@@ -715,7 +716,7 @@ defmodule PortalWeb.Actors do
 
       socket =
         socket
-        |> merge_state(:actor_related, sessions: sessions)
+        |> Details.put_related(:sessions, sessions)
         |> merge_state(:actor_panel, confirm_delete_session_id: nil)
 
       {:noreply, put_flash(socket, :success_inline, "Session deleted successfully")}
@@ -752,7 +753,7 @@ defmodule PortalWeb.Actors do
 
             {:noreply,
              socket
-             |> merge_state(:actor_related, identities: identities)
+             |> Details.put_related(:identities, identities)
              |> merge_state(:actor_panel, confirm_delete_identity_id: nil)}
 
           {:error, _} ->
@@ -837,14 +838,11 @@ defmodule PortalWeb.Actors do
         {:noreply, socket}
 
       topic == "presences:portal_sessions:" <> actor.id ->
-        sessions = Database.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)
-        {:noreply, merge_state(socket, :actor_related, sessions: sessions)}
+        {:noreply, start_related(socket, actor, [:sessions])}
 
       topic == "presences:account_devices:" <> socket.assigns.account.id and
           Presence.Devices.diff_includes_actor?(payload, actor.id) ->
-        tokens = Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject)
-        devices = Details.list_devices(actor.id, socket.assigns.subject)
-        {:noreply, merge_state(socket, :actor_related, tokens: tokens, devices: devices)}
+        {:noreply, start_related(socket, actor, [:tokens, :devices])}
 
       true ->
         {:noreply, socket}
@@ -856,6 +854,10 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  def handle_async({:actor_related, _key} = name, result, socket) do
+    {:noreply, Details.handle_related_async(name, result, socket)}
+  end
 
   defp validate_role_change(changeset, actor, socket) do
     new_type = get_change(changeset, :type)
@@ -934,7 +936,7 @@ defmodule PortalWeb.Actors do
   end
 
   defp maybe_clear_identities_assign(socket, false), do: socket
-  defp maybe_clear_identities_assign(socket, true), do: merge_state(socket, :actor_related, identities: [])
+  defp maybe_clear_identities_assign(socket, true), do: Details.put_related(socket, :identities, [])
 
   defp process_actor_save(attrs, socket, opts) do
     actor = socket.assigns.selected_actor
@@ -1004,60 +1006,51 @@ defmodule PortalWeb.Actors do
   end
 
   defp handle_actor_show(socket, id, params) do
-    case actor_show_state(
-           id,
-           socket.assigns.subject,
-           Map.get(params, "tab"),
-           socket.assigns.actor_related.created_token
-         ) do
-      {:ok, actor, actor_panel, actor_related} ->
+    case Database.get_actor(id, socket.assigns.subject) do
+      {:ok, actor} ->
+        active_tab = Map.get(params, "tab") || default_actor_tab(actor)
+        created_token = socket.assigns.actor_related.created_token
+
         socket
         |> assign(selected_actor: actor)
         |> assign(base_actor_assigns())
-        |> assign(actor_panel: actor_panel, actor_related: actor_related)
+        |> assign(
+          actor_panel: actor_panel_state(view: :detail, active_tab: active_tab),
+          actor_related: Details.related_state(created_token)
+        )
+        |> load_related(actor)
         |> subscribe_portal_sessions(actor)
 
-      :error ->
+      _ ->
         socket
         |> put_flash(:error, "Actor not found")
         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")
     end
   end
 
-  defp actor_show_state(id, subject, requested_tab, created_token) do
-    case Database.get_actor(id, subject) do
-      {:ok, actor} ->
-        identities = Database.get_identities_for_actor(actor.id, subject)
-        groups = Database.get_groups_for_actor(actor.id, subject)
-        {tokens, sessions} = actor_related_records(actor, subject)
-        active_tab = requested_tab || default_actor_tab(actor)
+  defp restore_or_load_related(socket, _actor, true, related), do: assign(socket, actor_related: related)
+  defp restore_or_load_related(socket, actor, false, _related), do: load_related(socket, actor)
 
-        {:ok, actor, actor_panel_state(view: :detail, active_tab: active_tab),
-         actor_related_state(
-           identities: identities,
-           groups: groups,
-           tokens: tokens,
-           sessions: sessions,
-           devices: Details.list_devices(actor.id, subject),
-           reach: Details.list_reach(actor.id, subject),
-           created_token: created_token
-         )}
-
-      _ ->
-        :error
-    end
+  defp load_related(socket, %{type: :service_account} = actor) do
+    socket
+    |> Details.put_related(:sessions, [])
+    |> start_related(actor, [:identities, :groups, :tokens, :devices, :reach])
   end
 
-  defp actor_related_records(%{type: :service_account} = actor, subject) do
-    {Database.get_client_tokens_for_actor(actor.id, subject), []}
+  defp load_related(socket, actor) do
+    start_related(socket, actor, [:identities, :groups, :tokens, :sessions, :devices, :reach])
   end
 
-  defp actor_related_records(actor, subject) do
-    {
-      Database.get_client_tokens_for_actor(actor.id, subject),
-      Database.get_portal_sessions_for_actor(actor.id, subject)
-    }
+  defp start_related(socket, actor, keys) do
+    Details.start_related(socket, actor, keys, &related_records/3)
   end
+
+  defp related_records(:identities, actor_id, subject), do: Database.get_identities_for_actor(actor_id, subject)
+  defp related_records(:groups, actor_id, subject), do: Database.get_groups_for_actor(actor_id, subject)
+  defp related_records(:tokens, actor_id, subject), do: Database.get_client_tokens_for_actor(actor_id, subject)
+  defp related_records(:sessions, actor_id, subject), do: Database.get_portal_sessions_for_actor(actor_id, subject)
+  defp related_records(:devices, actor_id, subject), do: Details.list_devices(actor_id, subject)
+  defp related_records(:reach, actor_id, subject), do: Details.list_reach(actor_id, subject)
 
   def render(assigns) do
     ~H"""
@@ -1167,7 +1160,7 @@ defmodule PortalWeb.Actors do
     [
       actor_panel: actor_panel_state(),
       actor_form: actor_form_state(),
-      actor_related: actor_related_state(),
+      actor_related: Details.related_state(),
       actor_token: actor_token_state(),
       actor_group_membership: actor_group_membership_state()
     ]
@@ -1192,19 +1185,6 @@ defmodule PortalWeb.Actors do
 
   defp actor_form_state(form \\ nil, overrides \\ []) do
     %{form: form, pending_email_change: nil}
-    |> Map.merge(Map.new(overrides))
-  end
-
-  defp actor_related_state(overrides \\ []) do
-    %{
-      identities: [],
-      groups: [],
-      tokens: [],
-      sessions: [],
-      devices: [],
-      reach: [],
-      created_token: nil
-    }
     |> Map.merge(Map.new(overrides))
   end
 
@@ -1292,10 +1272,9 @@ defmodule PortalWeb.Actors do
   end
 
   defp refresh_actor_groups(socket, actor, subject) do
-    merge_state(socket, :actor_related,
-      groups: Database.get_groups_for_actor(actor.id, subject),
-      reach: Details.list_reach(actor.id, subject)
-    )
+    socket
+    |> Details.put_related(:groups, Database.get_groups_for_actor(actor.id, subject))
+    |> Details.put_related(:reach, Details.list_reach(actor.id, subject))
   end
 
   defp parse_date_to_datetime(date_string) do
