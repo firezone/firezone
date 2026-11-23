@@ -35,6 +35,30 @@ async fn accepts_but_drops_metrics_the_token_does_not_allow() {
 }
 
 #[tokio::test]
+async fn serves_plaintext_without_tls() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let ingest = Ingest::new(
+        Verifier::from_ed_pem(PUBLIC_KEY).unwrap(),
+        &Url::parse("https://127.0.0.1:1/v1/metrics").unwrap(),
+    )
+    .unwrap();
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(serve(listener, None, router(Arc::new(ingest))));
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/metrics"))
+        .bearer_auth(sign(EDDSA_HEADER, &claims()))
+        .header(CONTENT_TYPE, "application/x-protobuf")
+        .body(export("tunnel.b"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn serves_reloaded_certificate() {
     let dir = tempfile::tempdir().unwrap();
     let old = write_certificate(dir.path());
@@ -70,7 +94,7 @@ async fn start(dir: &Path) -> (SocketAddr, Arc<CertResolver>) {
 
     tokio::spawn(serve(
         listener,
-        resolver.acceptor(),
+        Some(resolver.acceptor()),
         router(Arc::new(ingest)),
     ));
 
