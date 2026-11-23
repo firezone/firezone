@@ -154,6 +154,7 @@ fn claims() -> Claims {
         device_id: "00000000-0000-0000-0000-000000000002".to_owned(),
         device_type: DeviceType::Client,
         device_version: Some("1.5.0".to_owned()),
+        label_devices: false,
         actor_id: None,
         metrics: vec!["connlib.*".to_owned()],
         exp: 0,

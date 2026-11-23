@@ -24,7 +24,9 @@ pub struct Claims {
     pub device_id: String,
     pub device_type: DeviceType,
     pub device_version: Option<String>,
-    /// Set while the device's actor has diagnostics enabled, to tell its devices apart.
+    /// Whether to label the metrics with the device and, for a Client, its actor.
+    #[serde(default)]
+    pub label_devices: bool,
     pub actor_id: Option<String>,
     /// The patterns of the metric names the device may export.
     pub metrics: Vec<String>,

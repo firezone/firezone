@@ -61,8 +61,9 @@ fn rebuilds_resource_from_claims() {
 }
 
 #[test]
-fn labels_resource_with_actor_and_device_if_token_names_actor() {
+fn labels_resource_with_actor_and_device_if_token_asks() {
     let mut claims = claims(&["*"]);
+    claims.label_devices = true;
     claims.actor_id = Some("actor".to_owned());
 
     let request = sanitize(request(&[&["connlib.a"]]), &claims).unwrap();
@@ -141,6 +142,7 @@ fn claims(metrics: &[&str]) -> Claims {
         device_id: "device".to_owned(),
         device_type: DeviceType::Client,
         device_version: Some("1.5.0".to_owned()),
+        label_devices: false,
         actor_id: None,
         metrics: metrics.iter().map(|m| m.to_string()).collect(),
         exp: 0,
