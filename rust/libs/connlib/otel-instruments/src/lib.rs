@@ -272,17 +272,6 @@ impl<const N: usize> Clone for QueueDepth<N> {
     }
 }
 
-/// How often the IO loop started holding back a source because the stage it feeds was full.
-pub fn io_backpressure() -> Counter<u64> {
-    connlib_meter()
-        .u64_counter("connlib.io.backpressure")
-        .with_description(
-            "Number of times the IO loop started holding back a source because the stage it feeds was full.",
-        )
-        .with_unit("{episode}")
-        .build()
-}
-
 /// The number of buffers allocated in a buffer pool.
 pub fn buffer_count() -> UpDownCounter<i64> {
     buffer_count_with(&connlib_meter())
