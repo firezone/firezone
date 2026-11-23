@@ -11,9 +11,11 @@ bytes = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 http-client = { workspace = true }
+memory-stats = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-proto = { workspace = true, features = ["gen-tonic-messages", "metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["metrics", "experimental_metrics_custom_reader"] }
+otel-instruments = { workspace = true }
 prost = { workspace = true, features = ["std"] }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }

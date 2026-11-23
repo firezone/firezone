@@ -139,6 +139,25 @@ pub fn dns_lookup_duration() -> Histogram<f64> {
         .build()
 }
 
+/// Resident memory of the process, sampled periodically to show its distribution and peaks.
+///
+/// The semantic conventions define `process.memory.usage` as an up-down counter, hence the different name.
+pub fn process_memory_usage() -> Histogram<u64> {
+    connlib_meter()
+        .u64_histogram("connlib.process.memory.usage")
+        .with_description("The amount of physical memory in use.")
+        .with_unit("By")
+        .with_boundaries(
+            [
+                8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048,
+                3072, 4096, 6144, 8192,
+            ]
+            .map(|mib| f64::from(mib) * 1024.0 * 1024.0)
+            .to_vec(),
+        )
+        .build()
+}
+
 /// Records how many items a queue already held when another one was enqueued.
 ///
 /// Recorded by the producer, for one in every [`QueueDepth::SAMPLE_EVERY`] items.

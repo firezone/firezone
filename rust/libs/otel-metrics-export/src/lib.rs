@@ -25,6 +25,7 @@ pub use pipeline::install_meter_provider;
 
 const MIN_EXPORT_INTERVAL: Duration = Duration::from_secs(10);
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
+const MEMORY_SAMPLE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Handle to the thread exporting metrics to the portal.
 ///
@@ -34,11 +35,13 @@ pub struct Exporter {
 }
 
 impl Exporter {
-    /// Spawns the export thread, which stays idle until [`Exporter::configure`] provides a token.
+    /// Spawns the export thread, which samples the process' memory usage and exports nothing until [`Exporter::configure`] provides a token.
     pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> io::Result<Self> {
         let (config, rx) = watch::channel(None);
 
-        async_runtime::spawn_thread("fz-metrics-export", move || run(rx, socket_factory))?;
+        async_runtime::spawn_thread("fz-metrics-export", move || async move {
+            select(pin!(run(rx, socket_factory)), pin!(sample_memory_usage())).await;
+        })?;
 
         Ok(Self { config })
     }
@@ -163,6 +166,18 @@ async fn run(
                 tracing::debug!(%status, body = %String::from_utf8_lossy(response.body()), "Failed to export metrics");
             }
         }
+    }
+}
+
+async fn sample_memory_usage() {
+    let memory_usage = otel_instruments::process_memory_usage();
+
+    loop {
+        if let Some(stats) = memory_stats::memory_stats() {
+            memory_usage.record(stats.physical_mem as u64, &[]);
+        }
+
+        tokio::time::sleep(MEMORY_SAMPLE_INTERVAL).await;
     }
 }
 
