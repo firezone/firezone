@@ -102,6 +102,23 @@ defmodule Portal.DeviceCA.KeyVaultTest do
     assert_received {"DELETE", ^delete_path}
   end
 
+  test "reaches the vault at a private address" do
+    test_pid = self()
+    Portal.Config.delete_env_override(:portal, DeviceCA.KeyVault, [:req_opts, :plug])
+
+    Portal.Config.merge_env_override(DeviceCA.KeyVault,
+      req_opts: [
+        adapter: fn request ->
+          send(test_pid, {:allow_private_ips, request.options[:allow_private_ips]})
+          {request, Req.Response.new(status: 404)}
+        end
+      ]
+    )
+
+    assert DeviceCA.delete_key(Ecto.UUID.generate()) == :ok
+    assert_received {:allow_private_ips, true}
+  end
+
   test "never sends the token outside the vault" do
     Req.Test.stub(DeviceCA.KeyVault, fn _conn -> flunk("unexpected request") end)
 
