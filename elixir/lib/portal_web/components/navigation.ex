@@ -175,7 +175,8 @@ defmodule PortalWeb.Components.Navigation do
           {"Graph", "ri-git-merge-line", ~p"/#{account}/access"},
           {"Policies", "ri-shield-check-line", ~p"/#{account}/policies"},
           {"By group", "ri-group-line", ~p"/#{account}/access/by_group"},
-          {"By resource", "ri-server-line", ~p"/#{account}/access/by_resource"}
+          {"By resource", "ri-server-line", ~p"/#{account}/access/by_resource"},
+          {"Simulator", "ri-flask-line", ~p"/#{account}/access/simulator"}
         ]
       },
       %{

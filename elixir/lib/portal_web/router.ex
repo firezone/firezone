@@ -323,6 +323,7 @@ defmodule PortalWeb.Router do
       live "/access", Access.Graph
       live "/access/by_group", Access.ByGroup
       live "/access/by_resource", Access.ByResource
+      live "/access/simulator", Access.Simulator
 
       # People (non-service-account actors)
       live "/actors", Actors
