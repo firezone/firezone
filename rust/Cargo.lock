@@ -4845,15 +4845,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libmimalloc-sys"
-version = "0.1.49"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "libredox"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5013,11 +5004,20 @@ checksum = "c2a86d3146ed3995b5913c414f6664344b9617457320782e64f0bb44afd49d74"
 
 [[package]]
 name = "mimalloc"
-version = "0.1.52"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d4139bb28d14ad1facf21d5eb8825051b326e172d216b39f6d31df53cc97862"
+version = "3.7.0"
+source = "git+https://github.com/microsoft/mimalloc?tag=v3.7.0#1ed67b5156a763441d2ec3c20221a7b3cd866129"
 dependencies = [
- "libmimalloc-sys",
+ "mimalloc-sys",
+ "rustversion",
+]
+
+[[package]]
+name = "mimalloc-sys"
+version = "3.7.0"
+source = "git+https://github.com/microsoft/mimalloc?tag=v3.7.0#1ed67b5156a763441d2ec3c20221a7b3cd866129"
+dependencies = [
+ "cc",
+ "rustversion",
 ]
 
 [[package]]
