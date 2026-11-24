@@ -63,7 +63,9 @@ defmodule Portal.DeviceCA.KeyVault do
         method: method,
         url: url,
         params: ["api-version": @api_version],
-        headers: [{"authorization", "Bearer " <> token}]
+        headers: [{"authorization", "Bearer " <> token}],
+        # Only our own vault URL gets here, and it resolves to a private address.
+        allow_private_ips: true
       ]
       |> put_body(body)
       |> Keyword.merge(config[:req_opts] || [])
