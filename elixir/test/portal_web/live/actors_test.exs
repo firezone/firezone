@@ -578,7 +578,9 @@ defmodule PortalWeb.ActorsTest do
         }
       })
 
-      assert render_async(lv) =~ "Online"
+      # `connect` also sends a real diff from the tracker, at a time we do not control. If it
+      # arrives after `render_async` collected the tasks, the reload it starts is still running.
+      wait_for(fn -> assert render_async(lv) =~ "Online" end)
     end
 
     test "shows portal session details in the portal sessions tab", %{
