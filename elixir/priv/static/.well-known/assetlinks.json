@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "dev.firezone.android",
+      "sha256_cert_fingerprints": [
+        "FC:5F:28:6F:80:F9:02:D5:AB:B1:7D:65:38:BA:EC:A8:B5:43:6B:FF:C5:C0:DA:5B:52:79:2E:92:7C:B1:3F:74"
+      ]
+    }
+  }
+]

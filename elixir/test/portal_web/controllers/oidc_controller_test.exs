@@ -2086,6 +2086,33 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_gui_client_sign_in_success(ctx)
     end
 
+    test "gui-client sign-in keeps the https callback choice for the redirect", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor)
+
+      auth_state =
+        build_oidc_auth_state(ctx.account, ctx.provider,
+          params: %{
+            "as" => "gui-client",
+            "nonce" => "client-nonce",
+            "state" => "client-state",
+            "callback" => "https"
+          }
+        )
+
+      conn = perform_callback(ctx.conn, auth_state)
+      assert conn.status == 200
+
+      client_auth =
+        conn
+        |> recycle()
+        |> with_endpoint_key_base()
+        |> Cookie.ClientAuth.fetch()
+
+      assert client_auth.callback == "https"
+      assert client_auth.state == "client-state"
+    end
+
     test "rejects sign-in with unverified email when verified email is required", ctx do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
 
@@ -3597,6 +3624,21 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) =~ "/authorize"
       cookie = oidc_cookie_from_response(conn)
       assert cookie.params["as"] == "gui-client"
+    end
+
+    test "keeps the https callback choice of a gui-client", %{conn: conn} do
+      account = account_fixture()
+      %{provider: provider} = setup_oidc_provider(account)
+
+      conn =
+        get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}", %{
+          "as" => "gui-client",
+          "state" => "gui-state",
+          "nonce" => "gui-nonce",
+          "callback" => "https"
+        })
+
+      assert oidc_cookie_from_response(conn).params["callback"] == "https"
     end
   end
 

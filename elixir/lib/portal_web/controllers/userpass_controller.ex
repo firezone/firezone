@@ -205,7 +205,7 @@ defmodule PortalWeb.UserpassController do
       actor.name,
       actor.email,
       token,
-      params["state"]
+      params
     )
   end
 

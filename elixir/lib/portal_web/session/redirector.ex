@@ -98,7 +98,7 @@ defmodule PortalWeb.Session.Redirector do
         actor_name,
         identifier,
         %Portal.DeviceToken{} = token,
-        state
+        params
       ) do
     if Portal.Account.active?(account) do
       fragment = Portal.Authentication.encode_fragment!(token)
@@ -107,7 +107,8 @@ defmodule PortalWeb.Session.Redirector do
         actor_name: actor_name,
         fragment: fragment,
         identity_provider_identifier: identifier,
-        state: state
+        state: params["state"],
+        callback: params["callback"]
       }
 
       redirect_url = ~p"/#{account}/sign_in/client_redirect"
