@@ -996,22 +996,25 @@ where
 
             // Binding requests for existing channels act as a refresh for the binding.
 
+            let was_bound = channel.bound;
             channel.refresh(now);
 
-            // Update the fast-path map in case the binding expired in the cooldown period and got removed.
-            self.channel_and_client_by_port_and_peer.insert(
-                (channel.allocation, channel.peer_address),
-                (sender, requested_channel),
-            );
+            // Only re-install a binding that expired in the cooldown period; replacing a live one resets its rate limiters.
+            if !was_bound {
+                self.channel_and_client_by_port_and_peer.insert(
+                    (channel.allocation, channel.peer_address),
+                    (sender, requested_channel),
+                );
 
-            self.pending_commands
-                .push_back(Command::CreateChannelBinding {
-                    client: sender,
-                    channel_number: requested_channel,
-                    peer: channel.peer_address,
-                    allocation_port: channel.allocation,
-                    throughput_limit: allocation.throughput_limit,
-                });
+                self.pending_commands
+                    .push_back(Command::CreateChannelBinding {
+                        client: sender,
+                        channel_number: requested_channel,
+                        peer: channel.peer_address,
+                        allocation_port: channel.allocation,
+                        throughput_limit: allocation.throughput_limit,
+                    });
+            }
 
             tracing::info!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
 
