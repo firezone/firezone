@@ -50,6 +50,7 @@ semver = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_variant = { workspace = true }
+sha2 = { workspace = true }
 socket-factory = { workspace = true }
 specta = { workspace = true, features = ["url"] }
 specta-typescript = { workspace = true }
