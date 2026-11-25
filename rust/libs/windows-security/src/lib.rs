@@ -12,6 +12,9 @@
 #![cfg(windows)]
 
 pub mod pipe_dacl;
+mod trusted_dir;
+
+pub use trusted_dir::secure_dir;
 
 use anyhow::{Context as _, Result, ensure};
 use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};

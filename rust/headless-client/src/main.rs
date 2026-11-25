@@ -223,6 +223,9 @@ fn try_main() -> Result<()> {
             auth_base_url,
             account_slug,
         }) => {
+            #[cfg(windows)]
+            bin_shared::program_data::secure()?;
+
             handle_sign_in(auth_base_url, account_slug.as_deref(), &cli.token_path)?;
 
             return Ok(());
@@ -258,6 +261,9 @@ fn try_main() -> Result<()> {
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
 
+    #[cfg(windows)]
+    let moved = bin_shared::program_data::secure()?;
+
     // TODO: This might have the same issue with fatal errors not getting logged
     // as addressed for the Tunnel service in PR #5216
     let (layer, _handle) = cli
@@ -287,6 +293,11 @@ fn try_main() -> Result<()> {
     );
 
     tracing::debug!(?cli);
+
+    #[cfg(windows)]
+    for path in moved {
+        tracing::warn!(path = %path.display(), "Moved an object with an untrusted owner");
+    }
 
     // Start background log cleanup if file logging is enabled
     let _cleanup_handle = cli

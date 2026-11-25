@@ -7,6 +7,7 @@ description = "Safe Rust wrappers around the Windows security descriptor APIs."
 
 [target.'cfg(windows)'.dependencies]
 anyhow = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies.windows]
 workspace = true
@@ -17,6 +18,8 @@ features = [
     # `DeriveAppContainerSidFromAppContainerName` for the MSIX
     # package SID factory on `Trustee`.
     "Win32_Security_Isolation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Threading",
 ]
 
 [target.'cfg(windows)'.dev-dependencies]
