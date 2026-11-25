@@ -12,7 +12,6 @@ shopt -s globstar
 
 COMPONENT="main"
 WORK_DIR="$(mktemp -d)"
-DOWNLOADED_IMPORTS=()
 DISTS_DIR="${WORK_DIR}/dists"
 
 if [ -z "${AZURE_STORAGE_ACCOUNT:-}" ]; then
@@ -72,12 +71,16 @@ chmod 0755 "${KEYRING_DIR}/DEBIAN/postinst"
 
 dpkg-deb --root-owner-group --build "${KEYRING_DIR}" "${WORK_DIR}/${KEYRING_PACKAGE}"
 
-for DISTRIBUTION in "stable" "preview"; do
+sync_distribution() {
+    local DISTRIBUTION="$1"
     POOL_DIR="${WORK_DIR}/pool-${DISTRIBUTION}"
     IMPORT_DIR="${WORK_DIR}/import-${DISTRIBUTION}"
+    UPLOAD_DIR="${WORK_DIR}/upload-${DISTRIBUTION}"
+    IMPORT_LIST="${WORK_DIR}/downloaded-imports-${DISTRIBUTION}"
+    CHANGED_PACKAGES=()
 
-    mkdir --parents "${POOL_DIR}"
-    mkdir --parents "${IMPORT_DIR}"
+    mkdir --parents "${POOL_DIR}" "${IMPORT_DIR}" "${UPLOAD_DIR}"
+    : >"${IMPORT_LIST}"
 
     echo "Downloading existing packages for distribution $DISTRIBUTION..."
 
@@ -87,7 +90,7 @@ for DISTRIBUTION in "stable" "preview"; do
         --pattern "pool-${DISTRIBUTION}/*.deb" \
         --auth-mode login \
         --account-name "${AZURE_STORAGE_ACCOUNT}" \
-        2>&1 | grep -v "WARNING" || true
+        2>&1 | sed '/WARNING/d'
 
     echo "Downloading import packages for distribution $DISTRIBUTION..."
 
@@ -97,7 +100,7 @@ for DISTRIBUTION in "stable" "preview"; do
         --pattern "import-${DISTRIBUTION}/*.deb" \
         --auth-mode login \
         --account-name "${AZURE_STORAGE_ACCOUNT}" \
-        2>&1 | grep -v "WARNING" || true
+        2>&1 | sed '/WARNING/d'
 
     if [ "$(ls -A "${IMPORT_DIR}")" ]; then
         echo "Normalizing package names..."
@@ -107,7 +110,7 @@ for DISTRIBUTION in "stable" "preview"; do
                 continue
             fi
 
-            DOWNLOADED_IMPORTS+=("${deb#"${WORK_DIR}/"}")
+            printf '%s\0' "${deb#"${WORK_DIR}/"}" >>"${IMPORT_LIST}"
 
             if [ -f "$deb" ]; then
                 # Extract metadata from the .deb file
@@ -126,6 +129,7 @@ for DISTRIBUTION in "stable" "preview"; do
 
                 echo "Importing $(basename "$deb") as ${NORMALIZED_NAME}"
                 mv --force "$deb" "${POOL_DIR}/${NORMALIZED_NAME}"
+                CHANGED_PACKAGES+=("${NORMALIZED_NAME}")
             fi
         done
     fi
@@ -133,12 +137,13 @@ for DISTRIBUTION in "stable" "preview"; do
     if [ ! -f "${POOL_DIR}/${KEYRING_PACKAGE}" ]; then
         echo "Adding ${KEYRING_PACKAGE}"
         cp "${WORK_DIR}/${KEYRING_PACKAGE}" "${POOL_DIR}/"
+        CHANGED_PACKAGES+=("${KEYRING_PACKAGE}")
     fi
 
     if [ -z "$(ls -A "${POOL_DIR}")" ]; then
         echo "No packages for distribution ${DISTRIBUTION}"
 
-        continue
+        return
     fi
 
     echo "Detecting architectures..."
@@ -182,16 +187,33 @@ EOF
     gpg --default-key "${GPG_KEY_ID}" -abs -o Release.gpg Release
     gpg --default-key "${GPG_KEY_ID}" --clearsign -o InRelease Release
 
-    # Upload new pool directory
-    az storage blob upload-batch \
-        --destination apt \
-        --destination-path "pool-${DISTRIBUTION}" \
-        --source "${POOL_DIR}" \
-        --auth-mode login \
-        --account-name "${AZURE_STORAGE_ACCOUNT}" \
-        --overwrite \
-        --output table
-done
+    if ((${#CHANGED_PACKAGES[@]})); then
+        for PACKAGE in "${CHANGED_PACKAGES[@]}"; do
+            ln --force -- "${POOL_DIR}/${PACKAGE}" "${UPLOAD_DIR}/${PACKAGE}"
+        done
+
+        az storage blob upload-batch \
+            --destination apt \
+            --destination-path "pool-${DISTRIBUTION}" \
+            --source "${UPLOAD_DIR}" \
+            --auth-mode login \
+            --account-name "${AZURE_STORAGE_ACCOUNT}" \
+            --overwrite \
+            --output table
+    fi
+}
+
+sync_distribution stable &
+STABLE_PID=$!
+sync_distribution preview &
+PREVIEW_PID=$!
+
+FAILED=0
+wait "${STABLE_PID}" || FAILED=1
+wait "${PREVIEW_PID}" || FAILED=1
+if ((FAILED)); then
+    exit 1
+fi
 
 echo "Uploading metadata..."
 az storage blob upload-batch \
@@ -216,11 +238,13 @@ az storage blob upload \
     --output table
 
 # Delete only the import files this run downloaded. A release that copied its packages in after the download keeps them for the next sync.
-for BLOB in "${DOWNLOADED_IMPORTS[@]}"; do
-    az storage blob delete \
-        --container-name apt \
-        --name "${BLOB}" \
-        --auth-mode login \
-        --account-name "${AZURE_STORAGE_ACCOUNT}" \
-        --output table
+for DISTRIBUTION in stable preview; do
+    while IFS= read -r -d '' BLOB; do
+        az storage blob delete \
+            --container-name apt \
+            --name "${BLOB}" \
+            --auth-mode login \
+            --account-name "${AZURE_STORAGE_ACCOUNT}" \
+            --output table
+    done <"${WORK_DIR}/downloaded-imports-${DISTRIBUTION}"
 done
