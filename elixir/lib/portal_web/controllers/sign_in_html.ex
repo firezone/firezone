@@ -34,7 +34,7 @@ defmodule PortalWeb.SignInHTML do
       <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-sm px-4 py-12 text-center">
           <h1 class="text-xl font-semibold text-heading tracking-tight">
-            Sign in to the Firezone Client?
+            Sign into the Firezone app?
           </h1>
           <p class="mt-2 text-sm text-body">
             You signed in to <span class="font-medium text-heading">{@account.name}</span>
