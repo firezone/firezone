@@ -59,6 +59,7 @@ public class Configuration: ObservableObject {
     public static let disableUpdateCheck = "disableUpdateCheck"
     public static let supportURL = "supportURL"
     public static let userDefaultsMigrated = "userDefaultsMigrated"
+    public static let managedProfile = "managedProfile"
     static let lastCustomAuthURL = "lastCustomAuthURL"
     static let lastCustomApiURL = "lastCustomApiURL"
     static let signedInAccountSlug = "signedInAccountSlug"
@@ -367,14 +368,21 @@ public struct SignInSettings: Codable, Equatable, Sendable {
     self.apiURL = apiURL
   }
 
-  /// Whether an MDM forced account slug or API URL in `providerConfiguration` differs from these.
-  public func differsFromForced(in providerConfiguration: [String: String]) -> Bool {
-    let forced = { providerConfiguration[Configuration.forcedKey(for: $0)] }
-    let forcedAccountSlug = forced(Configuration.Keys.accountSlug)
-    let forcedApiURL = forced(Configuration.Keys.apiURL)
+  /// Whether an administrator now sets an account slug or API URL other than these, either
+  /// as an MDM forced value or through a VPN profile they manage as a whole.
+  public func differsFromManaged(
+    in providerConfiguration: [String: String], profileIsManaged: Bool
+  ) -> Bool {
+    func managed(_ key: String, default defaultValue: String) -> String? {
+      providerConfiguration[Configuration.forcedKey(for: key)]
+        ?? (profileIsManaged ? providerConfiguration[key] ?? defaultValue : nil)
+    }
+    let managedAccountSlug = managed(
+      Configuration.Keys.accountSlug, default: ConfigurationDefaults.accountSlug)
+    let managedApiURL = managed(Configuration.Keys.apiURL, default: ConfigurationDefaults.apiURL)
 
-    return (forcedAccountSlug != nil && forcedAccountSlug != accountSlug)
-      || (forcedApiURL != nil && forcedApiURL != apiURL)
+    return (managedAccountSlug != nil && managedAccountSlug != accountSlug)
+      || (managedApiURL != nil && managedApiURL != apiURL)
   }
 }
 
