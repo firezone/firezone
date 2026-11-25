@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Differences smaller than this are assumed to be clock resolution, sampling jitter or rate
+/// Cumulative differences smaller than this are assumed to be clock resolution, sampling jitter or rate
 /// differences between the two clocks rather than time spent suspended.
 const CLOCK_DRIFT_TOLERANCE: Duration = Duration::from_secs(1);
 
@@ -31,8 +31,8 @@ pub enum Event {
 /// This clock retains [`Instant`] as its clock domain and adds any elapsed time observed by the
 /// operating system's suspend-inclusive monotonic clock but not by [`Instant`].
 pub struct Clock {
-    last_monotonic: Instant,
-    last_suspend_inclusive: Duration,
+    start_monotonic: Instant,
+    start_suspend_inclusive: Duration,
     suspend_offset: Duration,
     /// The deadline the event loop asked to be woken at, in this clock's domain.
     alarm_at: Option<Instant>,
@@ -118,14 +118,15 @@ impl Clock {
     }
 
     fn sample(&mut self, monotonic: Instant, suspend_inclusive: Duration) -> Instant {
-        let monotonic_elapsed = monotonic.saturating_duration_since(self.last_monotonic);
+        let monotonic_elapsed = monotonic.saturating_duration_since(self.start_monotonic);
         let suspend_inclusive_elapsed =
-            suspend_inclusive.saturating_sub(self.last_suspend_inclusive);
+            suspend_inclusive.saturating_sub(self.start_suspend_inclusive);
 
-        self.last_monotonic = monotonic;
-        self.last_suspend_inclusive = suspend_inclusive;
-
-        let missing = suspend_inclusive_elapsed.saturating_sub(monotonic_elapsed);
+        // Keep the original samples so repeated short suspends can exceed the tolerance
+        // together. Subtract the offset already applied before testing for new missing time.
+        let missing = suspend_inclusive_elapsed
+            .saturating_sub(monotonic_elapsed)
+            .saturating_sub(self.suspend_offset);
 
         if missing >= CLOCK_DRIFT_TOLERANCE {
             let offset = self.suspend_offset.saturating_add(missing);
@@ -164,8 +165,8 @@ impl Clock {
 impl Default for Clock {
     fn default() -> Self {
         Self {
-            last_monotonic: Instant::now(),
-            last_suspend_inclusive: suspend_inclusive_now(),
+            start_monotonic: Instant::now(),
+            start_suspend_inclusive: suspend_inclusive_now(),
             suspend_offset: Duration::ZERO,
             alarm_at: None,
             raw_alarm_at: None,
@@ -250,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn ignores_small_clock_differences_without_accumulating_them() {
+    fn ignores_persistent_clock_difference_below_tolerance() {
         let monotonic = Instant::now();
         let suspend_inclusive = Duration::from_secs(1_000_000);
         let mut clock = clock_at(monotonic, suspend_inclusive);
@@ -268,6 +269,32 @@ mod tests {
                 suspend_inclusive + Duration::from_millis(2_500),
             ),
             monotonic + Duration::from_secs(2)
+        );
+    }
+
+    #[test]
+    fn counts_repeated_short_suspends() {
+        let monotonic = Instant::now();
+        let suspend_inclusive = Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, suspend_inclusive);
+
+        // Each suspend is shorter than the tolerance, but together they exceed it.
+        for sample in 1..=2 {
+            let awake = Duration::from_secs(sample);
+            let suspended = Duration::from_millis(400 * sample);
+
+            assert_eq!(
+                clock.sample(monotonic + awake, suspend_inclusive + awake + suspended),
+                monotonic + awake
+            );
+        }
+
+        assert_eq!(
+            clock.sample(
+                monotonic + Duration::from_secs(3),
+                suspend_inclusive + Duration::from_millis(4_200)
+            ),
+            monotonic + Duration::from_millis(4_200)
         );
     }
 
@@ -439,8 +466,8 @@ mod tests {
 
     fn clock_at(monotonic: Instant, suspend_inclusive: Duration) -> Clock {
         Clock {
-            last_monotonic: monotonic,
-            last_suspend_inclusive: suspend_inclusive,
+            start_monotonic: monotonic,
+            start_suspend_inclusive: suspend_inclusive,
             suspend_offset: Duration::ZERO,
             alarm_at: None,
             raw_alarm_at: None,
