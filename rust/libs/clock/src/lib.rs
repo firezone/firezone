@@ -13,9 +13,9 @@ pub struct Alarm {
     pub late_by: Duration,
 }
 
-struct Deadline {
-    at: Instant,
-    was_in_future: bool,
+enum ArmedAlarm {
+    Immediate,
+    Scheduled { deadline: Instant },
 }
 
 /// A monotonic clock that also advances while the system is suspended.
@@ -25,7 +25,7 @@ struct Deadline {
 pub struct Clock {
     instant_at_start: Instant,
     os_clock_at_start: Duration,
-    deadline: Option<Deadline>,
+    armed_alarm: Option<ArmedAlarm>,
     timer: Option<Pin<Box<tokio::time::Sleep>>>,
 }
 
@@ -49,35 +49,31 @@ impl Clock {
     /// Poll for due alarms before replacing the deadline.
     pub fn set_alarm(&mut self, cx: &mut Context<'_>, deadline: Option<Instant>) {
         let Some(at) = deadline else {
-            self.deadline = None;
+            self.armed_alarm = None;
             self.timer = None;
             return;
         };
 
         let now = self.now();
-        if self
-            .deadline
-            .as_ref()
-            .is_none_or(|deadline| deadline.at != at)
-        {
-            self.deadline = Some(Deadline {
-                at,
-                was_in_future: at > now,
-            });
-        }
-
         if at <= now {
+            // Preserve a scheduled alarm if it became due while processing a poll.
+            if !matches!(self.armed_alarm, Some(ArmedAlarm::Scheduled { deadline }) if deadline == at)
+            {
+                self.armed_alarm = Some(ArmedAlarm::Immediate);
+            }
+
             cx.waker().wake_by_ref();
             return;
         }
 
+        self.armed_alarm = Some(ArmedAlarm::Scheduled { deadline: at });
         self.arm_timer(cx, at.duration_since(now));
     }
 
     /// Reports the armed deadline once it has passed, including on an I/O wake
     /// while the Tokio timer is still pending.
     pub fn poll_alarm(&mut self, cx: &mut Context<'_>) -> Poll<Alarm> {
-        if self.deadline.is_none() {
+        if self.armed_alarm.is_none() {
             return Poll::Pending;
         }
 
@@ -85,26 +81,22 @@ impl Clock {
     }
 
     fn poll_at(&mut self, cx: &mut Context<'_>, now: Instant) -> Poll<Alarm> {
-        let Some(deadline) = self.deadline.as_ref() else {
-            return Poll::Pending;
-        };
-
-        if now < deadline.at {
-            let remaining = deadline.at.duration_since(now);
-            let timer = self.timer.as_mut().expect("future deadline has a timer");
-            if timer.as_mut().poll(cx).is_ready() {
-                self.arm_timer(cx, remaining);
+        let late_by = match self.armed_alarm {
+            None => return Poll::Pending,
+            Some(ArmedAlarm::Immediate) => Duration::ZERO,
+            Some(ArmedAlarm::Scheduled { deadline }) if now >= deadline => {
+                now.duration_since(deadline)
             }
-            return Poll::Pending;
-        }
-
-        let late_by = if deadline.was_in_future {
-            now.duration_since(deadline.at)
-        } else {
-            Duration::ZERO
+            Some(ArmedAlarm::Scheduled { deadline }) => {
+                let timer = self.timer.as_mut().expect("scheduled alarm has a timer");
+                if timer.as_mut().poll(cx).is_ready() {
+                    self.arm_timer(cx, deadline.duration_since(now));
+                }
+                return Poll::Pending;
+            }
         };
 
-        self.deadline = None;
+        self.armed_alarm = None;
         Poll::Ready(Alarm { now, late_by })
     }
 
@@ -129,7 +121,7 @@ impl Default for Clock {
         Self {
             instant_at_start: Instant::now(),
             os_clock_at_start: suspend_inclusive_now(),
-            deadline: None,
+            armed_alarm: None,
             timer: None,
         }
     }
