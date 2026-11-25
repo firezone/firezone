@@ -2,7 +2,6 @@
 
 mod sleep;
 
-pub mod control_endpoint;
 pub mod ebpf;
 pub mod sockets;
 

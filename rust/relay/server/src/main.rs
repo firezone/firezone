@@ -13,17 +13,17 @@ use eventloop_budget::Budget;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, ThroughputLimit, auth::AccountId, control_endpoint, ebpf, sockets,
+    Sleep, ThroughputLimit, auth::AccountId, ebpf, sockets,
 };
 use futures::{FutureExt, future};
-use logging::{FilterReloadHandle, err_with_src, sentry_layer};
+use logging::{err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::process::ExitCode;
@@ -118,10 +118,6 @@ struct Args {
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
 
-    /// The address of the local interface where we should serve our control endpoint.
-    #[arg(long, env, hide = true, default_value = "127.0.0.1:9999")]
-    control_endpoint: SocketAddr,
-
     /// How many worker threads to use.
     #[arg(long, env, hide = true, default_value = "2")]
     num_worker_threads: usize,
@@ -178,7 +174,7 @@ fn main() -> ExitCode {
 
 async fn try_main(args: Args) -> Result<()> {
     let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    let filter_reload_handle = setup_tracing(&args, &directives)?;
+    setup_tracing(&args, &directives)?;
 
     let ebpf = if let Some(interface) = args.ebpf_offloading.as_deref() {
         if args.ebpf_int4_addr.is_none() {
@@ -251,11 +247,6 @@ async fn try_main(args: Args) -> Result<()> {
             move || is_connected.load(Ordering::Relaxed),
         )
     });
-
-    tokio::spawn(control_endpoint::serve(
-        args.control_endpoint,
-        filter_reload_handle,
-    ));
 
     let login = LoginUrl::relay(
         args.api_url.clone(),
@@ -332,7 +323,7 @@ fn ebpf_log_level(directives: &str) -> Result<LevelFilter> {
 /// Sets up our tracing infrastructure.
 ///
 /// See [`log_layer`] for details on the base log layer.
-fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
+fn setup_tracing(args: &Args, directives: &str) -> Result<()> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
@@ -342,7 +333,7 @@ fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
     let mut meter_provider =
         opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(make_otel_metadata());
 
-    let (filter, reload_handle) = logging::try_filter(directives)?;
+    let (filter, _) = logging::try_filter(directives)?;
 
     let dispatch: Dispatch = tracing_subscriber::registry()
         .with(log_layer(args).with_filter(filter))
@@ -363,7 +354,7 @@ fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
         .try_init()
         .context("Failed to initialize tracing")?;
 
-    Ok(reload_handle)
+    Ok(())
 }
 
 /// Constructs the base log layer.
