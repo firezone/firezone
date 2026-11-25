@@ -105,6 +105,12 @@ impl Query {
         self
     }
 
+    pub fn with_random_id(mut self) -> Self {
+        self.inner.header_mut().set_random_id();
+
+        self
+    }
+
     /// Adds an OPT record, as resolvers that support EDNS do.
     pub fn with_edns(self) -> Self {
         let mut builder = MessageBuilder::new_vec();
@@ -263,6 +269,11 @@ impl Response {
 
     pub fn id(&self) -> u16 {
         self.inner.header().id()
+    }
+
+    /// Returns whether this response has the ID and the question of `query`.
+    pub fn is_answer_to(&self, query: &Query) -> bool {
+        self.inner.is_answer(&query.inner)
     }
 
     pub fn truncated(&self) -> bool {

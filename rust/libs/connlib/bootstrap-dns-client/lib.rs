@@ -241,12 +241,14 @@ async fn send_query_udp(
 
     let response = tokio::time::timeout(
         BootstrapDnsClient::TIMEOUT,
-        udp_socket.handshake::<BUF_SIZE>(server, &query.into_bytes()),
+        udp_socket.handshake::<BUF_SIZE, _>(server, query.as_bytes(), |reply| {
+            dns_types::Response::parse(reply)
+                .ok()
+                .filter(|r| r.is_answer_to(&query))
+        }),
     )
     .await
     .with_context(|| format!("DNS query to host {server} timed out"))??;
-
-    let response = dns_types::Response::parse(&response).context("Failed to parse DNS response")?;
 
     Ok(response)
 }
