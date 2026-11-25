@@ -4871,6 +4871,8 @@ defmodule PortalAPI.Client.ChannelTest do
       assert responder_claims["uploads_enabled"] == true
       assert responder_claims["role"] == "responder"
       assert responder_claims["resource_type"] == Atom.to_string(resource.type)
+      assert responder_claims["initiator_actor_email"] == subject.actor.email
+      assert responder_claims["initiator_device_serial"] == client.device_serial
 
       assert responder_claims["initiator_ips"] == [
                Portal.Types.IP.to_string(client.ipv4),
@@ -6892,24 +6894,28 @@ defmodule PortalAPI.Client.ChannelTest do
                     expires_at: target_expires_at
                   } = target_payload
 
-      # The target gets the full resource view (id/type/name/filters/...) and
-      # the initiator's subject (actor) view — mirroring what we send the gateway
-      # in authorize_flow so connlib can enforce filters and surface who's
-      # connecting.
+      # The target gets the full resource view so connlib can enforce filters.
       pool_resource_id = pool_resource.id
       assert %{id: ^pool_resource_id, type: :static_device_pool} = target_payload.resource
       assert is_list(target_payload.resource.filters)
+      refute Map.has_key?(target_payload, :subject)
 
-      assert %{
-               actor_id: actor_id,
-               actor_email: actor_email,
-               actor_name: actor_name,
-               auth_provider_id: _
-             } = target_payload.subject
+      assert {:ok, claims, _account} = Portal.FlowLogToken.verify(target_payload.flow_logs_ingest_token)
+      assert claims["role"] == "responder"
+      assert claims["initiator_actor_id"] == subject.actor.id
+      assert claims["initiator_actor_name"] == subject.actor.name
 
-      assert actor_id == subject.actor.id
-      assert actor_email == subject.actor.email
-      assert actor_name == subject.actor.name
+      for claim <- ~w[initiator_actor_email initiator_auth_provider_id initiator_device_serial
+                      initiator_device_uuid initiator_device_identifier_for_vendor
+                      initiator_device_firebase_installation_id] do
+        refute Map.has_key?(claims, claim)
+      end
+
+      assert {:ok, initiator_claims, _account} =
+               Portal.FlowLogToken.verify(source_payload.flow_logs_ingest_token)
+
+      assert initiator_claims["initiator_actor_email"] == subject.actor.email
+      assert initiator_claims["initiator_device_serial"] == client.device_serial
 
       refute Map.has_key?(target_payload, :client_fqdns)
       assert is_integer(target_expires_at)
@@ -9786,7 +9792,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert payload.resource.id == pool_resource.id
       assert_receive {:authorized, ^ref, %{receiver_id: receiver_id}}
       assert receiver_id == target_client.id
-      assert payload.subject == rendered_subject
+      refute Map.has_key?(payload, :subject)
       assert payload.expires_at == DateTime.to_unix(expires_at, :second)
       refute Map.has_key?(payload, :policy_authorization_id)
       refute Map.has_key?(payload, :authorization_expires_at)
