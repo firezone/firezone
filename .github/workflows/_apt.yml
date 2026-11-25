@@ -33,7 +33,12 @@ jobs:
           key: ${{ secrets.APT_REPOSITORY_GPG_KEY }}
           email: packages@firezone.dev
 
-      - run: python3 scripts/sync-apt.py
+      - name: Sync APT repository
+        shell: python
+        run: |
+          from runpy import run_path
+
+          run_path("scripts/sync-apt.py", run_name="__main__")
         env:
           AZURE_STORAGE_ACCOUNT: firezoneartifacts
           GPG_KEY_ID: ${{ steps.setup-gpg.outputs.key_id }}
