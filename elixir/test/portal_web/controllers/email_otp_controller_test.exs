@@ -861,7 +861,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
           "nonce" => "test-nonce"
         })
 
-      # Client context renders the client_redirect page (200) with a meta redirect
+      # Client context renders the client_redirect confirmation page (200)
       assert conn.status == 200
       assert conn.resp_body =~ "client_redirect"
 

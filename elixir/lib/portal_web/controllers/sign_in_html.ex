@@ -8,7 +8,6 @@ defmodule PortalWeb.SignInHTML do
       <head>
         <meta charset="utf-8" />
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-        <meta http-equiv="refresh" content={"0; url=#{@redirect_url}"} />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
         <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
@@ -35,14 +34,25 @@ defmodule PortalWeb.SignInHTML do
       <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-sm px-4 py-12 text-center">
           <h1 class="text-xl font-semibold text-heading tracking-tight">
-            Signed in successfully
+            Sign in to the Firezone Client?
           </h1>
           <p class="mt-2 text-sm text-body">
-            You're signed in to <span class="font-medium text-heading">{@account.name}</span>.
+            You signed in to <span class="font-medium text-heading">{@account.name}</span>
+            as <span class="font-medium text-heading">{@actor_name}</span>.
           </p>
           <p class="mt-4 text-xs text-subtle">
-            You can now close this window and return to what you were doing.
+            Continue only if you started this sign in from the Firezone Client on this device.
+            If you did not, close this window.
           </p>
+          <form action={@redirect_url} method="post" class="mt-6">
+            <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+            <button
+              type="submit"
+              class="inline-flex items-center justify-center rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-dark focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-accent-500"
+            >
+              Open Firezone Client
+            </button>
+          </form>
         </div>
       </body>
     </html>

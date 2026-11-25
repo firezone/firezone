@@ -29,7 +29,7 @@ defmodule PortalWeb.SignInControllerTest do
       conn_result =
         conn
         |> put_req_cookie("client_auth", signed_value)
-        |> get(~p"/#{account}/sign_in/client_redirect")
+        |> post(~p"/#{account}/sign_in/client_redirect")
 
       assert redirected_to = redirected_to(conn_result, 302)
       assert redirected_to =~ "firezone-fd0020211111://handle_client_sign_in_callback"
@@ -62,7 +62,7 @@ defmodule PortalWeb.SignInControllerTest do
         query_params =
           conn
           |> put_req_cookie("client_auth", signed_value)
-          |> get(~p"/#{account}/sign_in/client_redirect")
+          |> post(~p"/#{account}/sign_in/client_redirect")
           |> redirected_to(302)
           |> URI.parse()
           |> Map.fetch!(:query)
@@ -77,11 +77,51 @@ defmodule PortalWeb.SignInControllerTest do
       conn: conn,
       account: account
     } do
-      conn = get(conn, ~p"/#{account}/sign_in/client_redirect")
+      conn = post(conn, ~p"/#{account}/sign_in/client_redirect")
       assert redirected_to(conn, 302) == ~p"/#{account}/sign_in/client_auth_error"
 
       html = conn |> recycle() |> get(redirected_to(conn, 302)) |> html_response(200)
       assert html =~ "Please close this window and start the sign in process again."
+    end
+
+    test "needs the CSRF token, so other sites can't send the token to the Client", %{
+      conn: conn,
+      account: account
+    } do
+      client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
+        actor_name: "Jane",
+        fragment: "test_fragment_value",
+        identity_provider_identifier: "user@example.com",
+        state: "STATE"
+      }
+
+      %{value: signed_value} = PortalWeb.Cookie.ClientAuth.put(conn, client_auth_cookie).resp_cookies["client_auth"]
+
+      conn =
+        conn
+        |> put_req_cookie("client_auth", signed_value)
+        |> put_private(:plug_skip_csrf_protection, false)
+
+      assert_error_sent 403, fn -> post(conn, ~p"/#{account}/sign_in/client_redirect") end
+    end
+
+    test "does not send the token to the Client on a GET", %{conn: conn, account: account} do
+      client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
+        actor_name: "Jane",
+        fragment: "test_fragment_value",
+        identity_provider_identifier: "user@example.com",
+        state: "STATE"
+      }
+
+      %{value: signed_value} = PortalWeb.Cookie.ClientAuth.put(conn, client_auth_cookie).resp_cookies["client_auth"]
+
+      conn =
+        conn
+        |> put_req_cookie("client_auth", signed_value)
+        |> get(~p"/#{account}/sign_in/client_redirect")
+
+      refute conn |> get_resp_header("location") |> Enum.any?(&(&1 =~ "handle_client_sign_in_callback"))
+      refute conn.resp_body =~ "test_fragment_value"
     end
 
     test "displays account name on client auth error page", %{conn: conn, account: account} do
@@ -154,9 +194,11 @@ defmodule PortalWeb.SignInControllerTest do
 
   describe "unknown account" do
     test "returns 404 for every client page", %{conn: conn} do
-      for page <- ~w(client_redirect client_auth_error client_account_disabled) do
+      for page <- ~w(client_auth_error client_account_disabled) do
         assert conn |> get("/does-not-exist/sign_in/#{page}") |> response(404)
       end
+
+      assert conn |> post("/does-not-exist/sign_in/client_redirect") |> response(404)
     end
   end
 end

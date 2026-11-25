@@ -239,7 +239,7 @@ defmodule PortalWeb.Router do
       PortalWeb.Plugs.FetchAccount
     ]
 
-    get "/sign_in/client_redirect", SignInController, :client_redirect
+    post "/sign_in/client_redirect", SignInController, :client_redirect
     get "/sign_in/client_auth_error", SignInController, :client_auth_error
     get "/sign_in/client_account_disabled", SignInController, :client_account_disabled
   end

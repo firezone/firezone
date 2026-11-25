@@ -4930,6 +4930,9 @@ defmodule PortalWeb.OIDCControllerTest do
 
     assert conn.status == 200
     assert conn.resp_body =~ "client_redirect"
+    refute conn.resp_body =~ ~s(http-equiv="refresh")
+    assert conn.resp_body =~ ~s(method="post")
+    assert conn.resp_body =~ "Open Firezone Client"
     assert conn.resp_body =~ "/#{ctx.account.slug}/sign_in/client_redirect"
     refute conn.resp_body =~ "/#{ctx.account.id}/sign_in/client_redirect"
     assert conn.resp_cookies["client_auth"]

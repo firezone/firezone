@@ -89,8 +89,8 @@ defmodule PortalWeb.Session.Redirector do
   @doc """
   Redirects to the GUI client application after sign-in.
 
-  Sets a cookie with client auth data and renders the client_redirect.html page
-  which handles the platform-specific redirect.
+  Sets a cookie with client auth data and renders the client_redirect.html page.
+  The user must confirm on that page before the token is sent to the Client.
   """
   def gui_client_signed_in(
         %Plug.Conn{} = conn,
@@ -120,6 +120,7 @@ defmodule PortalWeb.Session.Redirector do
       |> Phoenix.Controller.render("client_redirect.html",
         redirect_url: redirect_url,
         account: account,
+        actor_name: actor_name,
         layout: false
       )
     else
