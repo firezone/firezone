@@ -535,10 +535,15 @@ fn ensure_consistent_lengths(
 ) -> Result<u16, Error> {
     let frame_len = ctx.data_end() - ctx.data();
 
-    if udp_len < UdpHdr::LEN as u16
-        || udp_len != ip_payload_len
-        || EthHdr::LEN + ip_hdr_len + usize::from(ip_payload_len) != frame_len
-    {
+    if udp_len < UdpHdr::LEN as u16 {
+        return Err(Error::InconsistentLength);
+    }
+
+    if udp_len != ip_payload_len {
+        return Err(Error::InconsistentLength);
+    }
+
+    if EthHdr::LEN + ip_hdr_len + usize::from(ip_payload_len) != frame_len {
         return Err(Error::InconsistentLength);
     }
 
