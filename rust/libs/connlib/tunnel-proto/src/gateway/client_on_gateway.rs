@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, ErrorExt, Result, bail};
@@ -709,7 +709,7 @@ impl ClientOnGateway {
         let resource = match self.internet_resource_enabled {
             Some(internet_resource) => match resource_ip {
                 ip if is_dns_addr(ip) => self.classify_non_internet_resource(ip, protocol)?,
-                ip if internet_resource_rejects(ip) => {
+                ip if special_use_ip::is_special_use_after_nat64(ip) => {
                     bail!(InternetResourceRejectedAddress(ip))
                 }
                 // Note a Gateway with Internet resource should never get packets for other resources.
@@ -879,34 +879,6 @@ impl TranslationState {
 
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
-}
-
-fn internet_resource_rejects(addr: IpAddr) -> bool {
-    match addr {
-        IpAddr::V4(addr) => {
-            addr.is_private()
-                || addr.is_loopback()
-                || addr.is_link_local()
-                || is_cgnat(addr)
-                || addr.is_multicast()
-                || is_reserved(addr)
-        }
-        IpAddr::V6(addr) => {
-            addr.is_loopback()
-                || addr.to_ipv4_mapped().is_some()
-                || addr.is_unique_local()
-                || addr.is_unicast_link_local()
-                || addr.is_multicast()
-        }
-    }
-}
-
-fn is_cgnat(addr: Ipv4Addr) -> bool {
-    matches!(addr.octets(), [100, 64..=127, _, _])
-}
-
-fn is_reserved(addr: Ipv4Addr) -> bool {
-    matches!(addr.octets(), [240..=255, _, _, _])
 }
 
 /// Rejects addresses within Firezone's tunnel range.
@@ -1311,6 +1283,64 @@ mod tests {
         assert!(matches!(
             peer.translate_outbound(request, Instant::now()).unwrap(),
             TranslateOutboundResult::IcmpError { .. }
+        ));
+    }
+
+    #[test_case::test_case("64:ff9b::a00:5"; "nat64 to private")]
+    #[test_case::test_case("64:ff9b::a9fe:a9fe"; "nat64 to link-local")]
+    #[test_case::test_case("64:ff9b:1::a00:5"; "nat64 local-use prefix")]
+    #[test_case::test_case("2002:a00:5::1"; "6to4")]
+    #[test_case::test_case("2001::1"; "teredo")]
+    #[test_case::test_case("::a00:5"; "ipv4-compatible")]
+    #[test_case::test_case("fec0::1"; "site-local")]
+    fn internet_resource_rejects_ipv6_forms_of_non_public_addresses(dst: &str) {
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
+        peer.add_resource(internet_resource(), None, Instant::now());
+
+        let request = ip_packet::make::udp_packet(
+            client_tun_ipv6(),
+            dst.parse::<Ipv6Addr>().unwrap(),
+            5401,
+            80,
+            &[0u8; 8],
+        )
+        .unwrap();
+
+        assert!(matches!(
+            peer.translate_outbound(request, Instant::now()).unwrap(),
+            TranslateOutboundResult::IcmpError { .. }
+        ));
+    }
+
+    #[test]
+    fn internet_resource_allows_nat64_to_public_addresses() {
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
+        peer.add_resource(internet_resource(), None, Instant::now());
+
+        let request = ip_packet::make::udp_packet(
+            client_tun_ipv6(),
+            "64:ff9b::808:808".parse::<Ipv6Addr>().unwrap(),
+            5401,
+            80,
+            &[0u8; 8],
+        )
+        .unwrap();
+
+        assert!(matches!(
+            peer.translate_outbound(request, Instant::now()).unwrap(),
+            TranslateOutboundResult::Send(..)
         ));
     }
 

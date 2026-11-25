@@ -6681,6 +6681,7 @@ dependencies = [
  "serde",
  "sha2 0.11.1",
  "smallvec",
+ "special-use-ip",
  "stun_codec",
  "test-strategy",
  "thiserror 2.0.21",
@@ -7598,6 +7599,7 @@ dependencies = [
  "smallvec",
  "snownet",
  "socket-factory",
+ "special-use-ip",
  "stun_codec",
  "tracing",
  "tracing-subscriber",
@@ -7776,6 +7778,10 @@ dependencies = [
  "libc",
  "system-deps",
 ]
+
+[[package]]
+name = "special-use-ip"
+version = "0.1.0"
 
 [[package]]
 name = "specta"
@@ -9370,6 +9376,7 @@ dependencies = [
  "serde_with",
  "smallvec",
  "snownet",
+ "special-use-ip",
  "telemetry",
  "test-case",
  "test-strategy",

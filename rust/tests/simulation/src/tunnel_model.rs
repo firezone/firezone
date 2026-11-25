@@ -1170,7 +1170,11 @@ impl TunnelModel {
         if is_internet_resource && dst.ip_addr().is_some_and(is_resource_proxy) {
             return Some(RejectionResponse::Prohibited);
         }
-        if is_internet_resource && dst.ip_addr().is_some_and(internet_resource_rejects) {
+        if is_internet_resource
+            && dst
+                .ip_addr()
+                .is_some_and(special_use_ip::is_special_use_after_nat64)
+        {
             return Some(RejectionResponse::Unreachable);
         }
 
