@@ -12,15 +12,12 @@
 #![cfg(windows)]
 
 pub mod pipe_dacl;
-mod trusted_dir;
 
-pub use trusted_dir::secure_dir;
-
-use anyhow::{Context as _, Result, ensure};
+use anyhow::{Context as _, Result, bail, ensure};
 use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows::{
     Win32::{
-        Foundation::{ERROR_SUCCESS, HLOCAL, LocalFree},
+        Foundation::{ERROR_SUCCESS, HANDLE, HLOCAL, LocalFree},
         Security::{
             ACL,
             Authorization::{
@@ -28,11 +25,14 @@ use windows::{
                 ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW,
                 SDDL_REVISION_1, SE_FILE_OBJECT, SetNamedSecurityInfoW,
             },
-            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
-            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
+            DACL_SECURITY_INFORMATION, EqualSid, GetSecurityDescriptorDacl, GetTokenInformation,
+            IsWellKnownSid, OWNER_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+            PSECURITY_DESCRIPTOR, PSID, TOKEN_QUERY, TOKEN_USER, TokenUser,
+            WinBuiltinAdministratorsSid, WinLocalSystemSid,
         },
+        System::Threading::{GetCurrentProcess, OpenProcessToken},
     },
-    core::{BOOL, PCWSTR, PWSTR},
+    core::{BOOL, Owned, PCWSTR, PWSTR},
 };
 
 /// Owned wrapper around a `PSECURITY_DESCRIPTOR` allocated by
@@ -206,6 +206,107 @@ pub fn dacl_sddl_for_path(path: &Path) -> Result<String> {
     sddl
 }
 
+/// Fails if `path` is a link, or if its owner is not `LocalSystem`,
+/// `BUILTIN\Administrators` or the user of this process.
+///
+/// A DACL does not protect an object from its owner, who can always change
+/// the DACL again.
+pub fn ensure_trusted_owner(path: &Path) -> Result<()> {
+    let metadata = std::fs::symlink_metadata(path)
+        .with_context(|| format!("Failed to read metadata of `{}`", path.display()))?;
+    ensure!(
+        !metadata.file_type().is_symlink(),
+        "`{}` is a link",
+        path.display()
+    );
+
+    let path_wide = wide(path.as_os_str());
+    let mut owner = PSID::default();
+    let mut descriptor = PSECURITY_DESCRIPTOR::default();
+
+    // SAFETY: `path_wide` is null-terminated and the other arguments are
+    // out-pointers to stack locals. On success, Windows allocates
+    // `descriptor` (released with `LocalFree` below) and points `owner` into it.
+    let err = unsafe {
+        GetNamedSecurityInfoW(
+            PCWSTR(path_wide.as_ptr()),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            Some(&mut owner),
+            None,
+            None,
+            None,
+            &mut descriptor,
+        )
+    };
+    if err != ERROR_SUCCESS {
+        return Err(std::io::Error::from_raw_os_error(err.0 as i32))
+            .with_context(|| format!("Failed to get the owner of `{}`", path.display()));
+    }
+
+    let trusted = is_trusted_sid(owner);
+
+    // SAFETY: `descriptor` was allocated by `GetNamedSecurityInfoW` and no
+    // pointer derived from it is used after this.
+    unsafe {
+        LocalFree(Some(HLOCAL(descriptor.0)));
+    }
+
+    if !trusted? {
+        bail!(
+            "`{}` must be owned by SYSTEM or Administrators; delete it and try again",
+            path.display()
+        );
+    }
+
+    Ok(())
+}
+
+fn is_trusted_sid(sid: PSID) -> Result<bool> {
+    // SAFETY: `sid` is a valid SID and Windows does not retain it.
+    let well_known = unsafe {
+        IsWellKnownSid(sid, WinLocalSystemSid).as_bool()
+            || IsWellKnownSid(sid, WinBuiltinAdministratorsSid).as_bool()
+    };
+    if well_known {
+        return Ok(true);
+    }
+
+    let mut token = HANDLE::default();
+    // SAFETY: `GetCurrentProcess` returns a pseudo handle and `&mut token` is
+    // a valid out-pointer.
+    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }
+        .context("OpenProcessToken failed")?;
+    // SAFETY: `OpenProcessToken` succeeded, so we own `token`.
+    let token = unsafe { Owned::new(token) };
+
+    let mut len = 0u32;
+    // SAFETY: Without a buffer, Windows only writes the needed size to `len`.
+    // The call fails with `ERROR_INSUFFICIENT_BUFFER` by design.
+    let _ = unsafe { GetTokenInformation(*token, TokenUser, None, 0, &mut len) };
+
+    // `u64` elements keep the buffer aligned for `TOKEN_USER`.
+    let mut buffer = vec![0u64; (len as usize).div_ceil(size_of::<u64>())];
+    // SAFETY: `buffer` has room for `len` bytes.
+    unsafe {
+        GetTokenInformation(
+            *token,
+            TokenUser,
+            Some(buffer.as_mut_ptr().cast()),
+            len,
+            &mut len,
+        )
+    }
+    .context("GetTokenInformation failed")?;
+
+    // SAFETY: On success, `buffer` starts with a `TOKEN_USER` whose SID points
+    // into `buffer`, which lives until the end of this function.
+    let user = unsafe { &*buffer.as_ptr().cast::<TOKEN_USER>() };
+
+    // SAFETY: Both SIDs are valid for this call.
+    Ok(unsafe { EqualSid(sid, user.User.Sid) }.is_ok())
+}
+
 fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
     s.as_ref().encode_wide().chain(Some(0)).collect()
 }
@@ -307,6 +408,20 @@ mod tests {
             .unwrap();
 
         assert!(dacl_sddl_for_path(&path).unwrap().ends_with("(A;;FA;;;WD)"));
+    }
+
+    #[test]
+    fn own_dir_has_trusted_owner() {
+        let dir = tempdir().unwrap();
+
+        ensure_trusted_owner(dir.path()).unwrap();
+    }
+
+    #[test]
+    fn missing_path_has_no_trusted_owner() {
+        let dir = tempdir().unwrap();
+
+        assert!(ensure_trusted_owner(&dir.path().join("does-not-exist")).is_err());
     }
 
     #[test]

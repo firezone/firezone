@@ -253,19 +253,12 @@ pub fn run(_log_dir: Option<PathBuf>, _dns_control: DnsControlMethod) -> Result<
 windows_service::define_windows_service!(run_service_ffi, run_service);
 
 fn run_service(arguments: Vec<OsString>) {
-    let moved = bin_shared::program_data::secure()
-        .expect("Should be able to secure the Tunnel service ProgramData dir");
-
     // `arguments` doesn't seem to work right when running as a Windows service
     // (even though it's meant for that) so just use the default log dir.
     let (_handle, log_filter_reloader, _flow_log_guard, _cleanup) =
         crate::logging::setup_tunnel(None).expect("Should be able to set up logging");
 
     tracing::info!(?arguments, "run_service");
-
-    for path in moved {
-        tracing::warn!(path = %path.display(), "Moved an object with an untrusted owner");
-    }
 
     if !elevation_check().is_ok_and(|elevated| elevated) {
         tracing::info!("Tunnel service failed its elevation check, try running as admin / root");

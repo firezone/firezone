@@ -159,6 +159,13 @@ fn set_dir_permissions(dir: &Path) -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn set_dir_permissions(dir: &Path) -> Result<()> {
+    // Users can create directories in `C:\ProgramData`, so check that nobody
+    // else created ours before we trust what is in it.
+    if let Some(parent) = dir.parent() {
+        windows_security::ensure_trusted_owner(parent)?;
+    }
+    windows_security::ensure_trusted_owner(dir)?;
+
     windows_security::SecurityDescriptor::from_sddl(DIR_SDDL)?.apply_to_path(dir)
 }
 

@@ -61,9 +61,7 @@ async fn main() -> ExitCode {
 }
 
 fn run() -> ExitCode {
-    let Cli { action } = Cli::parse();
-
-    let _log_handle = match init_tracing(action) {
+    let _log_handle = match init_tracing() {
         Ok(h) => h,
         #[expect(
             clippy::print_stderr,
@@ -74,6 +72,8 @@ fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+
+    let Cli { action } = Cli::parse();
 
     tracing::info!(
         %action,
@@ -117,7 +117,7 @@ fn run() -> ExitCode {
 /// Sets up tracing for `register-sparse`:
 ///
 /// - File: `<tunnel_service_logs>/register-sparse.<timestamp>.log`
-///   (and a `latest` link), or `<logs>/...` for `register-user`. This is the authoritative source during
+///   (and a `latest` link). This is the authoritative source during
 ///   MSI installs, because MSI discards stdout/stderr from deferred
 ///   EXE custom actions — they don't land in `install.log`.
 /// - Stdout: reaches a terminal only in debug builds, where the
@@ -128,13 +128,9 @@ fn run() -> ExitCode {
 ///
 /// Returns the file-appender handle; the caller must keep it alive
 /// until exit so the background writer can flush.
-fn init_tracing(action: Action) -> Result<logging::file::Handle> {
-    let log_dir = match action {
-        // Runs as the installing user, who cannot write to the Tunnel service logs.
-        Action::RegisterUser => known_dirs::logs(),
-        Action::Provision | Action::Deprovision => known_dirs::tunnel_service_logs(),
-    }
-    .context("Log dir not configured")?;
+fn init_tracing() -> Result<logging::file::Handle> {
+    let log_dir =
+        known_dirs::tunnel_service_logs().context("`tunnel_service_logs` not configured")?;
     std::fs::create_dir_all(&log_dir)
         .with_context(|| format!("creating log dir `{}`", log_dir.display()))?;
 
