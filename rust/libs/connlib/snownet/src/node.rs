@@ -895,6 +895,7 @@ where
                 allocations::UpsertResult::UpdatedCredentials => {
                     tracing::info!(%rid, address = ?server, "Updated credentials for existing TURN server")
                 }
+                allocations::UpsertResult::UnchangedCredentials => {}
                 allocations::UpsertResult::Blocked => {
                     tracing::debug!(%rid, address = ?server, "Ignoring blocked TURN server")
                 }

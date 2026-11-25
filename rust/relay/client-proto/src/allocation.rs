@@ -90,17 +90,7 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit>,
     events: VecDeque<Event>,
 
-    /// The requests that await a response, with the credentials they are signed with.
-    sent_requests: HashMap<
-        TransactionId,
-        (
-            SocketAddr,
-            Message<Attribute>,
-            Option<Credentials>,
-            ExponentialBackoff,
-        ),
-        FastRandomState,
-    >,
+    sent_requests: HashMap<TransactionId, SentRequest, FastRandomState>,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: AllocRingBuffer<SocketAddr>,
@@ -152,6 +142,14 @@ struct Credentials {
     password: String,
     realm: Realm,
     nonce: Option<Nonce>,
+}
+
+struct SentRequest {
+    dst: SocketAddr,
+    message: Message<Attribute>,
+    /// The credentials used to sign this request.
+    credentials: Option<Credentials>,
+    backoff: ExponentialBackoff,
 }
 
 /// Describes the socket address(es) we know about the relay.
@@ -356,6 +354,8 @@ impl Allocation {
     /// The refresh also checks that the relay still has the allocation, and an allocation that
     /// gave up starts over. Requests in flight are signed with the new credentials when they are
     /// retransmitted.
+    ///
+    /// Returns whether the credentials changed.
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn update_credentials(
         &mut self,
@@ -363,18 +363,21 @@ impl Allocation {
         password: String,
         realm: Realm,
         now: Instant,
-    ) {
-        let nonce = self.credentials.take().and_then(|c| c.nonce);
-        self.credentials = Some(Credentials {
-            username,
-            password,
-            realm,
-            nonce,
-        });
+    ) -> bool {
+        let changed = !self.matches_credentials(&username, &password, &realm);
+        if changed {
+            let nonce = self.credentials.take().and_then(|c| c.nonce);
+            self.credentials = Some(Credentials {
+                username,
+                password,
+                realm,
+                nonce,
+            });
+        }
 
         if !self.has_allocation() && self.allocate_in_flight() {
             tracing::debug!("Not refreshing allocation because we are already making one");
-            return;
+            return changed;
         }
 
         if self.is_suspended() {
@@ -382,12 +385,14 @@ impl Allocation {
 
             self.active_socket = None;
             self.send_binding_requests(now);
-            return;
+            return changed;
         }
 
         tracing::debug!("Refreshing allocation");
 
         self.authenticate_and_queue(MessagePrototype::refresh(self.software.clone()), None, now);
+
+        changed
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%from, tid, method, class, rtt))]
@@ -418,13 +423,12 @@ impl Allocation {
         Span::current().record("class", field::display(message.class()));
 
         // Early return to avoid cryptographic work in case it isn't our message.
-        let Some((_, request, request_credentials, _)) = self.sent_requests.get(&transaction_id)
-        else {
+        let Some(sent) = self.sent_requests.get(&transaction_id) else {
             return false;
         };
 
-        if request.method() != message.method() {
-            tracing::debug!(request = %request.method(), "Ignoring response for a different method");
+        if sent.message.method() != message.method() {
+            tracing::debug!(request = %sent.message.method(), "Ignoring response for a different method");
             return true; // The message still indicated that it was for this `Allocation`.
         }
 
@@ -438,15 +442,15 @@ impl Allocation {
         }
 
         let passed_message_integrity_check =
-            self.check_message_integrity(&message, request_credentials.as_ref());
+            self.check_message_integrity(&message, sent.credentials.as_ref());
 
         if message.method() != BINDING && !passed_message_integrity_check {
             // We don't want to `remove` the message here otherwise an attacker could change our state with unauthenticated messages.
-            let request = self.sent_requests.get(&transaction_id).map(|(_, r, _, _)| {
-                r.attributes()
-                    .map(display_attr)
-                    .collect::<SmallVec<[_; 16]>>()
-            });
+            let request = sent
+                .message
+                .attributes()
+                .map(display_attr)
+                .collect::<SmallVec<[_; 16]>>();
             let response = message
                 .attributes()
                 .map(display_attr)
@@ -456,8 +460,12 @@ impl Allocation {
             return true; // The message still indicated that it was for this `Allocation`.
         }
 
-        let Some((original_dst, original_request, request_credentials, backoff)) =
-            self.sent_requests.remove(&transaction_id)
+        let Some(SentRequest {
+            dst: original_dst,
+            message: original_request,
+            credentials: request_credentials,
+            backoff,
+        }) = self.sent_requests.remove(&transaction_id)
         else {
             return false;
         };
@@ -489,7 +497,7 @@ impl Allocation {
             if error.code() == Unauthorized::CODEPOINT
                 && original_request.get_attribute::<Nonce>().is_some()
                 && request_credentials
-                    .is_some_and(|c| self.matches_credentials(&c.username, &c.password))
+                    .is_some_and(|c| self.matches_credentials(&c.username, &c.password, &c.realm))
             {
                 tracing::warn!(
                     "Invalid credentials, refusing to re-authenticate {}",
@@ -856,9 +864,14 @@ impl Allocation {
         while let Some(timed_out_request) = self
             .sent_requests
             .iter()
-            .find_map(|(id, (_, _, _, backoff))| (now >= backoff.next_trigger()).then_some(*id))
+            .find_map(|(id, sent)| (now >= sent.backoff.next_trigger()).then_some(*id))
         {
-            let (dst, request, _, mut backoff) = self
+            let SentRequest {
+                dst,
+                message: request,
+                mut backoff,
+                ..
+            } = self
                 .sent_requests
                 .remove(&timed_out_request)
                 .expect("ID is from list");
@@ -894,8 +907,8 @@ impl Allocation {
             }
         }
 
-        for (_, _, _, backoff) in self.sent_requests.values_mut() {
-            backoff.handle_timeout(now);
+        for sent in self.sent_requests.values_mut() {
+            sent.backoff.handle_timeout(now);
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at()
@@ -949,7 +962,7 @@ impl Allocation {
         let next_timeout = self
             .sent_requests
             .values()
-            .map(|(_, _, _, b)| b.next_trigger());
+            .map(|sent| sent.backoff.next_trigger());
 
         let next_keepalive = if self.has_allocation() {
             self.active_socket.map(|a| a.next_binding)
@@ -1099,10 +1112,10 @@ impl Allocation {
         self.credentials.is_some()
     }
 
-    fn matches_credentials(&self, username: &Username, password: &str) -> bool {
+    fn matches_credentials(&self, username: &Username, password: &str, realm: &Realm) -> bool {
         self.credentials
             .as_ref()
-            .is_some_and(|c| &c.username == username && c.password == password)
+            .is_some_and(|c| &c.username == username && c.password == password && &c.realm == realm)
     }
 
     pub fn matches_socket(&self, socket: &RelaySocket) -> bool {
@@ -1225,9 +1238,11 @@ impl Allocation {
     }
 
     fn channel_binding_in_flight_by_number(&self, channel: u16) -> bool {
-        self.sent_requests.values().any(|(_, r, _, _)| {
-            r.method() == CHANNEL_BIND
-                && r.get_attribute::<ChannelNumber>()
+        self.sent_requests.values().any(|sent| {
+            sent.message.method() == CHANNEL_BIND
+                && sent
+                    .message
+                    .get_attribute::<ChannelNumber>()
                     .is_some_and(|n| n.value() == channel)
         })
     }
@@ -1236,7 +1251,7 @@ impl Allocation {
         let sent_requests = self
             .sent_requests
             .values()
-            .map(|(_, r, _, _)| r)
+            .map(|sent| &sent.message)
             .filter(|message| message.method() == CHANNEL_BIND)
             .filter_map(|message| message.get_attribute::<XorPeerAddress>())
             .map(|a| a.address());
@@ -1250,13 +1265,13 @@ impl Allocation {
     fn allocate_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(_, r, _, _)| r.method() == ALLOCATE)
+            .any(|sent| sent.message.method() == ALLOCATE)
     }
 
     fn refresh_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(_, r, _, _)| r.method() == REFRESH)
+            .any(|sent| sent.message.method() == REFRESH)
     }
 
     /// Check whether this allocation is suspended.
@@ -1337,8 +1352,15 @@ impl Allocation {
             return false;
         }
 
-        self.sent_requests
-            .insert(id, (dst, message.clone(), credentials, backoff));
+        self.sent_requests.insert(
+            id,
+            SentRequest {
+                dst,
+                message: message.clone(),
+                credentials,
+                backoff,
+            },
+        );
 
         self.buffered_transmits.push_back(Transmit {
             dst,

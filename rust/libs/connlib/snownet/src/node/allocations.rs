@@ -197,9 +197,11 @@ where
                 let allocation = o.get_mut();
 
                 if allocation.matches_socket(&server) {
-                    allocation.update_credentials(username, password, realm, now);
-
-                    return UpsertResult::UpdatedCredentials;
+                    return if allocation.update_credentials(username, password, realm, now) {
+                        UpsertResult::UpdatedCredentials
+                    } else {
+                        UpsertResult::UnchangedCredentials
+                    };
                 }
 
                 let mut seed = [0u8; 32];
@@ -406,6 +408,7 @@ fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
 pub(crate) enum UpsertResult {
     Added,
     UpdatedCredentials,
+    UnchangedCredentials,
     Blocked,
     Replaced(Allocation),
 }
@@ -575,6 +578,30 @@ mod tests {
         assert!(matches!(
             upsert(&mut allocations, 1, SERVER_V4, now + BLOCK_DURATION),
             UpsertResult::Added
+        ));
+    }
+
+    #[test]
+    fn reports_updated_credentials_only_when_they_change() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+
+        assert!(matches!(
+            upsert(&mut allocations, 1, SERVER_V4, now),
+            UpsertResult::UnchangedCredentials
+        ));
+
+        assert!(matches!(
+            allocations.upsert(
+                1,
+                RelaySocket::from(SERVER_V4),
+                Username::new("test".to_owned()).unwrap(),
+                "password".to_owned(),
+                Realm::new("new-realm".to_owned()).unwrap(),
+                now,
+            ),
+            UpsertResult::UpdatedCredentials
         ));
     }
 
