@@ -60,4 +60,20 @@ defmodule Portal.Types.IPTest do
       assert IP.load(%Postgrex.INET{address: @ipv4}) == {:ok, %Postgrex.INET{address: @ipv4}}
     end
   end
+
+  describe "rate_limit_key/1" do
+    test "keeps IPv4 addresses whole" do
+      assert IP.rate_limit_key({192, 0, 2, 1}) == "192.0.2.1"
+    end
+
+    test "groups IPv4-mapped IPv6 addresses with their IPv4 form" do
+      assert IP.rate_limit_key({0, 0, 0, 0, 0, 0xFFFF, 0xC000, 0x0201}) == "192.0.2.1"
+    end
+
+    test "groups IPv6 addresses by /64" do
+      assert IP.rate_limit_key({0x2001, 0xDB8, 1, 2, 3, 4, 5, 6}) == "2001:db8:1:2::/64"
+      assert IP.rate_limit_key({0x2001, 0xDB8, 1, 2, 9, 9, 9, 9}) == "2001:db8:1:2::/64"
+      assert IP.rate_limit_key({0x2001, 0xDB8, 1, 3, 3, 4, 5, 6}) == "2001:db8:1:3::/64"
+    end
+  end
 end

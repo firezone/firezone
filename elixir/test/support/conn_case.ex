@@ -71,6 +71,17 @@ defmodule PortalWeb.ConnCase do
     )
   end
 
+  @doc "Returns the signed token fragment a GUI client sign-in handed over."
+  def client_auth_fragment(conn) do
+    %PortalWeb.Cookie.ClientAuth{fragment: fragment} =
+      conn
+      |> recycle()
+      |> Map.put(:secret_key_base, conn.secret_key_base)
+      |> PortalWeb.Cookie.ClientAuth.fetch()
+
+    fragment
+  end
+
   def flash(conn, key) do
     Phoenix.Flash.get(conn.assigns.flash, key)
   end

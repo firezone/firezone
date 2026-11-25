@@ -10,6 +10,7 @@ defmodule PortalAPI.Schemas.ProblemDetails do
     forbidden: "You do not have permission to perform this action.",
     not_found: "The requested resource could not be found.",
     conflict: "The request conflicts with the current state of the resource.",
+    request_entity_too_large: "The request body is too large.",
     unprocessable_entity: "The request body failed validation.",
     too_many_requests:
       "Rate limit exceeded. Retry after the time indicated in the Retry-After header."

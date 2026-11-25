@@ -271,6 +271,32 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The URL Clients and Gateways POST OTLP metrics to, e.g. `https://otlp.firezone.dev/v1/metrics`.
+  Metrics export is off while unset.
+  """
+  defconfig(:otlp_metrics_ingest_url, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
+    end
+  )
+
+  @doc """
+  How often Clients and Gateways export OTLP metrics.
+  """
+  defconfig(:otlp_metrics_export_interval_secs, :integer, default: 60)
+
+  @doc """
+  Base64-encoded PEM of the Ed25519 private key that signs the tokens Clients
+  and Gateways present to the OTLP ingest proxy. Metrics export is off while unset.
+  """
+  defconfig(:otel_ingest_jwt_private_key, :string,
+    default: nil,
+    sensitive: true,
+    changeset: &Portal.Changeset.validate_base64/2
+  )
+
+  @doc """
   Access key ID for Firezone's AWS account, used to assume customer IAM roles
   for Amazon S3 log sinks.
   """
@@ -546,6 +572,19 @@ defmodule Portal.Config.Definitions do
   default for on-prem, keeps slugs in this portal's database only.
   """
   defconfig(:slug_registry_table_url, :string, default: nil)
+
+  @doc """
+  Where the device CA key of each account is kept: `db` in this portal's database, or `azure`
+  in the Azure Key Vault at DEVICE_CA_KEY_VAULT_URL. Unset, the portal creates no device CAs.
+  """
+  defconfig(
+    :device_ca_key_storage,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:db, :azure]),
+    default: nil
+  )
+
+  @doc "URL of the Azure Key Vault for the device CA keys, when DEVICE_CA_KEY_STORAGE is `azure`."
+  defconfig(:device_ca_key_vault_url, :string, default: nil)
 
   @doc """
   Blob container in the other Firezone Cloud region that a region transfer

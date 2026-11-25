@@ -4,7 +4,7 @@ defmodule PortalWeb.AuthenticationTest do
 
   describe "take_sign_in_params/1" do
     test "takes params used for sign in" do
-      for key <- ["as", "state", "nonce", "redirect_to"] do
+      for key <- ["as", "state", "nonce", "nonce_hash", "redirect_to"] do
         assert take_sign_in_params(%{key => "foo"}) == %{key => "foo"}
       end
     end

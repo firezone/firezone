@@ -42,7 +42,8 @@ defmodule PortalWeb.Endpoint do
     gzip: true,
     only: PortalWeb.static_paths(),
     # allows serving digested files at the root
-    only_matching: ["site", "favicon"]
+    only_matching: ["site", "favicon"],
+    content_types: %{"apple-app-site-association" => "application/json"}
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.

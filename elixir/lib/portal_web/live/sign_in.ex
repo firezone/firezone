@@ -79,8 +79,8 @@ defmodule PortalWeb.SignIn do
           {String.upcase(String.first(@account.name))}
         </span>
       </div>
-      <div>
-        <h1 class="text-xl font-bold text-heading tracking-tight">
+      <div class="min-w-0">
+        <h1 class="text-xl font-bold text-heading tracking-tight break-words">
           Sign in to {@account.name}
         </h1>
         <p class="text-xs text-subtle mt-0.5">
@@ -231,7 +231,7 @@ defmodule PortalWeb.SignIn do
       href={~p"/#{@account}/sign_in/#{@type}/#{@provider.id}?#{@params}"}
     >
       {render_slot(@icon)}
-      <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
+      <span class="flex-1 min-w-0 break-words">Continue with <strong>{@provider.name}</strong></span>
       <Core.badge :if={@last_used} type="primary" class="shrink-0">Last used</Core.badge>
       <Core.icon
         name="ri-arrow-right-s-line"
@@ -309,7 +309,7 @@ defmodule PortalWeb.SignIn do
           name="email[email]"
           value={@email_form[:email].value}
           placeholder="you@example.com"
-          class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
+          class="flex-1 w-full min-w-0 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
           required
         />
         <button

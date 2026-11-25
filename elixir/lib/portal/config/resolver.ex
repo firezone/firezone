@@ -38,9 +38,9 @@ defmodule Portal.Config.Resolver do
     end
 
     defp fetch_process_value(key) do
-      case Process.get(key) do
+      case List.keyfind(Process.get(), key, 0) do
+        {^key, value} -> {:ok, value}
         nil -> :error
-        value -> {:ok, value}
       end
     end
 

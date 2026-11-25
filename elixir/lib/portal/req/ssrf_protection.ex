@@ -49,7 +49,8 @@ defmodule Portal.Req.SSRFProtection do
 
   @doc false
   @spec attach(Req.Request.t()) :: Req.Request.t()
-  def attach(%Req.Request{} = request), do: attach(request, [])
+  def attach(%Req.Request{} = request),
+    do: attach(request, Portal.Config.get_env(:portal, __MODULE__, []))
 
   @doc false
   @spec attach(Req.Request.t(), keyword()) :: Req.Request.t()

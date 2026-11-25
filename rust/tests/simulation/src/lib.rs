@@ -18,14 +18,36 @@ mod probe;
 mod real_client;
 mod real_gateway;
 mod real_relay;
+mod real_relay_system;
 mod real_tunnel;
 mod real_tunnel_system;
+mod relay_generator;
+mod relay_model;
+mod relay_transition;
 mod resource;
 mod site_network;
+mod stun;
 mod tcp;
 mod tunnel_generator;
 mod tunnel_model;
 mod tunnel_transition;
+
+use std::time::Instant;
+
+use jiff::Timestamp;
+use tracing_subscriber::{
+    EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
+};
+
+use crate::{
+    assertions::check_invariants,
+    clock::Clock,
+    real_relay_system::{RealRelaySystem, check_applied, check_settled},
+    real_tunnel_system::RealTunnelSystem,
+    relay_generator::RelayGenerator,
+    relay_transition::Interference,
+    tunnel_generator::TunnelGenerator,
+};
 
 type QueryId = u16;
 
@@ -46,83 +68,116 @@ type DeviceListing = (
     Option<String>,
 );
 
-/// Simulates clients, gateways, relays and the portal and checks the tunnel state machines against a model.
-pub mod tunnel {
-    use std::time::Instant;
+const MAX_TUNNEL_TRANSITIONS: usize = 20;
+const MAX_RELAY_TRANSITIONS: usize = 64;
 
-    use jiff::Timestamp;
-    use tracing_subscriber::{
-        EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
-    };
+/// Runs the tunnel simulation that `data` describes, with its clock starting at `now`.
+///
+/// Simulates clients, gateways, relays and the portal and checks the tunnel state machines
+/// against a model. Panics if the tunnel violates an invariant.
+pub fn run_tunnel(data: &[u8], now: Instant) {
+    let _guard = init_subscriber();
 
-    use super::{
-        assertions::{PanicOnErrorEvents, check_invariants},
-        clock::Clock,
-        feedback,
-        real_tunnel_system::RealTunnelSystem,
-        tunnel_generator::TunnelGenerator,
-    };
+    let clock = Clock::new(now, Timestamp::UNIX_EPOCH);
+    let mut generator = TunnelGenerator::new(data);
+    let domain_tree = generator.domain_tree();
+    let mut portal = generator.portal(&domain_tree);
+    let mut model = generator.model(&portal, domain_tree);
+    let mut feedback_recorder = feedback::Recorder::default();
 
-    const MAX_TRANSITIONS: usize = 20;
+    let mut tunnel = RealTunnelSystem::init_test(&model, &mut portal, clock.clone());
+    check_invariants(&model, &tunnel, &portal);
 
-    /// Runs the simulation that `data` describes, with its clock starting at `now`.
-    ///
-    /// Panics if the tunnel violates an invariant.
-    pub fn run(data: &[u8], now: Instant) {
-        let _guard = init_subscriber();
-
-        let clock = Clock::new(now, Timestamp::UNIX_EPOCH);
-        let mut generator = TunnelGenerator::new(data);
-        let domain_tree = generator.domain_tree();
-        let mut portal = generator.portal(&domain_tree);
-        let mut model = generator.model(&portal, domain_tree);
-        let mut feedback_recorder = feedback::Recorder::default();
-
-        let mut tunnel = RealTunnelSystem::init_test(&model, &mut portal, clock.clone());
-        check_invariants(&model, &tunnel, &portal);
-
-        for applied in 0..MAX_TRANSITIONS {
-            if generator.is_empty() {
-                break;
-            }
-
-            let transition = generator.transition(&model, &portal, clock.now());
-
-            tracing::debug!("Applying transition {applied}: {transition:?}");
-            feedback_recorder.observe(&transition, &model, clock.now());
-
-            model.invalidate(&transition, &portal);
-            tunnel.invalidate(&model);
-
-            portal.apply(&transition, &model);
-            model = model.apply(&transition, &portal, clock.now());
-            tunnel = tunnel.apply(transition, &model, &mut portal);
-            check_invariants(&model, &tunnel, &portal);
-            feedback_recorder.record(&model, &tunnel, &portal);
+    for applied in 0..MAX_TUNNEL_TRANSITIONS {
+        if generator.is_empty() {
+            break;
         }
+
+        let transition = generator.transition(&model, &portal, clock.now());
+
+        tracing::debug!("Applying transition {applied}: {transition:?}");
+        feedback_recorder.observe(&transition, &model, clock.now());
+
+        model.invalidate(&transition, &portal);
+        tunnel.invalidate(&model);
+
+        portal.apply(&transition, &model);
+        model = model.apply(&transition, &portal, clock.now());
+        tunnel = tunnel.apply(transition, &model, &mut portal);
+        check_invariants(&model, &tunnel, &portal);
+        feedback_recorder.record(&model, &tunnel, &portal);
+    }
+}
+
+/// Runs the relay simulation that `data` describes, with its clock starting at `now`.
+///
+/// Simulates a relay client and a relay and checks the client against a model.
+/// Panics if the client or the relay violates it.
+pub fn run_relay(data: &[u8], now: Instant) {
+    let _guard = init_subscriber();
+
+    let clock = Clock::new(now, Timestamp::UNIX_EPOCH);
+    let mut generator = RelayGenerator::new(data);
+    let mut model = generator.model(clock.now());
+
+    let mut system = RealRelaySystem::new(&model, clock.clone());
+    let mut interference = Interference::default();
+    let settled = system.settle(&mut interference);
+    let now = clock.now();
+    check_settled(&model, &settled, now);
+    model.settle(now);
+
+    for index in 0..MAX_RELAY_TRANSITIONS {
+        if generator.is_empty() {
+            break;
+        }
+
+        let (transition, next_interference, settle) = generator.transition(&model);
+        interference = next_interference;
+
+        tracing::debug!(
+            "Applying transition {index}: {transition:?} with {interference:?}, settle: {settle}"
+        );
+
+        model.apply(&transition, &interference, clock.now());
+        let applied = system.apply(&transition, &mut interference);
+        check_applied(&model, &applied, clock.now());
+
+        // The next transition meets whatever the client and the relay are in the middle of.
+        if !settle {
+            continue;
+        }
+
+        let settled = system.settle(&mut interference);
+        let now = clock.now();
+        check_settled(&model, &settled, now);
+        model.settle(now);
     }
 
-    /// Initializes a subscriber that panics on error events.
-    ///
-    /// It writes no logs by default; setting `RUST_LOG` additionally writes a trace to stderr.
-    fn init_subscriber() -> tracing::subscriber::DefaultGuard {
-        const DEFAULT_FILTER: &str =
-            "debug,tunnel_proto=trace,simulation=debug,ip_packet=trace,frostlink=trace";
+    let settled = system.settle(&mut interference);
+    check_settled(&model, &settled, clock.now());
+}
 
-        // Building the layer creates hash maps and `std` seeds each hash map from how many the thread built before it.
-        // Without `RUST_LOG` we therefore build it too, with everything filtered out.
-        let filter = match std::env::var("RUST_LOG") {
-            Ok(filter) => format!("{DEFAULT_FILTER},{filter}"),
-            Err(_) => "off".to_owned(),
-        };
-        let log_layer = tracing_subscriber::fmt::layer()
-            .with_writer(std::io::stderr)
-            .with_ansi(false)
-            .with_filter(EnvFilter::new(filter));
+/// Initializes a subscriber that panics on error events.
+///
+/// It writes no logs by default; setting `RUST_LOG` additionally writes a trace to stderr.
+fn init_subscriber() -> tracing::subscriber::DefaultGuard {
+    const DEFAULT_FILTER: &str =
+        "debug,tunnel_proto=trace,simulation=debug,ip_packet=trace,frostlink=trace";
 
-        tracing_subscriber::registry()
-            .with(PanicOnErrorEvents::new())
-            .with(log_layer)
-            .set_default()
-    }
+    // Building the layer creates hash maps and `std` seeds each hash map from how many the thread built before it.
+    // Without `RUST_LOG` we therefore build it too, with everything filtered out.
+    let filter = match std::env::var("RUST_LOG") {
+        Ok(filter) => format!("{DEFAULT_FILTER},{filter}"),
+        Err(_) => "off".to_owned(),
+    };
+    let log_layer = tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .with_filter(EnvFilter::new(filter));
+
+    tracing_subscriber::registry()
+        .with(assertions::PanicOnErrorEvents::new())
+        .with(log_layer)
+        .set_default()
 }

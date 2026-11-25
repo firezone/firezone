@@ -14,14 +14,14 @@ use std::{io, net::SocketAddr};
 #[macro_export]
 macro_rules! service_name {
     () => {
-        ::opentelemetry::KeyValue::new("service.name", env!("CARGO_PKG_NAME"))
+        $crate::KeyValue::new("service.name", env!("CARGO_PKG_NAME"))
     };
 }
 
 #[macro_export]
 macro_rules! service_version {
     () => {
-        ::opentelemetry::KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))
+        $crate::KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))
     };
 }
 
@@ -62,6 +62,11 @@ pub fn network_io_direction_transmit() -> KeyValue {
 /// The kind of socket a connection's path uses, e.g. `PeerToPeer` or `RelayToRelay`.
 pub fn connection_socket(socket: &'static str) -> KeyValue {
     KeyValue::new("connection.socket", socket)
+}
+
+/// The agent a connection uses to select its network path, i.e. `ice` or `frostlink`.
+pub fn connection_agent(agent: &'static str) -> KeyValue {
+    KeyValue::new("connection.agent", agent)
 }
 
 pub fn io_error_code(e: &io::Error) -> KeyValue {
