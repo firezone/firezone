@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+
+# Existing installations use this path in their signed-by setting.
+if [ "$1" = "configure" ] && [ -e /etc/apt/keyrings/firezone.gpg ]; then
+    install --mode 0644 /usr/share/keyrings/firezone-archive-keyring.gpg /etc/apt/keyrings/firezone.gpg
+fi

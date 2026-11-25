@@ -133,41 +133,23 @@ def build_keyring(work: Path, key_id: str, expiry: str) -> Path:
     version = expiry.replace("-", ".")
     package = work / f"firezone-archive-keyring_{version}_all.deb"
     root = work / "keyring"
+    shutil.copytree(Path(__file__).with_name("apt-keyring"), root)
+
     debian = root / "DEBIAN"
     keyrings = root / "usr/share/keyrings"
-    debian.mkdir(parents=True)
     keyrings.mkdir(parents=True)
     for directory in (root, debian, root / "usr", keyrings.parent, keyrings):
         directory.chmod(0o755)
 
+    control = debian / "control"
+    template = control.read_text(encoding="utf-8")
+    control.write_text(template.replace("@VERSION@", version), encoding="utf-8")
+    (debian / "postinst").chmod(0o755)
+
     public_key = keyrings / "firezone-archive-keyring.gpg"
     public_key.write_bytes(command_output("gpg", "--export", key_id))
     public_key.chmod(0o644)
-    (debian / "control").write_text(
-        f"""Package: firezone-archive-keyring
-Version: {version}
-Architecture: all
-Maintainer: Firezone, Inc. <support@firezone.dev>
-Section: misc
-Priority: optional
-Description: GnuPG key of the Firezone APT repository
-""",
-        encoding="utf-8",
-    )
 
-    # Existing installations use this path in their signed-by setting.
-    postinst = debian / "postinst"
-    postinst.write_text(
-        """#!/bin/sh
-set -e
-
-if [ "$1" = "configure" ] && [ -e /etc/apt/keyrings/firezone.gpg ]; then
-    install --mode 0644 /usr/share/keyrings/firezone-archive-keyring.gpg /etc/apt/keyrings/firezone.gpg
-fi
-""",
-        encoding="utf-8",
-    )
-    postinst.chmod(0o755)
     subprocess.run(("dpkg-deb", "--root-owner-group", "--build", root, package), check=True)
     return package
 
