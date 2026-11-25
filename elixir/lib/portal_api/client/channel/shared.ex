@@ -54,6 +54,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   # The most PTR records a DNS message holds, even with compressed one-character labels.
   @device_domain_browse_limit 4_096
 
+  @max_ice_candidate_gateways 64
+
   @doc false
   def policy_authorization_queue_opts do
     [
@@ -2869,7 +2871,9 @@ Relays.render(relays, relay_owner(socket)),
     candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.client)
 
     if candidates != [] do
-      for gateway_id <- Enum.uniq(gateway_ids), is_binary(gateway_id) do
+      gateway_ids = gateway_ids |> Enum.take(@max_ice_candidate_gateways) |> Enum.uniq()
+
+      for gateway_id <- gateway_ids, is_binary(gateway_id) do
         PG.deliver(gateway_id, {tag, %{type: :client, id: socket.assigns.client.id}, candidates})
       end
     end
