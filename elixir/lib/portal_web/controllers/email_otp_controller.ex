@@ -323,7 +323,7 @@ defmodule PortalWeb.EmailOTPController do
       actor.name,
       actor.email,
       token,
-      params["state"]
+      params
     )
   end
 
@@ -410,7 +410,7 @@ defmodule PortalWeb.EmailOTPController do
   end
 
   defp sanitize(params) do
-    Map.take(params, ["as", "redirect_to", "state", "nonce"])
+    Map.take(params, ["as", "redirect_to", "state", "nonce", "callback"])
   end
 
   defp context_type(%{"as" => "oauth"}), do: :oauth

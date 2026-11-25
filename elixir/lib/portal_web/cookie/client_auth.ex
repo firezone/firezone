@@ -4,13 +4,14 @@ defmodule PortalWeb.Cookie.ClientAuth do
   """
 
   @enforce_keys [:actor_name, :fragment, :identity_provider_identifier]
-  defstruct [:actor_name, :fragment, :identity_provider_identifier, :state]
+  defstruct [:actor_name, :fragment, :identity_provider_identifier, :state, :callback]
 
   @type t :: %__MODULE__{
           actor_name: String.t(),
           fragment: String.t(),
           identity_provider_identifier: String.t(),
-          state: String.t() | nil
+          state: String.t() | nil,
+          callback: String.t() | nil
         }
 
   @cookie_key "client_auth"
@@ -33,20 +34,21 @@ defmodule PortalWeb.Cookie.ClientAuth do
   end
 
   defp to_binary(%__MODULE__{} = cookie) do
-    {cookie.actor_name, cookie.fragment, cookie.identity_provider_identifier, cookie.state}
+    {cookie.actor_name, cookie.fragment, cookie.identity_provider_identifier, cookie.state, cookie.callback}
     |> :erlang.term_to_binary()
   end
 
   # sobelow_skip ["Misc.BinToTerm"]
   defp from_binary(binary) when is_binary(binary) do
-    {actor_name, fragment, identity_provider_identifier, state} =
+    {actor_name, fragment, identity_provider_identifier, state, callback} =
       :erlang.binary_to_term(binary, [:safe])
 
     %__MODULE__{
       actor_name: actor_name,
       fragment: fragment,
       identity_provider_identifier: identity_provider_identifier,
-      state: state
+      state: state,
+      callback: callback
     }
   rescue
     _ -> nil

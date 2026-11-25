@@ -49,6 +49,53 @@ defmodule PortalWeb.SignInHTML do
     """
   end
 
+  def client_callback(assigns) do
+    ~H"""
+    <!DOCTYPE html>
+    <html lang="en" class="scrollbar-gutter-stable">
+      <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="referrer" content="no-referrer" />
+        <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
+        <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
+        <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
+        <link rel="manifest" href={~p"/site.webmanifest"} />
+        <meta name="theme-color" content="#FF7300" />
+        <.live_title suffix=" · Firezone">
+          {assigns[:page_title] || "Firezone"}
+        </.live_title>
+        <link
+          phx-track-static
+          rel="stylesheet"
+          nonce={@conn.private[:csp_nonce]}
+          href={~p"/assets/app.css"}
+        />
+        <link
+          phx-track-static
+          rel="stylesheet"
+          nonce={@conn.private[:csp_nonce]}
+          href={~p"/assets/main.css"}
+        />
+      </head>
+      <body class="bg-surface min-h-screen flex items-center justify-center">
+        <div class="w-full max-w-sm px-4 py-12 text-center">
+          <h1 class="text-xl font-semibold text-heading tracking-tight">
+            Return to the Firezone app
+          </h1>
+          <p class="mt-2 text-sm text-body">
+            Finish signing in from the Firezone app.
+          </p>
+          <p class="mt-4 text-xs text-subtle">
+            If the app did not open, close this window and start signing in again from the app.
+          </p>
+        </div>
+      </body>
+    </html>
+    """
+  end
+
   def client_auth_error(assigns) do
     ~H"""
     <!DOCTYPE html>

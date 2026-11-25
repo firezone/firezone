@@ -48,6 +48,7 @@ defmodule PortalWeb.Router do
     get "/find_account", HomeController, :find_account
     post "/sign_in", HomeController, :redirect_to_sign_in
     post "/sign_in/recent_accounts/:account_id/remove", HomeController, :remove_recent_account
+    get "/sign_in/client_callback", SignInController, :client_callback
     post "/", HomeController, :redirect_to_sign_in
   end
 

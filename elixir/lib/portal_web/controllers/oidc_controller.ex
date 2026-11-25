@@ -1008,7 +1008,7 @@ defmodule PortalWeb.OIDCController do
       identity.actor.name,
       identity.email,
       token,
-      params["state"]
+      params
     )
   end
 
@@ -2197,7 +2197,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp sanitize(params) do
-    Map.take(params, ["as", "redirect_to", "state", "nonce"])
+    Map.take(params, ["as", "redirect_to", "state", "nonce", "callback"])
   end
 
   defp verification_params(pending_identity_id, params) do
