@@ -7,9 +7,11 @@ defmodule PortalAPI.FlowLogController do
   # the network fields: the inner tunnel tuple, the ordered outer (WireGuard)
   # paths, the flow window, and the byte/packet counters.
   #
-  # The uploader retries any batch that is not answered with a 2xx until its
-  # token expires, so a record that fails validation is logged and dropped and
-  # the request still gets a 200. Only rate limits get another status.
+  # The uploader keeps any batch that is not answered with a 2xx and retries it
+  # until its token expires, so a record that fails validation is logged and
+  # dropped and the request still gets a 2xx: 200 when every record is stored,
+  # 202 when some are dropped. A 413 makes the uploader split the batch and
+  # send each half.
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   import Ecto.Changeset
@@ -44,9 +46,34 @@ defmodule PortalAPI.FlowLogController do
                  properties: %{status: %Schema{type: :string, enum: ["ok"]}}
                }
              }
+           }},
+        accepted:
+          {"Flow Logs accepted, some dropped", "application/json",
+           %Schema{
+             type: :object,
+             required: [:data],
+             properties: %{
+               data: %Schema{
+                 type: :object,
+                 required: [:status, :dropped, :validation_errors],
+                 properties: %{
+                   status: %Schema{type: :string, enum: ["accepted"]},
+                   dropped: %Schema{type: :integer, minimum: 1},
+                   validation_errors: %Schema{
+                     type: :object,
+                     description: "Errors keyed by the index of each dropped record",
+                     additionalProperties: %Schema{type: :object}
+                   }
+                 }
+               }
+             }
            }}
       ] ++
-        ProblemDetailsSchema.responses([:unauthorized, :too_many_requests])
+        ProblemDetailsSchema.responses([
+          :unauthorized,
+          :request_entity_too_large,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -78,11 +105,7 @@ defmodule PortalAPI.FlowLogController do
 
   def create(conn, %{"flow_logs" => records})
       when is_list(records) and length(records) > @max_batch_size do
-    log_dropped(conn.assigns.flow_log_claims, length(records), %{
-      batch: ["must have at most #{@max_batch_size} records"]
-    })
-
-    ok(conn)
+    ProblemDetails.send(conn, 413, "Batch size exceeds maximum of #{@max_batch_size}")
   end
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
@@ -103,11 +126,7 @@ defmodule PortalAPI.FlowLogController do
         |> Enum.map(fn {_index, entry} -> entry end)
         |> Database.upsert_flow_logs()
 
-        if errors != [] do
-          log_dropped(claims, length(errors), render_validation_errors(errors))
-        end
-
-        ok(conn)
+        respond_stored(conn, claims, errors)
 
       {:error, {:rate_limit, retry_after_ms}} ->
         retry_after = max(ceil(retry_after_ms / 1000), 1)
@@ -119,24 +138,31 @@ defmodule PortalAPI.FlowLogController do
   end
 
   def create(conn, _params) do
-    log_dropped(conn.assigns.flow_log_claims, 0, %{flow_logs: ["must be an array"]})
-    ok(conn)
+    ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
 
-  defp ok(conn) do
+  defp respond_stored(conn, _claims, []) do
     conn
     |> put_status(200)
     |> json(%{data: %{status: "ok"}})
   end
 
-  defp log_dropped(claims, count, errors) do
+  defp respond_stored(conn, claims, errors) do
+    validation_errors = render_validation_errors(errors)
+
     Logger.info("Dropped invalid flow log records",
       account_id: claims["account_id"],
       policy_authorization_id: claims["policy_authorization_id"],
       role: claims["role"],
-      dropped: count,
-      errors: errors
+      dropped: length(errors),
+      errors: validation_errors
     )
+
+    conn
+    |> put_status(202)
+    |> json(%{
+      data: %{status: "accepted", dropped: length(errors), validation_errors: validation_errors}
+    })
   end
 
   # The device is charged first so a device over its own allowance never spends
