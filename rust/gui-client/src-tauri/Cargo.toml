@@ -15,6 +15,7 @@ enum_representation = "discriminated"
 anyhow = { workspace = true }
 arboard = { workspace = true }
 async-runtime = { workspace = true }
+atomicfs = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
