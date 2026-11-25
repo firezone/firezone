@@ -39,6 +39,8 @@ defmodule Portal.Ops.RegionTransferTest do
 
   describe "export/2" do
     test "disables the account and uploads one file per table", %{account: account, store: store} do
+      {:ok, _ca} = Portal.DeviceCA.ensure(account.id)
+
       output =
         capture_io("y\n", fn ->
           assert {:ok, manifest} = RegionTransfer.export(account.id)
@@ -49,7 +51,7 @@ defmodule Portal.Ops.RegionTransferTest do
 
           refute Enum.any?(
                    manifest["tables"],
-                   &(&1["name"] in ~w(device_tokens log_sink_cursors pending_identities portal_sessions api_request_logs))
+                   &(&1["name"] in ~w(device_certificate_authorities device_tokens log_sink_cursors pending_identities portal_sessions api_request_logs))
                  )
         end)
 

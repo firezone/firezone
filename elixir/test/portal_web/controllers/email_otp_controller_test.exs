@@ -869,6 +869,70 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert get_cookie(conn) == nil
     end
 
+    test "a gui-client sign-in with a nonce hash gives a token that needs the nonce", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+      nonce_hash = Portal.Crypto.hash(:sha256, "test-nonce")
+      params = %{"as" => "gui-client", "state" => "test-state", "nonce_hash" => nonce_hash}
+
+      conn =
+        post(
+          conn,
+          ~p"/#{account.id}/sign_in/email_otp/#{provider.id}",
+          Map.put(params, "email", %{"email" => actor.email})
+        )
+
+      assert_received {:email, email}
+      code = extract_code_from_email(email)
+
+      conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(
+          ~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify",
+          Map.put(params, "secret", code)
+        )
+
+      fragment = client_auth_fragment(conn)
+      context = Portal.SubjectFixtures.build_context(type: :client)
+
+      assert {:ok, _token} = Portal.Authentication.use_token("test-nonce" <> fragment, context)
+      assert {:error, :invalid_token} = Portal.Authentication.use_token(fragment, context)
+    end
+
+    test "rejects a gui-client sign-in without a nonce", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+      params = %{"as" => "gui-client", "state" => "test-state"}
+
+      conn =
+        post(
+          conn,
+          ~p"/#{account.id}/sign_in/email_otp/#{provider.id}",
+          Map.put(params, "email", %{"email" => actor.email})
+        )
+
+      assert_received {:email, email}
+      code = extract_code_from_email(email)
+
+      conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(
+          ~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify",
+          Map.put(params, "secret", code)
+        )
+
+      refute conn.status == 200 and conn.resp_body =~ "client_redirect"
+      refute Repo.exists?(Portal.DeviceToken)
+    end
+
     test "successfully authenticates admin user in gui-client context", %{
       conn: conn,
       account: account,

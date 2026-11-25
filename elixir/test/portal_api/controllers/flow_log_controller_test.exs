@@ -75,6 +75,20 @@ defmodule PortalAPI.FlowLogControllerTest do
     post(conn, "/ingestion/flow_logs", %{"flow_logs" => records})
   end
 
+  # Runs `post` and returns the log, asserting a 202 that drops `dropped`
+  # records and stores `stored`.
+  defp assert_dropped(post, dropped, stored \\ 0) do
+    logged =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert %{"data" => %{"status" => "accepted", "dropped" => ^dropped}} =
+                 post.() |> json_response(202)
+      end)
+
+    assert logged =~ "Dropped invalid flow log records"
+    assert length(Repo.all(FlowLog)) == stored
+    logged
+  end
+
   defp unique_ip do
     counter = System.unique_integer([:positive, :monotonic])
 
@@ -82,13 +96,15 @@ defmodule PortalAPI.FlowLogControllerTest do
   end
 
   describe "create/2 request shape" do
-    test "returns 400 when batch exceeds 10k records", %{conn: conn, account: account} do
+    test "returns 413 when batch exceeds 10k records", %{conn: conn, account: account} do
       records = for _ <- 1..10_001, do: build_record()
 
       conn = conn |> authorize(account) |> post_logs(records)
 
-      assert %{"status" => 400, "detail" => "Batch size exceeds maximum of 10000"} =
-               json_response(conn, 400)
+      assert %{"status" => 413, "detail" => "Batch size exceeds maximum of 10000"} =
+               json_response(conn, 413)
+
+      assert Repo.all(FlowLog) == []
     end
 
     test "returns 400 when flow_logs key is missing", %{conn: conn, account: account} do
@@ -105,13 +121,17 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert %{"status" => 400} = json_response(conn, 400)
     end
 
-    test "returns 422 when record is not a JSON object", %{conn: conn, account: account} do
-      conn = conn |> authorize(account) |> post_logs(["not a map", 42, nil])
+    test "drops records that are not JSON objects", %{conn: conn, account: account} do
+      ExUnit.CaptureLog.capture_log(fn ->
+        conn = conn |> authorize(account) |> post_logs(["not a map", 42, nil])
 
-      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-      assert errors["0"]["record"] == ["must be a JSON object"]
-      assert errors["1"]["record"] == ["must be a JSON object"]
-      assert errors["2"]["record"] == ["must be a JSON object"]
+        assert %{"data" => %{"dropped" => 3, "validation_errors" => errors}} =
+                 json_response(conn, 202)
+
+        assert errors["0"]["record"] == ["must be a JSON object"]
+        assert errors["1"]["record"] == ["must be a JSON object"]
+        assert errors["2"]["record"] == ["must be a JSON object"]
+      end)
     end
   end
 
@@ -531,25 +551,30 @@ defmodule PortalAPI.FlowLogControllerTest do
   end
 
   describe "create/2 single policy authorization" do
-    test "returns 422 when records reference more than one authz id", %{
-      conn: conn,
-      account: account
-    } do
+    test "drops a record that names another authz id", %{conn: conn, account: account} do
       authz_id = Ecto.UUID.generate()
 
       records = [
         build_record(),
-        build_record(%{"policy_authorization_id" => Ecto.UUID.generate()})
+        build_record(%{
+          "inner_src_port" => 2222,
+          "policy_authorization_id" => Ecto.UUID.generate()
+        })
       ]
 
-      conn =
-        conn
-        |> authorize(account, %{"policy_authorization_id" => authz_id})
-        |> post_logs(records)
+      assert_dropped(
+        fn ->
+          conn
+          |> authorize(account, %{"policy_authorization_id" => authz_id})
+          |> post_logs(records)
+        end,
+        1,
+        1
+      )
 
-      assert %{"status" => 422, "detail" => detail} = json_response(conn, 422)
-      assert detail == "All flow logs in a request must belong to a single policy authorization"
-      assert Repo.all(FlowLog) == []
+      [log] = Repo.all(FlowLog)
+      assert log.policy_authorization_id == authz_id
+      assert log.inner_src_port == 12_345
     end
 
     test "accepts records that match the token's authz id and persists it", %{
@@ -954,29 +979,36 @@ defmodule PortalAPI.FlowLogControllerTest do
   end
 
   describe "create/2 validation" do
-    test "returns 422 with invalid role", %{conn: conn, account: account} do
-      conn = conn |> authorize(account, %{"role" => "sideways"}) |> post_logs([build_record()])
-
-      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-      assert Map.has_key?(errors, "0")
+    test "drops a record with an invalid role", %{conn: conn, account: account} do
+      assert_dropped(
+        fn ->
+          conn |> authorize(account, %{"role" => "sideways"}) |> post_logs([build_record()])
+        end,
+        1
+      )
     end
 
-    test "returns 422 with invalid protocol", %{conn: conn, account: account} do
-      conn = conn |> authorize(account) |> post_logs([build_record(%{"protocol" => "sctp"})])
-
-      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-      assert Map.has_key?(errors, "0")
+    test "drops a record with an invalid protocol", %{conn: conn, account: account} do
+      assert_dropped(
+        fn ->
+          conn |> authorize(account) |> post_logs([build_record(%{"protocol" => "sctp"})])
+        end,
+        1
+      )
     end
 
-    test "returns 422 with invalid inner_src_ip", %{conn: conn, account: account} do
-      conn =
-        conn |> authorize(account) |> post_logs([build_record(%{"inner_src_ip" => "not-an-ip"})])
-
-      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-      assert Map.has_key?(errors, "0")
+    test "drops a record with an invalid inner_src_ip", %{conn: conn, account: account} do
+      assert_dropped(
+        fn ->
+          conn
+          |> authorize(account)
+          |> post_logs([build_record(%{"inner_src_ip" => "not-an-ip"})])
+        end,
+        1
+      )
     end
 
-    test "returns 422 with an invalid outer path", %{conn: conn, account: account} do
+    test "drops a record with an invalid outer path", %{conn: conn, account: account} do
       record =
         build_record(%{
           "outers" => [
@@ -989,19 +1021,10 @@ defmodule PortalAPI.FlowLogControllerTest do
           ]
         })
 
-      conn = conn |> authorize(account) |> post_logs([record])
-
-      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-
-      assert %{
-               "src_ip" => [_],
-               "src_port" => [_],
-               "dst_ip" => [_],
-               "dst_port" => [_]
-             } = hd(errors["0"]["outers"])
+      assert_dropped(fn -> conn |> authorize(account) |> post_logs([record]) end, 1)
     end
 
-    test "returns 422 with a partially specified outer source endpoint", %{
+    test "drops a record with a partially specified outer source endpoint", %{
       conn: conn,
       account: account
     } do
@@ -1016,20 +1039,13 @@ defmodule PortalAPI.FlowLogControllerTest do
           ]
         })
 
-      conn = conn |> authorize(account) |> post_logs([record])
-
-      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-
-      assert [%{"src_port" => ["must be present when src_ip is present"]}] =
-               errors["0"]["outers"]
+      assert_dropped(fn -> conn |> authorize(account) |> post_logs([record]) end, 1)
     end
 
-    test "returns 422 when a close omits its outer paths", %{conn: conn, account: account} do
+    test "drops a close that omits its outer paths", %{conn: conn, account: account} do
       record = build_record() |> Map.delete("outers")
-      conn = conn |> authorize(account) |> post_logs([record])
 
-      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-      assert errors["0"]["outers"] == ["can't be blank"]
+      assert_dropped(fn -> conn |> authorize(account) |> post_logs([record]) end, 1)
     end
 
     test "accepts an open with outer paths known so far", %{conn: conn, account: account} do
@@ -1042,7 +1058,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert Enum.map(log.outers, & &1.dst_ip) == ["203.0.113.7"]
     end
 
-    test "rejects out-of-window timestamps while persisting valid records", %{
+    test "drops out-of-window timestamps while persisting valid records", %{
       conn: conn,
       account: account
     } do
@@ -1058,12 +1074,7 @@ defmodule PortalAPI.FlowLogControllerTest do
           build_record(%{"flow_start" => start_at.(days)})
         end)
 
-      conn = conn |> authorize(account) |> post_logs(records)
-
-      assert %{"validation_errors" => errors} = json_response(conn, 422)
-      assert Enum.sort(Map.keys(errors)) == ["0", "1", "2"]
-      assert errors["0"]["flow_start"] != []
-      assert errors["1"]["flow_start"] != []
+      assert_dropped(fn -> conn |> authorize(account) |> post_logs(records) end, 3, 7)
 
       assert Enum.sort(Enum.map(Repo.all(FlowLog), &DateTime.to_date(&1.flow_start)), Date) ==
                Enum.map([-121, -120, -30, -2, -1, 0, 14], &Date.add(today, &1))
@@ -1096,26 +1107,20 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert log.authorized_at == datetime("10:01:00.000000")
     end
 
-    test "rejects and logs an over-large counter", %{conn: conn, account: account} do
+    test "drops and logs an over-large counter", %{conn: conn, account: account} do
       bigint_max = 9_223_372_036_854_775_807
       record = build_record(%{"rx_bytes" => bigint_max + 1})
 
-      logged =
-        ExUnit.CaptureLog.capture_log(fn ->
-          conn = conn |> authorize(account) |> post_logs([record])
-          assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-          assert Map.has_key?(errors, "0")
-        end)
+      logged = assert_dropped(fn -> conn |> authorize(account) |> post_logs([record]) end, 1)
 
       assert logged =~ "exceeds the bigint maximum"
-      assert Repo.all(FlowLog) == []
     end
 
     test "accepts a nil resource_address for address-less resources", %{
       conn: conn,
       account: account
     } do
-      conn = authorize(conn, account, %{"resource_address" => nil})
+      conn = authorize(conn, account, %{"resource_type" => "internet", "resource_address" => nil})
 
       assert %{"data" => %{"status" => "ok"}} =
                post_logs(conn, [build_record()]) |> json_response(200)
@@ -1124,28 +1129,103 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert is_nil(log.resource_address)
     end
 
-    test "returns 422 when a close is missing its counters", %{conn: conn, account: account} do
+    test "drops a close that is missing its counters", %{conn: conn, account: account} do
       record =
         build_record(%{
           "flow_end" => timestamp("10:05:00.000000"),
           "rx_bytes" => nil
         })
 
-      conn = conn |> authorize(account) |> post_logs([record])
-
-      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-      assert Map.has_key?(errors, "0")
+      assert_dropped(fn -> conn |> authorize(account) |> post_logs([record]) end, 1)
     end
 
-    test "partial batch inserts valid records and returns 422", %{conn: conn, account: account} do
+    test "a partial batch inserts the valid records", %{conn: conn, account: account} do
       good = build_record(%{"inner_src_port" => 1111})
       bad = build_record(%{"inner_src_port" => 2222, "protocol" => "sctp"})
 
-      conn = conn |> authorize(account) |> post_logs([good, bad])
+      assert_dropped(fn -> conn |> authorize(account) |> post_logs([good, bad]) end, 1, 1)
+    end
+  end
 
-      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
-      assert Map.has_key?(errors, "1")
-      assert length(Repo.all(FlowLog)) == 1
+  describe "create/2 token checks" do
+    test "drops a record that starts after the authorization expired", %{
+      conn: conn,
+      account: account
+    } do
+      conn =
+        authorize(conn, account, %{"authorization_expires_at" => timestamp("09:00:00.000000")})
+
+      records = [
+        build_record(%{"inner_src_port" => 1111, "flow_start" => timestamp("09:05:00.000000")}),
+        build_record(%{"inner_src_port" => 2222, "flow_start" => timestamp("09:05:00.000001")})
+      ]
+
+      assert_dropped(fn -> post_logs(conn, records) end, 1, 1)
+      assert [%FlowLog{inner_src_port: 1111}] = Repo.all(FlowLog)
+    end
+
+    test "drops a record whose source is not the initiator", %{conn: conn, account: account} do
+      records = [
+        build_record(%{"inner_src_port" => 1111}),
+        build_record(%{"inner_src_port" => 2222, "inner_src_ip" => "fd00:2021:1111::1"}),
+        build_record(%{"inner_src_port" => 3333, "inner_src_ip" => "100.64.0.2"})
+      ]
+
+      assert_dropped(fn -> conn |> authorize(account) |> post_logs(records) end, 1, 2)
+    end
+
+    test "drops a record outside an IP resource", %{conn: conn, account: account} do
+      records = [
+        build_record(%{"inner_src_port" => 1111}),
+        build_record(%{"inner_src_port" => 2222, "inner_dst_ip" => "10.0.0.6"})
+      ]
+
+      assert_dropped(fn -> conn |> authorize(account) |> post_logs(records) end, 1, 1)
+    end
+
+    test "drops a record outside a CIDR resource", %{conn: conn, account: account} do
+      conn =
+        authorize(conn, account, %{"resource_type" => "cidr", "resource_address" => "10.0.0.0/24"})
+
+      records = [
+        build_record(%{"inner_src_port" => 1111, "inner_dst_ip" => "10.0.0.255"}),
+        build_record(%{"inner_src_port" => 2222, "inner_dst_ip" => "10.0.1.1"}),
+        build_record(%{"inner_src_port" => 3333, "inner_dst_ip" => "fd00::1"})
+      ]
+
+      assert_dropped(fn -> post_logs(conn, records) end, 2, 1)
+    end
+
+    test "does not check the destination of a DNS resource", %{conn: conn, account: account} do
+      conn =
+        authorize(conn, account, %{"resource_type" => "dns", "resource_address" => "*.example.com"})
+
+      assert %{"data" => %{"status" => "ok"}} =
+               conn |> post_logs([build_record()]) |> json_response(200)
+
+      assert [%FlowLog{}] = Repo.all(FlowLog)
+    end
+
+    test "a token without the new claims skips the source and destination checks", %{
+      conn: conn,
+      account: account
+    } do
+      token =
+        FlowLogToken.mint(
+          account,
+          Map.drop(flow_log_token_claims(), ["resource_type", "initiator_ips"]),
+          expires_at()
+        )
+
+      record = build_record(%{"inner_src_ip" => "100.64.0.9", "inner_dst_ip" => "192.0.2.1"})
+
+      assert %{"data" => %{"status" => "ok"}} =
+               conn
+               |> put_req_header("authorization", "Bearer " <> token)
+               |> post_logs([record])
+               |> json_response(200)
+
+      assert [%FlowLog{}] = Repo.all(FlowLog)
     end
   end
 end
