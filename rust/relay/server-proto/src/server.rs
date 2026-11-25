@@ -110,6 +110,7 @@ pub struct Server<R> {
     relayed_bytes_counter: Counter<u64>,
     responses_counter: Counter<u64>,
     rate_limited_packets_counter: Counter<u64>,
+    rate_limited_requests_counter: Counter<u64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -281,6 +282,7 @@ where
             relayed_packet_size_histogram,
             relayed_bytes_counter: otel_instruments::relay_bytes(),
             rate_limited_packets_counter,
+            rate_limited_requests_counter: otel_instruments::relay_rate_limited_requests(),
             channel_and_client_by_port_and_peer: Default::default(),
         }
     }
@@ -465,6 +467,7 @@ where
         // STUN messages start with 0 to 3; drop them from clients over budget before we spend anything on them.
         if bytes.first().is_some_and(|b| *b <= 3) && self.is_over_request_budget(sender, now) {
             tracing::debug!(target: "relay", %sender, "Dropping STUN message: client exceeds its request rate");
+            self.rate_limited_requests_counter.add(1, &[]);
 
             return None;
         }
@@ -654,8 +657,10 @@ where
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.request_budgets
-            .retain(|_, next_request| *next_request > now);
+        for _ in self
+            .request_budgets
+            .extract_if(|_, next_request| *next_request <= now)
+        {}
 
         let expired_allocations = self
             .allocations
