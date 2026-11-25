@@ -378,6 +378,28 @@ defmodule Portal.AuthenticationTest do
       assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
+    test "returns error for client token when its auth provider is disabled" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      provider = google_provider_fixture(account: account)
+
+      encoded =
+        encode_token(
+          client_token_fixture(
+            account: account,
+            actor: actor,
+            auth_provider: provider.auth_provider
+          )
+        )
+
+      provider
+      |> Ecto.Changeset.change(is_disabled: true)
+      |> Portal.Repo.update!()
+
+      context = build_context(type: :client)
+      assert authenticate(encoded, context) == {:error, :invalid_token}
+    end
+
     test "returns error for client token when account is disabled" do
       account = account_fixture()
       actor = actor_fixture(account: account)
@@ -469,7 +491,7 @@ defmodule Portal.AuthenticationTest do
     test "subject contains auth_provider_id when present on token" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      auth_provider = auth_provider_fixture(account: account)
+      auth_provider = google_provider_fixture(account: account).auth_provider
 
       token = client_token_fixture(account: account, actor: actor, auth_provider: auth_provider)
       encoded = encode_token(token)
@@ -1376,7 +1398,7 @@ defmodule Portal.AuthenticationTest do
     test "encoded fragment can be verified with use_token when client prepends nonce" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      auth_provider = auth_provider_fixture(account: account)
+      auth_provider = google_provider_fixture(account: account).auth_provider
       nonce = "testnonce"
 
       attrs = %{
@@ -1727,7 +1749,7 @@ defmodule Portal.AuthenticationTest do
     setup do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      auth_provider = auth_provider_fixture(account: account)
+      auth_provider = google_provider_fixture(account: account).auth_provider
 
       {:ok, token} =
         create_interactive_client_token(%{

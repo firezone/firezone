@@ -822,6 +822,7 @@ defmodule Portal.Authentication do
     # A client token has no Site and, when bound to a device, a client device.
     def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{type: :client}) do
       now = DateTime.utc_now()
+      enabled_provider_ids = enabled_auth_provider_ids_subquery()
 
       from(tokens in Portal.DeviceToken, as: :tokens)
       |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
@@ -840,6 +841,11 @@ defmodule Portal.Authentication do
       |> where([tokens: tokens], tokens.account_id == ^account_id)
       |> where([account: account], account.is_disabled == false)
       |> where([actor: actor], actor.is_disabled == false and actor.type != :legacy_gateway)
+      |> where(
+        [tokens: tokens],
+        is_nil(tokens.auth_provider_id) or
+          tokens.auth_provider_id in subquery(enabled_provider_ids)
+      )
       |> select([tokens: tokens], tokens)
       |> Safe.unscoped()
       |> Safe.one()
