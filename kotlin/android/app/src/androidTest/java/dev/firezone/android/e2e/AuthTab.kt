@@ -11,6 +11,7 @@ import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra
 import dev.firezone.android.features.auth.AUTH_CALLBACK_SCHEME
+import dev.firezone.android.features.auth.nonceHash
 import org.hamcrest.Matcher
 import org.hamcrest.Matchers.allOf
 import java.util.concurrent.atomic.AtomicReference
@@ -19,12 +20,15 @@ private const val AUTH_CALLBACK_HOST = "handle_client_sign_in_callback"
 private const val AUTH_FRAGMENT = "auth-fragment"
 
 // What the app asked the browser to sign in with. The portal would hand the fragment back through
-// the callback, so together they are the token the app ends up storing.
+// the callback, and the app joins it to the nonce whose hash it sent.
 internal data class AuthAttempt(
-    val nonce: String,
+    val nonceHash: String,
     val state: String,
 ) {
-    val token: String = nonce + AUTH_FRAGMENT
+    fun isToken(token: String?): Boolean =
+        token != null &&
+            token.endsWith(AUTH_FRAGMENT) &&
+            nonceHash(token.removeSuffix(AUTH_FRAGMENT)) == nonceHash
 }
 
 // Stands in for the browser: answers the AuthTab with [resultCode] the moment it is launched and
@@ -37,7 +41,7 @@ internal fun stubAuthTab(resultCode: Int): AtomicReference<AuthAttempt> {
             val url = checkNotNull(intent.data)
             val attempt =
                 AuthAttempt(
-                    nonce = checkNotNull(url.getQueryParameter("nonce")),
+                    nonceHash = checkNotNull(url.getQueryParameter("nonce_hash")),
                     state = checkNotNull(url.getQueryParameter("state")),
                 )
             captured.set(attempt)
