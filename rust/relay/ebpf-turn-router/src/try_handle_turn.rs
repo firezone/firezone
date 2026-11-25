@@ -45,6 +45,8 @@ const CHAN_START: u16 = 0x4000;
 const CHAN_END: u16 = 0x7FFF;
 /// DNS port
 const DNS_PORT: u16 = 53;
+/// "More fragments" bit of the IPv4 fragmentation flags
+const IPV4_MORE_FRAGMENTS: u8 = 0b001;
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
@@ -102,9 +104,18 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
         return Err(Error::Ipv4PacketWithOptions);
     }
 
+    if ipv4.frag_flags() & IPV4_MORE_FRAGMENTS != 0 || ipv4.frag_offset() != 0 {
+        return Err(Error::Ipv4Fragment);
+    }
+
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
-    let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
+    let udp_payload_len = ensure_consistent_lengths(
+        ctx,
+        Ipv4Hdr::LEN,
+        ipv4.tot_len().wrapping_sub(Ipv4Hdr::LEN as u16),
+        udp.len(),
+    )?;
 
     // We do not want to handle DNS packets
     if udp.src_port() == DNS_PORT {
@@ -136,7 +147,8 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
-    let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
+    let udp_payload_len =
+        ensure_consistent_lengths(ctx, Ipv6Hdr::LEN, ipv6.payload_len(), udp.len())?;
 
     // We do not want to handle DNS packets
     if udp.src_port() == DNS_PORT {
@@ -508,6 +520,28 @@ fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
         Err(Error::IpAddrUnset) => Ok(false),
         Err(e) => Err(e),
     }
+}
+
+/// Ensures the UDP length, the IP payload length and the frame length all agree and returns the UDP payload length.
+///
+/// The kernel trims datagrams to the UDP length but we forward the whole frame.
+#[inline(always)]
+fn ensure_consistent_lengths(
+    ctx: &XdpContext,
+    ip_hdr_len: usize,
+    ip_payload_len: u16,
+    udp_len: u16,
+) -> Result<u16, Error> {
+    let frame_len = ctx.data_end() - ctx.data();
+
+    if udp_len < UdpHdr::LEN as u16
+        || udp_len != ip_payload_len
+        || EthHdr::LEN + ip_hdr_len + usize::from(ip_payload_len) != frame_len
+    {
+        return Err(Error::InconsistentLength);
+    }
+
+    Ok(udp_len - UdpHdr::LEN as u16)
 }
 
 #[inline(always)]

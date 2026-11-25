@@ -36,7 +36,9 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             | Error::DnsPacket
             | Error::NotTurn
             | Error::NotAChannelDataMessage
-            | Error::UdpChecksumMissing),
+            | Error::UdpChecksumMissing
+            | Error::Ipv4Fragment
+            | Error::InconsistentLength),
         ) => {
             debug!(&ctx, target: "eBPF", "^^^ pass packet to userspace: {}", e.as_str());
 
