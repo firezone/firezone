@@ -17,6 +17,8 @@ CONFIGURATION = "Debug"
 MACOSX_DEPLOYMENT_TARGET = "13.0"
 
 [tools]
+# Swift static analysis
+swiftlint = "0.63.0"
 "github:rorkai/App-Store-Connect-CLI" = { version = "4.11.0", version_prefix = "", bin = "asc", os = ["linux"] }
 
 # =============================================================================
