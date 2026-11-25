@@ -1,6 +1,6 @@
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use arbitrary::Unstructured;
@@ -29,7 +29,7 @@ impl<'a> RelayGenerator<'a> {
         self.input.is_empty()
     }
 
-    pub(crate) fn model(&mut self) -> RelayModel {
+    pub(crate) fn model(&mut self, now: SystemTime) -> RelayModel {
         let relay = ModelHost {
             ip4: Ipv4Addr::new(198, 51, 100, 1),
             ip6: Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 1),
@@ -52,7 +52,7 @@ impl<'a> RelayGenerator<'a> {
             latency: Duration::ZERO,
         };
 
-        RelayModel::new(relay, client, foreign, self.credentials_lifetime())
+        RelayModel::new(relay, client, foreign, self.credentials_lifetime(), now)
     }
 
     /// Samples a transition, what the network does to it and whether the system settles and

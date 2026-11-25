@@ -16,7 +16,6 @@ use std::{
 use bufferpool::Bytes;
 use ip_packet::Ecn;
 use is::CandidateKind;
-use jiff::Timestamp;
 use relay_client_proto::{Allocation, Event, channel_data};
 use relay_server_proto::{ChannelData, ClientSocket, Command};
 use snownet::Transmit;
@@ -62,16 +61,6 @@ const FOREIGN_DEVICE: &str = "foreign";
 pub(crate) struct RealRelaySystem {
     clock: Clock,
     transmits: BufferedTransmits,
-    /// The wall clock of the portal and the relay, which credentials expire by, at
-    /// `wall_clock_since`.
-    ///
-    /// It shows the time that the transitions let pass: it runs while one of them lets time pass,
-    /// until `wall_clock_until`, and stands still while the system settles or a heartbeat
-    /// outlasts the transition.
-    wall_clock: SystemTime,
-    wall_clock_since: Instant,
-    wall_clock_until: Instant,
-
     /// When the credentials expire that the portal hands out.
     credentials_expire_at: SystemTime,
 
@@ -82,8 +71,6 @@ pub(crate) struct RealRelaySystem {
     allocation_boot: u64,
 
     client: Host<RealAllocation>,
-    /// Whether the client's host sleeps: the client neither handles timeouts nor receives.
-    client_asleep: bool,
     /// A device with credentials of its own for the relay, which sends the injected datagrams.
     foreign: ModelHost,
 
@@ -135,13 +122,17 @@ pub(crate) struct Settled {
 }
 
 /// Checks what happened while a transition was applied against what the model expects.
-pub(crate) fn check_applied(model: &RelayModel, applied: &Applied) {
-    check_heartbeats(model, &applied.lost_heartbeats);
+pub(crate) fn check_applied(model: &RelayModel, applied: &Applied, now: SystemTime) {
+    check_heartbeats(model, &applied.lost_heartbeats, now);
 }
 
 /// Checks the peers whose data got lost on a heartbeat against the connections that the model
 /// expects to be established.
-fn check_heartbeats(model: &RelayModel, lost: &BTreeSet<SocketAddr>) {
+fn check_heartbeats(model: &RelayModel, lost: &BTreeSet<SocketAddr>, now: SystemTime) {
+    if model.credentials_expired(now) {
+        return;
+    }
+
     for peer in lost {
         if model.connections.get(peer) == Some(&true) {
             tracing::error!(target: "assertions", %peer, "❌ An established connection lost data although nothing disrupted relaying");
@@ -150,14 +141,14 @@ fn check_heartbeats(model: &RelayModel, lost: &BTreeSet<SocketAddr>) {
 }
 
 /// Checks what the system looked like once it settled against what the model expects.
-pub(crate) fn check_settled(model: &RelayModel, settled: &Settled) {
-    check_heartbeats(model, &settled.lost_heartbeats);
+pub(crate) fn check_settled(model: &RelayModel, settled: &Settled, now: SystemTime) {
+    check_heartbeats(model, &settled.lost_heartbeats, now);
 
-    if settled.relay_addresses_changed && !model.disrupted() {
+    if settled.relay_addresses_changed && !model.disrupted(now) {
         tracing::error!(target: "assertions", "❌ The client's relay addresses changed although nothing disrupted relaying");
     }
 
-    if model.must_relay() {
+    if model.must_relay(now) {
         let (ip4, ip6) = model.relay.interfaces(model.relay.stack);
         let actual = Vec::from_iter(settled.relay_addresses.iter().map(|a| a.ip()));
         let expected = Vec::from_iter(
@@ -176,9 +167,9 @@ pub(crate) fn check_settled(model: &RelayModel, settled: &Settled) {
             .connections
             .keys()
             .copied()
-            .filter(|p| model.can_relay(*p)),
+            .filter(|p| model.can_relay(*p, now)),
     );
-    if !model.credentials_expired() && settled.relayed != expected {
+    if !model.credentials_expired(now) && settled.relayed != expected {
         tracing::error!(target: "assertions", actual = ?settled.relayed, ?expected, "❌ The client does not relay data to and from every peer it is connected to");
     }
 }
@@ -192,25 +183,22 @@ enum Direction {
 
 impl RealRelaySystem {
     /// Builds the hosts of `model`.
-    pub(crate) fn new(model: &RelayModel, start: Instant) -> Self {
-        let clock = Clock::new(start, Timestamp::UNIX_EPOCH);
+    pub(crate) fn new(model: &RelayModel, clock: Clock) -> Self {
+        let start = clock.now();
+        let now_utc = clock.now();
         let (relay_ip4, relay_ip6) = model.relay.interfaces(model.relay.stack);
 
         Self {
             relay: host(
-                RealRelay::new(0, relay_ip4, relay_ip6, SystemTime::UNIX_EPOCH),
+                RealRelay::new(0, relay_ip4, relay_ip6, now_utc),
                 &model.relay,
             ),
             clock,
             transmits: BufferedTransmits::default(),
-            wall_clock: SystemTime::UNIX_EPOCH,
-            wall_clock_since: start,
-            wall_clock_until: start,
-            credentials_expire_at: SystemTime::UNIX_EPOCH + model.credentials_expire_at,
+            credentials_expire_at: model.credentials_expire_at,
             relay_boots: 0,
             allocation_boot: 0,
             client: host(RealAllocation::default(), &model.client),
-            client_asleep: false,
             foreign: model.foreign,
             connections: model.connections.keys().copied().collect(),
             at_peers: Vec::new(),
@@ -231,7 +219,6 @@ impl RealRelaySystem {
 
         match transition {
             Transition::Advance { duration } => {
-                self.run_wall_clock(*duration);
                 lost_heartbeats = self.advance(*duration, interference);
             }
             Transition::Roam { ip4, ip6 } => {
@@ -247,39 +234,35 @@ impl RealRelaySystem {
                 self.bind_channels();
             }
             Transition::RotateCredentials { lifetime } => {
-                self.credentials_expire_at = self.wall_clock() + *lifetime;
+                self.credentials_expire_at = self.clock.now::<SystemTime>() + *lifetime;
                 let (_, username, password, realm) = self.credentials(CLIENT_DEVICE);
                 let username = Username::new(username).expect("username is short enough");
                 let realm = Realm::new(realm).expect("realm is short enough");
 
-                self.client.drive(&mut self.transmits, now, |a| {
+                let updated = self.client.drive(&mut self.transmits, now, |a| {
                     a.update_credentials(username, password, realm, now)
                 });
-                self.allocation_boot = self.relay_boots;
+                if updated.is_some() {
+                    // Let the refresh check the allocation before settling can replace it.
+                    self.allocation_boot = self.relay_boots;
+                }
             }
             Transition::RebootRelay => {
                 self.relay_boots += 1;
-                self.relay = new_relay(self.relay_boots, &self.relay, self.wall_clock());
+                self.relay = new_relay(self.relay_boots, &self.relay, self.clock.now());
             }
             Transition::Partition { duration } => {
-                self.run_wall_clock(*duration);
                 self.client.set_offline();
                 lost_heartbeats = self.advance(*duration, interference);
-                self.client
-                    .update_interface(self.client.ip4, self.client.ip6);
+                self.client.set_online();
             }
             Transition::Sleep { duration } => {
-                self.run_wall_clock(*duration);
-                self.client.set_offline();
-                self.client_asleep = true;
-
                 let wake_up = now + *duration;
-                self.run(interference, |_| wake_up);
-                self.clock.skip_to(wake_up);
+                self.client.sleep();
 
-                self.client_asleep = false;
-                self.client
-                    .update_interface(self.client.ip4, self.client.ip6);
+                self.run_until(wake_up, interference);
+
+                self.client.set_online();
             }
             Transition::Connect { peer } => {
                 self.connections.insert(*peer);
@@ -449,21 +432,6 @@ impl RealRelaySystem {
         self.bind_channels();
     }
 
-    fn wall_clock(&self) -> SystemTime {
-        let now = self.clock.now::<Instant>().min(self.wall_clock_until);
-
-        self.wall_clock + now.saturating_duration_since(self.wall_clock_since)
-    }
-
-    /// Lets the wall clock run for `duration` from now.
-    fn run_wall_clock(&mut self, duration: Duration) {
-        let now = self.clock.now();
-
-        self.wall_clock = self.wall_clock();
-        self.wall_clock_since = now;
-        self.wall_clock_until = now + duration;
-    }
-
     /// Has the client bind a channel to every peer it is connected to, as it does whenever
     /// its allocation starts from scratch.
     fn bind_channels(&mut self) {
@@ -556,7 +524,7 @@ impl RealRelaySystem {
     /// Obtains a nonce for `socket` the way a client does: from the relay's answer to a
     /// request without one.
     fn issue_nonce(&mut self, socket: SocketAddr) -> Nonce {
-        let (now, now_utc) = (self.clock.now(), self.wall_clock());
+        let (now, now_utc) = (self.clock.now(), self.clock.now());
         let request = stun::request(ForeignRequest::Allocate, None).expect("request is valid");
 
         let answer = self.relay.exec_mut(|r| {
@@ -597,8 +565,7 @@ impl RealRelaySystem {
     /// Lets the client and the relay finish what they are doing, and gives the client a new
     /// allocation whenever it has none for the running relay.
     ///
-    /// Time only passes for the network and for retransmissions; everything else waits for
-    /// `advance`.
+    /// Stop once no work is due within a retransmission window.
     fn run_until_settled(&mut self, interference: &mut Interference) {
         let deadline = self.clock.now::<Instant>() + MAX_SETTLE;
         let mut allocations = 0;
@@ -634,18 +601,19 @@ impl RealRelaySystem {
         let mut lost = BTreeSet::new();
 
         while self.next_heartbeat <= target {
-            let next_heartbeat = self.next_heartbeat;
-
-            self.run(interference, |_| next_heartbeat);
-            self.clock.skip_to(next_heartbeat);
+            self.run_until(self.next_heartbeat, interference);
             lost.extend(self.heartbeat(interference));
             self.next_heartbeat = self.clock.now::<Instant>() + HEARTBEAT;
         }
 
-        self.run(interference, |_| target);
-        self.clock.skip_to(target);
+        self.run_until(target, interference);
 
         lost
+    }
+
+    fn run_until(&mut self, target: Instant, interference: &mut Interference) {
+        self.run(interference, |_| target);
+        self.clock.skip_to(target);
     }
 
     /// Steps the hosts and the network through everything that is due until the horizon, which
@@ -657,19 +625,12 @@ impl RealRelaySystem {
             while let Some(transmit) = self.transmits.pop(now) {
                 self.dispatch(transmit, now, interference);
             }
-            let wall_clock = self.wall_clock();
-            if !self.client_asleep {
-                self.client.step(&mut self.transmits, now);
-            }
-            self.relay.step(&mut self.transmits, now, wall_clock);
+            self.client.step(&mut self.transmits, now);
+            self.relay.step(&mut self.transmits, now, self.clock.now());
 
-            let client_timeout = match self.client_asleep {
-                true => None,
-                false => self.client.poll_timeout(),
-            };
             let next = iter::empty()
                 .chain(self.transmits.next_transmit())
-                .chain(client_timeout)
+                .chain(self.client.poll_timeout())
                 .chain(self.relay.poll_timeout())
                 .min();
             let Some(next) = next.filter(|next| *next <= horizon(now)) else {
@@ -738,6 +699,10 @@ impl Host<RealAllocation> {
     ///
     /// The allocation only handles a timeout when it asked for one.
     fn step(&mut self, transmits: &mut BufferedTransmits, now: Instant) {
+        if self.is_asleep() {
+            return;
+        }
+
         while let Some(transmit) = self.poll_inbox(now) {
             self.handle_input(transmits, transmit, now);
         }

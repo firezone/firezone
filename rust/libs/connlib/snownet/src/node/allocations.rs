@@ -199,7 +199,7 @@ where
                 if allocation.matches_socket(&server) {
                     allocation.update_credentials(username, password, realm, now);
 
-                    return UpsertResult::Updated;
+                    return UpsertResult::UpdatedCredentials;
                 }
 
                 let mut seed = [0u8; 32];
@@ -405,8 +405,7 @@ fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
 
 pub(crate) enum UpsertResult {
     Added,
-    /// The allocation got the credentials and checks that the relay still has it.
-    Updated,
+    UpdatedCredentials,
     Blocked,
     Replaced(Allocation),
 }
