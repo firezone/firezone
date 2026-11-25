@@ -25,4 +25,15 @@ defmodule PortalAPI.Plugs.MCPRateLimitTest do
 
     refute MCPRateLimit.call(second, opts).halted
   end
+
+  test "IPv6 addresses in the same /64 share a bucket" do
+    prefix = System.unique_integer([:positive]) |> rem(65_536)
+    opts = MCPRateLimit.init(refill_rate: 1, capacity: 1)
+
+    first = Plug.Test.conn(:post, "/mcp") |> Map.put(:remote_ip, {0x2001, 0xDB8, prefix, 1, 0, 0, 0, 1})
+    second = Plug.Test.conn(:post, "/mcp") |> Map.put(:remote_ip, {0x2001, 0xDB8, prefix, 1, 0, 0, 0, 2})
+
+    refute MCPRateLimit.call(first, opts).halted
+    assert MCPRateLimit.call(second, opts).status == 429
+  end
 end
