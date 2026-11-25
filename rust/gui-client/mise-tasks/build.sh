@@ -28,10 +28,12 @@ linux*)
         objcopy --strip-debug --add-gnu-debuglink="$release/$bin.debug" "$release/$bin"
     done
 
-    packages=("$PWD/$release/firezone-client-gui.deb" "$PWD/$release/firezone-client-gui.rpm")
-    cargo deb --package firezone-gui-client --no-build --no-strip --output "${packages[0]}"
+    deb="$PWD/$release/firezone-client-gui.deb"
+    rpm="$PWD/$release/firezone-client-gui.rpm"
+    cargo deb --package firezone-gui-client --no-build --no-strip --output "$deb"
     # Only finds the workspace's `target` directory when run from the workspace root.
-    (cd .. && cargo generate-rpm --package gui-client/src-tauri --payload-compress gzip --output "${packages[1]}")
+    (cd .. && cargo generate-rpm --package gui-client/src-tauri --payload-compress gzip --output "$rpm")
+    packages=("$deb" "$rpm")
     ;;
 msys* | cygwin*)
     ../../scripts/build/sign.sh \
