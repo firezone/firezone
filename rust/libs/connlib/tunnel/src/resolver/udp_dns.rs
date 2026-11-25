@@ -30,11 +30,19 @@ pub async fn send(
 
     let query = query.with_random_id();
 
-    let response = udp_socket
-        .handshake::<BUF_SIZE, _, _>(server, query.as_bytes(), |reply| {
-            dns_types::Response::parse_answer(reply, &query)
-        })
-        .await?;
+    let socket = udp_socket.connect(server).await?;
+    socket.send(query.as_bytes()).await?;
+
+    let mut buffer = vec![0u8; BUF_SIZE];
+
+    let response = loop {
+        let len = socket.recv(&mut buffer).await?;
+
+        match dns_types::Response::parse_answer(&buffer[..len], &query) {
+            Ok(response) => break response,
+            Err(e) => tracing::trace!(%server, "Ignoring UDP DNS reply: {e}"),
+        }
+    };
 
     tracing::trace!(target: "wire::dns::recursive::res", %server, transport = %dns::Transport::Udp, "{qtype} {domain} => {}", response.response_code());
 
