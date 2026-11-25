@@ -23,8 +23,8 @@ struct Deadline {
 /// All timestamps are in this clock's domain. Tokio's timer requests a poll, and
 /// the suspend-inclusive clock determines when the deadline is due.
 pub struct Clock {
-    start_instant: Instant,
-    start_elapsed: Duration,
+    anchor_instant: Instant,
+    os_clock_at_anchor: Duration,
     deadline: Option<Deadline>,
     timer: Option<Pin<Box<tokio::time::Sleep>>>,
 }
@@ -38,8 +38,10 @@ impl Clock {
         self.instant_at(suspend_inclusive_now())
     }
 
-    fn instant_at(&self, elapsed: Duration) -> Instant {
-        self.start_instant + elapsed.saturating_sub(self.start_elapsed)
+    fn instant_at(&self, os_clock_now: Duration) -> Instant {
+        let elapsed_since_anchor = os_clock_now.saturating_sub(self.os_clock_at_anchor);
+
+        self.anchor_instant + elapsed_since_anchor
     }
 
     /// Replaces the alarm and registers the event loop for a wake-up.
@@ -125,8 +127,8 @@ impl Clock {
 impl Default for Clock {
     fn default() -> Self {
         Self {
-            start_instant: Instant::now(),
-            start_elapsed: suspend_inclusive_now(),
+            anchor_instant: Instant::now(),
+            os_clock_at_anchor: suspend_inclusive_now(),
             deadline: None,
             timer: None,
         }
@@ -175,8 +177,8 @@ mod tests {
         for sample in 1..=3 {
             let elapsed = Duration::from_millis(1_400 * sample);
             assert_eq!(
-                clock.instant_at(clock.start_elapsed + elapsed),
-                clock.start_instant + elapsed,
+                clock.instant_at(clock.os_clock_at_anchor + elapsed),
+                clock.anchor_instant + elapsed,
             );
         }
     }
