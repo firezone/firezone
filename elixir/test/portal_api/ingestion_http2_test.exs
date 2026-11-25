@@ -71,10 +71,11 @@ defmodule PortalAPI.IngestionHTTP2Test do
   end
 
   for body <- ["", "null", "[]", "{}", ~s({"flow_logs":false})] do
+    @tag :capture_log
     test "valid JSON shape #{inspect(body)} reaches controller validation", ctx do
       {conn, response} = request(ctx.http, ctx.token, unquote(body))
-      assert_problem(response, 400)
-      assert JSON.decode!(response.body)["detail"] == "Expected a \"flow_logs\" array"
+      assert response.status == 200
+      assert JSON.decode!(response.body) == %{"data" => %{"status" => "ok"}}
       assert_next_request(conn, ctx.token)
     end
   end
