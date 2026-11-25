@@ -14,11 +14,16 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - uses: ./.github/actions/setup-mise
+      with:
+        install: "false"
+
     - name: Tool Versions
       id: versions
-      uses: marocchino/tool-versions-action@4219f2e6bfdb4cce482b78f71ad9663e64f4d247 # v2.0.0
-      with:
-        path: elixir/.tool-versions
+      shell: bash
+      run: |
+        echo "erlang=$(mise config get -f elixir/mise.toml tools.erlang)" >> "$GITHUB_OUTPUT"
+        echo "elixir=$(mise config get -f elixir/mise.toml tools.elixir)" >> "$GITHUB_OUTPUT"
 
     - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
       id: setup-beam
