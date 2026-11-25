@@ -210,7 +210,9 @@ jobs:
           install_args: --cd rust/gui-client
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Each tool's `os` in `mise.toml` limits it to the platforms that need it.
+          # Only install what this job uses: the parent `mise.toml`s pull in many more
+          # tools, and some have no ARM64 entries in the lockfiles, which fails
+          # `MISE_LOCKED`. Each tool's `os` limits it to the platforms that need it.
           MISE_ENABLE_TOOLS: github:getsentry/sentry-cli,cargo:cargo-deb,cargo:cargo-generate-rpm,github:wixtoolset/wix3
       - name: Check sentry-cli runs
         shell: bash
