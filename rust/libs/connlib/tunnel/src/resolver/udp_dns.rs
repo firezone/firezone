@@ -28,17 +28,13 @@ pub async fn send(
 
     let udp_socket = factory.bind(bind_addr)?;
 
-    let id = query.id();
-    let upstream_query = query.with_random_id();
+    let query = query.with_random_id();
 
     let response = udp_socket
-        .handshake::<BUF_SIZE, _>(server, upstream_query.as_bytes(), |reply| {
-            dns_types::Response::parse(reply)
-                .ok()
-                .filter(|r| r.is_answer_to(&upstream_query))
+        .handshake::<BUF_SIZE, _, _>(server, query.as_bytes(), |reply| {
+            dns_types::Response::parse_answer(reply, &query)
         })
-        .await?
-        .with_id(id);
+        .await?;
 
     tracing::trace!(target: "wire::dns::recursive::res", %server, transport = %dns::Transport::Udp, "{qtype} {domain} => {}", response.response_code());
 
@@ -52,44 +48,58 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn ignores_replies_that_do_not_answer_the_query() {
+    async fn ignores_response_with_other_id() {
+        let response = send_with_spoofed_response(|upstream_query| {
+            ResponseBuilder::for_query(upstream_query, ResponseCode::NOERROR)
+                .build()
+                .with_id(upstream_query.id().wrapping_add(1))
+        })
+        .await;
+
+        assert_eq!(response.response_code(), ResponseCode::NXDOMAIN);
+    }
+
+    #[tokio::test]
+    async fn ignores_response_with_other_question() {
+        let response = send_with_spoofed_response(|upstream_query| {
+            let other_query = Query::new(
+                DomainName::vec_from_str("example.org").unwrap(),
+                RecordType::A,
+            )
+            .with_id(upstream_query.id());
+
+            ResponseBuilder::for_query(&other_query, ResponseCode::NOERROR).build()
+        })
+        .await;
+
+        assert_eq!(response.response_code(), ResponseCode::NXDOMAIN);
+    }
+
+    /// Sends a query and answers it with the spoofed response first, followed by an `NXDOMAIN` answer.
+    async fn send_with_spoofed_response(
+        spoofed_response: impl FnOnce(&Query) -> dns_types::Response,
+    ) -> dns_types::Response {
         let server = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let server_addr = server.local_addr().unwrap();
-
         let query = Query::new(
             DomainName::vec_from_str("example.com").unwrap(),
             RecordType::A,
-        )
-        .with_id(1);
+        );
 
         let send = tokio::spawn(send(Arc::new(socket_factory::udp), server_addr, query));
 
         let mut buf = [0u8; 1500];
         let (len, client) = server.recv_from(&mut buf).await.unwrap();
         let upstream_query = Query::parse(&buf[..len]).unwrap();
-        let other_query = Query::new(
-            DomainName::vec_from_str("example.org").unwrap(),
-            RecordType::A,
-        )
-        .with_id(upstream_query.id());
-
-        let wrong_id = ResponseBuilder::for_query(&upstream_query, ResponseCode::NOERROR)
-            .build()
-            .with_id(upstream_query.id().wrapping_add(1));
-        let wrong_question =
-            ResponseBuilder::for_query(&other_query, ResponseCode::NOERROR).build();
         let answer = ResponseBuilder::for_query(&upstream_query, ResponseCode::NXDOMAIN).build();
 
-        for response in [wrong_id, wrong_question, answer] {
+        for response in [spoofed_response(&upstream_query), answer] {
             server
                 .send_to(&response.into_bytes(u16::MAX), client)
                 .await
                 .unwrap();
         }
 
-        let response = send.await.unwrap().unwrap();
-
-        assert_eq!(response.response_code(), ResponseCode::NXDOMAIN);
-        assert_eq!(response.id(), 1);
+        send.await.unwrap().unwrap()
     }
 }

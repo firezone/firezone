@@ -242,6 +242,17 @@ impl Response {
         })
     }
 
+    /// Parses a response and checks that it has the ID and the question of `query`.
+    pub fn parse_answer(slice: &[u8], query: &Query) -> Result<Self, Error> {
+        let response = Self::parse(slice)?;
+
+        if !response.inner.is_answer(&query.inner) {
+            return Err(Error::NotAnAnswer);
+        }
+
+        Ok(response)
+    }
+
     pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
         if response.status() != http::StatusCode::OK {
             let status = response.status();
@@ -269,11 +280,6 @@ impl Response {
 
     pub fn id(&self) -> u16 {
         self.inner.header().id()
-    }
-
-    /// Returns whether this response has the ID and the question of `query`.
-    pub fn is_answer_to(&self, query: &Query) -> bool {
-        self.inner.is_answer(&query.inner)
     }
 
     pub fn truncated(&self) -> bool {
@@ -454,6 +460,8 @@ pub enum Error {
     NotAQuery,
     #[error("DNS message is not a response")]
     NotAResponse,
+    #[error("DNS response does not answer the query")]
+    NotAnAnswer,
     #[error("HTTP response is not 200: {0} {1}")]
     HttpNotSuccess(http::StatusCode, String),
     #[error("HTTP response Content-Type is not application/dns-message")]

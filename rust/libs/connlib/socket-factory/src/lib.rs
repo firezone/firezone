@@ -746,17 +746,20 @@ impl UdpSocket {
     /// This consumes `self` because we want to enforce that we only receive a single reply on this socket.
     /// UDP is stateless and therefore, anybody can just send a packet to the destination.
     ///
-    /// To simulate a handshake, we wait for the first datagram from `dst` that `parse_reply` accepts.
-    /// Datagrams from other sources or that `parse_reply` rejects are ignored.
+    /// To simulate a handshake, we wait for the first datagram from `dst` that `parse_reply` parses successfully.
+    /// Datagrams from other sources or that fail to parse are ignored.
     /// After that, we discard the socket, freeing up the used source port.
     ///
     /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
-    pub async fn handshake<const BUF_SIZE: usize, T>(
+    pub async fn handshake<const BUF_SIZE: usize, T, E>(
         self,
         dst: SocketAddr,
         payload: &[u8],
-        mut parse_reply: impl FnMut(&[u8]) -> Option<T>,
-    ) -> io::Result<T> {
+        mut parse_reply: impl FnMut(&[u8]) -> Result<T, E>,
+    ) -> io::Result<T>
+    where
+        E: std::fmt::Display,
+    {
         let src_ip = self
             .source_ip_resolver
             .as_ref()
@@ -790,16 +793,16 @@ impl UdpSocket {
             // Even though scopes are technically important for link-local IPv6 addresses, they can be ignored for our purposes.
             // We only want to ensure that the reply is from the expected source after we have already received the packet.
             if !is_equal_modulo_scope_for_ipv6_link_local(dst, sender) {
-                tracing::debug!(%sender, expected = %dst, "Ignoring datagram from unexpected source");
+                tracing::trace!(%sender, expected = %dst, "Ignoring datagram from unexpected source");
                 continue;
             }
 
-            let Some(reply) = parse_reply(&buffer[..num_received]) else {
-                tracing::debug!(%sender, "Ignoring datagram that is not a reply");
-                continue;
-            };
-
-            return Ok(reply);
+            match parse_reply(&buffer[..num_received]) {
+                Ok(reply) => return Ok(reply),
+                Err(e) => {
+                    tracing::trace!(%sender, "Ignoring datagram: {e}");
+                }
+            }
         }
     }
 }
