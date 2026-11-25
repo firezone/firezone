@@ -35,7 +35,7 @@ defmodule Portal.MetricsRuleTest do
       plan = metrics_rule_fixture(match: %{"plan" => "team", "device_type" => "client"})
       actor = metrics_rule_fixture(match: %{"actor_id" => client.actor_id}, expires_at: DateTime.add(DateTime.utc_now(), 1, :day))
       metrics_rule_fixture(match: %{"plan" => "team", "device_type" => "gateway"})
-      metrics_rule_fixture(match: %{"device_id" => client.id}, expires_at: DateTime.add(DateTime.utc_now(), -1))
+      metrics_rule_fixture(match: %{"device_id" => client.id}, expires_at: DateTime.add(DateTime.utc_now(), -1, :day))
 
       assert attributes == %{
                "plan" => "team",
