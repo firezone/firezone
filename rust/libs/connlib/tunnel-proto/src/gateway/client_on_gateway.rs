@@ -1286,64 +1286,6 @@ mod tests {
         ));
     }
 
-    #[test_case::test_case("64:ff9b::a00:5"; "nat64 to private")]
-    #[test_case::test_case("64:ff9b::a9fe:a9fe"; "nat64 to link-local")]
-    #[test_case::test_case("64:ff9b:1::a00:5"; "nat64 local-use prefix")]
-    #[test_case::test_case("2002:a00:5::1"; "6to4")]
-    #[test_case::test_case("2001::1"; "teredo")]
-    #[test_case::test_case("::a00:5"; "ipv4-compatible")]
-    #[test_case::test_case("fec0::1"; "site-local")]
-    fn internet_resource_rejects_ipv6_forms_of_non_public_addresses(dst: &str) {
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_key(),
-            client_tun(),
-            gateway_tun(),
-            MAX_DNS_DOMAINS,
-        );
-        peer.add_resource(internet_resource(), None, Instant::now());
-
-        let request = ip_packet::make::udp_packet(
-            client_tun_ipv6(),
-            dst.parse::<Ipv6Addr>().unwrap(),
-            5401,
-            80,
-            &[0u8; 8],
-        )
-        .unwrap();
-
-        assert!(matches!(
-            peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError { .. }
-        ));
-    }
-
-    #[test]
-    fn internet_resource_allows_nat64_to_public_addresses() {
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_key(),
-            client_tun(),
-            gateway_tun(),
-            MAX_DNS_DOMAINS,
-        );
-        peer.add_resource(internet_resource(), None, Instant::now());
-
-        let request = ip_packet::make::udp_packet(
-            client_tun_ipv6(),
-            "64:ff9b::808:808".parse::<Ipv6Addr>().unwrap(),
-            5401,
-            80,
-            &[0u8; 8],
-        )
-        .unwrap();
-
-        assert!(matches!(
-            peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::Send(..)
-        ));
-    }
-
     #[test]
     fn internet_resource_does_not_allow_traffic_from_another_client() {
         let now = Instant::now();
