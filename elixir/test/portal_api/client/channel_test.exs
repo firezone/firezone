@@ -4870,6 +4870,12 @@ defmodule PortalAPI.Client.ChannelTest do
       assert {:ok, responder_claims, _account} = Portal.FlowLogToken.verify(payload.responder_token)
       assert responder_claims["uploads_enabled"] == true
       assert responder_claims["role"] == "responder"
+      assert responder_claims["resource_type"] == Atom.to_string(resource.type)
+
+      assert responder_claims["initiator_ips"] == [
+               Portal.Types.IP.to_string(client.ipv4),
+               Portal.Types.IP.to_string(client.ipv6)
+             ]
 
       send(
         channel_pid,

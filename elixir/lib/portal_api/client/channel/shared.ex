@@ -1891,7 +1891,7 @@ Relays.render(relays, relay_owner(socket)),
     {initiator_token, responder_token} =
       mint_ingest_tokens(
         socket.assigns.subject,
-        {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+        {Ecto.UUID.load!(resource.id), resource.name, resource.type, resource.address},
         policy_authorization_id,
         policy_id,
         flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
@@ -2513,7 +2513,7 @@ Relays.render(relays, relay_owner(socket)),
   # name both endpoint devices, so only `role` differs between them.
   defp mint_ingest_tokens(
          %Authentication.Subject{account: account, actor: actor, credential: credential} = subject,
-         {resource_id, resource_name, resource_address},
+         {resource_id, resource_name, resource_type, resource_address},
          policy_authorization_id,
          policy_id,
          flow_log_uploads_enabled,
@@ -2543,6 +2543,12 @@ Relays.render(relays, relay_owner(socket)),
       "resource_id" => resource_id,
       "resource_name" => resource_name,
       "resource_address" => resource_address,
+      # Ingestion checks each record's inner tunnel tuple against these: the
+      # source must be the initiator and an IP or CIDR resource must contain
+      # the destination.
+      "resource_type" => Atom.to_string(resource_type),
+      "initiator_ips" =>
+        for(ip <- [initiator_client.ipv4, initiator_client.ipv6], ip, do: Portal.Types.IP.to_string(ip)),
       # For client-to-client flows the receiving client's own owner is
       # deliberately not part of this snapshot.
       "initiator_actor_id" => actor.id,
