@@ -230,13 +230,7 @@ async fn ipc_listen(
                 tracing::warn!("Failed to initialise IPC handler: {e:#}");
 
                 // `Handler::new` can fail before it awaits anything, so retrying at once would spin.
-                if tokio::time::timeout(HANDLER_RETRY_DELAY, poll_fn(|cx| signals.poll_recv(cx)))
-                    .await
-                    .is_ok()
-                {
-                    tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C while waiting to retry.");
-                    break;
-                }
+                tokio::time::sleep(HANDLER_RETRY_DELAY).await;
                 continue;
             }
         };
