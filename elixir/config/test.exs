@@ -193,6 +193,12 @@ config :portal, Portal.OTLP.TracesExporter,
     retry: false
   ]
 
+config :portal, Portal.DeviceCA.KeyVault,
+  req_opts: [
+    plug: {Req.Test, Portal.DeviceCA.KeyVault},
+    retry: false
+  ]
+
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
     plug: {Req.Test, Portal.SlugRegistry.AzureTable},
@@ -330,6 +336,14 @@ config :portal, Portal.Crl.Sync,
     retry: false,
     plug: {Req.Test, Portal.Crl.Sync}
   ]
+
+# Tests never reach the network, so the SSRF check must not look up their fake hosts in DNS.
+config :portal, Portal.Req.SSRFProtection,
+  resolver: fn
+    ~c"localhost", :inet -> {:ok, [{127, 0, 0, 1}]}
+    _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+    _host, :inet6 -> {:error, :nxdomain}
+  end
 
 config :portal, Portal.OAuth.ClientMetadata,
   req_opts: [

@@ -15,6 +15,7 @@ defmodule Portal.MetricsTokenTest do
     device = %Device{
       id: "00000000-0000-0000-0000-000000000002",
       type: :client,
+      actor_id: "00000000-0000-0000-0000-000000000004",
       last_seen_version: "1.5.2"
     }
 
@@ -35,6 +36,24 @@ defmodule Portal.MetricsTokenTest do
            } = claims
 
     assert exp - iat == 3600
+    refute Map.has_key?(claims, "label_devices")
+    refute Map.has_key?(claims, "actor_id")
+  end
+
+  test "asks to label the device with its actor" do
+    device = %Device{
+      id: "00000000-0000-0000-0000-000000000002",
+      type: :client,
+      actor_id: "00000000-0000-0000-0000-000000000004"
+    }
+
+    token = MetricsToken.mint(@account, device, ["*"], label_devices: true)
+
+    assert {true, %JOSE.JWT{fields: claims}, _jws} =
+             @public_key |> JOSE.JWK.from_pem() |> JOSE.JWT.verify_strict(["EdDSA"], token)
+
+    assert claims["label_devices"] == true
+    assert claims["actor_id"] == "00000000-0000-0000-0000-000000000004"
   end
 
   test "omits an unknown device version" do

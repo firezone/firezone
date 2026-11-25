@@ -354,6 +354,17 @@ pub fn relay_rate_limited_packets() -> Counter<u64> {
         .build()
 }
 
+/// Counter of STUN requests dropped because their client exceeded its request rate.
+pub fn relay_rate_limited_requests() -> Counter<u64> {
+    relay_meter()
+        .u64_counter("relay.rate_limited_requests")
+        .with_description(
+            "The number of STUN requests dropped because their client exceeded its request rate",
+        )
+        .with_unit("{request}")
+        .build()
+}
+
 /// Histogram of relayed packet sizes, recorded on both the userspace and the XDP datapath.
 ///
 /// Both call-sites build the instrument from this function so the metric definition

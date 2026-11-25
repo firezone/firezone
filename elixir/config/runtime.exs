@@ -262,6 +262,9 @@ if config_env() == :prod do
   config :portal, data_residency_region: env_var_to_config!(:data_residency_region)
 
   config :portal, slug_registry_table_url: env_var_to_config!(:slug_registry_table_url)
+  config :portal,
+    device_ca_key_storage: env_var_to_config!(:device_ca_key_storage),
+    device_ca_key_vault_url: env_var_to_config!(:device_ca_key_vault_url)
 
   config :portal,
     region_transfer_outbox_url: env_var_to_config!(:region_transfer_outbox_url),
@@ -317,6 +320,9 @@ if config_env() == :prod do
     # Release registry slugs this region no longer holds locally: a claim whose
     # local write rolled back, or the slugs of a deleted account
     {"*/30 * * * *", Portal.Workers.SweepSlugRegistry},
+
+    # Queue the device CA of accounts that have none yet
+    {"*/10 * * * *", Portal.Workers.ProvisionMissingDeviceCAs},
 
     # Delete profile photos that no identity links to any more
     {"30 4 * * *", Portal.Avatars.Prune},
@@ -485,6 +491,7 @@ if config_env() == :prod do
     ],
     queues: [
       default: 10,
+      device_ca: 2,
       crl_scheduler: 1,
       crl_sync: 5,
       ocsp_scheduler: 1,

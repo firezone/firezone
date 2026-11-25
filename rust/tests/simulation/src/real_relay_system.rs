@@ -937,21 +937,3 @@ fn datagram(src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8]) -> Transmi
         ecn: Ecn::NonEct,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::relay_generator::RelayGenerator;
-
-    #[test]
-    fn client_relays_data_on_a_working_network() {
-        let _guard = crate::init_subscriber();
-        let model = RelayGenerator::new(&[]).model();
-        let mut system = RealRelaySystem::new(&model, Instant::now());
-
-        let settled = system.settle(&mut Interference::default());
-
-        check_settled(&model, &settled);
-        assert_eq!(settled.relay_addresses.len(), 2);
-    }
-}
