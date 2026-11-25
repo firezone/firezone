@@ -332,6 +332,7 @@ jobs:
       - run: bats scripts/tests/bats
         env:
           BATS_LIB_PATH: ${{ steps.setup-bats.outputs.lib-path }}
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_apt_index.py'
 
   kotlin:
     needs: planner
