@@ -45,8 +45,6 @@ const CHAN_START: u16 = 0x4000;
 const CHAN_END: u16 = 0x7FFF;
 /// DNS port
 const DNS_PORT: u16 = 53;
-/// "More fragments" bit of the IPv4 fragmentation flags
-const IPV4_MORE_FRAGMENTS: u8 = 0b001;
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
@@ -104,12 +102,20 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
         return Err(Error::Ipv4PacketWithOptions);
     }
 
-    if ipv4.frag_flags() & IPV4_MORE_FRAGMENTS != 0 || ipv4.frag_offset() != 0 {
-        return Err(Error::Ipv4Fragment);
-    }
-
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
+
+    // We do not want to handle DNS packets
+    if udp.src_port() == DNS_PORT {
+        return Err(Error::DnsPacket);
+    }
+
+    let is_allocation = (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port());
+
+    if !is_allocation && udp.dst_port() != 3478 {
+        return Err(Error::NotTurn);
+    }
+
     let udp_payload_len = ensure_consistent_lengths(
         ctx,
         Ipv4Hdr::LEN,
@@ -117,25 +123,16 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
         udp.len(),
     )?;
 
-    // We do not want to handle DNS packets
-    if udp.src_port() == DNS_PORT {
-        return Err(Error::DnsPacket);
-    }
-
-    if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
+    if is_allocation {
         let verdict = try_handle_from_ipv4_udp(ctx, udp_payload_len)?;
 
         return Ok((udp_payload_len, verdict));
     }
 
-    if udp.dst_port() == 3478 {
-        let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
-        let verdict = try_handle_from_ipv4_channel_data(ctx, num_bytes)?;
+    let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
+    let verdict = try_handle_from_ipv4_channel_data(ctx, num_bytes)?;
 
-        return Ok((num_bytes, verdict));
-    }
-
-    Err(Error::NotTurn)
+    Ok((num_bytes, verdict))
 }
 
 #[inline(always)]
@@ -147,28 +144,31 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
-    let udp_payload_len =
-        ensure_consistent_lengths(ctx, Ipv6Hdr::LEN, ipv6.payload_len(), udp.len())?;
 
     // We do not want to handle DNS packets
     if udp.src_port() == DNS_PORT {
         return Err(Error::DnsPacket);
     }
 
-    if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
+    let is_allocation = (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port());
+
+    if !is_allocation && udp.dst_port() != 3478 {
+        return Err(Error::NotTurn);
+    }
+
+    let udp_payload_len =
+        ensure_consistent_lengths(ctx, Ipv6Hdr::LEN, ipv6.payload_len(), udp.len())?;
+
+    if is_allocation {
         let verdict = try_handle_from_ipv6_udp(ctx, udp_payload_len)?;
 
         return Ok((udp_payload_len, verdict));
     }
 
-    if udp.dst_port() == 3478 {
-        let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
-        let verdict = try_handle_from_ipv6_channel_data(ctx, num_bytes)?;
+    let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
+    let verdict = try_handle_from_ipv6_channel_data(ctx, num_bytes)?;
 
-        return Ok((num_bytes, verdict));
-    }
-
-    Err(Error::NotTurn)
+    Ok((num_bytes, verdict))
 }
 
 #[inline(always)]
@@ -524,7 +524,7 @@ fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
 
 /// Ensures the UDP length, the IP payload length and the frame length all agree and returns the UDP payload length.
 ///
-/// The kernel trims datagrams to the UDP length but we forward the whole frame.
+/// We forward and charge the whole frame, so all three must describe the same bytes.
 #[inline(always)]
 fn ensure_consistent_lengths(
     ctx: &XdpContext,
