@@ -2,6 +2,8 @@ defmodule Portal.AccountMetrics do
   @moduledoc """
   Metric name patterns the account's Clients and Gateways export, on top of
   those of its plan.
+
+  Superseded by `Portal.MetricsRule`. Kept until portal-ops no longer uses it.
   """
   use Ecto.Schema
   import Ecto.Changeset

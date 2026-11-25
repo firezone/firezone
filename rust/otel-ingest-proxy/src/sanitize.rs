@@ -7,8 +7,9 @@ use crate::auth::Claims;
 
 /// Keeps only the metrics that `claims` allow and attributes them to the device in `claims`.
 ///
-/// The resource is rebuilt from `claims`, keeping only `os.type` from the device. Data-point
-/// attributes in the `firezone` namespace and exemplars are dropped.
+/// The resource is rebuilt from `claims`, keeping only `os.type` from the device. Only a token
+/// with `label_devices` labels the resource with the device and its actor. Data-point attributes
+/// in the `firezone` namespace and exemplars are dropped.
 ///
 /// Returns `None` if no metric is left.
 pub fn sanitize(
@@ -81,6 +82,14 @@ fn resource(device_resource: Option<Resource>, claims: &Claims) -> Resource {
             "firezone.account.slug",
             &claims.account_slug,
         )),
+        claims
+            .actor_id
+            .as_deref()
+            .filter(|_| claims.label_devices)
+            .map(|actor_id| string_attribute("firezone.actor.id", actor_id)),
+        claims
+            .label_devices
+            .then(|| string_attribute("firezone.device.id", &claims.device_id)),
     ]
     .into_iter()
     .flatten()

@@ -504,12 +504,11 @@ assert site_ids == [site.id]
     end
 
     test "sends no metrics config on older channels", %{
-      account: account,
       gateway: gateway,
       site: site,
       token: token
     } do
-      account_metrics_fixture(account, ["*"])
+      metrics_rule_fixture()
       socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V2.Channel)
 
       assert_push "init", init
@@ -521,12 +520,11 @@ assert site_ids == [site.id]
     end
 
     test "sends no metrics token without an ingest URL", %{
-      account: account,
       gateway: gateway,
       site: site,
       token: token
     } do
-      account_metrics_fixture(account, ["*"])
+      metrics_rule_fixture()
       socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
       assert_push "init", _init_payload
       assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
@@ -535,12 +533,13 @@ assert site_ids == [site.id]
       assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
     end
 
-    test "sends no metrics token while the account exports no metrics", %{
+    test "sends no metrics token while no rule matches the gateway", %{
       gateway: gateway,
       site: site,
       token: token
     } do
       Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      metrics_rule_fixture(match: %{"device_type" => "client"})
       socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
       assert_push "init", init
       refute Map.has_key?(init, :metrics)
@@ -557,7 +556,7 @@ assert site_ids == [site.id]
       token: token
     } do
       Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
-      account_metrics_fixture(account, ["b"])
+      metrics_rule_fixture(match: %{"account_id" => account.id}, patterns: ["b"])
       socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
 
       assert_push "init", _init_payload
@@ -577,15 +576,37 @@ assert site_ids == [site.id]
       assert claims["device_version"] == fetch_device!(gateway).last_seen_version
       assert claims["metrics"] == ["b"]
 
-      plan_metrics_fixture(Portal.Billing.plan_type(account), ["a"])
+      plan = account |> Portal.Billing.plan_type() |> Atom.to_string()
+      metrics_rule_fixture(match: %{"plan" => plan}, patterns: ["a"])
       send(socket.channel_pid, :refresh_metrics_token)
 
       assert_push "metrics_config", %{patterns: ["a", "b"], token: metrics_token}
       assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["a", "b"]
     end
 
-    test "pushes the metrics config when the account's metric patterns change", %{
-      account: account,
+    test "labels the gateway only while a rule targets it", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      metrics_rule_fixture(match: %{"device_type" => "gateway"}, export_interval_secs: 30)
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
+
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{export_interval_secs: 30, patterns: ["*"], token: metrics_token}
+      refute Map.has_key?(JOSE.JWT.peek_payload(metrics_token).fields, "label_devices")
+
+      metrics_rule_fixture(match: %{"device_id" => gateway.id}, patterns: ["a"])
+      send(socket.channel_pid, :refresh_metrics_token)
+
+      assert_push "metrics_config", %{patterns: ["*", "a"], token: metrics_token}
+      claims = JOSE.JWT.peek_payload(metrics_token).fields
+      assert claims["label_devices"] == true
+      refute Map.has_key?(claims, "actor_id")
+    end
+
+    test "pushes the metrics config when a rule that matched or matches the gateway changes", %{
       gateway: gateway,
       site: site,
       token: token
@@ -595,33 +616,25 @@ assert site_ids == [site.id]
       assert_push "init", _init_payload
       assert_push "metrics_config", %{token: nil}
 
-      metrics = account_metrics_fixture(account, ["a"])
+      other = metrics_rule_fixture(match: %{"device_type" => "client"})
       lsn = System.unique_integer([:positive, :monotonic])
-      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :insert, struct: metrics})
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :insert, struct: other})
+      refute_push "metrics_config", _payload
+
+      rule = metrics_rule_fixture(match: %{"device_id" => gateway.id}, patterns: ["a"])
+      lsn = System.unique_integer([:positive, :monotonic])
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :insert, struct: rule})
 
       assert_push "metrics_config", %{token: metrics_token, patterns: ["a"]}
       assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["a"]
 
-      updated = account_metrics_fixture(account, ["b"])
+      Repo.delete!(rule)
       lsn = System.unique_integer([:positive, :monotonic])
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: lsn,
-        op: :update,
-        old_struct: metrics,
-        struct: updated
-      })
-
-      assert_push "metrics_config", %{token: metrics_token, patterns: ["b"]}
-      assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["b"]
-
-      Repo.delete!(updated)
-      lsn = System.unique_integer([:positive, :monotonic])
-      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: updated})
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: rule})
 
       assert_push "metrics_config", %{token: nil, patterns: []}
 
-      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: updated})
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: rule})
       refute_push "metrics_config", _payload
     end
 

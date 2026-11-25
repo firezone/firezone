@@ -36,12 +36,16 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             | Error::DnsPacket
             | Error::NotTurn
             | Error::NotAChannelDataMessage
-            | Error::UdpChecksumMissing
-            | Error::Ipv4PacketWithOptions),
+            | Error::UdpChecksumMissing),
         ) => {
             debug!(&ctx, target: "eBPF", "^^^ pass packet to userspace: {}", e.as_str());
 
             xdp_action::XDP_PASS
+        }
+        Err(e @ Error::Ipv4PacketWithOptions) => {
+            debug!(&ctx, target: "eBPF", "XXX drop packet: {}", e.as_str());
+
+            xdp_action::XDP_DROP
         }
         Err(e @ Error::ThroughputLimitExceeded) => {
             trace!(&ctx, target: "eBPF", "XXX drop packet: {}", e.as_str());

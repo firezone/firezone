@@ -245,7 +245,6 @@ impl Auth {
         let req = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
 
         if !secure_equality(&resp.state, &req.state) {
-            self.sign_out()?;
             return Err(Error::StatesDontMatch);
         }
 
@@ -697,6 +696,17 @@ mod tests {
             _ => panic!("Expected StatesDontMatch error"),
         }
         assert!(state.credential().is_none());
-        assert!(state.is_signed_out());
+        assert!(!state.is_signed_out());
+
+        // The pending sign-in still completes with the right state
+        let req_state = state.ongoing_request().unwrap().state.clone();
+        state
+            .handle_response(Response {
+                fragment: bogus_secret("fragment"),
+                state: req_state,
+                control_plane: None,
+            })
+            .unwrap();
+        assert!(matches!(state.state, State::AwaitingPortal(_)));
     }
 }
