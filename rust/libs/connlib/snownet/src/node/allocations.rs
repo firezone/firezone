@@ -12,7 +12,7 @@ use is::Candidate;
 use itertools::Itertools as _;
 use otel_instruments::Counter;
 use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
-use relay_client_proto::{Allocation, FreeReason};
+use relay_client_proto::{Allocation, CredentialUpdate, FreeReason};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use stun_codec::rfc5389::attributes::{Realm, Username};
@@ -193,17 +193,16 @@ where
 
                 UpsertResult::Added
             }
-            Entry::Occupied(mut o) => {
-                let allocation = o.get_mut();
-
-                if allocation.matches_socket(&server) {
-                    return if allocation.update_credentials(username, password, realm, now) {
-                        UpsertResult::UpdatedCredentials
-                    } else {
-                        UpsertResult::UnchangedCredentials
-                    };
+            Entry::Occupied(mut o) if o.get().matches_socket(&server) => {
+                match o
+                    .get_mut()
+                    .update_credentials(username, password, realm, now)
+                {
+                    CredentialUpdate::Changed => UpsertResult::UpdatedCredentials,
+                    CredentialUpdate::Unchanged => UpsertResult::Unchanged,
                 }
-
+            }
+            Entry::Occupied(mut o) => {
                 let mut seed = [0u8; 32];
                 self.rng.fill_bytes(&mut seed);
 
@@ -408,7 +407,7 @@ fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
 pub(crate) enum UpsertResult {
     Added,
     UpdatedCredentials,
-    UnchangedCredentials,
+    Unchanged,
     Blocked,
     Replaced(Allocation),
 }
@@ -589,7 +588,7 @@ mod tests {
 
         assert!(matches!(
             upsert(&mut allocations, 1, SERVER_V4, now),
-            UpsertResult::UnchangedCredentials
+            UpsertResult::Unchanged
         ));
 
         assert!(matches!(

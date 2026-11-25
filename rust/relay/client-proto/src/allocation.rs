@@ -120,6 +120,11 @@ pub enum Event {
     Invalid(Candidate),
 }
 
+pub enum CredentialUpdate {
+    Changed,
+    Unchanged,
+}
+
 /// A datagram to send to the relay.
 #[derive(PartialEq)]
 pub struct Transmit {
@@ -354,8 +359,6 @@ impl Allocation {
     /// The refresh also checks that the relay still has the allocation, and an allocation that
     /// gave up starts over. Requests in flight are signed with the new credentials when they are
     /// retransmitted.
-    ///
-    /// Returns whether the credentials changed.
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn update_credentials(
         &mut self,
@@ -363,9 +366,10 @@ impl Allocation {
         password: String,
         realm: Realm,
         now: Instant,
-    ) -> bool {
-        let changed = !self.matches_credentials(&username, &password, &realm);
-        if changed {
+    ) -> CredentialUpdate {
+        let update = if self.matches_credentials(&username, &password, &realm) {
+            CredentialUpdate::Unchanged
+        } else {
             let nonce = self.credentials.take().and_then(|c| c.nonce);
             self.credentials = Some(Credentials {
                 username,
@@ -373,11 +377,12 @@ impl Allocation {
                 realm,
                 nonce,
             });
-        }
+            CredentialUpdate::Changed
+        };
 
         if !self.has_allocation() && self.allocate_in_flight() {
             tracing::debug!("Not refreshing allocation because we are already making one");
-            return changed;
+            return update;
         }
 
         if self.is_suspended() {
@@ -385,14 +390,14 @@ impl Allocation {
 
             self.active_socket = None;
             self.send_binding_requests(now);
-            return changed;
+            return update;
         }
 
         tracing::debug!("Refreshing allocation");
 
         self.authenticate_and_queue(MessagePrototype::refresh(self.software.clone()), None, now);
 
-        changed
+        update
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%from, tid, method, class, rtt))]
@@ -847,7 +852,14 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.reallocate_if_expired(now);
+        if self
+            .allocation_expires_at()
+            .is_some_and(|expires_at| now >= expires_at)
+        {
+            tracing::debug!("Allocation is expired");
+
+            self.invalidate_allocation();
+        }
 
         if self.has_allocation()
             && let Some(addr) = self
@@ -980,8 +992,6 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
-        self.reallocate_if_expired(now);
-
         if self.is_suspended() {
             tracing::debug!("Allocation is suspended");
             return;
@@ -1162,24 +1172,6 @@ impl Allocation {
         let (received_at, lifetime) = self.allocation_lifetime?;
 
         Some(received_at + lifetime)
-    }
-
-    /// Makes a new allocation once the lifetime of this one passed.
-    ///
-    /// The lifetime only passes if the host slept through the refresh, so whatever the
-    /// allocation is asked to do first after waking up may find it expired.
-    fn reallocate_if_expired(&mut self, now: Instant) {
-        if self
-            .allocation_expires_at()
-            .is_none_or(|expires_at| now < expires_at)
-        {
-            return;
-        }
-
-        tracing::debug!("Allocation is expired");
-
-        self.invalidate_allocation();
-        self.authenticate_and_queue(MessagePrototype::allocate(self.software.clone()), None, now);
     }
 
     fn invalidate_allocation(&mut self) {

@@ -239,10 +239,10 @@ impl RealRelaySystem {
                 let username = Username::new(username).expect("username is short enough");
                 let realm = Realm::new(realm).expect("realm is short enough");
 
-                let updated = self.client.drive(&mut self.transmits, now, |a| {
+                let update = self.client.drive(&mut self.transmits, now, |a| {
                     a.update_credentials(username, password, realm, now)
                 });
-                if updated.is_some() {
+                if update.is_some() {
                     // Let the refresh check the allocation before settling can replace it.
                     self.allocation_boot = self.relay_boots;
                 }
@@ -254,15 +254,8 @@ impl RealRelaySystem {
             Transition::Partition { duration } => {
                 self.client.set_offline();
                 lost_heartbeats = self.advance(*duration, interference);
-                self.client.set_online();
-            }
-            Transition::Sleep { duration } => {
-                let wake_up = now + *duration;
-                self.client.sleep();
-
-                self.run_until(wake_up, interference);
-
-                self.client.set_online();
+                self.client
+                    .update_interface(self.client.ip4, self.client.ip6);
             }
             Transition::Connect { peer } => {
                 self.connections.insert(*peer);
@@ -601,19 +594,18 @@ impl RealRelaySystem {
         let mut lost = BTreeSet::new();
 
         while self.next_heartbeat <= target {
-            self.run_until(self.next_heartbeat, interference);
+            let next_heartbeat = self.next_heartbeat;
+
+            self.run(interference, |_| next_heartbeat);
+            self.clock.skip_to(next_heartbeat);
             lost.extend(self.heartbeat(interference));
             self.next_heartbeat = self.clock.now::<Instant>() + HEARTBEAT;
         }
 
-        self.run_until(target, interference);
-
-        lost
-    }
-
-    fn run_until(&mut self, target: Instant, interference: &mut Interference) {
         self.run(interference, |_| target);
         self.clock.skip_to(target);
+
+        lost
     }
 
     /// Steps the hosts and the network through everything that is due until the horizon, which
@@ -699,10 +691,6 @@ impl Host<RealAllocation> {
     ///
     /// The allocation only handles a timeout when it asked for one.
     fn step(&mut self, transmits: &mut BufferedTransmits, now: Instant) {
-        if self.is_asleep() {
-            return;
-        }
-
         while let Some(transmit) = self.poll_inbox(now) {
             self.handle_input(transmits, transmit, now);
         }
