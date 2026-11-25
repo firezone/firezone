@@ -239,20 +239,20 @@ defmodule PortalWeb.SignInHTML do
             </p>
             <dl class="space-y-2">
               <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Signed in as</dt>
-                <dd class="text-xs text-body font-medium">{@actor_name}</dd>
+                <dt class="text-xs text-subtle w-24 sm:w-28 shrink-0 pt-0.5">Signed in as</dt>
+                <dd class="min-w-0 break-words text-xs text-body font-medium">{@actor_name}</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account</dt>
-                <dd class="text-xs text-body font-medium">{@account.name}</dd>
+                <dt class="text-xs text-subtle w-24 sm:w-28 shrink-0 pt-0.5">Account</dt>
+                <dd class="min-w-0 break-words text-xs text-body font-medium">{@account.name}</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Slug</dt>
-                <dd class="text-xs text-body font-mono font-medium">{@account.slug}</dd>
+                <dt class="text-xs text-subtle w-24 sm:w-28 shrink-0 pt-0.5">Slug</dt>
+                <dd class="min-w-0 break-all text-xs text-body font-mono font-medium">{@account.slug}</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account ID</dt>
-                <dd class="text-xs text-body font-mono font-medium">{@account.id}</dd>
+                <dt class="text-xs text-subtle w-24 sm:w-28 shrink-0 pt-0.5">Account ID</dt>
+                <dd class="min-w-0 break-all text-xs text-body font-mono font-medium">{@account.id}</dd>
               </div>
             </dl>
           </div>
