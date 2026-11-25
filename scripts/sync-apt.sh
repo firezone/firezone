@@ -13,7 +13,6 @@ shopt -s globstar
 COMPONENT="main"
 WORK_DIR="$(mktemp -d)"
 DISTS_DIR="${WORK_DIR}/dists"
-INDEX_TOOL="$(realpath "$(dirname "$0")/apt-index.py")"
 
 if [ -z "${AZURE_STORAGE_ACCOUNT:-}" ]; then
     echo "Error: AZURE_STORAGE_ACCOUNT not set"
@@ -72,6 +71,128 @@ chmod 0755 "${KEYRING_DIR}/DEBIAN/postinst"
 
 dpkg-deb --root-owner-group --build "${KEYRING_DIR}" "${WORK_DIR}/${KEYRING_PACKAGE}"
 
+load_blob_listing() {
+    jq -e 'type == "array" and all(.[]; .name != null and .properties.contentLength != null)' "$POOL_LIST" >/dev/null || return 1
+
+    local name size md5
+    while IFS=$'\t' read -r name size md5; do
+        REMOTE_SIZE["$name"]="$size"
+        REMOTE_MD5["$name"]="$md5"
+    done < <(jq -r '.[] | select(.name | endswith(".deb")) |
+        [.name, .properties.contentLength, (.properties.contentSettings.contentMd5 // "")] | @tsv' "$POOL_LIST")
+}
+
+verify_release_checksums() {
+    local metadata="$1" line digest size path actual in_sha=0
+    local -A verified=()
+    while IFS= read -r line; do
+        if [[ "$line" == "SHA256:" ]]; then
+            in_sha=1
+            continue
+        fi
+        ((in_sha)) || continue
+        [[ "$line" == " "* ]] || break
+        read -r digest size path <<<"$line"
+        path="${path#./}"
+        [[ "$path" == "Release" ]] && continue # Older metadata includes its own pre-append checksum.
+        [[ "$path" == main/* && "$path" != *..* && "$size" =~ ^[0-9]+$ ]] || return 1
+        [[ -f "$metadata/$path" ]] || return 1
+        [[ "$(stat -c %s "$metadata/$path")" == "$size" ]] || return 1
+        actual="$(sha256sum "$metadata/$path")"
+        [[ "${actual%% *}" == "$digest" ]] || return 1
+        verified["$path"]=1
+    done <"$metadata/Release"
+    ((in_sha)) || return 1
+
+    local arch name
+    for arch in $OLD_ARCHITECTURES; do
+        for name in Packages Packages.gz Release; do
+            [[ -v verified["main/binary-$arch/$name"] ]] || return 1
+        done
+    done
+}
+
+load_records() {
+    local index="$1" line filename="" size="" md5="" seen=0
+    [[ -f "$index" ]] || return 1
+    while IFS= read -r line; do
+        if [[ -z "$line" ]]; then
+            if ((seen)); then
+                [[ "$filename" == "pool-$DISTRIBUTION/"* &&
+                   "$size" =~ ^[0-9]+$ && "$md5" =~ ^[0-9a-fA-F]{32}$ ]] || return 1
+                if [[ -v INDEX_SIZE["$filename"] ]]; then
+                    [[ "${INDEX_SIZE[$filename]}" == "$size" &&
+                       "${INDEX_MD5[$filename],,}" == "${md5,,}" ]] || return 1
+                fi
+                INDEX_SIZE["$filename"]="$size"
+                INDEX_MD5["$filename"]="$md5"
+            fi
+            filename="" size="" md5="" seen=0
+            continue
+        fi
+        seen=1
+        case "$line" in
+            "Filename: "*) filename="${line#Filename: }" ;;
+            "Size: "*) size="${line#Size: }" ;;
+            "MD5sum: "*) md5="${line#MD5sum: }" ;;
+        esac
+    done < <(cat "$index"; printf '\n\n')
+}
+
+check_index() {
+    local metadata="$1" filename remote_md5
+    local -A INDEX_SIZE=() INDEX_MD5=()
+    OLD_ARCHITECTURES="$(sed -n 's/^Architectures: //p' "$metadata/Release")"
+    [[ -n "$OLD_ARCHITECTURES" ]] || return 10
+    grep -qx 'Components: main' "$metadata/Release" || return 10
+    verify_release_checksums "$metadata" || return 10
+
+    local arch
+    for arch in $OLD_ARCHITECTURES; do
+        load_records "$metadata/main/binary-$arch/Packages" || return 10
+    done
+
+    for filename in "${!INDEX_SIZE[@]}"; do
+        [[ -v STAGED["$filename"] ]] && continue
+        [[ -v REMOTE_SIZE["$filename"] ]] || { echo "Missing indexed package: $filename" >&2; return 20; }
+        [[ "${REMOTE_SIZE[$filename]}" == "${INDEX_SIZE[$filename]}" ]] ||
+            { echo "Wrong size for indexed package: $filename" >&2; return 20; }
+        if [[ -n "${REMOTE_MD5[$filename]}" ]]; then
+            remote_md5="$(printf '%s' "${REMOTE_MD5[$filename]}" | base64 -d | od -An -tx1 | tr -d ' \n')" || return 10
+            [[ "${remote_md5,,}" == "${INDEX_MD5[$filename],,}" ]] ||
+                { echo "Wrong hash for indexed package: $filename" >&2; return 20; }
+        fi
+    done
+    for filename in "${!REMOTE_SIZE[@]}"; do
+        [[ -v INDEX_SIZE["$filename"] || -v STAGED["$filename"] ]] || return 10
+    done
+    printf '%s' "$OLD_ARCHITECTURES"
+}
+
+merge_index() {
+    local old="$1" new="$2" output="$3" old_all="$4"
+    local line="" stanza="" filename=""
+    [[ -s "$old" ]] || old="$old_all"
+    : >"$output"
+    if [[ -f "$old" ]]; then
+        while IFS= read -r line; do
+            if [[ -z "$line" ]]; then
+                if [[ -n "$stanza" ]]; then
+                    [[ -n "$filename" ]] || return 1
+                    if [[ ! -v STAGED["$filename"] ]]; then
+                        printf '%s\n' "$stanza" >>"$output"
+                    fi
+                fi
+                stanza="" filename=""
+                continue
+            fi
+            stanza+="$line"$'\n'
+            [[ "$line" == "Filename: "* ]] && filename="${line#Filename: }"
+        done < <(cat "$old"; printf '\n\n')
+    fi
+    cat "$new" >>"$output"
+}
+
 sync_distribution() {
     local DISTRIBUTION="$1"
     local POOL_DIR="${WORK_DIR}/pool-${DISTRIBUTION}"
@@ -82,6 +203,7 @@ sync_distribution() {
     local IMPORT_LIST="${WORK_DIR}/downloaded-imports-${DISTRIBUTION}"
     local POOL_LIST="${WORK_DIR}/pool-list-${DISTRIBUTION}.json"
     local OLD_ARCHITECTURES="" ARCHITECTURES="" STATUS=0
+    local -A REMOTE_SIZE=() REMOTE_MD5=() STAGED=()
 
     mkdir --parents "${POOL_DIR}" "${IMPORT_DIR}" "${NEW_DIR}" "${UPLOAD_DIR}" "${METADATA_DIR}"
     : >"${IMPORT_LIST}"
@@ -123,6 +245,7 @@ sync_distribution() {
 
                 echo "Importing $(basename "$deb") as ${NORMALIZED_NAME}"
                 cp --force "$deb" "${NEW_DIR}/${NORMALIZED_NAME}"
+                STAGED["pool-${DISTRIBUTION}/${NORMALIZED_NAME}"]=1
             fi
         done
     fi
@@ -136,9 +259,11 @@ sync_distribution() {
         --account-name "${AZURE_STORAGE_ACCOUNT}" \
         --output json >"${POOL_LIST}"
 
-    if ! jq -e --arg name "pool-${DISTRIBUTION}/${KEYRING_PACKAGE}" 'any(.[]; .name == $name)' "${POOL_LIST}" >/dev/null; then
+    load_blob_listing
+    if [[ ! -v REMOTE_SIZE["pool-${DISTRIBUTION}/${KEYRING_PACKAGE}"] ]]; then
         echo "Adding ${KEYRING_PACKAGE}"
         cp "${WORK_DIR}/${KEYRING_PACKAGE}" "${NEW_DIR}/"
+        STAGED["pool-${DISTRIBUTION}/${KEYRING_PACKAGE}"]=1
     fi
 
     echo "Downloading published metadata for distribution ${DISTRIBUTION}..."
@@ -155,7 +280,7 @@ sync_distribution() {
         gpg --batch --verify "${METADATA_DIR}/Release.gpg" "${METADATA_DIR}/Release" >/dev/null 2>&1 && \
         gpg --batch --decrypt --output "${WORK_DIR}/inrelease-${DISTRIBUTION}" "${METADATA_DIR}/InRelease" >/dev/null 2>&1 && \
         cmp --silent "${METADATA_DIR}/Release" "${WORK_DIR}/inrelease-${DISTRIBUTION}"; then
-        if OLD_ARCHITECTURES=$(/usr/bin/python3 "${INDEX_TOOL}" check "${METADATA_DIR}" "${POOL_LIST}" "${NEW_DIR}" "${DISTRIBUTION}"); then
+        if OLD_ARCHITECTURES=$(check_index "${METADATA_DIR}"); then
             FAST_PATH=1
         else
             STATUS=$?
@@ -208,11 +333,10 @@ sync_distribution() {
 
         if ((FAST_PATH)); then
             apt-ftparchive packages --arch "${ARCH}" "pool-${DISTRIBUTION}" >"${WORK_DIR}/new-Packages-${DISTRIBUTION}-${ARCH}"
-            /usr/bin/python3 "${INDEX_TOOL}" merge \
+            merge_index \
                 "${METADATA_DIR}/${COMPONENT}/binary-${ARCH}/Packages" \
                 "${WORK_DIR}/new-Packages-${DISTRIBUTION}-${ARCH}" \
                 "${BINARY_DIR}/Packages" \
-                "${POOL_DIR}" \
                 "${METADATA_DIR}/${COMPONENT}/binary-all/Packages"
         else
             apt-ftparchive packages --arch "${ARCH}" "pool-${DISTRIBUTION}" >"${BINARY_DIR}/Packages"
@@ -244,10 +368,19 @@ EOF
     gpg --default-key "${GPG_KEY_ID}" -abs -o Release.gpg Release
     gpg --default-key "${GPG_KEY_ID}" --clearsign -o InRelease Release
 
-    /usr/bin/python3 "${INDEX_TOOL}" check \
-        "${DISTS_DIR}/${DISTRIBUTION}" "${POOL_LIST}" "${NEW_DIR}" "${DISTRIBUTION}" >/dev/null
+    check_index "${DISTS_DIR}/${DISTRIBUTION}" >/dev/null
 
-    /usr/bin/python3 "${INDEX_TOOL}" uploads "${POOL_LIST}" "${NEW_DIR}" "${UPLOAD_DIR}" "${DISTRIBUTION}"
+    local deb name remote_md5
+    for deb in "${NEW_DIR}"/*.deb; do
+        [[ -f "$deb" ]] || continue
+        name="pool-${DISTRIBUTION}/${deb##*/}"
+        if [[ -v REMOTE_SIZE["$name"] && "${REMOTE_SIZE[$name]}" == "$(stat -c %s "$deb")" &&
+              -n "${REMOTE_MD5[$name]}" ]]; then
+            remote_md5="$(printf '%s' "${REMOTE_MD5[$name]}" | base64 -d | od -An -tx1 | tr -d ' \n')"
+            [[ "$remote_md5" == "$(md5sum "$deb" | cut -d ' ' -f 1)" ]] && continue
+        fi
+        ln --force "$deb" "${UPLOAD_DIR}/"
+    done
     if [ "$(ls -A "${UPLOAD_DIR}")" ]; then
         az storage blob upload-batch \
             --destination apt \
