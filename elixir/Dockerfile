@@ -64,10 +64,12 @@ RUN mix compile --force
 # so mix tasks (test, ecto.migrate, etc.) can run against it.
 
 # Only built for the portal-ops image. mix.exs compiles ops/lib when it exists. The
-# ops database migrations go where `Portal.Release.migrate/1` finds them.
+# ops database migrations go where `Portal.Release.migrate/1` finds them. The build
+# context `otel-instruments` gives it the metric names to suggest.
 FROM compiler AS ops-compiler
 
 COPY ops ops
+COPY --from=otel-instruments lib.rs ops/otel_instruments.rs
 RUN if [ -d ops/priv/migrations ]; then \
       mkdir -p priv/ops_repo && cp -R ops/priv/migrations priv/ops_repo/migrations; \
     fi
