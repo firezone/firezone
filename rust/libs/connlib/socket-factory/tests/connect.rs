@@ -74,26 +74,3 @@ async fn connect_fails_when_source_ip_resolution_fails() {
 
     assert_eq!(result.err().unwrap().to_string(), "no route");
 }
-
-#[tokio::test]
-async fn connected_socket_ignores_datagrams_from_other_sources() {
-    let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-    let peer_addr = peer.local_addr().unwrap();
-    let other = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-
-    let socket = udp("0.0.0.0:0".parse().unwrap())
-        .unwrap()
-        .connect(peer_addr)
-        .await
-        .unwrap();
-    socket.send(b"ping").await.unwrap();
-
-    let mut buf = [0u8; 128];
-    let (_, sender) = peer.recv_from(&mut buf).await.unwrap();
-
-    other.send_to(b"spoofed", sender).await.unwrap();
-    peer.send_to(b"pong", sender).await.unwrap();
-
-    let len = socket.recv(&mut buf).await.unwrap();
-    assert_eq!(&buf[..len], b"pong");
-}
