@@ -16,21 +16,18 @@ defmodule Portal.Authentication do
   # (OIDC, Email/OTP, userpass). Carries an auth_provider_id. Used by both GUI
   # and headless client sign-ins.
   def create_interactive_client_token(attrs) do
-    changeset =
-      %Portal.DeviceToken{}
-      |> cast(attrs, ~w[secret_nonce account_id actor_id auth_provider_id expires_at]a)
-      |> validate_required([:account_id, :actor_id, :auth_provider_id, :expires_at])
-      |> validate_length(:secret_nonce, max: 128)
-      |> validate_format(:secret_nonce, ~r/^[^.]*$/, message: "cannot contain periods")
+    attrs
+    |> interactive_client_token_changeset()
+    |> insert_interactive_client_token()
+  end
 
-    nonce = get_change(changeset, :secret_nonce) || ""
-    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets(nonce)
-
-    changeset
-    |> put_change(:secret_fragment, secret_fragment)
-    |> put_change(:secret_salt, secret_salt)
-    |> put_change(:secret_hash, secret_hash)
-    |> Database.insert_client_token()
+  # A GUI client must send a nonce (or its hash), so a token from a GUI
+  # sign-in never works with the fragment alone.
+  def create_gui_client_token(attrs) do
+    attrs
+    |> interactive_client_token_changeset()
+    |> validate_gui_client_nonce()
+    |> insert_interactive_client_token()
   end
 
   # Non-interactive client token - issued directly by an admin (no sign-in flow,
@@ -324,6 +321,12 @@ defmodule Portal.Authentication do
   def encode_fragment!(%Portal.RelayToken{} = token),
     do: encode_token(nil, token.id, token.secret_fragment, "relay")
 
+  # A separate salt marks tokens whose nonce was sent hashed, so the hashed
+  # value from the sign-in URL cannot be presented in place of the nonce.
+  def encode_fragment!(%Portal.DeviceToken{nonce_hash: nonce_hash} = token)
+      when is_binary(nonce_hash),
+      do: encode_token(token.account_id, token.id, token.secret_fragment, "device_hashed")
+
   def encode_fragment!(%Portal.DeviceToken{} = token),
     do: encode_token(token.account_id, token.id, token.secret_fragment, "device")
 
@@ -376,6 +379,35 @@ defmodule Portal.Authentication do
     end
   end
 
+  defp interactive_client_token_changeset(attrs) do
+    %Portal.DeviceToken{}
+    |> cast(attrs, ~w[secret_nonce nonce_hash account_id actor_id auth_provider_id expires_at]a)
+    |> validate_required([:account_id, :actor_id, :auth_provider_id, :expires_at])
+    |> validate_length(:secret_nonce, max: 128)
+    |> validate_format(:secret_nonce, ~r/^[^.]*$/, message: "cannot contain periods")
+    |> validate_format(:nonce_hash, ~r/^[0-9a-f]{64}$/, message: "must be a hex SHA-256 digest")
+  end
+
+  defp validate_gui_client_nonce(changeset) do
+    case {get_change(changeset, :secret_nonce), get_change(changeset, :nonce_hash)} do
+      {nil, nil} -> add_error(changeset, :nonce_hash, "can't be blank")
+      {_nonce, nil} -> changeset
+      {nil, _nonce_hash} -> changeset
+      {_nonce, _nonce_hash} -> add_error(changeset, :nonce_hash, "cannot be sent with a nonce")
+    end
+  end
+
+  defp insert_interactive_client_token(changeset) do
+    nonce = get_change(changeset, :nonce_hash) || get_change(changeset, :secret_nonce) || ""
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets(nonce)
+
+    changeset
+    |> put_change(:secret_fragment, secret_fragment)
+    |> put_change(:secret_salt, secret_salt)
+    |> put_change(:secret_hash, secret_hash)
+    |> Database.insert_client_token()
+  end
+
   defp encode_token(account_id, id, fragment, type) do
     body = {account_id, id, fragment}
     config = fetch_config!()
@@ -401,6 +433,38 @@ defmodule Portal.Authentication do
            ) do
       :ok = confirm_gateway_token_rotation(token)
       {:ok, token}
+    end
+  end
+
+  @doc """
+  Whether a socket token is a Gateway token, without verifying its secret. Gateway tokens
+  minted today share the `device` salt with client tokens, so for that salt the token's actor
+  decides.
+  """
+  def gateway_token?(encoded_token) when is_binary(encoded_token) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    base_salt = Keyword.fetch!(config, :salt)
+
+    case String.split(encoded_token, ".", parts: 2) do
+      [_nonce, signed] -> signed_gateway_token?(signed, key_base, base_salt)
+      _other -> false
+    end
+  end
+
+  defp signed_gateway_token?(signed, key_base, base_salt) do
+    case decode_infrastructure_token(signed, key_base, base_salt, ["gateway", "gateway_group"]) do
+      {:ok, _decoded} ->
+        true
+
+      {:error, :invalid} ->
+        case decode_infrastructure_token(signed, key_base, base_salt, ["device"]) do
+          {:ok, {account_id, id, _fragment}} when is_binary(account_id) and is_binary(id) ->
+            Database.legacy_gateway_token?(account_id, id)
+
+          _other ->
+            false
+        end
     end
   end
 
@@ -476,11 +540,18 @@ defmodule Portal.Authentication do
     |> context_salts()
     |> Enum.find_value({:error, :invalid_token}, fn salt ->
       case try_decode(encoded_token, key_base, base_salt <> salt) do
-        {:ok, _} = result -> result
-        _ -> nil
+        {:ok, {nonce, account_id, id, fragment}} ->
+          {:ok, {hash_input_nonce(salt, nonce), account_id, id, fragment}}
+
+        _ ->
+          nil
       end
     end)
   end
+
+  defp hash_input_nonce("device_hashed", ""), do: nil
+  defp hash_input_nonce("device_hashed", nonce), do: Portal.Crypto.hash(:sha256, nonce)
+  defp hash_input_nonce(_salt, nonce), do: nonce
 
   defp try_decode(encoded_token, key_base, salt) do
     with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
@@ -585,7 +656,7 @@ defmodule Portal.Authentication do
     Portal.Config.fetch_env!(:portal, Portal.Tokens)
   end
 
-  defp context_salts(:client), do: ["device", "client"]
+  defp context_salts(:client), do: ["device", "device_hashed", "client"]
   defp context_salts(type), do: [to_string(type)]
 
   defmodule Database do
@@ -752,6 +823,17 @@ defmodule Portal.Authentication do
       end
     end
 
+    def legacy_gateway_token?(account_id, id) do
+      from(t in Portal.DeviceToken,
+        join: actor in Actor,
+        on: actor.account_id == t.account_id and actor.id == t.actor_id,
+        where: t.account_id == ^account_id and t.id == ^id,
+        where: actor.type == :legacy_gateway
+      )
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+
     def delete_gateway_tokens(queryable, subject) do
       queryable = where(queryable, [t], t.actor_id in subquery(legacy_gateway_actor_ids()))
 
@@ -779,6 +861,7 @@ defmodule Portal.Authentication do
     # A client token has no Site and, when bound to a device, a client device.
     def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{type: :client}) do
       now = DateTime.utc_now()
+      enabled_provider_ids = enabled_auth_provider_ids_subquery()
 
       from(tokens in Portal.DeviceToken, as: :tokens)
       |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
@@ -797,6 +880,11 @@ defmodule Portal.Authentication do
       |> where([tokens: tokens], tokens.account_id == ^account_id)
       |> where([account: account], account.is_disabled == false)
       |> where([actor: actor], actor.is_disabled == false and actor.type != :legacy_gateway)
+      |> where(
+        [tokens: tokens],
+        is_nil(tokens.auth_provider_id) or
+          tokens.auth_provider_id in subquery(enabled_provider_ids)
+      )
       |> select([tokens: tokens], tokens)
       |> Safe.unscoped()
       |> Safe.one()

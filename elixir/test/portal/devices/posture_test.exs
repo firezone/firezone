@@ -31,7 +31,18 @@ defmodule Portal.Devices.PostureTest do
       assert Posture.match(client) == []
     end
 
-    test "returns nothing for a gateway", %{account: account} do
+    test "matches a device of any type on the same identifiers", %{account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account)
+      intune_device_fixture(provider: provider, serial_number: "SER-1")
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+      gateway = %{client | type: :gateway}
+
+      assert [{:intune, %{serial_number: "SER-1"}, :device_serial, nil}] = Posture.match(gateway)
+      assert Posture.match(gateway) == Posture.match(client)
+      assert Posture.rows_by_type_all([gateway]) == Posture.rows_by_type_all([client])
+    end
+
+    test "returns nothing for a gateway without identifiers", %{account: account} do
       assert Posture.match(gateway_fixture(account: account)) == []
     end
 

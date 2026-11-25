@@ -19,20 +19,19 @@ use crate::node::timeout_cache::TimeoutCache;
 use anyhow::{Context, Result, anyhow};
 use bufferpool::Bytes;
 use core::fmt;
-use fast_random_state::FastRandomState;
 use ip_packet::{Ecn, IpPacket};
 use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
-use opentelemetry::metrics::{Counter, Gauge};
+use opentelemetry::metrics::{Counter, Gauge, Histogram};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay_client_proto::channel_data::channel_data_packet_buffer;
 use relay_client_proto::{Allocation, RelaySocket, Socket};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::hash::Hash;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
@@ -111,6 +110,7 @@ pub struct Node<TId, RId> {
     connection_count: Gauge<u64>,
     next_connection_count: Instant,
     contested_addresses: Counter<u64>,
+    connection_setup_duration: Histogram<f64>,
 
     rng: StdRng,
 
@@ -207,6 +207,7 @@ where
             connection_count: otel_instruments::connection_count(),
             next_connection_count: now,
             contested_addresses: otel_instruments::contested_addresses(),
+            connection_setup_duration: otel_instruments::connection_setup_duration(),
             unix_now: now,
             unix_ts,
         }
@@ -404,6 +405,7 @@ where
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
+        let agent_kind = agent.kind();
         let mut connection = match self.init_connection(
             agent,
             remote,
@@ -416,6 +418,7 @@ where
             Ok(connection) => connection,
             Err(e) => {
                 tracing::info!("Connection failed (invalid WireGuard peer key: {e})");
+                record_connection_failed("InvalidPeerKey", agent_kind);
                 self.pending_events.push_back(Event::ConnectionFailed(cid));
 
                 return;
@@ -754,6 +757,21 @@ where
             self.inflight_stun_requests.remove_by_conn_id(*id);
         }
 
+        if let Event::ConnectionEstablished(id) = &event
+            && let Some(connection) = self.connections.get_established(id)
+            && let Some(peer_socket) = connection.state.peer_socket()
+        {
+            self.connection_setup_duration.record(
+                connection
+                    .duration_since_intent(self.last_now)
+                    .as_secs_f64(),
+                &[
+                    otel_attributes::connection_socket(peer_socket.kind()),
+                    otel_attributes::connection_agent(connection.agent.kind()),
+                ],
+            );
+        }
+
         Some(event)
     }
 
@@ -888,7 +906,7 @@ where
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
         }
 
-        // Second, insert new relays.
+        // Second, insert new relays and update the ones we know.
         for (rid, server, username, password, realm) in to_add {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -906,9 +924,10 @@ where
                 allocations::UpsertResult::Added => {
                     tracing::info!(%rid, address = ?server, "Added new TURN server")
                 }
-                allocations::UpsertResult::Skipped => {
-                    tracing::info!(%rid, address = ?server, "Skipping known TURN server")
+                allocations::UpsertResult::UpdatedCredentials => {
+                    tracing::info!(%rid, address = ?server, "Updated credentials for existing TURN server")
                 }
+                allocations::UpsertResult::Unchanged => {}
                 allocations::UpsertResult::Blocked => {
                     tracing::debug!(%rid, address = ?server, "Ignoring blocked TURN server")
                 }
@@ -925,21 +944,7 @@ where
             }
         }
 
-        let newly_added_relays = to_add
-            .iter()
-            .map(|(id, _, _, _, _)| *id)
-            .collect::<HashSet<_, FastRandomState>>();
-
-        // Third, check if other relays are still present.
-        for (_, previous_allocation) in self
-            .allocations
-            .iter_mut()
-            .filter(|(id, _)| !newly_added_relays.contains(id))
-        {
-            previous_allocation.refresh(now);
-        }
-
-        // Fourth, detach existing connections from removed relays.
+        // Third, detach existing connections from removed relays.
         self.connections.clear_relays(to_remove.into_iter());
     }
 
@@ -1756,6 +1761,7 @@ where
 
             if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
                 tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (no candidates received)");
+                record_connection_failed("NoCandidates", self.agent.kind());
                 self.state = ConnectionState::Failed;
                 return;
             }
@@ -1765,6 +1771,7 @@ where
                 .is_some_and(|timeout| now >= timeout)
             {
                 tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (ICE timeout)");
+                record_connection_failed("IceTimeout", self.agent.kind());
                 self.state = ConnectionState::Failed;
                 return;
             }
@@ -2020,6 +2027,7 @@ where
                 }
                 sanstun::Event::ConnectionExpired => {
                     tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (wireguard tunnel expired)");
+                    record_connection_failed("WireGuardExpired", self.agent.kind());
                     self.state = ConnectionState::Failed;
                 }
             }
@@ -2528,6 +2536,16 @@ where
             );
         }
     }
+}
+
+fn record_connection_failed(reason: &'static str, agent: &'static str) {
+    otel_instruments::connection_failed().add(
+        1,
+        &[
+            otel_attributes::error_type(reason),
+            otel_attributes::connection_agent(agent),
+        ],
+    );
 }
 
 fn new_interface(rng: &mut impl Rng, now: Instant, unix_ts: Duration) -> sanstun::Interface {

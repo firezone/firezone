@@ -31,11 +31,12 @@ defmodule Portal.FlowLogToken do
 
   # Attribution claims copied verbatim into the flow_logs row on ingest, plus
   # `uploads_enabled` (the policy's flow_log_uploads_enabled setting), which
-  # gates ingestion instead of being stored.
+  # gates ingestion, and `resource_type` / `initiator_ips`, which ingestion
+  # checks records against. None of these three are stored.
   @attribution_claims ~w[role initiator_device_id responder_device_id
                          policy_authorization_id policy_id uploads_enabled
-                         resource_id resource_name
-                         resource_address initiator_actor_id initiator_actor_email
+                         resource_id resource_name resource_type
+                         resource_address initiator_ips initiator_actor_id initiator_actor_email
                          initiator_actor_name initiator_auth_provider_id
                          authorized_at authorization_expires_at
                          initiator_client_version initiator_device_os_name

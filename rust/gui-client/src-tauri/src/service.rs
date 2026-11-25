@@ -34,6 +34,8 @@ use tracing::Instrument as _;
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
+const HANDLER_RETRY_DELAY: Duration = Duration::from_secs(1);
+
 #[cfg(target_os = "linux")]
 #[path = "service/linux.rs"]
 mod platform;
@@ -179,6 +181,13 @@ async fn ipc_listen(
             .with_context(|| format!("Failed to change ownership of '{}'", dir.display()))?;
     }
 
+    otel_metrics_export::install_meter_provider(|builder| {
+        builder.with_resource(telemetry::otel::default_resource_with([
+            otel_attributes::service_name!(),
+            otel_attributes::service_version!(),
+        ]))
+    });
+
     if let Ok(stored) = load_advanced_settings()
         && let Err(e) = log_filter_reloader.reload(&stored.log_filter)
     {
@@ -219,6 +228,9 @@ async fn ipc_listen(
             Ok(handler) => handler,
             Err(e) => {
                 tracing::warn!("Failed to initialise IPC handler: {e:#}");
+
+                // `Handler::new` can fail before it awaits anything, so retrying at once would spin.
+                tokio::time::sleep(HANDLER_RETRY_DELAY).await;
                 continue;
             }
         };
@@ -869,10 +881,6 @@ impl<'a> Handler<'a> {
                     self.telemetry_release = Some(release.clone());
                     self.point_telemetry_at_api_url(self.api_url());
 
-                    opentelemetry::global::set_meter_provider(
-                        telemetry::SentryMeterProvider::default(),
-                    );
-
                     analytics::identify(release, None, None, None);
                 }
             }
@@ -981,6 +989,9 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         );
 
+        let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
+            .context("Failed to spawn metrics exporter")?;
+
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
         let config = client_shared::SessionConfig::default()
@@ -995,6 +1006,7 @@ impl<'a> Handler<'a> {
             Arc::new(UdpSocketFactory::default()),
             portal,
             config,
+            metrics_exporter,
         )
         .context("Failed to start connlib")?;
 

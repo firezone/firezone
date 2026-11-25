@@ -48,6 +48,7 @@ defmodule PortalWeb.Router do
     get "/find_account", HomeController, :find_account
     post "/sign_in", HomeController, :redirect_to_sign_in
     post "/sign_in/recent_accounts/:account_id/remove", HomeController, :remove_recent_account
+    get "/sign_in/client_callback", SignInController, :client_callback
     post "/", HomeController, :redirect_to_sign_in
   end
 
@@ -371,6 +372,7 @@ defmodule PortalWeb.Router do
       scope "/settings", Settings do
         live "/profile", Profile
         live "/account", Account
+        live "/account/usage/:item", Account, :usage
 
         scope "/api_clients", ApiClients do
           live "/", Index
@@ -418,6 +420,7 @@ defmodule PortalWeb.Router do
         scope "/trust_anchors", TrustAnchors do
           live "/", Index
           live "/new", Index, :new
+          live "/firezone", Index, :device_ca
           live "/:id/edit", Index, :edit
           live "/:id", Index, :show
         end

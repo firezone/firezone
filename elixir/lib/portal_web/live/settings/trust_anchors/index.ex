@@ -47,6 +47,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       |> Safe.preload(:certificates)
     end
 
+    def get_device_ca(subject) do
+      from(ca in Portal.DeviceCertificateAuthority,
+        select: %{certificate: ca.certificate, inserted_at: ca.inserted_at}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
     def get_trust_anchor!(id, subject) do
       from(t in TrustAnchor, where: t.id == ^id, preload: [:certificates])
       |> Safe.scoped(subject)
@@ -212,6 +220,20 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     {:noreply, socket}
   end
 
+  def handle_params(_params, _uri, %{assigns: %{live_action: :device_ca}} = socket) do
+    if Portal.Account.unified_devices?(socket.assigns.account) do
+      {:noreply,
+       assign(socket,
+         selected_trust_anchor: nil,
+         form: nil,
+         confirm_delete?: false,
+         pending_update: nil
+       )}
+    else
+      {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
+    end
+  end
+
   def handle_params(_params, _uri, socket) do
     {:noreply,
      assign(socket,
@@ -236,7 +258,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <div class="flex items-center gap-2">
             <h2 class="text-xs font-semibold text-heading">Trust Anchors</h2>
             <span :if={@trust_anchors} class="text-xs text-subtle tabular-nums">
-              {length(@trust_anchors)}
+              {length(@trust_anchors) + if(@device_ca, do: 1, else: 0)}
             </span>
           </div>
           <div class="flex items-center gap-2">
@@ -254,7 +276,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <%= cond do %>
             <% is_nil(@trust_anchors) -> %>
               <SettingsComponents.skeleton id="trust-anchors-skeleton" />
-            <% Enum.empty?(@trust_anchors) -> %>
+            <% Enum.empty?(@trust_anchors) and is_nil(@device_ca) -> %>
               <div class="flex items-center justify-center h-full">
                 <div class="flex flex-col items-center gap-3 py-16">
                   <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
@@ -290,6 +312,11 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   </tr>
                 </thead>
                 <tbody>
+                  <.device_ca_row
+                    :if={@device_ca}
+                    device_ca={@device_ca}
+                    selected?={@live_action == :device_ca}
+                  />
                   <.trust_anchor_row
                     :for={trust_anchor <- @trust_anchors}
                     trust_anchor={trust_anchor}
@@ -324,6 +351,20 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           panel_tab={@panel_tab}
           expanded_endpoint={@expanded_endpoint}
         />
+      </div>
+
+    <!-- Device CA Panel (:device_ca) -->
+      <div
+        id="device-ca-panel"
+        class={[
+          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
+          "bg-elevated border-l border-border-strong",
+          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+          "transition-transform duration-200 ease-in-out",
+          (@live_action == :device_ca && "translate-x-0") || "translate-x-full"
+        ]}
+      >
+        <.device_ca_panel :if={@live_action == :device_ca && @device_ca} device_ca={@device_ca} />
       </div>
 
     <!-- Creation Panel (:new) -->
@@ -498,6 +539,87 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         </span>
       </td>
     </tr>
+    """
+  end
+
+  attr :device_ca, :map, required: true
+  attr :selected?, :boolean, required: true
+
+  defp device_ca_row(assigns) do
+    ~H"""
+    <tr
+      id="device-ca-row"
+      phx-click="select_device_ca"
+      class={[
+        "border-b border-border cursor-pointer transition-colors",
+        @selected? && "bg-raised",
+        !@selected? && "hover:bg-raised"
+      ]}
+    >
+      <td class="px-6 py-3">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <div class="text-sm font-medium text-heading truncate">Firezone device CA</div>
+          <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] border border-border text-subtle">
+            Managed by Firezone
+          </span>
+        </div>
+      </td>
+      <td class="px-6 py-3 w-36">
+        <span class="text-sm text-body">1 certificate</span>
+      </td>
+      <td class="px-6 py-3 w-36">
+        <span class="text-sm text-body">
+          <Core.relative_datetime datetime={@device_ca.inserted_at} />
+        </span>
+      </td>
+    </tr>
+    """
+  end
+
+  attr :device_ca, :map, required: true
+
+  defp device_ca_panel(assigns) do
+    pem = X509.pem_encode(assigns.device_ca.certificate)
+    fingerprint = Base.encode16(:crypto.hash(:sha256, assigns.device_ca.certificate), case: :lower)
+    assigns = assign(assigns, :detail, describe_certificate(%{pem: pem, fingerprint: fingerprint}))
+
+    ~H"""
+    <div class="flex flex-col h-full overflow-hidden">
+      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold text-heading truncate">Firezone device CA</h2>
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <p class="text-xs text-subtle">
+          Firezone uses this CA to issue the certificates your devices connect with. Firezone manages
+          it, so you cannot edit or delete it.
+        </p>
+
+        <div class="border border-border rounded p-3 bg-surface space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-xs font-semibold text-heading truncate">{@detail.common_name}</p>
+            <a
+              href={"data:application/x-pem-file;base64," <> Base.encode64(@detail.pem)}
+              download={download_filename("firezone-device-ca", @detail)}
+              class="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-elevated transition-colors"
+            >
+              <Core.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
+            </a>
+          </div>
+          <dl class="space-y-2">
+            <div :for={{label, value} <- certificate_detail_rows(@detail)}>
+              <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
+              <dd class="text-xs text-body font-mono break-all font-medium">
+                <.detail_value value={value} />
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </div>
     """
   end
 
@@ -961,7 +1083,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         %{"key" => "Escape"},
         %{assigns: %{live_action: action}} = socket
       )
-      when action in [:new, :edit, :show] do
+      when action in [:new, :edit, :show, :device_ca] do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
   end
 
@@ -972,6 +1094,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def handle_event("select_trust_anchor", %{"id" => id}, socket) do
     {:noreply,
      push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors/#{id}")}
+  end
+
+  def handle_event("select_device_ca", _params, socket) do
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors/firezone")}
   end
 
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
@@ -1265,9 +1391,17 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       socket
       |> assign(trust_anchors: trust_anchors)
+      |> assign(device_ca: get_device_ca(socket.assigns.account, socket.assigns.subject))
       |> assign_revocation_health(trust_anchors)
     else
-      assign(socket, trust_anchors: nil, revocation_health: %{})
+      assign(socket, trust_anchors: nil, device_ca: nil, revocation_health: %{})
+    end
+  end
+
+  # Hidden until devices use it.
+  defp get_device_ca(account, subject) do
+    if Portal.Account.unified_devices?(account) do
+      Database.get_device_ca(subject)
     end
   end
 

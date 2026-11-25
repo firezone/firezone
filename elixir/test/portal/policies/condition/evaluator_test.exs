@@ -1104,5 +1104,22 @@ defmodule Portal.Policies.EvaluatorTest do
 
       assert ensure_policy_conforms(policy, client, nil) == {:error, [:device_attested, :client_verified, :postures]}
     end
+
+    test "gives a gateway device the same result as a client device with the same state", ctx do
+      attested_until = DateTime.add(DateTime.utc_now(), 1, :hour)
+
+      clients = [
+        ctx.verified,
+        %{ctx.verified | verified_at: nil},
+        %{ctx.verified | posture: %{intune: [ctx.stale]}},
+        %{ctx.verified | posture: %{}},
+        %{ctx.verified | attested?: true, attested_until: attested_until}
+      ]
+
+      for require_attestation <- [false, true], client <- clients do
+        policy = %{require_attestation: require_attestation, conditions: [ctx.condition], postures: ctx.postures}
+        assert ensure_policy_conforms(policy, %{client | type: :gateway}, nil) == ensure_policy_conforms(policy, client, nil)
+      end
+    end
   end
 end

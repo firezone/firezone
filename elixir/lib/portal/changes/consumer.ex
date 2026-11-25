@@ -25,6 +25,7 @@ defmodule Portal.Changes.Consumer do
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
     "account_slugs" => Hooks.AccountSlugs,
+    "metrics_rules" => Hooks.MetricsRules,
     "actors" => Hooks.Actors,
     "groups" => Hooks.Groups,
     "memberships" => Hooks.Memberships,
@@ -33,6 +34,7 @@ defmodule Portal.Changes.Consumer do
     "policy_authorizations" => Hooks.PolicyAuthorizations,
     "device_tokens" => Hooks.DeviceTokens,
     "sites" => Hooks.Sites,
+    "site_devices" => Hooks.SiteDevices,
     "policies" => Hooks.Policies,
     "resources" => Hooks.Resources,
     "portal_sessions" => Hooks.PortalSessions,

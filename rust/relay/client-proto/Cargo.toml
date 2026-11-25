@@ -14,6 +14,8 @@ hex = { workspace = true }
 hex-display = { workspace = true }
 is = { workspace = true }
 logging = { workspace = true }
+otel-attributes = { workspace = true }
+otel-instruments = { workspace = true }
 rand = { workspace = true }
 ringbuffer = { workspace = true }
 smallvec = { workspace = true }

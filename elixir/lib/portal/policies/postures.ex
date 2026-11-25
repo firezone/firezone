@@ -120,6 +120,7 @@ defmodule Portal.Policies.Postures do
   def depth(%__MODULE__{expr: expr}), do: node_depth(expr)
 
   @doc "Runs a case-insensitive regex with a bounded amount of backtracking."
+  # sobelow_skip ["DOS.Regex"]
   @spec regex_match(String.t(), String.t()) :: :match | :nomatch | :error
   def regex_match(source, subject) do
     with true <- String.valid?(subject),
@@ -308,6 +309,7 @@ defmodule Portal.Policies.Postures do
     end
   end
 
+  # sobelow_skip ["DOS.Regex"]
   defp parse_scalar(type, op, value, at) when type in [:string, :enum_string] and op in @regex_operators do
     with {:ok, source} <- bounded_string(value, @max_regex_bytes, at),
          {:ok, _regex} <- Regex.compile(source, @regex_flags) do
