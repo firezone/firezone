@@ -145,6 +145,52 @@ where
     )
 }
 
+/// Persists authorization tokens with bounded wait time.
+#[derive(Default)]
+pub struct TokenWriter {
+    pending: Option<tokio::task::JoinHandle<Result<()>>>,
+}
+
+impl TokenWriter {
+    /// Persists a token where the uploader expects it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the previous write is still running, the deadline elapses,
+    /// or the token cannot be persisted.
+    pub async fn write_token(&mut self, spool_root: &Path, token: &str) -> Result<()> {
+        let spool_root = spool_root.to_owned();
+        let token = token.to_owned();
+        self.write(move || write_token(&spool_root, &token)).await?;
+
+        Ok(())
+    }
+
+    async fn write(&mut self, write: impl FnOnce() -> Result<()> + Send + 'static) -> Result<()> {
+        const TIMEOUT: Duration = Duration::from_secs(5);
+
+        if let Some(task) = &self.pending
+            && !task.is_finished()
+        {
+            anyhow::bail!("Previous flow-log token write is still running");
+        }
+
+        let task = self.pending.insert(tokio::task::spawn_blocking(write));
+        let result = match tokio::time::timeout(TIMEOUT, &mut *task).await {
+            Ok(result) => result,
+            Err(_) => {
+                // Keep the handle because abort cannot cancel a running filesystem call.
+                task.abort();
+                anyhow::bail!("Flow-log token write timed out after {TIMEOUT:?}");
+            }
+        };
+
+        self.pending = None;
+        result.context("Flow-log token write task failed")??;
+        Ok(())
+    }
+}
+
 /// Persists an authorization's ingest token where the uploader expects it.
 ///
 /// The spool path derives from the token's (unverified) `role` and
@@ -162,9 +208,9 @@ pub fn write_token(spool_root: &Path, token: &str) -> Result<()> {
         .context("Token is not a JWT (no payload segment)")?;
     let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(payload)
-        .context("Token payload is not base64url")?;
-    let claims =
-        serde_json::from_slice::<Claims>(&json).context("Token payload is not valid JSON")?;
+        .map_err(|_| anyhow::anyhow!("Token payload is not base64url"))?;
+    let claims = serde_json::from_slice::<Claims>(&json)
+        .map_err(|_| anyhow::anyhow!("Token payload does not contain valid claims"))?;
 
     // The token is portal-issued but its signature is not verified here, so never
     // trust a claim as a path component without validating it first.
@@ -756,6 +802,38 @@ mod tests {
     const AUTHZ_ID: &str = "11111111-1111-1111-1111-111111111111";
     /// Pinned so the tests do not depend on the volume they run on.
     const CLUSTER: u64 = 4096;
+
+    #[tokio::test]
+    async fn timed_out_token_write_prevents_another_write_until_it_finishes() {
+        let mut writer = TokenWriter::default();
+        let (started, wait_for_start) = tokio::sync::oneshot::channel();
+        let (release, wait_for_release) = mpsc::channel();
+        let write = writer.write(move || {
+            let _ = started.send(());
+            let _ = wait_for_release.recv();
+            Ok(())
+        });
+        let (result, started) = tokio::join!(write, wait_for_start);
+        started.unwrap();
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Flow-log token write timed out after 5s"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let token = token_for(AUTHZ_ID);
+        let error = writer.write_token(dir.path(), &token).await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Previous flow-log token write is still running"
+        );
+
+        release.send(()).unwrap();
+        writer.pending.as_mut().unwrap().await.unwrap().unwrap();
+        writer.write_token(dir.path(), &token).await.unwrap();
+        let token_path = dir.path().join("responder").join(AUTHZ_ID).join("token");
+        assert_eq!(std::fs::read_to_string(token_path).unwrap(), token);
+    }
 
     #[test]
     fn spools_start_and_end_reports_sharing_a_stem() {

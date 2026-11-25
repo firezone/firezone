@@ -44,6 +44,7 @@ pub struct Eventloop {
 
     /// Flow-log spool root.
     flow_logs_dir: std::path::PathBuf,
+    flow_log_token_writer: flow_log_writer::TokenWriter,
 
     /// The `--flow-logs` flag.
     local_flow_logs: bool,
@@ -114,6 +115,7 @@ impl Eventloop {
             tun_device_manager,
             resolver: dns_resolver()?,
             flow_logs_dir,
+            flow_log_token_writer: flow_log_writer::TokenWriter::default(),
             local_flow_logs,
             account_slug,
             metrics_exporter,
@@ -376,21 +378,14 @@ impl Eventloop {
             IngressMessages::CreateAuthorization(msg) => {
                 let token = &msg.flow_logs_ingest_token;
 
-                if token.claims().uploads_enabled {
-                    match flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
-                        .context("Failed to persist flow-log ingest token")
-                    {
-                        Ok(()) => {}
-                        Err(e)
-                            if e.any_downcast_ref::<std::io::Error>()
-                                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
-                        {
-                            tracing::debug!("{e:#}");
-                        }
-                        Err(e) => {
-                            tracing::warn!("{e:#}");
-                        }
-                    }
+                if token.claims().uploads_enabled
+                    && let Err(e) = self
+                        .flow_log_token_writer
+                        .write_token(&self.flow_logs_dir, token.as_str())
+                        .await
+                {
+                    tracing::error!("Failed to persist flow-log ingest token: {e:#}");
+                    return Ok(());
                 }
 
                 tunnel.state_mut().create_authorization(
@@ -400,7 +395,7 @@ impl Eventloop {
                     msg.expires_at,
                     msg.resource,
                     msg.use_frostlink,
-                    now,
+                    self.clock.now(),
                     msg.flow_logs_ingest_token,
                 );
 
