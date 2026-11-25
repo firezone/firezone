@@ -182,7 +182,7 @@ config :portal, Portal.Changes.Consumer,
   table_subscriptions: ~w[
     accounts
     account_slugs
-    account_metrics
+    metrics_rules
     actors
     groups
     memberships

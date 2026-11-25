@@ -25,9 +25,27 @@ fn golden_token_is_valid() {
             device_id: "00000000-0000-0000-0000-000000000002".to_owned(),
             device_type: DeviceType::Client,
             device_version: Some("1.5.0".to_owned()),
+            label_devices: false,
+            actor_id: None,
             metrics: vec!["connlib.*".to_owned()],
             exp: 4_102_444_800,
         }
+    );
+}
+
+#[test]
+fn reads_label_devices_and_actor_id() {
+    let verifier = Verifier::from_ed_pem(PUBLIC_KEY).unwrap();
+    let mut claims = claims();
+    claims["label_devices"] = serde_json::json!(true);
+    claims["actor_id"] = serde_json::json!("00000000-0000-0000-0000-000000000003");
+
+    let claims = verifier.verify(&sign(EDDSA_HEADER, &claims)).unwrap();
+
+    assert!(claims.label_devices);
+    assert_eq!(
+        claims.actor_id.as_deref(),
+        Some("00000000-0000-0000-0000-000000000003")
     );
 }
 
