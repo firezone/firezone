@@ -367,37 +367,21 @@ impl Allocation {
         realm: Realm,
         now: Instant,
     ) -> CredentialUpdate {
-        let update = if self.matches_credentials(&username, &password, &realm) {
-            CredentialUpdate::Unchanged
-        } else {
-            let nonce = self.credentials.take().and_then(|c| c.nonce);
-            self.credentials = Some(Credentials {
-                username,
-                password,
-                realm,
-                nonce,
-            });
-            CredentialUpdate::Changed
-        };
-
-        if !self.has_allocation() && self.allocate_in_flight() {
-            tracing::debug!("Not refreshing allocation because we are already making one");
-            return update;
+        if self.matches_credentials(&username, &password, &realm) {
+            self.refresh_or_restart(now);
+            return CredentialUpdate::Unchanged;
         }
 
-        if self.is_suspended() {
-            tracing::debug!("Attempting to make a new allocation");
+        let nonce = self.credentials.take().and_then(|c| c.nonce);
+        self.credentials = Some(Credentials {
+            username,
+            password,
+            realm,
+            nonce,
+        });
 
-            self.active_socket = None;
-            self.send_binding_requests(now);
-            return update;
-        }
-
-        tracing::debug!("Refreshing allocation");
-
-        self.authenticate_and_queue(MessagePrototype::refresh(self.software.clone()), None, now);
-
-        update
+        self.refresh_or_restart(now);
+        CredentialUpdate::Changed
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%from, tid, method, class, rtt))]
@@ -1126,6 +1110,25 @@ impl Allocation {
         self.credentials
             .as_ref()
             .is_some_and(|c| &c.username == username && c.password == password && &c.realm == realm)
+    }
+
+    fn refresh_or_restart(&mut self, now: Instant) {
+        if !self.has_allocation() && self.allocate_in_flight() {
+            tracing::debug!("Not refreshing allocation because we are already making one");
+            return;
+        }
+
+        if self.is_suspended() {
+            tracing::debug!("Attempting to make a new allocation");
+
+            self.active_socket = None;
+            self.send_binding_requests(now);
+            return;
+        }
+
+        tracing::debug!("Refreshing allocation");
+
+        self.authenticate_and_queue(MessagePrototype::refresh(self.software.clone()), None, now);
     }
 
     pub fn matches_socket(&self, socket: &RelaySocket) -> bool {
