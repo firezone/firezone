@@ -1154,3 +1154,32 @@ struct ProviderMessageCodableTests {
     }
   }
 }
+
+@Suite("SignInSettings Tests")
+struct SignInSettingsTests {
+  let settings = SignInSettings(
+    accountSlug: "acme", authURL: "https://a.example.com", apiURL: "wss://api.a.example.com")
+
+  @Test("Matches when nothing is forced")
+  func nothingForced() {
+    #expect(!settings.differsFromForced(in: ["apiURL": "wss://api.b.example.com"]))
+  }
+
+  @Test("Matches when the forced values are equal")
+  func forcedEqual() {
+    #expect(
+      !settings.differsFromForced(in: [
+        "forced.apiURL": "wss://api.a.example.com", "forced.accountSlug": "acme",
+      ]))
+  }
+
+  @Test("Differs when the forced API URL is different")
+  func forcedApiURLDiffers() {
+    #expect(settings.differsFromForced(in: ["forced.apiURL": "wss://api.b.example.com"]))
+  }
+
+  @Test("Differs when the forced account slug is different")
+  func forcedAccountSlugDiffers() {
+    #expect(settings.differsFromForced(in: ["forced.accountSlug": "other"]))
+  }
+}

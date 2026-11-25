@@ -366,6 +366,16 @@ public struct SignInSettings: Codable, Equatable, Sendable {
     self.authURL = authURL
     self.apiURL = apiURL
   }
+
+  /// Whether an MDM forced account slug or API URL in `providerConfiguration` differs from these.
+  public func differsFromForced(in providerConfiguration: [String: String]) -> Bool {
+    let forced = { providerConfiguration[Configuration.forcedKey(for: $0)] }
+    let forcedAccountSlug = forced(Configuration.Keys.accountSlug)
+    let forcedApiURL = forced(Configuration.Keys.apiURL)
+
+    return (forcedAccountSlug != nil && forcedAccountSlug != accountSlug)
+      || (forcedApiURL != nil && forcedApiURL != apiURL)
+  }
 }
 
 extension Dictionary where Key == String, Value == String {
