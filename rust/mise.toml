@@ -16,6 +16,11 @@ auto_install = false
 "github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
 "aqua:sigstore/cosign" = { version = "3.1.4", os = ["linux"] }
+pnpm = "10.33.0"
+node = "24.13.0"
+"github:cargo-bins/cargo-binstall" = "1.18.1"
+"github:DevinR528/cargo-sort" = "2.1.4"
+"github:EmbarkStudios/cargo-deny" = "0.19.4"
 
 [tools."github:bencherdev/bencher"]
 version = "0.6.13"
