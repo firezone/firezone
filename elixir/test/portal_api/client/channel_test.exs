@@ -6714,6 +6714,26 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_receive {:ice_candidates, %{type: :client, id: client_id}, ^candidates}, 200
       assert client.id == client_id
     end
+
+    test "delivers to at most 64 gateways", %{client: client, subject: subject} do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
+      other_ids = for _ <- 1..63, do: Ecto.UUID.generate()
+      last_id = Ecto.UUID.generate()
+      dropped_id = Ecto.UUID.generate()
+      :ok = PG.register(last_id)
+      :ok = PG.register(dropped_id)
+
+      push(socket, "broadcast_ice_candidates", %{
+        "candidates" => ["foo"],
+        "gateway_ids" => other_ids ++ [last_id, dropped_id]
+      })
+
+      assert_receive {:ice_candidates, %{type: :client, id: client_id}, ["foo"]}, 200
+      assert client_id == client.id
+      refute_receive {:ice_candidates, _, _}
+    end
   end
 
   describe "handle_in/3 broadcast_invalidated_ice_candidates" do
