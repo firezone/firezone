@@ -64,8 +64,8 @@ class PendingAuthSessionTest {
             session.begin(nonce = "nonce-", state = EXPECTED_STATE, signedInWith = SIGN_IN_SETTINGS)
 
             assertEquals(
-                AuthCallbackOutcome.Success("nonce-frag ment", SIGN_IN_SETTINGS),
-                session.complete(Uri.parse("https://$host/sign_in/client_callback#state=$EXPECTED_STATE&fragment=frag+ment")),
+                AuthCallbackOutcome.Success("nonce-abc def", SIGN_IN_SETTINGS),
+                session.complete(Uri.parse("https://$host/sign_in/client_callback#state=$EXPECTED_STATE&fragment=abc+def")),
             )
         }
     }
