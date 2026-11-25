@@ -110,35 +110,31 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
+    let ip_payload_len = ipv4.tot_len().wrapping_sub(Ipv4Hdr::LEN as u16);
 
     // We do not want to handle DNS packets
     if udp.src_port() == DNS_PORT {
         return Err(Error::DnsPacket);
     }
 
-    let is_allocation = (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port());
-
-    if !is_allocation && udp.dst_port() != 3478 {
-        return Err(Error::NotTurn);
-    }
-
-    let udp_payload_len = ensure_consistent_lengths(
-        ctx,
-        Ipv4Hdr::LEN,
-        ipv4.tot_len().wrapping_sub(Ipv4Hdr::LEN as u16),
-        udp.len(),
-    )?;
-
-    if is_allocation {
+    if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
+        let udp_payload_len =
+            ensure_consistent_lengths(ctx, Ipv4Hdr::LEN, ip_payload_len, udp.len())?;
         let verdict = try_handle_from_ipv4_udp(ctx, udp_payload_len)?;
 
         return Ok((udp_payload_len, verdict));
     }
 
-    let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
-    let verdict = try_handle_from_ipv4_channel_data(ctx, num_bytes)?;
+    if udp.dst_port() == 3478 {
+        let udp_payload_len =
+            ensure_consistent_lengths(ctx, Ipv4Hdr::LEN, ip_payload_len, udp.len())?;
+        let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
+        let verdict = try_handle_from_ipv4_channel_data(ctx, num_bytes)?;
 
-    Ok((num_bytes, verdict))
+        return Ok((num_bytes, verdict));
+    }
+
+    Err(Error::NotTurn)
 }
 
 #[inline(always)]
@@ -156,25 +152,24 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
         return Err(Error::DnsPacket);
     }
 
-    let is_allocation = (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port());
-
-    if !is_allocation && udp.dst_port() != 3478 {
-        return Err(Error::NotTurn);
-    }
-
-    let udp_payload_len =
-        ensure_consistent_lengths(ctx, Ipv6Hdr::LEN, ipv6.payload_len(), udp.len())?;
-
-    if is_allocation {
+    if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
+        let udp_payload_len =
+            ensure_consistent_lengths(ctx, Ipv6Hdr::LEN, ipv6.payload_len(), udp.len())?;
         let verdict = try_handle_from_ipv6_udp(ctx, udp_payload_len)?;
 
         return Ok((udp_payload_len, verdict));
     }
 
-    let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
-    let verdict = try_handle_from_ipv6_channel_data(ctx, num_bytes)?;
+    if udp.dst_port() == 3478 {
+        let udp_payload_len =
+            ensure_consistent_lengths(ctx, Ipv6Hdr::LEN, ipv6.payload_len(), udp.len())?;
+        let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
+        let verdict = try_handle_from_ipv6_channel_data(ctx, num_bytes)?;
 
-    Ok((num_bytes, verdict))
+        return Ok((num_bytes, verdict));
+    }
+
+    Err(Error::NotTurn)
 }
 
 #[inline(always)]
