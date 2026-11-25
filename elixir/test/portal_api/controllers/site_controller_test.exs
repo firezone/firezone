@@ -426,6 +426,21 @@ defmodule PortalAPI.SiteControllerTest do
       refute Repo.get_by(Portal.Device, id: gateway.id, account_id: account.id)
     end
 
+    test "keeps the client devices in the site", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(%{account: account})
+      client = client_fixture(account: account)
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: client.id})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}")
+
+      assert json_response(conn, 200)
+      assert Repo.get_by(Portal.Device, id: client.id, account_id: account.id)
+    end
+
     test "keeps the gateways of other sites and other accounts", %{
       conn: conn,
       account: account,

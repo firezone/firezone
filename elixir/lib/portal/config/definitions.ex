@@ -271,6 +271,32 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The URL Clients and Gateways POST OTLP metrics to, e.g. `https://otlp.firezone.dev/v1/metrics`.
+  Metrics export is off while unset.
+  """
+  defconfig(:otlp_metrics_ingest_url, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
+    end
+  )
+
+  @doc """
+  How often Clients and Gateways export OTLP metrics.
+  """
+  defconfig(:otlp_metrics_export_interval_secs, :integer, default: 60)
+
+  @doc """
+  Base64-encoded PEM of the Ed25519 private key that signs the tokens Clients
+  and Gateways present to the OTLP ingest proxy. Metrics export is off while unset.
+  """
+  defconfig(:otel_ingest_jwt_private_key, :string,
+    default: nil,
+    sensitive: true,
+    changeset: &Portal.Changeset.validate_base64/2
+  )
+
+  @doc """
   Access key ID for Firezone's AWS account, used to assume customer IAM roles
   for Amazon S3 log sinks.
   """
@@ -491,6 +517,29 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_name, :string, default: "firezone")
 
   @doc """
+  Name of the PostgreSQL database of the private ops dashboard, on the same server.
+  It is only used where the dashboard is compiled in.
+  """
+  defconfig(:ops_database_name, :string, default: "firezone_ops")
+
+  @doc """
+  User for the ops database. It has no access to the portal's database, and the
+  portal's user has none to the ops database.
+  """
+  defconfig(:ops_database_user, :string, default: "postgres", sensitive: true)
+
+  @doc """
+  Password for the ops database user, when DATABASE_ENTRA_AUTH is disabled.
+  """
+  defconfig(:ops_database_password, :string, default: nil, sensitive: true)
+
+  @doc """
+  Client ID of the Azure user-assigned managed identity of the ops database user,
+  used when DATABASE_ENTRA_AUTH is enabled. It must be attached to the VM.
+  """
+  defconfig(:ops_azure_client_id, :string, default: nil)
+
+  @doc """
   User that will be used to access the PostgreSQL database.
   """
   defconfig(:database_user, :string, default: "postgres", sensitive: true)
@@ -523,6 +572,19 @@ defmodule Portal.Config.Definitions do
   default for on-prem, keeps slugs in this portal's database only.
   """
   defconfig(:slug_registry_table_url, :string, default: nil)
+
+  @doc """
+  Where the device CA key of each account is kept: `db` in this portal's database, or `azure`
+  in the Azure Key Vault at DEVICE_CA_KEY_VAULT_URL. Unset, the portal creates no device CAs.
+  """
+  defconfig(
+    :device_ca_key_storage,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:db, :azure]),
+    default: nil
+  )
+
+  @doc "URL of the Azure Key Vault for the device CA keys, when DEVICE_CA_KEY_STORAGE is `azure`."
+  defconfig(:device_ca_key_vault_url, :string, default: nil)
 
   @doc """
   Blob container in the other Firezone Cloud region that a region transfer
@@ -817,6 +879,19 @@ defmodule Portal.Config.Definitions do
   Maps to the `OPS_ADMIN_PASSWORD` environment variable.
   """
   defconfig(:ops_admin_password, :string, sensitive: true)
+
+  @doc """
+  Client ID of the Google OAuth client that ops admins sign in with. It is not the
+  portal's Google OAuth client.
+  Maps to the `OPS_GOOGLE_OIDC_CLIENT_ID` environment variable.
+  """
+  defconfig(:ops_google_oidc_client_id, :string, default: nil)
+
+  @doc """
+  Client secret of the ops Google OAuth client.
+  Maps to the `OPS_GOOGLE_OIDC_CLIENT_SECRET` environment variable.
+  """
+  defconfig(:ops_google_oidc_client_secret, :string, default: nil, sensitive: true)
 
   ##############################################
   ## Userpass / SAML / OIDC / Email authentication

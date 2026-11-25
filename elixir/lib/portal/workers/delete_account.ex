@@ -63,6 +63,7 @@ defmodule Portal.Workers.DeleteAccount do
     defp schedule_post_deletion_jobs(account, admin_emails) do
       with {:ok, _} <- maybe_insert_delete_subscription_job(account),
            {:ok, _} <- Portal.Avatars.DeleteAccount.insert(account.id),
+           {:ok, _} <- Portal.Workers.DeleteDeviceCA.insert(account.id),
            {:ok, _} <- insert_completion_job(account, admin_emails) do
         {:ok, {:deleted, account}}
       end

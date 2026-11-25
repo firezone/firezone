@@ -42,6 +42,12 @@ for repo <- [
     queue_target: 1000
 end
 
+config :portal, PortalOps.Repo,
+  database: "#{database}_ops",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 5,
+  queue_target: 1000
+
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,
@@ -187,6 +193,12 @@ config :portal, Portal.OTLP.TracesExporter,
     retry: false
   ]
 
+config :portal, Portal.DeviceCA.KeyVault,
+  req_opts: [
+    plug: {Req.Test, Portal.DeviceCA.KeyVault},
+    retry: false
+  ]
+
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
     plug: {Req.Test, Portal.SlugRegistry.AzureTable},
@@ -325,6 +337,14 @@ config :portal, Portal.Crl.Sync,
     plug: {Req.Test, Portal.Crl.Sync}
   ]
 
+# Tests never reach the network, so the SSRF check must not look up their fake hosts in DNS.
+config :portal, Portal.Req.SSRFProtection,
+  resolver: fn
+    ~c"localhost", :inet -> {:ok, [{127, 0, 0, 1}]}
+    _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+    _host, :inet6 -> {:error, :nxdomain}
+  end
+
 config :portal, Portal.OAuth.ClientMetadata,
   req_opts: [
     retry: false,
@@ -354,6 +374,10 @@ config :portal, Portal.Google.AuthProvider,
     retry: false,
     plug: {Req.Test, PortalWeb.OIDC}
   ]
+
+config :portal, PortalOps.Google,
+  client_id: "test-ops-client",
+  client_secret: "test-ops-secret"
 
 config :portal, Portal.GitHub.AuthProvider,
   client_id: "test_github_client_id",
@@ -437,6 +461,10 @@ config :portal, PortalAPI.Plugs.MCPRateLimit,
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
+
+config :portal,
+  otel_ingest_jwt_private_key:
+    "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUZYellNWTBXekx0QmlrRkI4c2k2UkFaVjE1djB3UGhhajNQeDZLVlhXM1YKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo="
 
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [

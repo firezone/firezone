@@ -54,8 +54,8 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
-        specifier: ^6.2.1
-        version: 6.2.1(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))
+        specifier: ^6.3.0
+        version: 6.3.0(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))
       eslint:
         specifier: ^9.39.2
         version: 9.39.2(jiti@2.7.0)
@@ -95,10 +95,10 @@ importers:
         version: 4.1.12(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))(vitest@4.1.12)
       '@vitest/browser-playwright':
         specifier: ^4.1.12
-        version: 4.1.12(playwright@1.65.0)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))(vitest@4.1.12)
+        version: 4.1.12(playwright@1.65.1)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))(vitest@4.1.12)
       playwright:
-        specifier: ^1.65.0
-        version: 1.65.0
+        specifier: ^1.65.1
+        version: 1.65.1
       vitest:
         specifier: ^4.1.12
         version: 4.1.12(@types/node@26.6.6)(@vitest/browser-playwright@4.1.12)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))
@@ -333,9 +333,6 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
-
-  '@rolldown/pluginutils@1.0.1':
-    resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
   '@rolldown/pluginutils@1.1.1':
     resolution: {integrity: sha512-glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA==}
@@ -641,8 +638,8 @@ packages:
     resolution: {integrity: sha512-NAGrjn0Pitjqzq/GkgMC4kBYm233PQ8GffyQ9+kTA3AlNQYEzOf25EIM02BAHZv5FRJSpHpJk+OGUxVkOB93GQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@vitejs/plugin-react@6.2.1':
-    resolution: {integrity: sha512-9KyWCij3r0+qLG3Q62vBmv0VyevmYibAtxaCIVK9o0k6CXgaajZRIe8tpfchQcdZArJ5b/7OrIz4W3b2uxVRDA==}
+  '@vitejs/plugin-react@6.3.0':
+    resolution: {integrity: sha512-H9E955aVvD2F4zNHCw4eIZbIfF6xKldlh7MNu+hSU7xwQzh65lI/N+CJWqmfhi0PEjDXIt/H7T7J/4wU63KJiw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       '@rolldown/plugin-babel': ^0.1.7 || ^0.2.0 || ^0.3.0
@@ -1417,13 +1414,13 @@ packages:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
 
-  playwright-core@1.65.0:
-    resolution: {integrity: sha512-vNSKgH6YqtN7cdT/L334zo0a+YwkrpicyrHJlWWPIm/Q+Nn2SWInil01oT0mbu96U4GgoRtCYQD9CzJQgju+lA==}
+  playwright-core@1.65.1:
+    resolution: {integrity: sha512-hqPpz7blSMPxWVdoeE1yiBSzXsKiVOd2k+kjCvmUywD2GPO2Dd9HfcWnq9NN0GHbNZDFgZ9JfBFr+X5/BLo0qw==}
     engines: {node: '>=20'}
     hasBin: true
 
-  playwright@1.65.0:
-    resolution: {integrity: sha512-F3AMWcR44qMBt4kq+6Kb6mX7bjGXshktKFOPULd7reED6ZJWevjbNRqysP7q+AATE9kdPEZBibex1BYsvpVoeA==}
+  playwright@1.65.1:
+    resolution: {integrity: sha512-vJ1FuoOrNwOKHUIVEvSt3jT1L+wjjDpwhwIstKtfvTh8XIG4FG4bIFuvNdMxi81LGfAhUgUZleVFaOLY4RIUUw==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -2007,8 +2004,6 @@ snapshots:
   '@rolldown/binding-win32-x64-msvc@1.2.19':
     optional: true
 
-  '@rolldown/pluginutils@1.0.1': {}
-
   '@rolldown/pluginutils@1.1.1': {}
 
   '@sentry/browser-utils@11.10.0':
@@ -2297,16 +2292,16 @@ snapshots:
       '@typescript-eslint/types': 8.72.2
       eslint-visitor-keys: 5.0.1
 
-  '@vitejs/plugin-react@6.2.1(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))':
+  '@vitejs/plugin-react@6.3.0(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))':
     dependencies:
-      '@rolldown/pluginutils': 1.0.1
+      '@rolldown/pluginutils': 1.1.1
       vite: 8.3.8(@types/node@26.6.6)(jiti@2.7.0)
 
-  '@vitest/browser-playwright@4.1.12(playwright@1.65.0)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))(vitest@4.1.12)':
+  '@vitest/browser-playwright@4.1.12(playwright@1.65.1)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))(vitest@4.1.12)':
     dependencies:
       '@vitest/browser': 4.1.12(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))(vitest@4.1.12)
       '@vitest/mocker': 4.1.12(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))
-      playwright: 1.65.0
+      playwright: 1.65.1
       tinyrainbow: 3.1.1
       vitest: 4.1.12(@types/node@26.6.6)(@vitest/browser-playwright@4.1.12)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))
     transitivePeerDependencies:
@@ -3202,11 +3197,11 @@ snapshots:
 
   picomatch@4.0.7: {}
 
-  playwright-core@1.65.0: {}
+  playwright-core@1.65.1: {}
 
-  playwright@1.65.0:
+  playwright@1.65.1:
     dependencies:
-      playwright-core: 1.65.0
+      playwright-core: 1.65.1
 
   pngjs@7.0.0: {}
 
@@ -3573,7 +3568,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.6.6
-      '@vitest/browser-playwright': 4.1.12(playwright@1.65.0)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))(vitest@4.1.12)
+      '@vitest/browser-playwright': 4.1.12(playwright@1.65.1)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))(vitest@4.1.12)
     transitivePeerDependencies:
       - msw
 

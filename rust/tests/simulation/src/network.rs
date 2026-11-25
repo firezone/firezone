@@ -30,10 +30,7 @@ pub(crate) struct Host<T> {
 
     link: Option<LinkInterface>,
 
-    /// Whether this host is detached from the network (e.g. mid-roam).
-    ///
-    /// An offline host cannot send.
-    offline: bool,
+    state: HostState,
 
     #[debug(skip)]
     span: Span,
@@ -43,6 +40,15 @@ pub(crate) struct Host<T> {
     /// We buffer them here because we need also apply our latency on inbound packets.
     #[debug(skip)]
     inbox: BufferedTransmits,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HostState {
+    Online,
+    /// Detached from the network, with timers still running.
+    Offline,
+    /// Detached from the network and paused until wake-up.
+    Asleep,
 }
 
 /// A host's interface on a dedicated link to one other host, e.g. a cable between two machines.
@@ -330,7 +336,7 @@ impl<T> Host<T> {
             span: Span::none(),
             latency,
             link: None,
-            offline: false,
+            state: HostState::Online,
             inbox: BufferedTransmits::default(),
         }
     }
@@ -377,16 +383,29 @@ impl<T> Host<T> {
     pub(crate) fn update_interface(&mut self, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) {
         self.ip4 = ip4;
         self.ip6 = ip6;
-        self.offline = false;
+        self.set_online();
+    }
+
+    pub(crate) fn set_online(&mut self) {
+        self.state = HostState::Online;
     }
 
     /// Detaches this host from the network, e.g. for the dead window of a roam.
     pub(crate) fn set_offline(&mut self) {
-        self.offline = true;
+        self.state = HostState::Offline;
+    }
+
+    #[allow(dead_code, reason = "Used by the relay sleep transition in PR #16736")]
+    pub(crate) fn sleep(&mut self) {
+        self.state = HostState::Asleep;
     }
 
     pub(crate) fn is_offline(&self) -> bool {
-        self.offline
+        self.state != HostState::Online
+    }
+
+    pub(crate) fn is_asleep(&self) -> bool {
+        self.state == HostState::Asleep
     }
 
     pub(crate) fn latency(&self) -> Duration {
@@ -407,6 +426,10 @@ where
     T: PollTimeout,
 {
     pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
+        if self.is_asleep() {
+            return None;
+        }
+
         iter::empty()
             .chain(self.inner.poll_timeout())
             .chain(self.inbox.next_transmit())
@@ -462,7 +485,7 @@ where
             port: self.port,
             latency: self.latency,
             link: self.link,
-            offline: self.offline,
+            state: self.state,
             inbox: self.inbox.clone(),
         }
     }

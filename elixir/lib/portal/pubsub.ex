@@ -64,6 +64,7 @@ defmodule Portal.PubSub do
             | :posture_providers
             | :resources
             | :sites
+            | :site_devices
             | :x509_auth_providers
 
     @spec subscribe(String.t()) :: :ok | {:error, term()}
@@ -98,11 +99,19 @@ defmodule Portal.PubSub do
     end
 
     @spec broadcast_account(term()) :: :ok
-    def broadcast_account(payload) do
+    def broadcast_account(payload), do: broadcast_global(accounts_topic(), payload)
+
+    @spec subscribe_to_metrics_rules() :: :ok | {:error, term()}
+    def subscribe_to_metrics_rules, do: Portal.PubSub.subscribe("metrics_rules")
+
+    @spec broadcast_metrics_rule(term()) :: :ok
+    def broadcast_metrics_rule(payload), do: broadcast_global("metrics_rules", payload)
+
+    defp broadcast_global(topic, payload) do
       region = Portal.Config.get_env(:portal, :region, "")
 
       for node <- target_nodes(region) do
-        Phoenix.PubSub.direct_broadcast!(node, Portal.PubSub, accounts_topic(), payload)
+        Phoenix.PubSub.direct_broadcast!(node, Portal.PubSub, topic, payload)
       end
 
       :ok

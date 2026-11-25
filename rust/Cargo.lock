@@ -216,7 +216,7 @@ dependencies = [
  "objc2-foundation",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
  "x11rb",
 ]
 
@@ -542,7 +542,7 @@ dependencies = [
  "serde_core",
  "serde_path_to_error",
  "serde_urlencoded",
- "sha1",
+ "sha1 0.10.6",
  "sync_wrapper",
  "tokio",
  "tokio-tungstenite",
@@ -1379,6 +1379,7 @@ dependencies = [
  "mimalloc",
  "opentelemetry",
  "oslog",
+ "otel-metrics-export",
  "parking_lot",
  "phoenix-channel",
  "rustls",
@@ -1436,6 +1437,7 @@ dependencies = [
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
+ "otel-metrics-export",
  "parking_lot",
  "phoenix-channel",
  "serde",
@@ -1542,6 +1544,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
+name = "constant_time_eq"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9eb6feb175df65d0a3ccd3e73484e940d0ac664e8034f0519fd49a93db3071d9"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1552,9 +1563,9 @@ dependencies = [
 
 [[package]]
 name = "cookie"
-version = "0.18.1"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ddef33a339a91ea89fb53151bd0a4689cfce27055c291dfa69945475d22c747"
+checksum = "d55f2d6c30eeec7d5c6f98bd4395d4abb1895629eab97ee6522d340623615f8a"
 dependencies = [
  "time",
  "version_check",
@@ -1791,7 +1802,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 2.0.119",
+ "syn 3.0.10",
 ]
 
 [[package]]
@@ -2228,7 +2239,7 @@ dependencies = [
  "ip_network",
  "l3-tcp",
  "logging",
- "rand 0.10.3",
+ "rand 0.10.4",
  "tokio",
  "tracing",
  "tun",
@@ -2294,7 +2305,7 @@ dependencies = [
  "hashbrown 0.17.0",
  "jiff",
  "octseq",
- "rand 0.10.3",
+ "rand 0.10.4",
  "serde",
 ]
 
@@ -2469,7 +2480,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2635,9 +2646,9 @@ dependencies = [
  "nix",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry_sdk",
  "otel-attributes",
  "otel-instruments",
+ "otel-metrics-export",
  "phoenix-channel",
  "resolv-conf",
  "rpassword",
@@ -2691,12 +2702,13 @@ dependencies = [
  "mimalloc",
  "native-dialog",
  "nix",
- "opentelemetry",
+ "otel-attributes",
+ "otel-metrics-export",
  "output_vt100",
  "parking_lot",
  "phoenix-channel",
  "png 0.18.1",
- "rand 0.10.3",
+ "rand 0.10.4",
  "reqwest",
  "rustls",
  "sadness-generator",
@@ -2761,10 +2773,9 @@ dependencies = [
  "logging",
  "mimalloc",
  "nix",
- "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry_sdk",
  "otel-attributes",
+ "otel-metrics-export",
  "phoenix-channel",
  "rpassword",
  "rustls",
@@ -2794,7 +2805,7 @@ dependencies = [
  "known-dirs",
  "logging",
  "phoenix-channel",
- "rand 0.10.3",
+ "rand 0.10.4",
  "reqwest",
  "rustls",
  "secrecy",
@@ -2812,11 +2823,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-otel-ingest-proxy"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "axum",
+ "base64 0.23.1",
+ "bin-shared",
+ "clap",
+ "divan",
+ "futures",
+ "git-sha",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "logging",
+ "mimalloc",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "otel-azure-export",
+ "otel-metric-patterns",
+ "parking_lot",
+ "prost",
+ "rcgen",
+ "reqwest",
+ "ring",
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "socket-factory",
+ "telemetry",
+ "tempfile",
+ "tokio",
+ "tokio-rustls",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "firezone-relay"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "async-trait",
  "axum",
  "aya",
  "aya-build",
@@ -2832,20 +2884,18 @@ dependencies = [
  "mimalloc",
  "mio",
  "opentelemetry",
- "opentelemetry-http",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "otel-attributes",
+ "otel-azure-export",
  "otel-instruments",
  "phoenix-channel",
- "rand 0.10.3",
+ "rand 0.10.4",
  "relay-server-proto",
- "reqwest",
  "rustls",
  "secrecy",
  "serde",
  "serde_json",
- "serde_with",
  "socket-factory",
  "socket2",
  "stun_codec",
@@ -3002,9 +3052,9 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -3162,17 +3212,12 @@ dependencies = [
  "afl",
  "anyhow-ext",
  "arbitrary",
- "bytecodec",
  "clap",
  "ip-packet",
  "libc",
- "rand 0.10.3",
- "relay-server-proto",
  "seeded-rng",
  "sha2 0.11.1",
  "simulation",
- "stun_codec",
- "uuid",
  "x509-claims",
 ]
 
@@ -3723,7 +3768,7 @@ dependencies = [
  "idna",
  "ipnet",
  "jni 0.22.4",
- "rand 0.10.3",
+ "rand 0.10.4",
  "thiserror 2.0.21",
  "tinyvec",
  "tokio",
@@ -3743,7 +3788,7 @@ dependencies = [
  "jni 0.22.4",
  "once_cell",
  "prefix-trie",
- "rand 0.10.3",
+ "rand 0.10.4",
  "ring",
  "thiserror 2.0.21",
  "tinyvec",
@@ -3768,7 +3813,7 @@ dependencies = [
  "ndk-context",
  "once_cell",
  "parking_lot",
- "rand 0.10.3",
+ "rand 0.10.4",
  "resolv-conf",
  "smallvec",
  "system-configuration",
@@ -3888,7 +3933,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tracing",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.12",
 ]
 
 [[package]]
@@ -4331,14 +4376,14 @@ dependencies = [
 
 [[package]]
 name = "is"
-version = "0.11.1"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6edbbdc611843e8c65878ee735f68c495cede11ae5a9582b17fe0369c456ef5"
+checksum = "72dd0494853a6c3769c87adc610e8b228fd8c65c41cc4d2717ff6151ee2d6c73"
 dependencies = [
  "crc",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "serde",
- "sha1",
+ "sha1 0.11.0",
  "str0m-proto",
  "subtle",
  "tracing",
@@ -4443,7 +4488,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4701,7 +4746,7 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "ip-packet",
- "rand 0.10.3",
+ "rand 0.10.4",
  "tracing",
 ]
 
@@ -4797,15 +4842,6 @@ checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
 dependencies = [
  "cfg-if",
  "windows-link",
-]
-
-[[package]]
-name = "libmimalloc-sys"
-version = "0.1.49"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -4968,11 +5004,20 @@ checksum = "c2a86d3146ed3995b5913c414f6664344b9617457320782e64f0bb44afd49d74"
 
 [[package]]
 name = "mimalloc"
-version = "0.1.52"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d4139bb28d14ad1facf21d5eb8825051b326e172d216b39f6d31df53cc97862"
+version = "3.7.0"
+source = "git+https://github.com/microsoft/mimalloc?tag=v3.7.0#1ed67b5156a763441d2ec3c20221a7b3cd866129"
 dependencies = [
- "libmimalloc-sys",
+ "mimalloc-sys",
+ "rustversion",
+]
+
+[[package]]
+name = "mimalloc-sys"
+version = "3.7.0"
+source = "git+https://github.com/microsoft/mimalloc?tag=v3.7.0#1ed67b5156a763441d2ec3c20221a7b3cd866129"
+dependencies = [
+ "cc",
+ "rustversion",
 ]
 
 [[package]]
@@ -5710,7 +5755,6 @@ dependencies = [
  "rand 0.9.4",
  "thiserror 2.0.21",
  "tokio",
- "tokio-stream",
 ]
 
 [[package]]
@@ -5767,10 +5811,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "otel-azure-export"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "async-trait",
+ "opentelemetry-http",
+ "opentelemetry-otlp",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "otel-instruments"
 version = "0.1.0"
 dependencies = [
  "opentelemetry",
+]
+
+[[package]]
+name = "otel-metric-patterns"
+version = "0.1.0"
+
+[[package]]
+name = "otel-metrics-export"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "async-runtime",
+ "bytes",
+ "futures",
+ "http",
+ "http-client",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "otel-attributes",
+ "otel-instruments",
+ "process-memory",
+ "prost",
+ "secrecy",
+ "socket-factory",
+ "tokio",
+ "tracing",
+ "tunnel-bypass-resolver",
+ "url",
 ]
 
 [[package]]
@@ -5871,6 +5964,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 
 [[package]]
+name = "pem"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
+dependencies = [
+ "base64 0.23.1",
+ "serde_core",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5944,7 +6047,7 @@ dependencies = [
  "libc",
  "logging",
  "os_info",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rustls",
  "rustls-native-certs",
  "secrecy",
@@ -5959,7 +6062,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.12",
  "x509-credential",
 ]
 
@@ -6241,6 +6344,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-memory"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "libc",
+ "mach2 0.6.0",
+ "windows",
+]
+
+[[package]]
 name = "proptest"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6261,9 +6374,9 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.14.3"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2ea70524a2f82d518bce41317d0fae74151505651af45faf1ffbd6fd33f0568"
+checksum = "3ef0b569d1d907ab3a28596aee62cf1f61dacb0529a4bedcd8e7460e2d5228b4"
 dependencies = [
  "bytes",
  "prost-derive",
@@ -6271,12 +6384,12 @@ dependencies = [
 
 [[package]]
 name = "prost-derive"
-version = "0.14.3"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
+checksum = "1ad9c5423459fa2f729b8d9235fab810aa29628b171467744fc86d21460ad70d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -6315,7 +6428,7 @@ dependencies = [
  "libc",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6351,9 +6464,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
+checksum = "8f6fa277c67e6ea590466f04c3fe82cb509f0864fe470643e5570de9514a9b11"
 dependencies = [
  "chacha20",
  "getrandom 0.4.2",
@@ -6421,6 +6534,7 @@ version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
+ "pem",
  "ring",
  "rustls-pki-types",
  "time",
@@ -6533,7 +6647,9 @@ dependencies = [
  "hex-display",
  "is",
  "logging",
- "rand 0.10.3",
+ "otel-attributes",
+ "otel-instruments",
+ "rand 0.10.4",
  "ringbuffer",
  "smallvec",
  "stun_codec",
@@ -6560,7 +6676,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "secrecy",
  "serde",
  "sha2 0.11.1",
@@ -6751,7 +6867,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6808,7 +6924,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6878,7 +6994,7 @@ dependencies = [
  "blake2",
  "chacha20",
  "hmac 0.13.0",
- "rand 0.10.3",
+ "rand 0.10.4",
  "ring",
  "subtle",
  "tracing",
@@ -7019,7 +7135,7 @@ name = "seeded-rng"
 version = "0.1.0"
 dependencies = [
  "fastrand",
- "rand 0.10.3",
+ "rand 0.10.4",
 ]
 
 [[package]]
@@ -7372,6 +7488,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.0",
+ "digest 0.11.3",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7458,10 +7585,12 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "ip_network_table",
+ "is",
  "itertools 0.15.0",
  "jiff",
  "l3-tcp",
- "rand 0.10.3",
+ "rand 0.10.4",
+ "relay-client-proto",
  "relay-server-proto",
  "secrecy",
  "serde_json",
@@ -7556,7 +7685,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "prefetch",
- "rand 0.10.3",
+ "rand 0.10.4",
  "relay-client-proto",
  "ringbuffer",
  "sanstun",
@@ -7707,9 +7836,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m-proto"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8f3d99f2cf6c76a502e45feb896ea71e54787ede8744bcdb215acfbfcb905dd"
+checksum = "e6a9a46a0f013add7a1d0d53d9bc92c85c1ac95243140fe0d073fb6e57c99b63"
 dependencies = [
  "base64ct",
  "fastrand",
@@ -7803,7 +7932,7 @@ dependencies = [
  "crc",
  "hmac 0.12.1",
  "md5",
- "sha1",
+ "sha1 0.10.6",
  "trackable",
 ]
 
@@ -8344,7 +8473,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
- "rand 0.10.3",
  "sentry",
  "serde",
  "serde_json",
@@ -8369,7 +8497,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -9120,7 +9248,7 @@ dependencies = [
  "rand 0.9.4",
  "rustls",
  "rustls-pki-types",
- "sha1",
+ "sha1 0.10.6",
  "thiserror 2.0.21",
 ]
 
@@ -9149,7 +9277,7 @@ dependencies = [
  "otel-instruments",
  "prefetch",
  "quinn-udp",
- "rand 0.10.3",
+ "rand 0.10.4",
  "smallvec",
  "snownet",
  "socket-factory",
@@ -9174,7 +9302,8 @@ dependencies = [
  "ip-packet",
  "libc",
  "mimalloc",
- "rand 0.10.3",
+ "otel-metrics-export",
+ "rand 0.10.4",
  "relay-server-proto",
  "seeded-rng",
  "serde_json",
@@ -9231,7 +9360,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rangemap",
  "ringbuffer",
  "sanstun",
@@ -9476,7 +9605,7 @@ dependencies = [
  "rustls-pki-types",
  "ureq-proto",
  "utf8-zero",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.12",
 ]
 
 [[package]]
@@ -9493,9 +9622,9 @@ dependencies = [
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",
@@ -9865,14 +9994,14 @@ version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
 dependencies = [
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.12",
 ]
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.11"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f280bbb2b287bc8e7de7e3852945a0ff50d1bbcb5ed42b6c7a568c546df171"
+checksum = "7265c9301c16a8711c992c2d8da90ee77ef54b1ed51482d6dfeb00dc756b1297"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -9979,7 +10108,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -10858,18 +10987,18 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.8.1"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ced3678a2879b30306d323f4542626697a464a97c0a07c9aebf7ebca65cd4dde"
+checksum = "85ccff8a4805aba1eaa4cd4afcd49f7557dd2cf5fd79ffc37f8959466effc5aa"
 dependencies = [
  "zeroize_derive",
 ]
 
 [[package]]
 name = "zeroize_derive"
-version = "1.4.2"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
+checksum = "3c50655cbb0fe3fc43170059e702f1ce5e19b84cec58dc87b037a09935c2f328"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10911,19 +11040,22 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.1.0"
+version = "9.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2886b00003a72c4ccee3f42cfc34908d33b2508a74d827dc2a4244706475c704"
+checksum = "a9534624d547e3f516ecde0ed9a70d37788f01d340efcfdd03bf3ea8e163c1d0"
 dependencies = [
+ "constant_time_eq",
  "crc32fast",
  "flate2",
  "getrandom 0.4.2",
  "indexmap 2.14.0",
+ "libc",
  "memchr",
  "nix",
  "time",
  "typed-path",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
+ "zeroize",
  "zopfli",
 ]
 

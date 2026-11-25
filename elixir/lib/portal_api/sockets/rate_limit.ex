@@ -41,7 +41,7 @@ defmodule PortalAPI.Sockets.RateLimit do
   defp build_key(connect_info, token) do
     ip = Portal.Sockets.remote_ip(connect_info)
     token_hash = hash_authorization(connect_info, token)
-    "socket:#{ip_to_string(ip)}:#{token_hash}"
+    "socket:#{Portal.Types.IP.rate_limit_key(ip)}:#{token_hash}"
   end
 
   defp hash_authorization(_connect_info, token) when is_binary(token) do
@@ -59,6 +59,4 @@ defmodule PortalAPI.Sockets.RateLimit do
   end
 
   defp hash_authorization(_connect_info, _token), do: "none"
-
-  defp ip_to_string(ip), do: :inet.ntoa(ip) |> to_string()
 end

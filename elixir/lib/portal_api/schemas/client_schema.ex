@@ -19,6 +19,7 @@ defmodule PortalAPI.Schemas.Client do
                :inserted_at,
                :last_attested_cert_issuer,
                :online?,
+               :proto_range,
                :provisioned_token,
                :type
              ]}

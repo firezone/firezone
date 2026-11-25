@@ -27,7 +27,16 @@ end
 ##### Portal ##################
 ###############################
 
-config :portal, ecto_repos: [Portal.Repo]
+# The private ops dashboard (firezone/portal-ops) has its own database when it is
+# checked out at ops/ with migrations, see `ops_paths/1` in mix.exs.
+ops_repos =
+  if File.dir?(Path.expand("../ops/priv/migrations", __DIR__)) do
+    [PortalOps.Repo]
+  else
+    []
+  end
+
+config :portal, ecto_repos: [Portal.Repo] ++ ops_repos
 config :portal, generators: [binary_id: true]
 
 config :req,
@@ -46,6 +55,7 @@ config :portal, run_manual_migrations: false
 
 config :portal, data_residency_region: :on_prem
 config :portal, slug_registry_table_url: nil
+config :portal, device_ca_key_storage: :db, device_ca_key_vault_url: nil
 config :portal, region_transfer_outbox_url: nil, region_transfer_inbox_url: nil
 config :portal, avatars_container_url: nil
 
@@ -62,6 +72,20 @@ config :portal, Portal.Repo,
   migration_lock: :pg_advisory_lock,
   start_apps_before_migration: [:ssl, :logger_json, :req],
   parameters: [application_name: "portal"]
+
+# The private ops dashboard's own database. Its migrations are in the dashboard's
+# repo; the portal-ops image puts them in priv/ops_repo/migrations.
+config :portal, PortalOps.Repo,
+  hostname: "localhost",
+  username: "postgres",
+  password: "postgres",
+  database: "firezone_dev_ops",
+  priv: "priv/ops_repo",
+  show_sensitive_data_on_connection_error: true,
+  pool_size: 2,
+  migration_timestamps: [type: :timestamptz],
+  migration_lock: :pg_advisory_lock,
+  parameters: [application_name: "ops"]
 
 # Isolated connection pools (web/api/job/poller)
 for {repo, app_name} <- [
@@ -158,6 +182,7 @@ config :portal, Portal.Changes.Consumer,
   table_subscriptions: ~w[
     accounts
     account_slugs
+    metrics_rules
     actors
     groups
     memberships
@@ -166,6 +191,7 @@ config :portal, Portal.Changes.Consumer,
     policy_authorizations
     device_tokens
     sites
+    site_devices
     policies
     resources
     google_auth_providers
@@ -263,6 +289,13 @@ config :portal, Portal.Avatars.Picture,
 config :portal, Portal.Avatars.Storage,
   req_opts: [
     receive_timeout: 15_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.DeviceCA.KeyVault,
+  req_opts: [
+    connect_options: [timeout: 2_000],
+    receive_timeout: 10_000,
     retry: :transient
   ]
 
@@ -371,6 +404,11 @@ config :portal, Portal.Google.AuthProvider,
   response_type: "code",
   scope: "openid email profile",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+
+# A separate Google OAuth client from the portal's, for the ops dashboard
+config :portal, PortalOps.Google,
+  client_id: System.get_env("OPS_GOOGLE_OIDC_CLIENT_ID"),
+  client_secret: System.get_env("OPS_GOOGLE_OIDC_CLIENT_SECRET")
 
 config :portal, Portal.GitHub.AuthProvider,
   # Should match an OAuth App registered under the Firezone GitHub organization
@@ -575,6 +613,11 @@ config :portal,
 config :portal,
   flow_logs_api_url: nil,
   flow_logs_upload_interval_secs: 60
+
+config :portal,
+  otlp_metrics_ingest_url: nil,
+  otlp_metrics_export_interval_secs: 60,
+  otel_ingest_jwt_private_key: nil
 
 config :portal, country_code_blocklist: []
 

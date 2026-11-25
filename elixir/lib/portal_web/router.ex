@@ -44,11 +44,33 @@ defmodule PortalWeb.Router do
   scope "/", PortalWeb do
     pipe_through :public
 
-    get "/", HomeController, :home
     get "/getting_started", HomeController, :getting_started
-    get "/sign_in", HomeController, :sign_in_chooser
+    get "/find_account", HomeController, :find_account
     post "/sign_in", HomeController, :redirect_to_sign_in
+    post "/sign_in/recent_accounts/:account_id/remove", HomeController, :remove_recent_account
+    get "/sign_in/client_callback", SignInController, :client_callback
     post "/", HomeController, :redirect_to_sign_in
+  end
+
+  pipeline :recent_accounts do
+    plug PortalWeb.Plugs.PruneRecentAccounts
+  end
+
+  scope "/", PortalWeb do
+    pipe_through [:public, :recent_accounts]
+
+    # Prunes the cookie first, so a browser whose recent accounts were all deleted counts as new.
+    get "/", HomeController, :home
+
+    live_session :public_sign_in,
+      session: {PortalWeb.SignInChooser, :live_session, []},
+      on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.SetCurrentUri
+      ] do
+      live "/sign_in", SignInChooser
+    end
   end
 
   if Mix.env() in [:dev, :test] do
@@ -82,18 +104,17 @@ defmodule PortalWeb.Router do
         PortalWeb.LiveHooks.SetCurrentUri
       ] do
       live "/sign_up", SignUp, :choose
-      live "/sign_up/email", SignUp, :fill_form
+      live "/sign_up/email", SignUp, :email
       live "/sign_up/google", SignUp, :google
       live "/sign_up/github", SignUp, :github
-      live "/verify_sign_up", SignUp, :verify
       live "/sign_up/pending", SignUp, :pending
-      live "/find_account", FindAccount
+      live "/sign_up/different_browser", SignUp, :different_browser
       # Maintained from the LaunchHN - show SignUp form
       live "/try", SignUp, :choose
     end
 
     post "/sign_up/:auth_provider_type", OIDCController, :sign_up
-    post "/verify_sign_up", SignUpController, :verify
+    get "/verify_sign_up", SignUpController, :verify
     post "/sign_up/:provider/complete", SignUpController, :complete_identity
   end
 
@@ -351,6 +372,7 @@ defmodule PortalWeb.Router do
       scope "/settings", Settings do
         live "/profile", Profile
         live "/account", Account
+        live "/account/usage/:item", Account, :usage
 
         scope "/api_clients", ApiClients do
           live "/", Index
@@ -398,6 +420,7 @@ defmodule PortalWeb.Router do
         scope "/trust_anchors", TrustAnchors do
           live "/", Index
           live "/new", Index, :new
+          live "/firezone", Index, :device_ca
           live "/:id/edit", Index, :edit
           live "/:id", Index, :show
         end

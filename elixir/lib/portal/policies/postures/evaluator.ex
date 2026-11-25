@@ -12,7 +12,7 @@ defmodule Portal.Policies.Postures.Evaluator do
   holding, which the caller folds into the authorization's expiry.
   """
 
-  alias Portal.Device
+  alias Portal.{ComponentVersions, Device}
   alias Portal.Policies.Postures
   alias Portal.Policies.Postures.{And, Fields, Leaf, Not, Or}
 
@@ -20,7 +20,7 @@ defmodule Portal.Policies.Postures.Evaluator do
           {:ok, DateTime.t() | nil} | {:error, [:postures]}
   def evaluate(nil, %Device{}, %DateTime{}), do: {:ok, nil}
 
-  def evaluate(%Postures{expr: expr}, %Device{type: :client} = device, %DateTime{} = now) do
+  def evaluate(%Postures{expr: expr}, %Device{} = device, %DateTime{} = now) do
     case prune(expr, platform(device), device.posture) do
       nil ->
         {:ok, nil}
@@ -173,8 +173,12 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp earliest(other, nil), do: other
   defp earliest(left, right), do: Enum.min([left, right], DateTime)
 
+  defp resolve_macro(%Leaf{parsed: :latest} = leaf, %Device{type: :gateway}) do
+    %{leaf | parsed: Postures.parse_version(ComponentVersions.gateway_version())}
+  end
+
   defp resolve_macro(%Leaf{parsed: :latest} = leaf, device) do
-    %{leaf | parsed: Postures.parse_version(Portal.ComponentVersions.client_version(device))}
+    %{leaf | parsed: Postures.parse_version(ComponentVersions.client_version(device))}
   end
 
   defp resolve_macro(leaf, _device), do: leaf

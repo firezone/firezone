@@ -47,6 +47,13 @@ impl Agent {
         matches!(self, Self::Frostlink(_))
     }
 
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            Self::Ice(_) => "ice",
+            Self::Frostlink(_) => "frostlink",
+        }
+    }
+
     /// Rebuild the inner `frostlink::Agent`, dropping locals matching
     /// `should_drop_local` and preserving every remote. No-op on `Self::Ice`.
     pub(crate) fn rebuild_frostlink(

@@ -1,7 +1,7 @@
 defmodule PortalWeb.Authentication do
   use PortalWeb, :verified_routes
 
-  @sign_in_params ["as", "state", "nonce", "redirect_to"]
+  @sign_in_params ["as", "state", "nonce", "nonce_hash", "redirect_to", "callback"]
 
   @analytics_params ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]
 
@@ -30,6 +30,11 @@ defmodule PortalWeb.Authentication do
 
   def take_sign_in_redirect_params(params),
     do: take_non_empty(params, @sign_in_params ++ @analytics_params)
+
+  @doc """
+  Returns the non-empty campaign parameters, so they survive a redirect.
+  """
+  def take_analytics_params(params), do: take_non_empty(params, @analytics_params)
 
   @doc """
   Returns true when the params represent a client sign-in flow.

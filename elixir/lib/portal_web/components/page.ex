@@ -252,24 +252,34 @@ defmodule PortalWeb.Components.Page do
   attr :autofocus, :boolean, default: false
 
   def account_slug_form(assigns) do
+    {scheme, host} = portal_base_url()
+    assigns = assign(assigns, scheme: scheme, host: host)
+
     ~H"""
     <div class="rounded border border-border bg-raised p-4">
       <p class="text-xs font-semibold text-body mb-3">
-        Enter your organization's account slug or ID below
+        Your organization's sign-in URL
       </p>
       <.form :let={f} for={%{}} action={@action}>
-        <div class="flex gap-2">
-          <input
-            type="text"
-            name={f[:account_id_or_slug].name}
-            placeholder="e.g. acme_corp"
-            autofocus={@autofocus}
-            required
-            class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
-          />
+        <div class="flex flex-col sm:flex-row gap-2">
+          <label class="flex flex-1 min-w-0 items-center rounded border bg-input border-input-border cursor-text focus-within:border-border-focus focus-within:ring-1 focus-within:ring-border-focus/30 transition-colors">
+            <span id="account-slug-host" class="shrink-0 pl-3 text-sm text-subtle whitespace-nowrap select-none">
+              <span class="hidden sm:inline">{@scheme}://</span>{@host}/
+            </span>
+            <input
+              type="text"
+              name={f[:account_id_or_slug].name}
+              placeholder="acme_corp"
+              aria-label="Organization sign-in URL"
+              aria-describedby="account-slug-host"
+              autofocus={@autofocus}
+              required
+              class="flex-1 w-full min-w-0 pl-0 pr-3 py-2 text-sm bg-transparent border-0 text-heading outline-none focus:outline-none focus:ring-0 placeholder:text-subtle"
+            />
+          </label>
           <button
             type="submit"
-            class="px-4 py-2 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap"
+            class="w-full sm:w-auto px-4 py-2 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap"
           >
             Continue →
           </button>
@@ -277,6 +287,17 @@ defmodule PortalWeb.Components.Page do
       </.form>
     </div>
     """
+  end
+
+  # The portal's public URL as people see it in the address bar, split into the scheme and the
+  # rest, e.g. {"https", "app.firezone.dev"}. Uses the configured URL rather than the request,
+  # since the portal sits behind a proxy.
+  defp portal_base_url do
+    case PortalWeb.Endpoint.struct_url() do
+      %URI{scheme: "https", host: host, port: port} when port in [nil, 443] -> {"https", host}
+      %URI{scheme: "http", host: host, port: port} when port in [nil, 80] -> {"http", host}
+      %URI{scheme: scheme, host: host, port: port} -> {scheme, "#{host}:#{port}"}
+    end
   end
 
   @doc """
@@ -287,12 +308,17 @@ defmodule PortalWeb.Components.Page do
   """
   attr :account, :any, required: true
   attr :href, :string, required: true
+  attr :arrow, :boolean, default: true, doc: "whether to show the chevron on the right"
+  attr :class, :any, default: nil
 
   def account_button(assigns) do
     ~H"""
     <a
       href={@href}
-      class="w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm transition-all duration-150 group"
+      class={[
+        "w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm transition-all duration-150 group",
+        @class
+      ]}
     >
       <div class="w-9 h-9 rounded bg-brand/10 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
         <span class="text-sm font-bold text-brand">
@@ -306,6 +332,7 @@ defmodule PortalWeb.Components.Page do
         <p class="text-xs text-subtle truncate">{@account.slug}</p>
       </div>
       <Core.icon
+        :if={@arrow}
         name="ri-arrow-right-s-line"
         class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
       />
