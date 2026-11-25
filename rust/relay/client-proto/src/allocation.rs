@@ -90,11 +90,7 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit>,
     events: VecDeque<Event>,
 
-    sent_requests: HashMap<
-        TransactionId,
-        (SocketAddr, Message<Attribute>, ExponentialBackoff),
-        FastRandomState,
-    >,
+    sent_requests: HashMap<TransactionId, SentRequest, FastRandomState>,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: AllocRingBuffer<SocketAddr>,
@@ -124,6 +120,11 @@ pub enum Event {
     Invalid(Candidate),
 }
 
+pub enum CredentialUpdate {
+    Changed,
+    Unchanged,
+}
+
 /// A datagram to send to the relay.
 #[derive(PartialEq)]
 pub struct Transmit {
@@ -146,6 +147,14 @@ struct Credentials {
     password: String,
     realm: Realm,
     nonce: Option<Nonce>,
+}
+
+struct SentRequest {
+    dst: SocketAddr,
+    message: Message<Attribute>,
+    /// The credentials used to sign this request.
+    credentials: Option<Credentials>,
+    backoff: ExponentialBackoff,
 }
 
 /// Describes the socket address(es) we know about the relay.
@@ -345,37 +354,34 @@ impl Allocation {
             .flatten()
     }
 
-    /// Refresh this allocation.
+    /// Updates the credentials and refreshes the allocation with them.
     ///
-    /// In case refreshing the allocation fails, we will attempt to make a new one.
+    /// The refresh also checks that the relay still has the allocation, and an allocation that
+    /// gave up starts over. Requests in flight are signed with the new credentials when they are
+    /// retransmitted.
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
-    pub fn refresh(&mut self, now: Instant) {
-        if !self.has_allocation() && self.allocate_in_flight() {
-            tracing::debug!("Not refreshing allocation because we are already making one");
-            return;
+    pub fn update_credentials(
+        &mut self,
+        username: Username,
+        password: String,
+        realm: Realm,
+        now: Instant,
+    ) -> CredentialUpdate {
+        if self.matches_credentials(&username, &password, &realm) {
+            self.refresh_or_restart(now);
+            return CredentialUpdate::Unchanged;
         }
 
-        if self.is_suspended() {
-            tracing::debug!("Attempting to make a new allocation");
+        let nonce = self.credentials.take().and_then(|c| c.nonce);
+        self.credentials = Some(Credentials {
+            username,
+            password,
+            realm,
+            nonce,
+        });
 
-            self.active_socket = None;
-            self.send_binding_requests(now);
-            return;
-        }
-
-        tracing::debug!("Refreshing allocation");
-
-        // By using the `REQUEST_TIMEOUT` for timeout and max_elapsed, we effectively only perform
-        // a single request.
-        //
-        // When pro-actively refreshing the allocation, we don't want to timeout after 8s but much earlier.
-        let backoff = backoff::new(now, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
-
-        self.authenticate_and_queue(
-            MessagePrototype::refresh(self.software.clone()),
-            Some(backoff),
-            now,
-        );
+        self.refresh_or_restart(now);
+        CredentialUpdate::Changed
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%from, tid, method, class, rtt))]
@@ -406,12 +412,12 @@ impl Allocation {
         Span::current().record("class", field::display(message.class()));
 
         // Early return to avoid cryptographic work in case it isn't our message.
-        let Some((_, request, _)) = self.sent_requests.get(&transaction_id) else {
+        let Some(sent) = self.sent_requests.get(&transaction_id) else {
             return false;
         };
 
-        if request.method() != message.method() {
-            tracing::debug!(request = %request.method(), "Ignoring response for a different method");
+        if sent.message.method() != message.method() {
+            tracing::debug!(request = %sent.message.method(), "Ignoring response for a different method");
             return true; // The message still indicated that it was for this `Allocation`.
         }
 
@@ -424,15 +430,16 @@ impl Allocation {
             return true; // The message still indicated that it was for this `Allocation`.
         }
 
-        let passed_message_integrity_check = self.check_message_integrity(&message);
+        let passed_message_integrity_check =
+            self.check_message_integrity(&message, sent.credentials.as_ref());
 
         if message.method() != BINDING && !passed_message_integrity_check {
             // We don't want to `remove` the message here otherwise an attacker could change our state with unauthenticated messages.
-            let request = self.sent_requests.get(&transaction_id).map(|(_, r, _)| {
-                r.attributes()
-                    .map(display_attr)
-                    .collect::<SmallVec<[_; 16]>>()
-            });
+            let request = sent
+                .message
+                .attributes()
+                .map(display_attr)
+                .collect::<SmallVec<[_; 16]>>();
             let response = message
                 .attributes()
                 .map(display_attr)
@@ -442,8 +449,12 @@ impl Allocation {
             return true; // The message still indicated that it was for this `Allocation`.
         }
 
-        let Some((original_dst, original_request, backoff)) =
-            self.sent_requests.remove(&transaction_id)
+        let Some(SentRequest {
+            dst: original_dst,
+            message: original_request,
+            credentials: request_credentials,
+            backoff,
+        }) = self.sent_requests.remove(&transaction_id)
         else {
             return false;
         };
@@ -474,6 +485,8 @@ impl Allocation {
             // If we sent a nonce but receive 401 instead of 438 then our credentials are invalid.
             if error.code() == Unauthorized::CODEPOINT
                 && original_request.get_attribute::<Nonce>().is_some()
+                && request_credentials
+                    .is_some_and(|c| self.matches_credentials(&c.username, &c.password, &c.realm))
             {
                 tracing::warn!(
                     "Invalid credentials, refusing to re-authenticate {}",
@@ -841,15 +854,20 @@ impl Allocation {
             tracing::debug!("Sending STUN binding as keep-alive");
 
             let request = MessagePrototype::binding(self.software.clone()).seal(&mut self.rng);
-            self.queue(addr, request, None, now);
+            self.queue(addr, request, None, None, now);
         }
 
         while let Some(timed_out_request) = self
             .sent_requests
             .iter()
-            .find_map(|(id, (_, _, backoff))| (now >= backoff.next_trigger()).then_some(*id))
+            .find_map(|(id, sent)| (now >= sent.backoff.next_trigger()).then_some(*id))
         {
-            let (dst, request, mut backoff) = self
+            let SentRequest {
+                dst,
+                message: request,
+                mut backoff,
+                ..
+            } = self
                 .sent_requests
                 .remove(&timed_out_request)
                 .expect("ID is from list");
@@ -870,7 +888,7 @@ impl Allocation {
                     now,
                 )
             } else {
-                self.queue(dst, request, Some(backoff), now)
+                self.queue(dst, request, None, Some(backoff), now)
             };
 
             // If we have an active socket (i.e. successfully sent at least 1 BINDING request)
@@ -885,8 +903,8 @@ impl Allocation {
             }
         }
 
-        for (_, _, backoff) in self.sent_requests.values_mut() {
-            backoff.handle_timeout(now);
+        for sent in self.sent_requests.values_mut() {
+            sent.backoff.handle_timeout(now);
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at()
@@ -940,7 +958,7 @@ impl Allocation {
         let next_timeout = self
             .sent_requests
             .values()
-            .map(|(_, _, b)| b.next_trigger());
+            .map(|sent| sent.backoff.next_trigger());
 
         let next_keepalive = if self.has_allocation() {
             self.active_socket.map(|a| a.next_binding)
@@ -1088,10 +1106,29 @@ impl Allocation {
         self.credentials.is_some()
     }
 
-    pub fn matches_credentials(&self, username: &Username, password: &str) -> bool {
+    fn matches_credentials(&self, username: &Username, password: &str, realm: &Realm) -> bool {
         self.credentials
             .as_ref()
-            .is_some_and(|c| &c.username == username && c.password == password)
+            .is_some_and(|c| &c.username == username && c.password == password && &c.realm == realm)
+    }
+
+    fn refresh_or_restart(&mut self, now: Instant) {
+        if !self.has_allocation() && self.allocate_in_flight() {
+            tracing::debug!("Not refreshing allocation because we are already making one");
+            return;
+        }
+
+        if self.is_suspended() {
+            tracing::debug!("Attempting to make a new allocation");
+
+            self.active_socket = None;
+            self.send_binding_requests(now);
+            return;
+        }
+
+        tracing::debug!("Refreshing allocation");
+
+        self.authenticate_and_queue(MessagePrototype::refresh(self.software.clone()), None, now);
     }
 
     pub fn matches_socket(&self, socket: &RelaySocket) -> bool {
@@ -1196,9 +1233,11 @@ impl Allocation {
     }
 
     fn channel_binding_in_flight_by_number(&self, channel: u16) -> bool {
-        self.sent_requests.values().any(|(_, r, _)| {
-            r.method() == CHANNEL_BIND
-                && r.get_attribute::<ChannelNumber>()
+        self.sent_requests.values().any(|sent| {
+            sent.message.method() == CHANNEL_BIND
+                && sent
+                    .message
+                    .get_attribute::<ChannelNumber>()
                     .is_some_and(|n| n.value() == channel)
         })
     }
@@ -1207,7 +1246,7 @@ impl Allocation {
         let sent_requests = self
             .sent_requests
             .values()
-            .map(|(_, r, _)| r)
+            .map(|sent| &sent.message)
             .filter(|message| message.method() == CHANNEL_BIND)
             .filter_map(|message| message.get_attribute::<XorPeerAddress>())
             .map(|a| a.address());
@@ -1221,13 +1260,13 @@ impl Allocation {
     fn allocate_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(_, r, _)| r.method() == ALLOCATE)
+            .any(|sent| sent.message.method() == ALLOCATE)
     }
 
     fn refresh_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(_, r, _)| r.method() == REFRESH)
+            .any(|sent| sent.message.method() == REFRESH)
     }
 
     /// Check whether this allocation is suspended.
@@ -1248,12 +1287,12 @@ impl Allocation {
         if let Some(v4) = self.server.as_v4() {
             let dst: SocketAddr = (*v4).into();
             let request = MessagePrototype::binding(self.software.clone()).seal(&mut self.rng);
-            self.queue(dst, request, None, now);
+            self.queue(dst, request, None, None, now);
         }
         if let Some(v6) = self.server.as_v6() {
             let dst: SocketAddr = (*v6).into();
             let request = MessagePrototype::binding(self.software.clone()).seal(&mut self.rng);
-            self.queue(dst, request, None, now);
+            self.queue(dst, request, None, None, now);
         }
     }
 
@@ -1280,14 +1319,22 @@ impl Allocation {
             return false;
         };
 
-        let authenticated_message = request.authenticate(&mut self.rng, credentials);
-        self.queue(active_socket.addr, authenticated_message, backoff, now)
+        let credentials = credentials.clone();
+        let authenticated_message = request.authenticate(&mut self.rng, &credentials);
+        self.queue(
+            active_socket.addr,
+            authenticated_message,
+            Some(credentials),
+            backoff,
+            now,
+        )
     }
 
     fn queue(
         &mut self,
         dst: SocketAddr,
         message: Message<Attribute>,
+        credentials: Option<Credentials>,
         backoff: Option<ExponentialBackoff>,
         now: Instant,
     ) -> bool {
@@ -1300,8 +1347,15 @@ impl Allocation {
             return false;
         }
 
-        self.sent_requests
-            .insert(id, (dst, message.clone(), backoff));
+        self.sent_requests.insert(
+            id,
+            SentRequest {
+                dst,
+                message: message.clone(),
+                credentials,
+                backoff,
+            },
+        );
 
         self.buffered_transmits.push_back(Transmit {
             dst,
@@ -1312,12 +1366,17 @@ impl Allocation {
     }
 
     #[cfg(test)]
-    fn check_message_integrity(&self, _: &Message<Attribute>) -> bool {
+    fn check_message_integrity(&self, _: &Message<Attribute>, _: Option<&Credentials>) -> bool {
         true // In order to make the tests simpler, we skip the message integrity check there.
     }
 
+    /// Checks a response against the credentials of its request, which the relay signs it with.
     #[cfg(not(test))]
-    fn check_message_integrity(&self, message: &Message<Attribute>) -> bool {
+    fn check_message_integrity(
+        &self,
+        message: &Message<Attribute>,
+        credentials: Option<&Credentials>,
+    ) -> bool {
         let Some(mi) = message.get_attribute::<MessageIntegrity>() else {
             if message.method() != BINDING {
                 tracing::debug!("Message does not have a `MessageIntegrity` attribute");
@@ -1326,7 +1385,7 @@ impl Allocation {
             return false;
         };
 
-        let Some(credentials) = &self.credentials else {
+        let Some(credentials) = credentials else {
             tracing::debug!("Cannot check message integrity without credentials");
 
             return false;
@@ -2684,7 +2743,7 @@ mod tests {
             Some(Nonce::new("nonce1".to_owned()).unwrap()); // Assume we had a nonce.
 
         let now = now + Duration::from_secs(1);
-        allocation.refresh(now);
+        allocation.refresh_with_same_credentials();
 
         // If the relay is restarted, our current credentials will be invalid. Simulate with an "unauthorized" response".
         let now = now + Duration::from_secs(1);
@@ -2734,7 +2793,7 @@ mod tests {
             .with_binding_response(PEER1, now)
             .with_allocate_response(&[RELAY_ADDR_IP4], now);
 
-        allocation.refresh(now);
+        allocation.refresh_with_same_credentials();
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(server_error(&refresh), now);
 
@@ -3118,7 +3177,12 @@ mod tests {
         }
 
         fn refresh_with_same_credentials(&mut self) {
-            self.refresh(Instant::now());
+            self.update_credentials(
+                Username::new("foobar".to_owned()).unwrap(),
+                "baz".to_owned(),
+                Realm::new("firezone".to_owned()).unwrap(),
+                Instant::now(),
+            );
         }
     }
 }
