@@ -9,6 +9,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.auth.AuthTabIntent
+import androidx.browser.customtabs.CustomTabsClient
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -17,6 +18,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.DebugOverrides
 import dev.firezone.android.core.Log
 import dev.firezone.android.features.auth.AUTH_CALLBACK_SCHEME
+import dev.firezone.android.features.auth.AUTH_HTTPS_CALLBACK_PATH
 import dev.firezone.android.features.auth.ui.compose.AuthScreen
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -41,7 +43,7 @@ class AuthActivity : AppCompatActivity() {
 
         setupActionObservers()
         if (savedInstanceState == null) {
-            viewModel.startAuthFlow()
+            viewModel.startAuthFlow(authTabBrowser())
         } else if (!viewModel.canRestoreAuthFlow()) {
             returnToSignIn()
         }
@@ -54,7 +56,7 @@ class AuthActivity : AppCompatActivity() {
                     action?.let {
                         viewModel.clearAction()
                         when (it) {
-                            is AuthViewModel.ViewAction.LaunchAuthFlow -> launchAuthTab(it.url)
+                            is AuthViewModel.ViewAction.LaunchAuthFlow -> launchAuthTab(it)
                             AuthViewModel.ViewAction.AuthFlowComplete -> completeAuthFlow()
                             is AuthViewModel.ViewAction.AuthFlowError -> failAuthFlow(it.errors)
                         }
@@ -64,8 +66,12 @@ class AuthActivity : AppCompatActivity() {
         }
     }
 
-    private fun launchAuthTab(url: String) {
-        val standIn = DebugOverrides.authCallback(Uri.parse(url).getQueryParameter("state"))
+    private fun authTabBrowser(): String? =
+        CustomTabsClient.getPackageName(this, null)?.takeIf { CustomTabsClient.isAuthTabSupported(this, it) }
+
+    private fun launchAuthTab(action: AuthViewModel.ViewAction.LaunchAuthFlow) {
+        val url = Uri.parse(action.url)
+        val standIn = DebugOverrides.authCallback(url.getQueryParameter("state"))
         if (standIn != null) {
             viewModel.processAuthCallback(standIn)
 
@@ -73,14 +79,15 @@ class AuthActivity : AppCompatActivity() {
         }
 
         try {
-            AuthTabIntent
-                .Builder()
-                .build()
-                .launch(
-                    authTabLauncher,
-                    Uri.parse(url),
-                    AUTH_CALLBACK_SCHEME,
-                )
+            val authTab = AuthTabIntent.Builder().build()
+            val httpsCallback = action.httpsCallback
+            if (httpsCallback != null) {
+                // A Custom Tab fallback would load the https redirect and never return a result.
+                authTab.intent.setPackage(httpsCallback.authTabBrowser)
+                authTab.launch(authTabLauncher, url, httpsCallback.host, AUTH_HTTPS_CALLBACK_PATH)
+            } else {
+                authTab.launch(authTabLauncher, url, AUTH_CALLBACK_SCHEME)
+            }
         } catch (e: ActivityNotFoundException) {
             Log.d(TAG, "No browser is available to launch the authentication flow")
             viewModel.cancelAuthFlow()
