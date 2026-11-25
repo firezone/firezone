@@ -122,8 +122,7 @@ struct AuthClientTests {
     configuration.apiURL = us.apiURL
     let viewModel = SettingsViewModel(configuration: configuration)
     let captured = configuration.signInSettings
-    let authURL = try #require(URL(string: captured.authURL))
-    let client = try #require(try AuthClient(authURL: authURL))
+    let client = try makeClient(authURL: captured.authURL, isHTTPSCallbackSupported: false)
 
     _ = try client.completeSignIn(
       from: callback(for: client, region: "eu"), configuration: configuration,
@@ -152,8 +151,7 @@ struct AuthClientTests {
     }
     let draftURLs = (authURL: viewModel.authURL, apiURL: viewModel.apiURL)
     let captured = configuration.signInSettings
-    let authURL = try #require(URL(string: captured.authURL))
-    let client = try #require(try AuthClient(authURL: authURL))
+    let client = try makeClient(authURL: captured.authURL, isHTTPSCallbackSupported: false)
 
     _ = try client.completeSignIn(
       from: callback(for: client, region: "eu"), configuration: configuration,
@@ -165,6 +163,85 @@ struct AuthClientTests {
     #expect(configuration.apiURL == draftURLs.apiURL)
     #expect(configuration.lastCustomURLs?.authURL == draftURLs.authURL)
     #expect(configuration.lastCustomURLs?.apiURL == draftURLs.apiURL)
+  }
+
+  @Test(
+    "the sign-in URL asks for an https callback only on supported cloud hosts",
+    arguments: [
+      ("https://app.firezone.dev/acme", true, "app.firezone.dev"),
+      ("https://eu.app.firezone.dev/acme", true, "eu.app.firezone.dev"),
+      ("https://app.firezone.dev/acme", false, nil),
+      ("https://custom.example.com/acme", true, nil),
+      ("https://app.firezone.dev.example.com/acme", true, nil),
+      ("http://app.firezone.dev/acme", true, nil),
+    ] as [(String, Bool, String?)])
+  func httpsCallbackParam(authURL: String, isSupported: Bool, expectedHost: String?) throws {
+    let client = try makeClient(authURL: authURL, isHTTPSCallbackSupported: isSupported)
+    let signInURL = try client.build()
+    let components = try #require(
+      URLComponents(url: signInURL, resolvingAgainstBaseURL: false))
+
+    #expect(client.httpsCallbackHost == expectedHost)
+    #expect(
+      components.sanitizedQueryParam("callback") == (expectedHost == nil ? nil : "https"))
+  }
+
+  @Test("an https callback reads the params from the fragment", arguments: [nil, "eu"])
+  func httpsCallbackReadsFragment(region: String?) throws {
+    let configuration = makeConfiguration()
+    let captured = configuration.signInSettings
+    let client = try makeClient(authURL: "https://app.firezone.dev/acme")
+
+    let signIn = try client.completeSignIn(
+      from: httpsCallback(for: client, region: region), configuration: configuration,
+      signInSettings: captured)
+
+    let signInURL = try client.build()
+    let nonce = try #require(
+      URLComponents(url: signInURL, resolvingAgainstBaseURL: false)?.sanitizedQueryParam("nonce"))
+    #expect(signIn.token == nonce + "token-fragment")
+    if region == "eu" {
+      #expect(signIn.signInSettings.authURL == ControlPlane.cloudEu.urls?.authURL)
+    } else {
+      #expect(signIn.signInSettings == captured)
+    }
+  }
+
+  @Test(
+    "an https sign-in rejects callbacks that are not the expected https URL",
+    arguments: ["query", "host", "path", "scheme"])
+  func httpsCallbackRejectsOtherURLs(variant: String) throws {
+    let configuration = makeConfiguration()
+    let captured = configuration.signInSettings
+    let saved = configuration.toProviderConfiguration()
+    let client = try makeClient(authURL: "https://app.firezone.dev/acme")
+    let validURL = try httpsCallback(for: client, region: "eu")
+    let valid = try #require(URLComponents(url: validURL, resolvingAgainstBaseURL: false))
+
+    let callbackURL: URL?
+    switch variant {
+    case "query":
+      var components = valid
+      components.percentEncodedQuery = components.percentEncodedFragment
+      components.fragment = nil
+      callbackURL = components.url
+    case "host":
+      var components = valid
+      components.host = "eu.app.firezone.dev"
+      callbackURL = components.url
+    case "path":
+      var components = valid
+      components.path = "/sign_in/other"
+      callbackURL = components.url
+    default:
+      callbackURL = try callback(for: client, region: "eu")
+    }
+
+    #expect(throws: AuthClientError.self) {
+      try client.completeSignIn(
+        from: callbackURL, configuration: configuration, signInSettings: captured)
+    }
+    #expect(configuration.toProviderConfiguration() == saved)
   }
 
   private func makeConfiguration(defaults: UserDefaults = .makeTestDefaults()) -> Configuration {
@@ -188,6 +265,32 @@ struct AuthClientTests {
       URLQueryItem(name: "fragment", value: "token-fragment"),
     ]
     if let region { callback.queryItems?.append(URLQueryItem(name: "region", value: region)) }
+    return try #require(callback.url)
+  }
+
+  private func makeClient(authURL: String, isHTTPSCallbackSupported: Bool = true) throws
+    -> AuthClient
+  {
+    let url = try #require(URL(string: authURL))
+    return try #require(
+      try AuthClient(authURL: url, isHTTPSCallbackSupported: isHTTPSCallbackSupported))
+  }
+
+  private func httpsCallback(for client: AuthClient, region: String?) throws -> URL {
+    let signInURL = try client.build()
+    let auth = try #require(URLComponents(url: signInURL, resolvingAgainstBaseURL: false))
+    var params = URLComponents()
+    params.queryItems = [
+      URLQueryItem(name: "actor_name", value: "Jane Doe"),
+      URLQueryItem(name: "state", value: auth.sanitizedQueryParam("state")),
+      URLQueryItem(name: "fragment", value: "token-fragment"),
+    ]
+    if let region { params.queryItems?.append(URLQueryItem(name: "region", value: region)) }
+    var callback = URLComponents()
+    callback.scheme = "https"
+    callback.host = client.httpsCallbackHost
+    callback.path = AuthClient.httpsCallbackPath
+    callback.percentEncodedFragment = params.percentEncodedQuery
     return try #require(callback.url)
   }
 }

@@ -34,6 +34,7 @@ struct WebAuthSession {
     let callbackURL = try await performAuthentication(
       url: url,
       callbackScheme: scheme,
+      httpsCallbackHost: authClient.httpsCallbackHost,
       anchor: anchor
     )
 
@@ -48,12 +49,13 @@ struct WebAuthSession {
   @concurrent private static func performAuthentication(
     url: URL,
     callbackScheme: String,
+    httpsCallbackHost: String?,
     anchor: PresentationAnchor
   ) async throws -> URL? {
     // Anchor passed as parameter, keeping strong reference
 
     return try await withCheckedThrowingContinuation { continuation in
-      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme) {
+      let completionHandler: ASWebAuthenticationSession.CompletionHandler = {
         returnedURL, error in
         do {
           if let error = error as? ASWebAuthenticationSessionError,
@@ -71,6 +73,21 @@ struct WebAuthSession {
         } catch {
           continuation.resume(throwing: error)
         }
+      }
+
+      let session: ASWebAuthenticationSession
+      if let httpsCallbackHost, #available(iOS 17.4, macOS 14.4, *) {
+        session = ASWebAuthenticationSession(
+          url: url,
+          callback: .https(host: httpsCallbackHost, path: AuthClient.httpsCallbackPath),
+          completionHandler: completionHandler
+        )
+      } else {
+        session = ASWebAuthenticationSession(
+          url: url,
+          callbackURLScheme: callbackScheme,
+          completionHandler: completionHandler
+        )
       }
 
       // Apple weirdness, doesn't seem to be actually used in macOS

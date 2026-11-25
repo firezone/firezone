@@ -35,23 +35,46 @@ enum AuthClientError: LocalizedError {
 }
 
 struct AuthClient {
+  static let httpsCallbackPath = "/sign_in/client_callback"
+  private static let httpsCallbackHosts: Set<String> = ["app.firezone.dev", "eu.app.firezone.dev"]
+
+  static var isHTTPSCallbackSupported: Bool {
+    if #available(iOS 17.4, macOS 14.4, *) { return true }
+    return false
+  }
+
+  /// The host of the claimed https callback, or nil to use the custom URL scheme.
+  let httpsCallbackHost: String?
+
   private var authURL: URL
   private var state: String
   private var nonce: String
 
-  init?(authURL: URL) throws {
+  init?(authURL: URL, isHTTPSCallbackSupported: Bool = Self.isHTTPSCallbackSupported) throws {
     self.authURL = authURL
     state = try Self.createRandomHexString(byteCount: 32)
     nonce = try Self.createRandomHexString(byteCount: 32)
+
+    let host = authURL.host?.lowercased()
+    if isHTTPSCallbackSupported, authURL.scheme == "https", let host,
+      Self.httpsCallbackHosts.contains(host)
+    {
+      httpsCallbackHost = host
+    } else {
+      httpsCallbackHost = nil
+    }
   }
 
   // Builds a full URL to send to the portal
   func build() throws -> URL {
-    return
+    let url =
       authURL
       .appendingQueryItem(URLQueryItem(name: "state", value: state))
       .appendingQueryItem(URLQueryItem(name: "nonce", value: nonce))
       .appendingQueryItem(URLQueryItem(name: "as", value: "gui-client"))
+
+    guard httpsCallbackHost != nil else { return url }
+    return url.appendingQueryItem(URLQueryItem(name: "callback", value: "https"))
   }
 
   @MainActor
@@ -59,7 +82,7 @@ struct AuthClient {
     from url: URL?, configuration: Configuration, signInSettings: SignInSettings
   ) throws -> (token: String, signInSettings: SignInSettings) {
     guard let url = url,
-      let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+      let urlComponents = callbackParams(from: url),
       let returnedState = urlComponents.sanitizedQueryParam("state"),
       areStringsEqualConstantTime(state, returnedState),
       let fragment = urlComponents.sanitizedQueryParam("fragment")
@@ -86,6 +109,23 @@ struct AuthClient {
         apiURL: configuration.apiURL
       )
     )
+  }
+
+  private func callbackParams(from url: URL) -> URLComponents? {
+    guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+      return nil
+    }
+    guard let httpsCallbackHost else { return components }
+
+    guard components.scheme == "https",
+      components.host?.lowercased() == httpsCallbackHost,
+      components.path == Self.httpsCallbackPath,
+      let fragment = components.percentEncodedFragment
+    else {
+      return nil
+    }
+
+    return URLComponents(string: "?" + fragment)
   }
 
   private static func createRandomHexString(byteCount: Int) throws -> String {
