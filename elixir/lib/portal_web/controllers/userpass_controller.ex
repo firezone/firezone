@@ -155,13 +155,14 @@ defmodule PortalWeb.UserpassController do
       :gui_client ->
         attrs = %{
           secret_nonce: params["nonce"],
+          nonce_hash: params["nonce_hash"],
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
           expires_at: expires_at
         }
 
-        Portal.Authentication.create_interactive_client_token(attrs)
+        Portal.Authentication.create_gui_client_token(attrs)
 
       :headless_client ->
         attrs = %{

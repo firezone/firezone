@@ -1947,6 +1947,77 @@ defmodule Portal.AuthenticationTest do
     end
   end
 
+  describe "create_gui_client_token/1" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      auth_provider = google_provider_fixture(account: account).auth_provider
+
+      attrs = %{
+        account_id: account.id,
+        actor_id: actor.id,
+        auth_provider_id: auth_provider.id,
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+      }
+
+      secret = "client-secret"
+      nonce_hash = Portal.Crypto.hash(:sha256, secret)
+
+      %{attrs: attrs, secret: secret, nonce_hash: nonce_hash}
+    end
+
+    test "a token from a nonce hash is used with the nonce", %{
+      attrs: attrs,
+      secret: secret,
+      nonce_hash: nonce_hash
+    } do
+      {:ok, token} = create_gui_client_token(Map.put(attrs, :nonce_hash, nonce_hash))
+      fragment = encode_fragment!(token)
+
+      assert {:ok, used} = use_token(secret <> fragment, build_context(type: :client))
+      assert used.id == token.id
+    end
+
+    test "a token from a nonce hash is not used with the hash or no nonce", %{
+      attrs: attrs,
+      nonce_hash: nonce_hash
+    } do
+      {:ok, token} = create_gui_client_token(Map.put(attrs, :nonce_hash, nonce_hash))
+      fragment = encode_fragment!(token)
+      context = build_context(type: :client)
+
+      assert {:error, :invalid_token} = use_token(nonce_hash <> fragment, context)
+      assert {:error, :invalid_token} = use_token(fragment, context)
+    end
+
+    test "a token from a plain nonce is used with the nonce", %{attrs: attrs} do
+      {:ok, token} = create_gui_client_token(Map.put(attrs, :secret_nonce, "nonce"))
+
+      assert {:ok, _} = use_token("nonce" <> encode_fragment!(token), build_context(type: :client))
+      assert {:error, :invalid_token} = use_token(encode_fragment!(token), build_context(type: :client))
+    end
+
+    test "requires a nonce or a nonce hash", %{attrs: attrs} do
+      assert {:error, changeset} = create_gui_client_token(attrs)
+      assert "can't be blank" in errors_on(changeset).nonce_hash
+
+      assert {:error, changeset} = create_gui_client_token(Map.put(attrs, :secret_nonce, ""))
+      assert "can't be blank" in errors_on(changeset).nonce_hash
+    end
+
+    test "rejects a nonce together with a nonce hash", %{attrs: attrs, nonce_hash: nonce_hash} do
+      attrs = Map.merge(attrs, %{secret_nonce: "nonce", nonce_hash: nonce_hash})
+
+      assert {:error, changeset} = create_gui_client_token(attrs)
+      assert "cannot be sent with a nonce" in errors_on(changeset).nonce_hash
+    end
+
+    test "rejects a nonce hash that is not a hex SHA-256 digest", %{attrs: attrs} do
+      assert {:error, changeset} = create_gui_client_token(Map.put(attrs, :nonce_hash, "short"))
+      assert "must be a hex SHA-256 digest" in errors_on(changeset).nonce_hash
+    end
+  end
+
   defp sign_with_salt(type, nonce, body) do
     config = Application.fetch_env!(:portal, Portal.Tokens)
     key_base = Keyword.fetch!(config, :key_base)

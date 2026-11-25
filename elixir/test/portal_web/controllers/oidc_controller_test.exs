@@ -1839,6 +1839,38 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_portal_sign_in_success(ctx)
     end
 
+    test "a gui-client sign-in with a nonce hash gives a token that needs the nonce", ctx do
+      actor = actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor)
+
+      params = %{
+        "as" => "gui-client",
+        "state" => "client-state",
+        "nonce_hash" => Portal.Crypto.hash(:sha256, "client-nonce")
+      }
+
+      auth_state = build_oidc_auth_state(ctx.account, ctx.provider, params: params)
+      conn = perform_callback(ctx.conn, auth_state)
+
+      fragment = client_auth_fragment(conn)
+      context = Portal.SubjectFixtures.build_context(type: :client)
+
+      assert {:ok, _token} = Portal.Authentication.use_token("client-nonce" <> fragment, context)
+      assert {:error, :invalid_token} = Portal.Authentication.use_token(fragment, context)
+    end
+
+    test "rejects a gui-client sign-in without a nonce", ctx do
+      actor = actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor)
+
+      params = %{"as" => "gui-client", "state" => "client-state"}
+      auth_state = build_oidc_auth_state(ctx.account, ctx.provider, params: params)
+      conn = perform_callback(ctx.conn, auth_state)
+
+      refute conn.status == 200 and conn.resp_body =~ "client_redirect"
+      refute Repo.exists?(Portal.DeviceToken)
+    end
+
     test "keeps the picture claim on a synced identity and queues its photo", ctx do
       Portal.Config.put_env_override(:avatars_container_url, "https://avatars.example.com/avatars")
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
@@ -3639,6 +3671,22 @@ defmodule PortalWeb.OIDCControllerTest do
         })
 
       assert oidc_cookie_from_response(conn).params["callback"] == "https"
+    end
+
+    test "keeps the gui-client nonce hash for the callback", %{conn: conn} do
+      account = account_fixture()
+      %{provider: provider} = setup_oidc_provider(account)
+      nonce_hash = Portal.Crypto.hash(:sha256, "gui-nonce")
+
+      conn =
+        get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}", %{
+          "as" => "gui-client",
+          "state" => "gui-state",
+          "nonce_hash" => nonce_hash
+        })
+
+      cookie = oidc_cookie_from_response(conn)
+      assert cookie.params["nonce_hash"] == nonce_hash
     end
   end
 
