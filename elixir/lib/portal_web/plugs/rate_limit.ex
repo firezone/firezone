@@ -11,7 +11,7 @@ defmodule PortalWeb.Plugs.RateLimit do
     capacity = Keyword.get(opts, :capacity, config(:capacity, @default_capacity))
     cost = Keyword.get(opts, :cost, PortalWeb.RateLimit.default_cost())
 
-    key = "web:#{ip_to_string(conn.remote_ip)}"
+    key = "web:#{Portal.Types.IP.rate_limit_key(conn.remote_ip)}"
 
     case PortalWeb.RateLimit.hit(key, refill_rate, capacity, cost) do
       {:allow, _count} ->
@@ -28,11 +28,5 @@ defmodule PortalWeb.Plugs.RateLimit do
   defp config(key, default) do
     Portal.Config.get_env(:portal, PortalWeb.RateLimit, [])
     |> Keyword.get(key, default)
-  end
-
-  defp ip_to_string(ip) do
-    ip
-    |> :inet.ntoa()
-    |> to_string()
   end
 end
