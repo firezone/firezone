@@ -34,6 +34,8 @@ use tracing::Instrument as _;
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
+const HANDLER_RETRY_DELAY: Duration = Duration::from_secs(1);
+
 #[cfg(target_os = "linux")]
 #[path = "service/linux.rs"]
 mod platform;
@@ -226,6 +228,9 @@ async fn ipc_listen(
             Ok(handler) => handler,
             Err(e) => {
                 tracing::warn!("Failed to initialise IPC handler: {e:#}");
+
+                // `Handler::new` can fail before it awaits anything, so retrying at once would spin.
+                tokio::time::sleep(HANDLER_RETRY_DELAY).await;
                 continue;
             }
         };
