@@ -12,7 +12,7 @@ use is::Candidate;
 use itertools::Itertools as _;
 use otel_instruments::Counter;
 use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
-use relay_client_proto::{Allocation, FreeReason};
+use relay_client_proto::{Allocation, CredentialUpdate, FreeReason};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use stun_codec::rfc5389::attributes::{Realm, Username};
@@ -159,10 +159,6 @@ where
             .rev()
     }
 
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&RId, &mut Allocation)> {
-        self.inner.iter_mut()
-    }
-
     pub(crate) fn remove_by_id(&mut self, id: &RId) -> Option<Allocation> {
         let allocation = self.inner.remove(id)?;
 
@@ -197,15 +193,16 @@ where
 
                 UpsertResult::Added
             }
-            Entry::Occupied(mut o) => {
-                let allocation = o.get();
-
-                if allocation.matches_credentials(&username, &password)
-                    && allocation.matches_socket(&server)
+            Entry::Occupied(mut o) if o.get().matches_socket(&server) => {
+                match o
+                    .get_mut()
+                    .update_credentials(username, password, realm, now)
                 {
-                    return UpsertResult::Skipped;
+                    CredentialUpdate::Changed => UpsertResult::UpdatedCredentials,
+                    CredentialUpdate::Unchanged => UpsertResult::Unchanged,
                 }
-
+            }
+            Entry::Occupied(mut o) => {
                 let mut seed = [0u8; 32];
                 self.rng.fill_bytes(&mut seed);
 
@@ -409,7 +406,8 @@ fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
 
 pub(crate) enum UpsertResult {
     Added,
-    Skipped,
+    UpdatedCredentials,
+    Unchanged,
     Blocked,
     Replaced(Allocation),
 }
@@ -579,6 +577,30 @@ mod tests {
         assert!(matches!(
             upsert(&mut allocations, 1, SERVER_V4, now + BLOCK_DURATION),
             UpsertResult::Added
+        ));
+    }
+
+    #[test]
+    fn reports_updated_credentials_only_when_they_change() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+
+        assert!(matches!(
+            upsert(&mut allocations, 1, SERVER_V4, now),
+            UpsertResult::Unchanged
+        ));
+
+        assert!(matches!(
+            allocations.upsert(
+                1,
+                RelaySocket::from(SERVER_V4),
+                Username::new("test".to_owned()).unwrap(),
+                "password".to_owned(),
+                Realm::new("new-realm".to_owned()).unwrap(),
+                now,
+            ),
+            UpsertResult::UpdatedCredentials
         ));
     }
 
