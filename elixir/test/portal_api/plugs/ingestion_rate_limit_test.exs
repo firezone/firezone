@@ -67,5 +67,24 @@ defmodule PortalAPI.Plugs.IngestionRateLimitTest do
       conn = build_conn() |> Map.put(:remote_ip, other_ip) |> IngestionRateLimit.call(opts)
       refute conn.halted
     end
+
+    test "IPv6 addresses in the same /64 share a bucket" do
+      opts = IngestionRateLimit.init(refill_rate: 1, capacity: 1)
+      prefix = System.unique_integer([:positive]) |> rem(65_536)
+
+      conn =
+        build_conn()
+        |> Map.put(:remote_ip, {0x2001, 0xDB8, prefix, 0, 0, 0, 0, 1})
+        |> IngestionRateLimit.call(opts)
+
+      refute conn.halted
+
+      conn =
+        build_conn()
+        |> Map.put(:remote_ip, {0x2001, 0xDB8, prefix, 0, 0, 0, 0, 2})
+        |> IngestionRateLimit.call(opts)
+
+      assert conn.status == 429
+    end
   end
 end

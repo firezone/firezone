@@ -1,7 +1,7 @@
 defmodule PortalWeb.Authentication do
   use PortalWeb, :verified_routes
 
-  @sign_in_params ["as", "state", "nonce", "redirect_to", "callback"]
+  @sign_in_params ["as", "state", "nonce", "nonce_hash", "redirect_to", "callback"]
 
   @analytics_params ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]
 

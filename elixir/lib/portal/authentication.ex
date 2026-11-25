@@ -16,21 +16,18 @@ defmodule Portal.Authentication do
   # (OIDC, Email/OTP, userpass). Carries an auth_provider_id. Used by both GUI
   # and headless client sign-ins.
   def create_interactive_client_token(attrs) do
-    changeset =
-      %Portal.DeviceToken{}
-      |> cast(attrs, ~w[secret_nonce account_id actor_id auth_provider_id expires_at]a)
-      |> validate_required([:account_id, :actor_id, :auth_provider_id, :expires_at])
-      |> validate_length(:secret_nonce, max: 128)
-      |> validate_format(:secret_nonce, ~r/^[^.]*$/, message: "cannot contain periods")
+    attrs
+    |> interactive_client_token_changeset()
+    |> insert_interactive_client_token()
+  end
 
-    nonce = get_change(changeset, :secret_nonce) || ""
-    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets(nonce)
-
-    changeset
-    |> put_change(:secret_fragment, secret_fragment)
-    |> put_change(:secret_salt, secret_salt)
-    |> put_change(:secret_hash, secret_hash)
-    |> Database.insert_client_token()
+  # A GUI client must send a nonce (or its hash), so a token from a GUI
+  # sign-in never works with the fragment alone.
+  def create_gui_client_token(attrs) do
+    attrs
+    |> interactive_client_token_changeset()
+    |> validate_gui_client_nonce()
+    |> insert_interactive_client_token()
   end
 
   # Non-interactive client token - issued directly by an admin (no sign-in flow,
@@ -324,6 +321,12 @@ defmodule Portal.Authentication do
   def encode_fragment!(%Portal.RelayToken{} = token),
     do: encode_token(nil, token.id, token.secret_fragment, "relay")
 
+  # A separate salt marks tokens whose nonce was sent hashed, so the hashed
+  # value from the sign-in URL cannot be presented in place of the nonce.
+  def encode_fragment!(%Portal.DeviceToken{nonce_hash: nonce_hash} = token)
+      when is_binary(nonce_hash),
+      do: encode_token(token.account_id, token.id, token.secret_fragment, "device_hashed")
+
   def encode_fragment!(%Portal.DeviceToken{} = token),
     do: encode_token(token.account_id, token.id, token.secret_fragment, "device")
 
@@ -374,6 +377,35 @@ defmodule Portal.Authentication do
     else
       :error
     end
+  end
+
+  defp interactive_client_token_changeset(attrs) do
+    %Portal.DeviceToken{}
+    |> cast(attrs, ~w[secret_nonce nonce_hash account_id actor_id auth_provider_id expires_at]a)
+    |> validate_required([:account_id, :actor_id, :auth_provider_id, :expires_at])
+    |> validate_length(:secret_nonce, max: 128)
+    |> validate_format(:secret_nonce, ~r/^[^.]*$/, message: "cannot contain periods")
+    |> validate_format(:nonce_hash, ~r/^[0-9a-f]{64}$/, message: "must be a hex SHA-256 digest")
+  end
+
+  defp validate_gui_client_nonce(changeset) do
+    case {get_change(changeset, :secret_nonce), get_change(changeset, :nonce_hash)} do
+      {nil, nil} -> add_error(changeset, :nonce_hash, "can't be blank")
+      {_nonce, nil} -> changeset
+      {nil, _nonce_hash} -> changeset
+      {_nonce, _nonce_hash} -> add_error(changeset, :nonce_hash, "cannot be sent with a nonce")
+    end
+  end
+
+  defp insert_interactive_client_token(changeset) do
+    nonce = get_change(changeset, :nonce_hash) || get_change(changeset, :secret_nonce) || ""
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets(nonce)
+
+    changeset
+    |> put_change(:secret_fragment, secret_fragment)
+    |> put_change(:secret_salt, secret_salt)
+    |> put_change(:secret_hash, secret_hash)
+    |> Database.insert_client_token()
   end
 
   defp encode_token(account_id, id, fragment, type) do
@@ -508,11 +540,18 @@ defmodule Portal.Authentication do
     |> context_salts()
     |> Enum.find_value({:error, :invalid_token}, fn salt ->
       case try_decode(encoded_token, key_base, base_salt <> salt) do
-        {:ok, _} = result -> result
-        _ -> nil
+        {:ok, {nonce, account_id, id, fragment}} ->
+          {:ok, {hash_input_nonce(salt, nonce), account_id, id, fragment}}
+
+        _ ->
+          nil
       end
     end)
   end
+
+  defp hash_input_nonce("device_hashed", ""), do: nil
+  defp hash_input_nonce("device_hashed", nonce), do: Portal.Crypto.hash(:sha256, nonce)
+  defp hash_input_nonce(_salt, nonce), do: nonce
 
   defp try_decode(encoded_token, key_base, salt) do
     with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
@@ -617,7 +656,7 @@ defmodule Portal.Authentication do
     Portal.Config.fetch_env!(:portal, Portal.Tokens)
   end
 
-  defp context_salts(:client), do: ["device", "client"]
+  defp context_salts(:client), do: ["device", "device_hashed", "client"]
   defp context_salts(type), do: [to_string(type)]
 
   defmodule Database do

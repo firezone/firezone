@@ -800,6 +800,22 @@ mod tests {
 
     #[test]
     #[ignore = "Needs root to load eBPF programs"]
+    fn passes_ipv4_fragments_to_userspace() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
+
+        for (flags_and_offset, name) in [(0x2000_u16, "first"), (0x0010, "last")] {
+            let mut packet = channel_data_ipv4(ECT0);
+            packet[14 + 6..][..2].copy_from_slice(&flags_and_offset.to_be_bytes());
+
+            let (action, _) = program.run_raw(&packet);
+
+            assert_eq!(action, XDP_PASS, "{name} fragment");
+        }
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
     fn counts_all_relayed_packets_and_bytes_independently_of_sampling() {
         let mut program = Program::load_detached();
         program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
