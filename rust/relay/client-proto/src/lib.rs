@@ -8,5 +8,6 @@ mod backoff;
 pub mod channel_data;
 
 pub use allocation::{
-    Allocation, Attribute, EncodeOk, Event, FreeReason, RelaySocket, Socket, Transmit, decode,
+    Allocation, Attribute, CredentialUpdate, EncodeOk, Event, FreeReason, RelaySocket, Socket,
+    Transmit, decode,
 };

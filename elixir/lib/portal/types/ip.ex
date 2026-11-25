@@ -55,6 +55,19 @@ defmodule Portal.Types.IP do
 
   def unmap(address), do: address
 
+  @doc """
+  Returns the rate limit key part for a client address.
+
+  One host usually controls a whole IPv6 /64, so all of its addresses share one key.
+  """
+  @spec rate_limit_key(:inet.ip_address()) :: String.t()
+  def rate_limit_key(address) do
+    case unmap(address) do
+      {a, b, c, d, _, _, _, _} -> "#{:inet.ntoa({a, b, c, d, 0, 0, 0, 0})}/64"
+      ipv4 -> ipv4 |> :inet.ntoa() |> Kernel.to_string()
+    end
+  end
+
   defp normalize(%Postgrex.INET{address: {0, 0, 0, 0, 0, 0xFFFF, _, _} = address, netmask: netmask} = inet)
        when netmask in [nil, 128] do
     %{inet | address: unmap(address), netmask: nil}

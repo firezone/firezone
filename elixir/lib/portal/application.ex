@@ -78,7 +78,10 @@ defmodule Portal.Application do
         # Give Phoenix socket drain enough time to close sockets in batches
         # before transports are force-terminated.
         {PortalWeb.Endpoint, shutdown: 70_000},
-        {PortalAPI.Endpoint, shutdown: 70_000}
+        {PortalAPI.Endpoint, shutdown: 70_000},
+        # Stops first, so that no new connection reaches an endpoint that drains
+        # or has already stopped.
+        Portal.Endpoint.Admission
       ] ++ ops_endpoint()
 
     # Child order is chosen to make reverse-order shutdown graceful:

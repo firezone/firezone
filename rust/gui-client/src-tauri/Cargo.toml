@@ -98,7 +98,8 @@ known-dirs = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
 open = { workspace = true }
-opentelemetry = { workspace = true }
+otel-attributes = { workspace = true }
+otel-metrics-export = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }

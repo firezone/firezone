@@ -277,6 +277,7 @@ skip = [
     "objc2", # AccessKit's macOS adapter (Freya) is on objc2 0.5; winit, `tray-icon` and `rfd` are on 0.6.
     "objc2-app-kit",
     "objc2-foundation",
+    "objc2-ui-kit",
     "object",
     "png",
     "quick-error",
@@ -284,6 +285,7 @@ skip = [
     "rand_core",
     "rustix", # `softbuffer` (Freya) pulls `drm` on rustix 0.38; the rest of the tree is on 1.x.
     "serde_spanned",
+    "sha1", # `is` 0.12 uses 0.11; axum, tungstenite and stun_codec still pull 0.10.
     "sha2", # workspace is on 0.11; dbus-secret-service still pulls 0.10.
     "shlex",
     "syn",

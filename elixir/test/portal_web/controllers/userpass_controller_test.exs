@@ -230,6 +230,48 @@ defmodule PortalWeb.UserpassControllerTest do
       assert conn.resp_body =~ "client_redirect"
     end
 
+    test "a gui-client sign-in with a nonce hash gives a token that needs the nonce", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      actor = actor_fixture(account: account, password_hash: password_hash)
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "gui-client",
+          "state" => "test-state",
+          "nonce_hash" => Portal.Crypto.hash(:sha256, "test-nonce")
+        })
+
+      fragment = client_auth_fragment(conn)
+      context = Portal.SubjectFixtures.build_context(type: :client)
+
+      assert {:ok, _token} = Portal.Authentication.use_token("test-nonce" <> fragment, context)
+      assert {:error, :invalid_token} = Portal.Authentication.use_token(fragment, context)
+    end
+
+    test "rejects a gui-client sign-in without a nonce", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      actor = actor_fixture(account: account, password_hash: password_hash)
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "gui-client",
+          "state" => "test-state"
+        })
+
+      refute conn.status == 200 and conn.resp_body =~ "client_redirect"
+      refute Repo.exists?(Portal.DeviceToken)
+    end
+
     test "successfully authenticates admin user in headless-client context", %{
       conn: conn,
       account: account,

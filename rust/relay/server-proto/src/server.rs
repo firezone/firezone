@@ -99,12 +99,18 @@ pub struct Server<R> {
     /// The instant that rate limiters measure time from.
     rate_limit_epoch: Option<Instant>,
 
+    /// When each client's next authenticated request is due if it sends at [`REQUEST_INTERVAL`].
+    ///
+    /// Only clients with a valid nonce get an entry, so spoofed source addresses cannot grow it.
+    request_budgets: HashMap<ClientSocket, Instant>,
+
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed: u64, // Tracked separately because OTel instruments don't expose their current value :(
     relayed_packet_size_histogram: Histogram<u64>,
     relayed_bytes_counter: Counter<u64>,
     responses_counter: Counter<u64>,
     rate_limited_packets_counter: Counter<u64>,
+    rate_limited_requests_counter: Counter<u64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -221,6 +227,12 @@ const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
 /// See <https://www.rfc-editor.org/rfc/rfc8656#section-12-14>.
 const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// The sustained rate of authenticated requests a single client may send: 200 per second.
+const REQUEST_INTERVAL: Duration = Duration::from_millis(5);
+
+/// How far a client may run ahead of [`REQUEST_INTERVAL`]: a burst of 1000 requests.
+const REQUEST_BURST: Duration = Duration::from_secs(5);
+
 impl<R> Server<R>
 where
     R: RngExt,
@@ -262,6 +274,7 @@ where
             accounts_by_hash: Default::default(),
             nonces: Nonces::new(rng.random()),
             rate_limit_epoch: None,
+            request_budgets: HashMap::default(),
             rng,
             allocations_up_down_counter,
             responses_counter,
@@ -269,6 +282,7 @@ where
             relayed_packet_size_histogram,
             relayed_bytes_counter: otel_instruments::relay_bytes(),
             rate_limited_packets_counter,
+            rate_limited_requests_counter: otel_instruments::relay_rate_limited_requests(),
             channel_and_client_by_port_and_peer: Default::default(),
         }
     }
@@ -450,6 +464,14 @@ where
             return None;
         }
 
+        // STUN messages start with 0 to 3; drop them from clients over budget before we spend anything on them.
+        if bytes.first().is_some_and(|b| *b <= 3) && self.is_over_request_budget(sender, now) {
+            tracing::debug!(target: "relay", %sender, "Dropping STUN message: client exceeds its request rate");
+            self.rate_limited_requests_counter.add(1, &[]);
+
+            return None;
+        }
+
         match client_message::decode(bytes) {
             Ok(Ok(message)) => {
                 return self.handle_client_message(message, sender, now, now_utc);
@@ -499,7 +521,7 @@ where
                 self.handle_channel_bind_request(request, sender, now, now_utc)
             }
             ClientMessage::CreatePermission(request) => {
-                self.handle_create_permission_request(request, sender, now_utc)
+                self.handle_create_permission_request(request, sender, now, now_utc)
             }
             ClientMessage::Binding(request) => {
                 self.handle_binding_request(request, sender);
@@ -626,13 +648,20 @@ where
             }
         });
         let allocation_expiries = self.allocations.values().map(|a| a.expires_at);
+        let request_budget_expiries = self.request_budgets.values().copied();
 
         channel_expiries
             .chain(allocation_expiries)
+            .chain(request_budget_expiries)
             .fold(None, |current, next| earliest(current, Some(next)))
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
+        for _ in self
+            .request_budgets
+            .extract_if(|_, next_request| *next_request <= now)
+        {}
+
         let expired_allocations = self
             .allocations
             .values()
@@ -701,7 +730,7 @@ where
         now: Instant,
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let verified_username = self.verify_auth(sender, request, now_utc)?;
+        let verified_username = self.verify_auth(sender, request, now, now_utc)?;
         let username = verified_username.username;
 
         if let Some(allocation) = self.allocations.get(&sender) {
@@ -828,7 +857,7 @@ where
         now: Instant,
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let verified_username = self.verify_auth(sender, request, now_utc)?;
+        let verified_username = self.verify_auth(sender, request, now, now_utc)?;
         let username = verified_username.username;
 
         // TODO: Verify that this is the correct error code.
@@ -890,7 +919,7 @@ where
         now: Instant,
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let verified_username = self.verify_auth(sender, request, now_utc)?;
+        let verified_username = self.verify_auth(sender, request, now, now_utc)?;
         let username = verified_username.username;
 
         let Some(allocation) = self.allocations.get(&sender) else {
@@ -967,22 +996,25 @@ where
 
             // Binding requests for existing channels act as a refresh for the binding.
 
+            let was_bound = channel.bound;
             channel.refresh(now);
 
-            // Update the fast-path map in case the binding expired in the cooldown period and got removed.
-            self.channel_and_client_by_port_and_peer.insert(
-                (channel.allocation, channel.peer_address),
-                (sender, requested_channel),
-            );
+            // Only re-install a binding that expired in the cooldown period; replacing a live one resets its rate limiters.
+            if !was_bound {
+                self.channel_and_client_by_port_and_peer.insert(
+                    (channel.allocation, channel.peer_address),
+                    (sender, requested_channel),
+                );
 
-            self.pending_commands
-                .push_back(Command::CreateChannelBinding {
-                    client: sender,
-                    channel_number: requested_channel,
-                    peer: channel.peer_address,
-                    allocation_port: channel.allocation,
-                    throughput_limit: allocation.throughput_limit,
-                });
+                self.pending_commands
+                    .push_back(Command::CreateChannelBinding {
+                        client: sender,
+                        channel_number: requested_channel,
+                        peer: channel.peer_address,
+                        allocation_port: channel.allocation,
+                        throughput_limit: allocation.throughput_limit,
+                    });
+            }
 
             tracing::info!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
 
@@ -1034,9 +1066,10 @@ where
         &mut self,
         request: &CreatePermission,
         sender: ClientSocket,
+        now: Instant,
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request, now_utc)?.username;
+        let username = self.verify_auth(sender, request, now, now_utc)?.username;
 
         if let Some(peer) = request
             .peer_addresses()
@@ -1138,6 +1171,7 @@ where
         &mut self,
         sender: ClientSocket,
         request: &(impl StunRequest + ProtectedRequest),
+        now: Instant,
         now_utc: SystemTime,
     ) -> Result<VerifiedUsername, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
@@ -1168,6 +1202,8 @@ where
 
             error_response
         })?;
+
+        self.charge_request_budget(sender, now);
 
         let allocation_key = message_integrity
             .verify(&self.auth_secret, username.name(), now_utc)
@@ -1431,6 +1467,20 @@ where
                     throughput_limit,
                 });
         }
+    }
+
+    /// Charges a request with a valid nonce against the sender's budget.
+    fn charge_request_budget(&mut self, sender: ClientSocket, now: Instant) {
+        let next_request = self.request_budgets.entry(sender).or_insert(now);
+
+        *next_request = std::cmp::max(*next_request, now) + REQUEST_INTERVAL;
+    }
+
+    /// Whether the sender has used up its burst; never creates an entry, so spoofed senders cost nothing.
+    fn is_over_request_budget(&self, sender: ClientSocket, now: Instant) -> bool {
+        self.request_budgets
+            .get(&sender)
+            .is_some_and(|next_request| next_request.saturating_duration_since(now) > REQUEST_BURST)
     }
 
     /// Returns nanoseconds on the monotonic clock that rate limiters use.

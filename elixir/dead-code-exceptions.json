@@ -12,6 +12,10 @@
     "name": "handle_cast"
   },
   {
+    "file": "elixir/lib/portal/account_metrics.ex",
+    "name": "effective_patterns"
+  },
+  {
     "file": "elixir/lib/portal/mailer/internal_email.ex",
     "name": "sign_up_approved_email"
   },

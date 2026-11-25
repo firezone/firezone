@@ -273,13 +273,14 @@ defmodule PortalWeb.EmailOTPController do
       :gui_client ->
         attrs = %{
           secret_nonce: params["nonce"],
+          nonce_hash: params["nonce_hash"],
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
           expires_at: expires_at
         }
 
-        Authentication.create_interactive_client_token(attrs)
+        Authentication.create_gui_client_token(attrs)
 
       :headless_client ->
         attrs = %{
@@ -323,7 +324,7 @@ defmodule PortalWeb.EmailOTPController do
       actor.name,
       actor.email,
       token,
-      params["state"]
+      params
     )
   end
 
@@ -410,7 +411,7 @@ defmodule PortalWeb.EmailOTPController do
   end
 
   defp sanitize(params) do
-    Map.take(params, ["as", "redirect_to", "state", "nonce"])
+    Map.take(params, ["as", "redirect_to", "state", "nonce", "nonce_hash", "callback"])
   end
 
   defp context_type(%{"as" => "oauth"}), do: :oauth

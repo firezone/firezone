@@ -47,7 +47,7 @@ jobs:
       # mark:next-headless-version
       RELEASE_NAME: headless-client-1.5.17
     steps:
-      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+      - uses: release-drafter/release-drafter@d1a19e60e81a7e650d00a7de9277f87e439117ea # v7.11.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
