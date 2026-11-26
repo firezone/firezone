@@ -40,6 +40,7 @@ pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
 pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
+pub use snownet::UnknownConnection;
 pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
 pub use utils::turn;
 

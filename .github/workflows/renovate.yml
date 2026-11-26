@@ -53,6 +53,10 @@ jobs:
           # `mise lock` in mise's safe mode, so no `allowedUnsafeExecutions`.
           RENOVATE_BINARY_SOURCE: install
           LOG_LEVEL: ${{ inputs.log-level || 'info' }}
+          # Renovate passes these to the tools it runs. Without them, `mise lock`
+          # takes release checksums from mise's own cache of GitHub's metadata.
+          RENOVATE_CUSTOM_ENV_VARIABLES: >-
+            {"MISE_USE_VERSIONS_HOST": "false", "MISE_GITHUB_TOKEN": "${{ steps.app-token.outputs.token }}"}
       # We squash-merge with the PR description as the commit message, so
       # Renovate's release notes go into a comment and the description stays empty.
       - name: Move Renovate's PR descriptions into a comment
