@@ -84,48 +84,32 @@ url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/carg
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396997478"
 
 [[tools."github:aya-rs/bpf-linker"]]
-version = "0.12.0"
+version = "0.13.0"
 backend = "github:aya-rs/bpf-linker"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-arm64"]
-checksum = "sha256:5e201e69dafac7af98f9788f1c68edd5ccc8fa0805093f899bf02bd2947b3935"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-aarch64-unknown-linux-musl.tar.zst"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312824"
+checksum = "sha256:248e25f5c6a7242b054bd8f705470abb7a5a79b2b7c07df347c5d7049b783452"
+checksum_source = "mise-versions"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.13.0/bpf-linker-aarch64-unknown-linux-musl.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/701233121"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-arm64-musl"]
-checksum = "sha256:5e201e69dafac7af98f9788f1c68edd5ccc8fa0805093f899bf02bd2947b3935"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-aarch64-unknown-linux-musl.tar.zst"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312824"
+checksum = "sha256:248e25f5c6a7242b054bd8f705470abb7a5a79b2b7c07df347c5d7049b783452"
+checksum_source = "mise-versions"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.13.0/bpf-linker-aarch64-unknown-linux-musl.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/701233121"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-x64"]
-checksum = "sha256:6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638313058"
+checksum = "sha256:0e9b2b30f68898177f1cb6f0ecbfa909a82479473a49a0ef66529fd088e3e410"
+checksum_source = "mise-versions"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.13.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/701233446"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-x64-musl"]
-checksum = "sha256:6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638313058"
-
-[tools."github:aya-rs/bpf-linker"."platforms.macos-arm64"]
-checksum = "sha256:08be0f9ae1e153944ec7e180d587bd9c2935d8dbdddf95e4d92205ee660867f4"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-aarch64-apple-darwin.tar.zst"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312769"
-
-[tools."github:aya-rs/bpf-linker"."platforms.macos-x64"]
-checksum = "sha256:93ddc50fc97ff412e4470639e7ed85107126128b98d2593b5b3388c9325d8373"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-apple-darwin.tar.zst"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312979"
-
-[tools."github:aya-rs/bpf-linker"."platforms.windows-arm64"]
-checksum = "sha256:1dd8bab6db71068d3bc502e418ca8a3dc5f61ad467c3aff832e8217392f71b6a"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-aarch64-pc-windows-gnullvm.tar.zst"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312768"
-
-[tools."github:aya-rs/bpf-linker"."platforms.windows-x64"]
-checksum = "sha256:b7587b89d896e2acf1095cc9c30d1b3ed3e1b10519f5fe486de1de3250f70eec"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-pc-windows-gnullvm.tar.zst"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638313025"
+checksum = "sha256:0e9b2b30f68898177f1cb6f0ecbfa909a82479473a49a0ef66529fd088e3e410"
+checksum_source = "mise-versions"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.13.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/701233446"
 
 [[tools."github:bencherdev/bencher"]]
 version = "0.6.13"
