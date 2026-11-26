@@ -472,7 +472,9 @@ fn arb_simulated_os(g: &mut TunnelGenerator) -> SimulatedOs {
 
 fn arb_nat(g: &mut TunnelGenerator, portal: &FakePortal) -> Nat {
     let ip4 = g.nat_ip4();
-    let assignment = if g.bool() {
+    // TODO: Remove with classic ICE.
+    // Classic ICE does not handle a socket that two devices share towards a peer.
+    let assignment = if portal.frostlink() && g.bool() {
         PortAssignment::Overloading(fastrand::Rng::with_seed(g.u64()))
     } else {
         PortAssignment::Compliant
@@ -494,17 +496,6 @@ fn arb_nat(g: &mut TunnelGenerator, portal: &FakePortal) -> Nat {
                 assignment,
             )
         }
-        // TODO: Remove with classic ICE.
-        // Through an overloading NAT with endpoint-dependent mapping, the model can predict
-        // neither hole punching nor when a rebind hits a live connection, and classic ICE does
-        // not handle a socket that two devices share towards a peer.
-        _ if !portal.frostlink() => Nat::new(
-            ip4,
-            Mapping::EndpointDependent,
-            FilterMode::PortRestricted,
-            arb_expiry(g),
-            PortAssignment::Compliant,
-        ),
         _ => Nat::new(
             ip4,
             Mapping::EndpointDependent,
