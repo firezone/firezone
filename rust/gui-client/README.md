@@ -31,7 +31,7 @@ To compile natively for x86_64 Windows, install the following (winget commands s
    console does not process ANSI escapes and mangles the Tunnel service's logs.
 1. An editor of your choice (see [Recommended IDE Setup](#recommended-ide-setup))
 
-`node` and `pnpm` are pinned in [`rust/.tool-versions`](../.tool-versions) and provided
+`node` and `pnpm` are pinned in [`rust/gui-client/mise.toml`](mise.toml) and provided
 by mise — you don't install them separately. After installing mise, activate it in
 PowerShell 7 and install the toolchain from `rust/`:
 

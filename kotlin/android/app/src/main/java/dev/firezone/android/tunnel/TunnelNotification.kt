@@ -37,6 +37,10 @@ object TunnelNotification {
     const val DISCONNECTED_NOTIFICATION_ID = 1338
     const val ERROR_NOTIFICATION_ID = 1339
 
+    // Broadcast sent when the user swipes away the connected notification, which Android 14+
+    // allows even for foreground services.
+    const val ACTION_CONNECTED_NOTIFICATION_DISMISSED = "dev.firezone.android.CONNECTED_NOTIFICATION_DISMISSED"
+
     private const val TAG = "TunnelNotification"
 
     /**
@@ -62,6 +66,7 @@ object TunnelNotification {
             .setCategory(Notification.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
+            .setDeleteIntent(createConnectedDismissedIntent(context))
             .build()
     }
 
@@ -174,6 +179,16 @@ object TunnelNotification {
         val intent = Intent(context, MainActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         return PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun createConnectedDismissedIntent(context: Context): PendingIntent {
+        val intent = Intent(ACTION_CONNECTED_NOTIFICATION_DISMISSED).setPackage(context.packageName)
+        return PendingIntent.getBroadcast(
             context,
             0,
             intent,

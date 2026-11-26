@@ -25,46 +25,53 @@ checksum = "sha256:423c18774488ad5476cefef2a36b91014672ab81e4bead8d7d623f519ffac
 url = "https://github.com/firebase/firebase-tools/releases/download/v15.18.0/firebase-tools-win.exe"
 
 [[tools."github:tamtom/play-console-cli"]]
-version = "0.9.2"
+version = "0.10.0"
 backend = "github:tamtom/play-console-cli"
 
 [tools."github:tamtom/play-console-cli".options]
 matching_regex = "^gplay-"
 
 [tools."github:tamtom/play-console-cli"."platforms.linux-arm64"]
-checksum = "sha256:b46951a5f1729a5c2edf4e0fd8a832ca80636129142f665588d4d977a5f4e168"
-url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-linux-arm64"
-url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187937"
+checksum = "sha256:b3d8b74c16ebf107dbc5392d0c080b071da60318d27e3f9ff83cfe3d1f988e6d"
+checksum_source = "mise-versions"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.10.0/gplay-linux-arm64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/546210228"
 
 [tools."github:tamtom/play-console-cli"."platforms.linux-arm64-musl"]
-checksum = "sha256:b46951a5f1729a5c2edf4e0fd8a832ca80636129142f665588d4d977a5f4e168"
-url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-linux-arm64"
-url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187937"
+checksum = "sha256:b3d8b74c16ebf107dbc5392d0c080b071da60318d27e3f9ff83cfe3d1f988e6d"
+checksum_source = "mise-versions"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.10.0/gplay-linux-arm64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/546210228"
 
 [tools."github:tamtom/play-console-cli"."platforms.linux-x64"]
-checksum = "sha256:1f2d001483b32d6d94a936f698eea97480ce0721295819030ef2a0597d6f4d24"
-url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-linux-amd64"
-url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187940"
+checksum = "sha256:a2c09c1ba2b14604a14e369868678e75b2abde3e066902c030b16546a9c2863e"
+checksum_source = "mise-versions"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.10.0/gplay-linux-amd64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/546210230"
 
 [tools."github:tamtom/play-console-cli"."platforms.linux-x64-musl"]
-checksum = "sha256:1f2d001483b32d6d94a936f698eea97480ce0721295819030ef2a0597d6f4d24"
-url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-linux-amd64"
-url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187940"
+checksum = "sha256:a2c09c1ba2b14604a14e369868678e75b2abde3e066902c030b16546a9c2863e"
+checksum_source = "mise-versions"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.10.0/gplay-linux-amd64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/546210230"
 
 [tools."github:tamtom/play-console-cli"."platforms.macos-arm64"]
-checksum = "sha256:7119d94f2bff17ed58a0b3618e17ad9063e3998011c6a9d9de7ec475bdbe34cb"
-url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-darwin-arm64"
-url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187938"
+checksum = "sha256:8942801d5cd63bce768fd3d0b84bad2641fc711ffb8d74b9cda1566d0acd28ab"
+checksum_source = "mise-versions"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.10.0/gplay-darwin-arm64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/546210232"
 
 [tools."github:tamtom/play-console-cli"."platforms.macos-x64"]
-checksum = "sha256:de1d0900aad4e5ca99afd482bafbc6c1c86aebe570c1c82fd05c89afd06c0462"
-url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-darwin-amd64"
-url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187941"
+checksum = "sha256:51bc0340fed5daaaf4d633c04d8955bd2f255420fc6c4c6908ffbdc872f870b1"
+checksum_source = "mise-versions"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.10.0/gplay-darwin-amd64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/546210227"
 
 [tools."github:tamtom/play-console-cli"."platforms.windows-x64"]
-checksum = "sha256:2d98387bf19fc6b9234a6c2e45297693e7c750f7f2055c04b702100ceb130101"
-url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-windows-amd64.exe"
-url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187939"
+checksum = "sha256:1fb308f139eb47f5cd14278e92ab462f7e9be6ed0d05ecddb3b1df7c9301c5a5"
+checksum_source = "mise-versions"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.10.0/gplay-windows-amd64.exe"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/546210229"
 
 [[tools.java]]
 version = "openjdk-17.0.2"
@@ -91,33 +98,47 @@ checksum = "sha256:b2208206bda47f2e0c971a39e057a5ec32c40b503d71e486790cb728d926b
 url = "https://download.java.net/java/GA/jdk17.0.2/dfd4a8d0985749f896bed50d7138ee7f/8/GPL/openjdk-17.0.2_windows-x64_bin.zip"
 
 [[tools.ktlint]]
-version = "1.7.1"
-backend = "aqua:pinterest/ktlint"
+version = "1.8.0"
+backend = "aqua:ktlint/ktlint"
 
 [tools.ktlint."platforms.linux-arm64"]
-checksum = "sha256:d453b8347587241559d583102c18993a6efc7d7d1064d1a380f8a58eb53a0675"
-url = "https://github.com/ktlint/ktlint/releases/download/1.7.1/ktlint-1.7.1.zip"
+checksum = "sha256:3722801dd119b96a2fbeda0b9d66f173994f249998c87bcf2274b51977aa8f77"
+checksum_source = "mise-versions"
+url = "https://github.com/ktlint/ktlint/releases/download/1.8.0/ktlint-1.8.0.zip"
+url_api = "https://api.github.com/repos/ktlint/ktlint/releases/assets/316074523"
 
 [tools.ktlint."platforms.linux-arm64-musl"]
-checksum = "sha256:d453b8347587241559d583102c18993a6efc7d7d1064d1a380f8a58eb53a0675"
-url = "https://github.com/ktlint/ktlint/releases/download/1.7.1/ktlint-1.7.1.zip"
+checksum = "sha256:3722801dd119b96a2fbeda0b9d66f173994f249998c87bcf2274b51977aa8f77"
+checksum_source = "mise-versions"
+url = "https://github.com/ktlint/ktlint/releases/download/1.8.0/ktlint-1.8.0.zip"
+url_api = "https://api.github.com/repos/ktlint/ktlint/releases/assets/316074523"
 
 [tools.ktlint."platforms.linux-x64"]
-checksum = "sha256:d453b8347587241559d583102c18993a6efc7d7d1064d1a380f8a58eb53a0675"
-url = "https://github.com/ktlint/ktlint/releases/download/1.7.1/ktlint-1.7.1.zip"
+checksum = "sha256:3722801dd119b96a2fbeda0b9d66f173994f249998c87bcf2274b51977aa8f77"
+checksum_source = "mise-versions"
+url = "https://github.com/ktlint/ktlint/releases/download/1.8.0/ktlint-1.8.0.zip"
+url_api = "https://api.github.com/repos/ktlint/ktlint/releases/assets/316074523"
 
 [tools.ktlint."platforms.linux-x64-musl"]
-checksum = "sha256:d453b8347587241559d583102c18993a6efc7d7d1064d1a380f8a58eb53a0675"
-url = "https://github.com/ktlint/ktlint/releases/download/1.7.1/ktlint-1.7.1.zip"
+checksum = "sha256:3722801dd119b96a2fbeda0b9d66f173994f249998c87bcf2274b51977aa8f77"
+checksum_source = "mise-versions"
+url = "https://github.com/ktlint/ktlint/releases/download/1.8.0/ktlint-1.8.0.zip"
+url_api = "https://api.github.com/repos/ktlint/ktlint/releases/assets/316074523"
 
 [tools.ktlint."platforms.macos-arm64"]
-checksum = "sha256:d453b8347587241559d583102c18993a6efc7d7d1064d1a380f8a58eb53a0675"
-url = "https://github.com/ktlint/ktlint/releases/download/1.7.1/ktlint-1.7.1.zip"
+checksum = "sha256:3722801dd119b96a2fbeda0b9d66f173994f249998c87bcf2274b51977aa8f77"
+checksum_source = "mise-versions"
+url = "https://github.com/ktlint/ktlint/releases/download/1.8.0/ktlint-1.8.0.zip"
+url_api = "https://api.github.com/repos/ktlint/ktlint/releases/assets/316074523"
 
 [tools.ktlint."platforms.macos-x64"]
-checksum = "sha256:d453b8347587241559d583102c18993a6efc7d7d1064d1a380f8a58eb53a0675"
-url = "https://github.com/ktlint/ktlint/releases/download/1.7.1/ktlint-1.7.1.zip"
+checksum = "sha256:3722801dd119b96a2fbeda0b9d66f173994f249998c87bcf2274b51977aa8f77"
+checksum_source = "mise-versions"
+url = "https://github.com/ktlint/ktlint/releases/download/1.8.0/ktlint-1.8.0.zip"
+url_api = "https://api.github.com/repos/ktlint/ktlint/releases/assets/316074523"
 
 [tools.ktlint."platforms.windows-x64"]
-checksum = "sha256:d453b8347587241559d583102c18993a6efc7d7d1064d1a380f8a58eb53a0675"
-url = "https://github.com/ktlint/ktlint/releases/download/1.7.1/ktlint-1.7.1.zip"
+checksum = "sha256:3722801dd119b96a2fbeda0b9d66f173994f249998c87bcf2274b51977aa8f77"
+checksum_source = "mise-versions"
+url = "https://github.com/ktlint/ktlint/releases/download/1.8.0/ktlint-1.8.0.zip"
+url_api = "https://api.github.com/repos/ktlint/ktlint/releases/assets/316074523"
