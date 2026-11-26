@@ -22,34 +22,12 @@ enum ArmedAlarm {
 ///
 /// All timestamps are in this clock's domain. Tokio's timer requests a poll, and
 /// the suspend-inclusive clock determines when the deadline is due.
-pub struct Clock<S = SuspendInclusiveTime> {
-    source: S,
+pub struct Clock {
+    source: Box<dyn Fn() -> Duration + Send>,
     instant_at_start: Instant,
     os_clock_at_start: Duration,
     armed_alarm: Option<ArmedAlarm>,
     timer: Option<Pin<Box<tokio::time::Sleep>>>,
-}
-
-/// A source of time that keeps advancing while the system is suspended.
-pub trait TimeSource {
-    /// Returns the time since an arbitrary, fixed point.
-    fn now(&self) -> Duration;
-}
-
-/// The OS's suspend-inclusive monotonic clock.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct SuspendInclusiveTime;
-
-impl TimeSource for SuspendInclusiveTime {
-    fn now(&self) -> Duration {
-        suspend_inclusive_now()
-    }
-}
-
-impl Clock {
-    pub fn new() -> Self {
-        Self::with_source(SuspendInclusiveTime)
-    }
 }
 
 impl Default for Clock {
@@ -58,19 +36,25 @@ impl Default for Clock {
     }
 }
 
-impl<S: TimeSource> Clock<S> {
-    pub fn with_source(source: S) -> Self {
+impl Clock {
+    pub fn new() -> Self {
+        Self::with_source(suspend_inclusive_now)
+    }
+
+    /// Creates a clock driven by `source`, which returns the time since an
+    /// arbitrary, fixed point, including time spent suspended.
+    pub fn with_source(source: impl Fn() -> Duration + Send + 'static) -> Self {
         Self {
             instant_at_start: Instant::now(),
-            os_clock_at_start: source.now(),
-            source,
+            os_clock_at_start: source(),
+            source: Box::new(source),
             armed_alarm: None,
             timer: None,
         }
     }
 
     pub fn now(&self) -> Instant {
-        let elapsed_since_start = self.source.now().saturating_sub(self.os_clock_at_start);
+        let elapsed_since_start = (self.source)().saturating_sub(self.os_clock_at_start);
 
         self.instant_at_start + elapsed_since_start
     }
@@ -173,38 +157,35 @@ fn clock_gettime(clock: libc::clockid_t) -> Duration {
 #[cfg(test)]
 mod tests {
     use std::{
-        cell::Cell,
-        rc::Rc,
         sync::{
-            Arc,
+            Arc, Mutex,
             atomic::{AtomicBool, Ordering},
         },
         task::{Context, Poll, Wake, Waker},
         time::{Duration, Instant},
     };
 
-    use super::{Alarm, Clock, TimeSource};
+    use super::{Alarm, Clock};
 
     /// Simulates the OS clock; advancing it without advancing Tokio's time models a suspend.
     #[derive(Clone, Default)]
-    struct FakeTime(Rc<Cell<Duration>>);
+    struct FakeTime(Arc<Mutex<Duration>>);
 
     impl FakeTime {
-        fn advance(&self, elapsed: Duration) {
-            self.0.set(self.0.get() + elapsed);
-        }
-    }
-
-    impl TimeSource for FakeTime {
         fn now(&self) -> Duration {
-            self.0.get()
+            *self.0.lock().expect("not poisoned")
+        }
+
+        fn advance(&self, elapsed: Duration) {
+            *self.0.lock().expect("not poisoned") += elapsed;
         }
     }
 
-    fn fake_clock() -> (Clock<FakeTime>, FakeTime) {
+    fn fake_clock() -> (Clock, FakeTime) {
         let time = FakeTime::default();
+        let source = time.clone();
 
-        (Clock::with_source(time.clone()), time)
+        (Clock::with_source(move || source.now()), time)
     }
 
     #[test]
