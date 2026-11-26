@@ -245,8 +245,9 @@ fn rio_udp(
         .enable_rio(
             UdpSockRef::from(&socket),
             RIO_SLOTS,
-            RIO_SLOTS,
+            RIO_SEND_SLOTS,
             ip_packet::MAX_FZ_PAYLOAD,
+            u16::MAX as usize,
         )
         .map_err(|e| ("enable_rio", e, None))?;
 
@@ -263,9 +264,13 @@ fn rio_enabled() -> bool {
     })
 }
 
-/// How many receives stay posted to a RIO socket, and how many datagrams it may have in flight.
+/// How many receives stay posted to a RIO socket.
 #[cfg(windows)]
 const RIO_SLOTS: usize = 1024;
+
+/// How many USO sends of up to 64 KiB a RIO socket may have in flight.
+#[cfg(windows)]
+const RIO_SEND_SLOTS: usize = 128;
 
 /// The socket option to prefer a stable IPv6 source address, with the value that selects it.
 ///

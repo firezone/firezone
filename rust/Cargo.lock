@@ -6421,7 +6421,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.6.3"
-source = "git+https://github.com/firezone/quinn?branch=rio-receive#910dab4bee5615c58f99c55fda1d345b0a0a96be"
+source = "git+https://github.com/firezone/quinn?branch=rio-receive#8da845dd59904e01e163c742466669c1f76091cb"
 dependencies = [
  "cfg_aliases",
  "libc",
