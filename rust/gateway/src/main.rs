@@ -284,7 +284,7 @@ async fn try_main(cli: Cli) -> Result<()> {
     let local_flow_logs = cli.flow_logs;
 
     let eventloop = async_runtime::spawn_thread("fz-eventloop", move || async move {
-        let mut clock = Clock::new();
+        let clock = Clock::new();
         let mut tunnel = GatewayTunnel::new(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
