@@ -2484,6 +2484,7 @@ dependencies = [
 name = "ephyra-properties"
 version = "0.1.0"
 dependencies = [
+ "deadline-map",
  "dns-types",
  "ephyra",
  "seeded-rng",

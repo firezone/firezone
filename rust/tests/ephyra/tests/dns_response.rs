@@ -74,8 +74,8 @@ fn device_listing_response_round_trips() {
             .names
             .iter()
             .map(|n| (query.domain(), 30, dns_types::records::ptr(name(n))));
-        let (builder, listed) =
-            ResponseBuilder::for_query(&query, ResponseCode::NOERROR).with_records_that_fit(records);
+        let (builder, listed) = ResponseBuilder::for_query(&query, ResponseCode::NOERROR)
+            .with_records_that_fit(records);
         ephyra::classify(listed < case.names.len(), "names did not fit");
         let note = (listed < total).then(|| format!("Lists {listed} of {total} names"));
         let response = builder.with_note(note.clone()).build();
@@ -90,7 +90,10 @@ fn device_listing_response_round_trips() {
 
         let truncated_bytes = response.into_bytes(case.max_len);
         let truncated = Response::parse(&truncated_bytes).unwrap();
-        assert_eq!(truncated.truncated(), bytes.len() > usize::from(case.max_len));
+        assert_eq!(
+            truncated.truncated(),
+            bytes.len() > usize::from(case.max_len)
+        );
         assert_eq!(truncated.domain(), query.domain());
     })
     .assert_passed();

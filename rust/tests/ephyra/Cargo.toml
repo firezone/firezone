@@ -6,6 +6,7 @@ license = { workspace = true }
 publish = false
 
 [dev-dependencies]
+deadline-map = { workspace = true }
 dns-types = { workspace = true }
 ephyra = "0.0.1"
 seeded-rng = { workspace = true }
