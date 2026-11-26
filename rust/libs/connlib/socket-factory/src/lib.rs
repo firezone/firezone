@@ -187,18 +187,26 @@ async fn send_unconnected(
     .await
 }
 
-/// Creates a socket that sends and receives through Registered I/O, bound to the same `local` address as an existing socket.
-///
-/// The existing socket stays open until the caller drops it, which `SO_REUSEADDR` permits, so it
-/// remains a working fallback if any step here fails. On failure, returns the failed step.
+/// The socket and state [`rio_udp`] replaces, handed back if it failed before closing them.
 #[cfg(windows)]
+type Original = Option<(tokio::net::UdpSocket, quinn_udp::UdpSocketState)>;
+
+/// Replaces `original` with a socket bound to `local` that sends and receives through Registered I/O.
+///
+/// On failure, returns the failed step and `original` if it was not closed yet.
+#[cfg(windows)]
+#[expect(clippy::result_large_err, reason = "Called once per tunnel socket")]
 fn rio_udp(
     local: SocketAddr,
-) -> Result<(std::net::UdpSocket, quinn_udp::UdpSocketState), (&'static str, io::Error)> {
+    original: tokio::net::UdpSocket,
+    original_state: quinn_udp::UdpSocketState,
+) -> Result<(std::net::UdpSocket, quinn_udp::UdpSocketState), (&'static str, io::Error, Original)> {
     use std::os::windows::io::FromRawSocket as _;
     use windows_sys::Win32::Networking::WinSock;
 
     let addr = socket2::SockAddr::from(local);
+    let mut original = Some((original, original_state));
+    let mut fail = |step, e| (step, e, original.take());
 
     // SAFETY: Plain FFI call; the returned socket is checked before taking ownership.
     let raw = unsafe {
@@ -214,20 +222,25 @@ fn rio_udp(
         )
     };
     if raw == WinSock::INVALID_SOCKET {
-        return Err(("WSASocketW", io::Error::last_os_error()));
+        return Err(fail("WSASocketW", io::Error::last_os_error()));
     }
     // SAFETY: `raw` is a valid socket that nothing else owns.
     let socket = unsafe { socket2::Socket::from_raw_socket(raw as _) };
 
-    if addr.is_ipv6() {
-        socket.set_only_v6(true).map_err(|e| ("IPV6_V6ONLY", e))?;
+    if addr.is_ipv6()
+        && let Err(e) = socket.set_only_v6(true)
+    {
+        return Err(fail("IPV6_V6ONLY", e));
     }
-    socket
-        .set_reuse_address(true)
-        .map_err(|e| ("SO_REUSEADDR", e))?;
-    let mut state = quinn_udp::UdpSocketState::new_for_rio(UdpSockRef::from(&socket))
-        .map_err(|e| ("UdpSocketState::new_for_rio", e))?;
-    socket.bind(&addr).map_err(|e| ("bind", e))?;
+    let mut state = match quinn_udp::UdpSocketState::new_for_rio(UdpSockRef::from(&socket)) {
+        Ok(state) => state,
+        Err(e) => return Err(fail("UdpSocketState::new_for_rio", e)),
+    };
+
+    // Frees the address for the RIO socket.
+    drop(original.take());
+
+    socket.bind(&addr).map_err(|e| ("bind", e, None))?;
     state
         .enable_rio(
             UdpSockRef::from(&socket),
@@ -235,7 +248,7 @@ fn rio_udp(
             RIO_SLOTS,
             ip_packet::MAX_FZ_PAYLOAD,
         )
-        .map_err(|e| ("enable_rio", e))?;
+        .map_err(|e| ("enable_rio", e, None))?;
 
     Ok((socket.into(), state))
 }
@@ -423,60 +436,56 @@ impl UdpSocket {
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
     pub fn into_perf(self) -> PerfUdpSocket {
         #[cfg(windows)]
-        let mut inner = pool::Io::Tokio(self.inner);
+        let inner = pool::Io::Tokio(self.inner);
         #[cfg(not(windows))]
         let inner = self.inner;
-        #[cfg_attr(not(windows), expect(unused_mut))]
-        let mut quinn_state = self.state;
 
-        #[cfg(windows)]
-        if rio_enabled() {
-            match inner
-                .local_addr()
-                .map_err(|e| ("local_addr", e))
-                .and_then(rio_udp)
-            {
-                Ok((socket, state)) => {
-                    tracing::info!(port = %self.port, slots = %RIO_SLOTS, "Receiving through RIO");
-
-                    inner = pool::Io::Rio(socket);
-                    quinn_state = state;
-                }
-                Err((step, error)) => {
-                    tracing::info!(port = %self.port, %step, %error, "Failed to set up RIO, receiving through WSARecvMsg");
-                }
-            }
-        } else {
-            tracing::info!(port = %self.port, "RIO disabled via FIREZONE_UDP_RIO");
-        }
-
-        #[cfg(apple)]
-        // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
-        unsafe {
-            quinn_state.set_apple_fast_path();
-        }
-
-        // A single `recv` may receive several datagrams coalesced into one buffer via
-        // generic receive offload (GRO). The kernel coalesces up to `gro_segments`
-        // datagrams of at most `MAX_FZ_PAYLOAD` bytes each, so the buffer must be large
-        // enough to hold that entire batch. On platforms without GRO `gro_segments` is 1,
-        // sizing the buffer to a single datagram.
-        let recv_buf_size = ip_packet::MAX_FZ_PAYLOAD * quinn_state.gro_segments();
-
-        let wildcard = OwnedSocket::new(inner, quinn_state, false);
-
-        PerfUdpSocket {
-            pool: SocketPool::new(wildcard, recv_buf_size),
-            batch_histogram: otel_instruments::network_packets_batch_count(),
-            send_retry_histogram: otel_instruments::network_retries(),
-            #[cfg(apple)]
-            dropped_packets: otel_instruments::network_packet_dropped(),
-            send_blocked_histogram: otel_instruments::network_send_blocked_duration(),
-            source_ip_resolver: self.source_ip_resolver,
-            port: self.port,
-        }
+        perf_socket(inner, self.state, self.source_ip_resolver, self.port)
     }
 
+    /// Like [`Self::into_perf`], but on Windows re-creates the socket to send and receive through Registered I/O.
+    ///
+    /// RIO needs a socket created with `WSA_FLAG_REGISTERED_IO`, which can only be bound once the
+    /// original socket is closed. If any later step fails, a plain socket is bound to the same
+    /// address instead; only that failing is an error.
+    #[cfg_attr(
+        not(windows),
+        expect(clippy::unnecessary_wraps, reason = "Only fails on Windows")
+    )]
+    pub fn try_into_perf(self) -> io::Result<PerfUdpSocket> {
+        #[cfg(windows)]
+        if rio_enabled() {
+            let local = self.inner.local_addr()?;
+            let port = self.port;
+            let resolver = self.source_ip_resolver;
+
+            let (socket, state) = match rio_udp(local, self.inner, self.state) {
+                Ok((socket, state)) => {
+                    tracing::info!(%port, slots = %RIO_SLOTS, "Receiving through RIO");
+
+                    (pool::Io::Rio(socket), state)
+                }
+                Err((step, error, original)) => {
+                    tracing::info!(%port, %step, %error, "Failed to set up RIO, receiving through WSARecvMsg");
+
+                    match original {
+                        Some((inner, state)) => (pool::Io::Tokio(inner), state),
+                        None => {
+                            let plain = udp(local)?;
+                            (pool::Io::Tokio(plain.inner), plain.state)
+                        }
+                    }
+                }
+            };
+
+            return Ok(perf_socket(socket, state, resolver, port));
+        }
+
+        #[cfg(windows)]
+        tracing::info!(port = %self.port, "RIO disabled via FIREZONE_UDP_RIO");
+
+        Ok(self.into_perf())
+    }
     /// Configures a new source IP resolver for this UDP socket.
     ///
     /// In case [`DatagramOut::src`] is [`None`], this function will be used to set a source IP given the destination IP of the datagram.
@@ -489,6 +498,41 @@ impl UdpSocket {
     ) -> Self {
         self.source_ip_resolver = Some(resolver);
         self
+    }
+}
+
+fn perf_socket(
+    inner: pool::Io,
+    #[cfg_attr(not(apple), expect(unused_mut))] mut quinn_state: quinn_udp::UdpSocketState,
+    source_ip_resolver: Option<
+        Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>,
+    >,
+    port: u16,
+) -> PerfUdpSocket {
+    #[cfg(apple)]
+    // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
+    unsafe {
+        quinn_state.set_apple_fast_path();
+    }
+
+    // A single `recv` may receive several datagrams coalesced into one buffer via
+    // generic receive offload (GRO). The kernel coalesces up to `gro_segments`
+    // datagrams of at most `MAX_FZ_PAYLOAD` bytes each, so the buffer must be large
+    // enough to hold that entire batch. On platforms without GRO `gro_segments` is 1,
+    // sizing the buffer to a single datagram.
+    let recv_buf_size = ip_packet::MAX_FZ_PAYLOAD * quinn_state.gro_segments();
+
+    let wildcard = OwnedSocket::new(inner, quinn_state, false);
+
+    PerfUdpSocket {
+        pool: SocketPool::new(wildcard, recv_buf_size),
+        batch_histogram: otel_instruments::network_packets_batch_count(),
+        send_retry_histogram: otel_instruments::network_retries(),
+        #[cfg(apple)]
+        dropped_packets: otel_instruments::network_packet_dropped(),
+        send_blocked_histogram: otel_instruments::network_send_blocked_duration(),
+        source_ip_resolver,
+        port,
     }
 }
 
