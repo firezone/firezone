@@ -106,3 +106,14 @@ runs:
       with:
         sarif_file: trivy-mise.sarif
         category: trivy-mise
+
+    # Code scanning alerts need `security-events: read`, which not every reader has.
+    - name: Keep the Trivy results
+      if: ${{ always() && inputs.install == 'true' }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: trivy-mise-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}
+        path: trivy-mise.sarif
+        if-no-files-found: ignore
+        overwrite: true
+        retention-days: 7
