@@ -270,7 +270,7 @@ where
 
     /// Records that the Frostlink connection `id` validated a path to `remote`.
     ///
-    /// Returns whether this made `remote` contested, see [`Connections::is_contested`].
+    /// Returns whether more than one did.
     pub(crate) fn add_remote(&mut self, id: TId, remote: SocketAddr) -> bool {
         // `id` may have failed and been removed after it validated `remote`.
         if self.established.get(&id).is_none() {
@@ -279,18 +279,7 @@ where
 
         let ids = self.established_by_remote.entry(remote).or_default();
 
-        ids.insert(id) && ids.len() == 2
-    }
-
-    /// Whether more than one Frostlink connection validated a path to `remote`.
-    ///
-    /// A NAT that maps several devices to the same public socket delivers what we send there to
-    /// whichever of them sent last, so no Frostlink connection can rely on a contested `remote`.
-    /// Classic ICE connections neither count towards a contest nor react to one.
-    pub(crate) fn is_contested(&self, remote: SocketAddr) -> bool {
-        self.established_by_remote
-            .get(&remote)
-            .is_some_and(|ids| ids.len() > 1)
+        ids.insert(id) && ids.len() > 1
     }
 
     pub(crate) fn iter_mut_frostlink_by_remote_candidate(

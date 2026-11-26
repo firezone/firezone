@@ -1090,6 +1090,62 @@ impl AgentExt for Agent {
     }
 }
 
+// --- refused remotes ---
+
+#[test]
+fn refusing_the_primarys_remote_falls_back_to_the_relay() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+
+    a.refuse_remote(addr(3), t0 + secs(1));
+
+    assert_eq!(a.primary().map(|(_, remote)| remote), Some(addr(4)));
+    assert!(a.pairs().all(|(_, remote)| remote != addr(3)));
+    assert!(remote_kind(&a, addr(3)).is_none());
+    let activity = a.advance(t0 + secs(1), t0 + secs(60));
+    assert!(
+        activity.transmits.iter().all(|(_, t)| t.remote != addr(3)),
+        "a refused remote is never probed",
+    );
+}
+
+#[test]
+fn a_refused_remote_is_not_answered_nor_re_added() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+    a.refuse_remote(addr(3), t0);
+    let _ = a.transmits();
+
+    a.handle_probe(echo_request(0, 1), (addr(1), addr(3)), t0 + secs(1));
+    a.add_remote_candidate(Candidate::host(addr(3)), t0 + secs(1));
+
+    assert!(a.transmits().is_empty());
+    assert!(remote_kind(&a, addr(3)).is_none());
+}
+
+#[test]
+fn a_refused_remotes_handshake_init_is_answered_on_the_primary() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+    a.refuse_remote(addr(3), t0);
+    let _ = a.transmits();
+
+    let mut hs = Handshake::new_seeded(t0, 1);
+    a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(1), addr(3)),
+        t0 + secs(1),
+    )
+    .expect("init accepted");
+
+    let responses = a
+        .transmits()
+        .into_iter()
+        .map(|t| t.remote)
+        .collect::<Vec<_>>();
+    assert_eq!(responses, vec![addr(4)]);
+    assert!(remote_kind(&a, addr(3)).is_none());
+}
+
 // --- shared fixtures ---
 
 fn agent_with_relay_pairs() -> Agent {
