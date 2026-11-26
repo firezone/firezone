@@ -16,7 +16,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   pnpmLock = callPackage ./pnpm-lock.nix { } (fzLib.src + "/gui-client/pnpm-lock.yaml");
 
   # nixpkgs packages pnpm by major version only, not the exact patch in
-  # rust/.tool-versions. Bump pnpm_10 here if that file's pnpm major changes.
+  # rust/gui-client/mise.toml. Bump pnpm_10 here if that file's pnpm major changes.
   nativeBuildInputs = [
     nodejs
     pnpm_10

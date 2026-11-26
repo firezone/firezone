@@ -31,7 +31,7 @@ To compile natively for x86_64 Windows, install the following (winget commands s
    console does not process ANSI escapes and mangles the Tunnel service's logs.
 1. An editor of your choice (see [Recommended IDE Setup](#recommended-ide-setup))
 
-`node` and `pnpm` are pinned in [`rust/.tool-versions`](../.tool-versions) and provided
+`node` and `pnpm` are pinned in [`rust/gui-client/mise.toml`](mise.toml) and provided
 by mise — you don't install them separately. After installing mise, activate it in
 PowerShell 7 and install the toolchain from `rust/`:
 
@@ -69,15 +69,15 @@ under the hood.
 mise run build
 
 # Linux:
-# The release exe and deb package are up in the workspace.
-stat ../target/release/firezone-client-gui
-stat ../target/release/bundle/deb/*.deb
+# The release binary and the deb and rpm packages are up in the workspace.
+stat ../target/release/firezone-gui-client
+stat ../target/release/firezone-client-gui.deb ../target/release/firezone-client-gui.rpm
 
 # Windows:
 # The release exe and MSI installer should be up in the workspace.
 # The exe can run without being installed
-stat ../target/release/Firezone.exe
-stat ../target/release/bundle/msi/Firezone_0.0.0_x64_en-US.msi
+stat ../target/release/firezone-gui-client.exe
+stat ../target/release/firezone-client-gui.msi
 ```
 
 ## Signing the Windows MSI in GitHub CI

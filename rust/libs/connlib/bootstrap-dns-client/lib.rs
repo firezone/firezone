@@ -239,14 +239,23 @@ async fn send_query_udp(
         .bind(unspecified_bind_addr(server))
         .context("Failed to bind UDP socket")?;
 
-    let response = tokio::time::timeout(
-        BootstrapDnsClient::TIMEOUT,
-        udp_socket.handshake::<BUF_SIZE>(server, &query.into_bytes()),
-    )
+    let response = tokio::time::timeout(BootstrapDnsClient::TIMEOUT, async {
+        let socket = udp_socket.connect(server).await?;
+        socket.send(query.as_bytes()).await?;
+
+        let mut buffer = vec![0u8; BUF_SIZE];
+
+        loop {
+            let len = socket.recv(&mut buffer).await?;
+
+            match dns_types::Response::parse_answer(&buffer[..len], &query) {
+                Ok(response) => return anyhow::Ok(response),
+                Err(e) => tracing::trace!(%server, "Ignoring UDP DNS reply: {e}"),
+            }
+        }
+    })
     .await
     .with_context(|| format!("DNS query to host {server} timed out"))??;
-
-    let response = dns_types::Response::parse(&response).context("Failed to parse DNS response")?;
 
     Ok(response)
 }

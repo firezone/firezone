@@ -24,6 +24,7 @@ secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 sha2 = { workspace = true }
 smallvec = { workspace = true }
+special-use-ip = { workspace = true }
 stun_codec = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

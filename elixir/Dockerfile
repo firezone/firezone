@@ -1,5 +1,5 @@
 ARG ELIXIR_VERSION="1.20.5"
-ARG ERLANG_VERSION="29.1.2"
+ARG ERLANG_VERSION="29.1.3"
 ARG ALPINE_VERSION="3.24.4"
 # `compiler` builds the public portal. `ops-compiler` adds the private ops dashboard
 # (firezone/portal-ops), which CI checks out at ./ops before building the portal-ops

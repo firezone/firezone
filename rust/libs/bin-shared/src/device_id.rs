@@ -150,9 +150,8 @@ fn get_at(path: &Path) -> Result<DeviceId> {
 #[cfg(target_os = "linux")]
 fn set_dir_permissions(dir: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
-    // user read/write, group read/write, others nothing
-    // directories need `+x` to work of course
-    let perms = fs::Permissions::from_mode(0o770);
+    // Owner rwx, group rx, others none.
+    let perms = fs::Permissions::from_mode(0o750);
     std::fs::set_permissions(dir, perms)?;
     Ok(())
 }
