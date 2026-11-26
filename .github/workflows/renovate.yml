@@ -53,15 +53,26 @@ jobs:
           # `mise lock` in mise's safe mode, so no `allowedUnsafeExecutions`.
           RENOVATE_BINARY_SOURCE: install
           LOG_LEVEL: ${{ inputs.log-level || 'info' }}
-      # We squash-merge with the PR description as the commit message.
-      - name: Strip Renovate's metadata comment from PR descriptions
+      # We squash-merge with the PR description as the commit message, so
+      # Renovate's release notes go into a comment and the description stays empty.
+      - name: Move Renovate's PR descriptions into a comment
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          MARKER: "<!-- renovate-release-notes -->"
         run: |
           gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number,headRefName,body \
-            --jq '.[] | select(.headRefName | startswith("renovate/")) | select(.body | contains("<!--renovate-debug:")) | .number' |
+            --jq '.[] | select(.headRefName | startswith("renovate/")) | select(.body != "") | .number' |
             while read -r pr; do
-              gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json body --jq '.body | gsub("\\s*<!--renovate-debug:[^>]*-->\\s*"; "")' |
-                gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --body-file -
+              notes=$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json body --jq '.body | gsub("<!--renovate-debug:[^>]*-->"; "") | gsub("^\\s+|\\s+$"; "")')
+              if [ -n "$notes" ]; then
+                comment=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate \
+                  --jq "[.[] | select(.body | startswith(\"$MARKER\")) | .id] | first // empty")
+                if [ -n "$comment" ]; then
+                  gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment" -f body="$MARKER"$'\n\n'"$notes" > /dev/null
+                else
+                  gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body "$MARKER"$'\n\n'"$notes"
+                fi
+              fi
+              gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --body-file /dev/null
             done
