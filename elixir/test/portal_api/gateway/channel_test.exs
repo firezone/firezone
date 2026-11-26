@@ -3457,11 +3457,11 @@ assert site_ids == [site.id]
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: init_relays}
 
-      send(socket.channel_pid, {:rotate_relay_credentials, ~U[2026-11-08 04:00:00Z]})
+      send(socket.channel_pid, {:rotate_relay_credentials, ~U[2026-11-29 04:00:00Z]})
 
       assert_push "relays_presence", %{disconnected_ids: [], connected: connected}
 
-      expected_expires_at = DateTime.to_unix(~U[2026-11-15 05:00:00Z])
+      expected_expires_at = DateTime.to_unix(~U[2026-12-06 05:00:00Z])
 
       assert Enum.map(connected, & &1.id) == Enum.map(init_relays, & &1.id)
       assert Enum.all?(connected, &(&1.expires_at == expected_expires_at))

@@ -35,7 +35,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   # Before the first boundary, Gateways keep the legacy expiry so the deploy
   # itself does not replace relay allocations.
   # TODO: Shorten this window when most gateways support this.
-  @relay_credentials_first_rotation ~U[2026-11-08 04:00:00Z]
+  @relay_credentials_first_rotation ~U[2026-11-29 04:00:00Z]
   @relay_credentials_rotate_every_seconds 7 * 24 * 60 * 60
   @relay_credentials_grace_seconds 60 * 60
   @legacy_relay_credentials_expire_at ~U[2038-01-01 00:00:00Z]
