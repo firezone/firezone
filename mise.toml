@@ -14,12 +14,12 @@ pnpm = "10.33.0"
 
 [monorepo]
 config_roots = [
-    "elixir",
-    "kotlin/android",
-    "rust",
-    "rust/gui-client",
-    "rust/tests/fuzz",
-    "swift/apple",
+  "elixir",
+  "kotlin/android",
+  "rust",
+  "rust/gui-client",
+  "rust/tests/fuzz",
+  "swift/apple",
 ]
 
 [tasks.lint-setup]
