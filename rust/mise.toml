@@ -4,16 +4,26 @@
 
 [settings]
 auto_install = false
+# Nobody builds on Intel Macs, and some tools (e.g. cargo-deny 0.21) no longer ship for them.
+lockfile_platforms = [
+  "linux-arm64",
+  "linux-arm64-musl",
+  "linux-x64",
+  "linux-x64-musl",
+  "macos-arm64",
+  "windows-arm64",
+  "windows-x64",
+]
 
 [tools]
 "github:aya-rs/bpf-linker" = { version = "0.13.0", os = ["linux"] }
-"cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
+"cargo:cargo-deb" = { version = "3.8.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
 # `matching_regex` skips the npm tarballs the release also carries, so every
 # platform gets the bare binary; `bin` gives it a name the shim can use.
-"github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
+"github:getsentry/sentry-cli" = { version = "3.8.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "aqua:sigstore/cosign" = { version = "3.1.4", os = ["linux"] }
-"github:cargo-bins/cargo-binstall" = "1.18.1"
+"github:cargo-bins/cargo-binstall" = "1.27.0"
 "github:DevinR528/cargo-sort" = "2.1.4"
 "github:EmbarkStudios/cargo-deny" = "0.19.4"
 

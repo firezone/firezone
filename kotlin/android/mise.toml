@@ -48,6 +48,6 @@ run = "./gradlew recordRoborazziDebug"
 [tools]
 # Has to match the JVM target in `app/build.gradle.kts`.
 java = "openjdk-17"
-ktlint = "1.7.1"
-"aqua:firebase/firebase-tools" = "15.18.0"
+ktlint = "1.8.0"
+"aqua:firebase/firebase-tools" = "15.37.0"
 "github:tamtom/play-console-cli" = { version = "0.10.0", bin = "gplay", matching_regex = "^gplay-" }
