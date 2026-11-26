@@ -105,7 +105,7 @@ pub fn tcp(addr: SocketAddr) -> io::Result<TcpSocket> {
 
 pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     let addr = socket2::SockAddr::from(std_addr);
-    let socket = new_udp_socket(&addr)?;
+    let socket = socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)?;
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
     if addr.is_ipv6() {
@@ -139,23 +139,21 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     Ok(socket)
 }
 
-#[cfg(not(windows))]
-fn new_udp_socket(addr: &socket2::SockAddr) -> io::Result<socket2::Socket> {
-    socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)
-}
-
-/// Creates the socket with `WSA_FLAG_REGISTERED_IO` if RIO is enabled, so [`UdpSocket::into_perf`] can receive through RIO.
+/// Creates a socket that receives through Registered I/O, bound to the same `local` address as an existing socket.
+///
+/// The existing socket stays open until the caller drops it, which `SO_REUSEADDR` permits, so it
+/// remains a working fallback if any step here fails. On failure, returns the failed step.
 #[cfg(windows)]
-fn new_udp_socket(addr: &socket2::SockAddr) -> io::Result<socket2::Socket> {
+fn rio_udp(
+    local: SocketAddr,
+) -> Result<(tokio::net::UdpSocket, quinn_udp::UdpSocketState), (&'static str, io::Error)> {
     use std::os::windows::io::FromRawSocket as _;
     use windows_sys::Win32::Networking::WinSock;
 
-    if !rio_enabled() {
-        return socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None);
-    }
+    let addr = socket2::SockAddr::from(local);
 
     // SAFETY: Plain FFI call; the returned socket is checked before taking ownership.
-    let socket = unsafe {
+    let raw = unsafe {
         WinSock::WSASocketW(
             addr.family() as i32,
             WinSock::SOCK_DGRAM,
@@ -167,16 +165,33 @@ fn new_udp_socket(addr: &socket2::SockAddr) -> io::Result<socket2::Socket> {
                 | WinSock::WSA_FLAG_REGISTERED_IO,
         )
     };
-
-    if socket == WinSock::INVALID_SOCKET {
-        let error = io::Error::last_os_error();
-        tracing::info!(%error, "Failed to create RIO-capable UDP socket");
-
-        return socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None);
+    if raw == WinSock::INVALID_SOCKET {
+        return Err(("WSASocketW", io::Error::last_os_error()));
     }
+    // SAFETY: `raw` is a valid socket that nothing else owns.
+    let socket = unsafe { socket2::Socket::from_raw_socket(raw as _) };
 
-    // SAFETY: `socket` is a valid socket that nothing else owns.
-    Ok(unsafe { socket2::Socket::from_raw_socket(socket as _) })
+    if addr.is_ipv6() {
+        socket.set_only_v6(true).map_err(|e| ("IPV6_V6ONLY", e))?;
+    }
+    socket.set_nonblocking(true).map_err(|e| ("FIONBIO", e))?;
+    socket
+        .set_reuse_address(true)
+        .map_err(|e| ("SO_REUSEADDR", e))?;
+    let mut state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))
+        .map_err(|e| ("UdpSocketState::new", e))?;
+    socket.bind(&addr).map_err(|e| ("bind", e))?;
+    state
+        .enable_rio(
+            UdpSockRef::from(&socket),
+            RIO_SLOTS,
+            ip_packet::MAX_FZ_PAYLOAD,
+        )
+        .map_err(|e| ("enable_rio", e))?;
+    let socket = tokio::net::UdpSocket::try_from(std::net::UdpSocket::from(socket))
+        .map_err(|e| ("tokio registration", e))?;
+
+    Ok((socket, state))
 }
 
 /// Whether to receive through Registered I/O on Windows; on unless `FIREZONE_UDP_RIO=0`.
@@ -362,20 +377,25 @@ impl UdpSocket {
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
     pub fn into_perf(self) -> PerfUdpSocket {
         #[cfg_attr(not(windows), expect(unused_mut))]
+        let mut inner = self.inner;
+        #[cfg_attr(not(windows), expect(unused_mut))]
         let mut quinn_state = self.state;
 
         #[cfg(windows)]
         if rio_enabled() {
-            match quinn_state.enable_rio(
-                UdpSockRef::from(&self.inner),
-                RIO_SLOTS,
-                ip_packet::MAX_FZ_PAYLOAD,
-            ) {
-                Ok(()) => {
-                    tracing::info!(port = %self.port, slots = %RIO_SLOTS, "Receiving through RIO")
+            match inner
+                .local_addr()
+                .map_err(|e| ("local_addr", e))
+                .and_then(rio_udp)
+            {
+                Ok((socket, state)) => {
+                    tracing::info!(port = %self.port, slots = %RIO_SLOTS, "Receiving through RIO");
+
+                    inner = socket;
+                    quinn_state = state;
                 }
-                Err(error) => {
-                    tracing::info!(port = %self.port, %error, "Failed to enable RIO, receiving through WSARecvMsg")
+                Err((step, error)) => {
+                    tracing::info!(port = %self.port, %step, %error, "Failed to set up RIO, receiving through WSARecvMsg");
                 }
             }
         } else {
@@ -395,7 +415,7 @@ impl UdpSocket {
         // sizing the buffer to a single datagram.
         let recv_buf_size = ip_packet::MAX_FZ_PAYLOAD * quinn_state.gro_segments();
 
-        let wildcard = OwnedSocket::new(self.inner, quinn_state, false);
+        let wildcard = OwnedSocket::new(inner, quinn_state, false);
 
         PerfUdpSocket {
             pool: SocketPool::new(wildcard, recv_buf_size),
