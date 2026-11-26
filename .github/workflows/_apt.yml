@@ -18,10 +18,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - uses: ./.github/actions/setup-azure-cli
 
       - name: Azure login (OIDC)
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
@@ -37,7 +33,12 @@ jobs:
           key: ${{ secrets.APT_REPOSITORY_GPG_KEY }}
           email: packages@firezone.dev
 
-      - run: scripts/sync-apt.sh
+      - name: Sync APT repository
+        shell: python
+        run: |
+          from runpy import run_path
+
+          run_path("scripts/sync-apt.py", run_name="__main__")
         env:
           AZURE_STORAGE_ACCOUNT: firezoneartifacts
           GPG_KEY_ID: ${{ steps.setup-gpg.outputs.key_id }}

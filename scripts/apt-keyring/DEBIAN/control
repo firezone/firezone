@@ -1,0 +1,7 @@
+Package: firezone-archive-keyring
+Version: @VERSION@
+Architecture: all
+Maintainer: Firezone, Inc. <support@firezone.dev>
+Section: misc
+Priority: optional
+Description: GnuPG key of the Firezone APT repository
