@@ -29,9 +29,9 @@ ANDROID_HOME = '''
 # on `PATH`. Doing it here means no task has to rebuild `PATH` and no shell profile has to be edited.
 # 'setup-sdk' fills these directories in.
 _.path = [
-    "{{ env.ANDROID_HOME }}/cmdline-tools/latest/bin",
-    "{{ env.ANDROID_HOME }}/platform-tools",
-    "{{ env.ANDROID_HOME }}/emulator",
+  "{{ env.ANDROID_HOME }}/cmdline-tools/latest/bin",
+  "{{ env.ANDROID_HOME }}/platform-tools",
+  "{{ env.ANDROID_HOME }}/emulator",
 ]
 
 [task_config]
@@ -46,8 +46,7 @@ description = "Render the app's screens to PNGs in `kotlin/android/screenshots`"
 run = "./gradlew recordRoborazziDebug"
 
 [tools]
-# Has to match the JVM target in `app/build.gradle.kts`.
-java = "openjdk-17"
+java = "openjdk-17"                                                                                 # Has to match the JVM target in `app/build.gradle.kts`
 ktlint = "1.7.1"
 "aqua:firebase/firebase-tools" = "15.18.0"
 "github:tamtom/play-console-cli" = { version = "0.9.2", bin = "gplay", matching_regex = "^gplay-" }
