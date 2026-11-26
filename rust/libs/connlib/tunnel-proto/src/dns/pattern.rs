@@ -4,6 +4,8 @@ use std::{fmt, str::FromStr};
 #[derive(Eq, Clone)]
 pub struct Pattern {
     inner: glob::Pattern,
+    /// For `*.<rest>`, the pattern `<rest>` which also matches.
+    apex: Option<glob::Pattern>,
     original: String,
 }
 
@@ -80,8 +82,15 @@ impl Ord for Pattern {
 
 impl Pattern {
     pub fn new(p: &str) -> Result<Self, glob::PatternError> {
+        let p_slash = p.replace('.', "/");
+        let apex = p_slash
+            .strip_prefix("*/")
+            .map(glob::Pattern::new)
+            .transpose()?;
+
         Ok(Self {
-            inner: glob::Pattern::new(&p.replace('.', "/"))?,
+            inner: glob::Pattern::new(&p_slash)?,
+            apex,
             original: p.to_string(),
         })
     }
@@ -91,21 +100,17 @@ impl Pattern {
     /// Matching only requires a reference, thus allowing users to test a [`Candidate`] against multiple [`Pattern`]s.
     pub fn matches(&self, domain: &Candidate) -> bool {
         let domain = domain.0.as_str();
+        let options = glob::MatchOptions {
+            case_sensitive: false,
+            require_literal_separator: true,
+            require_literal_leading_dot: false,
+        };
 
-        if let Some(rem) = self.inner.as_str().strip_prefix("*/")
-            && domain.eq_ignore_ascii_case(rem)
-        {
-            return true;
-        }
-
-        self.inner.matches_with(
-            domain,
-            glob::MatchOptions {
-                case_sensitive: false,
-                require_literal_separator: true,
-                require_literal_leading_dot: false,
-            },
-        )
+        self.inner.matches_with(domain, options)
+            || self
+                .apex
+                .as_ref()
+                .is_some_and(|apex| apex.matches_with(domain, options))
     }
 }
 
