@@ -6,7 +6,7 @@
   "semanticCommits": "enabled",
   "semanticCommitType": "build",
   "semanticCommitScope": "deps",
-  "prBodyTemplate": "{{{table}}}{{{notes}}}",
+  "prBodyTemplate": "{{{warnings}}}",
   "packageRules": [
     {
       "description": "Must match the toolchain the eBPF program is compiled with, see `rust/relay/server/build.rs`",
