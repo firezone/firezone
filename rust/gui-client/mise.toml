@@ -10,7 +10,7 @@ pnpm = "10.33.0" # Has to match `packageManager` in `package.json`
 
 # Submits the winget manifests in `_winget.yml`.
 [tools."github:russellbanks/Komac"]
-version = "2.17.1"
+version = "2.17.2"
 bin = "komac"
 os = ["windows"]
 
