@@ -3,6 +3,8 @@
 # Usage: mise run <task> (from this directory) or mise run //rust/gui-client:<task> (from repo root)
 
 [tools]
+node = "24.13.0"
+pnpm = "10.33.0" # Has to match `packageManager` in `package.json`
 # Submits the winget manifests in `_winget.yml`.
 "github:russellbanks/Komac" = { version = "2.17.1", bin = "komac", os = ["windows"] }
 
