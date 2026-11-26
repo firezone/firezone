@@ -2675,6 +2675,7 @@ dependencies = [
  "anyhow-ext",
  "arboard",
  "async-runtime",
+ "atomicfs",
  "backoff",
  "bin-shared",
  "clap",
