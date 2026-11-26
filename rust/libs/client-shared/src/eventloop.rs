@@ -187,7 +187,7 @@ impl Eventloop {
         } = config;
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
-        let mut clock = Clock::new();
+        let clock = Clock::new();
 
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
@@ -240,7 +240,7 @@ enum CombinedEvent {
     Command(Option<Command>),
     Tunnel(Result<ClientEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
-    Clock(clock::Event),
+    Clock(clock::Alarm),
 }
 
 impl Eventloop {
@@ -280,21 +280,22 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
-            CombinedEvent::Clock(clock::Event::Alarm(now)) => {
+            CombinedEvent::Clock(clock::Alarm { now, late_by }) => {
+                if late_by >= Duration::from_secs(30) {
+                    let result = self
+                        .handle_eventloop_command(Command::Reset(format!(
+                            "event loop ran {late_by:.0?} late"
+                        )))
+                        .await?;
+
+                    return Ok(result);
+                }
+
                 if let Some(tunnel) = self.tunnel.as_mut() {
                     tunnel.handle_timeout(now);
                 }
 
                 Ok(ControlFlow::Continue(()))
-            }
-            CombinedEvent::Clock(clock::Event::Late(by)) => {
-                let cf = self
-                    .handle_eventloop_command(Command::Reset(format!(
-                        "event loop ran {by:.0?} late"
-                    )))
-                    .await?;
-
-                Ok(cf)
             }
             CombinedEvent::Portal(Some(Ok(PortalEvent::Message(msg)))) => {
                 self.handle_portal_message(msg).await?;
@@ -938,7 +939,7 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context) -> Poll<CombinedEvent> {
-        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+        if let Poll::Ready(event) = self.clock.poll_alarm(cx) {
             return Poll::Ready(CombinedEvent::Clock(event));
         }
 
