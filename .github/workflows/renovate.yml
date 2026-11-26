@@ -3,7 +3,7 @@ name: Renovate
 run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
 "on":
   schedule:
-    - cron: "17 2,14 * * *"
+    - cron: "17 2 * * 1"
   workflow_dispatch:
 
 permissions: {}
