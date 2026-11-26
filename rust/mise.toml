@@ -6,18 +6,22 @@
 auto_install = false
 
 [tools]
-"github:aya-rs/bpf-linker" = { version = "0.12.0", os = ["linux"] }
+"github:aya-rs/bpf-linker" = { version = "0.13.0", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
-# Has to match the `gungraun` version in `Cargo.toml`.
-"github:gungraun/gungraun" = { version = "0.20.0", os = ["linux"], bin = "gungraun-runner" }
 # `matching_regex` skips the npm tarballs the release also carries, so every
 # platform gets the bare binary; `bin` gives it a name the shim can use.
 "github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "aqua:sigstore/cosign" = { version = "3.1.4", os = ["linux"] }
 
+# Has to match the `gungraun` version in `Cargo.toml`.
+[tools."github:gungraun/gungraun"]
+version = "0.20.0"
+os = ["linux"]
+bin = "gungraun-runner"
+
 [tools."github:bencherdev/bencher"]
-version = "0.6.13"
+version = "0.6.17"
 bin = "bencher"
 
 [tools."github:bencherdev/bencher".platforms]

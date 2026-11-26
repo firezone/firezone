@@ -1,0 +1,78 @@
+---
+name: Renovate
+run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
+"on":
+  schedule:
+    - cron: "17 2 * * 1"
+  workflow_dispatch:
+    inputs:
+      log-level:
+        description: Renovate log level
+        default: info
+        type: choice
+        options: [info, debug]
+
+permissions: {}
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          repositories: ${{ github.repository }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-statuses: write
+      - name: Derive git author from the app's bot user
+        id: author
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          user_id=$(gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)
+          echo "git-author=${APP_SLUG}[bot] <${user_id}+${APP_SLUG}[bot]@users.noreply.github.com>" >> "$GITHUB_OUTPUT"
+      - uses: renovatebot/github-action@acdd6bda8b035c99ce59d5675816af2aa65a1774 # v46.3.14
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          renovate-image: ghcr.io/renovatebot/renovate:44.250.0@sha256:e36d7bbb250cc3f43e42ed1747f9f25b88348a39904604f296aba5cd9ca740f8
+        env:
+          RENOVATE_PLATFORM: github
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          RENOVATE_GIT_AUTHOR: ${{ steps.author.outputs.git-author }}
+          # The slim image installs tools such as mise on demand. Renovate runs
+          # `mise lock` in mise's safe mode, so no `allowedUnsafeExecutions`.
+          RENOVATE_BINARY_SOURCE: install
+          LOG_LEVEL: ${{ inputs.log-level || 'info' }}
+      # We squash-merge with the PR description as the commit message, so
+      # Renovate's release notes go into a comment and the description stays empty.
+      - name: Move Renovate's PR descriptions into a comment
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          MARKER: "<!-- renovate-release-notes -->"
+        run: |
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number,headRefName,body \
+            --jq '.[] | select(.headRefName | startswith("renovate/")) | select(.body != "") | .number' |
+            while read -r pr; do
+              notes=$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json body --jq '.body | gsub("<!--renovate-debug:[^>]*-->"; "") | gsub("^\\s+|\\s+$"; "")')
+              if [ -n "$notes" ]; then
+                comment=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate \
+                  --jq "[.[] | select(.body | startswith(\"$MARKER\")) | .id] | first // empty")
+                if [ -n "$comment" ]; then
+                  gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment" -f body="$MARKER"$'\n\n'"$notes" > /dev/null
+                else
+                  gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body "$MARKER"$'\n\n'"$notes"
+                fi
+              fi
+              gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --body-file /dev/null
+            done

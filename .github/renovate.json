@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabledManagers": ["mise"],
+  "dependencyDashboard": false,
+  "minimumReleaseAge": "7 days",
+  "prHourlyLimit": 0,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "build",
+  "semanticCommitScope": "deps",
+  "commitMessageAction": "bump",
+  "commitMessageTopic": "{{{replace '^.*[:/]' '' depName}}}",
+  "commitMessageExtra": "from {{currentVersion}} to {{newVersion}}",
+  "prBodyTemplate": "{{{warnings}}}{{{changelogs}}}",
+  "packageRules": [
+    {
+      "description": "mise pins versions without the `v` that GitHub release tags carry",
+      "matchManagers": ["mise"],
+      "matchDatasources": ["github-releases", "github-tags"],
+      "extractVersion": "^v?(?<version>.+)$"
+    },
+    {
+      "description": "Must match the toolchain the eBPF program is compiled with, see `rust/relay/server/build.rs`",
+      "matchFileNames": ["rust/tests/fuzz/mise.toml"],
+      "matchDepNames": ["rust"],
+      "enabled": false
+    },
+    {
+      "description": "Must match the `gungraun` crate in `rust/Cargo.toml`",
+      "matchDepNames": ["/gungraun/"],
+      "enabled": false
+    }
+  ]
+}
