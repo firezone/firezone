@@ -18,7 +18,7 @@ lockfile_platforms = [
 [tools]
 "github:aya-rs/bpf-linker" = { version = "0.13.0", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.8.0", os = ["linux"] }
-"github:taiki-e/cargo-llvm-cov" = "0.6.21"
+"github:taiki-e/cargo-llvm-cov" = "0.9.1"
 # `matching_regex` skips the npm tarballs the release also carries, so every
 # platform gets the bare binary; `bin` gives it a name the shim can use.
 "github:getsentry/sentry-cli" = { version = "3.8.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
