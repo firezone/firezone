@@ -5,10 +5,11 @@ version = "0.21.1"
 backend = "cargo:cargo-generate-rpm"
 
 [[tools."github:russellbanks/Komac"]]
-version = "2.17.1"
+version = "2.17.2"
 backend = "github:russellbanks/Komac"
 
 [tools."github:russellbanks/Komac"."platforms.windows-x64"]
-checksum = "sha256:a97c002c5ffa15f232af117efac6774e755d27acc47eba00f1661033267d7438"
-url = "https://github.com/russellbanks/Komac/releases/download/v2.17.1/komac-2.17.1-x86_64-pc-windows-msvc.exe"
-url_api = "https://api.github.com/repos/russellbanks/Komac/releases/assets/642136229"
+checksum = "sha256:38a5a53b2291e959157a46a9ed2f20c1c66e9e238666780519650fcc8d37ad58"
+checksum_source = "mise-versions"
+url = "https://github.com/russellbanks/Komac/releases/download/v2.17.2/komac-2.17.2-x86_64-pc-windows-msvc.exe"
+url_api = "https://api.github.com/repos/russellbanks/Komac/releases/assets/707206240"

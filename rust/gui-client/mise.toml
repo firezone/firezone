@@ -8,7 +8,7 @@
 
 # Submits the winget manifests in `_winget.yml`.
 [tools."github:russellbanks/Komac"]
-version = "2.17.1"
+version = "2.17.2"
 bin = "komac"
 os = ["windows"]
 
