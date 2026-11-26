@@ -92,7 +92,7 @@ runs:
       if: ${{ inputs.install == 'true' }}
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
-        scan-type: fs
+        scan-type: rootfs
         scan-ref: ${{ env.MISE_SCAN_PATH }}
         scanners: vuln # secrets/misconfig produce noise on bundled stdlib trees
         severity: HIGH,CRITICAL
@@ -105,5 +105,4 @@ runs:
       uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
       with:
         sarif_file: trivy-mise.sarif
-        # Code scanning accepts one upload per category and job, and a job can set up mise more than once.
-        category: trivy-mise${{ inputs.install_args != '' && format(' {0}', inputs.install_args) || '' }}
+        category: trivy-mise
