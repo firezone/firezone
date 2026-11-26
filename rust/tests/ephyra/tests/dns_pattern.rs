@@ -57,7 +57,7 @@ fn labels_match(pattern: &[&str], domain: &[&str]) -> bool {
 fn model_matches(pattern: &str, d: &[&str]) -> bool {
     let p = pattern.split('.').collect::<Vec<_>>();
 
-    labels_match(&p, &d) || (p[0] == "*" && labels_match(&p[1..], &d))
+    labels_match(&p, d) || (p[0] == "*" && labels_match(&p[1..], d))
 }
 
 #[test]

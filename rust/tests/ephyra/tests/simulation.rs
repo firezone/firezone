@@ -37,7 +37,14 @@ fn fuzz(name: &str, target: &str, simulate: fn(&[u8], Instant)) {
     let config = Config::default().tests(2_000).name(name);
     let mut run = Run::new(&config, bytes(), move |data: Vec<u8>| {
         seeded_rng::reset(0);
-        simulate(&data, *START);
+        let result = std::panic::catch_unwind(|| simulate(&data, *START));
+        if let Err(panic) = result {
+            if let Ok(dir) = std::env::var("EPHYRA_DUMP_DIR") {
+                let path = Path::new(&dir).join(format!("{:016x}", fxhash(&data)));
+                std::fs::write(path, &data).unwrap();
+            }
+            std::panic::resume_unwind(panic);
+        }
     });
 
     if !run.remembered() {
@@ -74,4 +81,10 @@ fn relay_simulation_upholds_invariants() {
         "relay",
         simulation::run_relay,
     );
+}
+
+fn fxhash(data: &[u8]) -> u64 {
+    data.iter().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(*b)).wrapping_mul(0x100_0000_01b3)
+    })
 }
