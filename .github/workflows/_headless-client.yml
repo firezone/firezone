@@ -89,7 +89,7 @@ jobs:
           gh api --method POST /repos/firezone/infra/dispatches \
             --raw-field event_type=benchmark-release \
             --raw-field "client_payload[git_sha]=$FIREZONE_SHA" \
-            --raw-field 'client_payload[device_pair]=Intel <> AMD' \
+            --raw-field 'client_payload[device_pair]=Intel (Linux) <> AMD (Linux)' \
             --raw-field "client_payload[protocol]=$BENCHMARK_PROTOCOL" \
             --field 'client_payload[publish]=true'
 
