@@ -24,7 +24,7 @@ lockfile_platforms = [
 "github:getsentry/sentry-cli" = { version = "3.8.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
 "aqua:sigstore/cosign" = { version = "3.1.4", os = ["linux"] }
-"github:cargo-bins/cargo-binstall" = "1.18.1"
+"github:cargo-bins/cargo-binstall" = "1.27.0"
 "github:DevinR528/cargo-sort" = "2.1.4"
 "github:EmbarkStudios/cargo-deny" = "0.19.4"
 
