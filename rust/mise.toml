@@ -6,7 +6,7 @@
 auto_install = false
 
 [tools]
-"github:aya-rs/bpf-linker" = { version = "0.12.0", os = ["linux"] }
+"github:aya-rs/bpf-linker" = { version = "0.13.0", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
 # `matching_regex` skips the npm tarballs the release also carries, so every
