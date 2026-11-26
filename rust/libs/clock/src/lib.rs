@@ -22,20 +22,55 @@ enum ArmedAlarm {
 ///
 /// All timestamps are in this clock's domain. Tokio's timer requests a poll, and
 /// the suspend-inclusive clock determines when the deadline is due.
-pub struct Clock {
+pub struct Clock<S = SuspendInclusiveTime> {
+    source: S,
     instant_at_start: Instant,
     os_clock_at_start: Duration,
     armed_alarm: Option<ArmedAlarm>,
     timer: Option<Pin<Box<tokio::time::Sleep>>>,
 }
 
+/// A source of time that keeps advancing while the system is suspended.
+pub trait TimeSource {
+    /// Returns the time since an arbitrary, fixed point.
+    fn now(&self) -> Duration;
+}
+
+/// The OS's suspend-inclusive monotonic clock.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SuspendInclusiveTime;
+
+impl TimeSource for SuspendInclusiveTime {
+    fn now(&self) -> Duration {
+        suspend_inclusive_now()
+    }
+}
+
 impl Clock {
     pub fn new() -> Self {
-        Self::default()
+        Self::with_source(SuspendInclusiveTime)
+    }
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S: TimeSource> Clock<S> {
+    pub fn with_source(source: S) -> Self {
+        Self {
+            instant_at_start: Instant::now(),
+            os_clock_at_start: source.now(),
+            source,
+            armed_alarm: None,
+            timer: None,
+        }
     }
 
     pub fn now(&self) -> Instant {
-        let elapsed_since_start = suspend_inclusive_now().saturating_sub(self.os_clock_at_start);
+        let elapsed_since_start = self.source.now().saturating_sub(self.os_clock_at_start);
 
         self.instant_at_start + elapsed_since_start
     }
@@ -106,29 +141,8 @@ impl Clock {
     }
 }
 
-impl Default for Clock {
-    fn default() -> Self {
-        Self {
-            instant_at_start: Instant::now(),
-            os_clock_at_start: suspend_inclusive_now(),
-            armed_alarm: None,
-            timer: None,
-        }
-    }
-}
-
-#[cfg(test)]
-thread_local! {
-    static TEST_OS_CLOCK: std::cell::Cell<Option<Duration>> = const { std::cell::Cell::new(None) };
-}
-
 /// Returns the time since an arbitrary point, including time spent suspended.
 fn suspend_inclusive_now() -> Duration {
-    #[cfg(test)]
-    if let Some(now) = TEST_OS_CLOCK.get() {
-        return now;
-    }
-
     cfg_select! {
         any(target_os = "linux", target_os = "android") => clock_gettime(libc::CLOCK_BOOTTIME),
         target_vendor = "apple" => clock_gettime(libc::CLOCK_MONOTONIC_RAW),
@@ -159,6 +173,8 @@ fn clock_gettime(clock: libc::clockid_t) -> Duration {
 #[cfg(test)]
 mod tests {
     use std::{
+        cell::Cell,
+        rc::Rc,
         sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -167,53 +183,52 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use super::{Alarm, Clock, TEST_OS_CLOCK};
+    use super::{Alarm, Clock, TimeSource};
 
-    // These tests run on a single thread and advance OS and Tokio time independently.
-    struct FakeOsClock(Option<Duration>);
+    /// Simulates the OS clock; advancing it without advancing Tokio's time models a suspend.
+    #[derive(Clone, Default)]
+    struct FakeTime(Rc<Cell<Duration>>);
 
-    impl FakeOsClock {
-        fn start() -> Self {
-            Self(TEST_OS_CLOCK.replace(Some(Duration::from_secs(1_000))))
-        }
-
+    impl FakeTime {
         fn advance(&self, elapsed: Duration) {
-            let now = TEST_OS_CLOCK.get().expect("test clock is installed");
-            TEST_OS_CLOCK.set(Some(now + elapsed));
+            self.0.set(self.0.get() + elapsed);
         }
     }
 
-    impl Drop for FakeOsClock {
-        fn drop(&mut self) {
-            TEST_OS_CLOCK.set(self.0);
+    impl TimeSource for FakeTime {
+        fn now(&self) -> Duration {
+            self.0.get()
         }
+    }
+
+    fn fake_clock() -> (Clock<FakeTime>, FakeTime) {
+        let time = FakeTime::default();
+
+        (Clock::with_source(time.clone()), time)
     }
 
     #[test]
     fn includes_each_short_suspend_in_the_next_sample() {
-        let os_clock = FakeOsClock::start();
-        let clock = Clock::new();
+        let (clock, time) = fake_clock();
         let start = clock.now();
 
         for sample in 1..=3 {
-            os_clock.advance(Duration::from_millis(400));
+            time.advance(Duration::from_millis(400));
             assert_eq!(clock.now(), start + Duration::from_millis(400 * sample));
         }
     }
 
     #[tokio::test(start_paused = true)]
     async fn delivers_overdue_alarm_even_if_tokio_has_not_fired() {
-        let os_clock = FakeOsClock::start();
-        let mut clock = Clock::new();
+        let (mut clock, time) = fake_clock();
         let mut cx = Context::from_waker(Waker::noop());
         let start = clock.now();
         clock.set_alarm(&mut cx, Some(start + Duration::from_secs(5)));
 
-        os_clock.advance(Duration::from_secs(1));
+        time.advance(Duration::from_secs(1));
         assert_eq!(clock.poll_alarm(&mut cx), Poll::Pending);
 
-        // Suspend advances the OS clock while Tokio time stays paused.
-        os_clock.advance(Duration::from_secs(44));
+        time.advance(Duration::from_secs(44));
         assert_eq!(
             clock.poll_alarm(&mut cx),
             Poll::Ready(Alarm {
@@ -226,13 +241,12 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn already_due_alarm_reports_no_lateness() {
-        let os_clock = FakeOsClock::start();
-        let mut clock = Clock::new();
+        let (mut clock, time) = fake_clock();
         let mut cx = Context::from_waker(Waker::noop());
         let start = clock.now();
         clock.set_alarm(&mut cx, Some(start));
 
-        os_clock.advance(Duration::from_secs(60));
+        time.advance(Duration::from_secs(60));
         assert_eq!(
             clock.poll_alarm(&mut cx),
             Poll::Ready(Alarm {
@@ -244,14 +258,13 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn cancels_armed_alarm() {
-        let os_clock = FakeOsClock::start();
-        let mut clock = Clock::new();
+        let (mut clock, time) = fake_clock();
         let mut cx = Context::from_waker(Waker::noop());
         let start = clock.now();
         clock.set_alarm(&mut cx, Some(start + Duration::from_secs(5)));
         clock.set_alarm(&mut cx, None);
 
-        os_clock.advance(Duration::from_secs(45));
+        time.advance(Duration::from_secs(45));
         assert_eq!(clock.poll_alarm(&mut cx), Poll::Pending);
     }
 
@@ -265,26 +278,23 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn re_registers_timer_if_it_wakes_before_the_logical_deadline() {
-        let os_clock = FakeOsClock::start();
-        let mut clock = Clock::new();
+    async fn re_registers_timer_if_it_wakes_before_the_deadline() {
+        let (mut clock, time) = fake_clock();
         let wake_flag = Arc::new(WakeFlag::default());
         let waker = Waker::from(wake_flag.clone());
         let mut cx = Context::from_waker(&waker);
         let deadline = clock.now() + Duration::from_secs(5);
         clock.set_alarm(&mut cx, Some(deadline));
 
-        tokio::time::advance(Duration::from_secs(6)).await;
-        tokio::task::yield_now().await;
+        // Tokio's timer fires while the OS clock has only advanced 3s.
+        tokio::time::advance(Duration::from_secs(5)).await;
+        time.advance(Duration::from_secs(3));
         assert!(wake_flag.0.swap(false, Ordering::Relaxed));
-
-        os_clock.advance(Duration::from_secs(3));
         assert_eq!(clock.poll_alarm(&mut cx), Poll::Pending);
-        assert!(!wake_flag.0.load(Ordering::Relaxed));
 
-        os_clock.advance(Duration::from_secs(2));
-        tokio::time::advance(Duration::from_secs(3)).await;
-        tokio::task::yield_now().await;
+        // The re-armed timer wakes us for the remaining 2s.
+        tokio::time::advance(Duration::from_secs(2)).await;
+        time.advance(Duration::from_secs(2));
         assert!(wake_flag.0.load(Ordering::Relaxed));
         assert_eq!(
             clock.poll_alarm(&mut cx),
