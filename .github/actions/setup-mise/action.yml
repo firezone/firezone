@@ -105,4 +105,5 @@ runs:
       uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
       with:
         sarif_file: trivy-mise.sarif
-        category: trivy-mise
+        # Code scanning accepts one upload per category and job, and a job can set up mise more than once.
+        category: trivy-mise${{ inputs.install_args != '' && format(' {0}', inputs.install_args) || '' }}
