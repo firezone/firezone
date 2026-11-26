@@ -10,13 +10,14 @@ use crate::stun;
 pub(crate) enum Transition {
     /// Time passes on a working network.
     Advance { duration: Duration },
-    /// The client calls `Allocation::refresh`.
-    Refresh,
     /// The client moves to new sockets on these interfaces and calls `Allocation::restart`.
     Roam {
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
     },
+    /// The portal issues the client credentials that are valid for `lifetime` and hands them to
+    /// it, as it does for a relay that the client keeps.
+    RotateCredentials { lifetime: Duration },
     /// The relay restarts: it forgets everything and generates a new secret.
     RebootRelay,
     /// No datagram makes it between the client and the relay for a while.

@@ -97,7 +97,7 @@ jobs:
       - uses: ./.github/actions/show-compose-logs
         if: "!cancelled()"
         with:
-          services: primary-client relay-1 relay-2 gateway portal iperf3 secnetperf
+          services: primary-client relay-1 relay-2 gateway portal iperf3 secnetperf portal-router primary-client-router gateway-router relay-1-router relay-2-router
 
       - name: Ensure no warnings are logged
         if: "!cancelled()"
