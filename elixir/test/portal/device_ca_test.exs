@@ -14,8 +14,9 @@ defmodule Portal.DeviceCATest do
       assert :public_key.pkix_is_self_signed(ca.certificate)
 
       certificate = :public_key.pkix_decode_cert(ca.certificate, :otp)
-      {:ok, {:RSAPublicKey, modulus, _exponent} = public_key} = Portal.Crypto.X509.subject_public_key(certificate)
-      assert byte_size(:binary.encode_unsigned(modulus)) == 256
+      assert {:ok, {{:ECPoint, <<4, _x::binary-size(32), _y::binary-size(32)>>}, {:namedCurve, {1, 2, 840, 10_045, 3, 1, 7}}} =
+               public_key} = Portal.Crypto.X509.subject_public_key(certificate)
+
       assert :public_key.pkix_verify(ca.certificate, public_key)
 
       assert Portal.Crypto.X509.ca_certificate?(certificate)
