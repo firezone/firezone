@@ -16,7 +16,7 @@ use firezone_relay::{
     Sleep, ThroughputLimit, auth::AccountId, ebpf, sockets,
 };
 use futures::{FutureExt, future};
-use logging::{err_with_src, sentry_layer};
+use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -25,6 +25,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -118,6 +119,12 @@ struct Args {
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
 
+    /// File with log filter directives, applied on SIGHUP.
+    ///
+    /// If the file is missing or empty, SIGHUP restores the `RUST_LOG` directives.
+    #[arg(long, env, hide = true)]
+    log_filter_file: Option<PathBuf>,
+
     /// How many worker threads to use.
     #[arg(long, env, hide = true, default_value = "2")]
     num_worker_threads: usize,
@@ -174,7 +181,7 @@ fn main() -> ExitCode {
 
 async fn try_main(args: Args) -> Result<()> {
     let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    setup_tracing(&args, &directives)?;
+    let filter_reload_handle = setup_tracing(&args, &directives)?;
 
     let ebpf = if let Some(interface) = args.ebpf_offloading.as_deref() {
         if args.ebpf_int4_addr.is_none() {
@@ -248,6 +255,12 @@ async fn try_main(args: Args) -> Result<()> {
         )
     });
 
+    tokio::spawn(reload_log_filter_on_sighup(
+        args.log_filter_file.clone(),
+        directives.clone(),
+        filter_reload_handle,
+    )?);
+
     let login = LoginUrl::relay(
         args.api_url.clone(),
         args.name.clone(),
@@ -320,10 +333,45 @@ fn ebpf_log_level(directives: &str) -> Result<LevelFilter> {
     Ok(level)
 }
 
+/// Applies the directives in `file` on every SIGHUP, or `default_directives` if the file is missing or empty.
+fn reload_log_filter_on_sighup(
+    file: Option<PathBuf>,
+    default_directives: String,
+    handle: FilterReloadHandle,
+) -> Result<impl Future<Output = ()>> {
+    let mut hangup = signals::Hangup::new()?;
+
+    Ok(async move {
+        loop {
+            hangup.recv().await;
+
+            let Some(file) = file.as_deref() else {
+                tracing::info!("Ignoring SIGHUP: LOG_FILTER_FILE is not set");
+                continue;
+            };
+
+            let directives = match std::fs::read_to_string(file) {
+                Ok(contents) if !contents.trim().is_empty() => contents.trim().to_owned(),
+                Ok(_) => default_directives.clone(),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => default_directives.clone(),
+                Err(e) => {
+                    tracing::warn!(file = %file.display(), "Failed to read log filter file: {e}");
+                    continue;
+                }
+            };
+
+            match handle.reload(&directives) {
+                Ok(()) => tracing::info!(%directives, "Applied new log filter"),
+                Err(e) => tracing::warn!(%directives, "Failed to apply log filter: {e:#}"),
+            }
+        }
+    })
+}
+
 /// Sets up our tracing infrastructure.
 ///
 /// See [`log_layer`] for details on the base log layer.
-fn setup_tracing(args: &Args, directives: &str) -> Result<()> {
+fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
@@ -333,7 +381,7 @@ fn setup_tracing(args: &Args, directives: &str) -> Result<()> {
     let mut meter_provider =
         opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(make_otel_metadata());
 
-    let (filter, _) = logging::try_filter(directives)?;
+    let (filter, reload_handle) = logging::try_filter(directives)?;
 
     let dispatch: Dispatch = tracing_subscriber::registry()
         .with(log_layer(args).with_filter(filter))
@@ -354,7 +402,7 @@ fn setup_tracing(args: &Args, directives: &str) -> Result<()> {
         .try_init()
         .context("Failed to initialize tracing")?;
 
-    Ok(())
+    Ok(reload_handle)
 }
 
 /// Constructs the base log layer.
