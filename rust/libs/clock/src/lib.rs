@@ -43,7 +43,7 @@ impl Clock {
 
     /// Creates a clock driven by `source`, which returns the time since an
     /// arbitrary, fixed point, including time spent suspended.
-    pub fn with_source(source: impl Fn() -> Duration + Send + 'static) -> Self {
+    fn with_source(source: impl Fn() -> Duration + Send + 'static) -> Self {
         Self {
             instant_at_start: Instant::now(),
             os_clock_at_start: source(),
