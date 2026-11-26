@@ -265,13 +265,13 @@ fn rio_udp(
     Ok((socket.into(), state))
 }
 
-/// Whether to receive through Registered I/O on Windows; on unless `FIREZONE_UDP_RIO=0`.
+/// Whether to receive through Registered I/O on Windows; off unless `FIREZONE_UDP_RIO=1`.
 #[cfg(windows)]
 fn rio_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
     *ENABLED.get_or_init(|| {
-        std::env::var("FIREZONE_UDP_RIO").map_or(true, |v| v != "0" && v != "false")
+        std::env::var("FIREZONE_UDP_RIO").is_ok_and(|v| v == "1" || v == "true")
     })
 }
 
