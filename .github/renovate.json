@@ -9,7 +9,7 @@
   "semanticCommitScope": "deps",
   "commitMessageAction": "bump",
   "commitMessageTopic": "{{{replace '^.*[:/]' '' depName}}}",
-  "commitMessageExtra": "from {{currentVersion}} to {{newVersion}}",
+  "commitMessageExtra": "from {{currentValue}} to {{newValue}}",
   "prBodyTemplate": "{{{warnings}}}{{{changelogs}}}",
   "packageRules": [
     {
