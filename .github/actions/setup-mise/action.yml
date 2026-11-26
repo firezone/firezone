@@ -92,7 +92,7 @@ runs:
       if: ${{ inputs.install == 'true' }}
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
-        scan-type: fs
+        scan-type: rootfs
         scan-ref: ${{ env.MISE_SCAN_PATH }}
         scanners: vuln # secrets/misconfig produce noise on bundled stdlib trees
         severity: HIGH,CRITICAL
