@@ -18,12 +18,12 @@ uv = "0.12.5"        # CI Python scripts
 
 [monorepo]
 config_roots = [
-  "elixir",
-  "kotlin/android",
-  "rust",
-  "rust/gui-client",
-  "rust/tests/fuzz",
-  "swift/apple",
+    "elixir",
+    "kotlin/android",
+    "rust",
+    "rust/gui-client",
+    "rust/tests/fuzz",
+    "swift/apple",
 ]
 
 [tasks.lint-setup]
