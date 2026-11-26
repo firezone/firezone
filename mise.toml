@@ -14,7 +14,7 @@ shellcheck = "0.11.0" # Linting Bash scripts
 prettier = "3.6.2"    # Formatting
 bats = "1.14.0"       # Bash unit testing
 actionlint = "1.7.9"  # Linting GitHub Actions
-uv = "0.12.5"         # CI Python scripts
+uv = "0.13.9"         # CI Python scripts
 
 [monorepo]
 config_roots = [
