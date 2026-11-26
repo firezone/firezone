@@ -1,0 +1,4 @@
+{"name":"pattern_matches_like_documented","seed":5,"iteration":529,"debug":"([[4]], [[4, 3, 0]])","shrunk":"([[4]], [[4]])","created":1795683692}
+{"name":"pattern_matches_like_documented","seed":5,"iteration":934,"debug":"([[5, 4], [6, 0, 6], [5], [4]], [[5, 1], [4, 4, 2], [2, 1], [4]])","shrunk":"([[5], [4]], [[4]])","created":1795683692}
+{"name":"pattern_matches_like_documented","seed":5,"iteration":1472,"debug":"([[4], [1, 6, 6], [0, 4], [4]], [[2, 4], [3]])","shrunk":"([[4], [0, 4], [3]], [[0, 4], [3]])","created":1795683692}
+{"name":"pattern_matches_like_documented","seed":5,"iteration":3950,"debug":"([[4], [4]], [[3]])","shrunk":"([[4], [4]], [[0]])","created":1795683692}
