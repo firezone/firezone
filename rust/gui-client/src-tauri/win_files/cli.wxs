@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  WiX fragment for the `firezone` CLI. Pulled into the main MSI via
-  `tauri.conf.json:fragmentPaths`. Installs the built `firezone-cli.exe`
+  WiX fragment for the `firezone` CLI. Pulled into the main MSI by
+  `mise-tasks/build.sh`. Installs the built `firezone-cli.exe`
   as `firezone.exe` in a `cli` subdirectory of INSTALLDIR and appends
   that subdirectory to the system PATH.
 
@@ -22,7 +22,7 @@
       <Directory Id="CliFolder" Name="cli">
         <Component Id="FirezoneCli" Guid="12ac688f-3421-4b7e-9732-d33a88123fe2">
           <File Id="FirezoneCliExe" Name="firezone.exe"
-                Source="../../firezone-cli.exe" KeyPath="yes" />
+                Source="$(var.TargetDir)\firezone-cli.exe" KeyPath="yes" />
           <Environment Id="FirezoneCliPath" Name="PATH" Value="[INSTALLDIR]cli"
                        Part="last" Action="set" System="yes" Permanent="no" />
         </Component>

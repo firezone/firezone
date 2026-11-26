@@ -76,8 +76,8 @@ stat ../target/release/firezone-client-gui.deb ../target/release/firezone-client
 # Windows:
 # The release exe and MSI installer should be up in the workspace.
 # The exe can run without being installed
-stat ../target/release/Firezone.exe
-stat ../target/release/bundle/msi/Firezone_0.0.0_x64_en-US.msi
+stat ../target/release/firezone-gui-client.exe
+stat ../target/release/firezone-client-gui.msi
 ```
 
 ## Signing the Windows MSI in GitHub CI
