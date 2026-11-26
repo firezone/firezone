@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
@@ -291,6 +292,20 @@ class TunnelService : VpnService() {
         disconnect()
     }
 
+    // Android 14+ lets the user swipe away a foreground service's notification; put it back
+    // for as long as the tunnel is up.
+    private val notificationDismissedReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context,
+                intent: Intent,
+            ) {
+                if (tunnelState == State.UP) {
+                    startConnectedNotification()
+                }
+            }
+        }
+
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
 
     private val restrictionsReceiver =
@@ -346,6 +361,12 @@ class TunnelService : VpnService() {
         super.onCreate()
         activeService = this
         registerReceiver(restrictionsReceiver, restrictionsFilter)
+        ContextCompat.registerReceiver(
+            this,
+            notificationDismissedReceiver,
+            IntentFilter(TunnelNotification.ACTION_CONNECTED_NOTIFICATION_DISMISSED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
 
         // `Telemetry.start` honours this for the Kotlin side; connlib's telemetry is a separate
         // client, so without this a build stamped as not reporting still reports.
@@ -359,6 +380,7 @@ class TunnelService : VpnService() {
 
         activeService = null
         unregisterReceiver(restrictionsReceiver)
+        unregisterReceiver(notificationDismissedReceiver)
         serviceScope.cancel()
 
         if (!BuildConfig.NO_TELEMETRY) {
