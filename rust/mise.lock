@@ -73,11 +73,6 @@ checksum = "sha256:2437a51d904b29abe2d3aa9ea87e353c86cff108d519ba1e5fb495bb28e7f
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396996898"
 
-[tools."github:EmbarkStudios/cargo-deny"."platforms.macos-x64"]
-checksum = "sha256:90fb22528daae11d0ce68cd968ea1f8e4d852b33510d0243d8c6666fc1dbea16"
-url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-x86_64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396996891"
-
 [tools."github:EmbarkStudios/cargo-deny"."platforms.windows-x64"]
 checksum = "sha256:410b2f2bcb4d802dd8b018939156617ca290ac06554e95c35ab0a2bd07be2298"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-x86_64-pc-windows-msvc.tar.gz"
@@ -169,12 +164,6 @@ backend = "github:bencherdev/bencher"
 [tools."github:bencherdev/bencher".options]
 asset_pattern = "bencher-*-macos-x86-64"
 
-[tools."github:bencherdev/bencher"."platforms.macos-x64"]
-checksum = "sha256:17d5842287209c1df869a2da22dbbea4cb5d0ed4b16aabf9f4b3b6bf9bb79deb"
-url = "https://github.com/bencherdev/bencher/releases/download/v0.6.17/bencher-v0.6.17-macos-x86-64"
-url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/746096386"
-provenance = "github-attestations"
-
 [[tools."github:bencherdev/bencher"]]
 version = "0.6.17"
 backend = "github:bencherdev/bencher"
@@ -235,12 +224,6 @@ url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/ca
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392739"
 provenance = "github-attestations"
 
-[tools."github:cargo-bins/cargo-binstall"."platforms.macos-x64"]
-checksum = "sha256:e06370bec7143668653bb7c09d0b8b689fc703dd4fa58ec5847c4b571d8a490d"
-url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/cargo-binstall-x86_64-apple-darwin.zip"
-url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392447"
-provenance = "github-attestations"
-
 [tools."github:cargo-bins/cargo-binstall"."platforms.windows-x64"]
 checksum = "sha256:89706aa5215c164d8d091597a470fee72308ac87e8553af395ea77db844a888c"
 url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/cargo-binstall-x86_64-pc-windows-msvc.zip"
@@ -283,12 +266,6 @@ checksum = "sha256:c80d92b6d34eb64fe7402f56cc7968fbb15aab1c763254ad428b55cc98ec7
 checksum_source = "mise-versions"
 url = "https://github.com/getsentry/sentry-cli/releases/download/3.8.2/sentry-cli-Darwin-arm64"
 url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/665583200"
-
-[tools."github:getsentry/sentry-cli"."platforms.macos-x64"]
-checksum = "sha256:084591ee1f0a43ba8696ccde30d4a79cd9a70d0fa294c5a10143a340f8f332ff"
-checksum_source = "mise-versions"
-url = "https://github.com/getsentry/sentry-cli/releases/download/3.8.2/sentry-cli-Darwin-x86_64"
-url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/665583207"
 
 [tools."github:getsentry/sentry-cli"."platforms.windows-arm64"]
 checksum = "sha256:3c197c61120e2d53a6ecfd9e7812d123bfdc598df1d569700bf5c3b936dfe891"
@@ -360,12 +337,6 @@ url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo
 url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/302796471"
 provenance = "github-attestations"
 
-[tools."github:taiki-e/cargo-llvm-cov"."platforms.macos-x64"]
-checksum = "sha256:0bae81daedc549de52691cab8ecc4c6bf9fb03d16eb693f6de4a871cfe1f2413"
-url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo-llvm-cov-x86_64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/302796569"
-provenance = "github-attestations"
-
 [tools."github:taiki-e/cargo-llvm-cov"."platforms.windows-x64"]
 checksum = "sha256:521a638aec9f85dfdfafe705cb1fd8a34b518564ff9ff81cb79b8ffd1f0be5f1"
 url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo-llvm-cov-x86_64-pc-windows-msvc.zip"
@@ -403,11 +374,6 @@ url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/4219376
 checksum = "sha256:bfe1db27714f49c47ae1d8566e1029ede843ae7aac361fe8c0ba3a4bfc21d877"
 url = "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.2/cargo-tauri-aarch64-apple-darwin.zip"
 url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/421937687"
-
-[tools."github:tauri-apps/tauri"."platforms.macos-x64"]
-checksum = "sha256:d19d373866765ecf17112501daa645b8be3f23d231989a7824d4ec73b1efddb2"
-url = "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.2/cargo-tauri-x86_64-apple-darwin.zip"
-url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/421937689"
 
 [tools."github:tauri-apps/tauri"."platforms.windows-arm64"]
 checksum = "sha256:9cfecb8e103944cf9ece6299fa625d6cc0f11b03fb94d487ae43ffdca556af9a"
