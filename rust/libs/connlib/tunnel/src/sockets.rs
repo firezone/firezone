@@ -582,7 +582,13 @@ impl ThreadedUdpSocket {
                                 return Ok(());
                             }
 
-                            let Err(e) = socket.send(datagram).await else {
+                            let start = std::time::Instant::now();
+                            let result = socket.send(datagram).await;
+                            SEND_TASK_NANOS.fetch_add(
+                                start.elapsed().as_nanos() as u64,
+                                Ordering::Relaxed,
+                            );
+                            let Err(e) = result else {
                                 return Ok(());
                             };
 
@@ -649,6 +655,9 @@ impl ThreadedUdpSocket {
                         otel::attr::network_io_direction_receive(),
                     ]);
 
+                    let thread_name = std::thread::current().name().unwrap_or_default().to_owned();
+                    let mut recv_stats = RecvThreadStats::default();
+
                     async move {
                         loop {
                             let batch = match socket.recv_from().await {
@@ -679,7 +688,12 @@ impl ThreadedUdpSocket {
 
                             let depth = inbound_tx.max_capacity() - inbound_tx.capacity();
 
-                            if inbound_tx.send(batch).await.is_err() {
+                            let start = std::time::Instant::now();
+                            let full = inbound_tx.capacity() == 0;
+                            let result = inbound_tx.send(batch).await;
+                            recv_stats.record(&thread_name, full, start);
+
+                            if result.is_err() {
                                 tracing::debug!(
                                     "Channel for inbound datagrams closed; exiting UDP recv task"
                                 );
@@ -943,3 +957,58 @@ fn read_end_var_usize(name: &str) -> Result<Option<usize>> {
 #[derive(thiserror::Error, Debug)]
 #[error("UDP socket thread stopped")]
 pub struct UdpSocketThreadStopped;
+
+static SEND_TASK_NANOS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Where a UDP thread's time goes, logged every few seconds.
+struct RecvThreadStats {
+    since: std::time::Instant,
+    batches: u64,
+    channel_full: u64,
+    channel_send_nanos: u64,
+}
+
+impl Default for RecvThreadStats {
+    fn default() -> Self {
+        Self {
+            since: std::time::Instant::now(),
+            batches: 0,
+            channel_full: 0,
+            channel_send_nanos: 0,
+        }
+    }
+}
+
+impl RecvThreadStats {
+    fn record(&mut self, thread: &str, full: bool, send_start: std::time::Instant) {
+        self.batches += 1;
+        self.channel_full += u64::from(full);
+        self.channel_send_nanos += send_start.elapsed().as_nanos() as u64;
+
+        let elapsed = self.since.elapsed();
+        if elapsed < std::time::Duration::from_secs(5) {
+            return;
+        }
+
+        let sf = socket_factory::stats::take();
+        tracing::info!(
+            %thread,
+            elapsed_ms = elapsed.as_millis() as u64,
+            batches = self.batches,
+            datagrams = sf.recv_datagrams,
+            per_batch = format!("{:.1}", sf.recv_datagrams as f64 / self.batches.max(1) as f64),
+            recv_ms = sf.recv_ms,
+            recv_calls = sf.recv_calls,
+            recv_waits = sf.recv_waits,
+            channel_full = self.channel_full,
+            channel_send_ms = self.channel_send_nanos / 1_000_000,
+            send_task_ms = SEND_TASK_NANOS.swap(0, Ordering::Relaxed) / 1_000_000,
+            quinn_send_ms = sf.send_ms,
+            send_calls = sf.send_calls,
+            send_waits = sf.send_waits,
+            "UDP thread stats"
+        );
+
+        *self = Self::default();
+    }
+}

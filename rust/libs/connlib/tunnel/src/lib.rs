@@ -364,6 +364,7 @@ impl ClientTunnel {
         now: Instant,
     ) -> Poll<Result<ClientEvent, TunnelError>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
+        let mut prof = EventLoopProf::start();
 
         while let Some(mut tick) = budget.next() {
             let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
@@ -402,7 +403,11 @@ impl ClientTunnel {
                 tick.want_continue();
             }
 
+            prof.lap(Phase::Pre);
+
             // Process all IO sources that are ready.
+            let input = self.io.poll(cx);
+            prof.lap(Phase::IoPoll);
             if let Poll::Ready(io::Input {
                 dns_responses,
                 dns_queries: _,
@@ -410,8 +415,10 @@ impl ClientTunnel {
                 network,
                 decrypted,
                 mut error,
-            }) = self.io.poll(cx)
+            }) = input
             {
+                prof.io_ready += 1;
+
                 for response in dns_responses {
                     self.role_state.handle_dns_response(response, now);
                     self.needs_timeout = true;
@@ -424,7 +431,10 @@ impl ClientTunnel {
 
                     let mut packets = packets
                         .prefetching()
-                        .inspect(|p| tun_received.record(p))
+                        .inspect(|p| {
+                            tun_received.record(p);
+                            prof.tun_in += 1;
+                        })
                         .peekable();
 
                     while let Some(packet) = packets.next() {
@@ -457,12 +467,16 @@ impl ClientTunnel {
 
                     tick.want_continue();
                 }
+                prof.lap(Phase::Device);
 
                 if let Some(received) = network {
                     let mut jobs = self.io.new_decrypt_jobs(received);
                     let (mut batches, segments) = jobs.split();
                     let mut segments = segments
-                        .inspect(|segment| udp_received.record(segment))
+                        .inspect(|segment| {
+                            udp_received.record(segment);
+                            prof.udp_in += 1;
+                        })
                         .peekable();
 
                     while let Some(segment) = segments.next() {
@@ -494,6 +508,7 @@ impl ClientTunnel {
 
                     tick.want_continue();
                 }
+                prof.lap(Phase::Network);
 
                 if let Some(mut decrypted) = decrypted {
                     for io::DecryptedBatch {
@@ -520,6 +535,7 @@ impl ClientTunnel {
                                     let packet = packet.with_ecn_from_transport(ecn);
 
                                     tun_transmitted.record(&packet);
+                                    prof.tun_out += 1;
                                     self.io.queue_tun(packet);
                                 }
                                 Ok(None) => self.needs_timeout = true,
@@ -533,6 +549,7 @@ impl ClientTunnel {
 
                     tick.want_continue();
                 }
+                prof.lap(Phase::Decrypted);
 
                 if !error.is_empty() {
                     return Poll::Ready(Err(error));
@@ -858,4 +875,104 @@ fn listen_sockets(ips: Vec<IpAddr>, port: u16) -> Vec<SocketAddr> {
     ips.into_iter()
         .map(|ip| SocketAddr::new(ip, port))
         .collect()
+}
+
+#[derive(Clone, Copy)]
+enum Phase {
+    Pre,
+    IoPoll,
+    Device,
+    Network,
+    Decrypted,
+}
+
+/// Where the event loop's time goes, accumulated per thread and logged every few seconds.
+struct EventLoopProf {
+    last: Instant,
+    io_ready: u64,
+    udp_in: u64,
+    tun_in: u64,
+    tun_out: u64,
+}
+
+#[derive(Default)]
+struct EventLoopTotals {
+    since: Option<Instant>,
+    polls: u64,
+    iterations: u64,
+    io_ready: u64,
+    udp_in: u64,
+    tun_in: u64,
+    tun_out: u64,
+    nanos: [u64; 5],
+}
+
+thread_local! {
+    static EVENT_LOOP_TOTALS: std::cell::RefCell<EventLoopTotals> = std::cell::RefCell::default();
+}
+
+impl EventLoopProf {
+    fn start() -> Self {
+        EVENT_LOOP_TOTALS.with_borrow_mut(|t| t.polls += 1);
+
+        Self {
+            last: Instant::now(),
+            io_ready: 0,
+            udp_in: 0,
+            tun_in: 0,
+            tun_out: 0,
+        }
+    }
+
+    fn lap(&mut self, phase: Phase) {
+        let now = Instant::now();
+        let nanos = now.duration_since(self.last).as_nanos() as u64;
+        self.last = now;
+
+        EVENT_LOOP_TOTALS.with_borrow_mut(|t| {
+            t.nanos[phase as usize] += nanos;
+            if matches!(phase, Phase::Pre) {
+                t.iterations += 1;
+            }
+        });
+    }
+}
+
+impl Drop for EventLoopProf {
+    fn drop(&mut self) {
+        EVENT_LOOP_TOTALS.with_borrow_mut(|t| {
+            t.io_ready += self.io_ready;
+            t.udp_in += self.udp_in;
+            t.tun_in += self.tun_in;
+            t.tun_out += self.tun_out;
+
+            let since = *t.since.get_or_insert_with(Instant::now);
+            let elapsed = since.elapsed();
+            if elapsed < Duration::from_secs(5) {
+                return;
+            }
+
+            let ms = |i: usize| t.nanos[i] / 1_000_000;
+            tracing::info!(
+                elapsed_ms = elapsed.as_millis() as u64,
+                polls = t.polls,
+                iterations = t.iterations,
+                io_ready = t.io_ready,
+                udp_in = t.udp_in,
+                udp_per_io_ready = format!("{:.1}", t.udp_in as f64 / t.io_ready.max(1) as f64),
+                tun_in = t.tun_in,
+                tun_out = t.tun_out,
+                pre_ms = ms(0),
+                io_poll_ms = ms(1),
+                device_ms = ms(2),
+                network_ms = ms(3),
+                decrypted_ms = ms(4),
+                decrypt_jobs = io::DECRYPT_JOBS.swap(0, std::sync::atomic::Ordering::Relaxed),
+                encrypt_jobs = io::ENCRYPT_JOBS.swap(0, std::sync::atomic::Ordering::Relaxed),
+                "Event loop stats"
+            );
+
+            *t = EventLoopTotals::default();
+        });
+    }
 }

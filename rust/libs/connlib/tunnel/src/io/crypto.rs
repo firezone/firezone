@@ -57,6 +57,10 @@ pub struct CryptoWorkers {
     decrypt_batches: Vec<(PendingDecapsulate, SegmentIndex)>,
 }
 
+/// Jobs handed to the crypto workers, for profiling.
+pub(crate) static DECRYPT_JOBS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub(crate) static ENCRYPT_JOBS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 struct Workers {
     senders: Vec<mpsc::Sender<Job>>,
     next: usize,
@@ -151,6 +155,12 @@ impl Workers {
     ///
     /// Without any workers left, `job` runs inline.
     fn send(&mut self, mut job: Job) {
+        match &job {
+            Job::Encrypt(_) => &ENCRYPT_JOBS,
+            Job::Decrypt(_) => &DECRYPT_JOBS,
+        }
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         while !self.senders.is_empty() {
             let index = self.next % self.senders.len();
             self.next = self.next.wrapping_add(1);

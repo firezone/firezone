@@ -22,6 +22,7 @@ use tokio::io::Interest;
 
 mod buffer_sizes;
 mod pool;
+pub mod stats;
 #[cfg(any(windows, test))]
 mod uro;
 
@@ -149,16 +150,21 @@ async fn send_unconnected(
     if socket.state.is_rio() {
         return std::future::poll_fn(|cx| {
             loop {
-                match socket
+                let start = Instant::now();
+                let result = socket
                     .state
-                    .try_send(UdpSockRef::from(socket.inner), transmit)
-                {
+                    .try_send(UdpSockRef::from(socket.inner), transmit);
+                stats::add_since(&stats::SEND_NANOS, start);
+                stats::inc(&stats::SEND_CALLS, 1);
+
+                match result {
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
                     result => return Poll::Ready(result),
                 }
 
                 match socket.state.poll_send_ready(cx) {
                     Poll::Pending => {
+                        stats::inc(&stats::SEND_WAITS, 1);
                         blocked_since.get_or_insert_with(Instant::now);
                         return Poll::Pending;
                     }
@@ -172,9 +178,14 @@ async fn send_unconnected(
 
     let tokio = pool::tokio_socket(socket.inner)?;
     let mut send = std::pin::pin!(tokio.async_io(Interest::WRITABLE, || {
-        socket
+        let start = Instant::now();
+        let result = socket
             .state
-            .try_send(UdpSockRef::from(socket.inner), transmit)
+            .try_send(UdpSockRef::from(socket.inner), transmit);
+        stats::add_since(&stats::SEND_NANOS, start);
+        stats::inc(&stats::SEND_CALLS, 1);
+
+        result
     }));
 
     std::future::poll_fn(|cx| {

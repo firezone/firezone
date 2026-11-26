@@ -257,7 +257,10 @@ pub(crate) fn poll_recv_ready(
             }
 
             match socket.state.poll_recv_ready(cx) {
-                Poll::Pending => return Poll::Pending,
+                Poll::Pending => {
+                    crate::stats::inc(&crate::stats::RECV_WAITS, 1);
+                    return Poll::Pending;
+                }
                 Poll::Ready(Err(e)) => {
                     return Poll::Ready(Err(e).context("Failed to wait for RIO receives"));
                 }
@@ -273,7 +276,10 @@ pub(crate) fn poll_recv_ready(
 
     loop {
         match tokio.poll_recv_ready(cx) {
-            Poll::Pending => return Poll::Pending,
+            Poll::Pending => {
+                crate::stats::inc(&crate::stats::RECV_WAITS, 1);
+                return Poll::Pending;
+            }
             Poll::Ready(Err(e)) => {
                 return Poll::Ready(Err(e).context("Failed to wait for socket to become readable"));
             }
@@ -311,6 +317,19 @@ pub(crate) fn recv_batch(
     recv_buf_size: usize,
     port: u16,
 ) -> io::Result<DatagramBatch> {
+    let start = std::time::Instant::now();
+    let result = recv_batch_inner(socket, recv_buf_size, port);
+    crate::stats::add_since(&crate::stats::RECV_NANOS, start);
+    crate::stats::inc(&crate::stats::RECV_CALLS, 1);
+
+    result
+}
+
+fn recv_batch_inner(
+    socket: Socket<'_>,
+    recv_buf_size: usize,
+    port: u16,
+) -> io::Result<DatagramBatch> {
     let mut batch = RecvBatch::pull(socket.recv_batch_size(), recv_buf_size);
 
     let len = {
@@ -343,6 +362,8 @@ pub(crate) fn recv_batch(
     ) {
         socket.disable_gro();
     }
+
+    crate::stats::inc(&crate::stats::RECV_DATAGRAMS, len as u64);
 
     Ok(DatagramBatch::new(batch.buffers, batch.metas, port, len))
 }
