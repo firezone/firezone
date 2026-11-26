@@ -1,8 +1,8 @@
 [Desktop Entry]
 Categories=Network;Security;
 Comment=Zero-trust access to your organization's resources
-Exec={{exec}}
-Icon={{icon}}
+Exec=firezone-client-gui
+Icon=firezone-client-gui
 Keywords=VPN;WireGuard;zero-trust;tunnel;
 Name=Firezone
 Terminal=false
