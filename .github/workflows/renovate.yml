@@ -5,6 +5,12 @@ run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
   schedule:
     - cron: "17 2 * * 1"
   workflow_dispatch:
+    inputs:
+      log-level:
+        description: Renovate log level
+        default: info
+        type: choice
+        options: [info, debug]
 
 permissions: {}
 
@@ -45,4 +51,4 @@ jobs:
           # The slim image installs tools such as mise on demand. Renovate runs
           # `mise lock` in mise's safe mode, so no `allowedUnsafeExecutions`.
           RENOVATE_BINARY_SOURCE: install
-          LOG_LEVEL: ${{ runner.debug == '1' && 'debug' || 'info' }}
+          LOG_LEVEL: ${{ inputs.log-level || 'info' }}
