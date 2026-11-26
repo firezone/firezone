@@ -30,6 +30,7 @@ jobs:
           repositories: ${{ github.repository }}
           permission-contents: write
           permission-pull-requests: write
+          permission-statuses: write
       - name: Derive git author from the app's bot user
         id: author
         env:
