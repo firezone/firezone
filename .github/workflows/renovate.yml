@@ -52,6 +52,7 @@ jobs:
           # The slim image installs tools such as mise on demand. Renovate runs
           # `mise lock` in mise's safe mode, so no `allowedUnsafeExecutions`.
           RENOVATE_BINARY_SOURCE: install
+          RENOVATE_ALLOWED_COMMANDS: '["^mise fmt -C \\./[a-z0-9/_.-]*$"]'
           LOG_LEVEL: ${{ inputs.log-level || 'info' }}
           # Renovate passes these to the tools it runs. Without them, `mise lock`
           # takes release checksums from mise's own cache of GitHub's metadata.
