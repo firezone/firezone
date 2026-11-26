@@ -77,7 +77,7 @@ jobs:
           gh api --method POST /repos/firezone/infra/dispatches \
             --raw-field event_type=benchmark-release \
             --raw-field "client_payload[git_sha]=$FIREZONE_SHA" \
-            --raw-field 'client_payload[device_pair]=iMac <> Macbook' \
+            --raw-field 'client_payload[device_pair]=iMac (macOS) <> Macbook (macOS)' \
             --raw-field "client_payload[protocol]=$BENCHMARK_PROTOCOL" \
             --field 'client_payload[publish]=true'
 
