@@ -82,7 +82,7 @@ url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
 url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [[tools.prettier]]
-version = "3.6.2"
+version = "3.10.1"
 backend = "npm:prettier"
 
 [[tools.python]]
