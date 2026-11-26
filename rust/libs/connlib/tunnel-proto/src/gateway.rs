@@ -77,8 +77,6 @@ pub struct GatewayState {
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
-    /// Whether a relay found another device's allocation on our socket since we last moved to a new port.
-    socket_taken: bool,
 
     max_dns_domains_per_client: usize,
 }
@@ -89,7 +87,6 @@ impl GatewayState {
             peers: Default::default(),
             node: Node::new(seed, now, unix_ts),
             portal: Default::default(),
-            socket_taken: false,
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
@@ -658,7 +655,9 @@ impl GatewayState {
                         excluded_relay_ids: blocked,
                     });
                 }
-                snownet::Event::SocketTaken => self.socket_taken = true,
+                snownet::Event::SocketTaken => {
+                    self.buffered_events.push_back(GatewayEvent::SocketTaken)
+                }
             }
         }
 
@@ -679,17 +678,10 @@ impl GatewayState {
         }
     }
 
-    /// Whether we need to move to a new port because another device behind our NAT uses our public socket.
-    pub fn is_socket_taken(&self) -> bool {
-        self.socket_taken
-    }
+    pub fn reset(&mut self, now: Instant, reason: &str) {
+        tracing::info!("Resetting network state ({reason})");
 
-    /// Resets after our sockets moved to a new port.
-    pub fn reset_on_new_port(&mut self, now: Instant) {
-        tracing::info!("Resetting network state (socket is taken by another device)");
-
-        self.socket_taken = false;
-        self.node.reset(snownet::StaticKey::Keep, now);
+        self.node.reset(now);
         self.drain_node_events();
     }
 

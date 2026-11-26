@@ -9,7 +9,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{
     collections::BTreeSet,
     io,
@@ -372,25 +372,32 @@ impl Eventloop {
                 tunnel.set_tun(tun);
             }
             Command::Reset(reason) => {
-                let now = self.clock.now();
-                let Some(tunnel) = self.tunnel.as_mut() else {
-                    return Ok(ControlFlow::Continue(()));
-                };
-
-                tunnel.state_mut().set_portal_connected(false);
-                tunnel.reset(&reason, now);
-                tunnel_bypass_resolver::reset_sockets();
-                telemetry::reset_ingest();
-                self.portal_cmd_tx
-                    .send(PortalCommand::Connect(PublicKeyParam(
-                        tunnel.public_key().to_bytes(),
-                    )))
-                    .await
-                    .context("Failed to connect phoenix-channel")?;
+                self.reset_tunnel(|tunnel, now| tunnel.reset(&reason, now))
+                    .await?;
             }
         }
 
         Ok(ControlFlow::Continue(()))
+    }
+
+    async fn reset_tunnel(&mut self, reset: impl FnOnce(&mut ClientTunnel, Instant)) -> Result<()> {
+        let now = self.clock.now();
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return Ok(());
+        };
+
+        tunnel.state_mut().set_portal_connected(false);
+        reset(tunnel, now);
+        tunnel_bypass_resolver::reset_sockets();
+        telemetry::reset_ingest();
+        self.portal_cmd_tx
+            .send(PortalCommand::Connect(PublicKeyParam(
+                tunnel.public_key().to_bytes(),
+            )))
+            .await
+            .context("Failed to connect phoenix-channel")?;
+
+        Ok(())
     }
 
     async fn handle_tunnel_event(&mut self, event: Result<ClientEvent, TunnelError>) -> Result<()> {
@@ -517,18 +524,9 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::PublicKeyRotated) => {
-                let Some(tunnel) = self.tunnel.as_mut() else {
-                    return Ok(());
-                };
-
-                tunnel.state_mut().set_portal_connected(false);
-                self.portal_cmd_tx
-                    .send(PortalCommand::Connect(PublicKeyParam(
-                        tunnel.public_key().to_bytes(),
-                    )))
-                    .await
-                    .context("Failed to connect phoenix-channel")?;
+            Ok(ClientEvent::SocketTaken) => {
+                self.reset_tunnel(|tunnel, now| tunnel.reset_on_new_port(now))
+                    .await?;
             }
             Err(error) => self.handle_tunnel_error(error)?,
         }

@@ -198,7 +198,7 @@ pub trait Role: Sized {
     ) -> Poll<Result<Self::Event, TunnelError>>;
     fn poll_timeout(&mut self) -> Option<Instant>;
     fn handle_timeout(&mut self, now: Instant);
-    fn reset_on_new_port(&mut self, now: Instant);
+    fn reset(&mut self, now: Instant, reason: &str);
     fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant);
 }
 
@@ -221,8 +221,8 @@ impl Role for ClientState {
         ClientState::handle_timeout(self, now);
     }
 
-    fn reset_on_new_port(&mut self, now: Instant) {
-        ClientState::reset_on_new_port(self, now);
+    fn reset(&mut self, now: Instant, reason: &str) {
+        ClientState::reset(self, now, reason);
     }
 
     fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
@@ -249,8 +249,8 @@ impl Role for GatewayState {
         GatewayState::handle_timeout(self, now);
     }
 
-    fn reset_on_new_port(&mut self, now: Instant) {
-        GatewayState::reset_on_new_port(self, now);
+    fn reset(&mut self, now: Instant, reason: &str) {
+        GatewayState::reset(self, now, reason);
     }
 
     fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
@@ -297,12 +297,13 @@ impl<R: Role> Tunnel<R> {
     }
 
     /// Binds our UDP sockets to a new port that the OS picks and resets.
-    fn rebind_to_new_port(&mut self, now: Instant) {
+    pub fn reset_on_new_port(&mut self, now: Instant) {
         self.io.reset_on_new_port();
         let ips = mem::take(&mut self.additional_host_candidates);
         self.set_additional_host_candidates(ips, now);
         self.handle_overdue_timeout(now);
-        self.role_state.reset_on_new_port(now);
+        self.role_state
+            .reset(now, "socket is taken by another device");
     }
 
     fn handle_overdue_timeout(&mut self, now: Instant) {
@@ -407,10 +408,6 @@ impl ClientTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
-            if self.role_state.is_socket_taken() {
-                self.rebind_to_new_port(now);
-            }
-
             let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
             let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
             let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
@@ -658,10 +655,6 @@ impl GatewayTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
-            if self.role_state.is_socket_taken() {
-                self.rebind_to_new_port(now);
-            }
-
             let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
             let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
             let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);

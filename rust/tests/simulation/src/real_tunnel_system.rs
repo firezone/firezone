@@ -1216,7 +1216,7 @@ impl RealTunnelSystem {
         let portal_unreachable = self
             .client_portal_offline_until
             .is_some_and(|(cid, until)| cid == src && now < until);
-        if portal_unreachable && !matches!(event, ClientEvent::PublicKeyRotated) {
+        if portal_unreachable && !matches!(event, ClientEvent::SocketTaken) {
             tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
             return;
@@ -1459,12 +1459,16 @@ impl RealTunnelSystem {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
             }
-            ClientEvent::PublicKeyRotated => {
+            ClientEvent::SocketTaken => {
                 let resources = model.clients[&src].inner().resource_descriptions();
                 let client = self.clients.get_mut(&src).unwrap();
 
-                // Mimic the event loop: rejoin the portal with our new key and receive `init`.
-                client.exec_mut(|c| c.state_mut().set_portal_connected(false));
+                // Mimic the event loop: reset on a new port, rejoin the portal and receive `init`.
+                let old_key = client.inner().state().public_key();
+                client.exec_mut(|c| {
+                    c.state_mut().set_portal_connected(false);
+                    c.tunnel.inner_mut().reset_on_new_port(now);
+                });
 
                 if portal_unreachable {
                     return;
@@ -1475,7 +1479,9 @@ impl RealTunnelSystem {
                     c.update_relays(iter::empty(), self.relays.iter(), now);
                     c.state_mut().set_resources(resources, now);
                 });
-                self.notify_public_key_changed(src, portal, now);
+                if client.inner().state().public_key() != old_key {
+                    self.notify_public_key_changed(src, portal, now);
+                }
             }
             ClientEvent::DeviceDomainQueried { domain } => {
                 // Mimic the portal: every device resolves, access is asked for per flow.
@@ -1728,6 +1734,27 @@ fn on_gateway_event(
                 now,
             );
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
+        }
+        GatewayEvent::SocketTaken => {
+            // Mimic the event loop: reset on a new port and, with a new key, rejoin the portal,
+            // which tells the Clients.
+            let old_key = gateway.inner().state().public_key();
+            gateway.exec_mut(|g| g.tunnel.inner_mut().reset_on_new_port(now));
+            let public_key = gateway.inner().state().public_key();
+
+            if public_key == old_key {
+                return;
+            }
+
+            for client in clients.values_mut() {
+                client.exec_mut(|c| {
+                    c.state_mut().handle_public_key_changed(
+                        ClientOrGatewayId::Gateway(src),
+                        public_key,
+                        now,
+                    )
+                });
+            }
         }
     }
 }
