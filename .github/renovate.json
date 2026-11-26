@@ -3,6 +3,7 @@
   "enabledManagers": ["mise"],
   "dependencyDashboard": false,
   "minimumReleaseAge": "7 days",
+  "prHourlyLimit": 0,
   "semanticCommits": "enabled",
   "semanticCommitType": "build",
   "semanticCommitScope": "deps",
