@@ -128,76 +128,94 @@ url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker
 url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638313025"
 
 [[tools."github:bencherdev/bencher"]]
-version = "0.6.13"
-backend = "github:bencherdev/bencher"
-
-[tools."github:bencherdev/bencher".options]
-asset_pattern = "bencher-*-linux-x86-64"
-
-[tools."github:bencherdev/bencher"."platforms.linux-x64"]
-checksum = "sha256:41b172864a1cd347f75a68688100688453b02f28e1d1b831b326931b895b4b3d"
-url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-linux-x86-64"
-url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741337"
-
-[[tools."github:bencherdev/bencher"]]
-version = "0.6.13"
-backend = "github:bencherdev/bencher"
-
-[tools."github:bencherdev/bencher".options]
-asset_pattern = "bencher-*-windows-arm-64.exe"
-
-[tools."github:bencherdev/bencher"."platforms.windows-arm64"]
-checksum = "sha256:1cf14d554ef5aba2065d1a6f41f0e9820ef02809b29ea3403b8f774bcbc74ea4"
-url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-windows-arm-64.exe"
-url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741329"
-
-[[tools."github:bencherdev/bencher"]]
-version = "0.6.13"
-backend = "github:bencherdev/bencher"
-
-[tools."github:bencherdev/bencher".options]
-asset_pattern = "bencher-*-macos-arm-64"
-
-[tools."github:bencherdev/bencher"."platforms.macos-arm64"]
-checksum = "sha256:24934e555bcf39eefcabaaeea8cd8d10479aa759402e54243753359bfbb83923"
-url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-macos-arm-64"
-url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741338"
-
-[[tools."github:bencherdev/bencher"]]
-version = "0.6.13"
-backend = "github:bencherdev/bencher"
-
-[tools."github:bencherdev/bencher".options]
-asset_pattern = "bencher-*-macos-x86-64"
-
-[tools."github:bencherdev/bencher"."platforms.macos-x64"]
-checksum = "sha256:24f34cca9c86d338c89e58445f8f72d4b8221e78620f3994c5e9436fd4b8d25a"
-url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-macos-x86-64"
-url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741330"
-
-[[tools."github:bencherdev/bencher"]]
-version = "0.6.13"
+version = "0.6.17"
 backend = "github:bencherdev/bencher"
 
 [tools."github:bencherdev/bencher".options]
 asset_pattern = "bencher-*-linux-arm-64"
 
 [tools."github:bencherdev/bencher"."platforms.linux-arm64"]
-checksum = "sha256:eefe56680908ad1772ec19a7f7e35cc64039f27be05cc5891e5cb5eca24b824c"
-url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-linux-arm-64"
-url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741335"
+checksum = "sha256:efce8fb6fa1629e29dcadf27499c0244b4a058182e497cd9695d2ee1b7ed6a89"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.17/bencher-v0.6.17-linux-arm-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/746096392"
+provenance = "github-attestations"
+
+[tools."github:bencherdev/bencher"."platforms.linux-arm64-musl"]
+checksum = "sha256:efce8fb6fa1629e29dcadf27499c0244b4a058182e497cd9695d2ee1b7ed6a89"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.17/bencher-v0.6.17-linux-arm-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/746096392"
+provenance = "github-attestations"
 
 [[tools."github:bencherdev/bencher"]]
-version = "0.6.13"
+version = "0.6.17"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-linux-x86-64"
+
+[tools."github:bencherdev/bencher"."platforms.linux-x64"]
+checksum = "sha256:79b259e569574c1674c8e2d693082fd3db491f39d43fcda8cc11db2ffbe51584"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.17/bencher-v0.6.17-linux-x86-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/746096393"
+provenance = "github-attestations"
+
+[tools."github:bencherdev/bencher"."platforms.linux-x64-musl"]
+checksum = "sha256:79b259e569574c1674c8e2d693082fd3db491f39d43fcda8cc11db2ffbe51584"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.17/bencher-v0.6.17-linux-x86-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/746096393"
+provenance = "github-attestations"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.17"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-macos-arm-64"
+
+[tools."github:bencherdev/bencher"."platforms.macos-arm64"]
+checksum = "sha256:423311c24282f84121372c3749c699728565bdbf166e5f61bd03a09de2f575b3"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.17/bencher-v0.6.17-macos-arm-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/746096373"
+provenance = "github-attestations"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.17"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-macos-x86-64"
+
+[tools."github:bencherdev/bencher"."platforms.macos-x64"]
+checksum = "sha256:17d5842287209c1df869a2da22dbbea4cb5d0ed4b16aabf9f4b3b6bf9bb79deb"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.17/bencher-v0.6.17-macos-x86-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/746096386"
+provenance = "github-attestations"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.17"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-windows-arm-64.exe"
+
+[tools."github:bencherdev/bencher"."platforms.windows-arm64"]
+checksum = "sha256:940d2dafea123f3fe7c1ce35c213f375e214f65b1c2690825b9ea8d268aeb15f"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.17/bencher-v0.6.17-windows-arm-64.exe"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/746096388"
+provenance = "github-attestations"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.17"
 backend = "github:bencherdev/bencher"
 
 [tools."github:bencherdev/bencher".options]
 asset_pattern = "bencher-*-windows-x86-64.exe"
 
 [tools."github:bencherdev/bencher"."platforms.windows-x64"]
-checksum = "sha256:478da05ad5086433046065e0c5c5b151982b5128e2b65730c3ce9e20d4eb37e6"
-url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-windows-x86-64.exe"
-url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741326"
+checksum = "sha256:070bb081d06dc0172c5ea8a6d29b3a92675e6a8201417c7e9d54e03446ab2222"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.17/bencher-v0.6.17-windows-x86-64.exe"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/746096390"
+provenance = "github-attestations"
 
 [[tools."github:cargo-bins/cargo-binstall"]]
 version = "1.18.1"
