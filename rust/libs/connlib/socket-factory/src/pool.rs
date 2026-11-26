@@ -51,6 +51,18 @@ impl Socket<'_> {
     }
 
     /// Opts the socket out of URO.
+    /// How many buffers one [`Self::recv`] can fill.
+    ///
+    /// On Windows, only RIO fills more than one, and without it buffers are sized for URO.
+    pub(crate) fn recv_batch_size(&self) -> usize {
+        #[cfg(windows)]
+        if !self.state.is_rio() {
+            return 1;
+        }
+
+        quinn_udp::BATCH_SIZE
+    }
+
     #[cfg(windows)]
     pub(crate) fn disable_gro(&self) {
         if let Err(e) = self.state.set_gro(UdpSockRef::from(self.inner), false) {
@@ -166,7 +178,7 @@ fn force_buffer_size(
 /// Opts a socket into URO unless broken coalescing has been observed (see [`crate::uro`]).
 #[cfg(windows)]
 fn enable_gro(socket: &tokio::net::UdpSocket, state: &quinn_udp::UdpSocketState) {
-    if crate::uro::is_broken() {
+    if crate::uro::is_broken() || state.is_rio() {
         return;
     }
 
@@ -188,6 +200,25 @@ pub(crate) fn poll_recv_ready(
     recv_buf_size: usize,
     port: u16,
 ) -> Poll<Result<DatagramBatch>> {
+    // RIO receives bypass the socket's receive buffer, so the runtime never sees them as readable.
+    #[cfg(windows)]
+    if socket.state.is_rio() {
+        loop {
+            match recv_batch(socket, recv_buf_size, port) {
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                result => return Poll::Ready(result.context("Failed to read from socket")),
+            }
+
+            match socket.state.poll_recv_ready(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(Err(e)) => {
+                    return Poll::Ready(Err(e).context("Failed to wait for RIO receives"));
+                }
+                Poll::Ready(Ok(())) => {}
+            }
+        }
+    }
+
     loop {
         match socket.inner.poll_recv_ready(cx) {
             Poll::Pending => return Poll::Pending,
@@ -228,7 +259,7 @@ pub(crate) fn recv_batch(
     recv_buf_size: usize,
     port: u16,
 ) -> io::Result<DatagramBatch> {
-    let mut batch = RecvBatch::pull(recv_buf_size);
+    let mut batch = RecvBatch::pull(socket.recv_batch_size(), recv_buf_size);
 
     let len = {
         // The loop only re-iterates on Apple, where connected sockets surface (one-shot)

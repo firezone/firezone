@@ -31,6 +31,8 @@ parking_lot = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 memchr = { workspace = true }
+quinn-udp = { workspace = true, features = ["windows-rio"] }
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }
 
 [dev-dependencies]
 bufferpool = { workspace = true }

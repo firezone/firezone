@@ -29,10 +29,26 @@ pub const RECV_BUFFER_SIZE: usize = recv_buffer_size_for_service_gap(
 
 /// Worst-case heap that a single received batch ([`DatagramBatch`]) pins.
 ///
-/// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata.
+/// A batch owns up to [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata.
+/// On Windows, a batch is either a single URO-sized buffer or, with RIO, single-datagram buffers.
 pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramBatch>()
-    + quinn_udp::BATCH_SIZE
-        * (MAX_RECV_BUFFER_MEMORY + size_of::<Bytes>() + size_of::<quinn_udp::RecvMeta>());
+    + quinn_udp::BATCH_SIZE * (size_of::<Bytes>() + size_of::<quinn_udp::RecvMeta>())
+    + MAX_RECV_BATCH_PAYLOAD;
+
+const MAX_RECV_BATCH_PAYLOAD: usize = cfg_select! {
+    target_os = "windows" => {
+        max(
+            MAX_RECV_BUFFER_MEMORY,
+            quinn_udp::BATCH_SIZE * ip_packet::MAX_FZ_PAYLOAD,
+        )
+    }
+    _ => { quinn_udp::BATCH_SIZE * MAX_RECV_BUFFER_MEMORY }
+};
+
+#[cfg(target_os = "windows")]
+const fn max(a: usize, b: usize) -> usize {
+    if a > b { a } else { b }
+}
 
 /// Worst-case heap that a single receive buffer ([`DatagramIn`](crate::DatagramIn)) pins.
 ///

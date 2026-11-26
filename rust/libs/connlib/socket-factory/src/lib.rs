@@ -105,7 +105,7 @@ pub fn tcp(addr: SocketAddr) -> io::Result<TcpSocket> {
 
 pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     let addr = socket2::SockAddr::from(std_addr);
-    let socket = socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)?;
+    let socket = new_udp_socket(&addr)?;
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
     if addr.is_ipv6() {
@@ -138,6 +138,60 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
 
     Ok(socket)
 }
+
+#[cfg(not(windows))]
+fn new_udp_socket(addr: &socket2::SockAddr) -> io::Result<socket2::Socket> {
+    socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)
+}
+
+/// Creates the socket with `WSA_FLAG_REGISTERED_IO` if RIO is enabled, so [`UdpSocket::into_perf`] can receive through RIO.
+#[cfg(windows)]
+fn new_udp_socket(addr: &socket2::SockAddr) -> io::Result<socket2::Socket> {
+    use std::os::windows::io::FromRawSocket as _;
+    use windows_sys::Win32::Networking::WinSock;
+
+    if !rio_enabled() {
+        return socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None);
+    }
+
+    // SAFETY: Plain FFI call; the returned socket is checked before taking ownership.
+    let socket = unsafe {
+        WinSock::WSASocketW(
+            addr.family() as i32,
+            WinSock::SOCK_DGRAM,
+            WinSock::IPPROTO_UDP,
+            std::ptr::null(),
+            0,
+            WinSock::WSA_FLAG_OVERLAPPED
+                | WinSock::WSA_FLAG_NO_HANDLE_INHERIT
+                | WinSock::WSA_FLAG_REGISTERED_IO,
+        )
+    };
+
+    if socket == WinSock::INVALID_SOCKET {
+        let error = io::Error::last_os_error();
+        tracing::info!(%error, "Failed to create RIO-capable UDP socket");
+
+        return socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None);
+    }
+
+    // SAFETY: `socket` is a valid socket that nothing else owns.
+    Ok(unsafe { socket2::Socket::from_raw_socket(socket as _) })
+}
+
+/// Whether to receive through Registered I/O on Windows; on unless `FIREZONE_UDP_RIO=0`.
+#[cfg(windows)]
+fn rio_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+    *ENABLED.get_or_init(|| {
+        std::env::var("FIREZONE_UDP_RIO").map_or(true, |v| v != "0" && v != "false")
+    })
+}
+
+/// How many receives stay posted to a RIO socket.
+#[cfg(windows)]
+const RIO_SLOTS: usize = 1024;
 
 /// The socket option to prefer a stable IPv6 source address, with the value that selects it.
 ///
@@ -307,7 +361,26 @@ impl UdpSocket {
 
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
     pub fn into_perf(self) -> PerfUdpSocket {
-        let quinn_state = self.state;
+        #[cfg_attr(not(windows), expect(unused_mut))]
+        let mut quinn_state = self.state;
+
+        #[cfg(windows)]
+        if rio_enabled() {
+            match quinn_state.enable_rio(
+                UdpSockRef::from(&self.inner),
+                RIO_SLOTS,
+                ip_packet::MAX_FZ_PAYLOAD,
+            ) {
+                Ok(()) => {
+                    tracing::info!(port = %self.port, slots = %RIO_SLOTS, "Receiving through RIO")
+                }
+                Err(error) => {
+                    tracing::info!(port = %self.port, %error, "Failed to enable RIO, receiving through WSARecvMsg")
+                }
+            }
+        } else {
+            tracing::info!(port = %self.port, "RIO disabled via FIREZONE_UDP_RIO");
+        }
 
         #[cfg(apple)]
         // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
@@ -932,8 +1005,8 @@ pub(crate) struct RecvBatch {
 }
 
 impl RecvBatch {
-    /// Pulls the storage for one receive batch of `recv_buf_size`-byte buffers.
-    pub(crate) fn pull(recv_buf_size: usize) -> Self {
+    /// Pulls the storage for one receive batch of `count` buffers of `recv_buf_size` bytes.
+    pub(crate) fn pull(count: usize, recv_buf_size: usize) -> Self {
         Self {
             buffers: std::iter::repeat_with(|| {
                 let mut buffer = Bytes::fitting(recv_buf_size);
@@ -941,9 +1014,9 @@ impl RecvBatch {
 
                 buffer
             })
-            .take(quinn_udp::BATCH_SIZE)
+            .take(count)
             .collect(),
-            metas: vec![quinn_udp::RecvMeta::default(); quinn_udp::BATCH_SIZE],
+            metas: vec![quinn_udp::RecvMeta::default(); count],
         }
     }
 
