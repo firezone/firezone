@@ -139,14 +139,62 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     Ok(socket)
 }
 
-/// Creates a socket that receives through Registered I/O, bound to the same `local` address as an existing socket.
+/// Sends on an unconnected socket, waiting until it can take more data.
+async fn send_unconnected(
+    socket: Socket<'_>,
+    transmit: &Transmit<'_>,
+    blocked_since: &mut Option<Instant>,
+) -> io::Result<quinn_udp::SendCount> {
+    #[cfg(windows)]
+    if socket.state.is_rio() {
+        return std::future::poll_fn(|cx| {
+            loop {
+                match socket
+                    .state
+                    .try_send(UdpSockRef::from(socket.inner), transmit)
+                {
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                    result => return Poll::Ready(result),
+                }
+
+                match socket.state.poll_send_ready(cx) {
+                    Poll::Pending => {
+                        blocked_since.get_or_insert_with(Instant::now);
+                        return Poll::Pending;
+                    }
+                    Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+                    Poll::Ready(Ok(())) => {}
+                }
+            }
+        })
+        .await;
+    }
+
+    let tokio = pool::tokio_socket(socket.inner)?;
+    let mut send = std::pin::pin!(tokio.async_io(Interest::WRITABLE, || {
+        socket
+            .state
+            .try_send(UdpSockRef::from(socket.inner), transmit)
+    }));
+
+    std::future::poll_fn(|cx| {
+        let result = send.as_mut().poll(cx);
+        if result.is_pending() {
+            blocked_since.get_or_insert_with(Instant::now);
+        }
+        result
+    })
+    .await
+}
+
+/// Creates a socket that sends and receives through Registered I/O, bound to the same `local` address as an existing socket.
 ///
 /// The existing socket stays open until the caller drops it, which `SO_REUSEADDR` permits, so it
 /// remains a working fallback if any step here fails. On failure, returns the failed step.
 #[cfg(windows)]
 fn rio_udp(
     local: SocketAddr,
-) -> Result<(tokio::net::UdpSocket, quinn_udp::UdpSocketState), (&'static str, io::Error)> {
+) -> Result<(std::net::UdpSocket, quinn_udp::UdpSocketState), (&'static str, io::Error)> {
     use std::os::windows::io::FromRawSocket as _;
     use windows_sys::Win32::Networking::WinSock;
 
@@ -174,24 +222,22 @@ fn rio_udp(
     if addr.is_ipv6() {
         socket.set_only_v6(true).map_err(|e| ("IPV6_V6ONLY", e))?;
     }
-    socket.set_nonblocking(true).map_err(|e| ("FIONBIO", e))?;
     socket
         .set_reuse_address(true)
         .map_err(|e| ("SO_REUSEADDR", e))?;
-    let mut state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))
-        .map_err(|e| ("UdpSocketState::new", e))?;
+    let mut state = quinn_udp::UdpSocketState::new_for_rio(UdpSockRef::from(&socket))
+        .map_err(|e| ("UdpSocketState::new_for_rio", e))?;
     socket.bind(&addr).map_err(|e| ("bind", e))?;
     state
         .enable_rio(
             UdpSockRef::from(&socket),
             RIO_SLOTS,
+            RIO_SLOTS,
             ip_packet::MAX_FZ_PAYLOAD,
         )
         .map_err(|e| ("enable_rio", e))?;
-    let socket = tokio::net::UdpSocket::try_from(std::net::UdpSocket::from(socket))
-        .map_err(|e| ("tokio registration", e))?;
 
-    Ok((socket, state))
+    Ok((socket.into(), state))
 }
 
 /// Whether to receive through Registered I/O on Windows; on unless `FIREZONE_UDP_RIO=0`.
@@ -204,7 +250,7 @@ fn rio_enabled() -> bool {
     })
 }
 
-/// How many receives stay posted to a RIO socket.
+/// How many receives stay posted to a RIO socket, and how many datagrams it may have in flight.
 #[cfg(windows)]
 const RIO_SLOTS: usize = 1024;
 
@@ -376,8 +422,10 @@ impl UdpSocket {
 
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
     pub fn into_perf(self) -> PerfUdpSocket {
-        #[cfg_attr(not(windows), expect(unused_mut))]
-        let mut inner = self.inner;
+        #[cfg(windows)]
+        let mut inner = pool::Io::Tokio(self.inner);
+        #[cfg(not(windows))]
+        let inner = self.inner;
         #[cfg_attr(not(windows), expect(unused_mut))]
         let mut quinn_state = self.state;
 
@@ -391,7 +439,7 @@ impl UdpSocket {
                 Ok((socket, state)) => {
                     tracing::info!(port = %self.port, slots = %RIO_SLOTS, "Receiving through RIO");
 
-                    inner = socket;
+                    inner = pool::Io::Rio(socket);
                     quinn_state = state;
                 }
                 Err((step, error)) => {
@@ -617,20 +665,7 @@ impl PerfUdpSocket {
                     .state
                     .try_send(UdpSockRef::from(socket.inner), &chunk)
             } else {
-                let mut send = std::pin::pin!(socket.inner.async_io(Interest::WRITABLE, || {
-                    socket
-                        .state
-                        .try_send(UdpSockRef::from(socket.inner), &chunk)
-                }));
-
-                std::future::poll_fn(|cx| {
-                    let result = send.as_mut().poll(cx);
-                    if result.is_pending() {
-                        blocked_since.get_or_insert_with(Instant::now);
-                    }
-                    result
-                })
-                .await
+                send_unconnected(socket, &chunk, &mut blocked_since).await
             };
 
             match result {

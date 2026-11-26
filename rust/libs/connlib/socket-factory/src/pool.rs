@@ -30,11 +30,61 @@ use tokio::io::Interest;
 
 use crate::{DatagramBatch, RecvBatch, apply_buffer_size};
 
+/// The socket a [`SocketPool`] member does IO on.
+#[cfg(not(windows))]
+pub(crate) type Io = tokio::net::UdpSocket;
+
+/// The socket a [`SocketPool`] member does IO on.
+///
+/// Registered I/O sockets refuse non-blocking mode, so they cannot be driven by tokio; quinn-udp
+/// provides their readiness instead.
+#[cfg(windows)]
+pub(crate) enum Io {
+    Tokio(tokio::net::UdpSocket),
+    Rio(std::net::UdpSocket),
+}
+
+#[cfg(windows)]
+impl Io {
+    pub(crate) fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
+        match self {
+            Io::Tokio(s) => s.local_addr(),
+            Io::Rio(s) => s.local_addr(),
+        }
+    }
+}
+
+#[cfg(windows)]
+impl std::os::windows::io::AsSocket for Io {
+    fn as_socket(&self) -> std::os::windows::io::BorrowedSocket<'_> {
+        match self {
+            Io::Tokio(s) => s.as_socket(),
+            Io::Rio(s) => s.as_socket(),
+        }
+    }
+}
+
+/// The tokio socket to wait for readiness on; RIO sockets have none.
+#[cfg(not(windows))]
+#[expect(clippy::unnecessary_wraps, reason = "Matches the Windows signature")]
+pub(crate) fn tokio_socket(io: &Io) -> io::Result<&tokio::net::UdpSocket> {
+    Ok(io)
+}
+
+/// The tokio socket to wait for readiness on; RIO sockets have none.
+#[cfg(windows)]
+pub(crate) fn tokio_socket(io: &Io) -> io::Result<&tokio::net::UdpSocket> {
+    match io {
+        Io::Tokio(s) => Ok(s),
+        Io::Rio(_) => Err(io::Error::other("RIO sockets are not driven by tokio")),
+    }
+}
+
 /// A borrowed handle to a UDP socket and its quinn state - the currency the send and receive
 /// paths operate on, regardless of which [`SocketPool`] member it came from.
 #[derive(Clone, Copy)]
 pub(crate) struct Socket<'a> {
-    pub(crate) inner: &'a tokio::net::UdpSocket,
+    pub(crate) inner: &'a Io,
     pub(crate) state: &'a quinn_udp::UdpSocketState,
     /// Whether the socket is `connect`ed to a fixed peer and thus takes Darwin's fast path.
     pub(crate) connected: bool,
@@ -73,17 +123,14 @@ impl Socket<'_> {
 
 /// A UDP socket and its quinn state, owned. The unit a [`SocketPool`] is made of.
 pub(crate) struct OwnedSocket {
-    socket: tokio::net::UdpSocket,
+    // Declared first so it is closed before RIO's registered buffers in `state` are released.
+    socket: Io,
     state: quinn_udp::UdpSocketState,
     connected: bool,
 }
 
 impl OwnedSocket {
-    pub(crate) fn new(
-        socket: tokio::net::UdpSocket,
-        state: quinn_udp::UdpSocketState,
-        connected: bool,
-    ) -> Self {
+    pub(crate) fn new(socket: Io, state: quinn_udp::UdpSocketState, connected: bool) -> Self {
         #[cfg(windows)]
         enable_gro(&socket, &state);
 
@@ -177,7 +224,7 @@ fn force_buffer_size(
 
 /// Opts a socket into URO unless broken coalescing has been observed (see [`crate::uro`]).
 #[cfg(windows)]
-fn enable_gro(socket: &tokio::net::UdpSocket, state: &quinn_udp::UdpSocketState) {
+fn enable_gro(socket: &Io, state: &quinn_udp::UdpSocketState) {
     if crate::uro::is_broken() || state.is_rio() {
         return;
     }
@@ -219,8 +266,13 @@ pub(crate) fn poll_recv_ready(
         }
     }
 
+    let tokio = match tokio_socket(socket.inner) {
+        Ok(tokio) => tokio,
+        Err(e) => return Poll::Ready(Err(e.into())),
+    };
+
     loop {
-        match socket.inner.poll_recv_ready(cx) {
+        match tokio.poll_recv_ready(cx) {
             Poll::Pending => return Poll::Pending,
             Poll::Ready(Err(e)) => {
                 return Poll::Ready(Err(e).context("Failed to wait for socket to become readable"));
@@ -245,7 +297,7 @@ fn try_recv_batch(
     recv_buf_size: usize,
     port: u16,
 ) -> io::Result<DatagramBatch> {
-    let batch = socket.inner.try_io(Interest::READABLE, || {
+    let batch = tokio_socket(socket.inner)?.try_io(Interest::READABLE, || {
         recv_batch(socket, recv_buf_size, port)
     })?;
 
