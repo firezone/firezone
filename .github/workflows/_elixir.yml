@@ -15,8 +15,10 @@ jobs:
       run:
         working-directory: ./elixir
     permissions:
+      contents: read
       checks: write # dorny/test-reporter
       pull-requests: write # breaking OpenAPI changes comment
+      security-events: write # trivy SARIF upload from setup-mise
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -71,6 +73,9 @@ jobs:
     defaults:
       run:
         working-directory: ./elixir
+    permissions:
+      contents: read
+      security-events: write # trivy SARIF upload from setup-mise
     env:
       # We need to set MIX_ENV to dev to make sure that we won't type-check our test helpers
       MIX_ENV: dev
@@ -102,6 +107,9 @@ jobs:
     defaults:
       run:
         working-directory: ./elixir
+    permissions:
+      contents: read
+      security-events: write # trivy SARIF upload from setup-mise
     env:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
