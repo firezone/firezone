@@ -1050,6 +1050,7 @@ where
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
+            contested: Default::default(),
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         };
 
@@ -1291,8 +1292,7 @@ where
 
     /// Records that the Frostlink connection `cid` validated a path to `remote`.
     ///
-    /// Once several did, a NAT maps several devices to `remote` and delivers what we send there to
-    /// whichever of them sent last, so every Frostlink connection refuses it.
+    /// Once several did, every Frostlink connection stops sending to `remote`.
     fn add_remote(&mut self, cid: TId, remote: SocketAddr, now: Instant) {
         if !self.connections.add_remote(cid, remote) {
             return;
@@ -1302,11 +1302,21 @@ where
 
         self.contested_addresses.add(1, &[]);
 
-        for (_, c) in self
+        for (cid, c) in self
             .connections
             .iter_mut_frostlink_by_remote_candidate(remote)
         {
-            c.agent.refuse_remote(remote, now);
+            c.contested.insert(remote);
+
+            let candidates = c
+                .agent
+                .remote_candidates()
+                .filter(|candidate| candidate.addr() == remote)
+                .collect::<Vec<_>>();
+
+            for candidate in candidates {
+                c.remove_remote_candidate(cid, candidate, now);
+            }
         }
     }
 
@@ -1638,6 +1648,10 @@ struct Connection<RId> {
     idle_ice_config: IceConfig,
 
     poll_timeout_cache: TimeoutCache,
+
+    /// Remotes several Frostlink connections validated; a NAT delivers what we send there to
+    /// whichever device sent last, so nothing is sent to them.
+    contested: BTreeSet<SocketAddr>,
 }
 
 impl<RId> Connection<RId> {
@@ -1888,9 +1902,7 @@ where
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             match pt.payload {
                 frostlink::Payload::Ciphertext(ref bytes) => {
-                    if let Some(transmit) =
-                        make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
-                    {
+                    if let Some(transmit) = self.transmit_to(peer_socket, bytes, allocations, now) {
                         transmits.push_back(transmit);
                     }
                 }
@@ -2013,9 +2025,11 @@ where
                     num_wg = wg_buffer.len(),
                     "Frostlink primary selected; flushing buffered packets",
                 );
-                transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
-                    make_owned_transmit(self.relay, peer_socket, &packet, allocations, now)
-                }));
+                transmits.extend(
+                    wg_buffer.into_iter().flat_map(|packet| {
+                        self.transmit_to(peer_socket, &packet, allocations, now)
+                    }),
+                );
                 self.state = ConnectionState::Connected {
                     peer_socket,
                     last_activity: now,
@@ -2066,6 +2080,10 @@ where
     {
         self.state
             .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
+
+        if self.contested.contains(&socket.dest()) {
+            return Ok(None);
+        }
 
         let (src, dst, relay) = match socket {
             PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
@@ -2250,16 +2268,28 @@ where
             }
             ConnectionState::Connected { peer_socket, .. }
             | ConnectionState::Idle { peer_socket } => {
-                transmits.extend(make_owned_transmit(
-                    self.relay,
-                    *peer_socket,
-                    &message,
-                    allocations,
-                    now,
-                ));
+                let peer_socket = *peer_socket;
+                transmits.extend(self.transmit_to(peer_socket, &message, allocations, now));
             }
             ConnectionState::Failed => {}
         }
+    }
+
+    fn transmit_to(
+        &self,
+        socket: PeerSocket,
+        message: &[u8],
+        allocations: &mut Allocations<RId>,
+        now: Instant,
+    ) -> Option<Transmit>
+    where
+        RId: Ord + Hash + fmt::Display + Copy,
+    {
+        if self.contested.contains(&socket.dest()) {
+            return None;
+        }
+
+        make_owned_transmit(self.relay, socket, message, allocations, now)
     }
 
     fn peer_socket_for_tuple(
@@ -2355,7 +2385,7 @@ where
 
         self.last_proactive_handshake_sent_at = Some(now);
 
-        if let Some(transmit) = make_owned_transmit(self.relay, socket, &bytes, allocations, now) {
+        if let Some(transmit) = self.transmit_to(socket, &bytes, allocations, now) {
             transmits.push_back(transmit);
         }
     }

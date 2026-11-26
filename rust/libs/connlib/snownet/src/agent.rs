@@ -66,12 +66,6 @@ impl Agent {
         }
     }
 
-    pub(crate) fn refuse_remote(&mut self, addr: std::net::SocketAddr, now: Instant) {
-        if let Self::Frostlink(agent) = self {
-            agent.refuse_remote(addr, now);
-        }
-    }
-
     pub(crate) fn is_negotiation_complete(&self) -> bool {
         match self {
             Self::Ice(a) => a.state() == IceConnectionState::Connected,

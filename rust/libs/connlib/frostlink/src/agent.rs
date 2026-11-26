@@ -45,9 +45,6 @@ pub struct Agent {
     events: VecDeque<Event>,
 
     next_pair_id: u16,
-
-    /// Remotes we never use, probe or answer, see [`Self::refuse_remote`].
-    refused: BTreeSet<SocketAddr>,
 }
 
 /// An initiation's sender index and timestamp. Within one tunnel, only a
@@ -283,10 +280,6 @@ impl Agent {
     pub fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
         self.last_now = Some(now);
 
-        if self.refused.contains(&c.addr()) {
-            return;
-        }
-
         // Promote a previously-registered peer-reflexive in place so the
         // existing `PairState` (RTT, inflight, schedule) survives.
         if let Some(existing) = self
@@ -399,37 +392,6 @@ impl Agent {
         true
     }
 
-    /// Never uses, probes or answers `addr` again, dropping its candidates and pairs.
-    ///
-    /// Handshake initiations from it are still accepted, but answered on the primary.
-    pub fn refuse_remote(&mut self, addr: SocketAddr, now: Instant) {
-        self.last_now = Some(now);
-
-        if !self.refused.insert(addr) {
-            return;
-        }
-
-        tracing::debug!(remote = %addr, "Refusing remote");
-
-        self.remotes.retain(|c| c.addr() != addr);
-        self.pairs.retain(|(_, remote), _| *remote != addr);
-
-        if self.primary.is_some_and(|(_, remote)| remote == addr) {
-            self.clear_and_reprobe(now);
-
-            let best = self
-                .pairs
-                .iter()
-                .filter(|(_, s)| s.rtt.is_some())
-                .min_by_key(|(k, s)| pair_score(**k, s))
-                .map(|(k, _)| *k)
-                .or_else(|| self.relay_pairs().next());
-            if let Some(best) = best {
-                self.set_primary(best);
-            }
-        }
-    }
-
     pub fn local_candidates(&self) -> impl Iterator<Item = Candidate> + '_ {
         self.locals.iter().copied()
     }
@@ -458,12 +420,10 @@ impl Agent {
             .collect();
         let remotes = std::mem::take(&mut self.remotes);
         let session_confirmed = self.session_confirmed;
-        let refused = std::mem::take(&mut self.refused);
 
         *self = Self::new();
 
         self.session_confirmed = session_confirmed;
-        self.refused = refused;
 
         for local in locals {
             self.add_local_candidate(local, now);
@@ -565,7 +525,11 @@ impl Agent {
 
                 tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
 
-                self.queue_response(path, response);
+                self.pending_transmits.push_back(Transmit {
+                    local: path.0,
+                    remote: path.1,
+                    payload: Payload::Ciphertext(response),
+                });
 
                 return Ok(());
             }
@@ -611,29 +575,13 @@ impl Agent {
             response_bytes: response.clone(),
             cached_at: now,
         });
-        self.queue_response(path, response);
-
-        Ok(())
-    }
-
-    /// Queues a handshake response on the path its init arrived on, or on the
-    /// primary if that path's remote is refused.
-    fn queue_response(&mut self, path: (SocketAddr, SocketAddr), response: sanstun::Datagram) {
-        let path = if self.refused.contains(&path.1) {
-            let Some(primary) = self.primary else {
-                tracing::debug!(remote = %path.1, "No primary to answer refused remote's HandshakeInit on");
-                return;
-            };
-            primary
-        } else {
-            path
-        };
-
         self.pending_transmits.push_back(Transmit {
             local: path.0,
             remote: path.1,
             payload: Payload::Ciphertext(response),
         });
+
+        Ok(())
     }
 
     /// Runs `response`, received on `path` as `datagram`, through `tunnel`.
@@ -713,10 +661,6 @@ impl Agent {
 
         match probe.kind {
             crate::icmpv6::Echo::Request => {
-                if self.refused.contains(&pair.1) {
-                    return;
-                }
-
                 tracing::trace!(local = %pair.0, remote = %pair.1, seq = probe.seq, "Probe request received");
 
                 self.pending_transmits.push_back(Transmit {
@@ -996,10 +940,7 @@ impl Agent {
             .filter(|c| c.kind() == CandidateKind::PeerReflexive)
             .count();
 
-        if peer_reflexive < MAX_PEER_REFLEXIVE
-            && !self.refused.contains(&pair.1)
-            && !self.remotes.iter().any(|c| c.addr() == pair.1)
-        {
+        if peer_reflexive < MAX_PEER_REFLEXIVE && !self.remotes.iter().any(|c| c.addr() == pair.1) {
             tracing::debug!(
                 local = %pair.0,
                 remote = %pair.1,
