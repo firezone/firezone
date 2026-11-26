@@ -17,7 +17,7 @@ url_api = "https://api.github.com/repos/sigstore/cosign/releases/assets/66006942
 provenance = "cosign"
 
 [[tools."cargo:cargo-deb"]]
-version = "3.7.0"
+version = "3.8.0"
 backend = "cargo:cargo-deb"
 
 [[tools."github:DevinR528/cargo-sort"]]
