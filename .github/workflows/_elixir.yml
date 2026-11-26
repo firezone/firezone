@@ -17,6 +17,7 @@ jobs:
     permissions:
       checks: write # dorny/test-reporter
       pull-requests: write # breaking OpenAPI changes comment
+      security-events: write # trivy SARIF upload from setup-mise
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost

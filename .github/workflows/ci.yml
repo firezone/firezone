@@ -365,6 +365,7 @@ jobs:
     permissions:
       checks: write # dorny/test-reporter
       pull-requests: write # breaking OpenAPI changes comment
+      security-events: write # trivy SARIF upload from setup-mise
 
   rust:
     needs: planner
