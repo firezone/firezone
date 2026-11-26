@@ -14,14 +14,14 @@ use std::{io, net::SocketAddr};
 #[macro_export]
 macro_rules! service_name {
     () => {
-        ::opentelemetry::KeyValue::new("service.name", env!("CARGO_PKG_NAME"))
+        $crate::KeyValue::new("service.name", env!("CARGO_PKG_NAME"))
     };
 }
 
 #[macro_export]
 macro_rules! service_version {
     () => {
-        ::opentelemetry::KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))
+        $crate::KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))
     };
 }
 
@@ -62,6 +62,11 @@ pub fn network_io_direction_transmit() -> KeyValue {
 /// The kind of socket a connection's path uses, e.g. `PeerToPeer` or `RelayToRelay`.
 pub fn connection_socket(socket: &'static str) -> KeyValue {
     KeyValue::new("connection.socket", socket)
+}
+
+/// The agent a connection uses to select its network path, i.e. `ice` or `frostlink`.
+pub fn connection_agent(agent: &'static str) -> KeyValue {
+    KeyValue::new("connection.agent", agent)
 }
 
 pub fn io_error_code(e: &io::Error) -> KeyValue {
@@ -148,9 +153,23 @@ const ERROR_TYPE_KEYS: [&str; MAX_ERROR_LAYERS] = [
 /// Each layer is the error's `Display` string with variable substrings (IP addresses,
 /// UUIDs) replaced by static placeholders to keep metric cardinality low.
 pub fn error_layers(error: &anyhow::Error) -> Vec<KeyValue> {
+    error_layers_with(error, |_| None)
+}
+
+/// Like [`error_layers`] but `classify` can map a layer to a fixed label instead of its `Display` string.
+///
+/// Use this for errors whose `Display` contains values chosen by a remote peer.
+pub fn error_layers_with(
+    error: &anyhow::Error,
+    classify: impl Fn(&(dyn std::error::Error + 'static)) -> Option<&'static str>,
+) -> Vec<KeyValue> {
     error
         .chain()
-        .map(error_value)
+        .map(|e| {
+            classify(e)
+                .map(Value::from)
+                .unwrap_or_else(|| error_value(e))
+        })
         .zip(ERROR_TYPE_KEYS)
         .map(|(error, key)| KeyValue::new(key, error))
         .collect()

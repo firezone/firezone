@@ -60,8 +60,8 @@ defmodule Portal.AccountFixtures do
     |> cast_embed(:limits)
     |> cast_embed(:metadata)
     |> Portal.Account.changeset()
-    |> Repo.insert!()
-    |> Repo.reload!()
+    |> Repo.insert!(returning: true)
+    |> Ecto.reset_fields([:slugs])
   end
 
   @doc """
@@ -115,6 +115,15 @@ defmodule Portal.AccountFixtures do
   end
 
   @doc """
+  Gives the account a slug from before the portal checked the slug format,
+  such as one with hyphens or capitals.
+  """
+  def put_legacy_slug(%Portal.Account{} = account, slug) do
+    Repo.insert!(%Portal.AccountSlug{slug: slug, account_id: account.id})
+    account |> change(slug: slug) |> Repo.update!()
+  end
+
+  @doc """
   Update an account with the given attributes.
   """
   def update_account(account, attrs) do
@@ -144,6 +153,16 @@ defmodule Portal.AccountFixtures do
     |> cast_embed(:limits)
     |> cast_embed(:metadata)
     |> Portal.Account.changeset()
+    |> Repo.update!()
+  end
+
+  @doc """
+  Sets the staff-only `unified_devices` flag on an account, the way staff do.
+  """
+  def put_unified_devices(%Portal.Account{} = account, value) do
+    account
+    |> change()
+    |> put_embed(:metadata, %{unified_devices: value})
     |> Repo.update!()
   end
 

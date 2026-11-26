@@ -2,6 +2,25 @@
 
 Follow the [Rust coding guidelines](CODING_GUIDELINES.md).
 
+## Making changes
+
+- Size attracts attention, so make it proportional to what matters.
+  A long comment, a new abstraction or a large diff tells the reader that something important is happening before they can check.
+  If it isn't, they learn to skim, including the one comment that does encode a subtle invariant.
+  The goal is proportion, not minimalism: a real invariant earns a real comment.
+- Before writing a helper, check whether `std`, a crate that is already in the dependency tree or a neighbouring module provides it.
+  For example, `clap` handles defaults, environment variables and enums.
+- Don't write migration, cleanup or compatibility code for a state that was never released.
+  If nothing that shipped could have produced it, there is nothing to migrate.
+- Cover the behaviour a change introduces, not every path: one or two focused tests are usually enough.
+- Keep the diff minimal: every hunk serves the purpose of the PR.
+  Don't reorder, move, rename or reformat code that the change doesn't need to touch.
+- Whenever the design of a change moves, re-evaluate what the earlier design introduced: abstractions, helpers, parameters, widened visibility.
+  Remove everything the current design no longer needs.
+- Send refactorings that prepare a feature as their own PR, ahead of the feature.
+- Don't regenerate `Cargo.lock`.
+  Start from the lockfile on `main` (`git checkout main -- rust/Cargo.lock`) and let `cargo` apply only what the `Cargo.toml` change requires.
+
 ## Use of log levels
 
 - Sensitive information such as domain names or customer IP addresses MUST NOT be logged above `DEBUG`.
@@ -14,6 +33,14 @@ Follow the [Rust coding guidelines](CODING_GUIDELINES.md).
   - `WARN`: Something (very) unusual has happened but so far, everything still works. Normal operation MAY trigger occasional `WARN` statements without them being an actual concern. A sysadmin or DevOps will likely set alerts on an increased number of `WARN` logs. If you log on `WARN`, consider whether or not it is important enough to wake an ops person at 3am.
   - `ERROR`: Something really bad happened and things are completely broken. We have to halt execution.
 - Prefer `tracing::Span`s to provide context to a log statement over including fields in individual events, especially in highly-concurrent code where log messages may be interleaved. Try to avoid (debug)-printing entire structs in spans as they will only clutter the log, prefer identifiers such as connection IDs or resource IDs.
+- `WARN` and `ERROR` logs create Sentry issues.
+  A failure that is handled, retried or has a fallback is logged on `DEBUG`.
+- Log on `DEBUG` (`TRACE` if it is triggered per packet) when a branch skips, drops or ignores something, so the behaviour of the system can be understood from its logs.
+- A log message says what happened, nothing else.
+  Don't repeat what a span, the module path or another log already says, and don't describe what happens next.
+- Use the same message for the same event across code paths (e.g. Client and Gateway) and keep messages for different events unique so they can be found with `grep`.
+- Embed an `anyhow::Error` in the message using the alternate format, which prints the entire chain of causes: `tracing::debug!("Failed to read config: {e:#}")`.
+- Log a `Duration` with its `Debug` representation (`?elapsed`) and log points in time as a duration relative to now.
 - Prefer logging values instead of formatting them into the message. For example, use:
 
   ```rust
@@ -25,3 +52,8 @@ Follow the [Rust coding guidelines](CODING_GUIDELINES.md).
   ```rust
   tracing::info!("Established new connection in {duration_since_intent:?}");
   ```
+
+## Before pushing
+
+- Run the quick checks for the crates you changed: `cargo fmt`, `cargo clippy --all-targets --all-features -p <crate>` and `cargo test -p <crate>`.
+  Leave release builds and full-workspace rebuilds to CI.

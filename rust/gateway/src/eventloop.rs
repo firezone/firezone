@@ -50,6 +50,8 @@ pub struct Eventloop {
 
     account_slug: account_slug::Cache,
 
+    metrics_exporter: otel_metrics_export::Exporter,
+
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         ResolveDnsRequest,
@@ -88,6 +90,7 @@ impl Eventloop {
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
         account_slug: account_slug::Cache,
+        metrics_exporter: otel_metrics_export::Exporter,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -113,6 +116,7 @@ impl Eventloop {
             flow_logs_dir,
             local_flow_logs,
             account_slug,
+            metrics_exporter,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -132,7 +136,7 @@ enum CombinedEvent {
     Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
-    Clock(clock::Event),
+    Clock(clock::Alarm),
 }
 
 impl Eventloop {
@@ -198,15 +202,14 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
-            CombinedEvent::Clock(clock::Event::Alarm(now)) => {
+            CombinedEvent::Clock(clock::Alarm { now, late_by }) => {
+                if late_by >= Duration::from_secs(30) {
+                    tracing::info!(?late_by, "Event loop ran late");
+                }
+
                 if let Some(tunnel) = self.tunnel.as_mut() {
                     tunnel.handle_timeout(now);
                 }
-
-                Ok(ControlFlow::Continue(()))
-            }
-            CombinedEvent::Clock(clock::Event::Late(by)) => {
-                tracing::info!(late_by = ?by, "Event loop ran late");
 
                 Ok(ControlFlow::Continue(()))
             }
@@ -221,7 +224,7 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context<'_>) -> Poll<CombinedEvent> {
-        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+        if let Poll::Ready(event) = self.clock.poll_alarm(cx) {
             return Poll::Ready(CombinedEvent::Clock(event));
         }
 
@@ -328,8 +331,10 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            self.tunnel_errors
-                .add(1, &otel_attributes::error_layers(&e));
+            self.tunnel_errors.add(
+                1,
+                &otel_attributes::error_layers_with(&e, tunnel_error_label),
+            );
 
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
@@ -568,6 +573,12 @@ impl Eventloop {
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
             }
+            IngressMessages::MetricsConfig(metrics) => self.metrics_exporter.configure(
+                metrics.endpoint.as_deref(),
+                metrics.export_interval_secs,
+                metrics.token,
+                metrics.patterns,
+            ),
             // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
             IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
         }
@@ -733,4 +744,9 @@ async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .map(|ips| ips.iter().collect())
         .unwrap_or_default()
+}
+
+fn tunnel_error_label(e: &(dyn std::error::Error + 'static)) -> Option<&'static str> {
+    e.downcast_ref::<tunnel::UnknownConnection>()
+        .map(|e| e.metric_label())
 }

@@ -9,6 +9,65 @@ defmodule Portal.Billing.EventHandlerTest do
   import ExUnit.CaptureLog
   import Portal.AccountFixtures
 
+  describe "handle_event/1 for invoice.finalized" do
+    test "retries the event when the YC deal cap check fails" do
+      Req.Test.stub(Portal.Billing.Stripe.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(400)
+        |> Req.Test.json(%{"error" => %{"message" => "boom"}})
+      end)
+
+      event =
+        Stripe.build_event("invoice.finalized", %{
+          "object" => "invoice",
+          "id" => "in_1",
+          "customer" => "cus_#{Stripe.random_id()}",
+          "total_discount_amounts" => [%{"amount" => 100, "discount" => "di_1"}]
+        })
+
+      capture_log(fn ->
+        assert {:error, {400, _}} = EventHandler.handle_event(event)
+      end)
+
+      refute Portal.Billing.Stripe.ProcessedEvents.event_processed?(event["id"])
+    end
+
+    test "records the event once the YC deal cap check passes" do
+      event =
+        Stripe.build_event("invoice.finalized", %{
+          "object" => "invoice",
+          "id" => "in_1",
+          "customer" => "cus_#{Stripe.random_id()}",
+          "total_discount_amounts" => []
+        })
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+      assert Portal.Billing.Stripe.ProcessedEvents.event_processed?(event["id"])
+    end
+
+    test "processes invoices finalized in the same second" do
+      customer_id = "cus_#{Stripe.random_id()}"
+      created_at = DateTime.to_unix(DateTime.utc_now())
+
+      for invoice_id <- ["in_1", "in_2"] do
+        event =
+          Stripe.build_event(
+            "invoice.finalized",
+            %{
+              "object" => "invoice",
+              "id" => invoice_id,
+              "customer" => customer_id,
+              "total_discount_amounts" => []
+            },
+            created_at
+          )
+
+        assert {:ok, _event} = EventHandler.handle_event(event)
+        assert Portal.Billing.Stripe.ProcessedEvents.event_processed?(event["id"])
+      end
+    end
+  end
+
   describe "Database.create_x509_provider/1" do
     test "rolls back the parent when the child insert fails" do
       account = account_fixture()
@@ -92,29 +151,33 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated_account.legal_name == "Legal Corp Inc"
     end
 
-    test "updates account slug from metadata", %{account: account} do
-      original_slug = account.slug
-
-      customer =
-        Stripe.build_customer(
-          id: account.metadata.stripe.customer_id,
-          name: "Same Name",
-          email: "updated@example.com",
-          metadata: %{
-            "account_id" => account.id,
-            "account_slug" => "new-custom-slug"
-          }
-        )
-
-      event = Stripe.build_event("customer.updated", customer)
-
-      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+    test "applies an account slug edited in Stripe", %{account: account} do
+      event = slug_event(account, " New-Custom-Slug ", %{"account_slug" => account.slug})
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
+      assert Portal.Repo.get!(Portal.Account, account.id).slug == "new_custom_slug"
+    end
+
+    test "keeps the slug when the update did not edit it in Stripe", %{account: account} do
+      original_slug = account.slug
+      event = slug_event(account, "stale_slug", %{"account_name" => "Old Name"})
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      assert Portal.Repo.get!(Portal.Account, account.id).slug == original_slug
+    end
+
+    test "logs a slug it cannot apply and still applies the rest", %{account: account} do
+      original_slug = account.slug
+      event = slug_event(account, "bad slug!", %{"account_slug" => account.slug})
+
+      log = capture_log(fn -> assert {:ok, _event} = EventHandler.handle_event(event) end)
+
+      assert log =~ "Cannot set the account slug from Stripe"
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.slug == "new-custom-slug"
-      assert updated_account.slug != original_slug
+      assert updated_account.slug == original_slug
+      assert updated_account.legal_name == "Slug Corp"
     end
   end
 
@@ -503,6 +566,31 @@ defmodule Portal.Billing.EventHandlerTest do
       assert Portal.Repo.get!(Portal.Account, account.id).is_disabled == false
     end
 
+    test "leaves the staff-set unified_devices flag alone", %{account: account, customer: customer} do
+      account = put_unified_devices(account, true)
+      assert account.metadata.stripe.customer_id == "cus_existing123"
+
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} =
+               EventHandler.handle_event(Stripe.build_event("customer.subscription.updated", subscription))
+
+      assert {:ok, _event} = EventHandler.handle_event(Stripe.build_event("customer.updated", customer))
+
+      assert {:ok, _account} =
+               Database.update_account_by_id(account.id, %{metadata: %{stripe: %{customer_id: "cus_other"}}})
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.metadata.unified_devices == true
+      assert updated.metadata.stripe.customer_id == "cus_other"
+    end
+
     test "processes plan product and warns on unrecognized product", %{
       account: account,
       customer: customer
@@ -629,6 +717,27 @@ defmodule Portal.Billing.EventHandlerTest do
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
       assert updated.limits.relay_throughput_mbps == nil
+    end
+
+    test "sets the flow-log limits from metadata", %{account: account, customer: customer} do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 1, %{
+          "flow_log_responder_refill_rate" => "5000",
+          "flow_log_responder_capacity" => "5000000"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.flow_log_responder_refill_rate == 5000
+      assert updated.limits.flow_log_responder_capacity == 5_000_000
     end
 
     test "sets the monthly active users limit from Business seats", %{
@@ -956,7 +1065,7 @@ defmodule Portal.Billing.EventHandlerTest do
   end
 
   describe "handle_event/1 with customer.created - slug generation" do
-    test "uses account_slug from metadata when provided" do
+    test "uses account_slug from metadata in its canonical form" do
       customer_id = "cus_" <> Stripe.random_id()
 
       customer =
@@ -968,7 +1077,7 @@ defmodule Portal.Billing.EventHandlerTest do
             "company_website" => "https://slugtest.com",
             "account_owner_first_name" => "Test",
             "account_owner_last_name" => "User",
-            "account_slug" => "custom_provided_slug"
+            "account_slug" => " Custom-Provided_Slug "
           }
         )
 
@@ -981,8 +1090,34 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
-      account = Portal.Repo.get_by(Portal.Account, slug: "custom_provided_slug")
-      assert account != nil
+      assert Portal.Repo.get_by(Portal.Account, slug: "custom_provided_slug")
+    end
+
+    test "does not create the account for an account_slug with a bad format" do
+      customer_id = "cus_" <> Stripe.random_id()
+
+      customer =
+        Stripe.build_customer(
+          id: customer_id,
+          name: "Bad Slug Corp",
+          email: "admin@badslug.com",
+          metadata: %{
+            "company_website" => "https://badslug.com",
+            "account_owner_first_name" => "Test",
+            "account_owner_last_name" => "User",
+            "account_slug" => "bad slug!"
+          }
+        )
+
+      event = Stripe.build_event("customer.created", customer)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, _reason} = EventHandler.handle_event(event)
+        end)
+
+      assert log =~ "Failed to create account from Stripe"
+      refute Portal.Repo.get_by(Portal.Account, legal_name: "Bad Slug Corp")
     end
 
     test "extracts slug from company website path when no host" do
@@ -1581,5 +1716,21 @@ defmodule Portal.Billing.EventHandlerTest do
       end
 
     update_in(subscription, ["items", "data"], &(items ++ &1))
+  end
+
+  defp slug_event(account, slug, previous_metadata) do
+    customer =
+      Stripe.build_customer(
+        id: account.metadata.stripe.customer_id,
+        name: "Slug Corp",
+        email: "updated@example.com",
+        metadata: %{"account_id" => account.id, "account_slug" => slug}
+      )
+
+    Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+    "customer.updated"
+    |> Stripe.build_event(customer)
+    |> put_in(["data", "previous_attributes"], %{"metadata" => previous_metadata})
   end
 end

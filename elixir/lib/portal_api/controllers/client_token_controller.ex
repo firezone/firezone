@@ -44,7 +44,7 @@ defmodule PortalAPI.ClientTokenController do
 
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          {:ok, tokens, metadata} <- Database.list_tokens(actor_id, subject, list_opts) do
-      json(conn, JSON.encode(tokens, metadata))
+      json(conn, JSON.encode(tokens, metadata, schema: PortalAPI.Schemas.ClientToken.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -85,7 +85,7 @@ defmodule PortalAPI.ClientTokenController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"actor_id" => actor_id, "id" => token_id}) do
     with {:ok, token} <- Database.fetch_token_by_id(actor_id, token_id, conn.assigns.subject) do
-      json(conn, JSON.encode(token))
+      json(conn, JSON.encode(token, schema: PortalAPI.Schemas.ClientToken.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -228,7 +228,7 @@ defmodule PortalAPI.ClientTokenController do
   defmodule Database do
     import Ecto.Query
     alias Portal.Actor
-    alias Portal.ClientToken
+    alias Portal.DeviceToken
     alias Portal.Safe
     @revocable_actor_types [:service_account, :account_user, :account_admin_user]
 
@@ -254,7 +254,7 @@ defmodule PortalAPI.ClientTokenController do
     end
 
     def list_tokens(actor_id, subject, opts \\ []) do
-      from(t in ClientToken,
+      from(t in DeviceToken,
         as: :client_tokens,
         join: a in Actor,
         on: a.id == t.actor_id and a.account_id == t.account_id,
@@ -273,39 +273,20 @@ defmodule PortalAPI.ClientTokenController do
     end
 
     def delete_token_by_id(id, actor_id, subject) do
-      result =
-        from(t in ClientToken,
-          join: a in Actor,
-          on: a.id == t.actor_id and a.account_id == t.account_id,
-          where:
-            t.id == ^id and t.actor_id == ^actor_id and
-              a.type in ^@revocable_actor_types,
-          select: %{
-            id: t.id,
-            actor_id: t.actor_id,
-            expires_at: t.expires_at,
-            inserted_at: t.inserted_at,
-            updated_at: t.updated_at
-          }
-        )
-        |> Safe.scoped(subject)
-        |> Safe.delete_all()
-
-      case result do
-        {:error, :unauthorized} ->
-          {:error, :unauthorized}
-
-        {0, _} ->
-          {:error, :not_found}
-
-        {1, [token]} ->
-          {:ok, struct(ClientToken, token)}
+      with {:ok, token} <- fetch_token_by_id(actor_id, id, subject) do
+        from(t in DeviceToken, where: t.account_id == ^token.account_id and t.id == ^token.id)
+        |> Portal.Authentication.delete_client_tokens(subject)
+        |> case do
+          {:error, :unauthorized} -> {:error, :unauthorized}
+          {0, _} -> {:error, :not_found}
+          {1, _} -> {:ok, token}
+        end
       end
     end
 
     def fetch_token_by_id(actor_id, token_id, subject) do
       result =
-        from(t in ClientToken,
+        from(t in DeviceToken,
           join: a in Actor,
           on: a.id == t.actor_id and a.account_id == t.account_id,
           where:
@@ -322,19 +303,18 @@ defmodule PortalAPI.ClientTokenController do
         {:error, :unauthorized} ->
           {:error, :unauthorized}
 
-        %ClientToken{} = token ->
+        %DeviceToken{} = token ->
           {:ok, token}
       end
     end
 
     def delete_all_tokens(actor_id, subject) do
-      from(t in ClientToken,
+      from(t in DeviceToken,
         join: a in Actor,
         on: a.id == t.actor_id and a.account_id == t.account_id,
         where: t.actor_id == ^actor_id and a.type in ^@revocable_actor_types
       )
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
+      |> Portal.Authentication.delete_client_tokens(subject)
     end
   end
 end

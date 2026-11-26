@@ -346,7 +346,7 @@ unsafe fn enumerate_store(
                     "Failed to build the Windows certificate chain; sending the leaf only"
                 );
 
-                vec![der.clone()]
+                vec![der]
             }
         };
         let owned_context = unsafe { CertDuplicateCertificateContext(Some(context)) };

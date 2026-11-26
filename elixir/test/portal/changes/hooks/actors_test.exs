@@ -6,6 +6,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
   import Portal.TokenFixtures
   import Portal.PortalSessionFixtures
   import Portal.OAuthFixtures
+  import Portal.PolicyAuthorizationFixtures
   alias Portal.Changes.Change
   alias Portal.Actor
   alias Portal.PubSub
@@ -65,7 +66,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
       assert updated_actor.name == "Updated Name"
     end
 
-    test "deletes client tokens and portal sessions and broadcasts when actor is disabled" do
+    test "keeps client tokens, deletes portal sessions and broadcasts when actor is disabled" do
       account = account_fixture()
       actor = actor_fixture(account: account)
       client_token = client_token_fixture(account: account, actor: actor)
@@ -83,9 +84,52 @@ defmodule Portal.Changes.Hooks.ActorsTest do
 
       assert :ok == on_update(0, old_data, data)
 
-      refute Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
       refute Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
       assert_receive %Change{op: :update, lsn: 0}
+    end
+
+    test "deletes the policy authorizations of a disabled actor and keeps its tokens" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      other_actor = actor_fixture(account: account)
+      authorization = policy_authorization_fixture(account: account, actor: actor)
+      other_authorization = policy_authorization_fixture(account: account, actor: other_actor)
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "type" => actor.type,
+        "is_disabled" => false
+      }
+
+      assert :ok == on_update(0, old_data, %{old_data | "is_disabled" => true})
+
+      refute Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: authorization.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: authorization.token_id)
+
+      assert Repo.get_by(Portal.PolicyAuthorization,
+               account_id: account.id,
+               id: other_authorization.id
+             )
+    end
+
+    test "keeps policy authorizations when an enabled actor is otherwise updated" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      authorization = policy_authorization_fixture(account: account, actor: actor)
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "name" => actor.name,
+        "type" => actor.type,
+        "is_disabled" => false
+      }
+
+      assert :ok == on_update(0, old_data, %{old_data | "name" => "Renamed"})
+
+      assert Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: authorization.id)
     end
 
     test "deletes OAuth grants and their tokens when actor is disabled" do
@@ -127,7 +171,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
       refute Repo.get_by(Portal.OAuthToken, account_id: account.id, id: token.id)
 
       # A demoted admin is still a user, so their Clients stay signed in.
-      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
     end
 
     test "deletes OAuth grants when a disabled admin is demoted" do
@@ -163,6 +207,47 @@ defmodule Portal.Changes.Hooks.ActorsTest do
       assert :ok == on_update(0, old_data, %{old_data | "name" => "Renamed"})
 
       assert Repo.get_by(Portal.OAuthToken, account_id: account.id, id: token.id)
+    end
+
+    test "deletes client tokens and portal sessions when the password hash changes" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client_token = client_token_fixture(account: account, actor: actor)
+      portal_session = portal_session_fixture(account: account, actor: actor)
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "type" => "account_user",
+        "is_disabled" => false,
+        "password_hash" => "old-hash"
+      }
+
+      assert :ok == on_update(0, old_data, %{old_data | "password_hash" => "new-hash"})
+
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
+      refute Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
+    end
+
+    test "keeps client tokens and portal sessions when the password hash is unchanged" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client_token = client_token_fixture(account: account, actor: actor)
+      portal_session = portal_session_fixture(account: account, actor: actor)
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "name" => actor.name,
+        "type" => "account_user",
+        "is_disabled" => false,
+        "password_hash" => "same-hash"
+      }
+
+      assert :ok == on_update(0, old_data, %{old_data | "name" => "Renamed"})
+
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
     end
   end
 

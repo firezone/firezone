@@ -38,9 +38,7 @@ defmodule Portal.Changes.Hooks.Devices do
     device = struct_from_params(Portal.Device, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: device}
 
-    if device.type == :client do
-      Database.remove_device_from_pools(device)
-    end
+    Database.remove_device_from_pools(device)
 
     PubSub.Changes.broadcast(device.account_id, :devices, change)
   end

@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -211,6 +211,8 @@ jobs:
           repositories: ${{ github.repository }}
           permission-contents: write
           permission-pull-requests: write
+          permission-workflows: write # The bump rewrites version markers in `.github/workflows`.
+          permission-members: read # Resolves the `firezone/engineering` team to request its review.
       - uses: firezone/actions/create-pull-request@f92afb7395591f2205bdcfd42b975c8dcf51bb6b # main
         if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         with:
@@ -292,6 +294,11 @@ jobs:
 
   promote-deb-packages:
     runs-on: ubuntu-24.04
+    # Same group as the repository sync, so packages are never copied in while a sync runs.
+    concurrency:
+      group: "create-apt-repository"
+      cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       id-token: write # OIDC auth for Azure Storage
@@ -349,6 +356,11 @@ jobs:
   promote-rpm-packages:
     if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gui-client') }}
     runs-on: ubuntu-24.04
+    # Same group as the repository sync, so packages are never copied in while a sync runs.
+    concurrency:
+      group: "create-rpm-repository"
+      cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       id-token: write # OIDC auth for Azure Storage

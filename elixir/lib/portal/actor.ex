@@ -14,8 +14,10 @@ defmodule Portal.Actor do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
+    # `legacy_gateway` owns the Gateway tokens issued before Gateways became
+    # devices. The portal creates it; admins never see or change it.
     field :type, Ecto.Enum,
-      values: [:account_user, :account_admin_user, :service_account, :api_client]
+      values: [:account_user, :account_admin_user, :service_account, :api_client, :legacy_gateway]
 
     field :email, :string
     field :password_hash, :string, redact: true
@@ -26,12 +28,6 @@ defmodule Portal.Actor do
     has_many :identities, Portal.ExternalIdentity, references: :id
     has_many :pending_identities, Portal.PendingIdentity, references: :id
 
-    has_many :clients, Portal.Device,
-      where: [type: :client],
-      preload_order: [desc: :inserted_at],
-      references: :id
-
-    has_many :client_tokens, Portal.ClientToken, references: :id
     has_many :one_time_passcodes, Portal.OneTimePasscode, references: :id
     has_many :memberships, Portal.Membership, on_replace: :delete, references: :id
     has_many :groups, through: [:memberships, :group]
@@ -39,7 +35,9 @@ defmodule Portal.Actor do
     embeds_one :preferences, Portal.Actor.Preferences, on_replace: :update
 
     field :last_seen_at, :utc_datetime_usec, virtual: true
-    field :identity_count, :integer, virtual: true
+    field :avatar_identity_id, :binary_id, virtual: true
+    field :avatar_etag, :string, virtual: true
+    field :identity_issuers, {:array, :string}, virtual: true, default: []
     field :is_disabled, :boolean, default: false, read_after_writes: true
 
     belongs_to :directory, Portal.Directory, foreign_key: :created_by_directory_id
@@ -57,6 +55,7 @@ defmodule Portal.Actor do
     |> trim_change(~w[name email]a)
     |> validate_length(:name, max: 255)
     |> validate_type_transition()
+    |> validate_legacy_gateway()
     |> track_disabling_directory()
     |> normalize_email(:email)
     |> validate_email(:email)
@@ -65,6 +64,7 @@ defmodule Portal.Actor do
     |> assoc_constraint(:disabling_directory, name: :actors_disabled_by_directory_id_fkey)
     |> check_constraint(:disabled_by_directory_id, name: :disabled_by_directory_requires_disabled)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
+    |> unique_constraint(:type, name: :actors_account_id_legacy_gateway_index)
     |> check_constraint(:type, name: :type_is_valid)
   end
 
@@ -98,6 +98,24 @@ defmodule Portal.Actor do
 
       true ->
         changeset
+    end
+  end
+
+  # Only the portal creates a legacy Gateway actor, by building the struct, so
+  # no cast can produce one and nothing may change one once stored.
+  defp validate_legacy_gateway(%Ecto.Changeset{data: %__MODULE__{type: :legacy_gateway}} = changeset) do
+    if changeset.data.__meta__.state == :loaded and changeset.changes != %{} do
+      add_error(changeset, :type, "legacy Gateway actors cannot be changed")
+    else
+      changeset
+    end
+  end
+
+  defp validate_legacy_gateway(changeset) do
+    if get_change(changeset, :type) == :legacy_gateway do
+      add_error(changeset, :type, "is invalid")
+    else
+      changeset
     end
   end
 

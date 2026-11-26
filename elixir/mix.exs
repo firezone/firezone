@@ -17,10 +17,11 @@ defmodule Portal.MixProject do
       app: :portal,
       version: version(),
       elixir: "~> 1.15",
-      elixirc_paths: elixirc_paths(Mix.env()),
+      elixirc_paths: elixirc_paths(Mix.env()) ++ ops_paths("lib"),
+      test_paths: ["test"] ++ ops_paths("test"),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
-      test_ignore_filters: [~r"^test/fixtures/"],
+      test_ignore_filters: [~r"^test/fixtures/", ~r"^ops/test/support/"],
       listeners: listeners(),
       docs: [
         logo: "assets/static/images/logo.svg",
@@ -55,6 +56,31 @@ defmodule Portal.MixProject do
   defp elixirc_paths(:test), do: ["lib", "portal_dev", "test/support", ".credo"]
   defp elixirc_paths(:dev), do: ["lib", "portal_dev", ".credo"]
   defp elixirc_paths(_), do: ["lib"]
+
+  # The private ops dashboard (firezone/portal-ops) is compiled in when it is checked
+  # out at ops/, as in CI and the portal-ops image. Without it the portal runs without
+  # the ops endpoint.
+  defp ops_paths(dir) do
+    if File.dir?(Path.join("ops", dir)) do
+      [Path.join("ops", dir)]
+    else
+      []
+    end
+  end
+
+  # PortalOps.Repo only runs with the ops dashboard, which keeps its migrations in
+  # ops/priv/migrations. Mix runs a task once per alias, so it is re-enabled after
+  # Portal.Repo, which comes first to get the command line arguments.
+  defp ops_migrate do
+    if ops_paths("priv/migrations") == [] do
+      []
+    else
+      [
+        fn _args -> Mix.Task.reenable("ecto.migrate") end,
+        "ecto.migrate -r PortalOps.Repo --migrations-path ops/priv/migrations"
+      ]
+    end
+  end
 
   defp listeners do
     System.get_env()
@@ -102,7 +128,7 @@ defmodule Portal.MixProject do
 
       # Email
       {:gen_smtp, "~> 1.0"},
-      {:swoosh, "~> 1.29.0"},
+      {:swoosh, "~> 1.30.0"},
       {:phoenix_swoosh, "~> 1.0"},
 
       # IP Geolocation
@@ -178,11 +204,12 @@ defmodule Portal.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
-      "ecto.migrate": [
-        "ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
-      ],
+      "ecto.migrate":
+        [
+          "ecto.migrate -r Portal.Repo --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
+        ] ++ ops_migrate(),
       "ecto.rollback": [
-        "ecto.rollback --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
+        "ecto.rollback -r Portal.Repo --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations"
       ],
       "ecto.seed": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],

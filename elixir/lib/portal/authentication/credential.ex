@@ -8,6 +8,7 @@ defmodule Portal.Authentication.Credential do
 
   - `APIToken` - API tokens for api_client actors. Carries scopes, and never an
     auth provider.
+  - `GatewayToken` - Gateway tokens. No scopes and no auth provider.
   - `ClientToken` - Client tokens. `auth_provider_id` is set when the token was
     minted from an interactive sign-in flow (OIDC, Email/OTP, userpass) and nil
     when the token was issued directly by an admin (no sign-in flow).
@@ -48,6 +49,14 @@ defmodule Portal.Authentication.Credential do
           }
   end
 
+  defmodule GatewayToken do
+    @moduledoc "A Gateway token, owned by the account's legacy Gateway actor."
+    @enforce_keys [:id]
+    defstruct [:id]
+
+    @type t :: %__MODULE__{id: Ecto.UUID.t()}
+  end
+
   defmodule OAuthToken do
     @moduledoc "An OAuth access token, carrying scopes and the audience it was minted for."
     @enforce_keys [:id, :scopes, :resource]
@@ -83,7 +92,12 @@ defmodule Portal.Authentication.Credential do
   end
 
   @type t ::
-          APIToken.t() | ClientToken.t() | OAuthToken.t() | PortalSession.t() | X509.t()
+          APIToken.t()
+          | ClientToken.t()
+          | GatewayToken.t()
+          | OAuthToken.t()
+          | PortalSession.t()
+          | X509.t()
 
   @doc """
   The scopes a credential narrows the public API to, or `nil` for a kind that
@@ -96,6 +110,7 @@ defmodule Portal.Authentication.Credential do
   def scopes(%APIToken{scopes: scopes}), do: scopes
   def scopes(%OAuthToken{scopes: scopes}), do: scopes
   def scopes(%ClientToken{}), do: nil
+  def scopes(%GatewayToken{}), do: nil
   def scopes(%PortalSession{}), do: nil
   def scopes(%X509{}), do: nil
 
@@ -110,6 +125,7 @@ defmodule Portal.Authentication.Credential do
   def auth_provider_id(%APIToken{}), do: nil
   def auth_provider_id(%OAuthToken{}), do: nil
   def auth_provider_id(%ClientToken{auth_provider_id: id}), do: id
+  def auth_provider_id(%GatewayToken{}), do: nil
   def auth_provider_id(%PortalSession{auth_provider_id: id}), do: id
   def auth_provider_id(%X509{auth_provider_id: id}), do: id
 end

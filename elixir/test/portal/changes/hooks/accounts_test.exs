@@ -1,5 +1,6 @@
 defmodule Portal.Changes.Hooks.AccountsTest do
   use Portal.DataCase, async: true
+  use Oban.Testing, repo: Portal.Repo
   import Portal.AccountFixtures
   import Portal.PolicyAuthorizationFixtures
   import Portal.TokenFixtures
@@ -29,6 +30,14 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       assert :ok == on_insert(0, %{"id" => account_id, "is_disabled" => false})
 
       assert_receive %Change{op: :insert, struct: %Portal.Account{id: ^account_id}, lsn: 0}
+    end
+
+    test "queues the device CA of a disabled account too" do
+      account_id = Ecto.UUID.generate()
+
+      assert :ok == on_insert(0, %{"id" => account_id, "is_disabled" => true})
+
+      assert_enqueued(worker: Portal.Workers.ProvisionDeviceCA, args: %{account_id: account_id})
     end
   end
 
@@ -197,22 +206,39 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       assert Repo.get_by(Portal.PolicyAuthorization, id: policy_authorization.id) == nil
     end
 
-    test "deletes associated client tokens when account is disabled" do
+    test "keeps client and Gateway tokens when account is disabled" do
       account = account_fixture()
       client_token = client_token_fixture(account: account)
+      gateway_token = gateway_token_fixture(account: account)
 
-      old_data = %{
-        "id" => account.id,
-        "is_disabled" => false
-      }
-
-      data = %{
-        "id" => account.id,
-        "is_disabled" => true
-      }
+      old_data = %{"id" => account.id, "is_disabled" => false}
+      data = %{"id" => account.id, "is_disabled" => true}
 
       assert :ok == on_update(0, old_data, data)
-      assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: gateway_token.id)
+    end
+  end
+
+  describe "update/2 Stripe sync" do
+    test "enqueues a Stripe sync when the slug or name changes" do
+      for field <- ["slug", "name"] do
+        account_id = Ecto.UUID.generate()
+        base = %{"id" => account_id, "is_disabled" => false}
+
+        assert :ok == on_update(0, Map.put(base, field, "old"), Map.put(base, field, "new"))
+
+        assert_enqueued(worker: Portal.Workers.SyncStripeCustomer, args: %{account_id: account_id})
+      end
+    end
+
+    test "does not enqueue a Stripe sync for other changes" do
+      account_id = Ecto.UUID.generate()
+      base = %{"id" => account_id, "is_disabled" => false, "slug" => "same", "name" => "Same"}
+
+      assert :ok == on_update(0, Map.put(base, "legal_name", "Old"), Map.put(base, "legal_name", "New"))
+
+      refute_enqueued(worker: Portal.Workers.SyncStripeCustomer)
     end
   end
 

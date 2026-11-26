@@ -40,6 +40,7 @@ pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
 pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
+pub use snownet::UnknownConnection;
 pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
 pub use utils::turn;
 
@@ -265,13 +266,14 @@ impl ClientTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        listen_port: u16,
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
         now: Instant,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(
-                Sockets::new(udp_socket_factory.clone()),
+                Sockets::new(udp_socket_factory.clone(), listen_port),
                 CryptoWorkers::default(),
                 resolver::spawn(
                     tcp_socket_factory.clone(),
@@ -316,7 +318,12 @@ impl ClientTunnel {
     /// Advertises the given local IPs as additional host candidates on our UDP port.
     pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
         self.role_state
-            .set_additional_host_candidates(listen_sockets(ips), now);
+            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
+    }
+
+    /// Drops every datagram sent directly to a peer while `enabled`, forcing connections through a relay.
+    pub fn set_force_relayed_connections(&self, enabled: bool) {
+        self.io.set_force_relayed_connections(enabled);
     }
 
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
@@ -541,12 +548,13 @@ impl GatewayTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        listen_port: u16,
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(
-                Sockets::new(udp_socket_factory.clone()),
+                Sockets::new(udp_socket_factory.clone(), listen_port),
                 CryptoWorkers::default(),
                 resolver::spawn(
                     tcp_socket_factory.clone(),
@@ -576,7 +584,7 @@ impl GatewayTunnel {
     /// Advertises the given local IPs as additional host candidates on our UDP port.
     pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
         self.role_state
-            .set_additional_host_candidates(listen_sockets(ips), now);
+            .set_additional_host_candidates(listen_sockets(ips, self.io.listen_port()), now);
     }
 
     /// Shut down the Gateway tunnel.
@@ -846,8 +854,8 @@ pub struct FailedToHandleNetworkPacket {
     from: SocketAddr,
 }
 
-fn listen_sockets(ips: Vec<IpAddr>) -> Vec<SocketAddr> {
+fn listen_sockets(ips: Vec<IpAddr>, port: u16) -> Vec<SocketAddr> {
     ips.into_iter()
-        .map(|ip| SocketAddr::new(ip, sockets::DEFAULT_LISTEN_PORT))
+        .map(|ip| SocketAddr::new(ip, port))
         .collect()
 }

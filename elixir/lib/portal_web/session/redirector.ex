@@ -12,7 +12,6 @@ defmodule PortalWeb.Session.Redirector do
 
   alias Portal.Authentication
   alias Portal.Analytics.PostHog
-  alias Portal.ClientToken
   alias PortalWeb.WebsiteAttribution
 
   @doc """
@@ -98,8 +97,8 @@ defmodule PortalWeb.Session.Redirector do
         account,
         actor_name,
         identifier,
-        %ClientToken{} = token,
-        state
+        %Portal.DeviceToken{} = token,
+        params
       ) do
     if Portal.Account.active?(account) do
       fragment = Portal.Authentication.encode_fragment!(token)
@@ -108,7 +107,8 @@ defmodule PortalWeb.Session.Redirector do
         actor_name: actor_name,
         fragment: fragment,
         identity_provider_identifier: identifier,
-        state: state
+        state: params["state"],
+        callback: params["callback"]
       }
 
       redirect_url = ~p"/#{account}/sign_in/client_redirect"
@@ -138,7 +138,7 @@ defmodule PortalWeb.Session.Redirector do
         %Plug.Conn{} = conn,
         account,
         actor_name,
-        %ClientToken{} = token,
+        %Portal.DeviceToken{} = token,
         state
       ) do
     if Portal.Account.active?(account) do
@@ -197,21 +197,23 @@ defmodule PortalWeb.Session.Redirector do
         id: portal_session_id
       })
 
-    conn = delete_session(conn, account.id)
+    conn =
+      conn
+      |> delete_oauth_session(account)
+      |> delete_session(account.id)
 
     Phoenix.Controller.redirect(conn, external: post_sign_out_url)
+  end
+
+  def signed_out(%Plug.Conn{assigns: %{account: %Portal.Account{} = account}} = conn, account_or_slug) do
+    conn
+    |> delete_oauth_session(account)
+    |> Phoenix.Controller.redirect(to: ~p"/#{account_or_slug}")
   end
 
   def signed_out(%Plug.Conn{} = conn, account_id_or_slug) do
     conn
     |> Phoenix.Controller.redirect(to: ~p"/#{account_id_or_slug}")
-  end
-
-  defp delete_session(conn, account_id) do
-    conn
-    |> PortalWeb.Cookie.Session.delete(account_id)
-    |> Plug.Conn.configure_session(drop: true)
-    |> Plug.Conn.clear_session()
   end
 
   def default_portal_path(%Portal.Account{} = account, %Portal.Actor{
@@ -229,4 +231,27 @@ defmodule PortalWeb.Session.Redirector do
   end
 
   def default_portal_path(%Portal.Account{} = account, _other), do: ~p"/#{account}/sites"
+
+  defp delete_session(conn, account_id) do
+    conn
+    |> PortalWeb.Cookie.Session.delete(account_id)
+    |> Plug.Conn.configure_session(drop: true)
+    |> Plug.Conn.clear_session()
+  end
+
+  defp delete_oauth_session(conn, %Portal.Account{id: account_id}) do
+    case PortalWeb.Cookie.OAuthSession.fetch(conn, account_id) do
+      %PortalWeb.Cookie.OAuthSession{session_id: session_id} ->
+        :ok =
+          Authentication.delete_portal_session(%Portal.PortalSession{
+            account_id: account_id,
+            id: session_id
+          })
+
+        PortalWeb.Cookie.OAuthSession.delete(conn, account_id)
+
+      nil ->
+        conn
+    end
+  end
 end

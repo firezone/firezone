@@ -21,6 +21,14 @@ cd "${APPLE_DIR}"
 
 rm -rf "${RESULT_BUNDLE}"
 
+# The reviewer screenshot photographs the live portal rather than the app, so it
+# only runs when asked for (see apple-reviewer-screenshot.yml).
+if [ -n "${ONLY_TESTING:-}" ]; then
+    selection=("-only-testing:${ONLY_TESTING}")
+else
+    selection=(-skip-testing:FirezoneUITests/ReviewerScreenshotTests)
+fi
+
 echo "Running the macOS UI tests..."
 # Only what failed is repeated: a press the app dropped lands the second time,
 # and a screen that is broken fails twice.
@@ -28,6 +36,7 @@ xcodebuild test-without-building \
     -xctestrun "${XCTESTRUN}" \
     -destination "platform=macOS,arch=$(uname -m)" \
     -resultBundlePath "${RESULT_BUNDLE}" \
+    "${selection[@]}" \
     -retry-tests-on-failure \
     -test-iterations 2
 

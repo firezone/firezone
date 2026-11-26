@@ -30,6 +30,15 @@ rec {
   # which keeps the Rust dependency set hash-free.
   craneVendorDir = craneLib.vendorCargoDeps { cargoLock = ../../rust/Cargo.lock; };
 
+  # Cargo vendors only the Rust crate, so mimalloc's C sources need their own store path.
+  mimallocPackage = lib.findFirst (
+    p: p.name == "mimalloc-sys"
+  ) null (lib.importTOML ../../rust/Cargo.lock).package;
+  mimallocSrc = builtins.fetchGit {
+    url = "https://github.com/microsoft/mimalloc";
+    rev = lib.last (lib.splitString "#" mimallocPackage.source);
+  };
+
   # The same vendored sources, re-exported under the layout `cargoSetupHook`
   # expects: it reads the source replacement config from `.cargo/` below the
   # vendor directory, crane writes it to the top level. crane's config names
@@ -59,6 +68,7 @@ rec {
     RUSTFLAGS = rustflags;
     CARGO_BUILD_TARGET = pkgs.stdenv.hostPlatform.rust.rustcTarget;
     CARGO_PROFILE_RELEASE_STRIP = "false";
+    MIMALLOC_SRC_DIR = mimallocSrc.outPath;
   };
 
   # Common wiring for every Rust derivation here: the vendored sources above

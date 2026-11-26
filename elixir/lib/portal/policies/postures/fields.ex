@@ -89,7 +89,12 @@ defmodule Portal.Policies.Postures.Fields do
 
   @universal_operators ~w[exists does_not_exist]a
 
-  @all_operators @operators |> Map.values() |> List.flatten() |> Enum.concat(@universal_operators) |> Enum.uniq()
+  # Built from @types, not from the map: the order of atom keys in a small map
+  # follows atom creation, so it can change between builds.
+  @all_operators @types
+                 |> Enum.flat_map(&Map.fetch!(@operators, &1))
+                 |> Enum.concat(@universal_operators)
+                 |> Enum.uniq()
 
   @firezone %{
     name: :string,
@@ -226,6 +231,10 @@ defmodule Portal.Policies.Postures.Fields do
 
   @spec platforms() :: [atom()]
   def platforms, do: @platforms
+
+  @doc "The platforms a provider describes."
+  @spec platforms(atom()) :: [atom()]
+  def platforms(provider), do: Map.fetch!(@provider_platforms, provider)
 
   @doc "The platforms a field says something about; a rule on it is ignored elsewhere."
   @spec platforms(atom(), atom()) :: [atom()]

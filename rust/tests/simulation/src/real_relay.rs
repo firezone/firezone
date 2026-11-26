@@ -1,0 +1,354 @@
+use super::{
+    buffered_transmits::BufferedTransmits,
+    network::{ExecMutScope, Host},
+};
+use bufferpool::Bytes;
+use bytecodec::{DecodeExt as _, EncodeExt as _};
+use connlib_model::RelayId;
+use ip_packet::Ecn;
+use rand::{SeedableRng as _, rngs::StdRng};
+use relay_server_proto::{
+    AddressFamily, AllocationPort, Attribute, ClientSocket, IpStack, PeerSocket,
+};
+use secrecy::SecretString;
+use snownet::{RelaySocket, Transmit};
+use std::{
+    collections::HashSet,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    time::{Duration, Instant, SystemTime},
+};
+use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username};
+use stun_codec::rfc5766::{errors::InsufficientCapacity, methods::ALLOCATE};
+use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
+use uuid::Uuid;
+
+/// The relay server, shared by both simulations.
+pub(crate) struct RealRelay {
+    pub(crate) server: relay_server_proto::Server<StdRng>,
+    pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
+
+    /// Whether authenticated `ALLOCATE` requests are answered with `508 Insufficient Capacity`,
+    /// as if the relay had run out of ports. Existing allocations keep working.
+    pub(crate) out_of_capacity: bool,
+
+    created_at: SystemTime,
+}
+
+/// How long the credentials are valid that the tunnel simulation hands out.
+///
+/// Deliberately out of reach: a run simulates ~2h at most, so nothing expires.
+/// Shortening it would need the tunnel's model to predict the expiry first.
+const VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
+
+pub(crate) fn map_explode<'a>(
+    relays: impl Iterator<Item = (&'a RelayId, &'a Host<RealRelay>)> + 'a,
+    username: impl Into<String>,
+) -> impl Iterator<Item = (RelayId, RelaySocket, String, String, String)> + 'a {
+    let username = username.into();
+
+    relays.map(move |(id, r)| {
+        let (socket, username, password, realm) = r.inner().explode(
+            &username,
+            r.inner().server.auth_secret(),
+            r.inner().server.public_address(),
+            r.inner().created_at + VALIDITY,
+        );
+
+        (*id, socket, username, password, realm)
+    })
+}
+
+impl RealRelay {
+    pub(crate) fn new(
+        seed: u64,
+        ip4: Option<Ipv4Addr>,
+        ip6: Option<Ipv6Addr>,
+        created_at: SystemTime,
+    ) -> Self {
+        let mut server = relay_server_proto::Server::new(
+            IpStack::from((ip4, ip6)),
+            rand::rngs::StdRng::seed_from_u64(seed),
+            3478,
+            49152..=65535,
+        );
+        server.set_accounts([(relay_server_proto::auth::AccountId::from(Uuid::nil()), None)]);
+
+        Self {
+            server,
+            allocations: Default::default(),
+            out_of_capacity: false,
+            created_at,
+        }
+    }
+
+    /// The relay's socket, and credentials for `username` that expire at `expires_at`.
+    pub(crate) fn explode(
+        &self,
+        username: &str,
+        auth_secret: &SecretString,
+        public_address: IpStack,
+        expires_at: SystemTime,
+    ) -> (RelaySocket, String, String, String) {
+        let relay_socket = match public_address {
+            relay_server_proto::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
+            relay_server_proto::IpStack::Ip6(ip6) => {
+                RelaySocket::V6(SocketAddrV6::new(ip6, 3478, 0, 0))
+            }
+            relay_server_proto::IpStack::Dual { ip4, ip6 } => RelaySocket::Dual {
+                v4: SocketAddrV4::new(ip4, 3478),
+                v6: SocketAddrV6::new(ip6, 3478, 0, 0),
+            },
+        };
+
+        let (username, password) = self.make_credentials(username, auth_secret, expires_at);
+
+        (relay_socket, username, password, "firezone".to_owned())
+    }
+
+    fn matching_listen_socket(
+        &self,
+        other: SocketAddr,
+        public_address: IpStack,
+    ) -> Option<SocketAddr> {
+        match other {
+            SocketAddr::V4(_) => Some(SocketAddr::new((*public_address.as_v4()?).into(), 3478)),
+            SocketAddr::V6(_) => Some(SocketAddr::new((*public_address.as_v6()?).into(), 3478)),
+        }
+    }
+
+    pub(crate) fn receive(
+        &mut self,
+        transmit: Transmit,
+        now: Instant,
+        now_utc: SystemTime,
+    ) -> Option<Transmit> {
+        let dst = transmit.dst;
+        let payload = transmit.payload;
+        let sender = transmit.src.unwrap();
+
+        if self
+            .matching_listen_socket(dst, self.server.public_address())
+            .is_some_and(|s| s == dst)
+        {
+            return self.handle_client_input(payload, ClientSocket::new(sender), now, now_utc);
+        }
+
+        self.handle_peer_traffic(
+            payload,
+            PeerSocket::new(sender),
+            AllocationPort::new(dst.port()),
+            now,
+        )
+    }
+
+    fn handle_client_input(
+        &mut self,
+        mut payload: Bytes,
+        client: ClientSocket,
+        now: Instant,
+        now_utc: SystemTime,
+    ) -> Option<Transmit> {
+        if self.out_of_capacity
+            && let Some(response) = self.reject_allocation(&payload)
+        {
+            payload = Bytes::copied_from(&response);
+
+            return Some(Transmit {
+                src: self
+                    .matching_listen_socket(client.into_socket(), self.server.public_address()),
+                dst: client.into_socket(),
+                payload,
+                ecn: Ecn::NonEct,
+            });
+        }
+
+        let (port, peer) = self
+            .server
+            .handle_client_input(&payload, client, now, now_utc)?;
+
+        let payload = Bytes::copied_from(&payload[4..]);
+
+        // The `dst` of the relayed packet is what TURN calls a "peer".
+        let dst = peer.into_socket();
+
+        // The `src_ip` is the relay's IP
+        let src_ip = match dst {
+            SocketAddr::V4(_) => {
+                assert!(
+                    self.allocations.contains(&(AddressFamily::V4, port)),
+                    "IPv4 allocation to be present if we want to send to an IPv4 socket"
+                );
+
+                self.server
+                    .public_ip4()
+                    .expect("listen on IPv4 if we have an allocation")
+            }
+            SocketAddr::V6(_) => {
+                assert!(
+                    self.allocations.contains(&(AddressFamily::V6, port)),
+                    "IPv6 allocation to be present if we want to send to an IPv6 socket"
+                );
+
+                self.server
+                    .public_ip6()
+                    .expect("listen on IPv6 if we have an allocation")
+            }
+        };
+
+        // The `src` of the relayed packet is the relay itself _from_ the allocated port.
+        let src = SocketAddr::new(src_ip, port.value());
+
+        Some(Transmit {
+            src: Some(src),
+            dst,
+            payload,
+            ecn: Ecn::NonEct,
+        })
+    }
+
+    /// Answers an `ALLOCATE` that already carries a nonce the way a relay without free ports does.
+    ///
+    /// Requests without a nonce still reach the server, so clients authenticate first, as they
+    /// would against a real relay.
+    fn reject_allocation(&self, payload: &[u8]) -> Option<Vec<u8>> {
+        let request = MessageDecoder::<Attribute>::new()
+            .decode_from_bytes(payload)
+            .ok()?
+            .ok()?;
+        if request.class() != MessageClass::Request || request.method() != ALLOCATE {
+            return None;
+        }
+        request.get_attribute::<Nonce>()?;
+        let username = request.get_attribute::<Username>()?;
+
+        let mut response = Message::<Attribute>::new(
+            MessageClass::ErrorResponse,
+            ALLOCATE,
+            request.transaction_id(),
+        );
+        response.add_attribute(ErrorCode::from(InsufficientCapacity));
+        let password =
+            relay_server_proto::auth::generate_password(self.server.auth_secret(), username.name());
+        let realm = Realm::new("firezone".to_owned()).ok()?;
+        let integrity =
+            MessageIntegrity::new_long_term_credential(&response, username, &realm, &password)
+                .ok()?;
+        response.add_attribute(integrity);
+
+        MessageEncoder::new().encode_into_bytes(response).ok()
+    }
+
+    fn handle_peer_traffic(
+        &mut self,
+        payload: Bytes,
+        peer: PeerSocket,
+        port: AllocationPort,
+        now: Instant,
+    ) -> Option<Transmit> {
+        let (client, channel) = self.server.handle_peer_traffic(&payload, peer, port, now)?;
+
+        let mut header = [0; 4];
+        relay_server_proto::ChannelData::encode_header_to_slice(
+            channel,
+            payload.len() as u16,
+            &mut header,
+        );
+        let mut channel_data = Bytes::fitting(header.len() + payload.len());
+        channel_data.extend_from_slice(&header);
+        channel_data.extend_from_slice(&payload);
+
+        let receiving_socket = client.into_socket();
+        let sending_socket = self
+            .matching_listen_socket(receiving_socket, self.server.public_address())
+            .unwrap();
+
+        Some(Transmit {
+            src: Some(sending_socket),
+            dst: receiving_socket,
+            payload: channel_data,
+            ecn: Ecn::NonEct,
+        })
+    }
+
+    fn make_credentials(
+        &self,
+        username: &str,
+        auth_secret: &SecretString,
+        expires_at: SystemTime,
+    ) -> (String, String) {
+        let secs = expires_at
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("expiry must be later than UNIX_EPOCH")
+            .as_secs();
+
+        let username = format!(
+            "{secs}:{}:{username}",
+            relay_server_proto::auth::hash_account_id(&relay_server_proto::auth::AccountId::from(
+                Uuid::nil()
+            ))
+        );
+        let password = relay_server_proto::auth::generate_password(auth_secret, &username);
+
+        (username, password)
+    }
+}
+
+impl Host<RealRelay> {
+    /// Steps the relay with what is due at `now` and puts what it sent onto the network.
+    pub(crate) fn step(
+        &mut self,
+        transmits: &mut BufferedTransmits,
+        now: Instant,
+        now_utc: SystemTime,
+    ) {
+        self.exec_mut(|r| {
+            if r.server.poll_timeout().is_some_and(|t| t <= now) {
+                r.server.handle_timeout(now)
+            }
+        });
+
+        while let Some(transmit) = self.poll_inbox(now) {
+            let reply = self.exec_mut(|r| r.receive(transmit, now, now_utc));
+            transmits.push_from(reply, self, now);
+        }
+
+        while let Some(command) = self.exec_mut(|r| r.server.next_command()) {
+            match command {
+                relay_server_proto::Command::SendMessage { payload, recipient } => {
+                    let dst = recipient.into_socket();
+                    let src = self
+                        .sending_socket_for(dst.ip())
+                        .expect("relay to never emit packets without a matching socket");
+                    let transmit = Transmit {
+                        src: Some(src),
+                        dst,
+                        payload: Bytes::copied_from(&payload),
+                        ecn: Ecn::NonEct,
+                    };
+
+                    transmits.push_from(transmit, self, now);
+                }
+                relay_server_proto::Command::CreateAllocation { port, family } => {
+                    self.exec_mut(|r| r.allocations.insert((family, port)));
+                }
+                relay_server_proto::Command::FreeAllocation { port, family } => {
+                    self.exec_mut(|r| r.allocations.remove(&(family, port)));
+                }
+                relay_server_proto::Command::CreateChannelBinding { .. }
+                | relay_server_proto::Command::DeleteChannelBinding { .. } => {}
+            }
+        }
+    }
+}
+
+impl ExecMutScope for RealRelay {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
+}
+
+impl ExecMutScope for u64 {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
+}

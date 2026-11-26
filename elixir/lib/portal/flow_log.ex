@@ -153,8 +153,8 @@ defmodule Portal.FlowLog do
     field :authorized_at, :utc_datetime_usec
     field :authorization_expires_at, :utc_datetime_usec
 
-    # For device-to-device flows the receiving client has an owner of its own
-    # that these do not record.
+    # For device-to-device flows these do not record the receiving device's
+    # actor.
     field :initiator_actor_id, :binary_id
     field :initiator_actor_email, :string
     field :initiator_actor_name, :string
@@ -244,10 +244,9 @@ defmodule Portal.FlowLog do
     |> validate_string_lengths()
     |> validate_partition_window()
     # Flow ordering against authorized_at / flow_end is not enforced because
-    # endpoint clocks may be skewed. Only the retained partition window bounds
-    # flow_start. These constraints duplicate the DB CHECKs because the
-    # controller writes via insert_all, which
-    # raises on a CHECK violation instead of returning a 422.
+    # endpoint clocks may be skewed. These constraints duplicate the DB CHECKs
+    # because the controller writes via insert_all, which raises on a CHECK
+    # violation instead of dropping the record.
     |> check_constraint(:role,
       name: :flow_logs_role_chk,
       message: "must be initiator or responder"
@@ -310,7 +309,7 @@ defmodule Portal.FlowLog do
   # The gateway counts packets/bytes in u64, but bigint is a signed i64, so a
   # counter above the column max would overflow and raise on insert_all, taking
   # the whole batch with it. It should never happen in normal operation, so the
-  # record is rejected (surfaced as a 422) and an error is logged so we are
+  # record is dropped and an error is logged so we are
   # alerted if it ever does.
   defp validate_counters(changeset) do
     Enum.reduce(@counter_fields, changeset, fn field, cs ->
@@ -348,7 +347,7 @@ defmodule Portal.FlowLog do
   # missing them is malformed. An open (flow_end nil) leaves them nil. Counters
   # may be zero (one-way flows, payload-less packets), so only presence, not a
   # positive value, is required. Mirrors the flow_logs_close_complete DB CHECK,
-  # which would otherwise raise on insert_all instead of returning a 422.
+  # which would otherwise raise on insert_all instead of dropping the record.
   defp validate_close_complete(changeset) do
     case get_field(changeset, :flow_end) do
       nil -> changeset

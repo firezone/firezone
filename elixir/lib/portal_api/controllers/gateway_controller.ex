@@ -294,6 +294,7 @@ defmodule PortalAPI.GatewayController do
     alias Portal.Site
     alias Portal.Device
     alias Portal.Presence
+    alias Portal.SiteDevice
 
     def fetch_site(id, subject) do
       result =
@@ -318,20 +319,29 @@ defmodule PortalAPI.GatewayController do
     def list_gateways(subject, opts \\ []) do
       from(d in Device, as: :gateways)
       |> where([gateways: d], d.type == :gateway)
+      |> with_site()
       |> with_token_rotation()
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
+    defp with_site(queryable) do
+      queryable
+      |> join(:inner, [gateways: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+    end
+
     # Surfaces the rotation state of the token the gateway last connected
     # with, so a caller can tell a pending rotation from a completed one.
-    # Left join because gateway_token_id is null until the gateway's first
+    # Left join because token_id is null until the gateway's first
     # connect, and select_merge because rotated_at lives on the token
     # rather than the device.
     defp with_token_rotation(queryable) do
       queryable
-      |> join(:left, [gateways: d], t in Portal.GatewayToken,
-        on: t.id == d.gateway_token_id and t.account_id == d.account_id,
+      |> join(:left, [gateways: d], t in Portal.DeviceToken,
+        on: t.id == d.token_id and t.account_id == d.account_id,
         as: :gateway_token
       )
       |> select_merge([gateway_token: t], %{gateway_token_rotated_at: t.rotated_at})
@@ -380,7 +390,7 @@ defmodule PortalAPI.GatewayController do
     end
 
     defp filter_by_site_id(queryable, site_id) do
-      dynamic = dynamic([gateways: d], d.site_id == ^site_id)
+      dynamic = dynamic([site_device: sd], sd.site_id == ^site_id)
       {queryable, dynamic}
     end
 
@@ -402,7 +412,9 @@ defmodule PortalAPI.GatewayController do
     def fetch_gateway(site_id, id, subject) do
       result =
         from(d in Device, as: :gateways)
-        |> where([gateways: d], d.id == ^id and d.type == :gateway and d.site_id == ^site_id)
+        |> where([gateways: d], d.id == ^id and d.type == :gateway)
+        |> with_site()
+        |> where([site_device: sd], sd.site_id == ^site_id)
         |> with_token_rotation()
         |> Safe.scoped(subject)
         |> Safe.one()
@@ -413,7 +425,7 @@ defmodule PortalAPI.GatewayController do
       end
     end
 
-    # Mirrors PortalWeb.Live.Sites.Database.rename_gateway/3. Safe.update/1
+    # Mirrors Portal.Devices.rename_gateway/3. Safe.update/1
     # re-applies Device.changeset/1 centrally regardless of this bypass,
     # but that's fine - :firezone_id is only required for :client devices
     # (a gateway legitimately has none until first connect).

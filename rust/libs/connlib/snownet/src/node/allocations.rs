@@ -7,17 +7,17 @@ use std::{
 };
 
 use fast_random_state::FastRandomState;
+use ip_packet::Ecn;
 use is::Candidate;
 use itertools::Itertools as _;
+use otel_instruments::Counter;
 use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
+use relay_client_proto::{Allocation, CredentialUpdate, FreeReason};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
-use crate::{
-    RelaySocket, Transmit,
-    allocation::{self, Allocation, FreeReason},
-};
+use crate::{RelaySocket, Transmit};
 
 /// How long we ignore a relay after freeing its allocation because of a failure.
 const BLOCK_DURATION: Duration = Duration::from_secs(60);
@@ -27,6 +27,7 @@ pub(crate) struct Allocations<RId> {
     previous_relays_by_ip: AllocRingBuffer<IpAddr>,
     /// Relays we freed an allocation of because of a failure, and until when we ignore them.
     blocked: HashMap<RId, Instant, FastRandomState>,
+    freed: Counter<u64>,
 
     rng: StdRng,
 }
@@ -43,6 +44,7 @@ where
             inner: HashMap::default(),
             previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries
             blocked: HashMap::default(),
+            freed: otel_instruments::relay_allocations_freed(),
             rng: StdRng::from_seed(seed),
         }
     }
@@ -50,6 +52,31 @@ where
     #[cfg(test)]
     pub(crate) fn for_test() -> Self {
         Self::new(&mut StdRng::seed_from_u64(0))
+    }
+
+    /// Answers the pending BINDING request of the given relay, `rtt` after `sent_at`.
+    #[cfg(test)]
+    pub(crate) fn receive_binding_response(&mut self, id: &RId, rtt: Duration, sent_at: Instant) {
+        use std::net::Ipv4Addr;
+        use stun_codec::{
+            Message, MessageClass,
+            rfc5389::{attributes::XorMappedAddress, methods::BINDING},
+        };
+
+        let allocation = self.inner.get_mut(id).unwrap();
+        let local = SocketAddr::from((Ipv4Addr::LOCALHOST, 33333));
+
+        let request = allocation.poll_transmit().unwrap();
+        let binding = relay_client_proto::decode(&request.payload)
+            .unwrap()
+            .unwrap();
+        let mut response = Message::new(
+            MessageClass::SuccessResponse,
+            BINDING,
+            binding.transaction_id(),
+        );
+        response.add_attribute(XorMappedAddress::new(local));
+        allocation.handle_input(request.dst, local, response, sent_at + rtt);
     }
 
     /// Restarts every allocation in place, keeping the portal-issued credentials but
@@ -94,6 +121,14 @@ where
             .find_map(|(id, a)| a.has_socket(addr).then_some((*id, a)))
     }
 
+    pub(crate) fn has_server(&self, socket: SocketAddr) -> bool {
+        self.inner.values().any(|a| a.server().matches(socket))
+    }
+
+    pub(crate) fn host_candidates(&self) -> impl Iterator<Item = &Candidate> {
+        self.inner.values().flat_map(|a| a.host_candidates())
+    }
+
     pub(crate) fn get_mut_by_server(&mut self, socket: SocketAddr) -> MutAllocationRef<'_, RId> {
         self.inner
             .iter_mut()
@@ -122,10 +157,6 @@ where
             .chain(relay_candidates)
             .sorted_by_key(|c| c.prio())
             .rev()
-    }
-
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&RId, &mut Allocation)> {
-        self.inner.iter_mut()
     }
 
     pub(crate) fn remove_by_id(&mut self, id: &RId) -> Option<Allocation> {
@@ -162,15 +193,16 @@ where
 
                 UpsertResult::Added
             }
-            Entry::Occupied(mut o) => {
-                let allocation = o.get();
-
-                if allocation.matches_credentials(&username, &password)
-                    && allocation.matches_socket(&server)
+            Entry::Occupied(mut o) if o.get().matches_socket(&server) => {
+                match o
+                    .get_mut()
+                    .update_credentials(username, password, realm, now)
                 {
-                    return UpsertResult::Skipped;
+                    CredentialUpdate::Changed => UpsertResult::UpdatedCredentials,
+                    CredentialUpdate::Unchanged => UpsertResult::Unchanged,
                 }
-
+            }
+            Entry::Occupied(mut o) => {
                 let mut seed = [0u8; 32];
                 self.rng.fill_bytes(&mut seed);
 
@@ -227,7 +259,7 @@ where
             .map(|(rid, _)| *rid)
     }
 
-    pub(crate) fn poll_event(&mut self) -> Option<(RId, allocation::Event)> {
+    pub(crate) fn poll_event(&mut self) -> Option<(RId, relay_client_proto::Event)> {
         self.inner
             .iter_mut()
             .filter_map(|(id, a)| Some((*id, a.poll_event()?)))
@@ -241,10 +273,18 @@ where
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<Transmit> {
-        self.inner
+        let transmit = self
+            .inner
             .values_mut()
             .filter_map(Allocation::poll_transmit)
-            .next()
+            .next()?;
+
+        Some(Transmit {
+            src: None,
+            dst: transmit.dst,
+            payload: transmit.payload,
+            ecn: Ecn::NonEct,
+        })
     }
 
     /// Performs garbage-collection across all our allocations.
@@ -254,6 +294,7 @@ where
             .extract_if(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
                     tracing::info!(%rid, "Disconnecting from relay; {e}");
+                    self.freed.add(1, &[otel_attributes::error_type(&e)]);
 
                     self.previous_relays_by_ip
                         .extend(server_addresses(allocation));
@@ -365,7 +406,8 @@ fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
 
 pub(crate) enum UpsertResult {
     Added,
-    Skipped,
+    UpdatedCredentials,
+    Unchanged,
     Blocked,
     Replaced(Allocation),
 }
@@ -385,9 +427,8 @@ mod tests {
     use stun_codec::{
         Message, MessageClass,
         rfc5389::{
-            attributes::{ErrorCode, XorMappedAddress},
+            attributes::{ErrorCode, MessageIntegrity},
             errors::ServerError,
-            methods::BINDING,
         },
         rfc5766::methods::ALLOCATE,
     };
@@ -540,6 +581,30 @@ mod tests {
     }
 
     #[test]
+    fn reports_updated_credentials_only_when_they_change() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+
+        assert!(matches!(
+            upsert(&mut allocations, 1, SERVER_V4, now),
+            UpsertResult::Unchanged
+        ));
+
+        assert!(matches!(
+            allocations.upsert(
+                1,
+                RelaySocket::from(SERVER_V4),
+                Username::new("test".to_owned()).unwrap(),
+                "password".to_owned(),
+                Realm::new("new-realm".to_owned()).unwrap(),
+                now,
+            ),
+            UpsertResult::UpdatedCredentials
+        ));
+    }
+
+    #[test]
     fn does_not_block_unresponsive_relay() {
         let mut allocations = Allocations::for_test();
         let now = Instant::now();
@@ -588,21 +653,12 @@ mod tests {
 
     /// Rejects the allocation's ALLOCATE request with an unhandled error.
     fn reject_allocation(allocations: &mut Allocations<u64>, rid: u64, now: Instant) {
+        allocations.receive_binding_response(&rid, Duration::ZERO, now);
+
         let allocation = allocations.get_mut_by_id(&rid).unwrap();
         let local = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 33333));
 
-        let binding = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
-            .unwrap()
-            .unwrap();
-        let mut response = Message::new(
-            MessageClass::SuccessResponse,
-            BINDING,
-            binding.transaction_id(),
-        );
-        response.add_attribute(XorMappedAddress::new(local));
-        allocation.handle_input(SERVER_V4, local, response, now);
-
-        let allocate = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
+        let allocate = relay_client_proto::decode(&allocation.poll_transmit().unwrap().payload)
             .unwrap()
             .unwrap();
         let mut response = Message::new(
@@ -611,6 +667,15 @@ mod tests {
             allocate.transaction_id(),
         );
         response.add_attribute(ErrorCode::from(ServerError));
+        // The allocation only accepts responses that are signed with the credentials from `upsert`.
+        let integrity = MessageIntegrity::new_long_term_credential(
+            &response,
+            &Username::new("test".to_owned()).unwrap(),
+            &Realm::new("firezone".to_owned()).unwrap(),
+            "password",
+        )
+        .unwrap();
+        response.add_attribute(integrity);
         allocation.handle_input(SERVER_V4, local, response, now);
     }
 
@@ -697,10 +762,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
             );
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .set_rtt(Duration::from_millis(rtt_ms));
+            allocations.receive_binding_response(&rid, Duration::from_millis(rtt_ms), now);
         }
         for _ in 0..1000 {
             let rid = allocations.sample().unwrap();
@@ -723,10 +785,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
             );
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .set_rtt(Duration::from_millis(rtt_ms));
+            allocations.receive_binding_response(&rid, Duration::from_millis(rtt_ms), now);
         }
         let mut counts = [0u32; 2];
 
@@ -757,10 +816,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
             );
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .set_rtt(Duration::from_millis(rtt_ms));
+            allocations.receive_binding_response(&rid, Duration::from_millis(rtt_ms), now);
         }
         for _ in 0..100 {
             let rid = allocations.sample().unwrap();
@@ -781,10 +837,7 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         );
-        allocations
-            .get_mut_by_id(&1)
-            .unwrap()
-            .set_rtt(Duration::from_millis(500));
+        allocations.receive_binding_response(&1, Duration::from_millis(500), now);
         let rid = allocations.sample().unwrap();
         assert_eq!(rid, 1);
     }

@@ -580,6 +580,22 @@ impl UnknownConnection {
     pub fn recently_disconnected(&self) -> bool {
         self.disconnected_for.is_some()
     }
+
+    /// The error message without the ID, which may be chosen by an unauthenticated peer.
+    pub fn metric_label(&self) -> &'static str {
+        match (self.kind, self.recently_disconnected()) {
+            ("id", false) => "No connection for id",
+            ("id", true) => "No connection for id (recently disconnected)",
+            ("tunnel id", false) => "No connection for tunnel id",
+            ("tunnel id", true) => "No connection for tunnel id (recently disconnected)",
+            ("public key", false) => "No connection for public key",
+            ("public key", true) => "No connection for public key (recently disconnected)",
+            ("ufrag", false) => "No connection for ufrag",
+            ("ufrag", true) => "No connection for ufrag (recently disconnected)",
+            ("STUN trans ID", _) => "No connection for STUN trans ID",
+            (_, _) => "No connection",
+        }
+    }
 }
 
 impl std::error::Error for UnknownConnection {}
@@ -724,10 +740,7 @@ mod tests {
             now,
         );
         // Simulate a successful response so the relay is eligible for sampling.
-        allocations
-            .get_mut_by_id(&rid)
-            .unwrap()
-            .set_rtt(Duration::from_millis(20));
+        allocations.receive_binding_response(&rid, Duration::from_millis(20), now);
     }
 
     fn handle_timeout(connections: &mut Connections<u32, u32>, now: Instant) {

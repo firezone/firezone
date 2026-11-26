@@ -9,10 +9,12 @@ defmodule PortalAPI.Schemas.Gateway do
              for: Portal.Device,
              internal: [
                :account_id,
+               :actor,
                :actor_id,
                :attested?,
+               :attested_until,
                :posture,
-               :client_token_id,
+               :token_id,
                :device_serial,
                :device_uuid,
                :firebase_installation_id,
@@ -31,8 +33,8 @@ defmodule PortalAPI.Schemas.Gateway do
                :last_attested_device_uuid,
                :last_attested_mdm_device_id,
                :online?,
+               :proto_range,
                :provisioned_token,
-               :site_id,
                :type,
                :updated_at,
                :verified_at
@@ -92,7 +94,7 @@ defmodule PortalAPI.Schemas.Gateway do
             "When the token identified by `gateway_token_id` was rotated out. Null in " <>
               "the normal case. When set, a replacement token has been minted and this " <>
               "one stays valid only until the Gateway connects with the replacement or " <>
-              "#{Portal.GatewayToken.rotation_grace_hours()} hours elapse from this " <>
+              "#{Portal.DeviceToken.rotation_grace_hours()} hours elapse from this " <>
               "timestamp, whichever comes first - so a non-null value means a rotation " <>
               "is pending and the Gateway has not picked it up yet."
         },
@@ -167,7 +169,11 @@ defmodule PortalAPI.Schemas.Gateway do
     })
 
     def map(%Portal.Device{provisioned_token: nil} = device, _map) do
-      %{online: device.online?, rotated_at: device.gateway_token_rotated_at}
+      %{
+        online: device.online?,
+        gateway_token_id: device.token_id,
+        rotated_at: device.gateway_token_rotated_at
+      }
     end
 
     def map(%Portal.Device{provisioned_token: token} = device, map) when is_binary(token) do

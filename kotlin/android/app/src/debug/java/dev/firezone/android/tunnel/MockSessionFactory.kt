@@ -46,6 +46,8 @@ private class MockSession : TunnelSession {
 
     override fun setDns(dnsServers: List<String>) = Unit
 
+    override fun setForceRelayedConnections(enabled: Boolean) = Unit
+
     override fun setInternetResourceState(active: Boolean) = Unit
 
     override fun setTun(fd: Int) = Unit

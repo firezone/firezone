@@ -45,6 +45,8 @@ const CHAN_START: u16 = 0x4000;
 const CHAN_END: u16 = 0x7FFF;
 /// DNS port
 const DNS_PORT: u16 = 53;
+/// "More fragments" bit of the IPv4 fragmentation flags
+const IPV4_MORE_FRAGMENTS: u8 = 0b001;
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
@@ -100,6 +102,10 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
     if ipv4.ihl() != 20 {
         // IPv4 with options is not supported
         return Err(Error::Ipv4PacketWithOptions);
+    }
+
+    if ipv4.frag_flags() & IPV4_MORE_FRAGMENTS != 0 || ipv4.frag_offset() != 0 {
+        return Err(Error::Ipv4Fragment);
     }
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
@@ -514,8 +520,9 @@ fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
 fn ensure_udp(proto: Result<IpProto, IpError>) -> Result<(), Error> {
     let proto = proto.map_err(|_| Error::NotUdp)?;
 
-    match proto {
-        IpProto::Udp => Ok(()),
-        _ => Err(Error::NotUdp),
+    if proto != IpProto::Udp {
+        return Err(Error::NotUdp);
     }
+
+    Ok(())
 }

@@ -60,32 +60,36 @@ defmodule Portal.Application do
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.SlugRegistry.Cache,
+      Portal.FlowLogToken.AccountCache,
       Portal.ComponentVersions,
       Portal.OSReleases,
       Portal.ClockDriftAlarm,
       OpenIDConnect.Document.Cache
     ]
 
-    endpoint_children = [
-      # Builds the MCP tool table from the API spec; must be ready before the
-      # API endpoint starts serving /mcp.
-      PortalAPI.MCP.Tools,
-      # Give Phoenix socket drain enough time to gracefully close channel topics
-      # before transports are force-terminated.
-      {PortalWeb.Endpoint, shutdown: 40_000},
-      {PortalAPI.Endpoint, shutdown: 40_000},
-      {PortalOps.Endpoint, shutdown: 40_000},
-      # The public listener stops first during reverse-order shutdown, before
-      # the endpoints it dispatches into begin draining.
-      {Portal.Endpoint, shutdown: 40_000}
-    ]
+    endpoint_children =
+      [
+        # Builds the MCP tool table from the API spec; must be ready before the
+        # API endpoint starts serving /mcp.
+        PortalAPI.MCP.Tools,
+        # The public listener owns the socket transports, so it must stop after
+        # the endpoints it dispatches into have drained their sockets.
+        {Portal.Endpoint, shutdown: 40_000},
+        # Give Phoenix socket drain enough time to close sockets in batches
+        # before transports are force-terminated.
+        {PortalWeb.Endpoint, shutdown: 70_000},
+        {PortalAPI.Endpoint, shutdown: 70_000},
+        # Stops first, so that no new connection reaches an endpoint that drains
+        # or has already stopped.
+        Portal.Endpoint.Admission
+      ] ++ ops_endpoint()
 
     # Child order is chosen to make reverse-order shutdown graceful:
-    # 1) Portal.Cluster sends goodbye while DB/PubSub are healthy.
-    # 2) Replication slot pollers stop while BEAM is still fully alive.
-    # 3) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
-    # 4) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
+    # 1) Replication slot pollers stop while BEAM is still fully alive.
+    # 2) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
+    # 3) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
     base_children ++
+      config_watcher() ++
       client_session_queue() ++
       gateway_session_queue() ++
       policy_authorization_queue() ++
@@ -130,6 +134,14 @@ defmodule Portal.Application do
         capture_excluded_domains: []
       }
     })
+  end
+
+  # Applies live App Configuration changes when the portal reads its settings
+  # from Azure.
+  defp config_watcher do
+    if Portal.Config.env_var_to_config!(:config_adapter) == :azure,
+      do: [Portal.Config.Watcher],
+      else: []
   end
 
   defp log_level do
@@ -251,6 +263,22 @@ defmodule Portal.Application do
 
       _metadata ->
         :ok
+    end
+  end
+
+  # The ops dashboard is only compiled in from the private firezone/portal-ops repo.
+  defp ops_endpoint do
+    repo =
+      if Code.ensure_loaded?(PortalOps.Repo) do
+        [PortalOps.Repo]
+      else
+        []
+      end
+
+    if Code.ensure_loaded?(PortalOps.Endpoint) do
+      repo ++ [{PortalOps.Endpoint, shutdown: 40_000}]
+    else
+      []
     end
   end
 end

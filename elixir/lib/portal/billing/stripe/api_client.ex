@@ -14,15 +14,11 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :post, "customers", body)
   end
 
-  def update_customer(api_token, customer_id, name, metadata) do
-    metadata_params =
+  def update_customer_metadata(api_token, customer_id, metadata) do
+    body =
       for {key, value} <- metadata, into: %{} do
         {"metadata[#{key}]", value}
       end
-
-    body =
-      metadata_params
-      |> Map.put("name", name)
       |> URI.encode_query(:www_form)
 
     request(api_token, :post, "customers/#{customer_id}", body)
@@ -89,12 +85,86 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :post, "subscriptions", body)
   end
 
+  def fetch_promotion_code(api_token, code) do
+    query = URI.encode_query(%{"code" => code, "limit" => 1}, :www_form)
+
+    case request(api_token, :get, "promotion_codes?#{query}") do
+      {:ok, %{"data" => [promotion_code | _]}} -> {:ok, promotion_code}
+      {:ok, %{"data" => []}} -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def create_promotion_code(api_token, code, coupon_id, metadata, expires_at, idempotency_key) do
+    body =
+      metadata
+      |> Map.new(fn {key, value} -> {"metadata[#{key}]", value} end)
+      |> Map.merge(%{
+        "code" => code,
+        "coupon" => coupon_id,
+        "max_redemptions" => 1,
+        "expires_at" => DateTime.to_unix(expires_at)
+      })
+      |> URI.encode_query(:www_form)
+
+    request(api_token, :post, "promotion_codes", body, idempotency_key: idempotency_key)
+  end
+
+  def list_all_customer_invoices(api_token, customer_id, page_after \\ nil, acc \\ []) do
+    query =
+      [
+        {"customer", customer_id},
+        {"limit", 100},
+        {"expand[]", "data.total_discount_amounts.discount"}
+      ]
+      |> put_if_not_nil_kv("starting_after", page_after)
+      |> URI.encode_query(:www_form)
+
+    case request(api_token, :get, "invoices?#{query}") do
+      {:ok, %{"has_more" => true, "data" => data}} ->
+        list_all_customer_invoices(api_token, customer_id, List.last(data)["id"], acc ++ data)
+
+      {:ok, %{"has_more" => false, "data" => data}} ->
+        {:ok, acc ++ data}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def list_all_customer_invoice_items(api_token, customer_id, page_after \\ nil, acc \\ []) do
+    query =
+      [{"customer", customer_id}, {"limit", 100}]
+      |> put_if_not_nil_kv("starting_after", page_after)
+      |> URI.encode_query(:www_form)
+
+    case request(api_token, :get, "invoiceitems?#{query}") do
+      {:ok, %{"has_more" => true, "data" => data}} ->
+        list_all_customer_invoice_items(api_token, customer_id, List.last(data)["id"], acc ++ data)
+
+      {:ok, %{"has_more" => false, "data" => data}} ->
+        {:ok, acc ++ data}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def create_invoice_item(api_token, attrs, idempotency_key) do
+    body = URI.encode_query(attrs, :www_form)
+    request(api_token, :post, "invoiceitems", body, idempotency_key: idempotency_key)
+  end
+
+  def delete_subscription_discount(api_token, subscription_id) do
+    request(api_token, :delete, "subscriptions/#{subscription_id}/discount")
+  end
+
   def cancel_subscription(api_token, subscription_id) do
     request(api_token, :delete, "subscriptions/#{subscription_id}")
   end
 
   # Req turns a GET with a body, even an empty one, into a POST.
-  def request(api_token, method, path, body \\ nil) do
+  def request(api_token, method, path, body \\ nil, opts \\ []) do
     endpoint = fetch_config!(:endpoint)
     url = "#{endpoint}/v1/#{path}"
 
@@ -104,8 +174,18 @@ defmodule Portal.Billing.Stripe.APIClient do
       {"stripe-version", "2023-10-16"}
     ]
 
+    # Every retry of this call sends the same idempotency key, so Stripe
+    # returns the saved result of a POST it already ran instead of running it
+    # again, and a retried POST cannot create a second customer or subscription.
     req_opts =
-      [method: method, url: url, headers: headers, body: body]
+      [
+        method: method,
+        url: url,
+        headers: headers ++ idempotency_key_header(method, opts),
+        body: body,
+        retry: &retry?/2,
+        max_retries: 2
+      ]
       |> Keyword.merge(fetch_config(:req_opts) || [])
 
     case Req.request(req_opts) do
@@ -122,6 +202,34 @@ defmodule Portal.Billing.Stripe.APIClient do
         {:error, reason}
     end
   end
+
+  # Stripe replays the saved result of a keyed POST, a 500 included, so only
+  # failures where Stripe did not answer, or says a retry can help, are retried.
+  # DELETE has no idempotency key and is never retried.
+  defp retry?(%Req.Request{method: method}, response_or_exception) when method in [:get, :post] do
+    retryable?(response_or_exception)
+  end
+
+  defp retry?(_request, _response_or_exception), do: false
+
+  defp retryable?(%Req.Response{status: status} = response) do
+    case Req.Response.get_header(response, "stripe-should-retry") do
+      ["true"] -> true
+      ["false"] -> false
+      _ -> status in [409, 429]
+    end
+  end
+
+  defp retryable?(%Req.TransportError{reason: reason}), do: reason in [:timeout, :econnrefused, :closed]
+  defp retryable?(_exception), do: false
+
+  defp idempotency_key_header(:post, opts),
+    do: [{"idempotency-key", Keyword.get_lazy(opts, :idempotency_key, &Ecto.UUID.generate/0)}]
+
+  defp idempotency_key_header(_method, _opts), do: []
+
+  defp put_if_not_nil_kv(params, _key, nil), do: params
+  defp put_if_not_nil_kv(params, key, value), do: params ++ [{key, value}]
 
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)

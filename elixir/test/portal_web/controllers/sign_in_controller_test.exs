@@ -73,21 +73,67 @@ defmodule PortalWeb.SignInControllerTest do
       end
     end
 
+    test "puts the result in the fragment of the https callback URL when the Client asks for it", %{
+      conn: conn,
+      account: account
+    } do
+      client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
+        actor_name: "Jane",
+        fragment: "test_fragment_value",
+        identity_provider_identifier: "user@example.com",
+        state: "STATE",
+        callback: "https"
+      }
+
+      %{value: signed_value} = PortalWeb.Cookie.ClientAuth.put(conn, client_auth_cookie).resp_cookies["client_auth"]
+
+      uri =
+        conn
+        |> put_req_cookie("client_auth", signed_value)
+        |> get(~p"/#{account}/sign_in/client_redirect")
+        |> redirected_to(302)
+        |> URI.parse()
+
+      assert "#{uri.scheme}://#{uri.authority}" == PortalWeb.Endpoint.url()
+      assert uri.path == "/sign_in/client_callback"
+      assert uri.query == nil
+
+      params = URI.decode_query(uri.fragment)
+      assert params["fragment"] == "test_fragment_value"
+      assert params["state"] == "STATE"
+      assert params["actor_name"] == "Jane"
+      assert params["account_slug"] == account.slug
+    end
+
+    test "uses the custom scheme for any other callback value", %{conn: conn, account: account} do
+      client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
+        actor_name: "Jane",
+        fragment: "test_fragment_value",
+        identity_provider_identifier: "user@example.com",
+        state: "STATE",
+        callback: "http"
+      }
+
+      %{value: signed_value} = PortalWeb.Cookie.ClientAuth.put(conn, client_auth_cookie).resp_cookies["client_auth"]
+
+      location =
+        conn
+        |> put_req_cookie("client_auth", signed_value)
+        |> get(~p"/#{account}/sign_in/client_redirect")
+        |> redirected_to(302)
+
+      assert location =~ "firezone-fd0020211111://handle_client_sign_in_callback?"
+    end
+
     test "instructs user to restart sign in when cookie not present", %{
       conn: conn,
       account: account
     } do
       conn = get(conn, ~p"/#{account}/sign_in/client_redirect")
-      redirect_path = redirected_to(conn, 302)
-      assert redirect_path =~ ~p"/#{account}/sign_in/client_auth_error"
+      assert redirected_to(conn, 302) == ~p"/#{account}/sign_in/client_auth_error"
 
-      query =
-        redirect_path
-        |> URI.parse()
-        |> Map.fetch!(:query)
-        |> URI.decode_query()
-
-      assert query["error"] == "Please close this window and start the sign in process again."
+      html = conn |> recycle() |> get(redirected_to(conn, 302)) |> html_response(200)
+      assert html =~ "Please close this window and start the sign in process again."
     end
 
     test "displays account name on client auth error page", %{conn: conn, account: account} do
@@ -95,14 +141,30 @@ defmodule PortalWeb.SignInControllerTest do
       assert html_response(conn, 200) =~ account.name
     end
 
+    test "shows only server set messages", %{conn: conn, account: account} do
+      html =
+        conn
+        |> get(~p"/#{account}/sign_in/client_auth_error?#{%{"error" => "Call 555-0100 now."}}")
+        |> html_response(200)
+
+      refute html =~ "555-0100"
+      assert html =~ "Please close this window and start the sign in process again."
+    end
+
     test "displays the error and retry link with params preserved", %{
       conn: conn,
       account: account
     } do
       conn =
-        get(
-          conn,
-          ~p"/#{account}/sign_in/client_auth_error?#{%{"as" => "client", "state" => "retry-state", "nonce" => "retry-nonce", "error" => "The authorization code has expired or was already used. Please try signing in again."}}"
+        conn
+        |> init_test_session(%{
+          "phoenix_flash" => %{
+            "error" =>
+              "The authorization code has expired or was already used. Please try signing in again."
+          }
+        })
+        |> get(
+          ~p"/#{account}/sign_in/client_auth_error?#{%{"as" => "client", "state" => "retry-state", "nonce" => "retry-nonce"}}"
         )
 
       html = html_response(conn, 200)
@@ -128,6 +190,40 @@ defmodule PortalWeb.SignInControllerTest do
       assert query["as"] == "client"
       assert query["state"] == "retry-state"
       assert query["nonce"] == "retry-nonce"
+    end
+  end
+
+  describe "client_callback/2" do
+    test "tells the user to return to the app", %{conn: conn} do
+      html = conn |> get(~p"/sign_in/client_callback") |> html_response(200)
+      assert html =~ "Return to the Firezone app"
+    end
+  end
+
+  describe "app association files" do
+    test "serves the Apple file as JSON", %{conn: conn} do
+      conn = get(conn, "/.well-known/apple-app-site-association")
+
+      assert ["application/json" <> _] = get_resp_header(conn, "content-type")
+      assert %{"applinks" => _, "webcredentials" => _} = JSON.decode!(response(conn, 200))
+    end
+
+    test "serves the Android file as JSON", %{conn: conn} do
+      conn = get(conn, "/.well-known/assetlinks.json")
+
+      assert ["application/json" <> _] = get_resp_header(conn, "content-type")
+      assert [%{"target" => %{"package_name" => "dev.firezone.android"}}] = JSON.decode!(response(conn, 200))
+    end
+  end
+
+  describe "client_account_disabled/2" do
+    test "shows the message with no icon above it", %{conn: conn} do
+      account = Portal.AccountFixtures.account_fixture()
+
+      html = conn |> get(~p"/#{account}/sign_in/client_account_disabled") |> html_response(200)
+
+      assert html =~ "<h1"
+      refute html =~ "<svg"
     end
   end
 

@@ -3,18 +3,14 @@ defmodule PortalWeb.SignInController do
 
   @default_client_auth_error "Please close this window and start the sign in process again."
 
-  plug :require_account
+  plug :require_account when action != :client_callback
 
   def client_redirect(conn, _params) do
     account = conn.assigns.account
 
     case PortalWeb.Cookie.ClientAuth.fetch(conn) do
       %PortalWeb.Cookie.ClientAuth{} = cookie ->
-        {scheme, url} =
-          Portal.Config.fetch_env!(:portal, :client_handler)
-          |> format_redirect_url()
-
-        query =
+        params =
           %{
             actor_name: cookie.actor_name,
             fragment: cookie.fragment,
@@ -26,21 +22,23 @@ defmodule PortalWeb.SignInController do
           |> put_region()
           |> URI.encode_query()
 
-        redirect(conn, external: "#{scheme}://#{url}?#{query}")
+        redirect(conn, external: client_callback_url(cookie.callback, params))
 
       nil ->
-        redirect(conn, to: client_auth_error_path(account, %{}, @default_client_auth_error))
+        redirect(conn, to: ~p"/#{account}/sign_in/client_auth_error")
     end
+  end
+
+  # The sign-in result is in the URL fragment, which browsers never send to the server.
+  def client_callback(conn, _params) do
+    render(conn, :client_callback, layout: false)
   end
 
   def client_auth_error(conn, params) do
     account = conn.assigns.account
     retry_params = PortalWeb.Authentication.take_sign_in_params(params)
 
-    error =
-      params["error"] ||
-        Phoenix.Flash.get(conn.assigns[:flash] || %{}, :error) ||
-        @default_client_auth_error
+    error = Phoenix.Flash.get(conn.assigns.flash, :error) || @default_client_auth_error
 
     render(conn, :client_auth_error,
       layout: false,
@@ -62,21 +60,22 @@ defmodule PortalWeb.SignInController do
     end
   end
 
+  defp client_callback_url("https", params), do: url(~p"/sign_in/client_callback") <> "#" <> params
+
+  defp client_callback_url(_callback, params) do
+    {scheme, url} =
+      Portal.Config.fetch_env!(:portal, :client_handler)
+      |> format_redirect_url()
+
+    "#{scheme}://#{url}?#{params}"
+  end
+
   defp format_redirect_url(raw_client_handler) do
     uri = URI.parse(raw_client_handler)
 
     maybe_host = if uri.host == "", do: "", else: "#{uri.host}:#{uri.port}/"
 
     {uri.scheme, "#{maybe_host}handle_client_sign_in_callback"}
-  end
-
-  defp client_auth_error_path(account, params, error) do
-    query =
-      params
-      |> PortalWeb.Authentication.take_sign_in_params()
-      |> Map.put("error", error)
-
-    ~p"/#{account}/sign_in/client_auth_error?#{query}"
   end
 
   defp retry_path(account, params) when map_size(params) == 0, do: ~p"/#{account}/sign_in"

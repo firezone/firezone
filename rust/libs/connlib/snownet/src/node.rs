@@ -8,8 +8,7 @@ mod timeout_cache;
 pub use connection_state::ConnectionPath;
 pub use connections::UnknownConnection;
 
-use crate::agent::Agent;
-use crate::allocation::{self, Allocation, RelaySocket, Socket};
+use crate::agent::{Agent, CandidateOrigin};
 use crate::crypto::{CommittedBatch, DecapsulateBatch, DecryptedBatch, EncapsulateBatch};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
@@ -17,22 +16,22 @@ use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
 use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::node::timeout_cache::TimeoutCache;
-use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use bufferpool::Bytes;
 use core::fmt;
-use fast_random_state::FastRandomState;
 use ip_packet::{Ecn, IpPacket};
 use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
-use opentelemetry::metrics::Gauge;
+use opentelemetry::metrics::{Gauge, Histogram};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use relay_client_proto::channel_data::channel_data_packet_buffer;
+use relay_client_proto::{Allocation, RelaySocket, Socket};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::hash::Hash;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
@@ -110,6 +109,7 @@ pub struct Node<TId, RId> {
 
     connection_count: Gauge<u64>,
     next_connection_count: Instant,
+    connection_setup_duration: Histogram<f64>,
 
     rng: StdRng,
 
@@ -205,6 +205,7 @@ where
             buffered_candidates: Default::default(),
             connection_count: otel_instruments::connection_count(),
             next_connection_count: now,
+            connection_setup_duration: otel_instruments::connection_setup_duration(),
             unix_now: now,
             unix_ts,
         }
@@ -235,12 +236,18 @@ where
             let num_frostlink = self.connections.reset_for_roam(now);
             tracing::debug!(
                 %num_frostlink,
-                "Soft-reset frostlink connections (path-agent reset, key kept)"
+                "Soft-reset frostlink connections (agent reset, key kept)"
             );
 
             for (cid, c) in self.connections.iter_mut() {
                 for candidate in &self.additional_host_candidates {
-                    c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+                    c.add_local_candidate(
+                        cid,
+                        candidate,
+                        CandidateOrigin::ManuallyConfigured,
+                        &mut self.pending_events,
+                        now,
+                    );
                 }
             }
 
@@ -391,6 +398,7 @@ where
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
+        let agent_kind = agent.kind();
         let mut connection = match self.init_connection(
             agent,
             remote,
@@ -403,6 +411,7 @@ where
             Ok(connection) => connection,
             Err(e) => {
                 tracing::info!("Connection failed (invalid WireGuard peer key: {e})");
+                record_connection_failed("InvalidPeerKey", agent_kind);
                 self.pending_events.push_back(Event::ConnectionFailed(cid));
 
                 return;
@@ -412,7 +421,13 @@ where
 
         connection.assign_relay(cid, &mut self.allocations, &mut self.pending_events, now);
         for candidate in &self.additional_host_candidates {
-            connection.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+            connection.add_local_candidate(
+                cid,
+                candidate,
+                CandidateOrigin::ManuallyConfigured,
+                &mut self.pending_events,
+                now,
+            );
         }
 
         if self.allocations.is_empty() {
@@ -692,6 +707,10 @@ where
     ) -> Result<Option<EncapsulateBatch<'_>>> {
         self.last_now = now;
 
+        if self.is_routing_loop(packet) {
+            return Err(RoutingLoop.into());
+        }
+
         let conn = self.connections.get_mut(&cid, now)?;
         let socket = conn.ready_socket(cid)?;
 
@@ -709,6 +728,21 @@ where
 
         if let Event::ConnectionClosed(id) | Event::ConnectionFailed(id) = &event {
             self.inflight_stun_requests.remove_by_conn_id(*id);
+        }
+
+        if let Event::ConnectionEstablished(id) = &event
+            && let Some(connection) = self.connections.get_established(id)
+            && let Some(peer_socket) = connection.state.peer_socket()
+        {
+            self.connection_setup_duration.record(
+                connection
+                    .duration_since_intent(self.last_now)
+                    .as_secs_f64(),
+                &[
+                    otel_attributes::connection_socket(peer_socket.kind()),
+                    otel_attributes::connection_agent(connection.agent.kind()),
+                ],
+            );
         }
 
         Some(event)
@@ -840,7 +874,7 @@ where
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
         }
 
-        // Second, insert new relays.
+        // Second, insert new relays and update the ones we know.
         for (rid, server, username, password, realm) in to_add {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -858,9 +892,10 @@ where
                 allocations::UpsertResult::Added => {
                     tracing::info!(%rid, address = ?server, "Added new TURN server")
                 }
-                allocations::UpsertResult::Skipped => {
-                    tracing::info!(%rid, address = ?server, "Skipping known TURN server")
+                allocations::UpsertResult::UpdatedCredentials => {
+                    tracing::info!(%rid, address = ?server, "Updated credentials for existing TURN server")
                 }
+                allocations::UpsertResult::Unchanged => {}
                 allocations::UpsertResult::Blocked => {
                     tracing::debug!(%rid, address = ?server, "Ignoring blocked TURN server")
                 }
@@ -877,21 +912,7 @@ where
             }
         }
 
-        let newly_added_relays = to_add
-            .iter()
-            .map(|(id, _, _, _, _)| *id)
-            .collect::<HashSet<_, FastRandomState>>();
-
-        // Third, check if other relays are still present.
-        for (_, previous_allocation) in self
-            .allocations
-            .iter_mut()
-            .filter(|(id, _)| !newly_added_relays.contains(id))
-        {
-            previous_allocation.refresh(now);
-        }
-
-        // Fourth, detach existing connections from removed relays.
+        // Third, detach existing connections from removed relays.
         self.connections.clear_relays(to_remove.into_iter());
     }
 
@@ -926,9 +947,40 @@ where
                 c.invalidate_local_candidate(cid, candidate, &mut self.pending_events, now);
             }
             for candidate in &self.additional_host_candidates {
-                c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+                c.add_local_candidate(
+                    cid,
+                    candidate,
+                    CandidateOrigin::ManuallyConfigured,
+                    &mut self.pending_events,
+                    now,
+                );
             }
         }
+    }
+
+    fn is_routing_loop(&self, packet: &IpPacket) -> bool {
+        let Some(udp) = packet.as_udp() else {
+            return false;
+        };
+        let src_port = udp.source_port();
+
+        // Our UDP sockets bypass the tunnel, so seeing one of their datagrams here means the bypass failed.
+        if !self
+            .allocations
+            .host_candidates()
+            .chain(&self.additional_host_candidates)
+            .any(|c| c.addr().port() == src_port)
+        {
+            return false;
+        }
+
+        let dst = SocketAddr::new(packet.destination(), udp.destination_port());
+
+        self.allocations.has_server(dst)
+            || self
+                .connections
+                .iter_established()
+                .any(|(_, c)| c.agent.has_remote_candidate(dst))
     }
 
     fn init_connection(
@@ -1032,7 +1084,7 @@ where
         match packet.first().copied() {
             // STUN method range
             Some(0..=3) => {
-                let Ok(Ok(message)) = allocation::decode(packet) else {
+                let Ok(Ok(message)) = relay_client_proto::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
                 };
@@ -1064,7 +1116,7 @@ where
             }
             // Channel data number range
             Some(64..=79) => {
-                let Ok(cd) = crate::channel_data::decode(packet) else {
+                let Ok(cd) = relay_client_proto::channel_data::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
                 };
@@ -1262,12 +1314,18 @@ where
             tracing::trace!(%rid, ?event);
 
             match event {
-                allocation::Event::New(candidate) => {
+                relay_client_proto::Event::New(candidate) => {
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
-                        c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
+                        c.add_local_candidate(
+                            cid,
+                            &candidate,
+                            CandidateOrigin::Gathered,
+                            &mut self.pending_events,
+                            now,
+                        );
                     }
                 }
-                allocation::Event::Invalid(candidate) => {
+                relay_client_proto::Event::Invalid(candidate) => {
                     for (cid, c) in self.connections.iter_mut() {
                         c.remove_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
@@ -1292,8 +1350,13 @@ where
         .map(|rid| allocations.candidates_for_relay(&rid))
         .into_iter()
         .flatten()
-        .chain(additional_host_candidates.iter().cloned())
-        .filter_map(move |c| agent.add_local_candidate(c, now))
+        .map(|c| (c, CandidateOrigin::Gathered))
+        .chain(
+            additional_host_candidates
+                .iter()
+                .map(|c| (c.clone(), CandidateOrigin::ManuallyConfigured)),
+        )
+        .filter_map(move |(c, origin)| agent.add_local_candidate(c, origin, now))
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -1420,6 +1483,10 @@ impl From<is::IceCreds> for Credentials {
         }
     }
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("Packet is our own UDP datagram to a relay or peer")]
+pub struct RoutingLoop;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId, RId> {
@@ -1605,6 +1672,7 @@ where
 
             if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
                 tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (no candidates received)");
+                record_connection_failed("NoCandidates", self.agent.kind());
                 self.state = ConnectionState::Failed;
                 return;
             }
@@ -1614,6 +1682,7 @@ where
                 .is_some_and(|timeout| now >= timeout)
             {
                 tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (ICE timeout)");
+                record_connection_failed("IceTimeout", self.agent.kind());
                 self.state = ConnectionState::Failed;
                 return;
             }
@@ -1866,6 +1935,7 @@ where
                 }
                 sanstun::Event::ConnectionExpired => {
                     tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (wireguard tunnel expired)");
+                    record_connection_failed("WireGuardExpired", self.agent.kind());
                     self.state = ConnectionState::Failed;
                 }
             }
@@ -2195,7 +2265,7 @@ where
             .collect::<SmallVec<[_; 2]>>();
         self.agent.rebuild_frostlink(|c| dropped.contains(c), now);
 
-        tracing::info!(%cid, "Reset frostlink path-agent after relay invalidation");
+        tracing::info!(%cid, "Reset frostlink agent after relay invalidation");
     }
 
     fn initiate_wg_session(
@@ -2241,12 +2311,16 @@ where
         &mut self,
         cid: TId,
         candidate: &Candidate,
+        origin: CandidateOrigin,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,
     {
-        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone(), now) {
+        if let Some(candidate) = self
+            .agent
+            .add_local_candidate(candidate.clone(), origin, now)
+        {
             let frostlink = self.agent.is_frostlink();
             pending_events.push_back(new_ice_candidate_event(cid, candidate, frostlink));
         }
@@ -2361,9 +2435,25 @@ where
         // no local candidates, so host and reflexive candidates need seeding too.
         // The agent dedups, so candidates it already knows are not re-signalled.
         for candidate in allocations.candidates_for_relay(&rid) {
-            self.add_local_candidate(cid, &candidate, pending_events, now);
+            self.add_local_candidate(
+                cid,
+                &candidate,
+                CandidateOrigin::Gathered,
+                pending_events,
+                now,
+            );
         }
     }
+}
+
+fn record_connection_failed(reason: &'static str, agent: &'static str) {
+    otel_instruments::connection_failed().add(
+        1,
+        &[
+            otel_attributes::error_type(reason),
+            otel_attributes::connection_agent(agent),
+        ],
+    );
 }
 
 fn new_interface(rng: &mut impl Rng, now: Instant, unix_ts: Duration) -> sanstun::Interface {
@@ -2427,6 +2517,8 @@ fn new_agent(role: IceRole) -> IceAgent {
 #[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+
+    use anyhow::ErrorExt as _;
 
     use super::*;
 
@@ -2560,5 +2652,75 @@ mod tests {
         assert!(agent.remote_candidates().contains(&expected_candidate1));
         assert!(agent.remote_candidates().contains(&expected_candidate2));
         assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
+    }
+
+    #[test]
+    fn encapsulate_rejects_own_datagrams_to_relays_and_peers() {
+        let host = SocketAddr::from(([10, 0, 0, 1], 41000));
+        let relay = SocketAddr::from(([203, 0, 113, 1], 3478));
+        let peer = SocketAddr::from(([198, 51, 100, 1], 52625));
+        let unknown = SocketAddr::from(([192, 0, 2, 1], 52625));
+
+        for use_frostlink in [false, true] {
+            let now = Instant::now();
+            let mut node = Node::<u32, u32>::new([0; 32], now, Duration::ZERO);
+            node.set_additional_host_candidates(BTreeSet::from([host]), now);
+            node.update_relays(
+                BTreeSet::new(),
+                &BTreeSet::from([(
+                    1,
+                    RelaySocket::from(relay),
+                    "user".to_owned(),
+                    "pass".to_owned(),
+                    "firezone".to_owned(),
+                )]),
+                now,
+            );
+            node.upsert_connection(
+                1,
+                sanstun::PublicKey::from([1; 32]),
+                sanstun::StaticSecret::from(Zeroizing::new([0; 32])),
+                credentials(),
+                credentials(),
+                IceRole::Controlling,
+                IceConfig::client_default(),
+                IceConfig::client_idle(),
+                use_frostlink,
+                now,
+            );
+            let candidate = Candidate::host(peer, "udp").unwrap();
+            node.add_remote_candidate(1, crate::candidate::encode(use_frostlink, &candidate), now);
+
+            assert!(is_routing_loop(&mut node, host.port(), relay, now));
+            assert!(is_routing_loop(&mut node, host.port(), peer, now));
+            assert!(!is_routing_loop(&mut node, host.port(), unknown, now));
+            assert!(!is_routing_loop(&mut node, host.port() + 1, relay, now));
+        }
+    }
+
+    fn is_routing_loop(
+        node: &mut Node<u32, u32>,
+        src_port: u16,
+        dst: SocketAddr,
+        now: Instant,
+    ) -> bool {
+        let packet = ip_packet::make::udp_packet(
+            Ipv4Addr::new(100, 64, 0, 1),
+            dst.ip(),
+            src_port,
+            dst.port(),
+            &[],
+        )
+        .unwrap();
+        node.encapsulate(1, &packet, now)
+            .err()
+            .is_some_and(|e| e.any_is::<RoutingLoop>())
+    }
+
+    fn credentials() -> Credentials {
+        Credentials {
+            username: "ufrag".to_owned(),
+            password: "password".to_owned(),
+        }
     }
 }

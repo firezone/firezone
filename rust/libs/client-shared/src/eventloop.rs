@@ -1,4 +1,4 @@
-use crate::{ConnectedAs, PHOENIX_TOPIC};
+use crate::{ConnectedAs, PHOENIX_TOPIC, SessionConfig};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -27,6 +27,7 @@ use tunnel::messages::client::{
     InitClient, Peer, PublicKeyChanged, ResourceAuthorization, ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
+use tunnel::unroutable_packet::RoutingError;
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
@@ -63,6 +64,8 @@ pub struct Eventloop {
     /// uploads disabled.
     local_flow_logs: bool,
 
+    metrics_exporter: otel_metrics_export::Exporter,
+
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<Vec<ResourceView>>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -85,6 +88,7 @@ pub enum Command {
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
     SetAdditionalHostCandidates(Vec<IpAddr>),
+    SetForceRelayedConnections(bool),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -164,11 +168,8 @@ impl Eventloop {
     pub(crate) fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        is_internet_resource_active: bool,
-        dns_servers: Vec<IpAddr>,
-        additional_host_candidates: Vec<IpAddr>,
-        flow_logs_dir: Option<std::path::PathBuf>,
-        local_flow_logs: bool,
+        config: SessionConfig,
+        metrics_exporter: otel_metrics_export::Exporter,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
@@ -176,13 +177,22 @@ impl Eventloop {
         connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Result<Self> {
+        let SessionConfig {
+            listen_port,
+            is_internet_resource_active,
+            dns_servers,
+            additional_host_candidates,
+            flow_logs_dir,
+            local_flow_logs,
+        } = config;
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
-        let mut clock = Clock::new();
+        let clock = Clock::new();
 
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
+            listen_port,
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
@@ -212,6 +222,7 @@ impl Eventloop {
             resolver_bypass,
             flow_logs_dir,
             local_flow_logs,
+            metrics_exporter,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -229,7 +240,7 @@ enum CombinedEvent {
     Command(Option<Command>),
     Tunnel(Result<ClientEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
-    Clock(clock::Event),
+    Clock(clock::Alarm),
 }
 
 impl Eventloop {
@@ -269,21 +280,22 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
-            CombinedEvent::Clock(clock::Event::Alarm(now)) => {
+            CombinedEvent::Clock(clock::Alarm { now, late_by }) => {
+                if late_by >= Duration::from_secs(30) {
+                    let result = self
+                        .handle_eventloop_command(Command::Reset(format!(
+                            "event loop ran {late_by:.0?} late"
+                        )))
+                        .await?;
+
+                    return Ok(result);
+                }
+
                 if let Some(tunnel) = self.tunnel.as_mut() {
                     tunnel.handle_timeout(now);
                 }
 
                 Ok(ControlFlow::Continue(()))
-            }
-            CombinedEvent::Clock(clock::Event::Late(by)) => {
-                let cf = self
-                    .handle_eventloop_command(Command::Reset(format!(
-                        "event loop ran {by:.0?} late"
-                    )))
-                    .await?;
-
-                Ok(cf)
             }
             CombinedEvent::Portal(Some(Ok(PortalEvent::Message(msg)))) => {
                 self.handle_portal_message(msg).await?;
@@ -344,6 +356,15 @@ impl Eventloop {
                 };
 
                 tunnel.set_additional_host_candidates(ips, now);
+            }
+            Command::SetForceRelayedConnections(enabled) => {
+                let Some(tunnel) = self.tunnel.as_ref() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tracing::info!(enabled, "Setting force relayed connections");
+
+                tunnel.set_force_relayed_connections(enabled);
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -506,8 +527,10 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            self.tunnel_errors
-                .add(1, &otel_attributes::error_layers(&e));
+            self.tunnel_errors.add(
+                1,
+                &otel_attributes::error_layers_with(&e, tunnel_error_label),
+            );
 
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
@@ -524,6 +547,13 @@ impl Eventloop {
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
                 || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
+            {
+                return Err(e);
+            }
+
+            if e.any_downcast_ref::<tunnel::UnroutablePacket>()
+                .is_some_and(|e| e.reason() == RoutingError::RoutingLoop)
+                && telemetry::feature_flags::fail_on_routing_loop()
             {
                 return Err(e);
             }
@@ -549,6 +579,12 @@ impl Eventloop {
             IngressMessages::ConfigChanged(config) => {
                 tunnel.state_mut().update_interface_config(config.interface)
             }
+            IngressMessages::MetricsConfig(metrics) => self.metrics_exporter.configure(
+                metrics.endpoint.as_deref(),
+                metrics.export_interval_secs,
+                metrics.token,
+                metrics.patterns,
+            ),
             IngressMessages::GatewayIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,
@@ -905,7 +941,7 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context) -> Poll<CombinedEvent> {
-        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+        if let Poll::Ready(event) = self.clock.poll_alarm(cx) {
             return Poll::Ready(CombinedEvent::Clock(event));
         }
 
@@ -1114,6 +1150,11 @@ fn parse_portal_domain(domain: &str) -> Option<dns_types::DomainName> {
             tracing::warn!(%domain, "Portal sent malformed device pool domain: {}", logging::err_with_src(e));
         })
         .ok()
+}
+
+fn tunnel_error_label(e: &(dyn std::error::Error + 'static)) -> Option<&'static str> {
+    e.downcast_ref::<tunnel::UnknownConnection>()
+        .map(|e| e.metric_label())
 }
 
 #[cfg(test)]

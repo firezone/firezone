@@ -1,13 +1,16 @@
 defmodule PortalWeb.SitesTest do
   use PortalWeb.ConnCase, async: true
 
-  alias Portal.{Device, GatewayToken, Repo, Resource, Site}
+  import Ecto.Query
+  alias Portal.{Device, DeviceToken, Repo, Resource, Site}
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
+  import Portal.PolicyAuthorizationFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
+  import Portal.SubjectFixtures
   import Portal.TokenFixtures
 
   setup do
@@ -439,6 +442,92 @@ defmodule PortalWeb.SitesTest do
       assert is_nil(Repo.get_by(Device, account_id: account.id, id: gateway.id))
     end
 
+    test "deleting a site keeps the gateways of other sites", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway_fixture(account: account, site: site)
+      other_site = site_fixture(account: account)
+      other_gateway = gateway_fixture(account: account, site: other_site)
+      other_token = gateway_token_fixture(gateway: other_gateway)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "confirm_delete_site")
+      render_click(lv, "delete_site")
+
+      assert Repo.get_by(Device, account_id: account.id, id: other_gateway.id)
+      assert Repo.get_by(DeviceToken, account_id: account.id, id: other_token.id)
+
+      assert Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: other_site.id,
+               device_id: other_gateway.id
+             )
+    end
+
+    test "deleting a site keeps the client devices in it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      client = client_fixture(account: account)
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: client.id})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "confirm_delete_site")
+      render_click(lv, "delete_site")
+
+      assert Repo.get_by(Device, account_id: account.id, id: client.id)
+      refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
+    end
+
+    test "deleting a site that is already gone shows an error", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      Repo.delete!(site)
+
+      render_click(lv, "confirm_delete_site")
+      assert render_click(lv, "delete_site") =~ "Failed to delete site."
+    end
+
+    test "refuses to delete a system-managed site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = system_site_fixture(%{account: account, name: "Internet"})
+      gateway = gateway_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert render_click(lv, "delete_site") =~ "Failed to delete site."
+      assert Repo.get_by(Site, account_id: account.id, id: site.id)
+      assert Repo.get_by(Device, account_id: account.id, id: gateway.id)
+    end
+
     test "hides account-only actions for system-managed sites", %{
       conn: conn,
       account: account,
@@ -547,6 +636,33 @@ defmodule PortalWeb.SitesTest do
       assert is_nil(Repo.get_by(Device, account_id: account.id, id: gateway.id))
     end
 
+    test "does not change a gateway of a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_gateway = gateway_fixture(account: account, site: site_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "rename_gateway", %{"id" => other_gateway.id})
+      html = render_submit(lv, "save_gateway_name", %{"name" => "renamed"})
+      assert html =~ "Failed to rename gateway."
+
+      html = render_click(lv, "confirm_rotate_gateway_token", %{"id" => other_gateway.id})
+      assert html =~ "Failed to rotate token."
+
+      html = render_click(lv, "confirm_delete_gateway", %{"id" => other_gateway.id})
+      assert html =~ "Failed to delete gateway."
+
+      gateway = Repo.get_by!(Device, account_id: account.id, id: other_gateway.id)
+      assert gateway.name == other_gateway.name
+    end
+
     test "cancel delete gateway dismisses the inline confirmation", %{
       conn: conn,
       account: account,
@@ -594,12 +710,11 @@ defmodule PortalWeb.SitesTest do
         |> Floki.text()
         |> String.trim()
 
-      gateway =
-        Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
+      gateway = site_gateway!(site)
 
       assert is_nil(gateway.firezone_id)
 
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
       assert {:ok, verified_token} = Portal.Authentication.verify_gateway_token(encoded_token)
@@ -620,8 +735,8 @@ defmodule PortalWeb.SitesTest do
 
       assert render_click(lv, "deploy_gateway") =~ "Waiting for connection..."
 
-      gateway = Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      gateway = site_gateway!(site)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       send(lv.pid, %Phoenix.Socket.Broadcast{
         topic: "presences:account_devices:#{account.id}",
@@ -646,7 +761,7 @@ defmodule PortalWeb.SitesTest do
 
       render_click(lv, "deploy_gateway")
 
-      refute Repo.get_by(GatewayToken, account_id: account.id, site_id: site.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, site_id: site.id)
     end
 
     test "rotates a gateway token from the expanded row", %{
@@ -657,7 +772,7 @@ defmodule PortalWeb.SitesTest do
       site = site_fixture(account: account)
       # The fixture session references the single-owner token, marking it in use
       gateway = gateway_fixture(account: account, site: site, token: :single_owner)
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       {:ok, lv, _html} =
         conn
@@ -688,7 +803,7 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "The expiring token keeps working"
       refute html =~ "The legacy site token keeps working"
 
-      old_token = Repo.get_by!(GatewayToken, account_id: account.id, id: token.id)
+      old_token = Repo.get_by!(DeviceToken, account_id: account.id, id: token.id)
       assert old_token.rotated_at != nil
 
       html = render_click(lv, "dismiss_rotated_gateway_token")
@@ -702,7 +817,7 @@ defmodule PortalWeb.SitesTest do
     } do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site, token: :single_owner)
-      old_token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      old_token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       {:ok, lv, _html} =
         conn
@@ -715,14 +830,14 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "dismiss_rotated_gateway_token")
 
       new_token =
-        GatewayToken
+        DeviceToken
         |> Repo.all()
         |> Enum.find(&(&1.device_id == gateway.id and is_nil(&1.rotated_at)))
 
       # The gateway reconnects with the replacement: verification deletes the
       # expiring token (cascading its sessions), presence and the PG registry
       # register immediately, while the new session waits in the async queue
-      GatewayToken
+      DeviceToken
       |> Repo.get_by!(account_id: account.id, id: old_token.id)
       |> Repo.delete!()
 
@@ -751,7 +866,7 @@ defmodule PortalWeb.SitesTest do
       gateway =
         gateway_fixture(account: account, site: site, name: "doomed-gw", token: :single_owner)
 
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       {:ok, lv, html} =
         conn
@@ -761,7 +876,7 @@ defmodule PortalWeb.SitesTest do
       # Offline, but listed by default because it has a gateway token
       assert html =~ "doomed-gw"
 
-      GatewayToken
+      DeviceToken
       |> Repo.get_by!(account_id: account.id, id: token.id)
       |> Repo.delete!()
 
@@ -782,7 +897,7 @@ defmodule PortalWeb.SitesTest do
     } do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site, token: :single_owner)
-      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       {:ok, lv, _html} =
         conn
@@ -795,7 +910,7 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "cancel_rotate_gateway_token")
       refute html =~ "Rotate this gateway&#39;s token?"
 
-      token = Repo.get_by!(GatewayToken, account_id: account.id, id: token.id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, id: token.id)
       assert is_nil(token.rotated_at)
     end
 
@@ -934,7 +1049,7 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "rotate_gateway_token", %{"id" => gateway.id})
       html = render_click(lv, "confirm_rotate_gateway_token", %{"id" => gateway.id})
 
-      first_token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      first_token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
       assert html =~ "Copy it now"
 
       # Mid-upgrade status: legacy session with an unused gateway token
@@ -960,9 +1075,9 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "confirm_rotate_gateway_token", %{"id" => gateway.id})
 
       # The never-used first token is replaced outright, not put in grace
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: first_token.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: first_token.id)
 
-      second_token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      second_token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
       assert is_nil(second_token.rotated_at)
     end
 
@@ -976,11 +1091,12 @@ defmodule PortalWeb.SitesTest do
       gateway =
         Repo.insert!(%Device{
           account_id: account.id,
-          site_id: site.id,
           type: :gateway,
           name: "bare-gw",
           slug: "bare-gw"
         })
+
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: gateway.id})
 
       {:ok, lv, _html} =
         conn
@@ -1036,11 +1152,12 @@ defmodule PortalWeb.SitesTest do
       gateway =
         Repo.insert!(%Device{
           account_id: account.id,
-          site_id: site.id,
           type: :gateway,
           name: "bare-gw",
           slug: "bare-gw"
         })
+
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: gateway.id})
 
       {:ok, lv, _html} =
         conn
@@ -1068,11 +1185,12 @@ defmodule PortalWeb.SitesTest do
       gateway =
         Repo.insert!(%Device{
           account_id: account.id,
-          site_id: site.id,
           type: :gateway,
           name: "deployed-gw",
           slug: "deployed-gw"
         })
+
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: gateway.id})
 
       token = gateway_token_fixture(gateway: gateway)
 
@@ -1096,7 +1214,7 @@ defmodule PortalWeb.SitesTest do
       refute html =~ "The expiring token keeps working"
       assert html =~ "Never connected - Gateway token provisioned"
 
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
     end
   end
 
@@ -1357,7 +1475,28 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "confirm_revoke_gateway_token", %{"id" => token.id})
       assert html =~ "Token revoked."
       refute html =~ token.id
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
+    end
+
+    test "does not revoke a token that is not one of the site's tokens", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_site_token = gateway_token_fixture(account: account)
+      client_token = client_token_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}?tab=tokens")
+
+      for token <- [other_site_token, client_token] do
+        html = render_click(lv, "confirm_revoke_gateway_token", %{"id" => token.id})
+        assert html =~ "Failed to revoke token."
+        assert Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
+      end
     end
 
     test "cancel revoke single token dismisses the inline confirmation", %{
@@ -1379,7 +1518,7 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "cancel_revoke_gateway_token")
       refute html =~ "Revoke this token?"
       assert html =~ token.id
-      assert Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+      assert Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
     end
 
     test "revoke all tokens shows confirmation then deletes all", %{
@@ -1403,8 +1542,8 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "All tokens revoked."
       refute html =~ token1.id
       refute html =~ token2.id
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: token1.id)
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: token2.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: token1.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: token2.id)
 
       # Tab flips back to gateways now that the Legacy tokens tab is gone
       assert html =~ "Deploy gateway"
@@ -1430,7 +1569,7 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "cancel_revoke_all_tokens")
       refute html =~ "Revoke all tokens?"
       assert html =~ token.id
-      assert Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+      assert Repo.get_by(DeviceToken, account_id: account.id, id: token.id)
     end
   end
 
@@ -1700,9 +1839,14 @@ defmodule PortalWeb.SitesTest do
       assert row =~ ~r/·\s*1 offline/
 
       deployed =
-        Device
-        |> Repo.all()
-        |> Enum.find(&(&1.site_id == site.id and &1.id != online.id))
+        Repo.one!(
+          from(d in Device,
+            join: sd in Portal.SiteDevice,
+            on: sd.account_id == d.account_id and sd.device_id == d.id,
+            where: sd.site_id == ^site.id and d.id != ^online.id
+          )
+        )
+        |> Repo.preload(:site)
 
       :ok = Portal.Presence.Devices.Account.track(deployed)
 
@@ -1740,11 +1884,421 @@ defmodule PortalWeb.SitesTest do
     end
   end
 
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"confirm_rotate_gateway_token", %{"id" => :gateway_id}},
+          {"confirm_delete_gateway", %{"id" => :gateway_id}},
+          {"confirm_revoke_gateway_token", %{"id" => :token_id}},
+          {"revoke_all_gateway_tokens", %{}},
+          {"show_all_gateways", %{}},
+          {"show_online_gateways", %{}},
+          {"deploy_gateway", %{}},
+          {"resource_change", %{"resource" => %{"address" => "late.example.com"}}},
+          {"resource_submit", %{"resource" => %{"address" => "late.example.com", "type" => "dns"}}},
+          {"delete_site", %{}},
+          {"open_site_edit_form", %{}},
+          {"cancel_site_edit_form", %{}},
+          {"change_site_edit_form", %{"site" => %{"name" => "Late"}}},
+          {"submit_site_edit_form", %{"site" => %{"name" => "Late"}}},
+          {"new_site_submit", %{"site" => %{"name" => "Late"}}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        site = site_fixture(account: account)
+        gateway = gateway_fixture(account: account, site: site, token: :single_owner)
+        token = gateway_token_fixture(account: account, site: site)
+        ids = %{gateway_id: gateway.id, token_id: token.id}
+        before = site_snapshot(account)
+
+        {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/sites/#{site.id}")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/sites")
+
+        params = Map.new(unquote(Macro.escape(params)), fn {k, v} -> {k, Map.get(ids, v, v)} end)
+        render_click(lv, unquote(event), params)
+
+        assert render(lv) =~ site.name
+        refute has_element?(lv, "#site-panel > div")
+        assert site_snapshot(account) == before
+      end
+    end
+  end
+
+  describe "site devices without the unified devices feature" do
+    test "shows no devices tab or controls", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      client = device_v1_client_fixture(account, actor, "pick-ready")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      refute has_element?(lv, "#site-panel-devices-tab")
+      refute has_element?(lv, "#site-add-devices-button")
+      refute has_element?(lv, "#site-devices")
+
+      render_hook(lv, "open_add_devices", %{})
+      refute has_element?(lv, "#site-add-devices-form")
+
+      render_hook(lv, "add_device", %{"device_id" => client.id})
+      render_hook(lv, "add_devices_submit", %{})
+      assert site_device_ids(site) == []
+    end
+  end
+
+  describe "site devices per account" do
+    test "show only on accounts with unified_devices set to true", %{conn: conn} do
+      for {value, shown?} <- [{true, true}, {false, false}, {nil, false}] do
+        account = put_unified_devices(account_fixture(), value)
+        actor = admin_actor_fixture(account: account)
+        site = site_fixture(account: account)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/sites/#{site.id}")
+
+        assert has_element?(lv, "#site-panel-devices-tab") == shown?
+      end
+    end
+  end
+
+  describe "site devices" do
+    setup %{account: account} do
+      %{account: put_unified_devices(account, true)}
+    end
+
+    test "lists gateways and other devices in one Devices tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      client = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, client)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert has_element?(lv, "#site-panel-devices-tab", "2")
+      refute has_element?(lv, "button[phx-value-tab='gateways']")
+      assert has_element?(lv, "#site-add-devices-button")
+      assert has_element?(lv, "button[phx-click='deploy_gateway']", "Deploy gateway")
+      assert has_element?(lv, "#site-device-#{client.id}", client.name)
+      assert has_element?(lv, "#site-device-#{client.id} button", "Remove from site")
+
+      html = render_click(lv, "show_all_gateways")
+      assert html =~ gateway.name
+      assert has_element?(lv, "li:not([id]) span", "Gateway")
+      render_click(lv, "toggle_gateway_actions", %{"id" => gateway.id})
+      assert has_element?(lv, "button[phx-click='delete_gateway'][phx-value-id='#{gateway.id}']")
+      refute has_element?(lv, "button[phx-click='remove_site_device'][phx-value-id='#{gateway.id}']")
+
+      render_click(lv, "show_online_gateways")
+      assert has_element?(lv, "#site-device-#{client.id}")
+    end
+
+    test "warns that an offline device routes once it connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      three_days_ago = DateTime.add(DateTime.utc_now(), -3, :day)
+      in_site = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, in_site)
+      offline = device_v1_client_fixture(account, actor, "pick-offline")
+
+      Repo.update_all(from(d in Device, where: d.id in ^[in_site.id, offline.id]),
+        set: [last_seen_at: three_days_ago]
+      )
+
+      note = "Offline, last seen 3 days ago. It routes for this site once it connects."
+      lv = open_add_devices(conn, actor, account, site)
+      search_devices(lv, "pick-")
+
+      assert has_element?(lv, "button[aria-label='Add #{offline.name}']")
+      assert render(lv) =~ note
+
+      lv |> element("button[aria-label='Add #{offline.name}']") |> render_click()
+      render_async(lv)
+      lv |> form("#site-add-devices-form") |> render_submit()
+
+      assert Enum.sort(site_device_ids(site)) == Enum.sort([in_site.id, offline.id])
+      assert has_element?(lv, "#site-device-#{offline.id}", note)
+      assert has_element?(lv, "#site-device-#{in_site.id}", note)
+    end
+
+    test "offers devices last seen on /device/v1 and says why others cannot be picked", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
+      ready = device_v1_client_fixture(account, actor, "pick-ready")
+      legacy_client = client_fixture(account: account, actor: actor, name: "pick-legacy-client")
+      legacy_gateway = gateway_fixture(account: account, site: other_site, name: "pick-legacy-gateway")
+      elsewhere = device_v1_client_fixture(account, actor, "pick-elsewhere")
+      put_in_site!(other_site, elsewhere)
+
+      lv = open_add_devices(conn, actor, account, site)
+      search_devices(lv, "pick-")
+
+      assert has_element?(lv, "button[aria-label='Add #{ready.name}']")
+
+      for device <- [legacy_client, legacy_gateway, elsewhere] do
+        assert has_element?(lv, "[aria-disabled='true']", device.name)
+        refute has_element?(lv, "button[aria-label='Add #{device.name}']")
+      end
+
+      assert has_element?(
+               lv,
+               "[aria-disabled='true']",
+               "Update to the latest Firezone client to route for a site"
+             )
+
+      assert has_element?(lv, "[aria-disabled='true']", "Routes for #{other_site.name}")
+    end
+
+    test "adds every picked device to the site", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      first = device_v1_client_fixture(account, actor, "pick-first")
+      second = device_v1_client_fixture(account, actor, "pick-second")
+
+      lv = open_add_devices(conn, actor, account, site)
+      search_devices(lv, "pick-")
+      lv |> element("button[aria-label='Add #{first.name}']") |> render_click()
+      render_async(lv)
+      lv |> element("button[aria-label='Add #{second.name}']") |> render_click()
+      render_async(lv)
+
+      html = lv |> form("#site-add-devices-form") |> render_submit()
+
+      assert html =~ "2 devices added to the site."
+      assert Enum.sort(site_device_ids(site)) == Enum.sort([first.id, second.id])
+      assert has_element?(lv, "#site-device-#{first.id}", first.name)
+      assert has_element?(lv, "#site-device-#{second.id}", second.name)
+    end
+
+    test "ignores a device that cannot be picked", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      legacy = client_fixture(account: account, actor: actor, name: "pick-legacy")
+
+      lv = open_add_devices(conn, actor, account, site)
+      render_hook(lv, "add_device", %{"device_id" => legacy.id})
+      render_hook(lv, "add_device", %{"device_id" => "not-a-uuid"})
+      render_hook(lv, "add_devices_submit", %{})
+
+      assert site_device_ids(site) == []
+    end
+
+    test "adds none of the picked devices when one can no longer be added", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      ready = device_v1_client_fixture(account, actor, "pick-ready")
+      downgraded = device_v1_client_fixture(account, actor, "pick-downgraded")
+
+      lv = open_add_devices(conn, actor, account, site)
+      render_hook(lv, "add_device", %{"device_id" => ready.id})
+      render_hook(lv, "add_device", %{"device_id" => downgraded.id})
+
+      Repo.update_all(from(d in Device, where: d.id == ^downgraded.id), set: [type: :client])
+
+      html = lv |> form("#site-add-devices-form") |> render_submit()
+
+      assert html =~ "Could not add the devices."
+      assert site_device_ids(site) == []
+    end
+
+    test "removes a device from the site with its authorizations for the site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
+      client = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, client)
+
+      served =
+        policy_authorization_fixture(
+          account: account,
+          gateway: client,
+          resource: resource_fixture(account: account, site: site)
+        )
+
+      unrelated =
+        policy_authorization_fixture(
+          account: account,
+          gateway: client,
+          resource: resource_fixture(account: account, site: other_site)
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      lv |> element("#site-device-#{client.id} button", "Remove from site") |> render_click()
+      html = lv |> element("#site-device-#{client.id} button", "Remove") |> render_click()
+
+      assert html =~ "Device removed from the site."
+      refute has_element?(lv, "#site-device-#{client.id}")
+      assert site_device_ids(site) == []
+      refute Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: served.id)
+      assert Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: unrelated.id)
+      assert Repo.get_by(Device, account_id: account.id, id: client.id)
+    end
+
+    test "does not remove a gateway or a device of another site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      elsewhere = device_v1_client_fixture(account, actor, "pick-elsewhere")
+      put_in_site!(other_site, elsewhere)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      html = render_click(lv, "confirm_remove_site_device", %{"id" => gateway.id})
+      assert html =~ "Could not remove the device from the site."
+
+      render_click(lv, "confirm_remove_site_device", %{"id" => elsewhere.id})
+
+      assert site_device_ids(site) == [gateway.id]
+      assert site_device_ids(other_site) == [elsewhere.id]
+    end
+
+    test "adds devices to the Internet site", %{conn: conn, account: account, actor: actor} do
+      site = internet_site_fixture(account: account)
+      client = device_v1_client_fixture(account, actor, "pick-internet")
+
+      lv = open_add_devices(conn, actor, account, site)
+      search_devices(lv, "pick-")
+      lv |> element("button[aria-label='Add #{client.name}']") |> render_click()
+      render_async(lv)
+      html = lv |> form("#site-add-devices-form") |> render_submit()
+
+      assert html =~ "1 device added to the site."
+      assert site_device_ids(site) == [client.id]
+    end
+
+    test "deleting the site keeps its devices other than gateways", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      client = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, client)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "delete_site")
+
+      refute Repo.get_by(Device, account_id: account.id, id: gateway.id)
+      assert Repo.get_by(Device, account_id: account.id, id: client.id)
+      refute Repo.get_by(Portal.SiteDevice, account_id: account.id, device_id: client.id)
+    end
+
+    test "only admins can change the devices of a site", %{account: account, actor: actor} do
+      site = site_fixture(account: account)
+      ready = device_v1_client_fixture(account, actor, "pick-ready")
+      in_site = device_v1_client_fixture(account, actor, "pick-in-site")
+      put_in_site!(site, in_site)
+      user = actor_fixture(account: account, type: :account_user)
+      subject = subject_fixture(account: account, actor: user)
+
+      assert {:error, _} = PortalWeb.Sites.Database.add_devices_to_site(site, [ready.id], subject)
+      assert {:error, _} = PortalWeb.Sites.Database.remove_device_from_site(site, in_site.id, subject)
+      assert site_device_ids(site) == [in_site.id]
+    end
+  end
+
+  defp device_v1_client_fixture(account, actor, name) do
+    client = client_fixture(account: account, actor: actor, name: name)
+    Repo.update_all(from(d in Device, where: d.id == ^client.id), set: [type: nil])
+    %{client | type: nil}
+  end
+
+  defp put_in_site!(site, device) do
+    Repo.insert!(%Portal.SiteDevice{account_id: site.account_id, site_id: site.id, device_id: device.id})
+  end
+
+  defp site_device_ids(site) do
+    Repo.all(
+      from(sd in Portal.SiteDevice,
+        where: sd.account_id == ^site.account_id and sd.site_id == ^site.id,
+        select: sd.device_id
+      )
+    )
+  end
+
+  defp open_add_devices(conn, actor, account, site) do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/sites/#{site.id}")
+
+    lv |> element("#site-add-devices-button") |> render_click()
+    assert has_element?(lv, "#site-add-devices-form")
+    lv
+  end
+
+  defp search_devices(lv, term) do
+    lv |> element("#site-add-devices-form input[name='device_search']") |> render_change(%{"device_search" => term})
+    render_async(lv)
+  end
+
+  defp site_snapshot(account) do
+    %{
+      sites: Repo.all(from(s in Site, where: s.account_id == ^account.id, select: s.name, order_by: s.name)),
+      devices: Repo.all(from(d in Device, where: d.account_id == ^account.id, select: d.id, order_by: d.id)),
+      tokens:
+        Repo.all(
+          from(t in DeviceToken,
+            where: t.account_id == ^account.id,
+            select: {t.id, t.rotated_at},
+            order_by: t.id
+          )
+        ),
+      resources: Repo.aggregate(from(r in Resource, where: r.account_id == ^account.id), :count)
+    }
+  end
+
   defp site_row(lv, site) do
     lv |> element("tr[phx-value-id='#{site.id}']") |> render()
   end
 
   defp badge_count(html) do
     html |> String.split("legacy token") |> length() |> Kernel.-(1)
+  end
+
+  defp site_gateway!(site) do
+    Repo.one!(
+      from(d in Device,
+        join: sd in Portal.SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        where: sd.account_id == ^site.account_id and sd.site_id == ^site.id
+      )
+    )
   end
 end

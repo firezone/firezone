@@ -133,6 +133,50 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
     end
   end
 
+  describe "device CA" do
+    test "is hidden until the account uses unified devices", %{conn: conn, account: account, actor: actor} do
+      {:ok, _ca} = Portal.DeviceCA.ensure(account.id)
+      conn = authorize_conn(conn, actor)
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/trust_anchors")
+      assert html =~ "No trust anchors yet"
+      refute html =~ "Firezone device CA"
+
+      path = ~p"/#{account}/settings/trust_anchors"
+      assert {:error, {:live_redirect, %{to: ^path}}} = live(conn, ~p"/#{account}/settings/trust_anchors/firezone")
+    end
+
+    test "lists the account's device CA as read only", %{conn: conn, account: account, actor: actor} do
+      account = put_unified_devices(account, true)
+      {:ok, ca} = Portal.DeviceCA.ensure(account.id)
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/settings/trust_anchors")
+      assert html =~ "Firezone device CA"
+      refute html =~ "No trust anchors yet"
+
+      lv |> element("#device-ca-row") |> render_click()
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors/firezone")
+
+      panel = lv |> element("#device-ca-panel") |> render()
+      assert panel =~ "Firezone device CA " <> account.id
+      assert panel =~ Base.encode64(X509.pem_encode(ca.certificate))
+      refute panel =~ "Edit"
+      refute panel =~ "Delete"
+      refute panel =~ "PRIVATE KEY"
+    end
+
+    test "does not show another account's device CA", %{conn: conn, account: account, actor: actor} do
+      put_unified_devices(account, true)
+      {:ok, _ca} = Portal.DeviceCA.ensure(account_fixture().id)
+
+      {:ok, _lv, html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/trust_anchors")
+
+      assert html =~ "No trust anchors yet"
+      refute html =~ "Firezone device CA"
+    end
+  end
+
   describe "show panel" do
     test "opens the show panel when a row is clicked and closes it", %{
       conn: conn,
@@ -985,6 +1029,114 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       assert updated = Repo.get_by(TrustAnchor, account_id: account.id, id: trust_anchor.id)
       assert updated.name == "New Name"
     end
+
+    test "renaming keeps the certificate rows and shows no warning", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Old Name")
+      [certificate] = trust_anchor.certificates
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+      html =
+        lv
+        |> form("#trust-anchor-edit-form",
+          trust_anchor: %{name: "New Name", certs: [sample_cert_pem()]}
+        )
+        |> render_submit()
+
+      refute html =~ "Remove certificates?"
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+      assert Repo.get_by(Portal.TrustAnchorCertificate, id: certificate.id)
+    end
+
+    test "warns before removing a certificate and saves on confirm", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Old Name")
+      [certificate] = trust_anchor.certificates
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+      html =
+        lv
+        |> form("#trust-anchor-edit-form",
+          trust_anchor: %{name: "Old Name", certs: [sample_additional_ca_pem()]}
+        )
+        |> render_submit()
+
+      assert html =~ "Remove certificates?"
+      assert Repo.get_by(Portal.TrustAnchorCertificate, id: certificate.id)
+
+      render_click(lv, "confirm_update_trust_anchor")
+
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+      refute Repo.get_by(Portal.TrustAnchorCertificate, id: certificate.id)
+    end
+
+    test "keeps the certificates when the removal warning is cancelled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Old Name")
+      [certificate] = trust_anchor.certificates
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+      lv
+      |> form("#trust-anchor-edit-form",
+        trust_anchor: %{name: "Old Name", certs: [sample_additional_ca_pem()]}
+      )
+      |> render_submit()
+
+      html = render_click(lv, "cancel_update_trust_anchor")
+
+      refute html =~ "Remove certificates?"
+      assert Repo.get_by(Portal.TrustAnchorCertificate, id: certificate.id)
+    end
+
+    test "adding a certificate shows no warning", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Old Name")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+      html =
+        lv
+        |> form("#trust-anchor-edit-form",
+          trust_anchor: %{
+            name: "Old Name",
+            certs: [sample_cert_pem() <> sample_additional_ca_pem()]
+          }
+        )
+        |> render_submit()
+
+      refute html =~ "Remove certificates?"
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+
+      updated = Repo.get_by!(TrustAnchor, account_id: account.id, id: trust_anchor.id)
+      assert length(Repo.preload(updated, :certificates).certificates) == 2
+    end
   end
 
   describe "delete" do
@@ -1029,6 +1181,30 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
       assert Process.alive?(lv.pid)
       refute html =~ "Raced CA"
+    end
+  end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"validate_edit", %{"trust_anchor" => %{"name" => "Late"}}},
+          {"update_trust_anchor", %{"trust_anchor" => %{"name" => "Late"}}},
+          {"delete_trust_anchor", %{}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        trust_anchor = trust_anchor_fixture(account: account, name: "Corporate Issuing CA")
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+
+        render_click(lv, unquote(event), unquote(Macro.escape(params)))
+
+        assert render(lv) =~ "Corporate Issuing CA"
+      end
     end
   end
 end

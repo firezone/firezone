@@ -559,7 +559,7 @@ where
     // Get the number of CPUs and create a value for each CPU
     let num_cpus =
         aya::util::nr_cpus().map_err(|(_, e)| anyhow::anyhow!("Failed to get CPU count: {}", e))?;
-    let values = vec![value; num_cpus];
+    let values = vec![value; usize::try_from(num_cpus.get())?];
 
     per_cpu_map
         .set(0, PerCpuValues::try_from(values)?, 0)
@@ -601,6 +601,7 @@ mod tests {
     const SRC_MAC: [u8; 6] = [0x02, 0, 0, 0, 0, 2];
 
     const XDP_DROP: u32 = 1;
+    const XDP_PASS: u32 = 2;
     const XDP_TX: u32 = 3;
 
     const NOT_ECT: u8 = 0b00;
@@ -730,6 +731,22 @@ mod tests {
         let outcome = program.run(&channel_data_ipv4_with(ECT0, &[0xab; PAYLOAD_LEN]));
 
         assert_eq!(outcome, Outcome::Dropped);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn passes_ipv4_fragments_to_userspace() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
+
+        for (flags_and_offset, name) in [(0x2000_u16, "first"), (0x0010, "last")] {
+            let mut packet = channel_data_ipv4(ECT0);
+            packet[14 + 6..][..2].copy_from_slice(&flags_and_offset.to_be_bytes());
+
+            let (action, _) = program.run_raw(&packet);
+
+            assert_eq!(action, XDP_PASS, "{name} fragment");
+        }
     }
 
     #[test]

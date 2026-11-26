@@ -27,7 +27,16 @@ end
 ##### Portal ##################
 ###############################
 
-config :portal, ecto_repos: [Portal.Repo]
+# The private ops dashboard (firezone/portal-ops) has its own database when it is
+# checked out at ops/ with migrations, see `ops_paths/1` in mix.exs.
+ops_repos =
+  if File.dir?(Path.expand("../ops/priv/migrations", __DIR__)) do
+    [PortalOps.Repo]
+  else
+    []
+  end
+
+config :portal, ecto_repos: [Portal.Repo] ++ ops_repos
 config :portal, generators: [binary_id: true]
 
 config :req,
@@ -46,6 +55,9 @@ config :portal, run_manual_migrations: false
 
 config :portal, data_residency_region: :on_prem
 config :portal, slug_registry_table_url: nil
+config :portal, device_ca_key_storage: :db, device_ca_key_vault_url: nil
+config :portal, region_transfer_outbox_url: nil, region_transfer_inbox_url: nil
+config :portal, avatars_container_url: nil
 
 config :portal, Portal.Repo,
   hostname: "localhost",
@@ -60,6 +72,20 @@ config :portal, Portal.Repo,
   migration_lock: :pg_advisory_lock,
   start_apps_before_migration: [:ssl, :logger_json, :req],
   parameters: [application_name: "portal"]
+
+# The private ops dashboard's own database. Its migrations are in the dashboard's
+# repo; the portal-ops image puts them in priv/ops_repo/migrations.
+config :portal, PortalOps.Repo,
+  hostname: "localhost",
+  username: "postgres",
+  password: "postgres",
+  database: "firezone_dev_ops",
+  priv: "priv/ops_repo",
+  show_sensitive_data_on_connection_error: true,
+  pool_size: 2,
+  migration_timestamps: [type: :timestamptz],
+  migration_lock: :pg_advisory_lock,
+  parameters: [application_name: "ops"]
 
 # Isolated connection pools (web/api/job/poller)
 for {repo, app_name} <- [
@@ -109,10 +135,10 @@ config :portal, Portal.ChangeLogs.Consumer,
     google_directories
     devices
     sites
-    gateway_tokens
+    site_devices
+    device_tokens
     policies
     resources
-    client_tokens
     one_time_passcodes
     api_tokens
     trust_anchors
@@ -156,17 +182,18 @@ config :portal, Portal.Changes.Consumer,
   table_subscriptions: ~w[
     accounts
     account_slugs
+    metrics_rules
     actors
     groups
     memberships
     devices
     external_identities
     policy_authorizations
-    gateway_tokens
+    device_tokens
     sites
+    site_devices
     policies
     resources
-    client_tokens
     google_auth_providers
     github_auth_providers
     entra_auth_providers
@@ -192,6 +219,7 @@ config :portal, Portal.Changes.Consumer,
     sophos_devices
     relay_tokens
     portal_sessions
+    trust_anchor_certificates
   ],
   # Allow up to 60 seconds of lag before alerting
   warning_threshold: :timer.seconds(60),
@@ -231,8 +259,7 @@ config :portal, Portal.OTLP.MetricsExporter,
   req_opts: [
     connect_options: [timeout: 1_000],
     receive_timeout: 5_000,
-    retry: :transient,
-    max_retries: 2
+    max_retries: 4
   ]
 
 config :portal, Portal.OTLP.TracesExporter,
@@ -240,8 +267,36 @@ config :portal, Portal.OTLP.TracesExporter,
   req_opts: [
     connect_options: [timeout: 1_000],
     receive_timeout: 5_000,
+    max_retries: 4
+  ]
+
+config :portal, Portal.SlugRegistry.Cache, max_entries: 10_000
+
+config :portal, Portal.FlowLogToken.AccountCache, max_entries: 100_000
+
+config :portal, Portal.Ops.RegionTransfer.Storage,
+  req_opts: [
+    receive_timeout: 60_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.Avatars.Picture,
+  req_opts: [
     retry: :transient,
     max_retries: 2
+  ]
+
+config :portal, Portal.Avatars.Storage,
+  req_opts: [
+    receive_timeout: 15_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.DeviceCA.KeyVault,
+  req_opts: [
+    connect_options: [timeout: 2_000],
+    receive_timeout: 10_000,
+    retry: :transient
   ]
 
 config :portal, Portal.SlugRegistry.AzureTable,
@@ -350,6 +405,11 @@ config :portal, Portal.Google.AuthProvider,
   scope: "openid email profile",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
 
+# A separate Google OAuth client from the portal's, for the ops dashboard
+config :portal, PortalOps.Google,
+  client_id: System.get_env("OPS_GOOGLE_OIDC_CLIENT_ID"),
+  client_secret: System.get_env("OPS_GOOGLE_OIDC_CLIENT_SECRET")
+
 config :portal, Portal.GitHub.AuthProvider,
   # Should match an OAuth App registered under the Firezone GitHub organization
   client_id: System.get_env("GITHUB_OAUTH_CLIENT_ID"),
@@ -386,6 +446,8 @@ config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil
 
 config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
+config :portal, Portal.Workers.SignUpReviewRequest, approvers: []
+
 # Log sink deliveries are POSTs (S3: PUTs), which the default `:safe_transient`
 # retry strategy never retries. Redelivery is safe: destinations dedupe on log_id.
 config :portal, Portal.Splunk.APIClient, req_opts: [retry: :transient]
@@ -413,6 +475,7 @@ config :portal, Portal.S3.APIClient,
 
 config :portal, Portal.QRadar.APIClient, req_opts: [retry: :transient]
 config :portal, Portal.HTTP.APIClient, req_opts: [retry: :transient]
+config :portal, Portal.Workers.MirrorYCDealRedemption, req_opts: []
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
@@ -471,6 +534,11 @@ config :portal, Portal.Cluster,
   adapter_config: []
 
 config :portal, sign_up_whitelisted_domains: []
+
+config :portal,
+  yc_deal_webhook_secrets: %{},
+  yc_deal_coupon_ids: %{},
+  yc_deal_mirror_url: nil
 
 config :portal, docker_registry: "ghcr.io/firezone"
 
@@ -543,15 +611,20 @@ config :portal,
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
 config :portal,
-  flow_logs_api_url: "https://flow-api.firezone.dev/",
+  flow_logs_api_url: nil,
   flow_logs_upload_interval_secs: 60
+
+config :portal,
+  otlp_metrics_ingest_url: nil,
+  otlp_metrics_export_interval_secs: 60,
+  otel_ingest_jwt_private_key: nil
 
 config :portal, country_code_blocklist: []
 
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
-    "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
+    "img-src 'self' data: https://firezone.statuspage.io",
     "style-src 'self'",
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",
@@ -627,11 +700,30 @@ config :portal, PortalAPI.Sockets.RateLimit,
   refill_rate: 1,
   capacity: 1
 
-# Flow-log ingestion: 1 request per second per source IP, no burst. Each request
-# batches up to 10k records, so one per second is ample for reporters.
+# Flow-log requests per source IP, checked before the ingest token. Uploaders
+# send one request per policy authorization, so a Gateway serving many clients,
+# or many devices behind one NAT, sends many requests in each pass. The row
+# limits below cap the volume; this only stops a flood of requests.
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
-  refill_rate: 1,
-  capacity: 1
+  refill_rate: 100,
+  capacity: 1_000
+
+# Flow-log rows per reporting device and per account, charged after the ingest
+# token is verified. An initiator reports its own flows; a
+# responder (usually a Gateway) reports a row for every client it serves, so it
+# has a larger bucket. The capacities let a device that was offline drain its
+# spool, and are larger than the 10k-row request limit. The account values are
+# multiplied by `Portal.Accounts.Limits.device_allowance/1`. At half the
+# initiator values, half of the allowed devices must upload at full speed to
+# block the others; the smallest allowance (10) needs 5. An account's
+# `flow_log_*` limits, set from Stripe metadata, override any of these.
+config :portal, PortalAPI.FlowLogController,
+  initiator_refill_rate: 100,
+  initiator_capacity: 100_000,
+  responder_refill_rate: 1_000,
+  responder_capacity: 1_000_000,
+  account_refill_rate_per_device: 50,
+  account_capacity_per_device: 50_000
 
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,

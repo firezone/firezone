@@ -14,7 +14,7 @@ dns-types = { workspace = true }
 flow-tracker = { workspace = true }
 ip-packet = { workspace = true }
 rand = { workspace = true }
-relay-proto = { workspace = true }
+relay-server-proto = { workspace = true }
 serde_json = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
@@ -40,6 +40,7 @@ windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Diag
 
 [dev-dependencies]
 mimalloc = { workspace = true }
+otel-metrics-export = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 gungraun = { workspace = true }

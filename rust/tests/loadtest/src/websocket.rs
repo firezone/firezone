@@ -230,7 +230,7 @@ async fn run_server(config: WebsocketServerConfig) -> Result<()> {
         response::IntoResponse,
         routing::get,
     };
-    use std::net::Ipv4Addr;
+    use std::net::Ipv6Addr;
     use tokio::net::TcpListener;
 
     async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
@@ -275,7 +275,7 @@ async fn run_server(config: WebsocketServerConfig) -> Result<()> {
     }
 
     let router = Router::new().route("/", get(ws_handler));
-    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, config.port)).await?;
+    let listener = TcpListener::bind((Ipv6Addr::UNSPECIFIED, config.port)).await?;
     tracing::info!(port = config.port, "WebSocket echo server listening");
 
     axum::serve(listener, router).await?;

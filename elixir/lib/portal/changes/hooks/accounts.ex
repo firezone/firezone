@@ -1,15 +1,20 @@
 defmodule Portal.Changes.Hooks.Accounts do
   @behaviour Portal.Changes.Hooks
-  alias Portal.{Accounts.Limits, Billing, Changes.Change, PubSub}
+  alias Portal.{Accounts.Limits, Changes.Change, PubSub}
+  alias Portal.Workers.{ProvisionDeviceCA, SyncStripeCustomer}
   alias __MODULE__.Database
   import Portal.SchemaHelpers
 
   @impl true
-  def on_insert(lsn, %{"is_disabled" => false} = data) do
-    account = struct_from_params(Portal.Account, data)
-    change = %Change{lsn: lsn, op: :insert, struct: account}
+  def on_insert(lsn, %{"id" => account_id} = data) do
+    {:ok, _job} = %{account_id: account_id} |> ProvisionDeviceCA.new() |> Oban.insert()
 
-    PubSub.Changes.broadcast_account(change)
+    if data["is_disabled"] == false do
+      account = struct_from_params(Portal.Account, data)
+      PubSub.Changes.broadcast_account(%Change{lsn: lsn, op: :insert, struct: account})
+    else
+      :ok
+    end
   end
 
   def on_insert(_lsn, _data), do: :ok
@@ -26,7 +31,6 @@ defmodule Portal.Changes.Hooks.Accounts do
       ) do
     account = struct_from_params(Portal.Account, old_data)
     Database.delete_policy_authorizations_for_account(account)
-    Database.delete_client_tokens_for_account(account)
 
     on_delete(lsn, old_data)
   end
@@ -48,11 +52,8 @@ defmodule Portal.Changes.Hooks.Accounts do
     account = struct_from_params(Portal.Account, data)
     change = %Change{lsn: lsn, op: :update, old_struct: old_account, struct: account}
 
-    # Start async task for billing update if name or slug changed
     if old_data["name"] != data["name"] or old_data["slug"] != data["slug"] do
-      Task.start(fn ->
-        :ok = Billing.on_account_name_or_slug_changed(account)
-      end)
+      {:ok, _job} = %{account_id: account.id} |> SyncStripeCustomer.new() |> Oban.insert()
     end
 
     # Relays apply changed account limits without reconnecting.
@@ -81,20 +82,12 @@ defmodule Portal.Changes.Hooks.Accounts do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.ClientToken
     alias Portal.PolicyAuthorization
     alias Portal.Safe
 
     def delete_policy_authorizations_for_account(%Portal.Account{} = account) do
       from(pa in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: pa], pa.account_id == ^account.id)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_client_tokens_for_account(%Portal.Account{} = account) do
-      from(ct in ClientToken, as: :client_tokens)
-      |> where([client_tokens: ct], ct.account_id == ^account.id)
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

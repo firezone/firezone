@@ -12,6 +12,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   @max_trust_anchors 10
   @max_trust_anchor_certificates 20
 
+  @selected_trust_anchor_events ~w[validate_edit update_trust_anchor delete_trust_anchor]
+
   defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, TrustAnchor}
@@ -43,6 +45,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Safe.preload(:certificates)
+    end
+
+    def get_device_ca(subject) do
+      from(ca in Portal.DeviceCertificateAuthority,
+        select: %{certificate: ca.certificate, inserted_at: ca.inserted_at}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def get_trust_anchor!(id, subject) do
@@ -156,7 +166,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       |> load_trust_anchors_if_connected()
       |> assign(selected_trust_anchor: nil)
       |> assign(form: nil, input_mode: :paste)
-      |> assign(confirm_delete?: false)
+      |> assign(confirm_delete?: false, pending_update: nil)
       |> assign(revocation: [])
       |> assign(panel_tab: :overview, expanded_endpoint: nil)
       |> allow_upload(:cert_file,
@@ -165,6 +175,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         max_file_size: @max_upload_size,
         auto_upload: true
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -187,7 +198,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     socket =
       socket
       |> assign(selected_trust_anchor: trust_anchor, input_mode: :paste, confirm_delete?: false)
-      |> assign(form: to_form(changeset, as: "trust_anchor"))
+      |> assign(form: to_form(changeset, as: "trust_anchor"), pending_update: nil)
 
     {:noreply, socket}
   end
@@ -209,13 +220,28 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     {:noreply, socket}
   end
 
+  def handle_params(_params, _uri, %{assigns: %{live_action: :device_ca}} = socket) do
+    if Portal.Account.unified_devices?(socket.assigns.account) do
+      {:noreply,
+       assign(socket,
+         selected_trust_anchor: nil,
+         form: nil,
+         confirm_delete?: false,
+         pending_update: nil
+       )}
+    else
+      {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
+    end
+  end
+
   def handle_params(_params, _uri, socket) do
     {:noreply,
      assign(socket,
        selected_trust_anchor: nil,
        form: nil,
        input_mode: :paste,
-       confirm_delete?: false
+       confirm_delete?: false,
+       pending_update: nil
      )}
   end
 
@@ -232,7 +258,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <div class="flex items-center gap-2">
             <h2 class="text-xs font-semibold text-heading">Trust Anchors</h2>
             <span :if={@trust_anchors} class="text-xs text-subtle tabular-nums">
-              {length(@trust_anchors)}
+              {length(@trust_anchors) + if(@device_ca, do: 1, else: 0)}
             </span>
           </div>
           <div class="flex items-center gap-2">
@@ -250,7 +276,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <%= cond do %>
             <% is_nil(@trust_anchors) -> %>
               <SettingsComponents.skeleton id="trust-anchors-skeleton" />
-            <% Enum.empty?(@trust_anchors) -> %>
+            <% Enum.empty?(@trust_anchors) and is_nil(@device_ca) -> %>
               <div class="flex items-center justify-center h-full">
                 <div class="flex flex-col items-center gap-3 py-16">
                   <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
@@ -286,6 +312,11 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   </tr>
                 </thead>
                 <tbody>
+                  <.device_ca_row
+                    :if={@device_ca}
+                    device_ca={@device_ca}
+                    selected?={@live_action == :device_ca}
+                  />
                   <.trust_anchor_row
                     :for={trust_anchor <- @trust_anchors}
                     trust_anchor={trust_anchor}
@@ -320,6 +351,20 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           panel_tab={@panel_tab}
           expanded_endpoint={@expanded_endpoint}
         />
+      </div>
+
+    <!-- Device CA Panel (:device_ca) -->
+      <div
+        id="device-ca-panel"
+        class={[
+          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
+          "bg-elevated border-l border-border-strong",
+          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+          "transition-transform duration-200 ease-in-out",
+          (@live_action == :device_ca && "translate-x-0") || "translate-x-full"
+        ]}
+      >
+        <.device_ca_panel :if={@live_action == :device_ca && @device_ca} device_ca={@device_ca} />
       </div>
 
     <!-- Creation Panel (:new) -->
@@ -409,6 +454,26 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               </Form.panel_footer_button>
             </Form.panel_footer>
           </.form>
+
+          <Form.modal
+            :if={@pending_update}
+            id="trust-anchor-remove-certificates-modal"
+            on_close="cancel_update_trust_anchor"
+            on_cancel="cancel_update_trust_anchor"
+            on_confirm="confirm_update_trust_anchor"
+            confirm_style="danger"
+          >
+            <:title>Remove certificates?</:title>
+            <:body>
+              <p>This change removes one or more certificates from this trust anchor.</p>
+              <p class="mt-2">
+                Devices that connected with a certificate will reconnect. If no trust anchor
+                trusts the certificate of a device after this change, that device is disconnected.
+              </p>
+            </:body>
+            <:cancel_button>Cancel</:cancel_button>
+            <:confirm_button>Save</:confirm_button>
+          </Form.modal>
         </div>
       </div>
     </div>
@@ -474,6 +539,87 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         </span>
       </td>
     </tr>
+    """
+  end
+
+  attr :device_ca, :map, required: true
+  attr :selected?, :boolean, required: true
+
+  defp device_ca_row(assigns) do
+    ~H"""
+    <tr
+      id="device-ca-row"
+      phx-click="select_device_ca"
+      class={[
+        "border-b border-border cursor-pointer transition-colors",
+        @selected? && "bg-raised",
+        !@selected? && "hover:bg-raised"
+      ]}
+    >
+      <td class="px-6 py-3">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <div class="text-sm font-medium text-heading truncate">Firezone device CA</div>
+          <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] border border-border text-subtle">
+            Managed by Firezone
+          </span>
+        </div>
+      </td>
+      <td class="px-6 py-3 w-36">
+        <span class="text-sm text-body">1 certificate</span>
+      </td>
+      <td class="px-6 py-3 w-36">
+        <span class="text-sm text-body">
+          <Core.relative_datetime datetime={@device_ca.inserted_at} />
+        </span>
+      </td>
+    </tr>
+    """
+  end
+
+  attr :device_ca, :map, required: true
+
+  defp device_ca_panel(assigns) do
+    pem = X509.pem_encode(assigns.device_ca.certificate)
+    fingerprint = Base.encode16(:crypto.hash(:sha256, assigns.device_ca.certificate), case: :lower)
+    assigns = assign(assigns, :detail, describe_certificate(%{pem: pem, fingerprint: fingerprint}))
+
+    ~H"""
+    <div class="flex flex-col h-full overflow-hidden">
+      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold text-heading truncate">Firezone device CA</h2>
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <p class="text-xs text-subtle">
+          Firezone uses this CA to issue the certificates your devices connect with. Firezone manages
+          it, so you cannot edit or delete it.
+        </p>
+
+        <div class="border border-border rounded p-3 bg-surface space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-xs font-semibold text-heading truncate">{@detail.common_name}</p>
+            <a
+              href={"data:application/x-pem-file;base64," <> Base.encode64(@detail.pem)}
+              download={download_filename("firezone-device-ca", @detail)}
+              class="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-elevated transition-colors"
+            >
+              <Core.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
+            </a>
+          </div>
+          <dl class="space-y-2">
+            <div :for={{label, value} <- certificate_detail_rows(@detail)}>
+              <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
+              <dd class="text-xs text-body font-mono break-all font-medium">
+                <.detail_value value={value} />
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </div>
     """
   end
 
@@ -778,6 +924,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             <p class="text-xs text-error">
               <span class="font-medium">Delete this trust anchor?</span>
               <br /> Certificates issued by it will no longer be trusted, and this cannot be undone.
+              Devices that connected with a certificate will reconnect, and devices that no
+              other trust anchor trusts are disconnected.
             </p>
             <div class="flex items-center gap-2">
               <Form.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
@@ -935,7 +1083,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         %{"key" => "Escape"},
         %{assigns: %{live_action: action}} = socket
       )
-      when action in [:new, :edit, :show] do
+      when action in [:new, :edit, :show, :device_ca] do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
   end
 
@@ -946,6 +1094,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def handle_event("select_trust_anchor", %{"id" => id}, socket) do
     {:noreply,
      push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors/#{id}")}
+  end
+
+  def handle_event("select_device_ca", _params, socket) do
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors/firezone")}
   end
 
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
@@ -1002,27 +1154,38 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("update_trust_anchor", %{"trust_anchor" => attrs}, socket) do
     attrs = resolve_certs_attrs(socket, attrs)
-    changeset =
-      build_edit_changeset(socket.assigns.selected_trust_anchor, attrs, socket.assigns.subject)
+    trust_anchor = socket.assigns.selected_trust_anchor
+    changeset = build_edit_changeset(trust_anchor, attrs, socket.assigns.subject)
 
-    case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
-      {:ok, trust_anchor} ->
-        clear_revocation_errors(trust_anchor, socket.assigns.subject)
-        trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+    if changeset.valid? and removes_certificates?(changeset, trust_anchor) do
+      {:noreply,
+       assign(socket, pending_update: attrs, form: to_form(changeset, as: "trust_anchor"))}
+    else
+      save_trust_anchor(socket, changeset)
+    end
+  end
 
-        socket =
-          socket
-          |> assign(trust_anchors: trust_anchors)
-          |> assign_revocation_health(trust_anchors)
-          |> put_flash(:success, "Trust anchor updated successfully")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
-
+  def handle_event("confirm_update_trust_anchor", _params, socket) do
+    case socket.assigns.pending_update do
+      nil ->
         {:noreply, socket}
 
-      {:error, changeset} ->
-        changeset = surface_certificate_errors(changeset)
-        {:noreply, assign(socket, form: to_form(changeset, as: "trust_anchor"))}
+      attrs ->
+        changeset =
+          build_edit_changeset(
+            socket.assigns.selected_trust_anchor,
+            attrs,
+            socket.assigns.subject
+          )
+
+        socket
+        |> assign(pending_update: nil)
+        |> save_trust_anchor(changeset)
     end
+  end
+
+  def handle_event("cancel_update_trust_anchor", _params, socket) do
+    {:noreply, assign(socket, pending_update: nil)}
   end
 
   def handle_event("confirm_delete_trust_anchor", _params, socket) do
@@ -1088,6 +1251,34 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end
   end
 
+  defp save_trust_anchor(socket, changeset) do
+    case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
+      {:ok, trust_anchor} ->
+        clear_revocation_errors(trust_anchor, socket.assigns.subject)
+        trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+
+        socket =
+          socket
+          |> assign(trust_anchors: trust_anchors)
+          |> assign_revocation_health(trust_anchors)
+          |> put_flash(:success, "Trust anchor updated successfully")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        changeset = surface_certificate_errors(changeset)
+        {:noreply, assign(socket, form: to_form(changeset, as: "trust_anchor"))}
+    end
+  end
+
+  # Removing a certificate deletes its row, and every Client session in the
+  # account that came in on a certificate then reconnects.
+  defp removes_certificates?(changeset, trust_anchor) do
+    kept = changeset |> get_field(:certificates, []) |> MapSet.new(& &1.fingerprint)
+    Enum.any?(trust_anchor.certificates, &(not MapSet.member?(kept, &1.fingerprint)))
+  end
+
   defp build_edit_changeset(trust_anchor, attrs, subject) do
     trust_anchor
     |> cast(attrs, [:name, :certs])
@@ -1131,21 +1322,16 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   # PEM/base64/DER text the admin typed with the normalized raw DER bytes
   # (see `normalize_certs/2` and the schema test asserting on that). Showing
   # those bytes back in the textarea would corrupt the field, so once
-  # normalization has produced `:certificates` changesets, read their
-  # already-armored `:pem` back for display instead of `@form[:certs].value`.
+  # normalization has succeeded, read the already-armored `:pem` of the
+  # certificates the anchor will hold instead of `@form[:certs].value`. Text that
+  # failed to normalize is shown as typed.
   defp certs_display_value(form) do
-    case Ecto.Changeset.get_change(form.source, :certificates) do
-      [_ | _] = certificate_changesets ->
-        certificate_changesets
-        # `put_assoc/3` can't match freshly-built cert changesets against the
-        # existing (unsaved-input) `:id`-less ones they replace, so editing
-        # always emits a `:replace` entry for the old row alongside the
-        # `:insert` for the new one. Only the surviving side belongs on screen.
-        |> Enum.reject(&(&1.action == :replace))
-        |> Enum.map_join(&Ecto.Changeset.get_field(&1, :pem))
+    certificates = Ecto.Changeset.get_field(form.source, :certificates)
 
-      _ ->
-        List.first(form[:certs].value || [], "")
+    if Keyword.has_key?(form.source.errors, :certs) or not is_list(certificates) do
+      List.first(form[:certs].value || [], "")
+    else
+      Enum.map_join(certificates, & &1.pem)
     end
   end
 
@@ -1205,9 +1391,17 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       socket
       |> assign(trust_anchors: trust_anchors)
+      |> assign(device_ca: get_device_ca(socket.assigns.account, socket.assigns.subject))
       |> assign_revocation_health(trust_anchors)
     else
-      assign(socket, trust_anchors: nil, revocation_health: %{})
+      assign(socket, trust_anchors: nil, device_ca: nil, revocation_health: %{})
+    end
+  end
+
+  # Hidden until devices use it.
+  defp get_device_ca(account, subject) do
+    if Portal.Account.unified_devices?(account) do
+      Database.get_device_ca(subject)
     end
   end
 
@@ -1515,4 +1709,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     do: "Too many files selected (max #{@max_upload_entries})."
 
   defp upload_error_to_string(_reason), do: "Could not upload file."
+
+  defp stale_event?(event, %{selected_trust_anchor: nil}) when event in @selected_trust_anchor_events,
+    do: true
+
+  defp stale_event?(_event, _assigns), do: false
 end

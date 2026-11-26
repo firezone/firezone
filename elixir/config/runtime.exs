@@ -1,6 +1,5 @@
 import Config
 
-otlp_endpoint = Portal.Config.env_var_to_config!(:otlp_endpoint)
 otlp_metrics_endpoint = Portal.Config.env_var_to_config!(:otlp_metrics_endpoint)
 otlp_traces_endpoint = Portal.Config.env_var_to_config!(:otlp_traces_endpoint)
 
@@ -116,13 +115,39 @@ if config_env() == :prod do
            {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
          ] ++ direct_pool_base_opts
 
+  # The private ops dashboard's own database on the same server, with its own user
+  ops_database_password_opts =
+    cond do
+      env_var_to_config!(:database_entra_auth) ->
+        [
+          {:configure,
+           {Portal.Azure.ManagedIdentity, :put_database_token, [env_var_to_config(:ops_azure_client_id)]}}
+        ]
+
+      env_var_to_config(:ops_database_password) ->
+        [{:password, env_var_to_config!(:ops_database_password)}]
+
+      true ->
+        []
+    end
+
+  config :portal,
+         PortalOps.Repo,
+         direct_pool_base_opts
+         |> Keyword.drop([:configure, :password])
+         |> Keyword.merge(
+           database: env_var_to_config!(:ops_database_name),
+           username: env_var_to_config!(:ops_database_user),
+           pool_size: 2,
+           parameters: Keyword.merge(database_parameters, application_name: "ops")
+         )
+         |> Kernel.++(ops_database_password_opts)
+
   config :portal, Portal.ChangeLogs.Consumer,
-    enabled: env_var_to_config!(:change_logs_replication_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name)
 
   config :portal, Portal.Changes.Consumer,
-    enabled: env_var_to_config!(:changes_replication_enabled),
     region: env_var_to_config!(:region),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
     publication_name: env_var_to_config!(:database_changes_publication_name)
@@ -141,6 +166,10 @@ if config_env() == :prod do
   config :portal, Portal.Google.AuthProvider,
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
+
+  config :portal, PortalOps.Google,
+    client_id: env_var_to_config!(:ops_google_oidc_client_id),
+    client_secret: env_var_to_config!(:ops_google_oidc_client_secret)
 
   config :portal, Portal.GitHub.AuthProvider,
     client_id: env_var_to_config!(:github_oauth_client_id),
@@ -233,6 +262,15 @@ if config_env() == :prod do
   config :portal, data_residency_region: env_var_to_config!(:data_residency_region)
 
   config :portal, slug_registry_table_url: env_var_to_config!(:slug_registry_table_url)
+  config :portal,
+    device_ca_key_storage: env_var_to_config!(:device_ca_key_storage),
+    device_ca_key_vault_url: env_var_to_config!(:device_ca_key_vault_url)
+
+  config :portal,
+    region_transfer_outbox_url: env_var_to_config!(:region_transfer_outbox_url),
+    region_transfer_inbox_url: env_var_to_config!(:region_transfer_inbox_url)
+
+  config :portal, avatars_container_url: env_var_to_config!(:avatars_container_url)
 
   # Shared cookie and proxy config (used by both Web and API endpoints)
   config :portal,
@@ -251,6 +289,11 @@ if config_env() == :prod do
     flow_logs_api_url: env_var_to_config!(:flow_logs_api_url),
     flow_logs_upload_interval_secs: env_var_to_config!(:flow_logs_upload_interval_secs)
 
+  config :portal,
+    otlp_metrics_ingest_url: env_var_to_config!(:otlp_metrics_ingest_url),
+    otlp_metrics_export_interval_secs: env_var_to_config!(:otlp_metrics_export_interval_secs),
+    otel_ingest_jwt_private_key: env_var_to_config!(:otel_ingest_jwt_private_key)
+
   config :portal, Portal.S3.APIClient,
     access_key_id: env_var_to_config!(:log_sinks_aws_access_key_id),
     secret_access_key: env_var_to_config!(:log_sinks_aws_secret_access_key),
@@ -261,6 +304,9 @@ if config_env() == :prod do
   oban_crontab = [
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
+
+    # Log an error when outbound emails stop getting delivery reports
+    {"* * * * *", Portal.Workers.CheckOutboundEmailDeliveryLag},
 
     # Delete policy_authorizations whose device postures stopped holding
     {"*/15 * * * *", Portal.Workers.DeleteStalePostureAuthorizations},
@@ -274,6 +320,12 @@ if config_env() == :prod do
     # Release registry slugs this region no longer holds locally: a claim whose
     # local write rolled back, or the slugs of a deleted account
     {"*/30 * * * *", Portal.Workers.SweepSlugRegistry},
+
+    # Queue the device CA of accounts that have none yet
+    {"*/10 * * * *", Portal.Workers.ProvisionMissingDeviceCAs},
+
+    # Delete profile photos that no identity links to any more
+    {"30 4 * * *", Portal.Avatars.Prune},
 
     # Schedule Entra directory sync daily; Graph change notifications cover
     # the hours in between
@@ -439,6 +491,7 @@ if config_env() == :prod do
     ],
     queues: [
       default: 10,
+      device_ca: 2,
       crl_scheduler: 1,
       crl_sync: 5,
       ocsp_scheduler: 1,
@@ -674,25 +727,54 @@ if config_env() == :prod do
   ##### PortalOps Endpoint ######
   ###############################
 
-  config :portal, PortalOps.Endpoint,
-    http: [
-      ip: env_var_to_config!(:phoenix_listen_address).address,
-      port: env_var_to_config!(:phoenix_http_ops_port),
-      http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-    ],
-    url: [
-      scheme: "http",
-      host: "localhost",
-      port: env_var_to_config!(:phoenix_http_ops_port),
-      path: nil
-    ],
-    secret_key_base: env_var_to_config!(:ops_secret_key_base),
-    live_view: [
-      signing_salt: env_var_to_config!(:ops_live_view_signing_salt)
-    ],
-    check_origin: [
-      "//#{env_var_to_config!(:ops_websocket_origin)}:#{env_var_to_config!(:ops_websocket_port)}"
-    ]
+  ops_https =
+    case env_var_to_config(:phoenix_https_ops_port) do
+      nil ->
+        []
+
+      port ->
+        sni_hosts = env_var_to_config!(:phoenix_https_ops_sni_hosts)
+
+        if sni_hosts == %{} do
+          raise "PHOENIX_HTTPS_OPS_SNI_HOSTS must be set when PHOENIX_HTTPS_OPS_PORT is set"
+        end
+
+        [
+          https: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: port,
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options),
+            thousand_island_options: [
+              transport_options: [sni_fun: Portal.TLS.sni_fun(sni_hosts, nil)]
+            ]
+          ]
+        ]
+    end
+
+  config :portal,
+         PortalOps.Endpoint,
+         ops_https ++
+           [
+             http: [
+               ip: env_var_to_config!(:phoenix_listen_address).address,
+               port: env_var_to_config!(:phoenix_http_ops_port),
+               http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+             ],
+             # The address people reach, used in links such as sign-up review emails.
+             url: [
+               scheme: if(ops_https == [], do: "http", else: "https"),
+               host: env_var_to_config!(:ops_websocket_origin),
+               port: env_var_to_config!(:ops_websocket_port),
+               path: nil
+             ],
+             secret_key_base: env_var_to_config!(:ops_secret_key_base),
+             live_view: [
+               signing_salt: env_var_to_config!(:ops_live_view_signing_salt)
+             ],
+             check_origin: [
+               "//#{env_var_to_config!(:ops_websocket_origin)}:#{env_var_to_config!(:ops_websocket_port)}"
+             ]
+           ]
 
   ###############################
   ##### Third-party configs #####
@@ -709,7 +791,7 @@ if config_env() == :prod do
       ]
   end
 
-  if otlp_endpoint || otlp_metrics_endpoint || otlp_traces_endpoint do
+  if otlp_metrics_endpoint || otlp_traces_endpoint do
     config :opentelemetry,
       resource_detectors: [:otel_resource_env_var, :otel_resource_app_env],
       resource: %{
@@ -730,15 +812,13 @@ if config_env() == :prod do
       }
   end
 
-  if otlp_endpoint do
-    config :opentelemetry_exporter,
-      otlp_protocol: :http_protobuf,
-      otlp_traces_protocol: :http_protobuf,
-      otlp_endpoint: otlp_endpoint
+  if otlp_traces_endpoint do
+    config :opentelemetry,
+      processors: [
+        {:otel_batch_processor,
+         %{exporter: {Portal.OTLP.TracesExporter, %{endpoint: otlp_traces_endpoint, auth: otlp_auth}}}}
+      ]
   end
-
-  config :opentelemetry,
-    processors: Portal.OTLP.trace_processors(otlp_endpoint, otlp_traces_endpoint, otlp_auth)
 
   config :portal, Portal.Telemetry,
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
@@ -772,6 +852,9 @@ if config_env() == :prod do
   config :portal, Portal.Mailer.InternalEmail,
     recipient: env_var_to_config!(:feedback_email_recipient)
 
+  config :portal, Portal.Workers.SignUpReviewRequest,
+    approvers: env_var_to_config!(:sign_up_review_approvers)
+
   config :portal, Portal.Workers.SignUpFollowUp,
     from_email: env_var_to_config(:sign_up_follow_up_from_email),
     bcc_email: env_var_to_config(:sign_up_follow_up_bcc_email)
@@ -803,6 +886,11 @@ if config_env() == :prod do
          ] ++ env_var_to_config!(:outbound_email_adapter_opts)
 
   config :portal,
+    yc_deal_webhook_secrets: env_var_to_config!(:yc_deal_webhook_secrets),
+    yc_deal_coupon_ids: env_var_to_config!(:yc_deal_coupon_ids),
+    yc_deal_mirror_url: env_var_to_config!(:yc_deal_mirror_url)
+
+  config :portal,
          Portal.Mailer.Secondary,
          [
            adapter: env_var_to_config!(:secondary_outbound_email_adapter),
@@ -832,21 +920,19 @@ if config_env() == :prod do
   end
 end
 
-metric_exporters = [
-  if(otlp_endpoint,
-    do: {:otel_exporter_metrics_otlp, %{endpoints: [otlp_endpoint]}}
-  ),
-  if(otlp_metrics_endpoint,
-    do: {Portal.OTLP.MetricsExporter, %{endpoint: otlp_metrics_endpoint, auth: otlp_auth}}
-  )
-]
-
 readers =
-  for exporter <- metric_exporters, not is_nil(exporter) do
-    %{
-      module: :otel_metric_reader,
-      config: %{export_interval_ms: 30_000, exporter: exporter}
-    }
+  if otlp_metrics_endpoint do
+    [
+      %{
+        module: :otel_metric_reader,
+        config: %{
+          export_interval_ms: 30_000,
+          exporter: {Portal.OTLP.MetricsExporter, %{endpoint: otlp_metrics_endpoint, auth: otlp_auth}}
+        }
+      }
+    ]
+  else
+    []
   end
 
 config :opentelemetry_experimental, readers: readers

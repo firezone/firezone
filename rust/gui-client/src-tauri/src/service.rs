@@ -34,6 +34,8 @@ use tracing::Instrument as _;
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
+const HANDLER_RETRY_DELAY: Duration = Duration::from_secs(1);
+
 #[cfg(target_os = "linux")]
 #[path = "service/linux.rs"]
 mod platform;
@@ -75,6 +77,9 @@ pub enum ClientMsg {
     /// Only a failure to persist them is reported, as [`ServerMsg::AdvancedSettingsApplied`].
     SetAdditionalHostCandidates(Vec<IpAddr>),
     SetInternetResourceState(bool),
+    ManualReset,
+    /// Applies to the running session and every session started while it is on.
+    SetForceRelayedConnections(bool),
     StartTelemetry {
         release: String,
     },
@@ -176,6 +181,13 @@ async fn ipc_listen(
             .with_context(|| format!("Failed to change ownership of '{}'", dir.display()))?;
     }
 
+    otel_metrics_export::install_meter_provider(|builder| {
+        builder.with_resource(telemetry::otel::default_resource_with([
+            otel_attributes::service_name!(),
+            otel_attributes::service_version!(),
+        ]))
+    });
+
     if let Ok(stored) = load_advanced_settings()
         && let Err(e) = log_filter_reloader.reload(&stored.log_filter)
     {
@@ -216,6 +228,9 @@ async fn ipc_listen(
             Ok(handler) => handler,
             Err(e) => {
                 tracing::warn!("Failed to initialise IPC handler: {e:#}");
+
+                // `Handler::new` can fail before it awaits anything, so retrying at once would spin.
+                tokio::time::sleep(HANDLER_RETRY_DELAY).await;
                 continue;
             }
         };
@@ -251,6 +266,7 @@ struct Handler<'a> {
     advanced_settings: AdvancedSettings,
     mdm_settings: MdmSettings,
     session: Session,
+    force_relayed_connections: bool,
     telemetry_release: Option<String>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
@@ -527,6 +543,7 @@ impl<'a> Handler<'a> {
             advanced_settings,
             mdm_settings,
             session: Session::None,
+            force_relayed_connections: false,
             telemetry_release: None,
             tun_device,
             dns_notifier,
@@ -842,6 +859,14 @@ impl<'a> Handler<'a> {
 
                 connlib.set_internet_resource_state(state);
             }
+            ClientMsg::ManualReset => self.reset_session("requested by user").await,
+            ClientMsg::SetForceRelayedConnections(enabled) => {
+                self.force_relayed_connections = enabled;
+
+                if let Some(connlib) = self.session.as_connlib() {
+                    connlib.set_force_relayed_connections(enabled);
+                }
+            }
             ClientMsg::StartTelemetry { release } => {
                 // This is a bit hacky.
                 // It would be cleaner to pass it down from the `Cli` struct.
@@ -855,10 +880,6 @@ impl<'a> Handler<'a> {
                 if !no_telemetry {
                     self.telemetry_release = Some(release.clone());
                     self.point_telemetry_at_api_url(self.api_url());
-
-                    opentelemetry::global::set_meter_provider(
-                        telemetry::SentryMeterProvider::default(),
-                    );
 
                     analytics::identify(release, None, None, None);
                 }
@@ -968,19 +989,32 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         );
 
+        let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
+            .context("Failed to spawn metrics exporter")?;
+
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
+        let listen_port =
+            client_shared::free_udp_port().context("Failed to find a free UDP port")?;
+        let config = client_shared::SessionConfig::new(listen_port)
+            .with_internet_resource_active(is_internet_resource_active)
+            .with_dns_servers(dns)
+            .with_additional_host_candidates(
+                self.advanced_settings.additional_host_candidates.clone(),
+            )
+            .with_flow_logs_dir(known_dirs::flow_logs());
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            is_internet_resource_active,
-            dns,
-            self.advanced_settings.additional_host_candidates.clone(),
-            known_dirs::flow_logs(),
-            false,
+            config,
+            metrics_exporter,
         )
         .context("Failed to start connlib")?;
+
+        if self.force_relayed_connections {
+            connlib.set_force_relayed_connections(true);
+        }
 
         analytics::new_session(device_id.id, api_url.to_string());
 

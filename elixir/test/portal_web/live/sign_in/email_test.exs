@@ -48,6 +48,13 @@ defmodule PortalWeb.SignIn.EmailTest do
 
       assert {:error, {:redirect, %{to: _}}} = live(conn, path)
     end
+
+    test "sends an unknown account to the sign-in chooser", %{conn: conn, actor: actor, provider: provider} do
+      conn = put_email_otp_cookie(conn, actor.id, actor.email)
+
+      assert {:error, {:redirect, %{to: "/sign_in", flash: %{"error" => "Account not found."}}}} =
+               live(conn, ~p"/does_not_exist/sign_in/email_otp/#{provider}")
+    end
   end
 
   describe "mount with auth state" do

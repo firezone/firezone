@@ -1,8 +1,10 @@
 #![cfg_attr(target_arch = "bpf", no_std)]
 #![cfg_attr(target_arch = "bpf", no_main)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 // For non-BPF targets: provide a stub main that exits with an error
 #[cfg(not(target_arch = "bpf"))]
+#[expect(clippy::print_stderr, reason = "Only reports misuse before exiting")]
 fn main() {
     eprintln!("Error: This program is meant to be compiled as an eBPF program.");
     eprintln!("Use --target bpf or --target bpfel-unknown-none to compile for eBPF.");
@@ -35,11 +37,16 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             | Error::NotTurn
             | Error::NotAChannelDataMessage
             | Error::UdpChecksumMissing
-            | Error::Ipv4PacketWithOptions),
+            | Error::Ipv4Fragment),
         ) => {
             debug!(&ctx, target: "eBPF", "^^^ pass packet to userspace: {}", e.as_str());
 
             xdp_action::XDP_PASS
+        }
+        Err(e @ Error::Ipv4PacketWithOptions) => {
+            debug!(&ctx, target: "eBPF", "XXX drop packet: {}", e.as_str());
+
+            xdp_action::XDP_DROP
         }
         Err(e @ Error::ThroughputLimitExceeded) => {
             trace!(&ctx, target: "eBPF", "XXX drop packet: {}", e.as_str());

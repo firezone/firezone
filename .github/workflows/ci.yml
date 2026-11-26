@@ -5,14 +5,6 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      stage:
-        required: true
-        type: string
-      profile:
-        required: true
-        type: string
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -90,7 +82,7 @@ jobs:
           fi
 
           # Run all jobs if tool versions change
-          if grep -q '^\.tool-versions' changed_files.txt; then
+          if grep -q '^mise\.toml' changed_files.txt; then
             echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
             exit 0;
           fi
@@ -113,7 +105,7 @@ jobs:
             jobs="${jobs},nix"
           fi
 
-          # The data plane (client/gateway/relay/http-test-server images) and the
+          # The data plane (client/gateway/relay images) and the
           # integration/compatibility tests that exercise them are built from the
           # headless client, gateway and relay. The platform client shims
           # (rust/gui-client for Tauri, rust/client-ffi for the Swift/Kotlin FFI)
@@ -164,7 +156,7 @@ jobs:
           if grep -q '^swift/' changed_files.txt; then
             jobs="${jobs},swift"
           fi
-          if grep -q '^scripts/tests/' changed_files.txt; then
+          if grep -q -E '^(scripts/tests/|scripts/router/|scripts/compose/|docker-compose\.yml)' changed_files.txt; then
             jobs="${jobs},control-plane,data-plane"
           fi
 
@@ -182,7 +174,10 @@ jobs:
         tauri,
         codeql,
         control-plane,
-        data-plane,
+        headless-client,
+        gateway,
+        relay,
+        otel-ingest-proxy,
         integration-tests,
         compatibility-tests,
         nix,
@@ -423,10 +418,10 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
 
-  data-plane:
+  headless-client:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
-    uses: ./.github/workflows/_data-plane.yml
+    uses: ./.github/workflows/_headless-client.yml
     secrets: inherit
     permissions:
       contents: write # create/update GitHub releases
@@ -434,10 +429,45 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      # Build debug/ on PRs and merge group, no prefix for production release images
-      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
-      profile: ${{ inputs.profile || 'debug' }}
-      stage: ${{ inputs.stage || 'debug' }}
+      flavour: debug
+
+  gateway:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
+    uses: ./.github/workflows/_gateway.yml
+    secrets: inherit
+    permissions:
+      contents: write # create/update GitHub releases
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      flavour: debug
+
+  relay:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
+    uses: ./.github/workflows/_relay.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      flavour: debug
+
+  otel-ingest-proxy:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
+    uses: ./.github/workflows/_otel-ingest-proxy.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
+    with:
+      flavour: debug
 
   loadtest:
     needs: planner
@@ -450,7 +480,7 @@ jobs:
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
-    needs: [control-plane, data-plane]
+    needs: [control-plane, headless-client, gateway, relay]
     secrets: inherit
     permissions:
       contents: read
@@ -459,24 +489,23 @@ jobs:
     with:
       id: integration
       api_fuzz: true
-      gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
-      client_image: ${{ needs.data-plane.outputs.client_image }}
-      relay_image: ${{ needs.data-plane.outputs.relay_image }}
-      http_test_server_image: ${{ needs.data-plane.outputs.http_test_server_image }}
+      gateway_image: ${{ needs.gateway.outputs.gateway_image }}
+      client_image: ${{ needs.headless-client.outputs.client_image }}
+      relay_image: ${{ needs.relay.outputs.relay_image }}
 
   compatibility-tests:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         client:
-          - image: ${{ needs.data-plane.outputs.client_image }}
+          - image: ${{ needs.headless-client.outputs.client_image }}
             tag: ${{ github.sha }}
             ci-name: sha
           - image: "ghcr.io/firezone/client"
             tag: "latest"
             ci-name: latest
         gateway:
-          - image: ${{ needs.data-plane.outputs.gateway_image }}
+          - image: ${{ needs.gateway.outputs.gateway_image }}
             tag: ${{ github.sha }}
             ci-name: sha
           - image: "ghcr.io/firezone/gateway"
@@ -488,7 +517,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     name: compatibility-tests-client(${{ matrix.client.ci-name }})-gateway(${{ matrix.gateway.ci-name }})
     uses: ./.github/workflows/_integration_tests.yml
-    needs: [control-plane, data-plane]
+    needs: [control-plane, headless-client, gateway, relay]
     secrets: inherit
     permissions:
       contents: read
@@ -515,5 +544,5 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           parallel-finished: true
-          carryforward: portal,rust-test-Linux,rust-test-macOS,rust-test-Windows,rust-fuzz-ip-packet,rust-fuzz-relay-proto,rust-fuzz-tunnel-proto,rust-fuzz-x509-claims,swift-test,kotlin-test,kotlin-emulator
+          carryforward: portal,rust-test-Linux,rust-test-macOS,rust-test-Windows,rust-fuzz-ip-packet,rust-fuzz-relay,rust-fuzz-tunnel,rust-fuzz-x509-claims,swift-test,kotlin-test,kotlin-emulator
           fail-on-error: false # Make CI less flaky

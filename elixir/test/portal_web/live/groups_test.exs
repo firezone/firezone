@@ -954,4 +954,42 @@ defmodule PortalWeb.GroupsTest do
       assert has_element?(lv, "input[name='groups[name]'][value='Engineering']")
     end
   end
+
+  describe "events queued after the panel closes" do
+    for {event, params} <- [
+          {"validate", %{"group" => %{"name" => "Late"}}},
+          {"focus_search", %{}},
+          {"add_member", %{"actor_id" => :actor_id}},
+          {"remove_member", %{"actor_id" => :actor_id}},
+          {"create", %{"group" => %{"name" => "Late"}}},
+          {"save", %{"group" => %{"name" => "Late"}}},
+          {"filter_show_members", %{"filter" => "x"}},
+          {"prev_member_page", %{}},
+          {"next_member_page", %{}},
+          {"delete", %{"id" => :group_id}},
+          {"submit_grant_resource", %{}},
+          {"disable_resource_access", %{"resource_id" => :resource_id}},
+          {"enable_resource_access", %{"resource_id" => :resource_id}},
+          {"remove_resource_access", %{"resource_id" => :resource_id}}
+        ] do
+      test "ignores #{event}", %{conn: conn, account: account, actor: actor} do
+        group = group_fixture(account: account)
+        resource = resource_fixture(account: account)
+        policy_fixture(account: account, group: group, resource: resource)
+        ids = %{actor_id: actor.id, group_id: group.id, resource_id: resource.id}
+
+        {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/groups/#{group}/edit")
+
+        render_click(lv, "close_panel")
+        assert_patch(lv, ~p"/#{account}/groups")
+
+        params = Map.new(unquote(Macro.escape(params)), fn {k, v} -> {k, Map.get(ids, v, v)} end)
+        render_click(lv, unquote(event), params)
+
+        assert render(lv) =~ group.name
+        assert Repo.get_by(Group, account_id: account.id, id: group.id).name == group.name
+        refute Repo.get_by(Group, account_id: account.id, name: "Late")
+      end
+    end
+  end
 end

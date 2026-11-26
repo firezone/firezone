@@ -3,16 +3,21 @@ defmodule PortalAPI.FlowLogController do
   # `Portal.FlowLogToken`) in the `Authorization: Bearer` header. It both
   # authenticates the request and supplies the authoritative attribution fields
   # (account, policy authorization, policy, resource, actor, both endpoint
-  # devices + which of them is reporting) for every record. Because the token
-  # names one policy authorization, a
-  # request may only carry flow logs for that authorization: a record declaring
-  # a different `policy_authorization_id` fails the whole request with 422. The
-  # body supplies the network fields: the inner tunnel tuple, the ordered outer
-  # (WireGuard) paths, the flow window, and the byte/packet counters.
+  # devices + which of them is reporting) for every record. The body supplies
+  # the network fields: the inner tunnel tuple, the ordered outer (WireGuard)
+  # paths, the flow window, and the byte/packet counters.
+  #
+  # The uploader keeps any batch that is not answered with a 2xx and retries it
+  # until its token expires, so a record that fails validation is logged and
+  # dropped and the request still gets a 2xx: 200 when every record is stored,
+  # 202 when some are dropped. A 413 makes the uploader split the batch and
+  # send each half.
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   import Ecto.Changeset
+  require Logger
   alias OpenApiSpex.Schema
+  alias Portal.Accounts.Limits
   alias Portal.FlowLog
   alias Portal.Types.LogId
   alias PortalAPI.ProblemDetails
@@ -41,12 +46,32 @@ defmodule PortalAPI.FlowLogController do
                  properties: %{status: %Schema{type: :string, enum: ["ok"]}}
                }
              }
+           }},
+        accepted:
+          {"Flow Logs accepted, some dropped", "application/json",
+           %Schema{
+             type: :object,
+             required: [:data],
+             properties: %{
+               data: %Schema{
+                 type: :object,
+                 required: [:status, :dropped, :validation_errors],
+                 properties: %{
+                   status: %Schema{type: :string, enum: ["accepted"]},
+                   dropped: %Schema{type: :integer, minimum: 1},
+                   validation_errors: %Schema{
+                     type: :object,
+                     description: "Errors keyed by the index of each dropped record",
+                     additionalProperties: %Schema{type: :object}
+                   }
+                 }
+               }
+             }
            }}
       ] ++
         ProblemDetailsSchema.responses([
-          :bad_request,
           :unauthorized,
-          :unprocessable_entity,
+          :request_entity_too_large,
           :too_many_requests
         ])
 
@@ -74,44 +99,41 @@ defmodule PortalAPI.FlowLogController do
 
   @max_batch_size 10_000
 
+  # A record may start this long after its authorization expired, for clock
+  # skew between the device and the portal.
+  @expiry_skew_seconds 300
+
   def create(conn, %{"flow_logs" => records})
       when is_list(records) and length(records) > @max_batch_size do
-    ProblemDetails.send(conn, 400, "Batch size exceeds maximum of #{@max_batch_size}")
+    ProblemDetails.send(conn, 413, "Batch size exceeds maximum of #{@max_batch_size}")
   end
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
     claims = conn.assigns.flow_log_claims
 
-    with :ok <- ensure_single_authorization(records, claims) do
-      now = DateTime.utc_now()
+    case charge_rows(conn.assigns.flow_log_account, claims, length(records)) do
+      :ok ->
+        now = DateTime.utc_now()
 
-      {valid, errors} =
-        records
-        |> Enum.with_index()
-        |> Enum.reduce({[], []}, fn {record, index}, acc ->
-          validate_record(record, index, claims, now, acc)
-        end)
+        {valid, errors} =
+          records
+          |> Enum.with_index()
+          |> Enum.reduce({[], []}, fn {record, index}, acc ->
+            validate_record(record, index, claims, now, acc)
+          end)
 
-      valid
-      |> Enum.map(fn {_index, entry} -> entry end)
-      |> Database.upsert_flow_logs()
+        valid
+        |> Enum.map(fn {_index, entry} -> entry end)
+        |> Database.upsert_flow_logs()
 
-      if errors == [] do
+        respond_stored(conn, claims, errors)
+
+      {:error, {:rate_limit, retry_after_ms}} ->
+        retry_after = max(ceil(retry_after_ms / 1000), 1)
+
         conn
-        |> put_status(200)
-        |> json(%{data: %{status: "ok"}})
-      else
-        ProblemDetails.send(conn, 422, "Some flow log records failed validation", %{
-          validation_errors: render_validation_errors(Enum.reverse(errors))
-        })
-      end
-    else
-      {:error, :multiple_authorizations} ->
-        ProblemDetails.send(
-          conn,
-          422,
-          "All flow logs in a request must belong to a single policy authorization"
-        )
+        |> put_resp_header("retry-after", Integer.to_string(retry_after))
+        |> ProblemDetails.send(429, "Rate limit exceeded, retry after #{retry_after}s")
     end
   end
 
@@ -119,31 +141,101 @@ defmodule PortalAPI.FlowLogController do
     ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
 
-  # The token names exactly one policy authorization; a record that declares a
-  # different one means the reporter mixed authorizations into one request, which
-  # fails the whole request. A record omitting the id is attributed to the
-  # token's authorization (attribution always comes from the token regardless).
-  defp ensure_single_authorization(records, %{"policy_authorization_id" => authz_id}) do
-    mixed? =
-      Enum.any?(records, fn
-        record when is_map(record) ->
-          case Map.get(record, "policy_authorization_id") do
-            nil -> false
-            id -> id != authz_id
-          end
+  defp respond_stored(conn, _claims, []) do
+    conn
+    |> put_status(200)
+    |> json(%{data: %{status: "ok"}})
+  end
 
-        _ ->
-          false
-      end)
+  defp respond_stored(conn, claims, errors) do
+    validation_errors = render_validation_errors(errors)
 
-    if mixed? do
-      {:error, :multiple_authorizations}
-    else
+    Logger.info("Dropped invalid flow log records",
+      account_id: claims["account_id"],
+      policy_authorization_id: claims["policy_authorization_id"],
+      role: claims["role"],
+      dropped: length(errors),
+      errors: validation_errors
+    )
+
+    conn
+    |> put_status(202)
+    |> json(%{
+      data: %{status: "accepted", dropped: length(errors), validation_errors: validation_errors}
+    })
+  end
+
+  # The device is charged first so a device over its own allowance never spends
+  # the account's. A responder reports a row for every client it serves, so it
+  # has its own, larger bucket. The account's allowance grows with its device
+  # allowance, the same sizing as relay allocations; an unlimited device
+  # allowance has no account bucket. The account's `flow_log_*` limits, set from
+  # Stripe metadata, override each value.
+  defp charge_rows(account, claims, rows) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    limits = account.limits || %Limits{}
+    role = reporting_role(claims)
+    device_id = reporting_device_id(role, claims)
+    {refill_rate, capacity} = device_bucket(role, limits, config)
+
+    with :ok <- hit(:device, "ingestion:#{role}:#{device_id}", refill_rate, capacity, rows),
+         :ok <- charge_account(account, limits, config, rows) do
       :ok
+    else
+      {:error, {bucket, retry_after_ms}} ->
+        Portal.Telemetry.flow_log_upload_denied(bucket, role)
+        {:error, {:rate_limit, retry_after_ms}}
     end
   end
 
-  defp ensure_single_authorization(_records, _claims), do: {:error, :unauthenticated}
+  defp charge_account(account, limits, config, rows) do
+    case account_bucket(limits, config) do
+      nil ->
+        :ok
+
+      {refill_rate, capacity} ->
+        hit(:account, "ingestion:account:#{account.id}", refill_rate, capacity, rows)
+    end
+  end
+
+  defp device_bucket(:initiator, limits, config) do
+    {limits.flow_log_initiator_refill_rate || Keyword.fetch!(config, :initiator_refill_rate),
+     limits.flow_log_initiator_capacity || Keyword.fetch!(config, :initiator_capacity)}
+  end
+
+  defp device_bucket(:responder, limits, config) do
+    {limits.flow_log_responder_refill_rate || Keyword.fetch!(config, :responder_refill_rate),
+     limits.flow_log_responder_capacity || Keyword.fetch!(config, :responder_capacity)}
+  end
+
+  defp account_bucket(limits, config) do
+    devices = Limits.device_allowance(limits)
+
+    refill_rate =
+      limits.flow_log_account_refill_rate ||
+        (devices && devices * Keyword.fetch!(config, :account_refill_rate_per_device))
+
+    capacity =
+      limits.flow_log_account_capacity ||
+        (devices && devices * Keyword.fetch!(config, :account_capacity_per_device))
+
+    if refill_rate && capacity do
+      {refill_rate, capacity}
+    end
+  end
+
+  defp hit(bucket, key, refill_rate, capacity, cost) do
+    case PortalAPI.RateLimit.hit(key, refill_rate, capacity, cost) do
+      {:allow, _remaining} -> :ok
+      {:deny, retry_after_ms} -> {:error, {bucket, retry_after_ms}}
+    end
+  end
+
+  defp reporting_role(%{"role" => "responder"}), do: :responder
+  defp reporting_role(_claims), do: :initiator
+
+  defp reporting_device_id(:responder, claims), do: claims["responder_device_id"]
+  defp reporting_device_id(:initiator, claims), do: claims["initiator_device_id"]
 
   # Threads {valid, errors}: valid is a list of {index, entry} and errors a list
   # of {index, reason}. Attribution comes from the request token (claims), so a
@@ -157,7 +249,7 @@ defmodule PortalAPI.FlowLogController do
     changeset =
       record
       |> to_attrs(claims, now)
-      |> changeset()
+      |> changeset(claims, record)
 
     if changeset.valid? do
       entry =
@@ -171,7 +263,7 @@ defmodule PortalAPI.FlowLogController do
     end
   end
 
-  defp changeset(attrs) do
+  defp changeset(attrs, claims, record) do
     # Ecto represents a missing embeds_many value as an empty list but rejects
     # an explicit JSON null. Both forms mean "not reported yet" on a flow-start
     # record, so normalize null to omission before casting. A close still fails
@@ -181,6 +273,76 @@ defmodule PortalAPI.FlowLogController do
     %FlowLog{}
     |> cast(attrs, @scalar_cast_fields)
     |> FlowLog.changeset()
+    |> validate_authorization(record, claims)
+    |> validate_flow_start_before_expiry()
+    |> validate_initiator_ip(claims)
+    |> validate_resource_ip(claims)
+  end
+
+  # The token names exactly one policy authorization. A record omitting the id
+  # is attributed to it.
+  defp validate_authorization(changeset, record, claims) do
+    case Map.get(record, "policy_authorization_id") do
+      nil ->
+        changeset
+
+      id ->
+        if id == claims["policy_authorization_id"] do
+          changeset
+        else
+          add_error(changeset, :policy_authorization_id, "must match the token")
+        end
+    end
+  end
+
+  defp validate_flow_start_before_expiry(changeset) do
+    with %DateTime{} = flow_start <- get_field(changeset, :flow_start),
+         %DateTime{} = expires_at <- get_field(changeset, :authorization_expires_at),
+         :gt <- DateTime.compare(flow_start, DateTime.add(expires_at, @expiry_skew_seconds)) do
+      add_error(changeset, :flow_start, "must not be after the authorization expired")
+    else
+      _ -> changeset
+    end
+  end
+
+  # Tokens minted before these claims existed skip the check.
+  defp validate_initiator_ip(changeset, %{"initiator_ips" => ips}) when is_list(ips) do
+    with %Postgrex.INET{} = src_ip <- get_field(changeset, :inner_src_ip),
+         false <- Enum.any?(ips, &(cast_ip(&1) == src_ip)) do
+      add_error(changeset, :inner_src_ip, "must be a tunnel address of the initiator")
+    else
+      _ -> changeset
+    end
+  end
+
+  defp validate_initiator_ip(changeset, _claims), do: changeset
+
+  defp validate_resource_ip(changeset, %{"resource_type" => type, "resource_address" => address})
+       when type in ["cidr", "ip"] and is_binary(address) do
+    with %Postgrex.INET{} = dst_ip <- get_field(changeset, :inner_dst_ip),
+         false <- resource_contains?(type, address, dst_ip) do
+      add_error(changeset, :inner_dst_ip, "must be inside the resource address")
+    else
+      _ -> changeset
+    end
+  end
+
+  defp validate_resource_ip(changeset, _claims), do: changeset
+
+  defp resource_contains?("ip", address, dst_ip), do: cast_ip(address) == dst_ip
+
+  defp resource_contains?("cidr", address, dst_ip) do
+    case Portal.Types.CIDR.cast(address) do
+      {:ok, cidr} -> Portal.Types.CIDR.contains?(cidr, dst_ip)
+      _error -> false
+    end
+  end
+
+  defp cast_ip(ip) do
+    case Portal.Types.IP.cast(ip) do
+      {:ok, inet} -> inet
+      _error -> nil
+    end
   end
 
   defp outers_for_storage(changeset) do

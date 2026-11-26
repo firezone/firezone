@@ -151,6 +151,16 @@ defmodule Portal.BillingTest do
   end
 
   describe "can_create_service_accounts?/1" do
+    test "does not count the legacy Gateway actor", %{account: account} do
+      account = update_account(account, %{limits: %{service_accounts_count: 1}})
+
+      legacy_gateway_actor_fixture(account: account)
+      assert can_create_service_accounts?(account) == true
+
+      actor_fixture(type: :service_account, account: account)
+      assert can_create_service_accounts?(account) == false
+    end
+
     test "returns true when service accounts limit is not exceeded", %{account: account} do
       account = update_account(account, %{limits: %{service_accounts_count: 3}})
 
@@ -1045,32 +1055,55 @@ defmodule Portal.BillingTest do
     end
   end
 
-  describe "on_account_name_or_slug_changed/1" do
+  describe "sync_stripe_customer/1" do
     test "returns :ok when account is not provisioned", %{account: account} do
       account = update_account(account, %{metadata: %{stripe: %{}}})
-      assert :ok = Portal.Billing.on_account_name_or_slug_changed(account)
+      assert :ok = Portal.Billing.sync_stripe_customer(account.id)
     end
 
     test "returns :ok when billing is disabled", %{account: account} do
       Portal.Config.put_env_override(Portal.Billing, enabled: false)
+      account = update_account(account, %{metadata: %{stripe: %{customer_id: "cus_test123"}}})
 
-      account =
-        update_account(account, %{
-          metadata: %{stripe: %{customer_id: "cus_test123"}}
-        })
-
-      assert :ok = Portal.Billing.on_account_name_or_slug_changed(account)
+      assert :ok = Portal.Billing.sync_stripe_customer(account.id)
     end
 
-    test "updates Stripe customer when provisioned and enabled", %{account: account} do
+    test "returns :ok when the account no longer exists" do
+      assert :ok = Portal.Billing.sync_stripe_customer(Ecto.UUID.generate())
+    end
+
+    test "sends only the account ID, name and slug as metadata", %{account: account} do
       account =
         update_account(account, %{
+          slug: "current_slug",
           metadata: %{stripe: %{customer_id: "cus_test123"}}
         })
 
-      Stripe.stub(Stripe.mock_update_customer_endpoint(account))
+      test_pid = self()
 
-      assert :ok = Portal.Billing.on_account_name_or_slug_changed(account)
+      Req.Test.stub(Portal.Billing.Stripe.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:customer_update, conn.request_path, URI.decode_query(body)})
+        Req.Test.json(conn, %{"id" => "cus_test123"})
+      end)
+
+      assert :ok = Portal.Billing.sync_stripe_customer(account.id)
+
+      assert_received {:customer_update, "/v1/customers/cus_test123", params}
+      assert params == %{
+               "metadata[account_id]" => account.id,
+               "metadata[account_name]" => account.name,
+               "metadata[account_slug]" => "current_slug"
+             }
+    end
+
+    test "returns an error when Stripe fails, so the job retries", %{account: account} do
+      account = update_account(account, %{metadata: %{stripe: %{customer_id: "cus_test123"}}})
+      Req.Test.stub(Portal.Billing.Stripe.APIClient, fn conn -> Plug.Conn.send_resp(conn, 500, "{}") end)
+
+      capture_log(fn ->
+        assert {:error, :retry_later} = Portal.Billing.sync_stripe_customer(account.id)
+      end)
     end
   end
 
@@ -1233,6 +1266,15 @@ defmodule Portal.BillingTest do
   end
 
   describe "count_monthly_active_users/1" do
+    test "never counts the legacy Gateway actor", %{account: account} do
+      actor = legacy_gateway_actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client)
+
+      assert Portal.Billing.count_monthly_active_users(account) == 0
+      assert Portal.Billing.monthly_active_usage(account) == %{seats: 0, adhoc_service_accounts: 0}
+    end
+
     test "counts distinct active users within last month", %{account: account} do
       actor1 = actor_fixture(type: :account_user, account: account)
       actor2 = actor_fixture(type: :account_admin_user, account: account)
@@ -1258,6 +1300,24 @@ defmodule Portal.BillingTest do
       assert Portal.Billing.count_monthly_active_users(account) == 1
     end
 
+    test "counts each actor seen on a device", %{account: account} do
+      owner = actor_fixture(type: :account_user, account: account)
+      other = actor_fixture(type: :account_user, account: account)
+      client = client_fixture(account: account, actor: owner)
+      client_session_fixture(account: account, actor: owner, client: client)
+      now = DateTime.utc_now()
+
+      Repo.insert!(%Portal.DeviceActor{
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: other.id,
+        first_seen_at: now,
+        last_seen_at: now
+      })
+
+      assert Portal.Billing.count_monthly_active_users(account) == 2
+    end
+
     test "excludes users not seen in last month", %{account: account} do
       actor1 = actor_fixture(type: :account_user, account: account)
       actor2 = actor_fixture(type: :account_user, account: account)
@@ -1269,17 +1329,12 @@ defmodule Portal.BillingTest do
       # Actor2 seen more than a month ago
       client2 = client_fixture(account: account, actor: actor2)
 
-      session =
-        client_session_fixture(
-          account: account,
-          actor: actor2,
-          client: client2
-        )
-
-      # Backdate the session to more than a month ago
-      session
-      |> Ecto.Changeset.change(last_seen_at: DateTime.add(DateTime.utc_now(), -35, :day))
-      |> Repo.update!()
+      client_session_fixture(
+        account: account,
+        actor: actor2,
+        client: client2,
+        inserted_at: DateTime.add(DateTime.utc_now(), -35, :day)
+      )
 
       assert Portal.Billing.count_monthly_active_users(account) == 1
     end

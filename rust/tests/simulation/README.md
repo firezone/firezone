@@ -1,0 +1,21 @@
+# Simulation testing
+
+Deterministic, in-process simulations of connlib's components.
+Each simulation runs the real state machines against simulated peers on a simulated network and checks them after every transition.
+
+An input is a sequence of bytes that decides the setup and the transitions applied to it.
+With the same RNG seeds and clock anchor, the same input always produces the same run.
+
+A fuzzer is one way of driving a simulation: a target of the [fuzzing harness](../fuzz/README.md) feeds it inputs, and its corpus serves as the regression suite.
+
+## `tunnel`
+
+`run_tunnel` simulates clients, gateways, relays and the portal, with the tunnel state machines checked against a model.
+Built with the `ijon` feature for AFL++ discovery, it records [IJON feedback](https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/IJON.md) for meaningful observed states.
+
+## `relay`
+
+`run_relay` simulates a relay client and a relay that relays data between the client and its peers.
+The model says which transitions may disrupt relaying.
+Everything else must leave the client's relay addresses and its connections alone, and whatever happens, the client has to end up with a working allocation again.
+Data must only ever arrive where it was sent.

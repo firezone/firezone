@@ -7,6 +7,8 @@ readonly COMMAND="${1:?Usage: play-store.sh <inspect|internal|production|Intune>
 : "${SOURCE_SHA:?SOURCE_SHA is required}"
 : "${GPLAY_SERVICE_ACCOUNT_JSON:?GPLAY_SERVICE_ACCOUNT_JSON is required}"
 
+export GPLAY_NO_STAR_PROMPT=1
+
 readonly PACKAGE_NAME="dev.firezone.android"
 readonly INTERNAL_TRACK="internal"
 readonly CHANGELOG_URL="https://www.firezone.dev/changelog#tab-android"

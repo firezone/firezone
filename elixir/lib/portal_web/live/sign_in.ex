@@ -19,23 +19,17 @@ defmodule PortalWeb.SignIn do
     mount_account(account, params, session, socket)
   end
 
-  # The pending OAuth request rides through sign-in as redirect_to, so the app
-  # being connected can be named here. Read from the cache only: this page
-  # renders before the request has been validated, so it must not fetch.
-  defp connecting_client(%{"redirect_to" => redirect_to}) when is_binary(redirect_to) do
-    with %URI{path: path, query: query} when is_binary(query) <- URI.parse(redirect_to),
-         true <- String.ends_with?(path || "", "/oauth/authorize"),
-         %{"client_id" => client_id} <- URI.decode_query(query) do
-      Portal.OAuth.cached_client(client_id)
-    else
-      _other -> nil
-    end
+  @doc """
+  Used as the session function for the sign in live_session.
+  """
+  def live_session(conn) do
+    conn
+    |> PortalWeb.Cookie.LastUsedProvider.fetch_state()
+    |> Map.put("oauth_client", oauth_client(conn))
   end
 
-  defp connecting_client(_params), do: nil
-
   defp mount_account(account, params, session, socket) do
-    connecting_client = connecting_client(params)
+    connecting_client = with_logo(session["oauth_client"])
 
     socket =
       assign(socket,
@@ -85,8 +79,8 @@ defmodule PortalWeb.SignIn do
           {String.upcase(String.first(@account.name))}
         </span>
       </div>
-      <div>
-        <h1 class="text-xl font-bold text-heading tracking-tight">
+      <div class="min-w-0">
+        <h1 class="text-xl font-bold text-heading tracking-tight break-words">
           Sign in to {@account.name}
         </h1>
         <p class="text-xs text-subtle mt-0.5">
@@ -198,15 +192,16 @@ defmodule PortalWeb.SignIn do
 
     <div
       :if={!PortalWeb.Authentication.client_sign_in?(@params) and is_nil(@connecting_client)}
-      class="mt-8 pt-6 border-t border-border text-center"
+      id="sign-in-footer"
+      class="mt-8 text-center"
     >
-      <p class="text-xs text-subtle leading-relaxed">
+      <p class="text-sm text-subtle">
         Meant to sign in from a client instead?
         <Navigation.website_link path="/kb/client-apps">Read the docs.</Navigation.website_link>
       </p>
-      <p class="text-xs text-subtle mt-1.5">
+      <p class="text-sm text-subtle mt-1">
         Looking for a different account?
-        <Navigation.link href={~p"/"}>See recently used accounts.</Navigation.link>
+        <Navigation.link href={~p"/sign_in"}>See recently used accounts.</Navigation.link>
       </p>
     </div>
     """
@@ -236,7 +231,7 @@ defmodule PortalWeb.SignIn do
       href={~p"/#{@account}/sign_in/#{@type}/#{@provider.id}?#{@params}"}
     >
       {render_slot(@icon)}
-      <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
+      <span class="flex-1 min-w-0 break-words">Continue with <strong>{@provider.name}</strong></span>
       <Core.badge :if={@last_used} type="primary" class="shrink-0">Last used</Core.badge>
       <Core.icon
         name="ri-arrow-right-s-line"
@@ -314,7 +309,7 @@ defmodule PortalWeb.SignIn do
           name="email[email]"
           value={@email_form[:email].value}
           placeholder="you@example.com"
-          class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
+          class="flex-1 w-full min-w-0 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
           required
         />
         <button
@@ -356,12 +351,57 @@ defmodule PortalWeb.SignIn do
     end
   end
 
+  defp with_logo(%Portal.OAuthClient{client_id: client_id} = client) do
+    case Database.get_fresh_logo(client_id) do
+      %{logo_data: data, logo_content_type: type} ->
+        %{client | logo_data: data, logo_content_type: type}
+
+      nil -> client
+    end
+  end
+
+  defp with_logo(nil), do: nil
+
+  defp oauth_client(conn) do
+    with %{"redirect_to" => redirect_to} <- conn.query_params,
+         {:ok, client_id} <- redirect_client_id(redirect_to) do
+      PortalWeb.Cookie.OAuthClient.fetch(conn, client_id)
+    else
+      _other -> nil
+    end
+  end
+
+  defp redirect_client_id(redirect_to) when is_binary(redirect_to) do
+    with %URI{path: path, query: query} when is_binary(query) <- URI.parse(redirect_to),
+         true <- String.ends_with?(path || "", "/oauth/authorize"),
+         %{"client_id" => client_id} when is_binary(client_id) <- URI.decode_query(query) do
+      {:ok, client_id}
+    else
+      _other -> :error
+    end
+  end
+
+  defp redirect_client_id(_redirect_to), do: :error
+
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 
     def get_auth_provider(account, module) do
       from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def get_fresh_logo(client_id) do
+      now = DateTime.utc_now()
+
+      from(clients in Portal.OAuthClient,
+        where: clients.client_id == ^client_id,
+        where: clients.metadata_expires_at > ^now,
+        where: not is_nil(clients.logo_data) and not is_nil(clients.logo_content_type),
+        select: map(clients, [:logo_data, :logo_content_type])
+      )
       |> Safe.unscoped()
       |> Safe.one()
     end

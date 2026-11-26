@@ -278,7 +278,6 @@ skip = [
     "jni-sys",
     "libloading",
     "mach2", # smbios-lib 0.9.4 uses mach2 0.6; its own io-kit-sys 0.5 dependency is still on 0.5.
-    "nix",
     "nom",
     "object",
     "png",
@@ -286,6 +285,7 @@ skip = [
     "rand",
     "rand_core",
     "serde_spanned",
+    "sha1", # `is` 0.12 uses 0.11; axum, tungstenite and stun_codec still pull 0.10.
     "sha2", # workspace is on 0.11; tauri (tauri-codegen, wry) and dbus-secret-service still pull 0.10.
     "syn",
     "thiserror",

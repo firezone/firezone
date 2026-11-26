@@ -27,9 +27,9 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # mark:next-gui-version
-      RELEASE_NAME: gui-client-1.5.21
+      RELEASE_NAME: gui-client-1.5.22
     steps:
-      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+      - uses: release-drafter/release-drafter@d1a19e60e81a7e650d00a7de9277f87e439117ea # v7.11.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -204,16 +204,16 @@ jobs:
             pkg-extension: msi
     env:
       # mark:next-gui-version
-      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.21_${{ matrix.arch }}
+      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.22_${{ matrix.arch }}
       # mark:next-gui-version
-      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.21_${{ matrix.arch }}
+      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.22_${{ matrix.arch }}
       AZURE_KEY_VAULT_URI: ${{ vars.AZURE_CODESIGNING_KEY_VAULT_URI }}
       AZURE_CERT_NAME: ${{ vars.AZURE_CODESIGNING_CERTIFICATE_NAME }}
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.21_${{ matrix.arch }}
+      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.22_${{ matrix.arch }}
       # Seems like there's no way to de-dupe env vars that depend on each other
       # mark:next-gui-version
-      FIREZONE_GUI_VERSION: 1.5.21
+      FIREZONE_GUI_VERSION: 1.5.22
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -231,9 +231,13 @@ jobs:
         timeout-minutes: 15
       - uses: ./.github/actions/setup-mise
         with:
-          install_args: "--cd rust github:getsentry/sentry-cli"
+          install_args: --cd rust/gui-client
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Only install what this job uses: the parent `mise.toml`s pull in many more
+          # tools, and some have no ARM64 entries in the lockfiles, which fails
+          # `MISE_LOCKED`. Each tool's `os` limits it to the platforms that need it.
+          MISE_ENABLE_TOOLS: github:getsentry/sentry-cli,cargo:cargo-deb,cargo:cargo-generate-rpm,github:wixtoolset/wix3
       - name: Check sentry-cli runs
         shell: bash
         run: mise exec -- sentry-cli --version
@@ -427,6 +431,44 @@ jobs:
             --file "${{ env.BINARY_DEST_PATH }}.rpm" \
             --overwrite true \
             --no-progress
+
+  upgrade-gui-windows:
+    name: upgrade-gui-${{ matrix.runs-on }}
+    needs: build-gui
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        include:
+          - runs-on: windows-2022
+            arch: x86_64
+          - runs-on: windows-11-arm
+            arch: aarch64
+    env:
+      # mark:next-gui-version
+      MSI_NAME: firezone-client-gui-windows_1.5.22_${{ matrix.arch }}
+      # mark:next-gui-version
+      FIREZONE_GUI_VERSION: 1.5.22
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ env.MSI_NAME }}-msi
+          path: ${{ runner.temp }}/msi
+      - name: Test upgrade from the latest release
+        shell: powershell
+        env:
+          ARCH: ${{ matrix.arch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ../../scripts/tests/gui-client-upgrade-windows-msi.ps1 "${{ runner.temp }}/msi/${{ env.MSI_NAME }}.msi"
+      - name: Dump MsiInstaller event log
+        if: always()
+        shell: pwsh
+        run: |
+          Get-WinEvent -ProviderName 'MsiInstaller' -MaxEvents 50 -ErrorAction SilentlyContinue |
+            Sort-Object TimeCreated |
+            Select-Object TimeCreated, Id, LevelDisplayName, Message |
+            Format-List
 
   regenerate-apt-index:
     needs: build-gui

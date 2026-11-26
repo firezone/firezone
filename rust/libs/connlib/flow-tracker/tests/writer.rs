@@ -9,7 +9,6 @@ use std::{
 };
 
 use base64::Engine as _;
-use chrono::TimeZone as _;
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use flow_tracker::{FlowClose, FlowContext, FlowProtocol, IngestToken, Record, Role, Tracker};
 use ip_packet::IpPacket;
@@ -32,18 +31,18 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
             FlowContext::new(
                 "198.51.100.1:51820".parse::<SocketAddr>().unwrap(),
                 "203.0.113.7:51820".parse().unwrap(),
-                chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
+                jiff::Timestamp::new(1_700_000_000, 500).unwrap(),
             ),
             FlowContext::new(
                 None,
                 "203.0.113.7:51820".parse().unwrap(),
-                chrono::Utc.timestamp_opt(1_700_000_030, 0).unwrap(),
+                jiff::Timestamp::new(1_700_000_030, 0).unwrap(),
             ),
         ],
-        flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
+        flow_start: jiff::Timestamp::new(1_700_000_000, 500).unwrap(),
         close: Some(FlowClose {
-            flow_end: chrono::Utc.timestamp_opt(1_700_000_060, 0).unwrap(),
-            last_packet: chrono::Utc.timestamp_opt(1_700_000_059, 0).unwrap(),
+            flow_end: jiff::Timestamp::new(1_700_000_060, 0).unwrap(),
+            last_packet: jiff::Timestamp::new(1_700_000_059, 0).unwrap(),
             rx_packets: 10,
             tx_packets: 12,
             rx_bytes: 1024,
@@ -69,13 +68,13 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
             {"dst_ip": "203.0.113.7", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:50Z"},
         ])
     );
-    assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
+    assert_eq!(payload["flow_start"], "2023-11-14T22:13:20.000000500Z");
     // Attribution rides the token, not the spooled record.
     assert!(payload.get("initiator_actor_id").is_none());
 
     let close = record.close.as_ref().unwrap();
-    assert_eq!(payload["flow_end"], format!("{:?}", close.flow_end));
-    assert_eq!(payload["last_packet"], format!("{:?}", close.last_packet));
+    assert_eq!(payload["flow_end"], "2023-11-14T22:14:20Z");
+    assert_eq!(payload["last_packet"], "2023-11-14T22:14:19Z");
     assert_eq!(payload["rx_packets"], close.rx_packets);
     assert_eq!(payload["tx_packets"], close.tx_packets);
     assert_eq!(payload["rx_bytes"], close.rx_bytes);
@@ -118,12 +117,12 @@ fn spooled_reports_conform_to_the_committed_ingest_contract() {
             outers: vec![FlowContext::new(
                 None,
                 "203.0.113.7:51820".parse().unwrap(),
-                chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+                jiff::Timestamp::new(1_700_000_000, 0).unwrap(),
             )],
-            flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+            flow_start: jiff::Timestamp::new(1_700_000_000, 0).unwrap(),
             close: Some(FlowClose {
-                flow_end: chrono::Utc.timestamp_opt(1_700_000_060, 0).unwrap(),
-                last_packet: chrono::Utc.timestamp_opt(1_700_000_059, 500).unwrap(),
+                flow_end: jiff::Timestamp::new(1_700_000_060, 0).unwrap(),
+                last_packet: jiff::Timestamp::new(1_700_000_059, 500).unwrap(),
                 rx_packets: 10,
                 tx_packets: 12,
                 rx_bytes: 1024,

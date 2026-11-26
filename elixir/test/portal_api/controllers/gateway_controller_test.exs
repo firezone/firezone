@@ -118,7 +118,7 @@ defmodule PortalAPI.GatewayControllerTest do
       end
 
       assert Repo.aggregate(
-               from(d in Portal.Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -212,7 +212,7 @@ defmodule PortalAPI.GatewayControllerTest do
       assert detail =~ "issue_token"
 
       assert Repo.aggregate(
-               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -231,8 +231,9 @@ defmodule PortalAPI.GatewayControllerTest do
       assert %{"data" => %{"id" => id, "name" => "edge-nyc-1"} = data} = json_response(conn, 201)
       refute Map.has_key?(data, "token")
 
-      assert Repo.get_by(Device, id: id, site_id: site.id, type: :gateway)
-      refute Repo.exists?(from(t in Portal.GatewayToken, where: t.device_id == ^id))
+      assert Repo.get_by(Device, id: id, type: :gateway)
+      assert Repo.get_by(Portal.SiteDevice, device_id: id, site_id: site.id)
+      refute Repo.exists?(from(t in Portal.DeviceToken, where: t.device_id == ^id))
 
       # Whoever deploys the gateway mints its token separately.
       token_conn =
@@ -243,7 +244,7 @@ defmodule PortalAPI.GatewayControllerTest do
         |> post("/sites/#{site.id}/gateways/#{id}/token")
 
       assert json_response(token_conn, 201)
-      assert Repo.exists?(from(t in Portal.GatewayToken, where: t.device_id == ^id))
+      assert Repo.exists?(from(t in Portal.DeviceToken, where: t.device_id == ^id))
     end
 
     test "issue_token false skips the token even when the scope is granted", %{
@@ -259,7 +260,7 @@ defmodule PortalAPI.GatewayControllerTest do
 
       assert %{"data" => %{"id" => id} = data} = json_response(conn, 201)
       refute Map.has_key?(data, "token")
-      refute Repo.exists?(from(t in Portal.GatewayToken, where: t.device_id == ^id))
+      refute Repo.exists?(from(t in Portal.DeviceToken, where: t.device_id == ^id))
     end
 
     test "rejects an issue_token that is not a boolean", %{conn: conn, actor: actor, site: site} do
@@ -273,7 +274,7 @@ defmodule PortalAPI.GatewayControllerTest do
       assert detail =~ "issue_token"
 
       assert Repo.aggregate(
-               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -488,6 +489,30 @@ defmodule PortalAPI.GatewayControllerTest do
                json_response(conn, 401)
     end
 
+    test "finds the gateway under the site it is assigned to", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      gateway = gateway_fixture(account: account, site: site)
+      other_site = site_fixture(account: account)
+
+      Repo.update_all(
+        from(sd in Portal.SiteDevice, where: sd.account_id == ^account.id and sd.device_id == ^gateway.id),
+        set: [site_id: other_site.id]
+      )
+
+      conn = authorize_conn(conn, actor)
+
+      assert %{"data" => %{"id" => id}} =
+               conn |> get("/sites/#{other_site.id}/gateways/#{gateway.id}") |> json_response(200)
+
+      assert id == gateway.id
+
+      assert conn |> get("/sites/#{site.id}/gateways/#{gateway.id}") |> json_response(404)
+    end
+
     test "returns a single gateway", %{
       conn: conn,
       account: account,
@@ -509,7 +534,7 @@ defmodule PortalAPI.GatewayControllerTest do
                  "ipv4" => Portal.Types.IP.to_string(gateway.ipv4),
                  "ipv6" => Portal.Types.IP.to_string(gateway.ipv6),
                  "online" => false,
-                 "gateway_token_id" => gateway.gateway_token_id,
+                 "gateway_token_id" => gateway.token_id,
                  "rotated_at" => nil,
                  "public_key" => gateway.public_key,
                  "last_seen_at" => DateTime.to_iso8601(gateway.last_seen_at),
@@ -565,7 +590,7 @@ defmodule PortalAPI.GatewayControllerTest do
       # A gateway only reports a token once it has connected with one.
       gateway =
         gateway
-        |> Ecto.Changeset.change(gateway_token_id: token.id)
+        |> Ecto.Changeset.change(token_id: token.id)
         |> Repo.update!()
 
       %{gateway: gateway, token: token}
@@ -598,9 +623,7 @@ defmodule PortalAPI.GatewayControllerTest do
     } do
       rotated_at = ~U[2026-01-01 00:00:00.000000Z]
 
-      token
-      |> Ecto.Changeset.change(rotated_at: rotated_at)
-      |> Repo.update!()
+      stamp_gateway_token(token, rotated_at)
 
       conn =
         conn
@@ -623,9 +646,7 @@ defmodule PortalAPI.GatewayControllerTest do
     } do
       rotated_at = ~U[2026-01-01 00:00:00.000000Z]
 
-      token
-      |> Ecto.Changeset.change(rotated_at: rotated_at)
-      |> Repo.update!()
+      stamp_gateway_token(token, rotated_at)
 
       conn =
         conn
@@ -649,7 +670,7 @@ defmodule PortalAPI.GatewayControllerTest do
       # never-connected state a freshly provisioned Gateway has.
       fresh =
         gateway_fixture(account: account, site: site)
-        |> Ecto.Changeset.change(gateway_token_id: nil)
+        |> Ecto.Changeset.change(token_id: nil)
         |> Repo.update!()
 
       conn =

@@ -34,19 +34,6 @@ defmodule PortalWeb.SignInHTML do
       </head>
       <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-sm px-4 py-12 text-center">
-          <div class="mx-auto mb-6 w-14 h-14 rounded-full bg-success-light flex items-center justify-center">
-            <svg
-              class="w-7 h-7 text-success"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-          </div>
           <h1 class="text-xl font-semibold text-heading tracking-tight">
             Signed in successfully
           </h1>
@@ -55,6 +42,53 @@ defmodule PortalWeb.SignInHTML do
           </p>
           <p class="mt-4 text-xs text-subtle">
             You can now close this window and return to what you were doing.
+          </p>
+        </div>
+      </body>
+    </html>
+    """
+  end
+
+  def client_callback(assigns) do
+    ~H"""
+    <!DOCTYPE html>
+    <html lang="en" class="scrollbar-gutter-stable">
+      <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="referrer" content="no-referrer" />
+        <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
+        <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
+        <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
+        <link rel="manifest" href={~p"/site.webmanifest"} />
+        <meta name="theme-color" content="#FF7300" />
+        <.live_title suffix=" · Firezone">
+          {assigns[:page_title] || "Firezone"}
+        </.live_title>
+        <link
+          phx-track-static
+          rel="stylesheet"
+          nonce={@conn.private[:csp_nonce]}
+          href={~p"/assets/app.css"}
+        />
+        <link
+          phx-track-static
+          rel="stylesheet"
+          nonce={@conn.private[:csp_nonce]}
+          href={~p"/assets/main.css"}
+        />
+      </head>
+      <body class="bg-surface min-h-screen flex items-center justify-center">
+        <div class="w-full max-w-sm px-4 py-12 text-center">
+          <h1 class="text-xl font-semibold text-heading tracking-tight">
+            Return to the Firezone app
+          </h1>
+          <p class="mt-2 text-sm text-body">
+            Finish signing in from the Firezone app.
+          </p>
+          <p class="mt-4 text-xs text-subtle">
+            If the app did not open, close this window and start signing in again from the app.
           </p>
         </div>
       </body>
@@ -165,21 +199,6 @@ defmodule PortalWeb.SignInHTML do
       </head>
       <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-sm px-4 py-12 text-center">
-          <div class="mx-auto mb-6 w-14 h-14 rounded-full bg-error-light flex items-center justify-center">
-            <svg
-              class="w-7 h-7 text-error"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
           <h1 class="text-xl font-semibold text-heading tracking-tight">
             Account disabled
           </h1>
@@ -267,20 +286,20 @@ defmodule PortalWeb.SignInHTML do
             </p>
             <dl class="space-y-2">
               <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Signed in as</dt>
-                <dd class="text-xs text-body font-medium">{@actor_name}</dd>
+                <dt class="text-xs text-subtle w-24 sm:w-28 shrink-0 pt-0.5">Signed in as</dt>
+                <dd class="min-w-0 break-words text-xs text-body font-medium">{@actor_name}</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account</dt>
-                <dd class="text-xs text-body font-medium">{@account.name}</dd>
+                <dt class="text-xs text-subtle w-24 sm:w-28 shrink-0 pt-0.5">Account</dt>
+                <dd class="min-w-0 break-words text-xs text-body font-medium">{@account.name}</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Slug</dt>
-                <dd class="text-xs text-body font-mono font-medium">{@account.slug}</dd>
+                <dt class="text-xs text-subtle w-24 sm:w-28 shrink-0 pt-0.5">Slug</dt>
+                <dd class="min-w-0 break-all text-xs text-body font-mono font-medium">{@account.slug}</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account ID</dt>
-                <dd class="text-xs text-body font-mono font-medium">{@account.id}</dd>
+                <dt class="text-xs text-subtle w-24 sm:w-28 shrink-0 pt-0.5">Account ID</dt>
+                <dd class="min-w-0 break-all text-xs text-body font-mono font-medium">{@account.id}</dd>
               </div>
             </dl>
           </div>

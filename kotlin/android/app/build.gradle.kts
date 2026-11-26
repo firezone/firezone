@@ -306,7 +306,7 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.1")
     // Mints the test certificates; the platform offers no way to build one.
     androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     // Unit Tests
@@ -347,7 +347,7 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.19.1@aar")
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.61.0")
+    implementation("io.sentry:sentry-android:8.64.0")
 
     // Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
@@ -377,8 +377,8 @@ dependencies {
     // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
     // resolves activities against the debug manifest, which this artifact declares it in.
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.77.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.77.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.78.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.78.0")
     testImplementation("org.robolectric:robolectric:4.17")
 }
 

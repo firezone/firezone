@@ -9,7 +9,7 @@ defmodule PortalWeb.Actors do
   alias Portal.Changes.Change
   alias Portal.ExternalIdentity
   alias Portal.PortalSession
-  alias Portal.ClientToken
+  alias Portal.DeviceToken
   alias Portal.Presence
   alias Portal.PubSub
   alias Phoenix.LiveView.AsyncResult
@@ -17,6 +17,10 @@ defmodule PortalWeb.Actors do
   import Ecto.Changeset
 
   require Logger
+
+  @form_events ~w[validate save create_user create_service_account]
+
+  @selected_actor_events ~w[open_actor_edit_form cancel_actor_edit_form save delete_token delete_session delete_identity send_welcome_email]
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
@@ -45,6 +49,7 @@ defmodule PortalWeb.Actors do
         ],
         loader: &load_actors/2
       )
+      |> PortalWeb.Live.Helpers.drop_stale_events(&stale_event?/2)
 
     {:ok, socket}
   end
@@ -627,13 +632,18 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete_token", %{"id" => token_id}, socket) do
-    token = Database.get_client_token_by_id(token_id, socket.assigns.subject)
+    token =
+      Database.get_client_token_by_id(
+        token_id,
+        socket.assigns.selected_actor.id,
+        socket.assigns.subject
+      )
 
     entity =
       if socket.assigns.selected_actor.type == :service_account, do: "token", else: "session"
 
     if token do
-      case Database.delete(token, socket.assigns.subject) do
+      case Database.delete_client_token(token, socket.assigns.subject) do
         {:ok, _} ->
           tokens =
             Database.get_client_tokens_for_actor(
@@ -655,7 +665,12 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete_session", %{"id" => session_id}, socket) do
-    session = Database.get_portal_session_by_id(session_id, socket.assigns.subject)
+    session =
+      Database.get_portal_session_by_id(
+        session_id,
+        socket.assigns.selected_actor.id,
+        socket.assigns.subject
+      )
 
     if session do
       :ok =
@@ -691,7 +706,11 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete_identity", %{"id" => identity_id}, socket) do
-    case Database.get_identity_by_id(identity_id, socket.assigns.subject) do
+    case Database.get_identity_by_id(
+           identity_id,
+           socket.assigns.selected_actor.id,
+           socket.assigns.subject
+         ) do
       nil ->
         {:noreply, put_flash(socket, :error, "Identity not found")}
 
@@ -1059,14 +1078,12 @@ defmodule PortalWeb.Actors do
         >
           <:col :let={actor} field={{:actors, :name}} label="name">
             <div class="flex items-center gap-2.5">
-              <ActorComponents.actor_type_icon_with_badge actor={actor} />
-              <div>
-                <div class="font-medium text-heading group-hover:text-brand transition-colors">
+              <ActorComponents.actor_avatar account={@account} actor={actor} />
+              <div class="min-w-0 flex items-center gap-1.5">
+                <span class="font-medium text-heading group-hover:text-brand transition-colors truncate">
                   {actor.name}
-                </div>
-                <div class="font-mono text-[11px] text-subtle mt-0.5">
-                  {actor.id}
-                </div>
+                </span>
+                <ActorComponents.identity_provider_icons actor={actor} />
               </div>
             </div>
           </:col>
@@ -1101,6 +1118,10 @@ defmodule PortalWeb.Actors do
     </div>
     """
   end
+
+  defp stale_event?(event, %{actor_form: %{form: nil}}) when event in @form_events, do: true
+  defp stale_event?(event, %{selected_actor: nil}) when event in @selected_actor_events, do: true
+  defp stale_event?(_event, _assigns), do: false
 
   defp base_actor_assigns do
     [
@@ -1286,12 +1307,14 @@ defmodule PortalWeb.Actors do
             actors.email,
             actors.id
           ),
-        identity_count:
+        identity_issuers:
           fragment(
-            "(SELECT COUNT(*) FROM external_identities WHERE actor_id = ?)",
+            "ARRAY(SELECT DISTINCT issuer FROM external_identities WHERE account_id = ? AND actor_id = ? AND issuer IS NOT NULL ORDER BY issuer)",
+            actors.account_id,
             actors.id
           )
       })
+      |> with_avatar()
     end
 
     def count_actors(subject) do
@@ -1498,6 +1521,7 @@ defmodule PortalWeb.Actors do
         from(a in Actor, as: :actors)
         |> where([actors: a], a.id == ^id)
         |> where([actors: a], a.type != :api_client)
+        |> with_avatar()
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -1562,7 +1586,7 @@ defmodule PortalWeb.Actors do
 
     def get_client_tokens_for_actor(actor_id, subject) do
       tokens =
-        from(c in ClientToken, as: :client_tokens)
+        from(c in DeviceToken, as: :client_tokens)
         |> where([client_tokens: c], c.actor_id == ^actor_id)
         |> order_by([client_tokens: c], desc: c.inserted_at)
         |> Safe.scoped(subject)
@@ -1578,31 +1602,40 @@ defmodule PortalWeb.Actors do
 
       devices_by_token_id =
         from(d in Device,
-          where: d.client_token_id in ^token_ids,
-          distinct: d.client_token_id,
-          order_by: [asc: d.client_token_id, desc: d.last_seen_at]
+          where: d.token_id in ^token_ids,
+          distinct: d.token_id,
+          order_by: [asc: d.token_id, desc: d.last_seen_at]
         )
         |> Safe.scoped(subject)
         |> Safe.all()
-        |> Map.new(&{&1.client_token_id, &1})
+        |> Map.new(&{&1.token_id, &1})
 
       Enum.map(tokens, fn token ->
         %{token | last_used_device: Map.get(devices_by_token_id, token.id)}
       end)
     end
 
-    def get_identity_by_id(identity_id, subject) do
+    def get_identity_by_id(identity_id, actor_id, subject) do
       from(i in ExternalIdentity, as: :identities)
-      |> where([identities: i], i.id == ^identity_id)
+      |> where([identities: i], i.id == ^identity_id and i.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.one()
     end
 
-    def get_client_token_by_id(token_id, subject) do
-      from(c in ClientToken, as: :client_tokens)
-      |> where([client_tokens: c], c.id == ^token_id)
+    def get_client_token_by_id(token_id, actor_id, subject) do
+      from(c in DeviceToken, as: :client_tokens)
+      |> where([client_tokens: c], c.id == ^token_id and c.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.one()
+    end
+
+    def delete_client_token(token, subject) do
+      from(t in DeviceToken, where: t.account_id == ^token.account_id and t.id == ^token.id)
+      |> Portal.Authentication.delete_client_tokens(subject)
+      |> case do
+        {:error, :unauthorized} = error -> error
+        {_count, _} -> {:ok, token}
+      end
     end
 
     def get_portal_sessions_for_actor(actor_id, subject) do
@@ -1642,9 +1675,9 @@ defmodule PortalWeb.Actors do
       |> Presence.PortalSessions.preload_portal_sessions_presence()
     end
 
-    def get_portal_session_by_id(session_id, subject) do
+    def get_portal_session_by_id(session_id, actor_id, subject) do
       from(ps in PortalSession, as: :portal_sessions)
-      |> where([portal_sessions: ps], ps.id == ^session_id)
+      |> where([portal_sessions: ps], ps.id == ^session_id and ps.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.one()
     end
@@ -1724,7 +1757,9 @@ defmodule PortalWeb.Actors do
       actor_id = changeset.data.id
 
       with {:ok, actor} <- update_actor_changeset(changeset, subject),
-           {_count, _} <- clear_identities_for_actor(actor_id, subject) do
+           {count, _} when is_integer(count) <- clear_identities_for_actor(actor_id, subject),
+           {count, _} when is_integer(count) <- clear_portal_sessions_for_actor(actor_id, subject),
+           {count, _} when is_integer(count) <- clear_client_tokens_for_actor(actor_id, subject) do
         {:ok, actor}
       end
     end
@@ -1733,6 +1768,17 @@ defmodule PortalWeb.Actors do
       from(i in ExternalIdentity, where: i.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
+    end
+
+    defp clear_portal_sessions_for_actor(actor_id, subject) do
+      from(s in PortalSession, where: s.actor_id == ^actor_id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+    end
+
+    defp clear_client_tokens_for_actor(actor_id, subject) do
+      from(t in DeviceToken, where: t.actor_id == ^actor_id)
+      |> Portal.Authentication.delete_client_tokens(subject)
     end
 
     def delete(actor, subject) do
@@ -1798,6 +1844,26 @@ defmodule PortalWeb.Actors do
       |> where([memberships: m], m.group_id == ^group_id and m.actor_id == ^actor.id)
       |> Safe.scoped(subject)
       |> Safe.one()
+    end
+
+    # A directory photo first, then the newest sign-in photo.
+    defp with_avatar(queryable) do
+      avatar =
+        from(i in ExternalIdentity,
+          where: i.account_id == parent_as(:actors).account_id,
+          where: i.actor_id == parent_as(:actors).id,
+          where: not is_nil(i.avatar_etag),
+          order_by: [desc: i.avatar_source == :directory, desc: i.updated_at, desc: i.id],
+          limit: 1,
+          select: %{account_id: i.account_id, id: i.id, etag: i.avatar_etag}
+        )
+
+      queryable
+      |> join(:left_lateral, [actors: actors], avatar in subquery(avatar),
+        on: avatar.account_id == actors.account_id,
+        as: :avatar
+      )
+      |> select_merge([avatar: avatar], %{avatar_identity_id: avatar.id, avatar_etag: avatar.etag})
     end
   end
 end
