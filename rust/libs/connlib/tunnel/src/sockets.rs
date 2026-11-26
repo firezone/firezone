@@ -52,6 +52,7 @@ const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
     target_os = "ios" => { 32 }
     target_os = "macos" => { 32 }
     target_os = "android" => { 1 }
+    target_os = "windows" => { 128 }
     _ => { 8 }
 };
 
