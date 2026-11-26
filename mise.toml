@@ -9,12 +9,12 @@ minimum_release_age = "7d"
 
 [monorepo]
 config_roots = [
-    "elixir",
-    "kotlin/android",
-    "rust",
-    "rust/gui-client",
-    "rust/tests/fuzz",
-    "swift/apple",
+  "elixir",
+  "kotlin/android",
+  "rust",
+  "rust/gui-client",
+  "rust/tests/fuzz",
+  "swift/apple",
 ]
 
 [tasks.lint-setup]

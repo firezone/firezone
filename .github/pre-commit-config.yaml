@@ -67,3 +67,8 @@ repos:
         language: system
         types: [yaml]
         files: ^\.github/workflows/
+      - id: mise-fmt
+        name: mise fmt
+        entry: bash -c 'for f in "$@"; do mise fmt --check -C "$(dirname "$f")" || exit 1; done' --
+        language: system
+        files: (^|/)mise\.toml$

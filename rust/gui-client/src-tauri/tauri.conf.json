@@ -8,42 +8,7 @@
   "bundle": {
     "active": true,
     "shortDescription": "Firezone",
-    "linux": {
-      "deb": {
-        "recommends": ["p11-kit-modules", "firezone-archive-keyring"],
-        "preInstallScript": "./linux_package/preinst",
-        "postInstallScript": "./linux_package/postinst",
-        "preRemoveScript": "./linux_package/prerm_deb",
-        "files": {
-          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
-          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
-          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
-          "/usr/bin/firezone": "../../target/release/firezone-cli",
-          "/usr/share/bash-completion/completions/firezone": "../../target/release/completions/firezone.bash",
-          "/usr/share/zsh/site-functions/_firezone": "../../target/release/completions/_firezone",
-          "/usr/share/fish/vendor_completions.d/firezone.fish": "../../target/release/completions/firezone.fish",
-          "/usr/share/metainfo/dev.firezone.client.metainfo.xml": "./linux_package/dev.firezone.client.metainfo.xml"
-        },
-        "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
-      },
-      "rpm": {
-        "recommends": ["p11-kit"],
-        "postInstallScript": "./linux_package/postinst",
-        "preRemoveScript": "./linux_package/prerm_rpm",
-        "files": {
-          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
-          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
-          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
-          "/usr/bin/firezone": "../../target/release/firezone-cli",
-          "/usr/share/bash-completion/completions/firezone": "../../target/release/completions/firezone.bash",
-          "/usr/share/zsh/site-functions/_firezone": "../../target/release/completions/_firezone",
-          "/usr/share/fish/vendor_completions.d/firezone.fish": "../../target/release/completions/firezone.fish",
-          "/usr/share/metainfo/dev.firezone.client.metainfo.xml": "./linux_package/dev.firezone.client.metainfo.xml"
-        },
-        "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
-      }
-    },
-    "targets": ["deb", "msi", "rpm"],
+    "targets": ["msi"],
     "windows": {
       "wix": {
         "bannerPath": "./win_files/banner.png",
