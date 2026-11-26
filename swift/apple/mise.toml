@@ -18,9 +18,7 @@ MACOSX_DEPLOYMENT_TARGET = "13.0"
 
 [tools]
 swiftlint = "0.63.0" # Swift static analysis
-"github:rorkai/App-Store-Connect-CLI" = { version = "4.11.0", version_prefix = "", bin = "asc", os = [
-  "linux",
-] }
+"github:rorkai/App-Store-Connect-CLI" = { version = "4.11.0", version_prefix = "", bin = "asc", os = ["linux"] }
 
 # =============================================================================
 # Composite Tasks (can't be auto-discovered)
