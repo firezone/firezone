@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, ErrorExt, Result, bail};
@@ -709,7 +709,7 @@ impl ClientOnGateway {
         let resource = match self.internet_resource_enabled {
             Some(internet_resource) => match resource_ip {
                 ip if is_dns_addr(ip) => self.classify_non_internet_resource(ip, protocol)?,
-                ip if internet_resource_rejects(ip) => {
+                ip if special_use_ip::is_special_use_after_nat64(ip) => {
                     bail!(InternetResourceRejectedAddress(ip))
                 }
                 // Note a Gateway with Internet resource should never get packets for other resources.
@@ -879,34 +879,6 @@ impl TranslationState {
 
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
-}
-
-fn internet_resource_rejects(addr: IpAddr) -> bool {
-    match addr {
-        IpAddr::V4(addr) => {
-            addr.is_private()
-                || addr.is_loopback()
-                || addr.is_link_local()
-                || is_cgnat(addr)
-                || addr.is_multicast()
-                || is_reserved(addr)
-        }
-        IpAddr::V6(addr) => {
-            addr.is_loopback()
-                || addr.to_ipv4_mapped().is_some()
-                || addr.is_unique_local()
-                || addr.is_unicast_link_local()
-                || addr.is_multicast()
-        }
-    }
-}
-
-fn is_cgnat(addr: Ipv4Addr) -> bool {
-    matches!(addr.octets(), [100, 64..=127, _, _])
-}
-
-fn is_reserved(addr: Ipv4Addr) -> bool {
-    matches!(addr.octets(), [240..=255, _, _, _])
 }
 
 /// Rejects addresses within Firezone's tunnel range.

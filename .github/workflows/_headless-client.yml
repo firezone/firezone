@@ -59,7 +59,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  benchmark-linux:
+  benchmark-bare-metal:
     needs: update-release-draft
     if: >-
       github.event_name == 'workflow_dispatch' && github.ref_name == 'main' &&
@@ -70,6 +70,8 @@ jobs:
       fail-fast: false
       matrix:
         protocol: [tcp, quic]
+        device_pair:
+          ["Intel (Linux) <> AMD (Linux)", "Intel (Linux) <> AMD (Windows)"]
     steps:
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
@@ -80,16 +82,17 @@ jobs:
           repositories: infra
           # repository_dispatch requires Contents: write.
           permission-contents: write
-      - name: Dispatch Linux-to-Linux benchmarks
+      - name: Dispatch bare-metal benchmarks
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           FIREZONE_SHA: ${{ inputs.sha || github.sha }}
           BENCHMARK_PROTOCOL: ${{ matrix.protocol }}
+          DEVICE_PAIR: ${{ matrix.device_pair }}
         run: |
           gh api --method POST /repos/firezone/infra/dispatches \
             --raw-field event_type=benchmark-release \
             --raw-field "client_payload[git_sha]=$FIREZONE_SHA" \
-            --raw-field 'client_payload[device_pair]=Intel <> AMD' \
+            --raw-field "client_payload[device_pair]=$DEVICE_PAIR" \
             --raw-field "client_payload[protocol]=$BENCHMARK_PROTOCOL" \
             --field 'client_payload[publish]=true'
 

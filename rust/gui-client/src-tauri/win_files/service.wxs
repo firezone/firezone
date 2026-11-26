@@ -26,12 +26,12 @@
           The duplicate file is removed as part of a custom action in `main.wxs`
         -->
         <File Id="FirezoneClientIpcServiceExe" Name="firezone-client-ipc.exe"
-          Source="../../firezone-client-tunnel.exe" KeyPath="yes" />
+          Source="$(var.TargetDir)\firezone-client-tunnel.exe" KeyPath="yes" />
       </Component>
 
       <Component Id="FirezoneClientTunnelService" Guid="bd082abf-bd17-4e6f-aed1-4126a8596ecd">
         <File Id="FirezoneClientTunnelServiceExe" Name="firezone-client-tunnel.exe"
-          Source="../../firezone-client-tunnel.exe" KeyPath="yes" />
+          Source="$(var.TargetDir)\firezone-client-tunnel.exe" KeyPath="yes" />
 
         <ServiceInstall
           Id="FirezoneClientTunnelServiceInstaller"
