@@ -290,7 +290,7 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.drop_llmnr_nxdomain_responses,
         ),
         stream_logs: env_or("FZFF_stream_logs", flags.stream_logs),
-        wintun_tcp_coalescing: env_or("FZFF_WINTUN_TCP_COALESCING", flags.wintun_tcp_coalescing),
+        wintun_tcp_coalescing: env_or("FZFF_WINTUN_TCP_COALESCING", true),
         fail_on_routing_loop: env_or("FZFF_FAIL_ON_ROUTING_LOOP", flags.fail_on_routing_loop),
     }
 }
