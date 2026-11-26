@@ -282,7 +282,7 @@ jobs:
           pattern: instructions-*
           path: ${{ runner.temp }}/instructions
           merge-multiple: true
-      - uses: bencherdev/bencher@7de3c69a85380826613050826b4bce062be2f07d # v0.6.16
+      - uses: bencherdev/bencher@b2484bc6734c8e6da4fad141bd13527a11da3988 # v0.6.17
       - name: Report to Bencher
         working-directory: ${{ runner.temp }}
         env:
