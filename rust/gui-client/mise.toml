@@ -3,6 +3,8 @@
 # Usage: mise run <task> (from this directory) or mise run //rust/gui-client:<task> (from repo root)
 
 [tools]
+node = "24.13.0"
+pnpm = "10.33.0" # Has to match `packageManager` in `package.json`
 # Builds the `.rpm`; `cargo-deb` for the `.deb` comes from `rust/mise.toml`.
 "cargo:cargo-generate-rpm" = { version = "0.21.1", os = ["linux"] }
 
