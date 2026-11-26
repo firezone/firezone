@@ -29,9 +29,9 @@ ANDROID_HOME = '''
 # on `PATH`. Doing it here means no task has to rebuild `PATH` and no shell profile has to be edited.
 # 'setup-sdk' fills these directories in.
 _.path = [
-    "{{ env.ANDROID_HOME }}/cmdline-tools/latest/bin",
-    "{{ env.ANDROID_HOME }}/platform-tools",
-    "{{ env.ANDROID_HOME }}/emulator",
+  "{{ env.ANDROID_HOME }}/cmdline-tools/latest/bin",
+  "{{ env.ANDROID_HOME }}/platform-tools",
+  "{{ env.ANDROID_HOME }}/emulator",
 ]
 
 [task_config]
