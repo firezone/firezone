@@ -37,6 +37,10 @@ url = "https://nodejs.org/dist/v24.13.0/node-v24.13.0-darwin-arm64.tar.gz"
 checksum = "sha256:6f03c1b48ddbe1b129a6f8038be08e0899f05f17185b4d3e4350180ab669a7f3"
 url = "https://nodejs.org/dist/v24.13.0/node-v24.13.0-darwin-x64.tar.gz"
 
+[tools.node."platforms.windows-arm64"]
+checksum = "sha256:92b9f9b0c0c123e11e4afc535f0ec19cd987465eea506427553a49971364158a"
+url = "https://nodejs.org/dist/v24.13.0/node-v24.13.0-win-arm64.zip"
+
 [tools.node."platforms.windows-x64"]
 checksum = "sha256:ca2742695be8de44027d71b3f53a4bdb36009b95575fe1ae6f7f0b5ce091cb88"
 url = "https://nodejs.org/dist/v24.13.0/node-v24.13.0-win-x64.zip"
@@ -68,6 +72,12 @@ url = "https://github.com/pnpm/pnpm/releases/download/v10.33.0/pnpm-macos-arm64"
 [tools.pnpm."platforms.macos-x64"]
 checksum = "sha256:c31e29554b0e3f4e03f4617195c949595e4dca36085922003de4896c3ca4057d"
 url = "https://github.com/pnpm/pnpm/releases/download/v10.33.0/pnpm-macos-x64"
+
+[tools.pnpm."platforms.windows-arm64"]
+checksum = "sha256:afc96009dc39fe23a835d65192049e6a995f342496b175585dc2beda7d42d33f"
+checksum_source = "mise-versions"
+url = "https://github.com/pnpm/pnpm/releases/download/v10.33.0/pnpm-win-x64.exe"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/380583279"
 
 [tools.pnpm."platforms.windows-x64"]
 checksum = "sha256:afc96009dc39fe23a835d65192049e6a995f342496b175585dc2beda7d42d33f"
