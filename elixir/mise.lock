@@ -33,50 +33,50 @@ checksum = "sha256:f424d6f0bb710a1d4898f2645d8ad6cab3f5eab8d71848c0dda2579d3a8e8
 url = "https://builds.hex.pm/builds/elixir/v1.20.5-otp-29.zip"
 
 [[tools.erlang]]
-version = "29.1.2"
+version = "29.1.3"
 backend = "core:erlang"
 
 [tools.erlang.options]
 precompiled_os = "ubuntu-24.04"
 
 [tools.erlang."platforms.linux-arm64"]
-checksum = "sha256:5d344f2ef455cfa15ad3112ce3aaecc8fa0d97532b2f106df46bc1701bc02c27"
-url = "https://builds.hex.pm/builds/otp/arm64/ubuntu-24.04/OTP-29.1.2.tar.gz"
+checksum = "sha256:92f62a6f1404fac2d33fb121eaa5cd1713a1d74c21be238a94c76e9b3db65f6e"
+url = "https://builds.hex.pm/builds/otp/arm64/ubuntu-24.04/OTP-29.1.3.tar.gz"
 
 [tools.erlang."platforms.linux-x64"]
-checksum = "sha256:2cfca446976fc61962585a1c77e5d11ddb6f5fed83e84668a2c4acfaad60d22e"
-url = "https://builds.hex.pm/builds/otp/amd64/ubuntu-24.04/OTP-29.1.2.tar.gz"
+checksum = "sha256:1436e790ad4d3d0e8737c3f81010df48460be8bb981b24395ffdb50eb2bdf322"
+url = "https://builds.hex.pm/builds/otp/amd64/ubuntu-24.04/OTP-29.1.3.tar.gz"
 
 [[tools.erlang]]
-version = "29.1.2"
+version = "29.1.3"
 backend = "core:erlang"
 
 [tools.erlang."platforms.linux-arm64-musl"]
-checksum = "sha256:c79966661e35fe4aff8ec003db63682e3b33b10b672220d51bf93c0a9244b049"
-url = "https://github.com/erlang/otp/releases/download/OTP-29.1.2/otp_src_29.1.2.tar.gz"
-url_api = "https://api.github.com/repos/erlang/otp/releases/assets/640997755"
+checksum = "sha256:44d8ee7f0964537ddb328fe2f6307d3338c3fdd1b2826938d490907771ba70d2"
+url = "https://github.com/erlang/otp/releases/download/OTP-29.1.3/otp_src_29.1.3.tar.gz"
+url_api = "https://api.github.com/repos/erlang/otp/releases/assets/787474544"
 install = "source"
 
 [tools.erlang."platforms.linux-x64-musl"]
-checksum = "sha256:c79966661e35fe4aff8ec003db63682e3b33b10b672220d51bf93c0a9244b049"
-url = "https://github.com/erlang/otp/releases/download/OTP-29.1.2/otp_src_29.1.2.tar.gz"
-url_api = "https://api.github.com/repos/erlang/otp/releases/assets/640997755"
+checksum = "sha256:44d8ee7f0964537ddb328fe2f6307d3338c3fdd1b2826938d490907771ba70d2"
+url = "https://github.com/erlang/otp/releases/download/OTP-29.1.3/otp_src_29.1.3.tar.gz"
+url_api = "https://api.github.com/repos/erlang/otp/releases/assets/787474544"
 install = "source"
 
 [tools.erlang."platforms.macos-arm64"]
-checksum = "sha256:579af3bb043e0692503f7f24c6e65b620bdf1802a13567a7247d1d18f1ec5470"
-url = "https://github.com/erlef/otp_builds/releases/download/OTP-29.1.2/otp-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/erlef/otp_builds/releases/assets/640679208"
+checksum = "sha256:fedfd0ef48f3290cf144a0a20d77fb840e95b934073d2378d60f1fad7c91a837"
+url = "https://github.com/erlef/otp_builds/releases/download/OTP-29.1.3/otp-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/erlef/otp_builds/releases/assets/787066834"
 
 [tools.erlang."platforms.macos-x64"]
-checksum = "sha256:bac2e78f48c30ecfdbe2b2ea219856f0225530f978b344ef8bbd6a8f7e5f58c0"
-url = "https://github.com/erlef/otp_builds/releases/download/OTP-29.1.2/otp-x86_64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/erlef/otp_builds/releases/assets/640726802"
+checksum = "sha256:57be7830b29cdbbcecda8fced4d818803a1c88bf8f74c882049d31fcb84edb64"
+url = "https://github.com/erlef/otp_builds/releases/download/OTP-29.1.3/otp-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/erlef/otp_builds/releases/assets/787082477"
 
 [tools.erlang."platforms.windows-x64"]
-checksum = "sha256:4efe9772a84c6c1ef75377e9326815584958776c905f2bf687b62509e2d809c0"
-url = "https://github.com/erlang/otp/releases/download/OTP-29.1.2/otp_win64_29.1.2.zip"
-url_api = "https://api.github.com/repos/erlang/otp/releases/assets/641103480"
+checksum = "sha256:b47fa07264ef4d2847d20c76568c240dfe0970f5d52099d9615d3a4f6a4482b2"
+url = "https://github.com/erlang/otp/releases/download/OTP-29.1.3/otp_win64_29.1.3.zip"
+url_api = "https://api.github.com/repos/erlang/otp/releases/assets/787360105"
 
 [[tools.node]]
 version = "26.13.0"
