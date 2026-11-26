@@ -3,8 +3,16 @@
 # Usage: mise run <task> (from this directory) or mise run //rust/gui-client:<task> (from repo root)
 
 [tools]
+node = "24.13.0"
+pnpm = "10.33.0" # Has to match `packageManager` in `package.json`
+# Builds the `.rpm`; `cargo-deb` for the `.deb` comes from `rust/mise.toml`.
+"cargo:cargo-generate-rpm" = { version = "0.21.1", os = ["linux"] }
+
 # Submits the winget manifests in `_winget.yml`.
-"github:russellbanks/Komac" = { version = "2.17.1", bin = "komac", os = ["windows"] }
+[tools."github:russellbanks/Komac"]
+version = "2.17.2"
+bin = "komac"
+os = ["windows"]
 
 [tasks.dev]
 description = "Run the GUI client in dev against a dev Tunnel service"
@@ -19,9 +27,9 @@ run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
 [tasks.screenshots]
 description = "Render every GUI client screen to a PNG in `rust/gui-client/screenshots`"
 run = [
-    "pnpm install",
-    "pnpm exec playwright install chromium",
-    "pnpm exec vitest run",
+  "pnpm install",
+  "pnpm exec playwright install chromium",
+  "pnpm exec vitest run",
 ]
 
 # Build and run are separate commands so that only the service is elevated:
@@ -38,10 +46,10 @@ run = [
 description = "Run the Tunnel service interactively for local GUI dev. Elevates only the service binary, so it can be started from a normal shell. `--skip-peer-verification` skips the peer check so it accepts a non-installed GUI build."
 raw = true
 run = [
-    "cargo build -p firezone-gui-client --bin firezone-client-tunnel",
-    "sudo -E -u root -g firezone-client ../target/debug/firezone-client-tunnel run-interactive --skip-peer-verification",
+  "cargo build -p firezone-gui-client --bin firezone-client-tunnel",
+  "sudo -E -u root -g firezone-client ../target/debug/firezone-client-tunnel run-interactive --skip-peer-verification",
 ]
 run_windows = [
-    "cargo build -p firezone-gui-client --bin firezone-client-tunnel",
-    "sudo ..\\target\\debug\\firezone-client-tunnel.exe run-interactive --skip-peer-verification",
+  "cargo build -p firezone-gui-client --bin firezone-client-tunnel",
+  "sudo ..\\target\\debug\\firezone-client-tunnel.exe run-interactive --skip-peer-verification",
 ]
