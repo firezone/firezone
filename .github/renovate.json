@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabledManagers": ["mise"],
+  "dependencyDashboard": false,
+  "minimumReleaseAge": "7 days",
+  "semanticCommits": "enabled",
+  "semanticCommitType": "build",
+  "semanticCommitScope": "deps",
+  "prBodyTemplate": "{{{warnings}}}",
+  "packageRules": [
+    {
+      "description": "Must match the toolchain the eBPF program is compiled with, see `rust/relay/server/build.rs`",
+      "matchFileNames": ["rust/tests/fuzz/mise.toml"],
+      "matchDepNames": ["rust"],
+      "enabled": false
+    },
+    {
+      "description": "Must match the `gungraun` crate in `rust/Cargo.toml`",
+      "matchDepNames": ["/gungraun/"],
+      "enabled": false
+    }
+  ]
+}
