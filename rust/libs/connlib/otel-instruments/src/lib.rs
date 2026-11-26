@@ -154,7 +154,7 @@ pub fn connection_count() -> Gauge<u64> {
 /// How often a remote address became contested by several Frostlink connections.
 pub fn contested_addresses() -> Counter<u64> {
     connlib_meter()
-        .u64_counter("tunnel.address.contested")
+        .u64_counter("connlib.address.contested")
         .with_description(
             "Number of remote addresses that several Frostlink connections validated a path to.",
         )

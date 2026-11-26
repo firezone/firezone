@@ -535,7 +535,7 @@ impl Allocation {
                 return true;
             }
 
-            // On these requests, the relay only answers 441 if its allocation on our socket has other credentials.
+            // On these requests, the relay only answers 441 if its allocation on our socket belongs to another device.
             let allocation_of_another_device = error.code() == WrongCredentials::CODEPOINT
                 && matches!(message.method(), REFRESH | CHANNEL_BIND);
 
