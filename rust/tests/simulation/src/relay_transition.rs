@@ -22,6 +22,9 @@ pub(crate) enum Transition {
     RebootRelay,
     /// No datagram makes it between the client and the relay for a while.
     Partition { duration: Duration },
+    /// The client's host sleeps: time passes without the client handling a timeout or a
+    /// datagram, as when a laptop wakes up.
+    Sleep { duration: Duration },
     /// The client and a peer start to exchange data.
     Connect { peer: SocketAddr },
     /// The client and a peer stop to exchange data. TURN cannot unbind their channel.
