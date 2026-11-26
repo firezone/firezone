@@ -10,7 +10,7 @@
   "commitMessageAction": "bump",
   "commitMessageTopic": "{{{replace '^.*[:/]' '' depName}}}",
   "commitMessageExtra": "from {{currentVersion}} to {{newVersion}}",
-  "prBodyTemplate": "{{{warnings}}}",
+  "prBodyTemplate": "{{{warnings}}}{{{changelogs}}}",
   "packageRules": [
     {
       "description": "mise pins versions without the `v` that GitHub release tags carry",
