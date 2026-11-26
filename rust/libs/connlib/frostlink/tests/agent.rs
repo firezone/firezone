@@ -11,8 +11,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use frostlink::{
-    Agent, Candidate, CandidateKind, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC,
-    Payload, Probe, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
+    Agent, Candidate, CandidateKind, Event, Outgoing, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST,
+    PROBE_SRC, Payload, Probe, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
 use ip_packet::{Icmpv6Type, IpPacket};
 use zeroize::Zeroizing;
@@ -1047,7 +1047,11 @@ impl AgentExt for Agent {
     }
 
     fn transmits(&mut self) -> Vec<Transmit> {
-        std::iter::from_fn(|| self.poll_transmit()).collect()
+        std::iter::from_fn(|| self.poll_transmit())
+            .map(|o| match o {
+                Outgoing::Reply(t) | Outgoing::Initiated(t) => t,
+            })
+            .collect()
     }
 
     fn drain_events(&mut self) {
@@ -1075,7 +1079,7 @@ impl AgentExt for Agent {
             self.handle_timeout(now);
             activity
                 .transmits
-                .extend(std::iter::from_fn(|| self.poll_transmit()).map(|t| (now, t)));
+                .extend(self.transmits().into_iter().map(|t| (now, t)));
             activity
                 .events
                 .extend(std::iter::from_fn(|| self.poll_event()));

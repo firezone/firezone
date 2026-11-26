@@ -288,7 +288,7 @@ impl Agent {
         }
     }
 
-    pub(crate) fn poll_frostlink_transmit(&mut self) -> Option<frostlink::Transmit> {
+    pub(crate) fn poll_frostlink_transmit(&mut self) -> Option<frostlink::Outgoing> {
         match self {
             Self::Ice(_) => None,
             Self::Frostlink(agent) => agent.poll_transmit(),

@@ -1898,19 +1898,23 @@ where
 
         // Plaintext payloads (probes) need encapsulation; ciphertext
         // goes straight to the wire.
-        while let Some(pt) = self.agent.poll_frostlink_transmit() {
+        while let Some(outgoing) = self.agent.poll_frostlink_transmit() {
+            let (pt, reply) = match outgoing {
+                frostlink::Outgoing::Reply(pt) => (pt, true),
+                frostlink::Outgoing::Initiated(pt) => (pt, false),
+            };
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             match pt.payload {
                 frostlink::Payload::Ciphertext(ref bytes) => {
                     if let Some(transmit) =
-                        self.transmit_to(peer_socket, bytes, pt.reply, allocations, now)
+                        self.transmit_to(peer_socket, bytes, reply, allocations, now)
                     {
                         transmits.push_back(transmit);
                     }
                 }
                 frostlink::Payload::Plaintext(ref ip) => {
                     if let Ok(Some(batch)) =
-                        self.encapsulate(cid, peer_socket, ip, pt.reply, now, allocations)
+                        self.encapsulate(cid, peer_socket, ip, reply, now, allocations)
                         && let Ok(transmit) = batch.encrypt_single(ip)
                     {
                         transmits.push_back(transmit);
