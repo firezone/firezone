@@ -1,7 +1,7 @@
 # Upgrades the latest released MSI to the one built here and checks that the
 # upgrade replaced the released product instead of installing next to it.
-# Runs after `gui-client-install-windows-msi.ps1`, so it starts by removing
-# the build that test installed.
+
+param([Parameter(Mandatory)][string]$Msi)
 
 $ErrorActionPreference = "Stop"
 
@@ -19,10 +19,7 @@ function Get-InstalledFirezone {
         Where-Object { $_.DisplayName -eq "Firezone" }
 }
 
-$msi = (Resolve-Path "$($env:BINARY_DEST_PATH).msi").Path
-
-Write-Output "==> Uninstalling the build under test..."
-Invoke-Msiexec "/x", "`"$msi`"", "/qn"
+$msi = (Resolve-Path $Msi).Path
 
 # Filtered here rather than with `--jq`: Windows PowerShell strips the double
 # quotes a jq string literal needs from native command arguments.
