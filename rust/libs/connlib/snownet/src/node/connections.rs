@@ -10,7 +10,7 @@ use anyhow::{Context as _, Result, bail};
 use deadline_map::{DeadlineMap, PollTimeout};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
-use is::stun::StunMessage;
+use is::stun::{StunMessage, TransId};
 
 use crate::{
     Event,
@@ -350,7 +350,7 @@ where
             let trans_id = message.trans_id();
             let id = inflight_stun_requests
                 .remove(trans_id)
-                .ok_or(UnknownConnection::by_trans_id())?;
+                .ok_or(UnknownConnection::by_trans_id(trans_id))?;
             let conn = self.get_mut_including_closing(&id, now)?;
 
             return Ok((id, conn));
@@ -505,7 +505,7 @@ struct Goodbye {
 #[derive(Debug)]
 pub struct UnknownConnection {
     kind: &'static str,
-    id: Option<String>,
+    id: String,
     disconnected_for: Option<Duration>,
 }
 
@@ -519,7 +519,7 @@ impl UnknownConnection {
         TId: fmt::Display + Eq + Hash,
     {
         Self {
-            id: Some(id.to_string()),
+            id: id.to_string(),
             kind: "id",
             disconnected_for: disconnected_ids
                 .get(&id)
@@ -533,7 +533,7 @@ impl UnknownConnection {
         now: Instant,
     ) -> Self {
         Self {
-            id: Some(id.to_string()),
+            id: id.to_string(),
             kind: "tunnel id",
             disconnected_for: disconnected_tunnel_ids
                 .get(&id)
@@ -547,7 +547,7 @@ impl UnknownConnection {
         now: Instant,
     ) -> Self {
         Self {
-            id: Some(into_u256(key).to_string()),
+            id: into_u256(key).to_string(),
             kind: "public key",
             disconnected_for: disconnected_public_keys
                 .get(&key)
@@ -561,7 +561,7 @@ impl UnknownConnection {
         now: Instant,
     ) -> Self {
         Self {
-            id: None,
+            id: key.to_owned(),
             kind: "ufrag",
             disconnected_for: disconnected_ufrags
                 .get(key)
@@ -569,9 +569,9 @@ impl UnknownConnection {
         }
     }
 
-    fn by_trans_id() -> Self {
+    fn by_trans_id(key: TransId) -> Self {
         Self {
-            id: None,
+            id: format!("{key:?}"),
             kind: "STUN trans ID",
             disconnected_for: None,
         }
@@ -580,17 +580,29 @@ impl UnknownConnection {
     pub fn recently_disconnected(&self) -> bool {
         self.disconnected_for.is_some()
     }
+
+    /// The error message without the ID, which may be chosen by an unauthenticated peer.
+    pub fn metric_label(&self) -> &'static str {
+        match (self.kind, self.recently_disconnected()) {
+            ("id", false) => "No connection for id",
+            ("id", true) => "No connection for id (recently disconnected)",
+            ("tunnel id", false) => "No connection for tunnel id",
+            ("tunnel id", true) => "No connection for tunnel id (recently disconnected)",
+            ("public key", false) => "No connection for public key",
+            ("public key", true) => "No connection for public key (recently disconnected)",
+            ("ufrag", false) => "No connection for ufrag",
+            ("ufrag", true) => "No connection for ufrag (recently disconnected)",
+            ("STUN trans ID", _) => "No connection for STUN trans ID",
+            (_, _) => "No connection",
+        }
+    }
 }
 
 impl std::error::Error for UnknownConnection {}
 
 impl fmt::Display for UnknownConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "No connection for {}", self.kind)?;
-
-        if let Some(id) = &self.id {
-            write!(f, " {id}")?;
-        }
+        write!(f, "No connection for {} {}", self.kind, self.id)?;
 
         if let Some(disconnected_for) = self.disconnected_for {
             write!(f, " (disconnected for {disconnected_for:?})")?;
@@ -607,7 +619,6 @@ fn into_u256(key: [u8; 32]) -> bnum::Uint<32> {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::ErrorExt as _;
     use is::IceAgent;
     use rand::random;
     use ringbuffer::AllocRingBuffer;
@@ -660,43 +671,6 @@ mod tests {
         handle_timeout(&mut connections, now);
 
         assert_disconnected(&mut connections, id, idx, key, now, false);
-    }
-
-    #[test]
-    fn unknown_stun_peer_values_are_not_in_the_error() {
-        let mut connections: Connections<u32, u32> = Connections::default();
-        let mut inflight = InflightStunRequests::default();
-        let now = Instant::now();
-
-        let binding_request = stun_packet(
-            0x0001,
-            &[
-                (0x0006, b"attacker:chosen"),
-                (0x0024, &[0; 4]),
-                (0x0008, &[0; 20]),
-            ],
-        );
-        let binding_response = stun_packet(
-            0x0101,
-            &[(0x0020, &[0, 1, 0, 0, 0, 0, 0, 0]), (0x0008, &[0; 20])],
-        );
-
-        for packet in [binding_request, binding_response] {
-            let message = StunMessage::parse(&packet).unwrap();
-
-            let error = connections
-                .get_established_mut_for_stun_message(&message, &mut inflight, now)
-                .unwrap_err();
-            let error = error.any_downcast_ref::<UnknownConnection>().unwrap();
-
-            assert!(
-                matches!(
-                    error.to_string().as_str(),
-                    "No connection for ufrag" | "No connection for STUN trans ID"
-                ),
-                "{error}"
-            );
-        }
     }
 
     #[test]
@@ -834,26 +808,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(err.recently_disconnected(), is_recently_disconnected);
-    }
-
-    fn stun_packet(method: u16, attributes: &[(u16, &[u8])]) -> Vec<u8> {
-        let mut body = Vec::new();
-
-        for (kind, value) in attributes {
-            body.extend_from_slice(&kind.to_be_bytes());
-            body.extend_from_slice(&(value.len() as u16).to_be_bytes());
-            body.extend_from_slice(value);
-            body.resize(body.len().next_multiple_of(4), 0);
-        }
-
-        let mut packet = Vec::new();
-        packet.extend_from_slice(&method.to_be_bytes());
-        packet.extend_from_slice(&(body.len() as u16).to_be_bytes());
-        packet.extend_from_slice(&0x2112_A442u32.to_be_bytes());
-        packet.extend_from_slice(&random::<[u8; 12]>());
-        packet.extend_from_slice(&body);
-
-        packet
     }
 
     fn new_connection(relay: Option<u32>, key: [u8; 32]) -> Connection<u32> {

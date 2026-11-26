@@ -526,8 +526,10 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            self.tunnel_errors
-                .add(1, &otel_attributes::error_layers(&e));
+            self.tunnel_errors.add(
+                1,
+                &otel_attributes::error_layers_with(&e, tunnel_error_label),
+            );
 
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
@@ -1147,6 +1149,11 @@ fn parse_portal_domain(domain: &str) -> Option<dns_types::DomainName> {
             tracing::warn!(%domain, "Portal sent malformed device pool domain: {}", logging::err_with_src(e));
         })
         .ok()
+}
+
+fn tunnel_error_label(e: &(dyn std::error::Error + 'static)) -> Option<&'static str> {
+    e.downcast_ref::<tunnel::UnknownConnection>()
+        .map(|e| e.metric_label())
 }
 
 #[cfg(test)]
