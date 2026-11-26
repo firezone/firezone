@@ -486,6 +486,7 @@ impl Agent {
                 local,
                 remote,
                 payload: Payload::Ciphertext(init),
+                reply: false,
             });
         }
 
@@ -529,6 +530,7 @@ impl Agent {
                     local: path.0,
                     remote: path.1,
                     payload: Payload::Ciphertext(response),
+                    reply: true,
                 });
 
                 return Ok(());
@@ -579,6 +581,7 @@ impl Agent {
             local: path.0,
             remote: path.1,
             payload: Payload::Ciphertext(response),
+            reply: true,
         });
 
         Ok(())
@@ -621,6 +624,7 @@ impl Agent {
             local: path.0,
             remote: path.1,
             payload: Payload::Ciphertext(keepalive),
+            reply: false,
         });
 
         Ok(())
@@ -669,6 +673,7 @@ impl Agent {
                     payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_reply(
                         probe.id, probe.seq,
                     ))),
+                    reply: true,
                 });
 
                 self.register_peer_reflexive(pair, now);
@@ -831,6 +836,7 @@ impl Agent {
                 local,
                 remote,
                 payload: Payload::Ciphertext(outbound.bytes.clone()),
+                reply: false,
             });
             outbound.fanned.insert((local, remote));
             // Arm the one-time fast head the first time we send to this pair; a
@@ -853,6 +859,7 @@ impl Agent {
                     local: *local,
                     remote: *remote,
                     payload: Payload::Ciphertext(outbound.bytes.clone()),
+                    reply: false,
                 });
 
                 state.advance(now);
@@ -896,6 +903,7 @@ impl Agent {
                 payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_request(
                     state.id, seq,
                 ))),
+                reply: false,
             });
 
             // Within the discovery budget — or while we have no path at all —

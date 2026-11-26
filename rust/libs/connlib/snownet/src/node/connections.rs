@@ -190,7 +190,7 @@ where
             };
 
             let encrypted = connection
-                .encapsulate(cid, socket, &goodbye.packet, now, allocations)
+                .encapsulate(cid, socket, &goodbye.packet, false, now, allocations)
                 .and_then(|batch| {
                     let Some(batch) = batch else {
                         return Ok(None);

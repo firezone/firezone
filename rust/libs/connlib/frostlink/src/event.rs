@@ -5,6 +5,8 @@ pub struct Transmit {
     pub local: SocketAddr,
     pub remote: SocketAddr,
     pub payload: Payload,
+    /// Whether this answers something the remote sent, rather than being initiated by us.
+    pub reply: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
