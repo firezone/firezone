@@ -29,5 +29,13 @@
       "matchDepNames": ["/gungraun/"],
       "enabled": false
     }
-  ]
+  ],
+  "postUpgradeTasks": {
+    "commands": ["mise fmt -C ./{{{packageFileDir}}}"],
+    "fileFilters": ["**/mise.toml"],
+    "executionMode": "update",
+    "installTools": {
+      "mise": {}
+    }
+  }
 }
