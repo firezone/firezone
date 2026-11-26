@@ -603,13 +603,13 @@ reported `firezone_id`.
 
 **Decisions (2026-11-22).**
 
-- **One CA per account.** In the cloud each account has its own RSA-2048
-  key in Azure Key Vault Standard: software-protected, not exportable, and
-  every signature is made in Key Vault with the portal's managed identity.
-  A new account gets its CA from a background job; a periodic job queues the same job for every account without a CA. Without Key Vault (on-prem, dev and test) each account has its own RSA key in the database. A customer that needs a FIPS 140
-  Level 3 key gets a new CA with an `RSA-HSM` key in a Premium vault later;
-  during that change the portal accepts both CAs. Device keys can be P-256:
-  the CA key type does not limit them.
+- **One CA per account.** Every key is P-256: the CA keys and the device
+  keys. In the cloud each account has its own P-256 key in Azure Key Vault
+  Standard: software-protected, not exportable, and every signature is made
+  in Key Vault with the portal's managed identity.
+  A new account gets its CA from a background job; a periodic job queues the same job for every account without a CA. Without Key Vault (on-prem, dev and test) each account has its own P-256 key in the database. A customer that needs a FIPS 140
+  Level 3 key gets a new CA with an `EC-HSM` P-256 key in a Premium vault later;
+  during that change the portal accepts both CAs.
 - **Certificates live 90 days.** The device renews at about day 60 with its
   current certificate.
 - **The mTLS host is the device trust host** (`mtls_external_url`). Phoenix
@@ -721,7 +721,7 @@ without one on the same terms as the legacy sockets.
 
 **Steps.** Portal, one PR per deploy:
 
-- I.1 Device CA per account (#16722): `DEVICE_CA_KEY_STORAGE` is `db` or
+- I.1 Device CA per account (#16722, P-256 in #16829): `DEVICE_CA_KEY_STORAGE` is `db` or
   `azure`, a periodic job backfills every account without a CA (disabled or
   not), and the CA shows read only on the Trust Anchors page.
   Infra first: a Key Vault Standard per region and the "Key Vault Crypto
@@ -1380,7 +1380,7 @@ hosts. Collect them here and use them for the release notes and the email.
 12. **Device identity before the unification (2026-11-22).** The token says
     who acts and a portal-issued certificate says which machine connects.
     Phase I ships it on `/client` and `/gateway` first: one CA per account
-    (RSA-2048 in Key Vault Standard, or in the database without Key Vault), 90-day certificates, the device trust host for mTLS,
+    (P-256 in Key Vault Standard, or in the database without Key Vault), 90-day certificates, the device trust host for mTLS,
     hardware keys where the platform has them. A row with a key is found
     only by its certificate.
 
