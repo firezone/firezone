@@ -33,26 +33,39 @@ checksum = "sha256:7c8b10a93723838bc3533f6e1886d868fdbb109b81606ebe6d1a533d11d8e
 url = "https://github.com/rhysd/actionlint/releases/download/v1.7.9/actionlint_1.7.9_windows_amd64.zip"
 
 [[tools.bats]]
-version = "1.13.0"
+version = "1.14.0"
 backend = "aqua:bats-core/bats-core"
+unsupported_platforms = ["windows-x64"]
 
 [tools.bats."platforms.linux-arm64"]
-url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+checksum = "sha256:bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177"
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
+url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [tools.bats."platforms.linux-arm64-musl"]
-url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+checksum = "sha256:bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177"
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
+url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [tools.bats."platforms.linux-x64"]
-url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+checksum = "sha256:bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177"
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
+url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [tools.bats."platforms.linux-x64-musl"]
-url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+checksum = "sha256:bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177"
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
+url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [tools.bats."platforms.macos-arm64"]
-url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+checksum = "sha256:bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177"
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
+url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [tools.bats."platforms.macos-x64"]
-url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+checksum = "sha256:bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177"
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
+url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [[tools.prettier]]
 version = "3.6.2"
