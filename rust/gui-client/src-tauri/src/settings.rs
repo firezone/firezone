@@ -355,7 +355,9 @@ pub async fn save_advanced(settings: &AdvancedSettings) -> Result<()> {
 
     tokio::fs::create_dir_all(dir).await?;
     set_dir_permissions(dir)?;
-    tokio::fs::write(&path, serde_json::to_string(settings)?).await?;
+    let content = serde_json::to_string(settings)?;
+    let write_path = path.clone();
+    tokio::task::spawn_blocking(move || atomicfs::write(write_path, content)).await??;
     set_file_permissions(&path)?;
 
     tracing::debug!(?path, "Saved settings");
