@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euo pipefail
+set -euxo pipefail
 
 # Get network configuration
 INTERNAL_NET_V4=$(ip -4 --json route | jq -r '.[] | select(.dev == "internal") | select(.dst == "default" | not) | .dst')
