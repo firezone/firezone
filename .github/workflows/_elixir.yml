@@ -85,7 +85,6 @@ jobs:
           client-id: ${{ vars.BOT_CLIENT_ID }}
           private-key: ${{ secrets.BOT_PRIVATE_KEY }}
       - uses: ./.github/actions/setup-elixir
-        id: setup-beam
         with:
           mix_env: ${{ env.MIX_ENV }}
 
