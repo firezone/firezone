@@ -60,6 +60,7 @@ members = [
     "libs/otel-metrics-export",
     "libs/prefetch",
     "libs/process-memory",
+    "libs/special-use-ip",
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
@@ -258,6 +259,7 @@ smoltcp = { version = "0.14.0", default-features = false }
 snownet = { path = "libs/connlib/snownet" }
 socket-factory = { path = "libs/connlib/socket-factory" }
 socket2 = { version = "0.6.4" }
+special-use-ip = { path = "libs/special-use-ip" }
 str0m-proto = { version = "0.8", default-features = false }
 strum = "0.28.0"
 stun_codec = "0.4.0"
