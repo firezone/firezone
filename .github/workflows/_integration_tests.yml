@@ -307,7 +307,7 @@ jobs:
       - uses: ./.github/actions/show-compose-logs
         if: "!cancelled()"
         with:
-          services: primary-client pool-member relay-1 relay-2 gateway portal postgres
+          services: primary-client pool-member relay-1 relay-2 gateway portal postgres portal-router primary-client-router pool-member-router gateway-router relay-1-router relay-2-router
 
       - name: Ensure no eBPF checksum errors on relay-1
         if: "!cancelled() && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"

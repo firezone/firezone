@@ -156,7 +156,7 @@ jobs:
           if grep -q '^swift/' changed_files.txt; then
             jobs="${jobs},swift"
           fi
-          if grep -q '^scripts/tests/' changed_files.txt; then
+          if grep -q -E '^(scripts/tests/|scripts/router/|scripts/compose/|docker-compose\.yml)' changed_files.txt; then
             jobs="${jobs},control-plane,data-plane"
           fi
 
