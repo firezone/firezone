@@ -46,7 +46,8 @@ description = "Render the app's screens to PNGs in `kotlin/android/screenshots`"
 run = "./gradlew recordRoborazziDebug"
 
 [tools]
-java = "openjdk-17" # Has to match the JVM target in `app/build.gradle.kts`
+# Has to match the JVM target in `app/build.gradle.kts`.
+java = "openjdk-17"
 ktlint = "1.7.1"
 "aqua:firebase/firebase-tools" = "15.18.0"
 "github:tamtom/play-console-cli" = { version = "0.9.2", bin = "gplay", matching_regex = "^gplay-" }
