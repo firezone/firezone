@@ -7,6 +7,9 @@
   "semanticCommits": "enabled",
   "semanticCommitType": "build",
   "semanticCommitScope": "deps",
+  "commitMessageAction": "bump",
+  "commitMessageTopic": "{{{replace '^.*[:/]' '' depName}}}",
+  "commitMessageExtra": "from {{currentVersion}} to {{newVersion}}",
   "prBodyTemplate": "{{{warnings}}}",
   "packageRules": [
     {
