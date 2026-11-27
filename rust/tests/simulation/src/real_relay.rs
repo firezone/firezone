@@ -8,7 +8,7 @@ use connlib_model::RelayId;
 use ip_packet::Ecn;
 use rand::{SeedableRng as _, rngs::StdRng};
 use relay_server_proto::{
-    AddressFamily, AllocationPort, Attribute, ClientSocket, IpStack, PeerSocket,
+    AddressFamily, AllocationPort, Attribute, ChannelData, ClientSocket, IpStack, PeerSocket,
 };
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
@@ -166,7 +166,11 @@ impl RealRelay {
             .server
             .handle_client_input(&payload, client, now, now_utc)?;
 
-        let payload = Bytes::copied_from(&payload[4..]);
+        let payload = Bytes::copied_from(
+            ChannelData::parse(&payload)
+                .expect("the relay only forwards valid channel data")
+                .data(),
+        );
 
         // The `dst` of the relayed packet is what TURN calls a "peer".
         let dst = peer.into_socket();
