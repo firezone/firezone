@@ -1853,7 +1853,7 @@ where
                 ProbeRequest(_) | HandshakeInitiation(_) | Keepalive(_)
                     if self.contested.contains(&pt.remote) =>
                 {
-                    tracing::debug!(local = %pt.local, remote = %pt.remote, "Not initiating traffic to contested remote");
+                    tracing::trace!(local = %pt.local, remote = %pt.remote, "Not initiating traffic to contested remote");
                 }
                 HandshakeInitiation(ref bytes)
                 | HandshakeResponse(ref bytes)
