@@ -1,6 +1,7 @@
 use anyhow::{Context as _, ErrorExt, Result};
 use bin_shared::{TunDeviceManager, signals};
 use dns_types::DomainName;
+use futures::FutureExt as _;
 use telemetry::analytics;
 
 use clock::Clock;
