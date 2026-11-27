@@ -191,11 +191,10 @@ impl Eventloop {
                 "phoenix channel task stopped unexpectedly",
             )),
             CombinedEvent::Portal(Some(Err(e))) => Err(e).context("Failed to login to portal"),
-            CombinedEvent::PortalThreadStopped(result) => {
-                result?;
-
-                anyhow::bail!("Portal thread stopped")
+            CombinedEvent::PortalThreadStopped(Ok(())) => {
+                Err(anyhow::Error::msg("Portal thread stopped"))
             }
+            CombinedEvent::PortalThreadStopped(Err(e)) => Err(e),
             CombinedEvent::DomainResolved((result, req)) => {
                 let now = self.clock.now();
                 let Some(tunnel) = self.tunnel.as_mut() else {

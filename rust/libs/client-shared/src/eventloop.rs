@@ -324,11 +324,10 @@ impl Eventloop {
             CombinedEvent::Portal(None) => Err(DisconnectError(anyhow::Error::msg(
                 "portal task exited unexpectedly",
             ))),
-            CombinedEvent::PortalThreadStopped(result) => {
-                result.map_err(DisconnectError)?;
-
+            CombinedEvent::PortalThreadStopped(Ok(())) => {
                 Err(DisconnectError(anyhow::Error::msg("Portal thread stopped")))
             }
+            CombinedEvent::PortalThreadStopped(Err(e)) => Err(DisconnectError(e)),
         }
     }
 
