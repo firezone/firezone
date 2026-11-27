@@ -958,7 +958,7 @@ impl Eventloop {
         }
 
         if let Poll::Ready(e) = self.metrics_exporter.poll_thread_stopped(cx) {
-            tracing::error!("Metrics export stopped: {e:#}");
+            tracing::info!("Metrics export stopped: {e:#}");
         }
 
         if let Poll::Ready(result) = std::pin::Pin::new(&mut self.portal_thread).poll(cx) {
