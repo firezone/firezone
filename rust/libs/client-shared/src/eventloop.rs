@@ -241,7 +241,7 @@ enum CombinedEvent {
     Command(Option<Command>),
     Tunnel(Result<ClientEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
-    PortalThreadStopped(anyhow::Error),
+    PortalThreadStopped(anyhow::Result<()>),
     Clock(clock::Alarm),
 }
 
@@ -324,7 +324,11 @@ impl Eventloop {
             CombinedEvent::Portal(None) => Err(DisconnectError(anyhow::Error::msg(
                 "portal task exited unexpectedly",
             ))),
-            CombinedEvent::PortalThreadStopped(e) => Err(DisconnectError(e)),
+            CombinedEvent::PortalThreadStopped(result) => {
+                result.map_err(DisconnectError)?;
+
+                Err(DisconnectError(anyhow::Error::msg("Portal thread stopped")))
+            }
         }
     }
 
@@ -962,11 +966,7 @@ impl Eventloop {
         }
 
         if let Poll::Ready(result) = std::pin::Pin::new(&mut self.portal_thread).poll(cx) {
-            let e = result
-                .err()
-                .unwrap_or_else(|| anyhow::Error::msg("portal thread stopped unexpectedly"));
-
-            return Poll::Ready(CombinedEvent::PortalThreadStopped(e));
+            return Poll::Ready(CombinedEvent::PortalThreadStopped(result));
         }
 
         let now = self.clock.now();

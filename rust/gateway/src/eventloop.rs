@@ -136,7 +136,7 @@ enum CombinedEvent {
     SigIntTerm,
     Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
-    PortalThreadStopped(anyhow::Error),
+    PortalThreadStopped(Result<()>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
     Clock(clock::Alarm),
 }
@@ -191,7 +191,11 @@ impl Eventloop {
                 "phoenix channel task stopped unexpectedly",
             )),
             CombinedEvent::Portal(Some(Err(e))) => Err(e).context("Failed to login to portal"),
-            CombinedEvent::PortalThreadStopped(e) => Err(e),
+            CombinedEvent::PortalThreadStopped(result) => {
+                result?;
+
+                anyhow::bail!("Portal thread stopped")
+            }
             CombinedEvent::DomainResolved((result, req)) => {
                 let now = self.clock.now();
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -240,11 +244,7 @@ impl Eventloop {
         }
 
         if let Poll::Ready(result) = std::pin::Pin::new(&mut self.portal_thread).poll(cx) {
-            let e = result
-                .err()
-                .unwrap_or_else(|| anyhow::Error::msg("portal thread stopped unexpectedly"));
-
-            return Poll::Ready(CombinedEvent::PortalThreadStopped(e));
+            return Poll::Ready(CombinedEvent::PortalThreadStopped(result));
         }
 
         if let Poll::Ready((result, trigger)) = self.resolve_tasks.poll_unpin(cx) {
