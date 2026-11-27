@@ -37,11 +37,27 @@ pub struct Connections<TId, RId> {
     established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
     /// The Frostlink connections that validated a path to each remote socket.
     established_by_remote: HashMap<SocketAddr, BTreeSet<TId>, FastRandomState>,
+    contested_addresses: opentelemetry::metrics::Counter<u64>,
 
     disconnected_ids: HashMap<TId, Instant, FastRandomState>,
     disconnected_public_keys: HashMap<[u8; 32], Instant, FastRandomState>,
     disconnected_tunnel_ids: HashMap<sanstun::TunnelId, Instant, FastRandomState>,
     disconnected_ufrags: HashMap<String, Instant, FastRandomState>,
+}
+
+/// The remote addresses Frostlink connections validated a path to during one timeout.
+pub(crate) struct ValidatedPaths<TId>(Vec<(TId, SocketAddr)>);
+
+impl<TId> Default for ValidatedPaths<TId> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<TId> ValidatedPaths<TId> {
+    pub(crate) fn push(&mut self, id: TId, remote: SocketAddr) {
+        self.0.push((id, remote));
+    }
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -54,6 +70,7 @@ impl<TId, RId> Default for Connections<TId, RId> {
             established_by_tunnel_id: Default::default(),
             established_by_local_ufrag: Default::default(),
             established_by_remote: Default::default(),
+            contested_addresses: otel_instruments::contested_addresses(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_tunnel_ids: Default::default(),
@@ -134,7 +151,6 @@ where
         transmits: &mut VecDeque<Transmit>,
         events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
-        validated_remotes: &mut Vec<(TId, SocketAddr)>,
         now: Instant,
     ) {
         self.reindex();
@@ -154,6 +170,7 @@ where
             self.reindex();
         }
 
+        let mut validated_paths = ValidatedPaths::default();
         for (cid, connection) in self.established.due_mut(now) {
             connection.handle_timeout(
                 cid,
@@ -162,8 +179,12 @@ where
                 transmits,
                 events,
                 inflight_stun_requests,
-                validated_remotes,
+                &mut validated_paths,
             );
+        }
+
+        for (cid, remote) in validated_paths.0 {
+            self.record_validated_path(cid, remote, now);
         }
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
@@ -180,7 +201,7 @@ where
                 transmits,
                 &mut VecDeque::new(),
                 inflight_stun_requests,
-                &mut Vec::new(),
+                &mut ValidatedPaths::default(),
             );
 
             // The goodbye may have to wait for a channel binding or a handshake, e.g. when
@@ -272,24 +293,20 @@ where
     ///
     /// Once several did, a NAT maps several devices to `remote` and delivers what we send there to
     /// whichever of them sent last, so every Frostlink connection drops its candidates at `remote`
-    /// and only replies to it. Returns whether `remote` became contested.
-    pub(crate) fn record_validated_path(
-        &mut self,
-        id: TId,
-        remote: SocketAddr,
-        now: Instant,
-    ) -> bool {
+    /// and only replies to it.
+    fn record_validated_path(&mut self, id: TId, remote: SocketAddr, now: Instant) {
         // `id` may have failed and been removed after it validated `remote`.
         if self.established.get(&id).is_none() {
-            return false;
+            return;
         }
 
         let ids = self.established_by_remote.entry(remote).or_default();
         if !ids.insert(id) || ids.len() < 2 {
-            return false;
+            return;
         }
 
         tracing::debug!(%id, %remote, "Remote address contested by several connections");
+        self.contested_addresses.add(1, &[]);
 
         for (cid, c) in self
             .established
@@ -307,8 +324,6 @@ where
                 c.remove_remote_candidate(cid, candidate, now);
             }
         }
-
-        true
     }
 
     pub(crate) fn iter_mut_by_relay(
@@ -823,7 +838,6 @@ mod tests {
             &mut VecDeque::new(),
             &mut VecDeque::default(),
             &mut InflightStunRequests::default(),
-            &mut Vec::new(),
             now,
         );
     }

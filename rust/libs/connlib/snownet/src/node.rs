@@ -13,7 +13,7 @@ use crate::crypto::{CommittedBatch, DecapsulateBatch, DecryptedBatch, Encapsulat
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
-use crate::node::connections::Connections;
+use crate::node::connections::{Connections, ValidatedPaths};
 use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::node::timeout_cache::TimeoutCache;
 use anyhow::{Context, Result, anyhow};
@@ -24,7 +24,7 @@ use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
-use opentelemetry::metrics::{Counter, Histogram};
+use opentelemetry::metrics::Histogram;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay_client_proto::channel_data::channel_data_packet_buffer;
@@ -109,7 +109,6 @@ pub struct Node<TId, RId> {
 
     connection_count: Histogram<u64>,
     next_connection_count: Instant,
-    contested_addresses: Counter<u64>,
     connection_setup_duration: Histogram<f64>,
 
     rng: StdRng,
@@ -206,7 +205,6 @@ where
             buffered_candidates: Default::default(),
             connection_count: otel_instruments::connection_count(),
             next_connection_count: now,
-            contested_addresses: otel_instruments::contested_addresses(),
             connection_setup_duration: otel_instruments::connection_setup_duration(),
             unix_now: now,
             unix_ts,
@@ -802,20 +800,13 @@ where
 
         self.connections.clear_relays(gc.removed.into_iter());
 
-        let mut validated_remotes = Vec::new();
         self.connections.handle_timeout(
             &mut self.allocations,
             &mut self.buffered_transmits,
             &mut self.pending_events,
             &mut self.inflight_stun_requests,
-            &mut validated_remotes,
             now,
         );
-        for (cid, remote) in validated_remotes {
-            if self.connections.record_validated_path(cid, remote, now) {
-                self.contested_addresses.add(1, &[]);
-            }
-        }
 
         if now >= self.next_connection_count {
             self.next_connection_count = now + CONNECTION_COUNT_INTERVAL;
@@ -1679,7 +1670,7 @@ where
         transmits: &mut VecDeque<Transmit>,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
-        validated_remotes: &mut Vec<(TId, SocketAddr)>,
+        validated_paths: &mut ValidatedPaths<TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + Hash + fmt::Display,
@@ -1849,7 +1840,7 @@ where
                     );
                 }
                 frostlink::Event::PathValidated { remote, .. } => {
-                    validated_remotes.push((cid, remote));
+                    validated_paths.push(cid, remote);
                 }
             }
         }
@@ -1857,21 +1848,14 @@ where
         // Probes need encapsulation; WireGuard messages go straight to the wire.
         while let Some(pt) = self.agent.poll_frostlink_transmit() {
             match pt.payload {
-                frostlink::Payload::ProbeReply(_) | frostlink::Payload::HandshakeResponse(_) => {}
                 frostlink::Payload::ProbeRequest(_)
                 | frostlink::Payload::HandshakeInitiation(_)
-                | frostlink::Payload::Keepalive(_) => {
-                    if self.contested.contains(&pt.remote) {
-                        continue;
-                    }
-                }
-            }
-
-            let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
-            match pt.payload {
+                | frostlink::Payload::Keepalive(_)
+                    if self.contested.contains(&pt.remote) => {}
                 frostlink::Payload::HandshakeInitiation(ref bytes)
                 | frostlink::Payload::HandshakeResponse(ref bytes)
                 | frostlink::Payload::Keepalive(ref bytes) => {
+                    let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
                     if let Some(transmit) =
                         make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
                     {
@@ -1880,6 +1864,7 @@ where
                 }
                 frostlink::Payload::ProbeRequest(ref ip)
                 | frostlink::Payload::ProbeReply(ref ip) => {
+                    let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
                     if let Ok(Some(batch)) =
                         self.encapsulate(cid, peer_socket, ip, now, allocations)
                         && let Ok(transmit) = batch.encrypt_single(ip)
