@@ -82,7 +82,7 @@ jobs:
           fi
 
           # Run all jobs if tool versions change
-          if grep -q '^\.tool-versions' changed_files.txt; then
+          if grep -q '^mise\.toml' changed_files.txt; then
             echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
             exit 0;
           fi
@@ -156,7 +156,7 @@ jobs:
           if grep -q '^swift/' changed_files.txt; then
             jobs="${jobs},swift"
           fi
-          if grep -q '^scripts/tests/' changed_files.txt; then
+          if grep -q -E '^(scripts/tests/|scripts/router/|scripts/compose/|docker-compose\.yml)' changed_files.txt; then
             jobs="${jobs},control-plane,data-plane"
           fi
 
@@ -363,8 +363,10 @@ jobs:
       check_openapi_breaking_changes: ${{ needs.planner.outputs.elixir_changed == 'true' }}
     secrets: inherit
     permissions:
+      contents: read
       checks: write # dorny/test-reporter
       pull-requests: write # breaking OpenAPI changes comment
+      security-events: write # trivy SARIF upload from setup-mise
 
   rust:
     needs: planner

@@ -39,7 +39,9 @@ mod utils;
 pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
+pub use resolver::DnsResolverThreadStopped;
 pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
+pub use snownet::UnknownConnection;
 pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
 pub use utils::turn;
 
@@ -278,7 +280,7 @@ impl ClientTunnel {
                     tcp_socket_factory.clone(),
                     udp_socket_factory.clone(),
                     BTreeSet::default(),
-                )?,
+                ),
                 tcp_socket_factory,
                 udp_socket_factory,
             ),
@@ -559,7 +561,7 @@ impl GatewayTunnel {
                     tcp_socket_factory.clone(),
                     udp_socket_factory.clone(),
                     nameservers,
-                )?,
+                ),
                 tcp_socket_factory,
                 udp_socket_factory,
             ),

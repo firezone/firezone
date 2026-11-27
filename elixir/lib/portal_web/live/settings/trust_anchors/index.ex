@@ -220,20 +220,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     {:noreply, socket}
   end
 
-  def handle_params(_params, _uri, %{assigns: %{live_action: :device_ca}} = socket) do
-    if Portal.Account.unified_devices?(socket.assigns.account) do
-      {:noreply,
-       assign(socket,
-         selected_trust_anchor: nil,
-         form: nil,
-         confirm_delete?: false,
-         pending_update: nil
-       )}
-    else
-      {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
-    end
-  end
-
   def handle_params(_params, _uri, socket) do
     {:noreply,
      assign(socket,
@@ -560,8 +546,11 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         <div class="flex items-center gap-1.5 min-w-0">
           <div class="text-sm font-medium text-heading truncate">Firezone device CA</div>
           <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] border border-border text-subtle">
-            Managed by Firezone
+            System
           </span>
+        </div>
+        <div class="text-xs text-subtle truncate">
+          Powers Firezone-managed device trust on Clients 1.6.0+ and Gateways 1.6.6+
         </div>
       </td>
       <td class="px-6 py-3 w-36">
@@ -594,8 +583,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         <p class="text-xs text-subtle">
-          Firezone uses this CA to issue the certificates your devices connect with. Firezone manages
-          it, so you cannot edit or delete it.
+          Your built-in device trust CA. Firezone gives every device its own certificate, so each
+          machine proves who it is every time it connects. No setup, no upkeep: Firezone runs it for
+          you.
         </p>
 
         <div class="border border-border rounded p-3 bg-surface space-y-3">
@@ -1391,17 +1381,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       socket
       |> assign(trust_anchors: trust_anchors)
-      |> assign(device_ca: get_device_ca(socket.assigns.account, socket.assigns.subject))
+      |> assign(device_ca: Database.get_device_ca(socket.assigns.subject))
       |> assign_revocation_health(trust_anchors)
     else
       assign(socket, trust_anchors: nil, device_ca: nil, revocation_health: %{})
-    end
-  end
-
-  # Hidden until devices use it.
-  defp get_device_ca(account, subject) do
-    if Portal.Account.unified_devices?(account) do
-      Database.get_device_ca(subject)
     end
   end
 

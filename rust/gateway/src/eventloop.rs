@@ -1,6 +1,7 @@
 use anyhow::{Context as _, ErrorExt, Result};
 use bin_shared::{TunDeviceManager, signals};
 use dns_types::DomainName;
+use futures::FutureExt as _;
 use telemetry::analytics;
 
 use clock::Clock;
@@ -57,6 +58,7 @@ pub struct Eventloop {
         ResolveDnsRequest,
     >,
     portal_event_rx: mpsc::Receiver<Result<PortalEvent, phoenix_channel::Error>>,
+    portal_thread: async_runtime::ThreadOutput<()>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     sigint: signals::Terminate,
@@ -97,7 +99,7 @@ impl Eventloop {
 
         let public_key = PublicKeyParam(tunnel.public_key().to_bytes());
         let portal_resolver = dns_resolver()?;
-        async_runtime::spawn_thread("fz-portal", move || {
+        let portal_thread = async_runtime::spawn_thread("fz-portal", move || {
             phoenix_channel_event_loop(
                 portal,
                 public_key,
@@ -105,8 +107,7 @@ impl Eventloop {
                 portal_cmd_rx,
                 portal_resolver,
             )
-        })
-        .context("Failed to spawn portal thread")?;
+        });
 
         Ok(Self {
             clock,
@@ -125,6 +126,7 @@ impl Eventloop {
             tunnel_errors: otel_instruments::tunnel_errors(),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
             portal_event_rx,
+            portal_thread,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
         })
@@ -135,8 +137,9 @@ enum CombinedEvent {
     SigIntTerm,
     Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
+    PortalThreadStopped(Result<()>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
-    Clock(clock::Event),
+    Clock(clock::Alarm),
 }
 
 impl Eventloop {
@@ -189,6 +192,10 @@ impl Eventloop {
                 "phoenix channel task stopped unexpectedly",
             )),
             CombinedEvent::Portal(Some(Err(e))) => Err(e).context("Failed to login to portal"),
+            CombinedEvent::PortalThreadStopped(Ok(())) => {
+                Err(anyhow::Error::msg("Portal thread stopped"))
+            }
+            CombinedEvent::PortalThreadStopped(Err(e)) => Err(e),
             CombinedEvent::DomainResolved((result, req)) => {
                 let now = self.clock.now();
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -202,15 +209,14 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
-            CombinedEvent::Clock(clock::Event::Alarm(now)) => {
+            CombinedEvent::Clock(clock::Alarm { now, late_by }) => {
+                if late_by >= Duration::from_secs(30) {
+                    tracing::info!(?late_by, "Event loop ran late");
+                }
+
                 if let Some(tunnel) = self.tunnel.as_mut() {
                     tunnel.handle_timeout(now);
                 }
-
-                Ok(ControlFlow::Continue(()))
-            }
-            CombinedEvent::Clock(clock::Event::Late(by)) => {
-                tracing::info!(late_by = ?by, "Event loop ran late");
 
                 Ok(ControlFlow::Continue(()))
             }
@@ -225,12 +231,20 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context<'_>) -> Poll<CombinedEvent> {
-        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+        if let Poll::Ready(event) = self.clock.poll_alarm(cx) {
             return Poll::Ready(CombinedEvent::Clock(event));
         }
 
         if let Poll::Ready(event) = self.portal_event_rx.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::Portal(event));
+        }
+
+        if let Poll::Ready(e) = self.metrics_exporter.poll_thread_stopped(cx) {
+            tracing::info!("Metrics export stopped: {e:#}");
+        }
+
+        if let Poll::Ready(result) = self.portal_thread.poll_unpin(cx) {
+            return Poll::Ready(CombinedEvent::PortalThreadStopped(result));
         }
 
         if let Poll::Ready((result, trigger)) = self.resolve_tasks.poll_unpin(cx) {
@@ -332,8 +346,10 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            self.tunnel_errors
-                .add(1, &otel_attributes::error_layers(&e));
+            self.tunnel_errors.add(
+                1,
+                &otel_attributes::error_layers_with(&e, tunnel_error_label),
+            );
 
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
@@ -348,6 +364,7 @@ impl Eventloop {
             }
 
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
+                || e.any_is::<tunnel::DnsResolverThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
                 || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
             {
@@ -743,4 +760,9 @@ async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .map(|ips| ips.iter().collect())
         .unwrap_or_default()
+}
+
+fn tunnel_error_label(e: &(dyn std::error::Error + 'static)) -> Option<&'static str> {
+    e.downcast_ref::<tunnel::UnknownConnection>()
+        .map(|e| e.metric_label())
 }

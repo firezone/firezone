@@ -186,13 +186,9 @@ setup properly.
 ### Developer tools
 
 The versions for most tools and SDKs required for working on Firezone are managed
-via `.tool-versions` files in the respective directories, i.e. Elixir tools in
-[elixir/.tool-versions](../elixir/.tool-versions) etc.
-
-You can use any `.tool-versions`-compatible version manager for installing them.
-
-- Note: For a fresh install of `asdf` you will need to install some
-  [asdf-plugins](https://asdf-vm.com/manage/plugins.html). e.g. `asdf plugin add nodejs && asdf install nodejs` to set up the NodeJS plugin and package.
+with [mise](https://mise.jdx.dev/) via `mise.toml` files in the respective
+directories, i.e. Elixir tools in [elixir/mise.toml](../elixir/mise.toml) etc.
+Run `mise install` in a directory to install them.
 
 This is used to run static analysis checks during [pre-commit](#pre-commit) and
 for any local, non-Docker development or testing.

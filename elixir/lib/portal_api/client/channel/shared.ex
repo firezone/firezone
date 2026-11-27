@@ -54,6 +54,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   # The most PTR records a DNS message holds, even with compressed one-character labels.
   @device_domain_browse_limit 4_096
 
+  @max_ice_candidate_gateways 64
+
   @doc false
   def policy_authorization_queue_opts do
     [
@@ -1889,7 +1891,7 @@ Relays.render(relays, relay_owner(socket)),
     {initiator_token, responder_token} =
       mint_ingest_tokens(
         socket.assigns.subject,
-        {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+        {Ecto.UUID.load!(resource.id), resource.name, resource.type, resource.address},
         policy_authorization_id,
         policy_id,
         flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
@@ -2511,7 +2513,7 @@ Relays.render(relays, relay_owner(socket)),
   # name both endpoint devices, so only `role` differs between them.
   defp mint_ingest_tokens(
          %Authentication.Subject{account: account, actor: actor, credential: credential} = subject,
-         {resource_id, resource_name, resource_address},
+         {resource_id, resource_name, resource_type, resource_address},
          policy_authorization_id,
          policy_id,
          flow_log_uploads_enabled,
@@ -2541,6 +2543,12 @@ Relays.render(relays, relay_owner(socket)),
       "resource_id" => resource_id,
       "resource_name" => resource_name,
       "resource_address" => resource_address,
+      # Ingestion checks each record's inner tunnel tuple against these: the
+      # source must be the initiator and an IP or CIDR resource must contain
+      # the destination.
+      "resource_type" => Atom.to_string(resource_type),
+      "initiator_ips" =>
+        for(ip <- [initiator_client.ipv4, initiator_client.ipv6], ip, do: Portal.Types.IP.to_string(ip)),
       # For client-to-client flows the receiving client's own owner is
       # deliberately not part of this snapshot.
       "initiator_actor_id" => actor.id,
@@ -2869,7 +2877,9 @@ Relays.render(relays, relay_owner(socket)),
     candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.client)
 
     if candidates != [] do
-      for gateway_id <- Enum.uniq(gateway_ids), is_binary(gateway_id) do
+      gateway_ids = gateway_ids |> Enum.take(@max_ice_candidate_gateways) |> Enum.uniq()
+
+      for gateway_id <- gateway_ids, is_binary(gateway_id) do
         PG.deliver(gateway_id, {tag, %{type: :client, id: socket.assigns.client.id}, candidates})
       end
     end

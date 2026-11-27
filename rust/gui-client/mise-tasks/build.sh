@@ -22,21 +22,22 @@ cargo build --release -p firezone-cli
 
 case "$OSTYPE" in
 linux*)
-    # `tauri bundle` expects the binary under its `mainBinaryName`.
-    cp "$release/firezone-gui-client" "$release/firezone-client-gui"
-
     # Moves the debug info into `.debug` files, which only go to Sentry.
-    for bin in firezone-client-gui firezone-client-tunnel firezone-cli register-sparse; do
+    for bin in firezone-gui-client firezone-client-tunnel firezone-cli; do
         objcopy --only-keep-debug "$release/$bin" "$release/$bin.debug"
         objcopy --strip-debug --add-gnu-debuglink="$release/$bin.debug" "$release/$bin"
     done
-    packages=(deb rpm)
+
+    deb="$PWD/$release/firezone-client-gui.deb"
+    rpm="$PWD/$release/firezone-client-gui.rpm"
+    cargo deb --package firezone-gui-client --no-build --no-strip --output "$deb"
+    # Only finds the workspace's `target` directory when run from the workspace root.
+    (cd .. && cargo generate-rpm --package gui-client/src-tauri --payload-compress gzip --output "$rpm")
+    packages=("$deb" "$rpm")
     ;;
 msys* | cygwin*)
-    cp "$release/firezone-gui-client.exe" "$release/Firezone.exe"
-
-    # Tauri signs `Firezone.exe` and the MSI itself, after patching the binary.
     ../../scripts/build/sign.sh \
+        "$release/firezone-gui-client.exe" \
         "$release/firezone-client-tunnel.exe" \
         "$release/register-sparse.exe" \
         "$release/firezone-cli.exe"
@@ -52,14 +53,28 @@ msys* | cygwin*)
     # The doubled slashes stop Git Bash from rewriting the flags as paths.
     "$makeappx" pack //d "$staging" //p "$release/firezone.msix" //nv //o
     ../../scripts/build/sign.sh "$release/firezone.msix"
-    packages=(msi)
+
+    case "$(rustc -vV | sed -n 's/^host: //p')" in
+    aarch64-*) arch=arm64 ;;
+    *) arch=x64 ;;
+    esac
+    version=$(cargo pkgid -p firezone-gui-client)
+    target_dir=$(cygpath -aw "$release")
+    wixobj=$(mktemp -d)
+    # Tauri's bundler also ran WiX with only these environment variables.
+    wix() { env -i SYSTEMROOT="$SYSTEMROOT" TMP="$TMP" TEMP="$TEMP" "$(command -v "$1")" "${@:2}"; }
+    wix candle -nologo -arch "$arch" -ext WixUtilExtension \
+        -dVersion="${version##*@}" -dTargetDir="$target_dir" -I"$target_dir" \
+        -out "$(cygpath -aw "$wixobj")\\" src-tauri/win_files/*.wxs
+    wix light -nologo -ext WixUIExtension -ext WixUtilExtension -cultures:en-us \
+        -out "$release/firezone-client-gui.msi" "$wixobj"/*.wixobj
+    ../../scripts/build/sign.sh "$release/firezone-client-gui.msi"
+    packages=("$release/firezone-client-gui.msi")
     ;;
 esac
 
-pnpm exec tauri bundle
-
 if [[ -n "${usage_out:-}" ]]; then
-    for ext in "${packages[@]}"; do
-        cp "$release"/bundle/"$ext"/*."$ext" "$usage_out.$ext"
+    for package in "${packages[@]}"; do
+        cp "$package" "$usage_out.${package##*.}"
     done
 fi

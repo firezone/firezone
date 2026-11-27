@@ -16,7 +16,7 @@ repos:
         pass_filenames: false
       - id: prettier
         name: Prettier
-        entry: bash -c 'cd .github && git -C .. ls-files "*.md" "*.json" "*.yaml" "*.yml" "*.css" "*.js" "*.ts" "*.tsx" | sed "s|^|../|" | xargs pnpm exec prettier --ignore-path ../.prettierignore --check --ignore-unknown --no-error-on-unmatched-pattern'
+        entry: bash -c 'git ls-files "*.md" "*.json" "*.yaml" "*.yml" "*.css" "*.js" "*.ts" "*.tsx" | xargs prettier --check --ignore-unknown --no-error-on-unmatched-pattern'
         language: system
         pass_filenames: false
   # Standard pre-commit hooks
@@ -67,3 +67,8 @@ repos:
         language: system
         types: [yaml]
         files: ^\.github/workflows/
+      - id: mise-fmt
+        name: mise fmt
+        entry: bash -c 'for f in "$@"; do mise fmt --check -C "$(dirname "$f")" || exit 1; done' --
+        language: system
+        files: (^|/)mise\.toml$

@@ -85,7 +85,7 @@ impl Session {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         config: SessionConfig,
         metrics_exporter: otel_metrics_export::Exporter,
-    ) -> io::Result<(Self, EventStream)> {
+    ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
             move |resource_list_sender,
@@ -107,9 +107,9 @@ impl Session {
                 .run()
                 .await
             },
-        )?;
+        );
 
-        Ok((Self { channel: cmd_tx }, event_stream))
+        (Self { channel: cmd_tx }, event_stream)
     }
 
     /// Reset a [`Session`].
@@ -252,7 +252,7 @@ impl EventStream {
         ) -> E
         + Send
         + 'static,
-    ) -> io::Result<Self>
+    ) -> Self
     where
         E: Future<Output = Result<(), DisconnectError>>,
     {
@@ -268,16 +268,16 @@ impl EventStream {
                 connected_as_sender,
                 user_notification_sender,
             )
-        })?;
+        });
 
-        Ok(Self {
+        Self {
             eventloop: maybe_done(eventloop),
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
             tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
             connected_as_receiver: WatchStream::from_changes(connected_as_receiver),
             user_notification_receiver,
             seen_notifications: Default::default(),
-        })
+        }
     }
 }
 
@@ -361,7 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn event_stream_turn_panic_into_disconnected() {
-        let mut stream = EventStream::new(|_, _, _, _| async move { panic!("Boom!") }).unwrap();
+        let mut stream = EventStream::new(|_, _, _, _| async move { panic!("Boom!") });
 
         let Event::Disconnected(error) = stream.next().await.unwrap() else {
             panic!("Unexpected event!");
@@ -372,7 +372,7 @@ mod tests {
 
     #[tokio::test]
     async fn repeated_polls_dont_panic() {
-        let mut stream = EventStream::new(|_, _, _, _| async move { panic!("Boom!") }).unwrap();
+        let mut stream = EventStream::new(|_, _, _, _| async move { panic!("Boom!") });
 
         let _next = stream.next().await.unwrap();
         let poll = stream.poll_next(&mut Context::from_waker(futures::task::noop_waker_ref()));
@@ -384,8 +384,7 @@ mod tests {
     async fn stream_ends_after_disconnect() {
         let mut stream = EventStream::new(|_, _, _, _| async move {
             Err(DisconnectError::from(anyhow::anyhow!("Boom!")))
-        })
-        .unwrap();
+        });
 
         let Event::Disconnected(_) = stream.next().await.unwrap() else {
             panic!("Unexpected event!");
@@ -409,8 +408,7 @@ mod tests {
             resource_list.send(Vec::default()).unwrap();
 
             Ok(())
-        })
-        .unwrap();
+        });
 
         let Event::ConnectedToPortal(connected) = stream.next().await.unwrap() else {
             panic!("Unexpected event")
@@ -437,8 +435,7 @@ mod tests {
                 .unwrap();
 
             Ok(())
-        })
-        .unwrap();
+        });
 
         let Event::AllGatewaysOffline { resource_id } = stream.next().await.unwrap() else {
             panic!("Unexpected event")
@@ -468,8 +465,7 @@ mod tests {
                 .unwrap();
 
             Ok(())
-        })
-        .unwrap();
+        });
 
         let Event::GatewayVersionMismatch { resource_id } = stream.next().await.unwrap() else {
             panic!("Unexpected event")

@@ -252,17 +252,19 @@ defmodule PortalWeb.Components.Page do
   attr :autofocus, :boolean, default: false
 
   def account_slug_form(assigns) do
+    {scheme, host} = portal_base_url()
+    assigns = assign(assigns, scheme: scheme, host: host)
+
     ~H"""
     <div class="rounded border border-border bg-raised p-4">
       <p class="text-xs font-semibold text-body mb-3">
         Your organization's sign-in URL
       </p>
       <.form :let={f} for={%{}} action={@action}>
-        <div class="flex gap-2">
-          <%!-- One box: the host is plain text in front of the input, and clicking it focuses the input --%>
+        <div class="flex flex-col sm:flex-row gap-2">
           <label class="flex flex-1 min-w-0 items-center rounded border bg-input border-input-border cursor-text focus-within:border-border-focus focus-within:ring-1 focus-within:ring-border-focus/30 transition-colors">
-            <span id="account-slug-host" class="pl-3 text-sm text-subtle whitespace-nowrap select-none">
-              {portal_base_url()}/
+            <span id="account-slug-host" class="shrink-0 pl-3 text-sm text-subtle whitespace-nowrap select-none">
+              <span class="hidden sm:inline">{@scheme}://</span>{@host}/
             </span>
             <input
               type="text"
@@ -272,12 +274,12 @@ defmodule PortalWeb.Components.Page do
               aria-describedby="account-slug-host"
               autofocus={@autofocus}
               required
-              class="flex-1 min-w-0 pl-0 pr-3 py-2 text-sm bg-transparent border-0 text-heading outline-none focus:outline-none focus:ring-0 placeholder:text-subtle"
+              class="flex-1 w-full min-w-0 pl-0 pr-3 py-2 text-sm bg-transparent border-0 text-heading outline-none focus:outline-none focus:ring-0 placeholder:text-subtle"
             />
           </label>
           <button
             type="submit"
-            class="px-4 py-2 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap"
+            class="w-full sm:w-auto px-4 py-2 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap"
           >
             Continue →
           </button>
@@ -287,13 +289,14 @@ defmodule PortalWeb.Components.Page do
     """
   end
 
-  # The portal's public URL as people see it in the address bar, e.g. "https://app.firezone.dev".
-  # Uses the configured URL rather than the request, since the portal sits behind a proxy.
+  # The portal's public URL as people see it in the address bar, split into the scheme and the
+  # rest, e.g. {"https", "app.firezone.dev"}. Uses the configured URL rather than the request,
+  # since the portal sits behind a proxy.
   defp portal_base_url do
     case PortalWeb.Endpoint.struct_url() do
-      %URI{scheme: "https", host: host, port: port} when port in [nil, 443] -> "https://#{host}"
-      %URI{scheme: "http", host: host, port: port} when port in [nil, 80] -> "http://#{host}"
-      %URI{scheme: scheme, host: host, port: port} -> "#{scheme}://#{host}:#{port}"
+      %URI{scheme: "https", host: host, port: port} when port in [nil, 443] -> {"https", host}
+      %URI{scheme: "http", host: host, port: port} when port in [nil, 80] -> {"http", host}
+      %URI{scheme: scheme, host: host, port: port} -> {scheme, "#{host}:#{port}"}
     end
   end
 

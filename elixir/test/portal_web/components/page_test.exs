@@ -51,5 +51,26 @@ defmodule PortalWeb.Components.PageTest do
       refute Floki.text(html) =~ "slug"
       assert Floki.attribute(input, "placeholder") == ["acme_corp"]
     end
+
+    test "fits narrow screens by dropping the scheme and stacking the button under the input" do
+      %URI{scheme: scheme} = PortalWeb.Endpoint.struct_url()
+
+      html =
+        render_component(&Page.account_slug_form/1, action: "/sign_in")
+        |> Floki.parse_fragment!()
+
+      assert [scheme_span] = Floki.find(html, "#account-slug-host > span")
+      assert Floki.text(scheme_span) == "#{scheme}://"
+      assert [scheme_class] = Floki.attribute(scheme_span, "class")
+      assert scheme_class |> String.split() |> Enum.sort() == ["hidden", "sm:inline"]
+
+      assert [row_class] = html |> Floki.find("form > div") |> Floki.attribute("class")
+      assert row_class =~ "flex-col"
+      assert row_class =~ "sm:flex-row"
+
+      assert [button_class] = html |> Floki.find("button[type=submit]") |> Floki.attribute("class")
+      assert button_class =~ "w-full"
+      assert button_class =~ "sm:w-auto"
+    end
   end
 end

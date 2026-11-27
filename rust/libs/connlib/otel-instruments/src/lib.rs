@@ -136,18 +136,22 @@ pub fn tunnel_errors() -> Counter<u64> {
 /// Number of portal connection hiccups by cause.
 pub fn portal_connection_hiccups() -> Counter<u64> {
     connlib_meter()
-        .u64_counter("portal.connection.hiccup")
+        .u64_counter("connlib.portal.connection.hiccup")
         .with_description("Number of portal connection hiccups by cause.")
         .with_unit("{hiccup}")
         .build()
 }
 
-/// Number of connections by the network path in use.
-pub fn connection_count() -> Gauge<u64> {
+/// Number of connections by the network path in use, sampled periodically to show its distribution across devices.
+pub fn connection_count() -> Histogram<u64> {
     connlib_meter()
-        .u64_gauge("tunnel.connection.count")
+        .u64_histogram("connlib.connection.count")
         .with_description("Number of connections by the network path in use.")
         .with_unit("{connection}")
+        .with_boundaries(vec![
+            0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 16.0, 24.0, 32.0, 64.0, 128.0,
+            256.0, 512.0, 1024.0,
+        ])
         .build()
 }
 

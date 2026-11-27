@@ -95,7 +95,7 @@ class FirstRunE2eTest {
         clickTextOnScreen("Sign In")
 
         val session = awaitSession()
-        assertEquals(checkNotNull(attempt.get()).token, tokenStore.get())
+        assertTrue(checkNotNull(attempt.get()).isToken(tokenStore.get()))
         assertEquals(1, FakeSessionFactory.opened)
 
         session.emit(

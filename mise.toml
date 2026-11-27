@@ -7,22 +7,28 @@ monorepo_root = true
 # of them at resolution time. Requires mise >= 2026.4.25.
 minimum_release_age = "7d"
 
+[tools]
+python = "3.11.14"    # Static analysis
+shfmt = "3.14.1"      # Static analysis
+shellcheck = "0.11.0" # Linting Bash scripts
+prettier = "3.6.2"    # Formatting
+bats = "1.14.0"       # Bash unit testing
+actionlint = "1.7.12" # Linting GitHub Actions
+uv = "0.13.9"         # CI Python scripts
+
 [monorepo]
 config_roots = [
-    "elixir",
-    "kotlin/android",
-    "rust",
-    "rust/gui-client",
-    "rust/tests/fuzz",
-    "swift/apple",
+  "elixir",
+  "kotlin/android",
+  "rust",
+  "rust/gui-client",
+  "rust/tests/fuzz",
+  "swift/apple",
 ]
 
 [tasks.lint-setup]
 description = "Install linting tools from version-pinned files (managed by Dependabot)"
-run = """
-pip install -r .github/requirements.txt
-pnpm i --frozen-lockfile --dir ./.github
-"""
+run = "pip install -r .github/requirements.txt"
 
 [tasks.lint]
 description = "Run pre-commit hooks on all files"
@@ -34,4 +40,4 @@ run = "pre-commit run --config .github/pre-commit-config.yaml"
 
 [tasks.format]
 description = "Run prettier --write on all prettier-managed files (respects .prettierignore)"
-run = "cd .github && git -C .. ls-files '*.md' '*.json' '*.yaml' '*.yml' '*.css' '*.js' '*.ts' '*.tsx' | sed 's|^|../|' | xargs pnpm exec prettier --ignore-path ../.prettierignore --write --ignore-unknown --no-error-on-unmatched-pattern"
+run = "git ls-files '*.md' '*.json' '*.yaml' '*.yml' '*.css' '*.js' '*.ts' '*.tsx' | xargs prettier --write --ignore-unknown --no-error-on-unmatched-pattern"
