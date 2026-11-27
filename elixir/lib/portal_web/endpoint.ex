@@ -80,7 +80,7 @@ defmodule PortalWeb.Endpoint do
       ]
     ],
     longpoll: false,
-    drainer: {Portal.Endpoint, :socket_drainer, []}
+    drainer: false
 
   def cookie_signing_salt do
     Portal.Config.fetch_env!(:portal, :cookie_signing_salt)

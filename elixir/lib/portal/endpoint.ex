@@ -107,14 +107,6 @@ defmodule Portal.Endpoint do
     @real_ip_opts
   end
 
-  @doc """
-  Drainer options for every socket behind this endpoint. On shutdown, sockets close
-  100 at a time every 100ms, so that devices do not all reconnect at once.
-  """
-  def socket_drainer do
-    [batch_size: 100, batch_interval: 100, shutdown: :timer.seconds(60)]
-  end
-
   def external_trusted_proxies do
     Portal.Config.fetch_env!(:portal, :external_trusted_proxies)
     |> Enum.map(&to_string/1)

@@ -75,10 +75,10 @@ defmodule Portal.Application do
         # The public listener owns the socket transports, so it must stop after
         # the endpoints it dispatches into have drained their sockets.
         {Portal.Endpoint, shutdown: 40_000},
-        # Give Phoenix socket drain enough time to close sockets in batches
-        # before transports are force-terminated.
-        {PortalWeb.Endpoint, shutdown: 70_000},
-        {PortalAPI.Endpoint, shutdown: 70_000},
+        PortalWeb.Endpoint,
+        PortalAPI.Endpoint,
+        # Drains the sockets of the endpoints above before they stop.
+        {Portal.Endpoint.Drainer, endpoints: [PortalWeb.Endpoint, PortalAPI.Endpoint]},
         # Stops first, so that no new connection reaches an endpoint that drains
         # or has already stopped.
         Portal.Endpoint.Admission
