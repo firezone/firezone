@@ -1,6 +1,11 @@
 defmodule PortalAPI.Endpoint do
   use Phoenix.Endpoint, otp_app: :portal
 
+  @serializer [
+    {PortalAPI.Sockets.Serializer, "~> 1.0.0"},
+    {Phoenix.Socket.V2.JSONSerializer, "~> 2.0.0"}
+  ]
+
   # Health checks - early in pipeline for fast responses
   plug Portal.Health
 
@@ -31,6 +36,7 @@ defmodule PortalAPI.Endpoint do
   socket "/gateway", PortalAPI.Gateway.Socket,
     websocket: [
       check_origin: :conn,
+      serializer: @serializer,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
@@ -41,6 +47,7 @@ defmodule PortalAPI.Endpoint do
   socket "/gateway/v2", PortalAPI.Gateway.V2.Socket,
     websocket: [
       check_origin: :conn,
+      serializer: @serializer,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
@@ -51,6 +58,7 @@ defmodule PortalAPI.Endpoint do
   socket "/gateway/v3", PortalAPI.Gateway.V3.Socket,
     websocket: [
       check_origin: :conn,
+      serializer: @serializer,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
@@ -63,6 +71,7 @@ defmodule PortalAPI.Endpoint do
   socket "/client", PortalAPI.Client.Socket,
     websocket: [
       check_origin: :conn,
+      serializer: @serializer,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
@@ -73,6 +82,7 @@ defmodule PortalAPI.Endpoint do
   socket "/client/v2", PortalAPI.Client.V2.Socket,
     websocket: [
       check_origin: :conn,
+      serializer: @serializer,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
@@ -83,6 +93,7 @@ defmodule PortalAPI.Endpoint do
   socket "/client/v3", PortalAPI.Client.V3.Socket,
     websocket: [
       check_origin: :conn,
+      serializer: @serializer,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
@@ -93,6 +104,7 @@ defmodule PortalAPI.Endpoint do
   socket "/client/v4", PortalAPI.Client.V4.Socket,
     websocket: [
       check_origin: :conn,
+      serializer: @serializer,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
@@ -103,6 +115,7 @@ defmodule PortalAPI.Endpoint do
   socket "/device/v1", PortalAPI.Device.Socket,
     websocket: [
       check_origin: :conn,
+      serializer: @serializer,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
@@ -113,6 +126,7 @@ defmodule PortalAPI.Endpoint do
   socket "/relay", PortalAPI.Relay.Socket,
     websocket: [
       check_origin: :conn,
+      serializer: @serializer,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(41)
