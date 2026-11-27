@@ -1851,7 +1851,10 @@ where
 
             match pt.payload {
                 ProbeRequest(_) | HandshakeInitiation(_) | Keepalive(_)
-                    if self.contested.contains(&pt.remote) => {}
+                    if self.contested.contains(&pt.remote) =>
+                {
+                    tracing::debug!(local = %pt.local, remote = %pt.remote, "Not initiating traffic to contested remote");
+                }
                 HandshakeInitiation(ref bytes)
                 | HandshakeResponse(ref bytes)
                 | Keepalive(ref bytes) => {
