@@ -35,8 +35,7 @@ pub struct Connections<TId, RId> {
 
     established_by_tunnel_id: HashMap<sanstun::TunnelId, TId, FastRandomState>,
     established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
-    /// The Frostlink connections that validated a path to each remote socket.
-    established_by_remote: HashMap<SocketAddr, BTreeSet<TId>, FastRandomState>,
+    validated_paths: ValidatedPaths<TId>,
     contested_addresses: opentelemetry::metrics::Counter<u64>,
 
     disconnected_ids: HashMap<TId, Instant, FastRandomState>,
@@ -45,18 +44,48 @@ pub struct Connections<TId, RId> {
     disconnected_ufrags: HashMap<String, Instant, FastRandomState>,
 }
 
-/// The remote addresses Frostlink connections validated a path to during one timeout.
-pub(crate) struct ValidatedPaths<TId>(Vec<(TId, SocketAddr)>);
+/// The Frostlink connections that validated a path to each remote socket.
+pub(crate) struct ValidatedPaths<TId> {
+    by_remote: HashMap<SocketAddr, BTreeSet<TId>, FastRandomState>,
+    /// Remotes that became contested since the last [`ValidatedPaths::drain_contested`].
+    contested: Vec<SocketAddr>,
+}
 
 impl<TId> Default for ValidatedPaths<TId> {
     fn default() -> Self {
-        Self(Vec::new())
+        Self {
+            by_remote: Default::default(),
+            contested: Vec::new(),
+        }
     }
 }
 
-impl<TId> ValidatedPaths<TId> {
-    pub(crate) fn push(&mut self, id: TId, remote: SocketAddr) {
-        self.0.push((id, remote));
+impl<TId> ValidatedPaths<TId>
+where
+    TId: Ord,
+{
+    pub(crate) fn insert(&mut self, id: TId, remote: SocketAddr) {
+        let ids = self.by_remote.entry(remote).or_default();
+
+        if ids.insert(id) && ids.len() >= 2 {
+            self.contested.push(remote);
+        }
+    }
+
+    fn drain_contested(&mut self) -> impl Iterator<Item = SocketAddr> + '_ {
+        self.contested.drain(..)
+    }
+
+    fn remove(&mut self, id: &TId) {
+        for ids in self.by_remote.values_mut() {
+            ids.remove(id);
+        }
+        for _ in self.by_remote.extract_if(|_, ids| ids.is_empty()) {}
+    }
+
+    fn clear(&mut self) {
+        self.by_remote.clear();
+        self.contested.clear();
     }
 }
 
@@ -69,7 +98,7 @@ impl<TId, RId> Default for Connections<TId, RId> {
             closing: Default::default(),
             established_by_tunnel_id: Default::default(),
             established_by_local_ufrag: Default::default(),
-            established_by_remote: Default::default(),
+            validated_paths: Default::default(),
             contested_addresses: otel_instruments::contested_addresses(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
@@ -97,7 +126,7 @@ where
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.established_by_local_ufrag.remove(ufrag);
         }
-        self.remove_remotes(id);
+        self.validated_paths.remove(id);
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
@@ -170,7 +199,6 @@ where
             self.reindex();
         }
 
-        let mut validated_paths = ValidatedPaths::default();
         for (cid, connection) in self.established.due_mut(now) {
             connection.handle_timeout(
                 cid,
@@ -179,12 +207,13 @@ where
                 transmits,
                 events,
                 inflight_stun_requests,
-                &mut validated_paths,
+                &mut self.validated_paths,
             );
         }
 
-        for (cid, remote) in validated_paths.0 {
-            self.record_validated_path(cid, remote, now);
+        let contested = self.validated_paths.drain_contested().collect::<Vec<_>>();
+        for remote in contested {
+            self.handle_contested(remote, now);
         }
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
@@ -283,29 +312,19 @@ where
             self.established_by_local_ufrag.insert(ufrag, id);
         }
         if existing.is_some() {
-            self.remove_remotes(&id);
+            self.validated_paths.remove(&id);
         }
 
         existing
     }
 
-    /// Records that the Frostlink connection `id` validated a path to `remote`.
+    /// Several Frostlink connections validated a path to `remote`.
     ///
-    /// Once several did, a NAT maps several devices to `remote` and delivers what we send there to
-    /// whichever of them sent last, so every Frostlink connection drops its candidates at `remote`
-    /// and only replies to it.
-    fn record_validated_path(&mut self, id: TId, remote: SocketAddr, now: Instant) {
-        // `id` may have failed and been removed after it validated `remote`.
-        if self.established.get(&id).is_none() {
-            return;
-        }
-
-        let ids = self.established_by_remote.entry(remote).or_default();
-        if !ids.insert(id) || ids.len() < 2 {
-            return;
-        }
-
-        tracing::debug!(%id, %remote, "Remote address contested by several connections");
+    /// A NAT maps several devices to `remote` and delivers what we send there to whichever of
+    /// them sent last, so every Frostlink connection drops its candidates at `remote` and only
+    /// replies to it.
+    fn handle_contested(&mut self, remote: SocketAddr, now: Instant) {
+        tracing::debug!(%remote, "Remote address contested by several connections");
         self.contested_addresses.add(1, &[]);
 
         for (cid, c) in self
@@ -468,7 +487,7 @@ where
         self.missing_relay = false;
         self.failed.clear();
         self.established_by_tunnel_id.clear();
-        self.established_by_remote.clear();
+        self.validated_paths.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
@@ -547,7 +566,7 @@ where
                 self.established_by_local_ufrag.remove(ufrag);
                 self.disconnected_ufrags.insert(ufrag.to_owned(), now);
             }
-            self.remove_remotes(&id);
+            self.validated_paths.remove(&id);
         }
 
         self.disconnected_ids
@@ -558,16 +577,6 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_ufrags
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-    }
-
-    fn remove_remotes(&mut self, id: &TId) {
-        for ids in self.established_by_remote.values_mut() {
-            ids.remove(id);
-        }
-        for _ in self
-            .established_by_remote
-            .extract_if(|_, ids| ids.is_empty())
-        {}
     }
 }
 

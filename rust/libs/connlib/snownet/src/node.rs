@@ -1840,7 +1840,7 @@ where
                     );
                 }
                 frostlink::Event::PathValidated { remote, .. } => {
-                    validated_paths.push(cid, remote);
+                    validated_paths.insert(cid, remote);
                 }
             }
         }
