@@ -338,8 +338,8 @@ Accounts | Logs | Settings. Settings is unchanged.
 
 **Devices** lists every device. Columns: device (name, slug), users (actors
 seen; the token's service account for infrastructure), "Routes for" (site
-chips), status, platform and version, trust (managed, enrolled, verified, and
-attested after I.12), last seen.
+chips), status, platform and version, trust (device trust and verified), last
+seen.
 Filters for "routes for a site" and "has users". The label is "Routes for",
 not "Serves": the verb matches the `route_resources` capability, and a bare
 "Routes" would read as a list of prefixes.
@@ -643,18 +643,21 @@ reported `firezone_id`.
   hardware store later without a protocol change. The portal does not
   record where the key is kept; hardware attestation brings its own proof
   later.
-- **Words.** This feature uses three terms, everywhere:
-  - _Enrolled_: the device holds a certificate from the account's Firezone
-    device CA. It proves the device is the one that enrolled, and nothing
-    about where its key is kept.
-  - _Managed_: the device connects with a certificate under a customer
-    trust anchor (MDM).
-  - _Attested_: hardware key attestation proves the key lives in a TPM,
-    Secure Enclave or StrongBox (I.12). Nothing is attested before I.12.
+- **Two separate things.** _Verified_ is an admin's approval of the
+  device (`verified_at`, as today). _Device trust_ is what the current
+  connection proved with its certificate, worked out at every connect:
+  - _None_: no certificate (old binaries).
+  - _Firezone_: a certificate from the account's Firezone device CA. It
+    proves the device holds the key it got its certificate for. A hardware
+    key is a detail on it once hardware attestation proves it (I.12), not
+    a separate state.
+  - _Organization_: a certificate that chains to one of the account's trust
+    anchors (MDM).
 
-  Existing code keeps its names for the MDM case (the `device_attested`
-  condition, the `last_attested_*` columns); new code and product copy use
-  these terms.
+  Verified follows the key: it stays through renewal, a CA rotation and the
+  first claim of a row without a key, and is cleared when the key is
+  replaced (reset identity, ephemeral takeover). Existing code keeps its
+  names for the MDM case (`device_attested`, `last_attested_*`).
 
 - **Ephemeral devices** keep a random key in memory only and enroll again
   at every start. A device is ephemeral when it cannot write its state
@@ -712,9 +715,9 @@ carries one client certificate, so it shows only one of them.
   same random point. When the MDM certificate is removed or the device leaves
   management, the client falls back to the Firezone certificate and lands
   on the same row.
-- The managed condition (today "Require attestation") holds only while the
-  device connects with a valid MDM certificate. On the Firezone fallback it
-  is the same device, enrolled but not managed.
+- Device trust Organization holds only while the device connects with a
+  valid MDM certificate. On the Firezone fallback it is the same device
+  with device trust Firezone.
 - An MDM identity is used only when its certificate carries an MDM device
   id. Without one, the portal can find the row only by issuer and serial,
   and every MDM renewal would make a new row, so the device keeps its
@@ -776,10 +779,10 @@ portal finds them by `firezone_id` among rows without a key, and for a
 Gateway only in its own Site. An operator who mounts a volume can turn
 enrollment on.
 
-**Policies.** The device trust condition gets options: "Managed device"
-(a customer trust anchor, today's "Require attestation"), "Enrolled device"
-(the Firezone device CA), and after I.12 "Attested device" (a hardware key
-proven by hardware attestation).
+**Policies.** Two settings. "Verified device", as today. "Device trust"
+(`device_trust`, #16854, which replaced `require_attestation`): `none`,
+`firezone` (Firezone or Organization; added with I.6), or `organization`.
+After I.12 a "Require a hardware key" checkbox joins it.
 
 **`/device/v1` until the unification.** It is on `main` but no release uses
 it. It is turned off until the unified binary ships. Then it requires a
@@ -826,8 +829,7 @@ without one on the same terms as the legacy sockets.
   and the emergency variant that also disconnects the account's devices.
   Do not rotate just before a deploy: a deploy reconnects every device at
   once.
-- I.8 The "Managed device" and "Enrolled device" options on the device
-  trust condition.
+- I.8 The `firezone` value of `device_trust`, offered once I.6 ships.
 
 Rust and the apps:
 
@@ -845,8 +847,8 @@ Rust and the apps:
 - I.11 Client releases with identity, 1.6.0: Apple (the device trust signing path
   through Swift already exists), Android, Windows and Linux GUI, headless.
 - I.12 Hardware keys per platform, one release each, with hardware key
-  attestation checked when the device gets its certificate. Only then is a
-  device attested, and the "Attested device" option appears.
+  attestation checked when the device gets its certificate, and the
+  "Require a hardware key" checkbox.
 
 **Open.**
 
