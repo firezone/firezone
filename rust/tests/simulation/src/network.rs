@@ -3,9 +3,10 @@ use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+use itertools::Itertools as _;
 use snownet::Transmit;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
@@ -596,6 +597,46 @@ impl RoutingTable {
 
             (clients >= 2).then(|| (nat.edge_config(), &nat.assignment))
         })
+    }
+
+    /// The hosts behind each overloading NAT device that two or more hosts sit behind.
+    pub(crate) fn hosts_behind_shared_overloading_nats(
+        &self,
+    ) -> impl Iterator<Item = (Ipv4Addr, Vec<HostId>)> + '_ {
+        self.nats.iter().filter_map(|(ip, nat)| {
+            let PortAssignment::Overloading(_) = nat.assignment else {
+                return None;
+            };
+            let hosts = self
+                .attachments
+                .iter()
+                .filter(|(_, attached)| *attached == ip)
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>();
+
+            (hosts.len() >= 2).then_some((*ip, hosts))
+        })
+    }
+
+    /// The destinations that two hosts behind the NAT device at `ip` both sent to from the same
+    /// public port.
+    pub(crate) fn shared_port_destinations(&self, ip: Ipv4Addr) -> BTreeSet<SocketAddr> {
+        let Some(nat) = self.nats.get(&ip) else {
+            return BTreeSet::new();
+        };
+
+        nat.bindings
+            .iter()
+            .array_combinations()
+            .filter(|[a, b]| a.port == b.port && a.internal.ip() != b.internal.ip())
+            .flat_map(|[a, b]| {
+                a.sent_to
+                    .keys()
+                    .filter(|dst| b.sent_to.contains_key(dst))
+                    .copied()
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     /// The edge of a host behind a NAT device, i.e. a Client or a Gateway.

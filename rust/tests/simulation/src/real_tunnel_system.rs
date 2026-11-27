@@ -45,7 +45,7 @@ pub struct RealTunnelSystem {
     /// portal are dropped, simulating a client that has not yet reconnected to
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
-    network: RoutingTable,
+    pub(crate) network: RoutingTable,
     icmp_flows: BTreeMap<FlowId, ResolvedIcmpFlow>,
     udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
     tcp_flows: BTreeMap<FlowId, ResolvedTcpFlow>,

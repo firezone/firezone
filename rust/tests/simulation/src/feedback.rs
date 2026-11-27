@@ -18,6 +18,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -28,7 +29,7 @@ use tunnel_proto::dns;
 
 use crate::{
     fake_portal::FakePortal,
-    network::{EdgeConfig, FilterMode, Mapping, PortAssignment},
+    network::{EdgeConfig, FilterMode, HostId, Mapping, PortAssignment},
     probe::{
         Answer, DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome,
         ExpectedProbe, FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionRemote, Remote,
@@ -300,6 +301,7 @@ impl Recorder {
         record_dns_proxy_ip_subset_feedback(state);
         record_shared_dns_resource_gateway_feedback(model);
         record_shared_nat_feedback(model);
+        record_contest_precondition_feedback(model, state, portal);
         record_live_dns_flow_feedback(model, state);
         self.record_dns_query_feedback(model, state, portal);
         for _ in self
@@ -1030,6 +1032,89 @@ fn record_shared_nat_feedback(model: &TunnelModel) {
             matches!(assignment, PortAssignment::Overloading(_)),
         ]);
         record_value!(flags | (edge.expiry.timeout.as_secs() as u16) << 5);
+    }
+}
+
+/// Records how far the devices behind each shared overloading NAT got towards contesting a
+/// public socket: a common peer, Frostlink, live connections to it and a shared public port.
+/// With a shared port, it also records whether the devices also share it towards a relay.
+fn record_contest_precondition_feedback(
+    model: &TunnelModel,
+    state: &RealTunnelSystem,
+    portal: &FakePortal,
+) {
+    let relays = model
+        .relays
+        .values()
+        .flat_map(|relay| relay.ip4.map(|ip| SocketAddr::new(ip.into(), relay.port)))
+        .collect::<BTreeSet<_>>();
+    let sites = |client: ClientId| {
+        model.clients[&client]
+            .inner()
+            .all_resources()
+            .iter()
+            .flat_map(|resource| resource.sites().iter().map(|site| site.id))
+            .collect::<BTreeSet<_>>()
+    };
+    let connected = |client: ClientId, gateway: GatewayId| {
+        let client = model.clients[&client].inner();
+        client
+            .connected_resources()
+            .any(|resource| client.gateway_for_resource(resource) == Some(gateway))
+    };
+
+    for (ip, hosts) in model.network.hosts_behind_shared_overloading_nats() {
+        let clients = hosts.iter().filter_map(|host| match host {
+            HostId::Client(id) => Some(*id),
+            HostId::Gateway(_) | HostId::Relay(_) | HostId::Stale => None,
+        });
+        let gateways = hosts.iter().filter_map(|host| match host {
+            HostId::Gateway(id) => Some(*id),
+            HostId::Client(_) | HostId::Relay(_) | HostId::Stale => None,
+        });
+
+        // Each candidate is a pair of devices with a common peer, and whether both are connected to it.
+        let shared_gateway = clients.array_combinations().flat_map(|[a, b]| {
+            let common = &sites(a) & &sites(b);
+            model
+                .gateways
+                .keys()
+                .filter(move |g| {
+                    portal
+                        .site_of_gateway(**g)
+                        .is_some_and(|s| common.contains(&s))
+                })
+                .map(move |g| connected(a, *g) && connected(b, *g))
+                .collect::<Vec<_>>()
+        });
+        let shared_client = gateways.array_combinations().flat_map(|[a, b]| {
+            model
+                .clients
+                .keys()
+                .filter(move |c| {
+                    let sites = sites(**c);
+                    [a, b].iter().all(|g| {
+                        portal
+                            .site_of_gateway(*g)
+                            .is_some_and(|s| sites.contains(&s))
+                    })
+                })
+                .map(move |c| connected(*c, a) && connected(*c, b))
+                .collect::<Vec<_>>()
+        });
+        let candidates = shared_gateway.chain(shared_client).collect::<Vec<_>>();
+
+        let shared_port = state.network.shared_port_destinations(ip);
+        let steps = [
+            !candidates.is_empty(),
+            portal.frostlink(),
+            candidates.contains(&true),
+            !shared_port.is_empty(),
+        ];
+        let depth = 1 + steps.iter().take_while(|step| **step).count() as u16;
+        let via_relay = depth == 5 && !shared_port.is_disjoint(&relays);
+
+        record_value!(depth | u16::from(via_relay) << 3);
     }
 }
 
