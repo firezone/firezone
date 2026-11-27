@@ -9,6 +9,10 @@ defmodule PortalAPI.Schemas.Client do
              for: Portal.Device,
              internal: [
                :account_id,
+               :enrolled_at,
+               :enrolled_by_actor_id,
+               :ephemeral,
+               :key_hash,
                :actor,
                :attested?,
                :attested_until,

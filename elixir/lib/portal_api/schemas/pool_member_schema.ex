@@ -46,7 +46,11 @@ defmodule PortalAPI.Schemas.PoolMember do
                :public_key,
                :type,
                :updated_at,
-               :verified_at
+               :verified_at,
+               :enrolled_at,
+               :enrolled_by_actor_id,
+               :ephemeral,
+               :key_hash
              ]}
     OpenApiSpex.schema(%{
       title: "PoolMember",

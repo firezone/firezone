@@ -91,6 +91,50 @@ defmodule Portal.GatewayTest do
     end
   end
 
+  describe "device key" do
+    setup do
+      account = Portal.AccountFixtures.account_fixture()
+      %{account: account, gateway: gateway_fixture(account: account)}
+    end
+
+    test "lets gateways with a key share a firezone_id", %{account: account, gateway: gateway} do
+      Repo.update_all(from(d in Device, where: d.id == ^gateway.id), set: [key_hash: key_hash()])
+      other = gateway_fixture(account: account)
+
+      assert {:ok, _gateway} = update_firezone_id(other, gateway.firezone_id)
+    end
+
+    test "gives each key one device in the account", %{account: account, gateway: gateway} do
+      key_hash = key_hash()
+      Repo.update_all(from(d in Device, where: d.id == ^gateway.id), set: [key_hash: key_hash])
+
+      assert {:error, changeset} =
+               gateway_fixture(account: account)
+               |> change(key_hash: key_hash)
+               |> Device.changeset()
+               |> Repo.update()
+
+      assert %{key_hash: ["has already been taken"]} = errors_on(changeset)
+
+      assert {:ok, _gateway} =
+               gateway_fixture() |> change(key_hash: key_hash) |> Device.changeset() |> Repo.update()
+    end
+
+    test "keeps the device when the actor that enrolled it is deleted", %{account: account, gateway: gateway} do
+      actor = Portal.ActorFixtures.actor_fixture(account: account)
+
+      Repo.update_all(from(d in Device, where: d.id == ^gateway.id),
+        set: [enrolled_by_actor_id: actor.id, enrolled_at: DateTime.utc_now()]
+      )
+
+      Repo.delete!(actor)
+
+      assert %Device{enrolled_by_actor_id: nil} = Repo.get_by!(Device, id: gateway.id)
+    end
+  end
+
+  defp key_hash, do: :crypto.strong_rand_bytes(32)
+
   defp update_firezone_id(gateway, firezone_id) do
     gateway
     |> change(firezone_id: firezone_id)
