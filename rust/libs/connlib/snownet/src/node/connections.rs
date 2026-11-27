@@ -12,6 +12,7 @@ use deadline_map::{DeadlineMap, PollTimeout};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
+use smallvec::SmallVec;
 
 use crate::{
     Event,
@@ -211,7 +212,10 @@ where
             );
         }
 
-        let contested = self.validated_paths.drain_contested().collect::<Vec<_>>();
+        let contested = self
+            .validated_paths
+            .drain_contested()
+            .collect::<SmallVec<[_; 4]>>();
         for remote in contested {
             self.handle_contested(remote, now);
         }
