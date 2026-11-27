@@ -545,9 +545,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       <td class="px-6 py-3">
         <div class="flex items-center gap-1.5 min-w-0">
           <div class="text-sm font-medium text-heading truncate">Firezone device CA</div>
-          <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] border border-border text-subtle">
-            System
-          </span>
+          <Core.badge type="neutral" size="xs" class="shrink-0">System</Core.badge>
         </div>
         <div class="text-xs text-subtle truncate">
           Powers Firezone-managed device trust on Clients 1.6.0+ and Gateways 1.6.6+
