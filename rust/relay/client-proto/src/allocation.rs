@@ -459,7 +459,8 @@ impl Allocation {
             return false;
         };
 
-        let rtt = now.duration_since(backoff.start_time());
+        let sent_at = backoff.start_time();
+        let rtt = now.duration_since(sent_at);
         Span::current().record("rtt", field::debug(rtt));
 
         self.update_rtt(rtt);
@@ -739,7 +740,7 @@ impl Allocation {
                     return true;
                 }
 
-                self.allocation_lifetime = Some((now, lifetime));
+                self.allocation_lifetime = Some((sent_at, lifetime));
                 update_candidate(
                     maybe_ip4_relay_candidate,
                     &mut self.ip4_allocation,
@@ -778,7 +779,7 @@ impl Allocation {
                     return true;
                 }
 
-                self.allocation_lifetime = Some((now, lifetime.lifetime()));
+                self.allocation_lifetime = Some((sent_at, lifetime.lifetime()));
 
                 self.log_update(now);
             }
@@ -836,14 +837,7 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
-        if self
-            .allocation_expires_at()
-            .is_some_and(|expires_at| now >= expires_at)
-        {
-            tracing::debug!("Allocation is expired");
-
-            self.invalidate_allocation();
-        }
+        self.reallocate_if_expired(now);
 
         if self.has_allocation()
             && let Some(addr) = self
@@ -976,6 +970,8 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
+        self.reallocate_if_expired(now);
+
         if self.is_suspended() {
             tracing::debug!("Allocation is suspended");
             return;
@@ -1164,17 +1160,35 @@ impl Allocation {
     }
 
     fn refresh_allocation_at(&self) -> Option<Instant> {
-        let (received_at, lifetime) = self.allocation_lifetime?;
+        let (requested_at, lifetime) = self.allocation_lifetime?;
 
         let refresh_after = lifetime / 2;
 
-        Some(received_at + refresh_after)
+        Some(requested_at + refresh_after)
     }
 
     fn allocation_expires_at(&self) -> Option<Instant> {
-        let (received_at, lifetime) = self.allocation_lifetime?;
+        let (requested_at, lifetime) = self.allocation_lifetime?;
 
-        Some(received_at + lifetime)
+        Some(requested_at + lifetime)
+    }
+
+    /// Makes a new allocation once the lifetime of this one passed.
+    ///
+    /// The lifetime only passes if the host slept through the refresh, so whatever the
+    /// allocation is asked to do first after waking up may find it expired.
+    fn reallocate_if_expired(&mut self, now: Instant) {
+        if self
+            .allocation_expires_at()
+            .is_none_or(|expires_at| now < expires_at)
+        {
+            return;
+        }
+
+        tracing::debug!("Allocation is expired");
+
+        self.invalidate_allocation();
+        self.authenticate_and_queue(MessagePrototype::allocate(self.software.clone()), None, now);
     }
 
     fn invalidate_allocation(&mut self) {

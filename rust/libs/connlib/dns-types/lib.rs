@@ -105,6 +105,12 @@ impl Query {
         self
     }
 
+    pub fn with_random_id(mut self) -> Self {
+        self.inner.header_mut().set_random_id();
+
+        self
+    }
+
     /// Adds an OPT record, as resolvers that support EDNS do.
     pub fn with_edns(self) -> Self {
         let mut builder = MessageBuilder::new_vec();
@@ -234,6 +240,17 @@ impl Response {
             note: parse_note(&message),
             inner: message.octets_into(),
         })
+    }
+
+    /// Parses a response and checks that it has the ID and the question of `query`.
+    pub fn parse_answer(slice: &[u8], query: &Query) -> Result<Self, Error> {
+        let response = Self::parse(slice)?;
+
+        if !response.inner.is_answer(&query.inner) {
+            return Err(Error::NotAnAnswer);
+        }
+
+        Ok(response)
     }
 
     pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
@@ -443,6 +460,8 @@ pub enum Error {
     NotAQuery,
     #[error("DNS message is not a response")]
     NotAResponse,
+    #[error("DNS response does not answer the query")]
+    NotAnAnswer,
     #[error("HTTP response is not 200: {0} {1}")]
     HttpNotSuccess(http::StatusCode, String),
     #[error("HTTP response Content-Type is not application/dns-message")]

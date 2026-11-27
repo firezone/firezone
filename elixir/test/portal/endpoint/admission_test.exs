@@ -33,12 +33,16 @@ defmodule Portal.Endpoint.AdmissionTest do
     {:ok, established} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
     assert {:ok, "HTTP/1.1 200 OK" <> _} = request(established)
 
+    listener = ThousandIsland.Server.listener_pid(server)
+    {listen_socket, _span} = ThousandIsland.Listener.acceptor_info(listener, 1)
+    listen_socket_ref = :erlang.monitor(:port, listen_socket)
+
     admission = start_supervised!({Admission, endpoint: TestEndpoint})
 
     :ok = GenServer.stop(admission)
 
     assert ThousandIsland.status(server) == :suspended
-    assert {:error, :econnrefused} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary])
+    assert_receive {:DOWN, ^listen_socket_ref, :port, ^listen_socket, _reason}
 
     assert {:ok, "HTTP/1.1 200 OK" <> _} = request(established)
   end

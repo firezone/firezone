@@ -39,9 +39,12 @@ struct AuthClientTests {
     #expect(configuration.lastCustomURLs?.authURL == captured.authURL)
     #expect(configuration.lastCustomURLs?.apiURL == captured.apiURL)
     let signInURL = try client.build()
-    let nonce = try #require(
-      URLComponents(url: signInURL, resolvingAgainstBaseURL: false)?.sanitizedQueryParam("nonce"))
-    #expect(signIn.token == nonce + "token-fragment")
+    let query = try #require(URLComponents(url: signInURL, resolvingAgainstBaseURL: false))
+    let nonceHash = try #require(query.sanitizedQueryParam("nonce_hash"))
+    #expect(query.sanitizedQueryParam("nonce") == nil)
+    #expect(signIn.token.hasSuffix("token-fragment"))
+    let nonce = String(signIn.token.dropLast("token-fragment".count))
+    #expect(AuthClient.sha256Hex(nonce) == nonceHash)
   }
 
   @Test(

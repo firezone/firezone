@@ -254,8 +254,15 @@ impl RealRelaySystem {
             Transition::Partition { duration } => {
                 self.client.set_offline();
                 lost_heartbeats = self.advance(*duration, interference);
-                self.client
-                    .update_interface(self.client.ip4, self.client.ip6);
+                self.client.set_online();
+            }
+            Transition::Sleep { duration } => {
+                let wake_up = now + *duration;
+                self.client.sleep();
+
+                self.run_until(wake_up, interference);
+
+                self.client.set_online();
             }
             Transition::Connect { peer } => {
                 self.connections.insert(*peer);
@@ -594,18 +601,19 @@ impl RealRelaySystem {
         let mut lost = BTreeSet::new();
 
         while self.next_heartbeat <= target {
-            let next_heartbeat = self.next_heartbeat;
-
-            self.run(interference, |_| next_heartbeat);
-            self.clock.skip_to(next_heartbeat);
+            self.run_until(self.next_heartbeat, interference);
             lost.extend(self.heartbeat(interference));
             self.next_heartbeat = self.clock.now::<Instant>() + HEARTBEAT;
         }
 
-        self.run(interference, |_| target);
-        self.clock.skip_to(target);
+        self.run_until(target, interference);
 
         lost
+    }
+
+    fn run_until(&mut self, target: Instant, interference: &mut Interference) {
+        self.run(interference, |_| target);
+        self.clock.skip_to(target);
     }
 
     /// Steps the hosts and the network through everything that is due until the horizon, which
@@ -691,6 +699,10 @@ impl Host<RealAllocation> {
     ///
     /// The allocation only handles a timeout when it asked for one.
     fn step(&mut self, transmits: &mut BufferedTransmits, now: Instant) {
+        if self.is_asleep() {
+            return;
+        }
+
         while let Some(transmit) = self.poll_inbox(now) {
             self.handle_input(transmits, transmit, now);
         }
