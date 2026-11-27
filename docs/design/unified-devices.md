@@ -660,18 +660,27 @@ reported `firezone_id`.
   `client` and an enrolled Gateway stays `gateway`. The `type = NULL` switch
   comes with the unified binary.
 
-**Enrollment.** `POST /device/enroll` on the API host. The device sends its
-token as today and a CSR, and gets back its certificate and the CA
-certificate. A device calls it only in these cases:
+**Enrollment.** Every connection from 1.6.0 Clients and 1.6.6 Gateways is
+mTLS, so a device gets its certificate before it opens a socket:
+`POST /device/certificate` on the API host, without mTLS. The device sends
+its token and a CSR for its key, and gets back a 90-day certificate and the
+CA certificate. The request touches no device row: the certificate names
+the key, not a device, and the key binds to a row only at connect (claim
+rules below). A certificate grants nothing by itself, because every connect
+still needs a valid token. The device calls it:
 
-1. First enrollment: it has a token and no certificate (a new install, an
-   upgrade from a release without identity, or a wiped state directory).
-2. Renewal, on the mTLS host: a new CSR for the same key, at a random
-   point between 55% and 70% of the lifetime. The current certificate authenticates it, so no
-   token or sign-in is needed.
-3. Re-enrollment: the portal refused its certificate (the device was
-   deleted, an admin reset its identity, its CA was rotated, or the
-   certificate expired).
+1. When it has no certificate (a new install, an upgrade, a wiped state
+   directory, or an ephemeral start).
+2. For renewal: a CSR for the same key at a random point between 55% and
+   70% of the lifetime.
+3. When the portal refused its certificate (the device was deleted, its
+   identity was reset, its CA was rotated, or the certificate expired).
+
+The endpoint is rate limited per token and per account, because every
+call is a Key Vault signature and the vault's limit is shared by the whole
+region. A Key Vault 429 becomes a 429 and any other vault failure a 503,
+both with `Retry-After`. Old binaries keep connecting without mTLS, as
+today.
 
 **Managed devices.** A device uses its MDM identity when it has one (on
 Apple, the `identityReference` of the managed VPN profile, which the client
@@ -697,8 +706,10 @@ carries one client certificate, so it shows only one of them.
   and every MDM renewal would make a new row, so the device keeps its
   Firezone identity.
 
-**Claim rules.** Enrollment decides which row a key gets. The first device
-to enroll with a `firezone_id` wins:
+**Claim rules.** The first connect with a certificate decides which row its
+key gets: the row that already has the key; otherwise the row with the
+reported `firezone_id` and no key; otherwise a new row. The first device to
+connect with a `firezone_id` wins:
 
 - The key claims the row with the reported `firezone_id` that has no key
   yet: for a Gateway on a Site token, only in that Site; for a Gateway on a
@@ -780,13 +791,19 @@ without one on the same terms as the legacy sockets.
   device, and Gateways have no `device_actors` rows. No foreign key: the id
   stays after the actor is deleted, and the panel shows "Enrolled by a
   deleted user".
-- I.5 `POST /device/enroll` with the claim rules (including the ephemeral
-  takeover), and renewal on the mTLS host. A Key Vault 429 goes back to
-  the device as 429, with no retries.
-- I.6 Certificate lookup on `/client` and `/gateway`, on the mTLS host. The
-  `firezone_id` lookup skips rows with a key. One live connection per keyed
-  row for Clients and Gateways, first wins, 409 `device_key_in_use` for the
-  second, so the device can log that a copy uses its identity.
+- I.5 Certificate issuance in `Portal.DeviceCA` (#16849, done), then
+  `POST /device/certificate` on the API host: token and CSR in,
+  certificate out, rate limited per token and per account, 429 or 503 with
+  `Retry-After`.
+- I.6 Connect with the certificate on `/client` and `/gateway`, on the mTLS
+  host: the key hash comes from the TLS certificate and the claim rules
+  (including the ephemeral takeover) run in the existing connect path.
+  The `firezone_id` lookup skips rows with a key. One live connection per
+  keyed row for Clients and Gateways, first wins, 409 `device_key_in_use`
+  for the second, so the device can log that a copy uses its identity. A
+  managed device connects with its MDM certificate instead and binds its
+  Firezone key to the same row (Managed devices above); the row then holds
+  both `key_hash` and the `last_attested_*` identity.
 - I.7 Reset identity on the device panel, and the key cleared when a device
   is deleted.
 - I.7b Internal CA rotation, ops only (in `portal-ops`): rotate one
