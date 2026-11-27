@@ -29,11 +29,10 @@ where
     Fut::Output: Send + 'static,
 {
     let (mut output_tx, output_rx) = mpsc::channel(1);
-    let mut thread_output_tx = output_tx.clone();
+    let spawn_result = std::thread::Builder::new().name(name.to_owned()).spawn({
+        let mut output_tx = output_tx.clone();
 
-    let spawn_result = std::thread::Builder::new()
-        .name(name.to_owned())
-        .spawn(move || {
+        move || {
             let output = build_runtime()
                 .context("Failed to create Tokio runtime")
                 .and_then(|runtime| {
@@ -43,8 +42,9 @@ where
                     .map_err(|panic| anyhow!("Panicked: {}", panic_message(panic)))
                 });
 
-            let _ = thread_output_tx.try_send(output);
-        });
+            let _ = output_tx.try_send(output);
+        }
+    });
 
     if let Err(e) = spawn_result {
         let _ = output_tx.try_send(Err(anyhow::Error::new(e).context("Failed to spawn thread")));

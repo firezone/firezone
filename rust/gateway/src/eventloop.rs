@@ -92,7 +92,14 @@ impl Eventloop {
         local_flow_logs: bool,
         account_slug: account_slug::Cache,
         metrics_exporter: otel_metrics_export::Exporter,
+        metrics_thread: async_runtime::ThreadOutput<()>,
     ) -> Result<Self> {
+        tokio::spawn(async move {
+            if let Err(e) = metrics_thread.await {
+                tracing::error!("Metrics export stopped: {e:#}");
+            }
+        });
+
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
@@ -136,7 +143,7 @@ enum CombinedEvent {
     SigIntTerm,
     Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
-    PortalThread(Result<()>),
+    PortalThreadStopped(anyhow::Error),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
     Clock(clock::Alarm),
 }
@@ -191,11 +198,7 @@ impl Eventloop {
                 "phoenix channel task stopped unexpectedly",
             )),
             CombinedEvent::Portal(Some(Err(e))) => Err(e).context("Failed to login to portal"),
-            CombinedEvent::PortalThread(result) => {
-                result?;
-
-                Err(anyhow::Error::msg("portal thread stopped unexpectedly"))
-            }
+            CombinedEvent::PortalThreadStopped(e) => Err(e),
             CombinedEvent::DomainResolved((result, req)) => {
                 let now = self.clock.now();
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -240,7 +243,11 @@ impl Eventloop {
         }
 
         if let Poll::Ready(result) = std::pin::Pin::new(&mut self.portal_thread).poll(cx) {
-            return Poll::Ready(CombinedEvent::PortalThread(result));
+            let e = result
+                .err()
+                .unwrap_or_else(|| anyhow::Error::msg("portal thread stopped unexpectedly"));
+
+            return Poll::Ready(CombinedEvent::PortalThreadStopped(e));
         }
 
         if let Poll::Ready((result, trigger)) = self.resolve_tasks.poll_unpin(cx) {

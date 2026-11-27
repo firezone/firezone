@@ -36,26 +36,17 @@ pub struct Exporter {
 
 impl Exporter {
     /// Spawns the export thread, which samples the process' memory usage and exports nothing until [`Exporter::configure`] provides a token.
-    pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> Self {
+    pub fn spawn(
+        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    ) -> (Self, async_runtime::ThreadOutput<()>) {
         let (config, rx) = watch::channel(None);
 
-        let output = async_runtime::spawn_thread("fz-metrics-export", move || async move {
+        let thread = async_runtime::spawn_thread("fz-metrics-export", move || async move {
             tokio::spawn(sample_memory_usage());
             run(rx, socket_factory).await;
         });
 
-        let spawn_result = std::thread::Builder::new()
-            .name("fz-metrics-watch".to_owned())
-            .spawn(move || {
-                if let Err(e) = futures::executor::block_on(output) {
-                    tracing::error!("Metrics export stopped: {e:#}");
-                }
-            });
-        if let Err(e) = spawn_result {
-            tracing::error!("Failed to spawn metrics watch thread: {e}");
-        }
-
-        Self { config }
+        (Self { config }, thread)
     }
 
     /// Applies the portal's metrics config; a `None` endpoint or token stops exporting.

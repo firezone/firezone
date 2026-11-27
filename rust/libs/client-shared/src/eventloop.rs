@@ -171,6 +171,7 @@ impl Eventloop {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         config: SessionConfig,
         metrics_exporter: otel_metrics_export::Exporter,
+        metrics_thread: async_runtime::ThreadOutput<()>,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
@@ -178,6 +179,12 @@ impl Eventloop {
         connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Result<Self> {
+        tokio::spawn(async move {
+            if let Err(e) = metrics_thread.await {
+                tracing::error!("Metrics export stopped: {e:#}");
+            }
+        });
+
         let SessionConfig {
             listen_port,
             is_internet_resource_active,
@@ -241,7 +248,7 @@ enum CombinedEvent {
     Command(Option<Command>),
     Tunnel(Result<ClientEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
-    PortalThread(anyhow::Result<()>),
+    PortalThreadStopped(anyhow::Error),
     Clock(clock::Alarm),
 }
 
@@ -324,11 +331,7 @@ impl Eventloop {
             CombinedEvent::Portal(None) => Err(DisconnectError(anyhow::Error::msg(
                 "portal task exited unexpectedly",
             ))),
-            CombinedEvent::PortalThread(result) => {
-                Err(DisconnectError(result.err().unwrap_or_else(|| {
-                    anyhow::Error::msg("portal thread stopped unexpectedly")
-                })))
-            }
+            CombinedEvent::PortalThreadStopped(e) => Err(DisconnectError(e)),
         }
     }
 
@@ -962,7 +965,11 @@ impl Eventloop {
         }
 
         if let Poll::Ready(result) = std::pin::Pin::new(&mut self.portal_thread).poll(cx) {
-            return Poll::Ready(CombinedEvent::PortalThread(result));
+            let e = result
+                .err()
+                .unwrap_or_else(|| anyhow::Error::msg("portal thread stopped unexpectedly"));
+
+            return Poll::Ready(CombinedEvent::PortalThreadStopped(e));
         }
 
         let now = self.clock.now();

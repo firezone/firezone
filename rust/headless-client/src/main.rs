@@ -414,7 +414,7 @@ fn try_main() -> Result<()> {
             flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
         }
 
-        let metrics_exporter =
+        let (metrics_exporter, metrics_thread) =
             otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory));
 
         let listen_port =
@@ -431,6 +431,7 @@ fn try_main() -> Result<()> {
             portal,
             config,
             metrics_exporter,
+            metrics_thread,
         );
 
         analytics::new_session(firezone_id.clone(), cli.api_url.to_string());
