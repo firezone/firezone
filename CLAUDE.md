@@ -24,7 +24,7 @@ connlib spawns these components and its other IO on threads named `fz-*`, connec
 - `fz-eventloop`: holds the state and reads / writes from and to the channels connecting to the other threads
 - `fz-tun-rx` / `fz-tun-tx`: reading from / writing to the TUN device
 - `fz-udp-v4` / `fz-udp-v6`: IPv4 / IPv6 UDP traffic, with 1 task each for sending / receiving
-- `fz-crypto-{i}`: WireGuard encryption and decryption, one per two cores (at least 2)
+- `fz-crypto-{i}`: WireGuard encryption and decryption, one per two cores (at least 2, at most 8)
 - `fz-portal`: the WebSocket connection to the portal
 - `fz-dns`: forwarding DNS queries to upstream resolvers
 
