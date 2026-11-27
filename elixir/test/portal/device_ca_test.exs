@@ -46,6 +46,49 @@ defmodule Portal.DeviceCATest do
     end
   end
 
+  describe "issue/3" do
+    test "issues a client certificate for the device's key, chained to the account's CA" do
+      account = account_fixture()
+      device_id = Ecto.UUID.generate()
+      {point, private_key} = device_key()
+
+      assert {:ok, %{certificate: certificate, key_hash: key_hash}} =
+               DeviceCA.issue(account.id, device_id, csr(point, private_key))
+
+      {:ok, ca} = DeviceCA.ensure(account.id)
+      assert {:ok, _result} = :public_key.pkix_path_validation(ca.certificate, [certificate], [])
+      assert key_hash == :crypto.hash(:sha256, point)
+
+      otp = :public_key.pkix_decode_cert(certificate, :otp)
+      assert {:ok, {{:ECPoint, ^point}, _curve}} = Portal.Crypto.X509.subject_public_key(otp)
+      assert Portal.Crypto.X509.subject_common_name(otp) == device_id
+      assert Portal.Crypto.X509.client_auth_eku?(otp)
+      refute Portal.Crypto.X509.ca_certificate?(otp)
+
+      lifetime = DateTime.diff(Portal.Crypto.X509.not_after(otp), Portal.Crypto.X509.not_before(otp), :day)
+      assert lifetime == 90
+    end
+
+    test "refuses a CSR whose signature does not match its key" do
+      {point, _private_key} = device_key()
+      {_other_point, other_key} = device_key()
+
+      assert DeviceCA.issue(account_fixture().id, Ecto.UUID.generate(), csr(point, other_key)) ==
+               {:error, :invalid_csr}
+    end
+
+    test "refuses a key that is not P-256" do
+      {:ECPrivateKey, _, _, curve, point, _} = private_key = :public_key.generate_key({:namedCurve, :secp384r1})
+
+      assert DeviceCA.issue(account_fixture().id, Ecto.UUID.generate(), csr(point, private_key, curve)) ==
+               {:error, :unsupported_key}
+    end
+
+    test "refuses bytes that are not a CSR" do
+      assert DeviceCA.issue(account_fixture().id, Ecto.UUID.generate(), "not a csr") == {:error, :invalid_csr}
+    end
+  end
+
   describe "Local" do
     test "signs with the key it created" do
       {:ok, %{public_key: public_key} = key} = DeviceCA.Local.create_key(Ecto.UUID.generate())
@@ -82,5 +125,26 @@ defmodule Portal.DeviceCATest do
       assert {:error, changeset} = Repo.insert(changeset)
       assert "is invalid" in errors_on(changeset).key_id
     end
+  end
+
+  defp device_key do
+    {:ECPrivateKey, _, _, _, point, _} = private_key = :public_key.generate_key({:namedCurve, :secp256r1})
+    {point, private_key}
+  end
+
+  defp csr(point, private_key, curve \\ {:namedCurve, {1, 2, 840, 10_045, 3, 1, 7}}) do
+    info =
+      {:CertificationRequestInfo, :v1, {:rdnSequence, []},
+       {:CertificationRequestInfo_subjectPKInfo,
+        {:CertificationRequestInfo_subjectPKInfo_algorithm, {1, 2, 840, 10_045, 2, 1},
+         {:asn1_OPENTYPE, :public_key.der_encode(:EcpkParameters, curve)}}, point}, []}
+
+    signature = :public_key.sign(:public_key.der_encode(:CertificationRequestInfo, info), :sha256, private_key)
+
+    :public_key.der_encode(
+      :CertificationRequest,
+      {:CertificationRequest, info, {:CertificationRequest_signatureAlgorithm, {1, 2, 840, 10_045, 4, 3, 2}, :asn1_NOVALUE},
+       signature}
+    )
   end
 end

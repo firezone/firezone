@@ -108,6 +108,31 @@ defmodule Portal.DeviceCA.KeyVaultTest do
     refute Repo.get_by(Portal.DeviceCertificateAuthority, account_id: account.id)
   end
 
+  test "reports a throttled signature at once and without an error log" do
+    test_pid = self()
+    Portal.Config.delete_env_override(:portal, DeviceCA.KeyVault, [:req_opts, :plug])
+
+    Portal.Config.merge_env_override(DeviceCA.KeyVault,
+      req_opts: [
+        retry: :transient,
+        adapter: fn request ->
+          send(test_pid, {:retry, request.options[:retry]})
+          {request, Req.Response.new(status: 429)}
+        end
+      ]
+    )
+
+    log =
+      capture_log(fn ->
+        assert DeviceCA.KeyVault.sign(%{key_id: "#{@vault_url}/keys/a/1"}, :crypto.hash(:sha256, "")) ==
+                 {:error, :throttled}
+      end)
+
+    assert_received {:retry, false}
+    refute_received {:retry, _}
+    refute log =~ "Device CA Key Vault request failed"
+  end
+
   test "reaches the vault at a private address" do
     test_pid = self()
     Portal.Config.delete_env_override(:portal, DeviceCA.KeyVault, [:req_opts, :plug])
