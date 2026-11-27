@@ -220,20 +220,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     {:noreply, socket}
   end
 
-  def handle_params(_params, _uri, %{assigns: %{live_action: :device_ca}} = socket) do
-    if Portal.Account.unified_devices?(socket.assigns.account) do
-      {:noreply,
-       assign(socket,
-         selected_trust_anchor: nil,
-         form: nil,
-         confirm_delete?: false,
-         pending_update: nil
-       )}
-    else
-      {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
-    end
-  end
-
   def handle_params(_params, _uri, socket) do
     {:noreply,
      assign(socket,
@@ -562,6 +548,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] border border-border text-subtle">
             Managed by Firezone
           </span>
+        </div>
+        <div class="text-xs text-subtle truncate">
+          Used for mTLS by Clients 1.6.0 and later and Gateways 1.6.6 and later
         </div>
       </td>
       <td class="px-6 py-3 w-36">
@@ -1391,17 +1380,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       socket
       |> assign(trust_anchors: trust_anchors)
-      |> assign(device_ca: get_device_ca(socket.assigns.account, socket.assigns.subject))
+      |> assign(device_ca: Database.get_device_ca(socket.assigns.subject))
       |> assign_revocation_health(trust_anchors)
     else
       assign(socket, trust_anchors: nil, device_ca: nil, revocation_health: %{})
-    end
-  end
-
-  # Hidden until devices use it.
-  defp get_device_ca(account, subject) do
-    if Portal.Account.unified_devices?(account) do
-      Database.get_device_ca(subject)
     end
   end
 

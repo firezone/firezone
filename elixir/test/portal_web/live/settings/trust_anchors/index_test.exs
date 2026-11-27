@@ -134,25 +134,13 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   end
 
   describe "device CA" do
-    test "is hidden until the account uses unified devices", %{conn: conn, account: account, actor: actor} do
-      {:ok, _ca} = Portal.DeviceCA.ensure(account.id)
-      conn = authorize_conn(conn, actor)
-
-      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/trust_anchors")
-      assert html =~ "No trust anchors yet"
-      refute html =~ "Firezone device CA"
-
-      path = ~p"/#{account}/settings/trust_anchors"
-      assert {:error, {:live_redirect, %{to: ^path}}} = live(conn, ~p"/#{account}/settings/trust_anchors/firezone")
-    end
-
     test "lists the account's device CA as read only", %{conn: conn, account: account, actor: actor} do
-      account = put_unified_devices(account, true)
       {:ok, ca} = Portal.DeviceCA.ensure(account.id)
       conn = authorize_conn(conn, actor)
 
       {:ok, lv, html} = live(conn, ~p"/#{account}/settings/trust_anchors")
       assert html =~ "Firezone device CA"
+      assert html =~ "Used for mTLS by Clients 1.6.0 and later and Gateways 1.6.6 and later"
       refute html =~ "No trust anchors yet"
 
       lv |> element("#device-ca-row") |> render_click()
@@ -167,7 +155,6 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
     end
 
     test "does not show another account's device CA", %{conn: conn, account: account, actor: actor} do
-      put_unified_devices(account, true)
       {:ok, _ca} = Portal.DeviceCA.ensure(account_fixture().id)
 
       {:ok, _lv, html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/trust_anchors")
