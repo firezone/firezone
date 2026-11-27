@@ -764,10 +764,13 @@ without one on the same terms as the legacy sockets.
 
 - I.1 Device CA per account (#16722, P-256 in #16829): `DEVICE_CA_KEY_STORAGE` is `db` or
   `azure`, a periodic job backfills every account without a CA (disabled or
-  not), and the CA shows read only on the Trust Anchors page.
+  not), and the CA shows read only on the Trust Anchors page for every
+  account, with the versions that use it for mTLS (Clients 1.6.0, Gateways
+  1.6.6). Done and in production.
   Infra first: a Key Vault Standard per region and the "Key Vault Crypto
   Officer" role for the portal identity.
-- I.3 Turn off `/device/v1` until the unified binary ships.
+- `/device/v1` is separate work and not a step here: device identity
+  ships on `/client` and `/gateway`.
 - I.4 Device key columns on `devices`: key hash, `ephemeral`, the Gateway
   `firezone_id` index limited to rows without a key,
   `enrolled_by_actor_id` (the actor whose token made the latest enrollment;
@@ -799,12 +802,12 @@ Rust and the apps:
   working certificate kept until the new one is stored. Ephemeral mode
   (in-memory key) when the state directory is not writable or
   `FIREZONE_ID` is set, with `FIREZONE_EPHEMERAL` to override.
-- I.10 Gateway release with identity.
+- I.10 Gateway release with identity: 1.6.6.
 - I.10b Remove `firezone_id_exempt` once every exempt row has a key or is
   deleted (17 `firezone_id` groups on 2026-11-27, 4 with all clones
   online). Delete exempt rows still without a key by then; those Gateways
   get 409 until they upgrade. Then drop the flag from the index.
-- I.11 Client releases with identity: Apple (the device trust signing path
+- I.11 Client releases with identity, 1.6.0: Apple (the device trust signing path
   through Swift already exists), Android, Windows and Linux GUI, headless.
 - I.12 Hardware keys per platform, one release each.
 
