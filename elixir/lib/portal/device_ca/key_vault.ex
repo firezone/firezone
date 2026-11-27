@@ -41,7 +41,10 @@ defmodule Portal.DeviceCA.KeyVault do
   @impl true
   def sign(%{key_id: key_id}, digest) when is_binary(key_id) do
     with :ok <- in_vault(key_id) do
-      case request(:post, key_id <> "/sign", %{alg: "ES256", value: Base.url_encode64(digest, padding: false)}) do
+      body = %{alg: "ES256", value: Base.url_encode64(digest, padding: false)}
+
+      # The device waits and tries again itself, so only a closed pooled connection is retried.
+      case request(:post, key_id <> "/sign", body, retry: &retry_closed_connection/2, max_retries: 1) do
         {:ok, %{status: 200, body: %{"value" => value}}} -> der_signature(decode!(value))
         other -> failed(:sign, key_id, other)
       end
@@ -50,13 +53,17 @@ defmodule Portal.DeviceCA.KeyVault do
 
   def sign(_key, _digest), do: {:error, :unknown_key}
 
+  # Signing changes nothing in the vault, so a second try is always safe.
+  defp retry_closed_connection(_request, %Req.TransportError{reason: :closed}), do: {:delay, 0}
+  defp retry_closed_connection(_request, _response_or_exception), do: false
+
   defp in_vault(key_id) do
     if String.starts_with?(key_id, vault_url() <> "/keys/"),
       do: :ok,
       else: {:error, :key_outside_vault}
   end
 
-  defp request(method, url, body) do
+  defp request(method, url, body, opts \\ []) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
     with {:ok, token} <- token() do
@@ -70,6 +77,7 @@ defmodule Portal.DeviceCA.KeyVault do
       ]
       |> put_body(body)
       |> Keyword.merge(config[:req_opts] || [])
+      |> Keyword.merge(opts)
       |> Req.new()
       |> Req.request()
     end
@@ -95,6 +103,8 @@ defmodule Portal.DeviceCA.KeyVault do
     do: {:ok, :public_key.der_encode(:"ECDSA-Sig-Value", {:"ECDSA-Sig-Value", r, s})}
 
   defp der_signature(_value), do: {:error, :bad_signature}
+
+  defp failed(_operation, _key, {:ok, %Req.Response{status: 429}}), do: {:error, :throttled}
 
   defp failed(operation, key, result) do
     Logger.error("Device CA Key Vault request failed",

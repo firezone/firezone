@@ -108,6 +108,59 @@ defmodule Portal.DeviceCA.KeyVaultTest do
     refute Repo.get_by(Portal.DeviceCertificateAuthority, account_id: account.id)
   end
 
+  test "reports a throttled signature at once and without an error log" do
+    test_pid = self()
+    Portal.Config.delete_env_override(:portal, DeviceCA.KeyVault, [:req_opts, :plug])
+
+    Portal.Config.merge_env_override(DeviceCA.KeyVault,
+      req_opts: [
+        retry: :transient,
+        adapter: fn request ->
+          send(test_pid, :sign_request)
+          {request, Req.Response.new(status: 429)}
+        end
+      ]
+    )
+
+    log =
+      capture_log(fn ->
+        assert DeviceCA.KeyVault.sign(%{key_id: "#{@vault_url}/keys/a/1"}, :crypto.hash(:sha256, "")) ==
+                 {:error, :throttled}
+      end)
+
+    assert_received :sign_request
+    refute_received :sign_request
+    refute log =~ "Device CA Key Vault request failed"
+  end
+
+  test "signs again at once when the pooled connection was already closed" do
+    {:ECPrivateKey, _, _, _, _, _} = private_key = :public_key.generate_key({:namedCurve, :secp256r1})
+    digest = :crypto.hash(:sha256, "tbs")
+    test_pid = self()
+    Portal.Config.delete_env_override(:portal, DeviceCA.KeyVault, [:req_opts, :plug])
+
+    Portal.Config.merge_env_override(DeviceCA.KeyVault,
+      req_opts: [
+        retry: :transient,
+        adapter: fn request ->
+          send(test_pid, :sign_request)
+
+          if Req.Request.get_private(request, :req_retry_count, 0) == 0 do
+            {request, %Req.TransportError{reason: :closed}}
+          else
+            {request, Req.Response.new(status: 200, body: %{"value" => b64(raw_signature(digest, private_key))})}
+          end
+        end
+      ]
+    )
+
+    assert {:ok, signature} = DeviceCA.KeyVault.sign(%{key_id: "#{@vault_url}/keys/a/1"}, digest)
+    assert :public_key.verify({:digest, digest}, :sha256, signature, public_key_of(private_key))
+    assert_received :sign_request
+    assert_received :sign_request
+    refute_received :sign_request
+  end
+
   test "reaches the vault at a private address" do
     test_pid = self()
     Portal.Config.delete_env_override(:portal, DeviceCA.KeyVault, [:req_opts, :plug])
@@ -156,6 +209,8 @@ defmodule Portal.DeviceCA.KeyVaultTest do
   end
 
   defp b64(value), do: Base.url_encode64(value, padding: false)
+
+  defp public_key_of({:ECPrivateKey, _, _, parameters, point, _}), do: {{:ECPoint, point}, parameters}
 
   defp jwk(key_id, {{:ECPoint, <<4, x::binary-size(32), y::binary-size(32)>>}, _parameters}),
     do: %{"kid" => key_id, "kty" => "EC", "crv" => "P-256", "x" => b64(x), "y" => b64(y)}

@@ -24,13 +24,20 @@ defmodule Portal.DeviceCA do
 
   @ec_public_key {1, 2, 840, 10_045, 2, 1}
   @p256 {:namedCurve, {1, 2, 840, 10_045, 3, 1, 7}}
-  @ecdsa_with_sha256 {:SignatureAlgorithm, {1, 2, 840, 10_045, 4, 3, 2}, :asn1_NOVALUE}
+  @ecdsa_with_sha256_oid {1, 2, 840, 10_045, 4, 3, 2}
+  @ecdsa_with_sha256 {:SignatureAlgorithm, @ecdsa_with_sha256_oid, :asn1_NOVALUE}
   @common_name {2, 5, 4, 3}
   @organization {2, 5, 4, 10}
   @basic_constraints {2, 5, 29, 19}
   @key_usage {2, 5, 29, 15}
   @subject_key_identifier {2, 5, 29, 14}
+  @authority_key_identifier {2, 5, 29, 35}
+  @extended_key_usage {2, 5, 29, 37}
+  @client_auth {1, 3, 6, 1, 5, 5, 7, 3, 2}
   @ca_lifetime_days 20 * 365
+  @device_lifetime_days 90
+  # A device clock that runs a little behind still accepts a new certificate.
+  @clock_skew_seconds 5 * 60
 
   @doc "The account's CA, created with its key the first time it is asked for."
   @spec ensure(Ecto.UUID.t()) :: {:ok, DeviceCertificateAuthority.t()} | {:error, term()}
@@ -51,9 +58,35 @@ defmodule Portal.DeviceCA do
     end
   end
 
+  @doc """
+  Issues a device certificate for the P-256 key in a CSR, signed by the account's CA. Returns
+  the certificate with the hash of the key, which the device row stores.
+  """
+  @spec issue(Ecto.UUID.t(), Ecto.UUID.t(), binary()) ::
+          {:ok, %{certificate: binary(), key_hash: binary()}} | {:error, term()}
+  def issue(account_id, device_id, csr) do
+    with {:ok, point} <- csr_public_point(csr),
+         {:ok, ca} <- ensure(account_id),
+         {:ok, adapter} <- fetch_adapter(),
+         {:ok, certificate} <- device_certificate(adapter, ca, device_id, point) do
+      {:ok, %{certificate: certificate, key_hash: key_hash(point)}}
+    end
+  end
+
+  @doc "The hash that identifies a device by its P-256 public point."
+  @spec key_hash(binary()) :: binary()
+  def key_hash(point), do: :crypto.hash(:sha256, point)
+
   @doc "True when DEVICE_CA_KEY_STORAGE is set."
   @spec enabled?() :: boolean()
   def enabled?, do: adapter() != nil
+
+  defp fetch_adapter do
+    case adapter() do
+      nil -> {:error, :no_key_storage}
+      adapter -> {:ok, adapter}
+    end
+  end
 
   defp adapter do
     case Portal.Config.fetch_env!(:portal, :device_ca_key_storage) do
@@ -103,6 +136,64 @@ defmodule Portal.DeviceCA do
   end
 
   defp self_signed_certificate(_adapter, _account_id, _key, _public_key), do: {:error, :unsupported_key}
+
+  defp device_certificate(adapter, ca, device_id, point) do
+    {:OTPCertificate, {:OTPTBSCertificate, _, _, _, _, _, ca_name, ca_key_info, _, _, _}, _, _} =
+      :public_key.pkix_decode_cert(ca.certificate, :otp)
+
+    {:OTPSubjectPublicKeyInfo, _algorithm, {:ECPoint, ca_point}} = ca_key_info
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    tbs =
+      {:OTPTBSCertificate, :v3, serial_number(), @ecdsa_with_sha256, ca_name,
+       {:Validity, x509_time(DateTime.add(now, -@clock_skew_seconds)),
+        x509_time(DateTime.add(now, @device_lifetime_days, :day))},
+       {:rdnSequence, [[{:AttributeTypeAndValue, @common_name, {:utf8String, device_id}}]]},
+       {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, @ec_public_key, @p256}, {:ECPoint, point}},
+       :asn1_NOVALUE, :asn1_NOVALUE,
+       [
+         {:Extension, @basic_constraints, true, {:BasicConstraints, false, :asn1_NOVALUE}},
+         {:Extension, @key_usage, true, [:digitalSignature]},
+         {:Extension, @extended_key_usage, false, [@client_auth]},
+         {:Extension, @subject_key_identifier, false, key_identifier(point)},
+         {:Extension, @authority_key_identifier, false,
+          {:AuthorityKeyIdentifier, key_identifier(ca_point), :asn1_NOVALUE, :asn1_NOVALUE}}
+       ]}
+
+    digest = :crypto.hash(:sha256, :public_key.pkix_encode(:OTPTBSCertificate, tbs, :otp))
+    key = %{key_id: ca.key_id, private_key: ca.private_key}
+
+    with {:ok, signature} <- adapter.sign(key, digest),
+         :ok <- verify(digest, signature, {{:ECPoint, ca_point}, @p256}) do
+      {:ok, :public_key.pkix_encode(:OTPCertificate, {:OTPCertificate, tbs, @ecdsa_with_sha256, signature}, :otp)}
+    end
+  end
+
+  # The CSR proves the device holds the key. Only P-256 keys signed with SHA-256 are accepted.
+  defp csr_public_point(csr) do
+    {:CertificationRequest, info, {_, signature_algorithm, _}, signature} =
+      :public_key.der_decode(:CertificationRequest, csr)
+
+    {:CertificationRequestInfo, _version, _subject,
+     {_, {_, key_algorithm, {:asn1_OPENTYPE, parameters}}, point}, _attributes} = info
+
+    curve = :public_key.der_decode(:EcpkParameters, parameters)
+    signed_info = :public_key.der_encode(:CertificationRequestInfo, info)
+
+    cond do
+      {key_algorithm, curve, signature_algorithm} != {@ec_public_key, @p256, @ecdsa_with_sha256_oid} ->
+        {:error, :unsupported_key}
+
+      match?(<<4, _xy::binary-size(64)>>, point) and
+          :public_key.verify(signed_info, :sha256, signature, {{:ECPoint, point}, @p256}) ->
+        {:ok, point}
+
+      true ->
+        {:error, :invalid_csr}
+    end
+  rescue
+    _exception -> {:error, :invalid_csr}
+  end
 
   defp verify(digest, signature, public_key) do
     if :public_key.verify({:digest, digest}, :sha256, signature, public_key),
