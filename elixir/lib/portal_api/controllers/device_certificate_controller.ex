@@ -14,9 +14,9 @@ defmodule PortalAPI.DeviceCertificateController do
 
   def create(conn, params) do
     with {:ok, token} <- bearer_token(conn),
-         :ok <- rate_limit(conn, :token, token_key(token)),
+         :ok <- rate_limit(conn, token_key(token), :token_refill_rate, :token_capacity),
          {:ok, account_id} <- authenticate(conn, token),
-         :ok <- rate_limit(conn, :account, "device_certificate:account:" <> account_id),
+         :ok <- rate_limit(conn, "device_certificate:account:" <> account_id, :account_refill_rate, :account_capacity),
          {:ok, csr} <- decode_csr(params),
          {:ok, issued} <- DeviceCA.issue(account_id, csr) do
       json(conn, %{
@@ -53,10 +53,10 @@ defmodule PortalAPI.DeviceCertificateController do
     end
   end
 
-  defp rate_limit(conn, scope, key) do
+  defp rate_limit(conn, key, refill_rate_key, capacity_key) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    refill_rate = Keyword.fetch!(config, :"#{scope}_refill_rate")
-    capacity = Keyword.fetch!(config, :"#{scope}_capacity")
+    refill_rate = Keyword.fetch!(config, refill_rate_key)
+    capacity = Keyword.fetch!(config, capacity_key)
 
     case PortalAPI.RateLimit.hit(key, refill_rate, capacity, 1) do
       {:allow, _count} -> :ok
