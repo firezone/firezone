@@ -43,8 +43,8 @@ defmodule Portal.DeviceCA.KeyVault do
     with :ok <- in_vault(key_id) do
       body = %{alg: "ES256", value: Base.url_encode64(digest, padding: false)}
 
-      # No retries: a device that gets throttled waits and tries again itself.
-      case request(:post, key_id <> "/sign", body, retry: false) do
+      # The device waits and tries again itself, so only a closed pooled connection is retried.
+      case request(:post, key_id <> "/sign", body, retry: &retry_closed_connection/2, max_retries: 1) do
         {:ok, %{status: 200, body: %{"value" => value}}} -> der_signature(decode!(value))
         other -> failed(:sign, key_id, other)
       end
@@ -52,6 +52,10 @@ defmodule Portal.DeviceCA.KeyVault do
   end
 
   def sign(_key, _digest), do: {:error, :unknown_key}
+
+  # Signing changes nothing in the vault, so a second try is always safe.
+  defp retry_closed_connection(_request, %Req.TransportError{reason: :closed}), do: {:delay, 0}
+  defp retry_closed_connection(_request, _response_or_exception), do: false
 
   defp in_vault(key_id) do
     if String.starts_with?(key_id, vault_url() <> "/keys/"),
