@@ -943,11 +943,12 @@ where
 
                             continue;
                         }
-                        (Payload::Error(Empty {}), reference) => {
+                        (Payload::Error(ChannelError { reason }), reference) => {
                             tracing::debug!(
                                 ?reference,
                                 topic = &message.topic,
-                                "Received empty error response"
+                                ?reason,
+                                "Received error response"
                             );
                             continue;
                         }
@@ -1079,13 +1080,19 @@ enum Payload<T> {
     #[serde(rename = "phx_reply")]
     Reply(Reply),
     #[serde(rename = "phx_error")]
-    Error(Empty),
+    Error(ChannelError),
     #[serde(rename = "phx_close")]
     Close(Empty),
     #[serde(rename = "disconnect")]
     Disconnect { reason: DisconnectReason },
     #[serde(untagged)]
     Message(T),
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+struct ChannelError {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
 }
 
 // Awful hack to get serde_json to generate an empty "{}" instead of using "null"
@@ -1369,6 +1376,29 @@ mod tests {
         let actual_reply = serde_json::from_str::<Payload<()>>(actual_reply).unwrap();
         let expected_reply = Payload::<()>::Close(Empty {});
         assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn phx_error_without_reason() {
+        let json = r#"{"event":"phx_error","ref":null,"topic":"gateway","payload":{}}"#;
+
+        let actual = serde_json::from_str::<Payload<()>>(json).unwrap();
+
+        assert_eq!(actual, Payload::<()>::Error(ChannelError { reason: None }));
+    }
+
+    #[test]
+    fn phx_error_with_reason() {
+        let json = r#"{"event":"phx_error","ref":null,"topic":"gateway","payload":{"reason":"channel_crash"}}"#;
+
+        let actual = serde_json::from_str::<Payload<()>>(json).unwrap();
+
+        assert_eq!(
+            actual,
+            Payload::<()>::Error(ChannelError {
+                reason: Some("channel_crash".to_owned())
+            })
+        );
     }
 
     #[test]
