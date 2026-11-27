@@ -735,6 +735,71 @@ mod tests {
 
     #[test]
     #[ignore = "Needs root to load eBPF programs"]
+    fn drops_ipv4_channel_data_with_udp_length_shorter_than_ip_payload() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
+        let mut packet = channel_data_ipv4(ECT0);
+        declare_wireguard_header_only(&mut packet, 14 + 20);
+
+        let outcome = program.run(&packet);
+
+        assert_eq!(outcome, Outcome::Dropped);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn drops_ipv6_channel_data_with_udp_length_shorter_than_ip_payload() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V6.into(), PEER_V6.into(), 0);
+        let mut packet = channel_data_ipv6(ECT0);
+        declare_wireguard_header_only(&mut packet, 14 + 40);
+
+        let outcome = program.run(&packet);
+
+        assert_eq!(outcome, Outcome::Dropped);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn drops_channel_data_with_udp_length_below_udp_header_length() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
+        let mut packet = channel_data_ipv4(ECT0);
+        packet[14 + 20 + 4..][..2].copy_from_slice(&4_u16.to_be_bytes());
+
+        let outcome = program.run(&packet);
+
+        assert_eq!(outcome, Outcome::Dropped);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn drops_frames_with_bytes_after_the_ip_packet() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
+        let mut packet = channel_data_ipv4(ECT0);
+        packet.extend_from_slice(&[0xab; 100]);
+
+        let outcome = program.run(&packet);
+
+        assert_eq!(outcome, Outcome::Dropped);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn passes_padded_frames_that_are_not_turn_traffic() {
+        let program = Program::load_detached();
+        let mut packet = channel_data_ipv4_with(ECT0, &[]);
+        packet[14 + 20 + 2..][..2].copy_from_slice(&123_u16.to_be_bytes());
+        packet.resize(60, 0);
+
+        let (action, _) = program.run_raw(&packet);
+
+        assert_eq!(action, XDP_PASS);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
     fn passes_ipv4_fragments_to_userspace() {
         let mut program = Program::load_detached();
         program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
@@ -940,6 +1005,14 @@ mod tests {
         udp.extend_from_slice(payload);
 
         udp
+    }
+
+    /// Shrinks the UDP and ChannelData lengths to cover only a WireGuard header, leaving the IP length as it is.
+    fn declare_wireguard_header_only(packet: &mut [u8], udp_offset: usize) {
+        const DECLARED_LEN: u16 = 32;
+
+        packet[udp_offset + 4..][..2].copy_from_slice(&(8 + 4 + DECLARED_LEN).to_be_bytes());
+        packet[udp_offset + 10..][..2].copy_from_slice(&DECLARED_LEN.to_be_bytes());
     }
 
     fn wireguard_data() -> Vec<u8> {

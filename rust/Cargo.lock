@@ -758,7 +758,6 @@ dependencies = [
  "axum-core",
  "base64 0.22.1",
  "bytes",
- "form_urlencoded",
  "futures-util",
  "http",
  "http-body",
@@ -772,8 +771,6 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
- "serde_path_to_error",
- "serde_urlencoded",
  "sha1 0.10.6",
  "sync_wrapper",
  "tokio",
@@ -3008,6 +3005,7 @@ dependencies = [
  "anyhow-ext",
  "arboard",
  "async-runtime",
+ "atomicfs",
  "backoff",
  "bin-shared",
  "clap",
@@ -3054,6 +3052,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_variant",
+ "sha2 0.11.1",
  "socket-factory",
  "strum",
  "subtle",
@@ -3198,7 +3197,6 @@ name = "firezone-relay"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "axum",
  "aya",
  "aya-build",
  "aya-log",
@@ -8150,16 +8148,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_path_to_error"
-version = "0.1.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59fab13f937fa393d08645bf3a84bdfe86e296747b506ada67bb15f10f218b2a"
-dependencies = [
- "itoa",
- "serde",
-]
-
-[[package]]
 name = "serde_repr"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8404,9 +8392,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.16.5"
+version = "1.16.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "149309498a5f7334b12ddae0cad8aba81ce785fe91755068867e017cf98fee46"
+checksum = "3244542535d5de959d90ec55d1b5ff0fd2bb7b1310223907d5f11932847f7b59"
 
 [[package]]
 name = "smawk"

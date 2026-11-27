@@ -154,6 +154,7 @@ jobs:
           target: runtime
           no-cache-filters: runtime
           context: elixir
+          build-contexts: otel-instruments=rust/libs/connlib/otel-instruments/src
           # The compiler stage is the same as the portal image's, so reuse its cache.
           cache-from: |
             type=gha,scope=portal-ops:${{ env.CACHE_TAG }}

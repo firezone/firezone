@@ -4,27 +4,17 @@ inputs:
   mix_env:
     description: "Limit deps to mix env"
     required: true
-outputs:
-  otp-version:
-    description: "The OTP version"
-    value: ${{ steps.versions.outputs.erlang }}
-  elixir-version:
-    description: "The Elixir version"
-    value: ${{ steps.versions.outputs.elixir }}
 runs:
   using: "composite"
   steps:
+    - uses: ./.github/actions/setup-mise
+      with:
+        install_args: --cd elixir erlang elixir
+
     - name: Tool Versions
       id: versions
-      uses: marocchino/tool-versions-action@4219f2e6bfdb4cce482b78f71ad9663e64f4d247 # v2.0.0
-      with:
-        path: elixir/.tool-versions
-
-    - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-      id: setup-beam
-      with:
-        otp-version: ${{ steps.versions.outputs.erlang }}
-        elixir-version: ${{ steps.versions.outputs.elixir }}
+      shell: bash
+      run: echo "elixir=$(mise config get -f elixir/mise.toml tools.elixir)" >> "$GITHUB_OUTPUT"
 
     - name: Setup Hex and Rebar
       shell: bash
@@ -39,7 +29,7 @@ runs:
       id: deps-cache
       with:
         path: elixir/deps
-        key: v2-elixir-deps-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+        key: v2-elixir-deps-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.versions.outputs.elixir }}-${{ hashFiles('elixir/mix.lock') }}
 
     - name: Install Dependencies
       if: ${{ steps.deps-cache.outputs.cache-hit != 'true' }}
@@ -53,9 +43,9 @@ runs:
       id: build-cache
       with:
         path: elixir/_build/${{ inputs.mix_env }}
-        key: v2-elixir-build-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}-${{ hashFiles('elixir/lib/**/*.ex', 'elixir/config/**/*.exs', 'elixir/mix.exs') }}
+        key: v2-elixir-build-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.versions.outputs.elixir }}-${{ hashFiles('elixir/mix.lock') }}-${{ hashFiles('elixir/lib/**/*.ex', 'elixir/config/**/*.exs', 'elixir/mix.exs') }}
         restore-keys: |
-          v2-elixir-build-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}-
+          v2-elixir-build-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.versions.outputs.elixir }}-${{ hashFiles('elixir/mix.lock') }}-
 
     - name: Compile Dependencies
       if: ${{ steps.deps-cache.outputs.cache-hit != 'true' }}

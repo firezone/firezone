@@ -363,8 +363,10 @@ jobs:
       check_openapi_breaking_changes: ${{ needs.planner.outputs.elixir_changed == 'true' }}
     secrets: inherit
     permissions:
+      contents: read
       checks: write # dorny/test-reporter
       pull-requests: write # breaking OpenAPI changes comment
+      security-events: write # trivy SARIF upload from setup-mise
 
   rust:
     needs: planner

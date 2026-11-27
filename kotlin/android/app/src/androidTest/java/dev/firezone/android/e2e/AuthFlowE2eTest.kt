@@ -77,8 +77,8 @@ class AuthFlowE2eTest {
 
             val session = awaitSession()
             val captured = checkNotNull(attempt.get())
-            assertEquals(captured.token, tokenStore.get())
-            assertEquals(captured.token, session.config.token)
+            assertTrue(captured.isToken(tokenStore.get()))
+            assertEquals(tokenStore.get(), session.config.token)
             assertFalse(pendingAuthSession.hasPendingRequest())
             intended(authTabIntent())
             intended(mainActivityHandoffIntent())
@@ -104,8 +104,8 @@ class AuthFlowE2eTest {
             )
 
             val session = awaitSession()
-            assertEquals(captured.token, tokenStore.get())
-            assertEquals(captured.token, session.config.token)
+            assertTrue(captured.isToken(tokenStore.get()))
+            assertEquals(tokenStore.get(), session.config.token)
             assertFalse(pendingAuthSession.hasPendingRequest())
             intended(authTabIntent())
             intended(mainActivityHandoffIntent())

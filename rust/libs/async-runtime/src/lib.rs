@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, anyhow};
-use futures::{FutureExt as _, channel::oneshot};
+use futures::{StreamExt as _, channel::mpsc};
 use tokio::runtime::Runtime;
 
 /// Builds a single-threaded runtime for the calling thread to drive with [`Runtime::block_on`].
@@ -22,47 +22,56 @@ pub fn current_thread() -> Result<Runtime> {
 /// Runs the future made by `make_future` on a new thread named `name`, on a runtime of its own from [`current_thread`].
 ///
 /// The thread is detached: it runs until the future completes, whether or not the returned [`ThreadOutput`] is polled.
-pub fn spawn_thread<F, Fut>(name: &str, make_future: F) -> io::Result<ThreadOutput<Fut::Output>>
+pub fn spawn_thread<F, Fut>(name: &str, make_future: F) -> ThreadOutput<Fut::Output>
 where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: Future,
     Fut::Output: Send + 'static,
 {
-    let runtime = build_runtime()?;
-    let (output_tx, output_rx) = oneshot::channel();
+    let (mut output_tx, output_rx) = mpsc::channel(1);
+    let spawn_result = std::thread::Builder::new().name(name.to_owned()).spawn({
+        let mut output_tx = output_tx.clone();
 
-    std::thread::Builder::new()
-        .name(name.to_owned())
-        .spawn(move || {
-            let output = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                runtime.block_on(async move { make_future().await })
-            }))
-            .map_err(panic_message);
+        move || {
+            let output = build_runtime()
+                .context("Failed to create Tokio runtime")
+                .and_then(|runtime| {
+                    std::panic::catch_unwind(AssertUnwindSafe(|| {
+                        runtime.block_on(async move { make_future().await })
+                    }))
+                    .map_err(|panic| anyhow!("Panicked: {}", panic_message(panic)))
+                });
 
-            let _ = output_tx.send(output);
-        })?;
+            let _ = output_tx.try_send(output);
+        }
+    });
 
-    Ok(ThreadOutput {
+    if let Err(e) = spawn_result {
+        let _ = output_tx.try_send(Err(anyhow::Error::new(e).context("Failed to spawn thread")));
+    }
+    drop(output_tx);
+
+    ThreadOutput {
         name: name.to_owned(),
         output_rx,
-    })
+    }
 }
 
-/// Resolves to the output of the future run by [`spawn_thread`], or to an error if it panicked.
+/// Resolves to the output of the future run by [`spawn_thread`], or to an error if the thread failed to create its runtime or panicked.
 #[derive(Debug)]
+#[must_use]
 pub struct ThreadOutput<T> {
     name: String,
-    output_rx: oneshot::Receiver<Result<T, String>>,
+    output_rx: mpsc::Receiver<Result<T>>,
 }
 
 impl<T> Future for ThreadOutput<T> {
     type Output = Result<T>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let output = match ready!(self.output_rx.poll_unpin(cx)) {
-            Ok(Ok(output)) => Ok(output),
-            Ok(Err(panic)) => Err(anyhow!("Thread `{}` panicked: {panic}", self.name)),
-            Err(oneshot::Canceled) => Err(anyhow!("Thread `{}` exited without output", self.name)),
+        let output = match ready!(self.output_rx.poll_next_unpin(cx)) {
+            Some(output) => output.with_context(|| format!("Thread `{}` failed", self.name)),
+            None => Err(anyhow!("Thread `{}` exited without output", self.name)),
         };
 
         Poll::Ready(output)

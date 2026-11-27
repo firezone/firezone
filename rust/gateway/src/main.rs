@@ -237,8 +237,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         }
     });
 
-    let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
-        .context("Failed to spawn metrics exporter")?;
+    let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory));
 
     let login = LoginUrl::gateway(
         cli.api_url,
@@ -316,8 +315,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         .run()
         .await
         .context(EventloopFailed)
-    })
-    .context("Failed to spawn event-loop thread")?;
+    });
 
     tokio::spawn(http_health_check::serve(
         cli.health_check.health_check_addr,

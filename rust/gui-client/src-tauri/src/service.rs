@@ -989,8 +989,7 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         );
 
-        let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
-            .context("Failed to spawn metrics exporter")?;
+        let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory));
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -1009,8 +1008,7 @@ impl<'a> Handler<'a> {
             portal,
             config,
             metrics_exporter,
-        )
-        .context("Failed to start connlib")?;
+        );
 
         if self.force_relayed_connections {
             connlib.set_force_relayed_connections(true);

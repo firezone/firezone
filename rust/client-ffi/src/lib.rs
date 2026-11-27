@@ -700,8 +700,7 @@ fn connect(
         uploader
     });
 
-    let metrics_exporter = otel_metrics_export::Exporter::spawn(tcp_socket_factory.clone())
-        .context("Failed to spawn metrics exporter")?;
+    let metrics_exporter = otel_metrics_export::Exporter::spawn(tcp_socket_factory.clone());
 
     let listen_port = client_shared::free_udp_port().context("Failed to find a free UDP port")?;
     let config = client_shared::SessionConfig::new(listen_port)
@@ -714,8 +713,7 @@ fn connect(
         portal,
         config,
         metrics_exporter,
-    )
-    .context("Failed to start connlib")?;
+    );
 
     analytics::new_session(device_id, api_url);
 
