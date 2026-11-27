@@ -1847,14 +1847,14 @@ where
 
         // Probes need encapsulation; WireGuard messages go straight to the wire.
         while let Some(pt) = self.agent.poll_frostlink_transmit() {
+            use frostlink::Payload::*;
+
             match pt.payload {
-                frostlink::Payload::ProbeRequest(_)
-                | frostlink::Payload::HandshakeInitiation(_)
-                | frostlink::Payload::Keepalive(_)
+                ProbeRequest(_) | HandshakeInitiation(_) | Keepalive(_)
                     if self.contested.contains(&pt.remote) => {}
-                frostlink::Payload::HandshakeInitiation(ref bytes)
-                | frostlink::Payload::HandshakeResponse(ref bytes)
-                | frostlink::Payload::Keepalive(ref bytes) => {
+                HandshakeInitiation(ref bytes)
+                | HandshakeResponse(ref bytes)
+                | Keepalive(ref bytes) => {
                     let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
                     if let Some(transmit) =
                         make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
@@ -1862,8 +1862,7 @@ where
                         transmits.push_back(transmit);
                     }
                 }
-                frostlink::Payload::ProbeRequest(ref ip)
-                | frostlink::Payload::ProbeReply(ref ip) => {
+                ProbeRequest(ref ip) | ProbeReply(ref ip) => {
                     let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
                     if let Ok(Some(batch)) =
                         self.encapsulate(cid, peer_socket, ip, now, allocations)
