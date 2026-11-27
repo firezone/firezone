@@ -136,7 +136,7 @@ enum CombinedEvent {
     Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
-    Clock(clock::Event),
+    Clock(clock::Alarm),
 }
 
 impl Eventloop {
@@ -202,15 +202,14 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
-            CombinedEvent::Clock(clock::Event::Alarm(now)) => {
+            CombinedEvent::Clock(clock::Alarm { now, late_by }) => {
+                if late_by >= Duration::from_secs(30) {
+                    tracing::info!(?late_by, "Event loop ran late");
+                }
+
                 if let Some(tunnel) = self.tunnel.as_mut() {
                     tunnel.handle_timeout(now);
                 }
-
-                Ok(ControlFlow::Continue(()))
-            }
-            CombinedEvent::Clock(clock::Event::Late(by)) => {
-                tracing::info!(late_by = ?by, "Event loop ran late");
 
                 Ok(ControlFlow::Continue(()))
             }
@@ -225,7 +224,7 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context<'_>) -> Poll<CombinedEvent> {
-        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+        if let Poll::Ready(event) = self.clock.poll_alarm(cx) {
             return Poll::Ready(CombinedEvent::Clock(event));
         }
 
@@ -332,8 +331,10 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            self.tunnel_errors
-                .add(1, &otel_attributes::error_layers(&e));
+            self.tunnel_errors.add(
+                1,
+                &otel_attributes::error_layers_with(&e, tunnel_error_label),
+            );
 
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
@@ -743,4 +744,9 @@ async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .map(|ips| ips.iter().collect())
         .unwrap_or_default()
+}
+
+fn tunnel_error_label(e: &(dyn std::error::Error + 'static)) -> Option<&'static str> {
+    e.downcast_ref::<tunnel::UnknownConnection>()
+        .map(|e| e.metric_label())
 }

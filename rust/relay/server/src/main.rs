@@ -13,7 +13,7 @@ use eventloop_budget::Budget;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, ThroughputLimit, auth::AccountId, control_endpoint, ebpf, sockets,
+    Sleep, ThroughputLimit, auth::AccountId, ebpf, sockets,
 };
 use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
@@ -23,8 +23,9 @@ use rand::{RngExt, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -118,9 +119,11 @@ struct Args {
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
 
-    /// The address of the local interface where we should serve our control endpoint.
-    #[arg(long, env, hide = true, default_value = "127.0.0.1:9999")]
-    control_endpoint: SocketAddr,
+    /// File with log filter directives, applied on SIGHUP.
+    ///
+    /// If the file is missing or empty, SIGHUP restores the `RUST_LOG` directives.
+    #[arg(long, env, hide = true)]
+    log_filter_file: Option<PathBuf>,
 
     /// How many worker threads to use.
     #[arg(long, env, hide = true, default_value = "2")]
@@ -252,10 +255,11 @@ async fn try_main(args: Args) -> Result<()> {
         )
     });
 
-    tokio::spawn(control_endpoint::serve(
-        args.control_endpoint,
+    tokio::spawn(reload_log_filter_on_sighup(
+        args.log_filter_file.clone(),
+        directives.clone(),
         filter_reload_handle,
-    ));
+    )?);
 
     let login = LoginUrl::relay(
         args.api_url.clone(),
@@ -327,6 +331,41 @@ fn ebpf_log_level(directives: &str) -> Result<LevelFilter> {
     });
 
     Ok(level)
+}
+
+/// Applies the directives in `file` on every SIGHUP, or `default_directives` if the file is missing or empty.
+fn reload_log_filter_on_sighup(
+    file: Option<PathBuf>,
+    default_directives: String,
+    handle: FilterReloadHandle,
+) -> Result<impl Future<Output = ()>> {
+    let mut hangup = signals::Hangup::new()?;
+
+    Ok(async move {
+        loop {
+            hangup.recv().await;
+
+            let Some(file) = file.as_deref() else {
+                tracing::info!("Ignoring SIGHUP: LOG_FILTER_FILE is not set");
+                continue;
+            };
+
+            let directives = match std::fs::read_to_string(file) {
+                Ok(contents) if !contents.trim().is_empty() => contents.trim().to_owned(),
+                Ok(_) => default_directives.clone(),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => default_directives.clone(),
+                Err(e) => {
+                    tracing::warn!(file = %file.display(), "Failed to read log filter file: {e}");
+                    continue;
+                }
+            };
+
+            match handle.reload(&directives) {
+                Ok(()) => tracing::info!(%directives, "Applied new log filter"),
+                Err(e) => tracing::warn!(%directives, "Failed to apply log filter: {e:#}"),
+            }
+        }
+    })
 }
 
 /// Sets up our tracing infrastructure.

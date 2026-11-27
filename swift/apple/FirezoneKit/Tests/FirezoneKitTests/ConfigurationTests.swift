@@ -1154,3 +1154,67 @@ struct ProviderMessageCodableTests {
     }
   }
 }
+
+@Suite("SignInSettings Tests")
+struct SignInSettingsTests {
+  let settings = SignInSettings(
+    accountSlug: "acme", authURL: "https://a.example.com", apiURL: "wss://api.a.example.com")
+
+  @Test("Matches when nothing is forced")
+  func nothingForced() {
+    #expect(
+      !settings.differsFromManaged(
+        in: ["apiURL": "wss://api.b.example.com"], profileIsManaged: false))
+  }
+
+  @Test("Matches when the forced values are equal")
+  func forcedEqual() {
+    #expect(
+      !settings.differsFromManaged(
+        in: [
+          "forced.apiURL": "wss://api.a.example.com", "forced.accountSlug": "acme",
+        ], profileIsManaged: false))
+  }
+
+  @Test("Differs when the forced API URL is different")
+  func forcedApiURLDiffers() {
+    #expect(
+      settings.differsFromManaged(
+        in: ["forced.apiURL": "wss://api.b.example.com"], profileIsManaged: false))
+  }
+
+  @Test("Differs when the forced account slug is different")
+  func forcedAccountSlugDiffers() {
+    #expect(
+      settings.differsFromManaged(in: ["forced.accountSlug": "other"], profileIsManaged: false))
+  }
+
+  @Test("Matches the unmanaged settings of a profile the user owns")
+  func unmanagedProfile() {
+    #expect(
+      !settings.differsFromManaged(
+        in: ["apiURL": "wss://api.b.example.com", "accountSlug": "other"],
+        profileIsManaged: false))
+  }
+
+  @Test("Differs when a managed profile sets another API URL")
+  func managedProfileApiURLDiffers() {
+    #expect(
+      settings.differsFromManaged(
+        in: ["apiURL": "wss://api.b.example.com", "accountSlug": "acme"],
+        profileIsManaged: true))
+  }
+
+  @Test("Differs when a managed profile leaves the API URL at the default")
+  func managedProfileDefaultApiURLDiffers() {
+    #expect(settings.differsFromManaged(in: ["accountSlug": "acme"], profileIsManaged: true))
+  }
+
+  @Test("Matches a managed profile with the same settings")
+  func managedProfileEqual() {
+    #expect(
+      !settings.differsFromManaged(
+        in: ["apiURL": "wss://api.a.example.com", "accountSlug": "acme"],
+        profileIsManaged: true))
+  }
+}
