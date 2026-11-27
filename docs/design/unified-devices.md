@@ -639,12 +639,18 @@ reported `firezone_id`.
   Keystore or StrongBox on Android. Where none is available (containers,
   VMs without a vTPM, older Macs), a software key in the state directory or
   keychain. A platform can ship with a software key first and move to its
-  hardware store later without a protocol change. A device that cannot
-  write its state directory (an ephemeral container), or that sets
-  `FIREZONE_KEY_STORAGE=memory`, keeps a random key in memory only and
-  enrolls again at every start. The portal records `hardware`, `software`
-  or `memory`, and the admin UI does not show it until hardware
-  attestation proves it.
+  hardware store later without a protocol change. The portal does not
+  record where the key is kept; hardware attestation brings its own proof
+  later.
+- **Ephemeral devices** keep a random key in memory only and enroll again
+  at every start. A device is ephemeral when it cannot write its state
+  directory, or when `FIREZONE_ID` is set (its identity is then its
+  configuration, which covers CI runners whose disk is wiped between
+  jobs). `FIREZONE_EPHEMERAL=true` or `false` overrides both. The portal
+  stores this as `ephemeral` on the row. The device reports it and the
+  portal cannot check it, so it never grants access: it only lets a later
+  enrollment take the row over (claim rules), and only the row's own
+  enrollment can set it.
 - **No certificate list.** The device row stores the SHA-256 of the
   device's public key. A certificate is valid only while its key matches
   the row, so deleting the device or resetting its identity ends every
@@ -707,11 +713,11 @@ firezone_id_exempt`, so keyed rows can share an id.
 - The key belongs to the machine, not to the user, so everyone who signs in
   on that machine uses the same key and row.
 - A row that already has a key cannot be claimed again. Only the old key
-  (renewal) or an admin reset can replace it. The one exception is a
-  `memory` row: an enrollment with a `memory` key takes over a `memory` row
-  with the same `firezone_id` in the same scope (as above) when that row is
-  offline. If the row is online, the enrollment gets 409 and retries. A
-  `memory` row never proved more than its token, so this is no weaker.
+  (renewal) or an admin reset can replace it. The one exception is an
+  ephemeral row: an ephemeral enrollment takes over an ephemeral row with
+  the same `firezone_id` in the same scope (as above) when that row is
+  offline. If the row is online, the enrollment gets 409 and retries. An
+  ephemeral row never proved more than its token, so this is no weaker.
 - One live connection per row with a key, for Clients and Gateways alike.
   The first connection wins and the second gets 409; this covers a copy
   with the same key and a reconnect while the old socket still looks live.
@@ -761,15 +767,14 @@ without one on the same terms as the legacy sockets.
   Infra first: a Key Vault Standard per region and the "Key Vault Crypto
   Officer" role for the portal identity.
 - I.3 Turn off `/device/v1` until the unified binary ships.
-- I.4 Device key columns on `devices`: key hash, key storage (`hardware`,
-  `software` or `memory`), the Gateway `firezone_id` index limited to rows
-  without a key,
+- I.4 Device key columns on `devices`: key hash, `ephemeral`, the Gateway
+  `firezone_id` index limited to rows without a key,
   `enrolled_by_actor_id` (the actor whose token made the latest enrollment;
   set to NULL when that actor is deleted) and `enrolled_at`. Enrollment and
   re-enrollment set both; renewal does not. It is a record only: access
   stays in `device_actors`. The device panel shows "Enrolled by" behind the
   unified devices flag.
-- I.5 `POST /device/enroll` with the claim rules (including the `memory`
+- I.5 `POST /device/enroll` with the claim rules (including the ephemeral
   takeover), and renewal on the mTLS host. A Key Vault 429 goes back to
   the device as 429, with no retries.
 - I.6 Certificate lookup on `/client` and `/gateway`, on the mTLS host. The
@@ -790,8 +795,9 @@ Rust and the apps:
 - I.9 Software key, CSR, enroll and renewal in the shared client and Gateway
   code, and the certificate in the connect handshake. Renewal at a random
   point of the lifetime, exponential backoff with jitter on 429, and the
-  working certificate kept until the new one is stored. A `memory` key when
-  the state directory is not writable or `FIREZONE_KEY_STORAGE=memory`.
+  working certificate kept until the new one is stored. Ephemeral mode
+  (in-memory key) when the state directory is not writable or
+  `FIREZONE_ID` is set, with `FIREZONE_EPHEMERAL` to override.
 - I.10 Gateway release with identity.
 - I.10b Remove `firezone_id_exempt` once every exempt row has a key or is
   deleted (17 `firezone_id` groups on 2026-11-27, 4 with all clones
