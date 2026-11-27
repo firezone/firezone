@@ -608,10 +608,25 @@ reported `firezone_id`.
   Standard: software-protected, not exportable, and every signature is made
   in Key Vault with the portal's managed identity.
   A new account gets its CA from a background job; a periodic job queues the same job for every account without a CA. Without Key Vault (on-prem, dev and test) each account has its own P-256 key in the database. A customer that needs a FIPS 140
-  Level 3 key gets a new CA with an `EC-HSM` P-256 key in a Premium vault later;
-  during that change the portal accepts both CAs.
-- **Certificates live 90 days.** The device renews at about day 60 with its
-  current certificate.
+  Level 3 key gets a new CA with an `EC-HSM` P-256 key in a Premium vault later,
+  as a rotation. The CA certificate is valid for 20 years.
+- **Certificates live 90 days.** The device renews at a random point
+  between 55% and 70% of the lifetime with its current certificate, so
+  devices that enrolled together do not renew together.
+- **Rotation is internal.** Admins never see it. Firezone ops replaces an
+  account's CA in place: a new key and certificate on the same row, and the
+  old Key Vault key version is disabled. There is no overlap. The portal
+  refuses the old certificates, and each device re-enrolls with its token
+  (case 3 below) at its next connect. Routine rotation disconnects nothing,
+  so the re-enrollments spread over the next day (Azure ends every
+  WebSocket within 24 hours). An emergency rotation also disconnects every
+  device in the account; then all of them re-enroll at once.
+- **Signing is throttled by Key Vault**, per vault and region: about 400
+  signatures a second for software keys, 2 key creations a second. When
+  Key Vault answers 429, the portal answers 429 to the device at once (no
+  retries in the portal). The device backs off exponentially from 1 second
+  to 5 minutes with jitter. It never drops a working certificate until it
+  has stored the new one.
 - **The mTLS host is the device trust host** (`mtls_external_url`). Phoenix
   ends the TLS handshake there.
 - **Key storage:** the key belongs to the machine, not to a user. TPM 2.0 on
@@ -645,7 +660,8 @@ certificate. A device calls it only in these cases:
    thirds of the lifetime. The current certificate authenticates it, so no
    token or sign-in is needed.
 3. Re-enrollment: the portal refused its certificate (the device was
-   deleted, an admin reset its identity, or the certificate expired).
+   deleted, an admin reset its identity, its CA was rotated, or the
+   certificate expired).
 
 **Managed devices.** A device uses its MDM identity when it has one (on
 Apple, the `identityReference` of the managed VPN profile, which the client
@@ -729,17 +745,24 @@ without one on the same terms as the legacy sockets.
 - I.3 Turn off `/device/v1` until the unified binary ships.
 - I.4 Device key columns: key hash and key storage on `devices`.
 - I.5 `POST /device/enroll` with the claim rules, and renewal on the mTLS
-  host.
+  host. A Key Vault 429 goes back to the device as 429, with no retries.
 - I.6 Certificate lookup on `/client` and `/gateway`, on the mTLS host. The
   `firezone_id` lookup skips rows with a key.
 - I.7 Reset identity on the device panel, and the key cleared when a device
   is deleted.
+- I.7b Internal CA rotation, ops only (in `portal-ops`): rotate one
+  account, rotate every account as paced jobs (key creation is the limit),
+  and the emergency variant that also disconnects the account's devices.
+  Do not rotate just before a deploy: a deploy reconnects every device at
+  once.
 - I.8 The CA qualifier on "Require attestation".
 
 Rust and the apps:
 
 - I.9 Software key, CSR, enroll and renewal in the shared client and Gateway
-  code, and the certificate in the connect handshake.
+  code, and the certificate in the connect handshake. Renewal at a random
+  point of the lifetime, exponential backoff with jitter on 429, and the
+  working certificate kept until the new one is stored.
 - I.10 Gateway release with identity.
 - I.11 Client releases with identity: Apple (the device trust signing path
   through Swift already exists), Android, Windows and Linux GUI, headless.
