@@ -341,7 +341,7 @@ where
                 .agent
                 .remote_candidates()
                 .filter(|candidate| candidate.addr() == remote)
-                .collect::<Vec<_>>();
+                .collect::<SmallVec<[_; 2]>>();
 
             for candidate in candidates {
                 c.remove_remote_candidate(cid, candidate, now);
