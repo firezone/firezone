@@ -28,12 +28,21 @@ where
     Fut: Future,
     Fut::Output: Send + 'static,
 {
-    let runtime = build_runtime()?;
     let (output_tx, output_rx) = oneshot::channel();
+    let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
     std::thread::Builder::new()
         .name(name.to_owned())
         .spawn(move || {
+            let runtime = match build_runtime() {
+                Ok(runtime) => runtime,
+                Err(e) => {
+                    let _ = startup_tx.send(Err(e));
+                    return;
+                }
+            };
+            let _ = startup_tx.send(Ok(()));
+
             let output = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 runtime.block_on(async move { make_future().await })
             }))
@@ -41,6 +50,10 @@ where
 
             let _ = output_tx.send(output);
         })?;
+
+    startup_rx
+        .recv()
+        .map_err(|_| io::Error::other("Thread exited before creating its runtime"))??;
 
     Ok(ThreadOutput {
         name: name.to_owned(),
