@@ -65,7 +65,7 @@ Actor ──< DeviceActor >── Device ──< SiteDevice >── Site ──<
                                member criteria instead of a site)
 ```
 
-**Device** is the machine, keyed by `firezone_id` or, for MDM-attested
+**Device** is the machine, keyed by `firezone_id` or, for MDM-managed
 devices, by certificate issuer and serial, in both cases without an actor in
 the key.
 
@@ -338,7 +338,8 @@ Accounts | Logs | Settings. Settings is unchanged.
 
 **Devices** lists every device. Columns: device (name, slug), users (actors
 seen; the token's service account for infrastructure), "Routes for" (site
-chips), status, platform and version, trust (attested, verified), last seen.
+chips), status, platform and version, trust (managed, enrolled, verified, and
+attested after I.12), last seen.
 Filters for "routes for a site" and "has users". The label is "Routes for",
 not "Serves": the verb matches the `route_resources` capability, and a bare
 "Routes" would read as a list of prefixes.
@@ -642,6 +643,19 @@ reported `firezone_id`.
   hardware store later without a protocol change. The portal does not
   record where the key is kept; hardware attestation brings its own proof
   later.
+- **Words.** This feature uses three terms, everywhere:
+  - _Enrolled_: the device holds a certificate from the account's Firezone
+    device CA. It proves the device is the one that enrolled, and nothing
+    about where its key is kept.
+  - _Managed_: the device connects with a certificate under a customer
+    trust anchor (MDM).
+  - _Attested_: hardware key attestation proves the key lives in a TPM,
+    Secure Enclave or StrongBox (I.12). Nothing is attested before I.12.
+
+  Existing code keeps its names for the MDM case (the `device_attested`
+  condition, the `last_attested_*` columns); new code and product copy use
+  these terms.
+
 - **Ephemeral devices** keep a random key in memory only and enroll again
   at every start. A device is ephemeral when it cannot write its state
   directory, or when `FIREZONE_ID` is set (its identity is then its
@@ -698,9 +712,9 @@ carries one client certificate, so it shows only one of them.
   same random point. When the MDM certificate is removed or the device leaves
   management, the client falls back to the Firezone certificate and lands
   on the same row.
-- "Require attestation" holds only while the device connects with a valid
-  MDM certificate. On the Firezone fallback it is the same device, but not
-  attested.
+- The managed condition (today "Require attestation") holds only while the
+  device connects with a valid MDM certificate. On the Firezone fallback it
+  is the same device, enrolled but not managed.
 - An MDM identity is used only when its certificate carries an MDM device
   id. Without one, the portal can find the row only by issuer and serial,
   and every MDM renewal would make a new row, so the device keeps its
@@ -762,9 +776,10 @@ portal finds them by `firezone_id` among rows without a key, and for a
 Gateway only in its own Site. An operator who mounts a volume can turn
 enrollment on.
 
-**Policies.** The "Require attestation" condition gets a CA qualifier, so a
-policy can require the portal CA (the device is the one that enrolled) or a
-customer trust anchor (MDM, as today).
+**Policies.** The device trust condition gets options: "Managed device"
+(a customer trust anchor, today's "Require attestation"), "Enrolled device"
+(the Firezone device CA), and after I.12 "Attested device" (a hardware key
+proven by hardware attestation).
 
 **`/device/v1` until the unification.** It is on `main` but no release uses
 it. It is turned off until the unified binary ships. Then it requires a
@@ -811,7 +826,8 @@ without one on the same terms as the legacy sockets.
   and the emergency variant that also disconnects the account's devices.
   Do not rotate just before a deploy: a deploy reconnects every device at
   once.
-- I.8 The CA qualifier on "Require attestation".
+- I.8 The "Managed device" and "Enrolled device" options on the device
+  trust condition.
 
 Rust and the apps:
 
@@ -828,7 +844,9 @@ Rust and the apps:
   get 409 until they upgrade. Then drop the flag from the index.
 - I.11 Client releases with identity, 1.6.0: Apple (the device trust signing path
   through Swift already exists), Android, Windows and Linux GUI, headless.
-- I.12 Hardware keys per platform, one release each.
+- I.12 Hardware keys per platform, one release each, with hardware key
+  attestation checked when the device gets its certificate. Only then is a
+  device attested, and the "Attested device" option appears.
 
 **Open.**
 
