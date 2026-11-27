@@ -1856,32 +1856,32 @@ where
             }
         }
 
-        // Plaintext payloads (probes) need encapsulation; ciphertext
-        // goes straight to the wire.
-        while let Some(outgoing) = self.agent.poll_frostlink_transmit() {
-            let pt = match outgoing {
-                frostlink::Outgoing::ProbeReply(pt)
-                | frostlink::Outgoing::HandshakeResponse(pt) => pt,
-                frostlink::Outgoing::ProbeRequest(pt)
-                | frostlink::Outgoing::HandshakeInitiation(pt)
-                | frostlink::Outgoing::Keepalive(pt) => {
+        // Probes need encapsulation; WireGuard messages go straight to the wire.
+        while let Some(pt) = self.agent.poll_frostlink_transmit() {
+            match pt.payload {
+                frostlink::Payload::ProbeReply(_) | frostlink::Payload::HandshakeResponse(_) => {}
+                frostlink::Payload::ProbeRequest(_)
+                | frostlink::Payload::HandshakeInitiation(_)
+                | frostlink::Payload::Keepalive(_) => {
                     if self.contested.contains(&pt.remote) {
                         continue;
                     }
-
-                    pt
                 }
-            };
+            }
+
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             match pt.payload {
-                frostlink::Payload::Ciphertext(ref bytes) => {
+                frostlink::Payload::HandshakeInitiation(ref bytes)
+                | frostlink::Payload::HandshakeResponse(ref bytes)
+                | frostlink::Payload::Keepalive(ref bytes) => {
                     if let Some(transmit) =
                         make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
                     {
                         transmits.push_back(transmit);
                     }
                 }
-                frostlink::Payload::Plaintext(ref ip) => {
+                frostlink::Payload::ProbeRequest(ref ip)
+                | frostlink::Payload::ProbeReply(ref ip) => {
                     if let Ok(Some(batch)) =
                         self.encapsulate(cid, peer_socket, ip, now, allocations)
                         && let Ok(transmit) = batch.encrypt_single(ip)

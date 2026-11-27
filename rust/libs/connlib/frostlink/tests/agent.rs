@@ -11,8 +11,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use frostlink::{
-    Agent, Candidate, CandidateKind, Event, Outgoing, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST,
-    PROBE_SRC, Payload, Probe, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
+    Agent, Candidate, CandidateKind, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC,
+    Payload, Probe, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
 use ip_packet::{Icmpv6Type, IpPacket};
 use zeroize::Zeroizing;
@@ -29,7 +29,7 @@ fn outbound_handshake_init_fans_out_on_every_relay_pair() {
 
     let transmits = a.transmits();
     assert_eq!(transmits.len(), 3, "one per relay-involving pair");
-    let payload = Payload::Ciphertext(init);
+    let payload = Payload::HandshakeInitiation(init);
     for t in &transmits {
         assert_eq!(t.payload, payload);
     }
@@ -109,7 +109,7 @@ fn a_wireguard_reinit_refans_once_without_re_arming_the_ladder() {
         "the re-init fans out once per relay pair"
     );
     for tr in &transmits {
-        assert_eq!(tr.payload, Payload::Ciphertext(reinit.clone()));
+        assert_eq!(tr.payload, Payload::HandshakeInitiation(reinit.clone()));
     }
     assert_eq!(
         a.poll_timeout(),
@@ -144,7 +144,7 @@ fn inbound_handshake_response_stops_the_fanout() {
         later
             .transmits
             .iter()
-            .all(|(_, t)| matches!(t.payload, Payload::Plaintext(_))),
+            .all(|(_, t)| matches!(t.payload, Payload::ProbeRequest(_) | Payload::ProbeReply(_))),
         "after establishment nothing re-handshakes; only probes go out",
     );
 }
@@ -170,7 +170,7 @@ fn an_inbound_init_keeps_the_fanout_until_the_session_is_confirmed() {
     let _ = a.transmits();
 
     let fanout = a.tick(now);
-    let init = Payload::Ciphertext(init);
+    let init = Payload::HandshakeInitiation(init);
     assert_eq!(
         fanout.iter().filter(|t| t.payload == init).count(),
         3,
@@ -315,7 +315,7 @@ fn the_confirming_keepalive_goes_back_on_the_responses_path() {
     let keepalives = a
         .transmits()
         .into_iter()
-        .filter(|t| matches!(t.payload, Payload::Ciphertext(_)))
+        .filter(|t| matches!(t.payload, Payload::Keepalive(_)))
         .map(|t| (t.local, t.remote))
         .collect::<Vec<_>>();
     assert_eq!(keepalives, vec![(addr(2), addr(4))]);
@@ -741,7 +741,7 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
         recovery
             .transmits
             .iter()
-            .all(|(_, t)| matches!(t.payload, Payload::Plaintext(_))),
+            .all(|(_, t)| matches!(t.payload, Payload::ProbeRequest(_) | Payload::ProbeReply(_))),
         "recovery needs no handshake traffic",
     );
 }
@@ -965,9 +965,9 @@ fn parse_probe(packet: &IpPacket) -> Option<ProbeFields> {
 fn extract_probe_for(transmits: &[Transmit], pair: Pair) -> ProbeFields {
     let t = transmits
         .iter()
-        .find(|t| (t.local, t.remote) == pair && matches!(t.payload, Payload::Plaintext(_)))
+        .find(|t| (t.local, t.remote) == pair && matches!(t.payload, Payload::ProbeRequest(_)))
         .unwrap_or_else(|| panic!("no probe transmit for {pair:?}"));
-    let Payload::Plaintext(ref packet) = t.payload else {
+    let Payload::ProbeRequest(ref packet) = t.payload else {
         unreachable!()
     };
     parse_probe(packet).expect("parses as probe")
@@ -996,8 +996,10 @@ impl Activity {
             .iter()
             .filter(|(_, t)| (t.local, t.remote) == pair)
             .filter_map(|(_, t)| match &t.payload {
-                Payload::Plaintext(packet) => parse_probe(packet),
-                Payload::Ciphertext(_) => None,
+                Payload::ProbeRequest(packet) | Payload::ProbeReply(packet) => parse_probe(packet),
+                Payload::HandshakeInitiation(_)
+                | Payload::HandshakeResponse(_)
+                | Payload::Keepalive(_) => None,
             })
             .filter(|p| p.kind == EchoKind::Request)
             .collect()
@@ -1047,9 +1049,7 @@ impl AgentExt for Agent {
     }
 
     fn transmits(&mut self) -> Vec<Transmit> {
-        std::iter::from_fn(|| self.poll_transmit())
-            .map(Outgoing::into_transmit)
-            .collect()
+        std::iter::from_fn(|| self.poll_transmit()).collect()
     }
 
     fn drain_events(&mut self) {

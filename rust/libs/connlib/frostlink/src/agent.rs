@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
 use crate::candidate::{Candidate, CandidateKind};
-use crate::event::{Event, Outgoing, Payload, Transmit};
+use crate::event::{Event, Payload, Transmit};
 use crate::icmpv6::Probe;
 use crate::retransmit::PairRetransmit;
 use crate::score::{PairScore, pair_score};
@@ -38,7 +38,7 @@ pub struct Agent {
     responder_dedup: Option<ResponderDedup>,
     forwarded_response: Option<Vec<u8>>,
 
-    pending_transmits: VecDeque<Outgoing>,
+    pending_transmits: VecDeque<Transmit>,
     /// The most recent `now` we saw; [`Self::poll_timeout`] returns it while
     /// transmits or events are queued so the driver drains them without delay.
     last_now: Option<Instant>,
@@ -482,12 +482,11 @@ impl Agent {
         self.unanswered_rekeys = self.unanswered_rekeys.saturating_add(1);
 
         if let Some((local, remote)) = self.primary {
-            self.pending_transmits
-                .push_back(Outgoing::HandshakeInitiation(Transmit {
-                    local,
-                    remote,
-                    payload: Payload::Ciphertext(init),
-                }));
+            self.pending_transmits.push_back(Transmit {
+                local,
+                remote,
+                payload: Payload::HandshakeInitiation(init),
+            });
         }
 
         // The second unanswered re-key is WireGuard telling us the path
@@ -526,12 +525,11 @@ impl Agent {
 
                 tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
 
-                self.pending_transmits
-                    .push_back(Outgoing::HandshakeResponse(Transmit {
-                        local: path.0,
-                        remote: path.1,
-                        payload: Payload::Ciphertext(response),
-                    }));
+                self.pending_transmits.push_back(Transmit {
+                    local: path.0,
+                    remote: path.1,
+                    payload: Payload::HandshakeResponse(response),
+                });
 
                 return Ok(());
             }
@@ -577,12 +575,11 @@ impl Agent {
             response_bytes: response.clone(),
             cached_at: now,
         });
-        self.pending_transmits
-            .push_back(Outgoing::HandshakeResponse(Transmit {
-                local: path.0,
-                remote: path.1,
-                payload: Payload::Ciphertext(response),
-            }));
+        self.pending_transmits.push_back(Transmit {
+            local: path.0,
+            remote: path.1,
+            payload: Payload::HandshakeResponse(response),
+        });
 
         Ok(())
     }
@@ -620,12 +617,11 @@ impl Agent {
         // adopt as a (tier-ranked) preliminary primary before probing.
         self.promote_from_handshake(path);
 
-        self.pending_transmits
-            .push_back(Outgoing::Keepalive(Transmit {
-                local: path.0,
-                remote: path.1,
-                payload: Payload::Ciphertext(keepalive),
-            }));
+        self.pending_transmits.push_back(Transmit {
+            local: path.0,
+            remote: path.1,
+            payload: Payload::Keepalive(keepalive),
+        });
 
         Ok(())
     }
@@ -644,7 +640,7 @@ impl Agent {
         Some(d.response_bytes.clone())
     }
 
-    pub fn poll_transmit(&mut self) -> Option<Outgoing> {
+    pub fn poll_transmit(&mut self) -> Option<Transmit> {
         self.pending_transmits.pop_front()
     }
 
@@ -667,14 +663,13 @@ impl Agent {
             crate::icmpv6::Echo::Request => {
                 tracing::trace!(local = %pair.0, remote = %pair.1, seq = probe.seq, "Probe request received");
 
-                self.pending_transmits
-                    .push_back(Outgoing::ProbeReply(Transmit {
-                        local: pair.0,
-                        remote: pair.1,
-                        payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_reply(
-                            probe.id, probe.seq,
-                        ))),
-                    }));
+                self.pending_transmits.push_back(Transmit {
+                    local: pair.0,
+                    remote: pair.1,
+                    payload: Payload::ProbeReply(Box::new(crate::icmpv6::build_echo_reply(
+                        probe.id, probe.seq,
+                    ))),
+                });
 
                 self.register_peer_reflexive(pair, now);
 
@@ -832,11 +827,11 @@ impl Agent {
         for (local, remote) in unfanned {
             tracing::debug!(%local, %remote, "Fanning out HandshakeInit on relay pair");
 
-            pending.push_back(Outgoing::HandshakeInitiation(Transmit {
+            pending.push_back(Transmit {
                 local,
                 remote,
-                payload: Payload::Ciphertext(outbound.bytes.clone()),
-            }));
+                payload: Payload::HandshakeInitiation(outbound.bytes.clone()),
+            });
             outbound.fanned.insert((local, remote));
             // Arm the one-time fast head the first time we send to this pair; a
             // pair already laddered keeps its (spent) entry, so a re-init does
@@ -854,11 +849,11 @@ impl Agent {
             if now >= fire_at {
                 tracing::trace!(%local, %remote, step = state.step, "WG init retransmit");
 
-                pending.push_back(Outgoing::HandshakeInitiation(Transmit {
+                pending.push_back(Transmit {
                     local: *local,
                     remote: *remote,
-                    payload: Payload::Ciphertext(outbound.bytes.clone()),
-                }));
+                    payload: Payload::HandshakeInitiation(outbound.bytes.clone()),
+                });
 
                 state.advance(now);
             }
@@ -895,13 +890,13 @@ impl Agent {
 
             tracing::trace!(%local, %remote, seq, "Probe send");
 
-            pending.push_back(Outgoing::ProbeRequest(Transmit {
+            pending.push_back(Transmit {
                 local: *local,
                 remote: *remote,
-                payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_request(
+                payload: Payload::ProbeRequest(Box::new(crate::icmpv6::build_echo_request(
                     state.id, seq,
                 ))),
-            }));
+            });
 
             // Within the discovery budget — or while we have no path at all —
             // keep the fast burst-then-interval cadence.

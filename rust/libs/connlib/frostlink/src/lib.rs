@@ -62,5 +62,5 @@ pub use agent::{
     REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
 };
 pub use candidate::{Address, Candidate, CandidateKind, ParseCandidateError};
-pub use event::{Event, Outgoing, Payload, Transmit};
+pub use event::{Event, Payload, Transmit};
 pub use icmpv6::{PROBE_DST, PROBE_SRC, Probe};

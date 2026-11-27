@@ -8,33 +8,15 @@ pub struct Transmit {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Outgoing {
-    ProbeRequest(Transmit),
-    ProbeReply(Transmit),
-    /// A re-key on the primary, or the bootstrap fan-out over the relay pairs.
-    HandshakeInitiation(Transmit),
-    /// Answers a handshake initiation, also when replayed from the cache.
-    HandshakeResponse(Transmit),
-    /// Confirms a handshake response on the path it arrived on.
-    Keepalive(Transmit),
-}
-
-impl Outgoing {
-    pub fn into_transmit(self) -> Transmit {
-        match self {
-            Outgoing::ProbeRequest(t)
-            | Outgoing::ProbeReply(t)
-            | Outgoing::HandshakeInitiation(t)
-            | Outgoing::HandshakeResponse(t)
-            | Outgoing::Keepalive(t) => t,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
-    Ciphertext(sanstun::Datagram),
-    Plaintext(Box<ip_packet::IpPacket>),
+    ProbeRequest(Box<ip_packet::IpPacket>),
+    ProbeReply(Box<ip_packet::IpPacket>),
+    /// A re-key on the primary, or the bootstrap fan-out over the relay pairs.
+    HandshakeInitiation(sanstun::Datagram),
+    /// Answers a handshake initiation, also when replayed from the cache.
+    HandshakeResponse(sanstun::Datagram),
+    /// Confirms a handshake response on the path it arrived on.
+    Keepalive(sanstun::Datagram),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
