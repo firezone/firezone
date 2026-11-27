@@ -639,9 +639,12 @@ reported `firezone_id`.
   Keystore or StrongBox on Android. Where none is available (containers,
   VMs without a vTPM, older Macs), a software key in the state directory or
   keychain. A platform can ship with a software key first and move to its
-  hardware store later without a protocol change. The portal records
-  `hardware` or `software`, and the admin UI does not show it until
-  hardware attestation proves it.
+  hardware store later without a protocol change. A device that cannot
+  write its state directory (an ephemeral container), or that sets
+  `FIREZONE_KEY_STORAGE=memory`, keeps a random key in memory only and
+  enrolls again at every start. The portal records `hardware`, `software`
+  or `memory`, and the admin UI does not show it until hardware
+  attestation proves it.
 - **No certificate list.** The device row stores the SHA-256 of the
   device's public key. A certificate is valid only while its key matches
   the row, so deleting the device or resetting its identity ends every
@@ -692,14 +695,26 @@ to enroll with a `firezone_id` wins:
 
 - The key claims the row with the reported `firezone_id` that has no key
   yet: for a Gateway on a Site token, only in that Site; for a Gateway on a
-  device-bound token, the bound row. The claim stores the key hash and sets
-  the row's `firezone_id` to NULL, so the id finds nothing after that.
+  device-bound token, the bound row; for a Client, the actor's rows. The
+  claim stores the key hash. The row keeps its `firezone_id` as a label,
+  but the `firezone_id` lookup on connect skips rows with a key, so the id
+  alone never reaches a claimed row.
+- Only rows without a key need a unique `firezone_id`. The Gateway index
+  becomes `type = 'gateway' AND key_hash IS NULL AND NOT
+firezone_id_exempt`, so keyed rows can share an id.
 - A later enrollment with the same `firezone_id` gets a new row. This covers
   the Gateway clones that share an id across Sites.
 - The key belongs to the machine, not to the user, so everyone who signs in
   on that machine uses the same key and row.
 - A row that already has a key cannot be claimed again. Only the old key
-  (renewal) or an admin reset can replace it.
+  (renewal) or an admin reset can replace it. The one exception is a
+  `memory` row: an enrollment with a `memory` key takes over a `memory` row
+  with the same `firezone_id` in the same scope (as above) when that row is
+  offline. If the row is online, the enrollment gets 409 and retries. A
+  `memory` row never proved more than its token, so this is no weaker.
+- One live connection per row. The first connection wins and the second
+  gets 409; this covers a copy with the same key and a reconnect while the
+  old socket still looks live.
 - A claim never moves a row between Sites. The legacy move between Sites
   stays only for rows without a key, and goes away with Site tokens.
 - Copies of a machine made after it enrolled (a VM image, a copied state
@@ -743,16 +758,21 @@ without one on the same terms as the legacy sockets.
   Infra first: a Key Vault Standard per region and the "Key Vault Crypto
   Officer" role for the portal identity.
 - I.3 Turn off `/device/v1` until the unified binary ships.
-- I.4 Device key columns on `devices`: key hash, key storage,
+- I.4 Device key columns on `devices`: key hash, key storage (`hardware`,
+  `software` or `memory`), the Gateway `firezone_id` index limited to rows
+  without a key,
   `enrolled_by_actor_id` (the actor whose token made the latest enrollment;
   set to NULL when that actor is deleted) and `enrolled_at`. Enrollment and
   re-enrollment set both; renewal does not. It is a record only: access
   stays in `device_actors`. The device panel shows "Enrolled by" behind the
   unified devices flag.
-- I.5 `POST /device/enroll` with the claim rules, and renewal on the mTLS
-  host. A Key Vault 429 goes back to the device as 429, with no retries.
+- I.5 `POST /device/enroll` with the claim rules (including the `memory`
+  takeover), and renewal on the mTLS host. A Key Vault 429 goes back to
+  the device as 429, with no retries.
 - I.6 Certificate lookup on `/client` and `/gateway`, on the mTLS host. The
-  `firezone_id` lookup skips rows with a key.
+  `firezone_id` lookup skips rows with a key. One live connection per row,
+  first wins, 409 for the second (`device_key_in_use` for a key, so the
+  device can log that a copy uses its identity).
 - I.7 Reset identity on the device panel, and the key cleared when a device
   is deleted.
 - I.7b Internal CA rotation, ops only (in `portal-ops`): rotate one
@@ -767,8 +787,13 @@ Rust and the apps:
 - I.9 Software key, CSR, enroll and renewal in the shared client and Gateway
   code, and the certificate in the connect handshake. Renewal at a random
   point of the lifetime, exponential backoff with jitter on 429, and the
-  working certificate kept until the new one is stored.
+  working certificate kept until the new one is stored. A `memory` key when
+  the state directory is not writable or `FIREZONE_KEY_STORAGE=memory`.
 - I.10 Gateway release with identity.
+- I.10b Remove `firezone_id_exempt` once every exempt row has a key or is
+  deleted (17 `firezone_id` groups on 2026-11-27, 4 with all clones
+  online). Delete exempt rows still without a key by then; those Gateways
+  get 409 until they upgrade. Then drop the flag from the index.
 - I.11 Client releases with identity: Apple (the device trust signing path
   through Swift already exists), Android, Windows and Linux GUI, headless.
 - I.12 Hardware keys per platform, one release each.
