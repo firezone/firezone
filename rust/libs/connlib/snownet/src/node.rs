@@ -24,7 +24,7 @@ use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
-use opentelemetry::metrics::{Gauge, Histogram};
+use opentelemetry::metrics::Histogram;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay_client_proto::channel_data::channel_data_packet_buffer;
@@ -107,7 +107,7 @@ pub struct Node<TId, RId> {
     /// them without delay.
     last_now: Instant,
 
-    connection_count: Gauge<u64>,
+    connection_count: Histogram<u64>,
     next_connection_count: Instant,
     connection_setup_duration: Histogram<f64>,
 
@@ -819,9 +819,7 @@ where
                 }
             }
 
-            // Report the current number of connections per network path. Every bucket is
-            // emitted (including `0`) so that a path draining to zero is not stuck at its
-            // last non-zero value.
+            // Every path is recorded, including `0`, so the distribution covers devices without connections on it.
             for (kind, count) in ConnectionPath::KINDS.into_iter().zip(connections_by_path) {
                 self.connection_count
                     .record(count, &[otel_attributes::connection_socket(kind)]);
