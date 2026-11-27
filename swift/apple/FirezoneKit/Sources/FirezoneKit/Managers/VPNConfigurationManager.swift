@@ -168,7 +168,7 @@ public final class VPNConfigurationManager {
     }
 
     let missingProviderBundleIdentifier = selected.configuration.providerBundleIdentifier == nil
-    let isManaged = missingProviderBundleIdentifier || selected.hasIdentityReference
+    let isManaged = missingProviderBundleIdentifier || selected.configuration.isManagedProfile
 
     Log.info(
       "Loaded the Firezone VPN configuration (managed=\(isManaged), clientCertificate=\(selected.hasIdentityReference))"
@@ -183,6 +183,10 @@ public final class VPNConfigurationManager {
       )
 
       selected.configuration.providerBundleIdentifier = selected.manager.extensionBundleIdentifier
+      // Once repaired, only this marker still shows that the administrator owns the profile.
+      var providerConfiguration = selected.configuration.providerConfiguration ?? [:]
+      providerConfiguration[Configuration.Keys.managedProfile] = "true"
+      selected.configuration.providerConfiguration = providerConfiguration
       selected.manager.protocolConfiguration = selected.configuration
 
       try await selected.manager.saveToPreferences()
@@ -357,5 +361,13 @@ public final class VPNConfigurationManager {
 
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
+  }
+}
+
+extension NETunnelProviderProtocol {
+  /// Whether an administrator installed this configuration, so its settings are theirs.
+  public var isManagedProfile: Bool {
+    identityReference != nil
+      || providerConfiguration?[Configuration.Keys.managedProfile] as? String == "true"
   }
 }

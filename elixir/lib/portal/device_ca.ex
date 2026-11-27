@@ -9,21 +9,22 @@ defmodule Portal.DeviceCA do
   @type new_key :: %{
           key_id: String.t() | nil,
           private_key: binary() | nil,
-          public_key: {:RSAPublicKey, pos_integer(), pos_integer()}
+          public_key: public_key()
         }
+  @type public_key :: {{:ECPoint, binary()}, {:namedCurve, tuple()}}
 
   @doc "Creates the account's key, or a new version of it, and returns it with its public key."
   @callback create_key(account_id :: Ecto.UUID.t()) :: {:ok, new_key()} | {:error, term()}
 
-  @doc "Signs a SHA-256 digest with the key and returns the RSASSA-PKCS1-v1_5 signature."
+  @doc "Signs a SHA-256 digest with the key and returns the DER ECDSA signature."
   @callback sign(key :: key(), digest :: binary()) :: {:ok, binary()} | {:error, term()}
 
   @doc "Deletes the account's key. A key that does not exist is already deleted."
   @callback delete_key(account_id :: Ecto.UUID.t()) :: :ok | {:error, term()}
 
-  @rsa_encryption {1, 2, 840, 113_549, 1, 1, 1}
-  @sha256_with_rsa {:SignatureAlgorithm, {1, 2, 840, 113_549, 1, 1, 11}, :asn1_NOVALUE}
-  @signature_size 256
+  @ec_public_key {1, 2, 840, 10_045, 2, 1}
+  @p256 {:namedCurve, {1, 2, 840, 10_045, 3, 1, 7}}
+  @ecdsa_with_sha256 {:SignatureAlgorithm, {1, 2, 840, 10_045, 4, 3, 2}, :asn1_NOVALUE}
   @common_name {2, 5, 4, 3}
   @organization {2, 5, 4, 10}
   @basic_constraints {2, 5, 29, 19}
@@ -78,27 +79,35 @@ defmodule Portal.DeviceCA do
     end
   end
 
-  defp self_signed_certificate(adapter, account_id, key, public_key) do
+  defp self_signed_certificate(adapter, account_id, key, {{:ECPoint, point}, @p256} = public_key) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     name = ca_name(account_id)
 
     tbs =
-      {:OTPTBSCertificate, :v3, serial_number(), @sha256_with_rsa, name,
+      {:OTPTBSCertificate, :v3, serial_number(), @ecdsa_with_sha256, name,
        {:Validity, x509_time(now), x509_time(DateTime.add(now, @ca_lifetime_days, :day))}, name,
-       {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, @rsa_encryption, :asn1_NOVALUE}, public_key},
+       {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, @ec_public_key, @p256}, {:ECPoint, point}},
        :asn1_NOVALUE, :asn1_NOVALUE,
        [
          {:Extension, @basic_constraints, true, {:BasicConstraints, true, 0}},
          {:Extension, @key_usage, true, [:keyCertSign, :cRLSign]},
-         {:Extension, @subject_key_identifier, false, key_identifier(public_key)}
+         {:Extension, @subject_key_identifier, false, key_identifier(point)}
        ]}
 
-    tbs_der = :public_key.pkix_encode(:OTPTBSCertificate, tbs, :otp)
+    digest = :crypto.hash(:sha256, :public_key.pkix_encode(:OTPTBSCertificate, tbs, :otp))
 
-    with {:ok, <<_::binary-size(@signature_size)>> = signature} <-
-           adapter.sign(key, :crypto.hash(:sha256, tbs_der)) do
-      {:ok, :public_key.pkix_encode(:OTPCertificate, {:OTPCertificate, tbs, @sha256_with_rsa, signature}, :otp)}
+    with {:ok, signature} <- adapter.sign(key, digest),
+         :ok <- verify(digest, signature, public_key) do
+      {:ok, :public_key.pkix_encode(:OTPCertificate, {:OTPCertificate, tbs, @ecdsa_with_sha256, signature}, :otp)}
     end
+  end
+
+  defp self_signed_certificate(_adapter, _account_id, _key, _public_key), do: {:error, :unsupported_key}
+
+  defp verify(digest, signature, public_key) do
+    if :public_key.verify({:digest, digest}, :sha256, signature, public_key),
+      do: :ok,
+      else: {:error, :bad_signature}
   end
 
   defp ca_name(account_id) do
@@ -117,8 +126,7 @@ defmodule Portal.DeviceCA do
     do: {:generalTime, datetime |> Calendar.strftime("%Y%m%d%H%M%SZ") |> String.to_charlist()}
 
   # RFC 7093 method 1: the leftmost 160 bits of the SHA-256 of the public key.
-  defp key_identifier(public_key),
-    do: binary_part(:crypto.hash(:sha256, :public_key.der_encode(:RSAPublicKey, public_key)), 0, 20)
+  defp key_identifier(point), do: binary_part(:crypto.hash(:sha256, point), 0, 20)
 
   # Positive and within the 20 octets RFC 5280 allows.
   defp serial_number, do: :binary.decode_unsigned(:crypto.strong_rand_bytes(19)) + 1

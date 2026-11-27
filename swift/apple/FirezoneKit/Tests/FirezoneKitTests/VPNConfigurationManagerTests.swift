@@ -99,6 +99,20 @@ struct VPNConfigurationManagerTests {
         == providerBundleIdentifier)
   }
 
+  @Test("A repaired profile stays managed on the next load")
+  @MainActor
+  func repairedProfileStaysManaged() async throws {
+    let stub = StubTunnelProviderManager(providerBundleIdentifier: nil)
+    _ = try await VPNConfigurationManager.load(using: StubFactory([stub]))
+
+    let reloaded = try #require(await VPNConfigurationManager.load(using: StubFactory([stub])))
+
+    #expect(reloaded.isManaged)
+    #expect(stub.saveCount == 1)
+    #expect(
+      (stub.protocolConfiguration as? NETunnelProviderProtocol)?.isManagedProfile == true)
+  }
+
   @Test("Configurations for another extension are ignored")
   @MainActor
   func otherExtensionsAreIgnored() async throws {

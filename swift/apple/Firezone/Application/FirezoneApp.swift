@@ -175,7 +175,7 @@ extension DeviceTrustValidationError {
   final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let softwareUpdateURL = URL(
       string: "x-apple.systempreferences:com.apple.preferences.softwareupdate"
-    )!  // swiftlint:disable:this force_unwrapping
+    )!
 
     var store: Store?
 

@@ -1,176 +1,126 @@
 use std::{
     future::Future as _,
     pin::Pin,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 
-/// Differences smaller than this are assumed to be clock resolution, sampling jitter or rate
-/// differences between the two clocks rather than time spent suspended.
-const CLOCK_DRIFT_TOLERANCE: Duration = Duration::from_secs(1);
-
-/// How far past its deadline a sample may land before the event loop counts as stalled.
-///
-/// Missing a deadline by this much means we went that long without servicing our sockets, so NAT
-/// bindings, ICE candidates and peer sessions are all suspect. The cause does not matter: a system
-/// suspend, a starved process and an OS that never reported its suspend all look the same here.
-const LATENESS_THRESHOLD: Duration = Duration::from_secs(30);
-
-/// What the event loop has to react to, in the order [`Clock::poll_event`] reports it.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Event {
-    /// The latest sample landed this far past the deadline set via [`Clock::set_alarm`].
-    Late(Duration),
-    /// The deadline set via [`Clock::set_alarm`] has passed, as observed at this instant.
-    Alarm(Instant),
+pub struct Alarm {
+    /// The current time when the deadline was observed.
+    pub now: Instant,
+    /// Time the alarm was overdue. Zero if the deadline was already due when armed.
+    pub late_by: Duration,
+}
+
+enum ArmedAlarm {
+    Immediate,
+    Scheduled { deadline: Instant },
 }
 
 /// A monotonic clock that also advances while the system is suspended.
 ///
-/// [`Instant`] does not consistently include time spent suspended across supported platforms.
-/// This clock retains [`Instant`] as its clock domain and adds any elapsed time observed by the
-/// operating system's suspend-inclusive monotonic clock but not by [`Instant`].
+/// All timestamps are in this clock's domain. Tokio's timer requests a poll, and
+/// the suspend-inclusive clock determines when the deadline is due.
 pub struct Clock {
-    last_monotonic: Instant,
-    last_suspend_inclusive: Duration,
-    suspend_offset: Duration,
-    /// The deadline the event loop asked to be woken at, in this clock's domain.
-    alarm_at: Option<Instant>,
-    /// The same deadline as a raw [`Instant`], which is what the timer runs on.
-    raw_alarm_at: Option<Instant>,
-    alarm: Option<Pin<Box<tokio::time::Sleep>>>,
-    lateness: Option<Duration>,
-}
-
-impl Clock {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Returns a monotonic timestamp that includes time spent suspended.
-    pub fn now(&mut self) -> Instant {
-        self.sample(Instant::now(), suspend_inclusive_now())
-    }
-
-    /// Arms the alarm for `deadline`, which is in this clock's domain, and registers interest in
-    /// it so that `cx` is woken once it rings.
-    ///
-    /// Poll for events before calling this. Re-arming replaces the deadline, so a deadline that
-    /// has just passed is lost unless it has been observed first, and the caller then never hears
-    /// the alarm it asked for.
-    ///
-    /// Time spent suspended before the next sample counts towards the overshoot reported as
-    /// [`Event::Late`]: it is time we did not service our sockets.
-    pub fn set_alarm(&mut self, cx: &mut Context<'_>, deadline: Option<Instant>) {
-        let Some(deadline) = deadline else {
-            self.alarm_at = None;
-            self.raw_alarm_at = None;
-            self.alarm = None;
-
-            return;
-        };
-
-        let raw_now = Instant::now();
-        let now = raw_now.checked_add(self.suspend_offset).unwrap_or(raw_now);
-
-        // A deadline we are already past means the caller has work waiting, not that we mean to
-        // sleep. Measuring an overshoot against it would report how stale the deadline is rather
-        // than how late we ran.
-        self.alarm_at = (deadline > now).then_some(deadline);
-        self.raw_alarm_at = Some(raw_now + deadline.saturating_duration_since(now));
-
-        // A deadline that is already due leaves nothing to wake us, so ask to be polled again.
-        if self.poll_alarm(cx).is_ready() {
-            cx.waker().wake_by_ref();
-        }
-    }
-
-    /// Reports each [`Event`] once.
-    ///
-    /// The alarm rings once per [`Clock::set_alarm`] and is quiet until re-armed, so a caller that
-    /// polls after every wake-up runs its timeout handling exactly once per deadline.
-    pub fn poll_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
-        if let Some(by) = self.lateness.take() {
-            return Poll::Ready(Event::Late(by));
-        }
-
-        ready!(self.poll_alarm(cx));
-        self.raw_alarm_at = None;
-
-        Poll::Ready(Event::Alarm(self.now()))
-    }
-
-    fn poll_alarm(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        let Some(target) = self.raw_alarm_at else {
-            return Poll::Pending;
-        };
-        let target = tokio::time::Instant::from_std(target);
-
-        let alarm = self
-            .alarm
-            .get_or_insert_with(|| Box::pin(tokio::time::sleep_until(target)));
-
-        if alarm.deadline() != target {
-            alarm.as_mut().reset(target);
-        }
-
-        alarm.as_mut().poll(cx)
-    }
-
-    fn sample(&mut self, monotonic: Instant, suspend_inclusive: Duration) -> Instant {
-        let monotonic_elapsed = monotonic.saturating_duration_since(self.last_monotonic);
-        let suspend_inclusive_elapsed =
-            suspend_inclusive.saturating_sub(self.last_suspend_inclusive);
-
-        self.last_monotonic = monotonic;
-        self.last_suspend_inclusive = suspend_inclusive;
-
-        let missing = suspend_inclusive_elapsed.saturating_sub(monotonic_elapsed);
-
-        if missing >= CLOCK_DRIFT_TOLERANCE {
-            let offset = self.suspend_offset.saturating_add(missing);
-
-            if monotonic.checked_add(offset).is_some() {
-                self.suspend_offset = offset;
-                tracing::debug!(
-                    advanced_by = ?missing,
-                    total_advance = ?self.suspend_offset,
-                    "Advancing suspend-aware clock after system suspend"
-                );
-            } else {
-                tracing::warn!(
-                    ?missing,
-                    "Unable to advance suspend-aware clock without overflowing"
-                );
-            }
-        }
-
-        let now = monotonic
-            .checked_add(self.suspend_offset)
-            .unwrap_or(monotonic);
-
-        if let Some(due) = self.alarm_at.take() {
-            let late = now.saturating_duration_since(due);
-
-            if late >= LATENESS_THRESHOLD {
-                self.lateness = Some(late);
-            }
-        }
-
-        now
-    }
+    source: Box<dyn Fn() -> Duration + Send>,
+    instant_at_start: Instant,
+    os_clock_at_start: Duration,
+    armed_alarm: Option<ArmedAlarm>,
+    timer: Option<Pin<Box<tokio::time::Sleep>>>,
 }
 
 impl Default for Clock {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clock {
+    pub fn new() -> Self {
+        Self::with_source(suspend_inclusive_now)
+    }
+
+    /// Creates a clock driven by `source`, which returns the time since an
+    /// arbitrary, fixed point, including time spent suspended.
+    fn with_source(source: impl Fn() -> Duration + Send + 'static) -> Self {
         Self {
-            last_monotonic: Instant::now(),
-            last_suspend_inclusive: suspend_inclusive_now(),
-            suspend_offset: Duration::ZERO,
-            alarm_at: None,
-            raw_alarm_at: None,
-            alarm: None,
-            lateness: None,
+            instant_at_start: Instant::now(),
+            os_clock_at_start: source(),
+            source: Box::new(source),
+            armed_alarm: None,
+            timer: None,
+        }
+    }
+
+    pub fn now(&self) -> Instant {
+        let elapsed_since_start = (self.source)().saturating_sub(self.os_clock_at_start);
+
+        self.instant_at_start + elapsed_since_start
+    }
+
+    /// Replaces the alarm and registers the event loop for a wake-up.
+    ///
+    /// Poll for due alarms before replacing the deadline.
+    pub fn set_alarm(&mut self, cx: &mut Context<'_>, deadline: Option<Instant>) {
+        let Some(at) = deadline else {
+            self.armed_alarm = None;
+            self.timer = None;
+            return;
+        };
+
+        let now = self.now();
+        if at <= now {
+            // Preserve a scheduled alarm if it became due while processing a poll.
+            if !matches!(self.armed_alarm, Some(ArmedAlarm::Scheduled { deadline }) if deadline == at)
+            {
+                self.armed_alarm = Some(ArmedAlarm::Immediate);
+            }
+
+            cx.waker().wake_by_ref();
+            return;
+        }
+
+        self.armed_alarm = Some(ArmedAlarm::Scheduled { deadline: at });
+        self.arm_timer(cx, at.duration_since(now));
+    }
+
+    /// Reports the armed deadline once it has passed, including on an I/O wake
+    /// while the Tokio timer is still pending.
+    pub fn poll_alarm(&mut self, cx: &mut Context<'_>) -> Poll<Alarm> {
+        let Some(armed_alarm) = self.armed_alarm.as_ref() else {
+            return Poll::Pending;
+        };
+        let now = self.now();
+
+        let late_by = match *armed_alarm {
+            ArmedAlarm::Immediate => Duration::ZERO,
+            ArmedAlarm::Scheduled { deadline } if now >= deadline => now.duration_since(deadline),
+            ArmedAlarm::Scheduled { deadline } => {
+                let timer = self.timer.as_mut().expect("scheduled alarm has a timer");
+                if timer.as_mut().poll(cx).is_ready() {
+                    self.arm_timer(cx, deadline.duration_since(now));
+                }
+                return Poll::Pending;
+            }
+        };
+
+        self.armed_alarm = None;
+        Poll::Ready(Alarm { now, late_by })
+    }
+
+    fn arm_timer(&mut self, cx: &mut Context<'_>, remaining: Duration) {
+        let target = tokio::time::Instant::now() + remaining;
+        let timer = self
+            .timer
+            .get_or_insert_with(|| Box::pin(tokio::time::sleep_until(target)));
+
+        if timer.deadline() != target {
+            timer.as_mut().reset(target);
+        }
+
+        if timer.as_mut().poll(cx).is_ready() {
+            cx.waker().wake_by_ref();
         }
     }
 }
@@ -181,9 +131,9 @@ fn suspend_inclusive_now() -> Duration {
         any(target_os = "linux", target_os = "android") => clock_gettime(libc::CLOCK_BOOTTIME),
         target_vendor = "apple" => clock_gettime(libc::CLOCK_MONOTONIC_RAW),
         windows => {
-            // SAFETY: `QueryInterruptTime` has no preconditions.
+            // SAFETY: `QueryInterruptTimePrecise` has no preconditions.
             let hundred_nanos =
-                unsafe { windows::Win32::System::WindowsProgramming::QueryInterruptTime() };
+                unsafe { windows::Win32::System::WindowsProgramming::QueryInterruptTimePrecise() };
 
             Duration::from_nanos(hundred_nanos * 100)
         }
@@ -206,246 +156,150 @@ fn clock_gettime(clock: libc::clockid_t) -> Duration {
 
 #[cfg(test)]
 mod tests {
-    use std::task::Waker;
+    use std::{
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, Ordering},
+        },
+        task::{Context, Poll, Wake, Waker},
+        time::{Duration, Instant},
+    };
 
-    use super::*;
+    use super::{Alarm, Clock};
 
-    #[test]
-    fn follows_monotonic_clock_during_normal_operation() {
-        let monotonic = Instant::now();
-        let suspend_inclusive = Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, suspend_inclusive);
+    /// Simulates the OS clock; advancing it without advancing Tokio's time models a suspend.
+    #[derive(Clone, Default)]
+    struct FakeTime(Arc<Mutex<Duration>>);
 
-        assert_eq!(
-            clock.sample(
-                monotonic + Duration::from_secs(5),
-                suspend_inclusive + Duration::from_secs(5)
-            ),
-            monotonic + Duration::from_secs(5)
-        );
+    impl FakeTime {
+        fn now(&self) -> Duration {
+            *self.0.lock().expect("not poisoned")
+        }
+
+        fn advance(&self, elapsed: Duration) {
+            *self.0.lock().expect("not poisoned") += elapsed;
+        }
+    }
+
+    fn fake_clock() -> (Clock, FakeTime) {
+        let time = FakeTime::default();
+        let source = time.clone();
+
+        (Clock::with_source(move || source.now()), time)
     }
 
     #[test]
-    fn adds_time_missing_from_monotonic_clock() {
-        let monotonic = Instant::now();
-        let suspend_inclusive = Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, suspend_inclusive);
+    fn includes_each_short_suspend_in_the_next_sample() {
+        let (clock, time) = fake_clock();
+        let start = clock.now();
 
-        let now = clock.sample(
-            monotonic + Duration::from_secs(1),
-            suspend_inclusive + Duration::from_secs(3 * 60 * 60 + 1),
-        );
-
-        assert_eq!(now, monotonic + Duration::from_secs(3 * 60 * 60 + 1));
-
-        // The detected suspend offset remains part of the clock domain without being counted
-        // again on subsequent samples.
-        assert_eq!(
-            clock.sample(
-                monotonic + Duration::from_secs(2),
-                suspend_inclusive + Duration::from_secs(3 * 60 * 60 + 2),
-            ),
-            monotonic + Duration::from_secs(3 * 60 * 60 + 2)
-        );
+        for sample in 1..=3 {
+            time.advance(Duration::from_millis(400));
+            assert_eq!(clock.now(), start + Duration::from_millis(400 * sample));
+        }
     }
 
-    #[test]
-    fn ignores_small_clock_differences_without_accumulating_them() {
-        let monotonic = Instant::now();
-        let suspend_inclusive = Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, suspend_inclusive);
+    #[tokio::test(start_paused = true)]
+    async fn delivers_overdue_alarm_even_if_tokio_has_not_fired() {
+        let (mut clock, time) = fake_clock();
+        let mut cx = Context::from_waker(Waker::noop());
+        let start = clock.now();
+        clock.set_alarm(&mut cx, Some(start + Duration::from_secs(5)));
 
+        time.advance(Duration::from_secs(1));
+        assert_eq!(clock.poll_alarm(&mut cx), Poll::Pending);
+
+        time.advance(Duration::from_secs(44));
         assert_eq!(
-            clock.sample(
-                monotonic + Duration::from_secs(1),
-                suspend_inclusive + Duration::from_millis(1_500),
-            ),
-            monotonic + Duration::from_secs(1)
+            clock.poll_alarm(&mut cx),
+            Poll::Ready(Alarm {
+                now: start + Duration::from_secs(45),
+                late_by: Duration::from_secs(40),
+            }),
         );
+        assert_eq!(clock.poll_alarm(&mut cx), Poll::Pending);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn already_due_alarm_reports_no_lateness() {
+        let (mut clock, time) = fake_clock();
+        let mut cx = Context::from_waker(Waker::noop());
+        let start = clock.now();
+        clock.set_alarm(&mut cx, Some(start));
+
+        time.advance(Duration::from_secs(60));
         assert_eq!(
-            clock.sample(
-                monotonic + Duration::from_secs(2),
-                suspend_inclusive + Duration::from_millis(2_500),
-            ),
-            monotonic + Duration::from_secs(2)
+            clock.poll_alarm(&mut cx),
+            Poll::Ready(Alarm {
+                now: start + Duration::from_secs(60),
+                late_by: Duration::ZERO,
+            })
         );
     }
 
     #[tokio::test(start_paused = true)]
-    async fn reports_a_sample_that_overshoots_its_deadline() {
-        let monotonic = Instant::now();
-        let suspend_inclusive = Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, suspend_inclusive);
+    async fn cancels_armed_alarm() {
+        let (mut clock, time) = fake_clock();
+        let mut cx = Context::from_waker(Waker::noop());
+        let start = clock.now();
+        clock.set_alarm(&mut cx, Some(start + Duration::from_secs(5)));
+        clock.set_alarm(&mut cx, None);
 
-        set_alarm(&mut clock, Some(monotonic + Duration::from_secs(10)));
-        clock.sample(
-            monotonic + Duration::from_secs(45),
-            suspend_inclusive + Duration::from_secs(45),
-        );
+        time.advance(Duration::from_secs(45));
+        assert_eq!(clock.poll_alarm(&mut cx), Poll::Pending);
+    }
 
-        assert_eq!(
-            poll_once(&mut clock),
-            Poll::Ready(Event::Late(Duration::from_secs(35)))
-        );
-        assert_eq!(
-            poll_once(&mut clock),
-            Poll::Pending,
-            "overshoot is reported once"
-        );
+    #[derive(Default)]
+    struct WakeFlag(AtomicBool);
+
+    impl Wake for WakeFlag {
+        fn wake(self: Arc<Self>) {
+            self.0.store(true, Ordering::Relaxed);
+        }
     }
 
     #[tokio::test(start_paused = true)]
-    async fn does_not_report_a_sample_that_roughly_meets_its_deadline() {
-        let monotonic = Instant::now();
-        let suspend_inclusive = Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, suspend_inclusive);
+    async fn re_registers_timer_if_it_wakes_before_the_deadline() {
+        let (mut clock, time) = fake_clock();
+        let wake_flag = Arc::new(WakeFlag::default());
+        let waker = Waker::from(wake_flag.clone());
+        let mut cx = Context::from_waker(&waker);
+        let deadline = clock.now() + Duration::from_secs(5);
+        clock.set_alarm(&mut cx, Some(deadline));
 
-        set_alarm(&mut clock, Some(monotonic + Duration::from_secs(10)));
-        clock.sample(
-            monotonic + Duration::from_secs(11),
-            suspend_inclusive + Duration::from_secs(11),
-        );
+        // Tokio's timer fires while the OS clock has only advanced 3s.
+        tokio::time::advance(Duration::from_secs(5)).await;
+        time.advance(Duration::from_secs(3));
+        assert!(wake_flag.0.swap(false, Ordering::Relaxed));
+        assert_eq!(clock.poll_alarm(&mut cx), Poll::Pending);
 
-        assert_eq!(poll_once(&mut clock), Poll::Pending);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn does_not_report_an_overshoot_against_a_deadline_that_had_already_passed() {
-        let monotonic = Instant::now();
-        let suspend_inclusive = Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, suspend_inclusive);
-
-        // Arming a deadline in the past says there is work waiting, not that we will sleep.
-        set_alarm(&mut clock, Some(monotonic - Duration::from_secs(120)));
-        clock.sample(
-            monotonic + Duration::from_secs(1),
-            suspend_inclusive + Duration::from_secs(1),
-        );
-
+        // The re-armed timer wakes us for the remaining 2s.
+        tokio::time::advance(Duration::from_secs(2)).await;
+        time.advance(Duration::from_secs(2));
+        assert!(wake_flag.0.load(Ordering::Relaxed));
         assert_eq!(
-            poll_once(&mut clock),
-            Poll::Pending,
-            "a deadline we never meant to sleep until is not an overshoot"
+            clock.poll_alarm(&mut cx),
+            Poll::Ready(Alarm {
+                now: deadline,
+                late_by: Duration::ZERO
+            })
         );
-
-        tokio::time::advance(Duration::from_secs(1)).await;
-        assert!(matches!(
-            poll_once(&mut clock),
-            Poll::Ready(Event::Alarm(_))
-        ));
-    }
-
-    #[test]
-    fn does_not_report_a_long_gap_without_a_deadline() {
-        let monotonic = Instant::now();
-        let suspend_inclusive = Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, suspend_inclusive);
-
-        clock.sample(
-            monotonic + Duration::from_secs(600),
-            suspend_inclusive + Duration::from_secs(600),
-        );
-
-        assert_eq!(poll_once(&mut clock), Poll::Pending);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn counts_time_spent_suspended_towards_the_overshoot() {
-        let monotonic = Instant::now();
-        let suspend_inclusive = Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, suspend_inclusive);
-
-        set_alarm(&mut clock, Some(monotonic + Duration::from_secs(10)));
-
-        // A suspend pauses the monotonic clock but not the suspend-inclusive one.
-        clock.sample(
-            monotonic + Duration::from_secs(1),
-            suspend_inclusive + Duration::from_secs(120),
-        );
-
-        assert_eq!(
-            poll_once(&mut clock),
-            Poll::Ready(Event::Late(Duration::from_secs(110)))
-        );
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn alarm_rings_once_the_deadline_has_passed() {
-        let mut clock = Clock::new();
-        let now = Instant::now();
-
-        set_alarm(&mut clock, Some(now + Duration::from_secs(5)));
-        assert_eq!(poll_once(&mut clock), Poll::Pending);
-
-        tokio::time::advance(Duration::from_secs(6)).await;
-        assert!(matches!(
-            poll_once(&mut clock),
-            Poll::Ready(Event::Alarm(_))
-        ));
-        assert_eq!(
-            poll_once(&mut clock),
-            Poll::Pending,
-            "the alarm rings once until re-armed"
-        );
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn alarm_without_deadline_never_rings() {
-        let mut clock = Clock::new();
-
-        set_alarm(&mut clock, None);
-        tokio::time::advance(Duration::from_secs(60)).await;
-
-        assert_eq!(poll_once(&mut clock), Poll::Pending);
     }
 
     #[test]
     fn suspend_inclusive_clock_advances_with_instant_while_awake() {
+        let clock = Clock::new();
         let monotonic_start = Instant::now();
-        let suspend_inclusive_start = suspend_inclusive_now();
+        let suspend_inclusive_start = clock.now();
 
         std::thread::sleep(Duration::from_millis(200));
 
         let monotonic_elapsed = monotonic_start.elapsed();
-        let suspend_inclusive_elapsed = suspend_inclusive_now()
-            .checked_sub(suspend_inclusive_start)
-            .expect("suspend-inclusive clock should not go backwards");
+        let suspend_inclusive_elapsed = clock.now().duration_since(suspend_inclusive_start);
 
         assert!(
             suspend_inclusive_elapsed.abs_diff(monotonic_elapsed) < Duration::from_millis(100),
             "suspend-inclusive: {suspend_inclusive_elapsed:?}, `Instant`: {monotonic_elapsed:?}"
         );
-    }
-
-    #[test]
-    fn now_tracks_instant_while_awake() {
-        let mut clock = Clock::new();
-
-        std::thread::sleep(Duration::from_millis(200));
-        let before = Instant::now();
-        let now = clock.now();
-        let after = Instant::now();
-
-        assert!((before..=after).contains(&now));
-    }
-
-    fn poll_once(clock: &mut Clock) -> Poll<Event> {
-        clock.poll_event(&mut Context::from_waker(Waker::noop()))
-    }
-
-    fn set_alarm(clock: &mut Clock, deadline: Option<Instant>) {
-        clock.set_alarm(&mut Context::from_waker(Waker::noop()), deadline);
-    }
-
-    fn clock_at(monotonic: Instant, suspend_inclusive: Duration) -> Clock {
-        Clock {
-            last_monotonic: monotonic,
-            last_suspend_inclusive: suspend_inclusive,
-            suspend_offset: Duration::ZERO,
-            alarm_at: None,
-            raw_alarm_at: None,
-            alarm: None,
-            lateness: None,
-        }
     }
 }

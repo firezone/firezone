@@ -9,6 +9,7 @@ import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.features.auth.AuthCallbackHandler
 import dev.firezone.android.features.auth.AuthCallbackOutcome
 import dev.firezone.android.features.auth.PendingAuthSession
+import dev.firezone.android.features.auth.nonceHash
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.security.SecureRandom
@@ -38,7 +39,7 @@ internal class AuthViewModel
             authState = state
             val config = repo.getConfigSync()
             pendingAuthSession.begin(nonce = nonce, state = state, signedInWith = config.signInSettings())
-            val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
+            val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce_hash=${nonceHash(nonce)}&as=gui-client"
 
             actionMutableStateFlow.value =
                 ViewAction.LaunchAuthFlow(authUrl)
