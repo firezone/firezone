@@ -773,8 +773,10 @@ without one on the same terms as the legacy sockets.
   ships on `/client` and `/gateway`.
 - I.4 Device key columns on `devices`: key hash and `ephemeral`, and the
   Client and Gateway `firezone_id` unique indexes limited to rows without
-  a key. No "enrolled by" column: most devices have one actor, so the
-  first `device_actors` row stands in for the enroller.
+  a key (#16848). No "enrolled by" column: most devices have one actor, so
+  the `device_actors` row with the earliest `first_seen_at` stands in for
+  the enroller. If a feature needs the exact enroller, it becomes
+  `device_actors.enrolled_at`, set by enrollment.
 - I.5 `POST /device/enroll` with the claim rules (including the ephemeral
   takeover), and renewal on the mTLS host. A Key Vault 429 goes back to
   the device as 429, with no retries.
