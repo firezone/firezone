@@ -712,9 +712,12 @@ firezone_id_exempt`, so keyed rows can share an id.
   with the same `firezone_id` in the same scope (as above) when that row is
   offline. If the row is online, the enrollment gets 409 and retries. A
   `memory` row never proved more than its token, so this is no weaker.
-- One live connection per row. The first connection wins and the second
-  gets 409; this covers a copy with the same key and a reconnect while the
-  old socket still looks live.
+- One live connection per row with a key, for Clients and Gateways alike.
+  The first connection wins and the second gets 409; this covers a copy
+  with the same key and a reconnect while the old socket still looks live.
+  A device that gets 409 retries with backoff. Rows without a key keep
+  today's behavior (Clients: the newest connection wins; Gateways: 409),
+  so old binaries see no change.
 - A claim never moves a row between Sites. The legacy move between Sites
   stays only for rows without a key, and goes away with Site tokens.
 - Copies of a machine made after it enrolled (a VM image, a copied state
@@ -770,9 +773,9 @@ without one on the same terms as the legacy sockets.
   takeover), and renewal on the mTLS host. A Key Vault 429 goes back to
   the device as 429, with no retries.
 - I.6 Certificate lookup on `/client` and `/gateway`, on the mTLS host. The
-  `firezone_id` lookup skips rows with a key. One live connection per row,
-  first wins, 409 for the second (`device_key_in_use` for a key, so the
-  device can log that a copy uses its identity).
+  `firezone_id` lookup skips rows with a key. One live connection per keyed
+  row for Clients and Gateways, first wins, 409 `device_key_in_use` for the
+  second, so the device can log that a copy uses its identity.
 - I.7 Reset identity on the device panel, and the key cleared when a device
   is deleted.
 - I.7b Internal CA rotation, ops only (in `portal-ops`): rotate one
