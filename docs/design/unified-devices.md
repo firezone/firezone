@@ -792,7 +792,7 @@ without one on the same terms as the legacy sockets.
   stays after the actor is deleted, and the panel shows "Enrolled by a
   deleted user".
 - I.5 Certificate issuance in `Portal.DeviceCA` (#16849, done), then
-  `POST /device/certificate` on the API host: token and CSR in,
+  `POST /device/certificate` (#16853) on the API host: token and CSR in,
   certificate out, rate limited per token and per account, 429 or 503 with
   `Retry-After`.
 - I.6 Connect with the certificate on `/client` and `/gateway`, on the mTLS
