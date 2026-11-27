@@ -3,6 +3,7 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
 use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceView};
+use futures::FutureExt as _;
 use parking_lot::Mutex;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
