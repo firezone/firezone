@@ -9,7 +9,7 @@ defmodule Portal.Repo.Migrations.AddDevicesKeyColumns do
       add_if_not_exists(:key_hash, :binary)
       add_if_not_exists(:ephemeral, :boolean, null: false, default: false)
       add_if_not_exists(:enrolled_by_actor_id, :binary_id)
-      add_if_not_exists(:enrolled_at, :utc_datetime_usec)
+      add_if_not_exists(:enrolled_at, :timestamptz)
     end
 
     execute("""
@@ -27,7 +27,7 @@ defmodule Portal.Repo.Migrations.AddDevicesKeyColumns do
     execute("SET LOCAL lock_timeout TO '2s'")
 
     alter table(:devices) do
-      remove_if_exists(:enrolled_at, :utc_datetime_usec)
+      remove_if_exists(:enrolled_at, :timestamptz)
       remove_if_exists(:enrolled_by_actor_id, :binary_id)
       remove_if_exists(:ephemeral, :boolean)
       remove_if_exists(:key_hash, :binary)
