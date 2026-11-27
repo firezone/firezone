@@ -654,6 +654,11 @@ reported `firezone_id`.
   - _Organization_: a certificate that chains to one of the account's trust
     anchors (MDM).
 
+  The Firezone device CA is itself a trust anchor, marked `system`
+  (#16855): it shows in the Trust Anchors list, nobody edits or deletes
+  it, and its key stays in `device_certificate_authorities`. Everything
+  that means the organization's own PKI leaves `system` anchors out.
+
   Verified follows the key: it stays through renewal, a CA rotation and the
   first claim of a row without a key, and is cleared when the key is
   replaced (reset identity, ephemeral takeover). Existing code keeps its
