@@ -16,9 +16,8 @@ repos:
         pass_filenames: false
       - id: biome
         name: Biome
-        entry: biome format
+        entry: biome format --files-ignore-unknown=true --no-errors-on-unmatched
         language: system
-        pass_filenames: false
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
