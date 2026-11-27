@@ -656,8 +656,8 @@ certificate. A device calls it only in these cases:
 
 1. First enrollment: it has a token and no certificate (a new install, an
    upgrade from a release without identity, or a wiped state directory).
-2. Renewal, on the mTLS host: a new CSR for the same key, at about two
-   thirds of the lifetime. The current certificate authenticates it, so no
+2. Renewal, on the mTLS host: a new CSR for the same key, at a random
+   point between 55% and 70% of the lifetime. The current certificate authenticates it, so no
    token or sign-in is needed.
 3. Re-enrollment: the portal refused its certificate (the device was
    deleted, an admin reset its identity, its CA was rotated, or the
@@ -675,8 +675,8 @@ carries one client certificate, so it shows only one of them.
   MDM device id on that row. The signature is useless with any other MDM
   certificate, so it needs no nonce.
 - The client keeps its Firezone key while it is managed, and renews the
-  Firezone certificate in the background at about day 60 with a separate
-  request. When the MDM certificate is removed or the device leaves
+  Firezone certificate in the background with a separate request, at the
+  same random point. When the MDM certificate is removed or the device leaves
   management, the client falls back to the Firezone certificate and lands
   on the same row.
 - "Require attestation" holds only while the device connects with a valid
@@ -743,7 +743,12 @@ without one on the same terms as the legacy sockets.
   Infra first: a Key Vault Standard per region and the "Key Vault Crypto
   Officer" role for the portal identity.
 - I.3 Turn off `/device/v1` until the unified binary ships.
-- I.4 Device key columns: key hash and key storage on `devices`.
+- I.4 Device key columns on `devices`: key hash, key storage,
+  `enrolled_by_actor_id` (the actor whose token made the latest enrollment;
+  set to NULL when that actor is deleted) and `enrolled_at`. Enrollment and
+  re-enrollment set both; renewal does not. It is a record only: access
+  stays in `device_actors`. The device panel shows "Enrolled by" behind the
+  unified devices flag.
 - I.5 `POST /device/enroll` with the claim rules, and renewal on the mTLS
   host. A Key Vault 429 goes back to the device as 429, with no retries.
 - I.6 Certificate lookup on `/client` and `/gateway`, on the mTLS host. The
