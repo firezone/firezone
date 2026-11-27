@@ -11,7 +11,7 @@ pub const PACKETS: usize = 1024;
 
 /// How many packets the event loop handles before a benchmark, so that it starts with its pools
 /// and tables grown.
-const WARM_UP: usize = 256;
+const WARM_UP: usize = 8192;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
