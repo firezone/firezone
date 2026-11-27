@@ -136,7 +136,7 @@ pub fn tunnel_errors() -> Counter<u64> {
 /// Number of portal connection hiccups by cause.
 pub fn portal_connection_hiccups() -> Counter<u64> {
     connlib_meter()
-        .u64_counter("portal.connection.hiccup")
+        .u64_counter("connlib.portal.connection.hiccup")
         .with_description("Number of portal connection hiccups by cause.")
         .with_unit("{hiccup}")
         .build()
@@ -145,7 +145,7 @@ pub fn portal_connection_hiccups() -> Counter<u64> {
 /// Number of connections by the network path in use.
 pub fn connection_count() -> Gauge<u64> {
     connlib_meter()
-        .u64_gauge("tunnel.connection.count")
+        .u64_gauge("connlib.connection.count")
         .with_description("Number of connections by the network path in use.")
         .with_unit("{connection}")
         .build()

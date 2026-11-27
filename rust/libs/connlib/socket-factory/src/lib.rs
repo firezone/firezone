@@ -745,60 +745,41 @@ impl PerfUdpSocket {
 }
 
 impl UdpSocket {
-    /// Performs a single request-response handshake with the specified destination socket address.
+    /// Connects this socket to `dst`, so it only receives datagrams from `dst`.
     ///
-    /// This consumes `self` because we want to enforce that we only receive a single message on this socket.
-    /// UDP is stateless and therefore, anybody can just send a packet to the destination.
-    ///
-    /// To simulate a handshake, we therefore only wait for a single message arriving on this socket,
-    /// after that, we discard it, freeing up the used source port.
-    ///
-    /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
-    pub async fn handshake<const BUF_SIZE: usize>(
-        self,
-        dst: SocketAddr,
-        payload: &[u8],
-    ) -> io::Result<Vec<u8>> {
-        let src_ip = self
-            .source_ip_resolver
-            .as_ref()
-            .map(|resolve| resolve(dst.ip()))
-            .transpose()?;
+    /// With a source IP resolver, the socket is re-created on the resolved source IP before it connects:
+    /// `connect` would otherwise bind the source that the routing table selects, which may be our own tunnel.
+    pub async fn connect(self, dst: SocketAddr) -> io::Result<ConnectedUdpSocket> {
+        let inner = match self.source_ip_resolver.as_ref() {
+            Some(resolve) => {
+                let src = SocketAddr::new(resolve(dst.ip())?, self.port);
+                drop(self.inner);
 
-        // A plain `send_to` cannot carry a source IP; sending via [`quinn_udp`] pins the
-        // resolved source through a control message, like all other sends on our sockets.
-        let state = &self.state;
-        let transmit = Transmit {
-            destination: dst,
-            ecn: None,
-            contents: payload,
-            segment_size: None,
-            src_ip,
+                udp(src)?.inner
+            }
+            None => self.inner,
         };
 
-        // A `Transmit` without a `segment_size` is a single datagram, so a successful send is complete.
-        let _ = self
-            .inner
-            .async_io(Interest::WRITABLE, || {
-                state.try_send(UdpSockRef::from(&self.inner), &transmit)
-            })
-            .await?;
+        inner.connect(dst).await?;
 
-        let mut buffer = vec![0u8; BUF_SIZE];
+        Ok(ConnectedUdpSocket { inner })
+    }
+}
 
-        let (num_received, sender) = self.inner.recv_from(&mut buffer).await?;
+/// A [`UdpSocket`] connected to a single remote address.
+pub struct ConnectedUdpSocket {
+    inner: tokio::net::UdpSocket,
+}
 
-        // Even though scopes are technically important for link-local IPv6 addresses, they can be ignored for our purposes.
-        // We only want to ensure that the reply is from the expected source after we have already received the packet.
-        if !is_equal_modulo_scope_for_ipv6_link_local(dst, sender) {
-            return Err(io::Error::other(format!(
-                "Unexpected reply source: {sender}; expected: {dst}"
-            )));
-        }
+impl ConnectedUdpSocket {
+    pub async fn send(&self, payload: &[u8]) -> io::Result<()> {
+        self.inner.send(payload).await?;
 
-        buffer.truncate(num_received);
+        Ok(())
+    }
 
-        Ok(buffer)
+    pub async fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.recv(buf).await
     }
 }
 
@@ -821,22 +802,6 @@ pub(crate) fn apply_buffer_size(
             Err(_) if size > FLOOR => size /= 2,
             Err(e) => return Err(e),
         }
-    }
-}
-
-/// Compares the two [`SocketAddr`]s for equality, ignored IPv6 scopes for link-local addresses.
-fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: SocketAddr) -> bool {
-    match (expected, actual) {
-        (SocketAddr::V6(expected), SocketAddr::V6(mut actual))
-            if expected.scope_id() == 0 && actual.ip().is_unicast_link_local() =>
-        {
-            actual.set_scope_id(0);
-
-            expected == actual
-        }
-        (SocketAddr::V4(expected), SocketAddr::V4(actual)) => expected == actual,
-        (SocketAddr::V6(expected), SocketAddr::V6(actual)) => expected == actual,
-        (SocketAddr::V6(_), SocketAddr::V4(_)) | (SocketAddr::V4(_), SocketAddr::V6(_)) => false,
     }
 }
 
@@ -1397,24 +1362,6 @@ mod tests {
         let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
 
         assert_eq!(packets(&mut batch), [b"foobar1"]);
-    }
-
-    #[test]
-    fn scopes_are_ignored_for_link_local_addresses() {
-        let left = SocketAddr::V6(SocketAddrV6::new(
-            Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0),
-            1000,
-            0,
-            0,
-        ));
-        let right = SocketAddr::V6(SocketAddrV6::new(
-            Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0),
-            1000,
-            0,
-            42,
-        ));
-
-        assert!(is_equal_modulo_scope_for_ipv6_link_local(left, right))
     }
 
     #[test]

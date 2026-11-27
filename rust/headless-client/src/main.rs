@@ -415,8 +415,7 @@ fn try_main() -> Result<()> {
         }
 
         let metrics_exporter =
-            otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
-                .context("Failed to spawn metrics exporter")?;
+            otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory));
 
         let config = client_shared::SessionConfig::default()
             .with_internet_resource_active(cli.activate_internet_resource)
@@ -430,8 +429,7 @@ fn try_main() -> Result<()> {
             portal,
             config,
             metrics_exporter,
-        )
-        .context("Failed to start connlib")?;
+        );
 
         analytics::new_session(firezone_id.clone(), cli.api_url.to_string());
 

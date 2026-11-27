@@ -96,7 +96,12 @@ pub(crate) struct EventLoopEnds {
     queries_tx: mpsc::Sender<ResolverQuery>,
     responses_rx: mpsc::Receiver<dns::RecursiveResponse>,
     control_tx: mpsc::Sender<ResolverControl>,
+    thread: Option<async_runtime::ThreadOutput<()>>,
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("DNS resolver thread stopped")]
+pub struct DnsResolverThreadStopped;
 
 /// The ends of the resolver task's channels that the task holds.
 pub struct ResolverTaskEnds {
@@ -114,6 +119,7 @@ pub(crate) fn channels() -> (EventLoopEnds, ResolverTaskEnds) {
         queries_tx,
         responses_rx,
         control_tx,
+        thread: None,
     };
     let task = ResolverTaskEnds {
         queries_rx,
@@ -129,14 +135,14 @@ pub(crate) fn spawn(
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     nameservers: BTreeSet<IpAddr>,
-) -> io::Result<EventLoopEnds> {
-    let (event_loop, task) = channels();
+) -> EventLoopEnds {
+    let (mut event_loop, task) = channels();
 
-    async_runtime::spawn_thread("fz-dns", move || {
+    event_loop.thread = Some(async_runtime::spawn_thread("fz-dns", move || {
         Resolver::new(task, tcp_socket_factory, udp_socket_factory, nameservers).run()
-    })?;
+    }));
 
-    Ok(event_loop)
+    event_loop
 }
 
 impl EventLoopEnds {
@@ -156,10 +162,23 @@ impl EventLoopEnds {
         &mut self,
         cx: &mut Context<'_>,
         responses: &mut Vec<dns::RecursiveResponse>,
-    ) {
+    ) -> anyhow::Result<()> {
         let _ = self
             .responses_rx
             .poll_recv_many(cx, responses, RESPONSE_QUEUE_SIZE);
+
+        let Some(thread) = self.thread.as_mut() else {
+            return Ok(());
+        };
+        let Poll::Ready(output) = thread.poll_unpin(cx) else {
+            return Ok(());
+        };
+        self.thread = None;
+
+        match output {
+            Ok(()) => Err(anyhow::Error::new(DnsResolverThreadStopped)),
+            Err(e) => Err(e.context(DnsResolverThreadStopped)),
+        }
     }
 }
 
