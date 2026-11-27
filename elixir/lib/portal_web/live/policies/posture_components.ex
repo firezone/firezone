@@ -26,7 +26,7 @@ defmodule PortalWeb.Policies.PostureComponents do
 
     ~H"""
     <div class="space-y-4">
-      <.require_attestation_toggle id={"#{@id}-require-attestation"} account={@account} state={@state} />
+      <.device_trust_select id={"#{@id}-device-trust"} account={@account} state={@state} />
       <%= if not @conditions_enabled? and @state.availability == :locked do %>
         <Form.upgrade_locked_section
           account={@account}
@@ -52,30 +52,38 @@ defmodule PortalWeb.Policies.PostureComponents do
   attr :account, :any, required: true
   attr :state, :map, required: true
 
-  def require_attestation_toggle(assigns) do
+  def device_trust_select(assigns) do
     ~H"""
     <div class="border-t border-border pt-4">
-      <div class="flex items-center justify-between py-1">
+      <div class="flex items-center justify-between gap-4 py-1">
         <div>
-          <p class="text-xs font-semibold text-body">Require device attestation</p>
+          <p class="text-xs font-semibold text-body">Device trust</p>
           <p class="text-xs text-subtle">
-            Only devices with a certificate from a trust anchor can connect
+            Let in only devices that prove who they are with a certificate
           </p>
           <p :if={not @state.trust_anchors?} class="text-xs text-subtle">
             Add a
             <Navigation.link navigate={~p"/#{@account}/settings/trust_anchors"} class="font-medium underline hover:no-underline">
               trust anchor
             </Navigation.link>
-            to turn this on.
+            to require your organization's certificates.
           </p>
         </div>
-        <input type="hidden" name="policy[require_attestation]" value={to_string(@state.require_attestation?)} />
-        <Core.toggle
+        <select
           id={@id}
-          checked={@state.require_attestation?}
-          disabled={not @state.trust_anchors? and not @state.require_attestation?}
-          phx-click="postures_require_attestation"
-        />
+          name="policy[device_trust]"
+          phx-change="postures_device_trust"
+          class="shrink-0 text-xs rounded border border-border bg-raised text-heading px-2 py-1.5 outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
+        >
+          <option value="none" selected={@state.device_trust == :none}>Not required</option>
+          <option
+            value="organization"
+            selected={@state.device_trust == :organization}
+            disabled={not @state.trust_anchors? and @state.device_trust != :organization}
+          >
+            Organization PKI
+          </option>
+        </select>
       </div>
     </div>
     """
@@ -150,12 +158,12 @@ defmodule PortalWeb.Policies.PostureComponents do
         </div>
       </div>
       <div
-        :if={@state.availability == :enabled and not is_nil(@state.wire) and not @state.require_attestation?}
+        :if={@state.availability == :enabled and not is_nil(@state.wire) and @state.device_trust == :none}
         class="mb-3 flex items-start gap-1.5 rounded border border-warning-light bg-warning-light px-3 py-2 text-xs text-warning"
       >
         <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
-          Device attestation is off. Unattested devices are matched on the serial number their Client reports, which a user can change.
+          Device trust is off. Devices without a certificate are matched on the serial number their Client reports, which a user can change.
           <Navigation.website_link path="/kb/device-trust" fragment="device-attributes" class="font-medium underline hover:no-underline">
             Learn more
           </Navigation.website_link>

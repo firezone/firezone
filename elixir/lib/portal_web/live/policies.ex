@@ -476,7 +476,7 @@ defmodule PortalWeb.Policies do
       tab: :overview
     }) ++
       init_condition_assigns(policy, socket) ++
-      [policy_postures: Postures.for_account(socket.assigns.account, policy.postures, policy.require_attestation)]
+      [policy_postures: Postures.for_account(socket.assigns.account, policy.postures, policy.device_trust)]
   end
 
   defp edit_changeset(socket, params) do
@@ -490,7 +490,7 @@ defmodule PortalWeb.Policies do
   # authorization the policy granted.
   defp breaking_change?(changeset) do
     Enum.any?(
-      ~w[group_id resource_id conditions postures flow_log_uploads_enabled require_attestation]a,
+      ~w[group_id resource_id conditions postures flow_log_uploads_enabled device_trust]a,
       &Map.has_key?(changeset.changes, &1)
     )
   end
@@ -957,7 +957,7 @@ defmodule PortalWeb.Policies do
 
   defp new_policy(attrs, %Authentication.Subject{} = subject) do
     %Policy{}
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled device_trust postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -974,7 +974,7 @@ defmodule PortalWeb.Policies do
 
   defp change_policy(%Policy{} = policy, attrs \\ %{}) do
     policy
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled device_trust postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()

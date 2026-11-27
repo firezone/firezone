@@ -6,7 +6,7 @@ defmodule Portal.Cache.Cacheable.Policy do
     :conditions,
     :postures,
     :flow_log_uploads_enabled,
-    :require_attestation
+    :device_trust
   ]
 
   @type condition :: %{
@@ -35,6 +35,6 @@ defmodule Portal.Cache.Cacheable.Policy do
           conditions: [condition()],
           postures: Portal.Policies.Postures.t() | nil,
           flow_log_uploads_enabled: boolean(),
-          require_attestation: boolean()
+          device_trust: :none | :organization
         }
 end

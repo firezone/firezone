@@ -47,7 +47,7 @@ defimpl Portal.Cache.Cacheable, for: Portal.Policy do
       conditions: Enum.map(policy.conditions, &Map.from_struct/1),
       postures: policy.postures,
       flow_log_uploads_enabled: policy.flow_log_uploads_enabled,
-      require_attestation: policy.require_attestation
+      device_trust: policy.device_trust
     }
   end
 
