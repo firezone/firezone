@@ -1035,9 +1035,9 @@ fn record_shared_nat_feedback(model: &TunnelModel) {
     }
 }
 
-/// Records how far the devices behind each shared overloading NAT got towards contesting a
-/// public socket: a common peer, Frostlink, live connections to it and a shared public port.
-/// With a shared port, it also records whether the devices also share it towards a relay.
+/// Records the preconditions for the devices behind each shared overloading NAT to contest a
+/// public socket: a common peer, Frostlink, live connections to it, a shared public port and
+/// whether they share it towards a relay.
 fn record_contest_precondition_feedback(
     model: &TunnelModel,
     state: &RealTunnelSystem,
@@ -1105,16 +1105,14 @@ fn record_contest_precondition_feedback(
         let candidates = shared_gateway.chain(shared_client).collect::<Vec<_>>();
 
         let shared_port = state.network.shared_port_destinations(ip);
-        let steps = [
+
+        record!(
             !candidates.is_empty(),
             portal.frostlink(),
             candidates.contains(&true),
             !shared_port.is_empty(),
-        ];
-        let depth = 1 + steps.iter().take_while(|step| **step).count() as u16;
-        let via_relay = depth == 5 && !shared_port.is_disjoint(&relays);
-
-        record_value!(depth | u16::from(via_relay) << 3);
+            !shared_port.is_disjoint(&relays),
+        );
     }
 }
 
