@@ -23,7 +23,7 @@ use std::{
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
@@ -162,23 +162,23 @@ impl EventLoopEnds {
         &mut self,
         cx: &mut Context<'_>,
         responses: &mut Vec<dns::RecursiveResponse>,
-    ) {
+    ) -> anyhow::Result<()> {
         let _ = self
             .responses_rx
             .poll_recv_many(cx, responses, RESPONSE_QUEUE_SIZE);
-    }
 
-    pub fn poll_thread_stopped(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
         let Some(thread) = self.thread.as_mut() else {
-            return Poll::Pending;
+            return Ok(());
         };
-        let output = ready!(thread.poll_unpin(cx));
+        let Poll::Ready(output) = thread.poll_unpin(cx) else {
+            return Ok(());
+        };
         self.thread = None;
 
-        Poll::Ready(match output {
-            Ok(()) => anyhow::Error::new(DnsResolverThreadStopped),
-            Err(e) => e.context(DnsResolverThreadStopped),
-        })
+        match output {
+            Ok(()) => Err(anyhow::Error::new(DnsResolverThreadStopped)),
+            Err(e) => Err(e.context(DnsResolverThreadStopped)),
+        }
     }
 }
 

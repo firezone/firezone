@@ -183,11 +183,11 @@ impl<'a, 'cx> PollState<'a, 'cx> {
     }
 
     fn poll_dns_responses(&mut self) {
-        self.io
+        if let Err(e) = self
+            .io
             .resolver
-            .poll_responses(self.cx, &mut self.input.dns_responses);
-
-        if let Poll::Ready(e) = self.io.resolver.poll_thread_stopped(self.cx) {
+            .poll_responses(self.cx, &mut self.input.dns_responses)
+        {
             self.input.error.push(e);
         }
     }
