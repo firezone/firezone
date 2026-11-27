@@ -140,7 +140,8 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
       {:ok, lv, html} = live(conn, ~p"/#{account}/settings/trust_anchors")
       assert html =~ "Firezone device CA"
-      assert html =~ "Used for mTLS by Clients 1.6.0 and later and Gateways 1.6.6 and later"
+      assert html =~ "System"
+      assert html =~ "Powers Firezone-managed device trust on Clients 1.6.0+ and Gateways 1.6.6+"
       refute html =~ "No trust anchors yet"
 
       lv |> element("#device-ca-row") |> render_click()
