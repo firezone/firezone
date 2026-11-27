@@ -28,10 +28,7 @@ config_roots = [
 
 [tasks.lint-setup]
 description = "Install linting tools from version-pinned files (managed by Dependabot)"
-run = """
-pip install -r .github/requirements.txt
-pnpm i --frozen-lockfile --dir ./.github
-"""
+run = "pip install -r .github/requirements.txt"
 
 [tasks.lint]
 description = "Run pre-commit hooks on all files"
@@ -43,4 +40,4 @@ run = "pre-commit run --config .github/pre-commit-config.yaml"
 
 [tasks.format]
 description = "Run prettier --write on all prettier-managed files (respects .prettierignore)"
-run = "cd .github && git -C .. ls-files '*.md' '*.json' '*.yaml' '*.yml' '*.css' '*.js' '*.ts' '*.tsx' | sed 's|^|../|' | xargs pnpm exec prettier --ignore-path ../.prettierignore --write --ignore-unknown --no-error-on-unmatched-pattern"
+run = "git ls-files '*.md' '*.json' '*.yaml' '*.yml' '*.css' '*.js' '*.ts' '*.tsx' | xargs prettier --write --ignore-unknown --no-error-on-unmatched-pattern"
