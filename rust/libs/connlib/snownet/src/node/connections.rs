@@ -12,7 +12,6 @@ use deadline_map::{DeadlineMap, PollTimeout};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
-use smallvec::SmallVec;
 
 use crate::{
     Event,
@@ -212,13 +211,9 @@ where
             );
         }
 
-        let contested = self
-            .validated_paths
-            .drain_contested()
-            .collect::<SmallVec<[_; 4]>>();
         // A NAT maps several devices to each of these and delivers what we send there to whichever
         // of them sent last, so we only reply to them.
-        for remote in contested {
+        for remote in self.validated_paths.drain_contested() {
             tracing::debug!(%remote, "Remote address contested by several connections");
             self.contested_addresses.add(1, &[]);
 
