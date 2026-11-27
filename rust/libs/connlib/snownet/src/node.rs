@@ -2417,6 +2417,28 @@ where
             .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
     }
 
+    /// Stops initiating traffic to `remote` if this is a Frostlink connection with a candidate there.
+    fn mark_contested<TId>(&mut self, cid: TId, remote: SocketAddr, now: Instant)
+    where
+        TId: fmt::Display + Copy,
+    {
+        if !self.agent.is_frostlink() || !self.agent.has_remote_candidate(remote) {
+            return;
+        }
+
+        self.contested.insert(remote);
+
+        let candidates = self
+            .agent
+            .remote_candidates()
+            .filter(|candidate| candidate.addr() == remote)
+            .collect::<SmallVec<[_; 2]>>();
+
+        for candidate in candidates {
+            self.remove_remote_candidate(cid, candidate, now);
+        }
+    }
+
     fn socket(&self) -> Option<PeerSocket> {
         match self.state {
             ConnectionState::Connected { peer_socket, .. }

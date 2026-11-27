@@ -216,8 +216,15 @@ where
             .validated_paths
             .drain_contested()
             .collect::<SmallVec<[_; 4]>>();
+        // A NAT maps several devices to each of these and delivers what we send there to whichever
+        // of them sent last, so we only reply to them.
         for remote in contested {
-            self.handle_contested(remote, now);
+            tracing::debug!(%remote, "Remote address contested by several connections");
+            self.contested_addresses.add(1, &[]);
+
+            for (cid, c) in self.established.iter_mut() {
+                c.mark_contested(cid, remote, now);
+            }
         }
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
@@ -320,33 +327,6 @@ where
         }
 
         existing
-    }
-
-    /// Several Frostlink connections validated a path to `remote`.
-    ///
-    /// A NAT maps several devices to `remote` and delivers what we send there to whichever of
-    /// them sent last, so every Frostlink connection drops its candidates at `remote` and only
-    /// replies to it.
-    fn handle_contested(&mut self, remote: SocketAddr, now: Instant) {
-        tracing::debug!(%remote, "Remote address contested by several connections");
-        self.contested_addresses.add(1, &[]);
-
-        for (cid, c) in self
-            .established
-            .filter_mut(move |c| c.agent.is_frostlink() && c.agent.has_remote_candidate(remote))
-        {
-            c.contested.insert(remote);
-
-            let candidates = c
-                .agent
-                .remote_candidates()
-                .filter(|candidate| candidate.addr() == remote)
-                .collect::<SmallVec<[_; 2]>>();
-
-            for candidate in candidates {
-                c.remove_remote_candidate(cid, candidate, now);
-            }
-        }
     }
 
     pub(crate) fn iter_mut_by_relay(
