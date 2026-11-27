@@ -8,7 +8,11 @@ replay_binary="$fuzz_target_dir/fuzz-replay/x86_64-unknown-linux-gnu/release/fuz
 
 build_afl() {
     # Override cargo-afl's native CPU so cached crates work across CI runners.
-    RUSTFLAGS="${RUSTFLAGS:-} -C target-cpu=x86-64" cargo afl build --locked --release -p fuzz --bin fuzz \
+    # Comparison tracing only serves CmpLog, which we do not run, and unpruned blocks only
+    # add edges implied by others; both slow every execution down.
+    RUSTFLAGS="${RUSTFLAGS:-} -C target-cpu=x86-64 \
+        -C llvm-args=-sanitizer-coverage-trace-compares=false \
+        -C llvm-args=-sanitizer-coverage-prune-blocks=1" cargo afl build --locked --release -p fuzz --bin fuzz \
         --target x86_64-unknown-linux-gnu --target-dir "$fuzz_target_dir/afl"
 }
 
