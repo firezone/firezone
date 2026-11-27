@@ -29,31 +29,21 @@ where
     Fut::Output: Send + 'static,
 {
     let (output_tx, output_rx) = oneshot::channel();
-    let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
     std::thread::Builder::new()
         .name(name.to_owned())
         .spawn(move || {
-            let runtime = match build_runtime() {
-                Ok(runtime) => runtime,
-                Err(e) => {
-                    let _ = startup_tx.send(Err(e));
-                    return;
-                }
-            };
-            let _ = startup_tx.send(Ok(()));
-
-            let output = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                runtime.block_on(async move { make_future().await })
-            }))
-            .map_err(panic_message);
+            let output = build_runtime()
+                .context("Failed to create Tokio runtime")
+                .and_then(|runtime| {
+                    std::panic::catch_unwind(AssertUnwindSafe(|| {
+                        runtime.block_on(async move { make_future().await })
+                    }))
+                    .map_err(|panic| anyhow!("Panicked: {}", panic_message(panic)))
+                });
 
             let _ = output_tx.send(output);
         })?;
-
-    startup_rx
-        .recv()
-        .map_err(|_| io::Error::other("Thread exited before creating its runtime"))??;
 
     Ok(ThreadOutput {
         name: name.to_owned(),
@@ -61,11 +51,11 @@ where
     })
 }
 
-/// Resolves to the output of the future run by [`spawn_thread`], or to an error if it panicked.
+/// Resolves to the output of the future run by [`spawn_thread`], or to an error if the thread failed to create its runtime or panicked.
 #[derive(Debug)]
 pub struct ThreadOutput<T> {
     name: String,
-    output_rx: oneshot::Receiver<Result<T, String>>,
+    output_rx: oneshot::Receiver<Result<T>>,
 }
 
 impl<T> Future for ThreadOutput<T> {
@@ -73,8 +63,7 @@ impl<T> Future for ThreadOutput<T> {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let output = match ready!(self.output_rx.poll_unpin(cx)) {
-            Ok(Ok(output)) => Ok(output),
-            Ok(Err(panic)) => Err(anyhow!("Thread `{}` panicked: {panic}", self.name)),
+            Ok(output) => output.with_context(|| format!("Thread `{}` failed", self.name)),
             Err(oneshot::Canceled) => Err(anyhow!("Thread `{}` exited without output", self.name)),
         };
 
