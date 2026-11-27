@@ -777,7 +777,9 @@ without one on the same terms as the legacy sockets.
   the `device_actors` row with the earliest `first_seen_at` stands in for
   the enroller. If a feature needs the exact enroller, it becomes
   `devices.enrolled_by_actor_id` and `enrolled_at`: one current key per
-  device, and Gateways have no `device_actors` rows.
+  device, and Gateways have no `device_actors` rows. No foreign key: the id
+  stays after the actor is deleted, and the panel shows "Enrolled by a
+  deleted user".
 - I.5 `POST /device/enroll` with the claim rules (including the ephemeral
   takeover), and renewal on the mTLS host. A Key Vault 429 goes back to
   the device as 429, with no retries.
