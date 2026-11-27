@@ -771,13 +771,10 @@ without one on the same terms as the legacy sockets.
   Officer" role for the portal identity.
 - `/device/v1` is separate work and not a step here: device identity
   ships on `/client` and `/gateway`.
-- I.4 Device key columns on `devices`: key hash, `ephemeral`, the Gateway
-  `firezone_id` index limited to rows without a key,
-  `enrolled_by_actor_id` (the actor whose token made the latest enrollment;
-  set to NULL when that actor is deleted) and `enrolled_at`. Enrollment and
-  re-enrollment set both; renewal does not. It is a record only: access
-  stays in `device_actors`. The device panel shows "Enrolled by" behind the
-  unified devices flag.
+- I.4 Device key columns on `devices`: key hash and `ephemeral`, and the
+  Client and Gateway `firezone_id` unique indexes limited to rows without
+  a key. No "enrolled by" column: most devices have one actor, so the
+  first `device_actors` row stands in for the enroller.
 - I.5 `POST /device/enroll` with the claim rules (including the ephemeral
   takeover), and renewal on the mTLS host. A Key Vault 429 goes back to
   the device as 429, with no retries.
