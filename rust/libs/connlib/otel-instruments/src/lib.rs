@@ -142,12 +142,15 @@ pub fn portal_connection_hiccups() -> Counter<u64> {
         .build()
 }
 
-/// Number of connections by the network path in use.
-pub fn connection_count() -> Gauge<u64> {
+/// Number of connections by the network path in use, sampled periodically to show its distribution across devices.
+pub fn connection_count() -> Histogram<u64> {
     connlib_meter()
-        .u64_gauge("connlib.connection.count")
+        .u64_histogram("connlib.connection.count")
         .with_description("Number of connections by the network path in use.")
         .with_unit("{connection}")
+        .with_boundaries(vec![
+            0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0,
+        ])
         .build()
 }
 
