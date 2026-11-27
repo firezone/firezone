@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::HashSet;
 use std::future;
-use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
