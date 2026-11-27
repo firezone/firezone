@@ -650,7 +650,8 @@ reported `firezone_id`.
   stores this as `ephemeral` on the row. The device reports it and the
   portal cannot check it, so it never grants access: it only lets a later
   enrollment take the row over (claim rules), and only the row's own
-  enrollment can set it.
+  enrollment can set it. It is internal for now: not in the admin UI, the
+  REST API or exports.
 - **No certificate list.** The device row stores the SHA-256 of the
   device's public key. A certificate is valid only while its key matches
   the row, so deleting the device or resetting its identity ends every
