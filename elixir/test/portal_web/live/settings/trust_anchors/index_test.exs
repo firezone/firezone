@@ -144,15 +144,46 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       assert html =~ "Powers Firezone-managed device trust on Clients 1.6.0+ and Gateways 1.6.6+"
       refute html =~ "No trust anchors yet"
 
-      lv |> element("#device-ca-row") |> render_click()
-      assert_patch(lv, ~p"/#{account}/settings/trust_anchors/firezone")
+      trust_anchor = Repo.get_by!(TrustAnchor, account_id: account.id, system: true)
+      lv |> element("tr[phx-value-id='#{trust_anchor.id}']") |> render_click()
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
-      panel = lv |> element("#device-ca-panel") |> render()
-      assert panel =~ "Firezone device CA " <> account.id
-      assert panel =~ Base.encode64(X509.pem_encode(ca.certificate))
-      refute panel =~ "Edit"
-      refute panel =~ "Delete"
-      refute panel =~ "PRIVATE KEY"
+      panel = lv |> element("#trust-anchor-show-panel") |> render()
+      assert panel =~ "Your built-in device trust CA"
+      refute panel =~ "/edit"
+      refute panel =~ "Delete trust anchor"
+      refute panel =~ "Revocation ("
+
+      certificates = open_certificates_tab(lv)
+      assert certificates =~ Base.encode64(X509.pem_encode(ca.certificate))
+      refute certificates =~ "PRIVATE KEY"
+    end
+
+    test "cannot be edited or deleted", %{conn: conn, account: account, actor: actor} do
+      {:ok, _ca} = Portal.DeviceCA.ensure(account.id)
+      trust_anchor = Repo.get_by!(TrustAnchor, account_id: account.id, system: true)
+      conn = authorize_conn(conn, actor)
+
+      show = ~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}"
+      assert {:error, {:live_redirect, %{to: ^show}}} = live(conn, show <> "/edit")
+
+      {:ok, lv, _html} = live(conn, show)
+      assert render_click(lv, "delete_trust_anchor", %{}) =~ "can&#39;t be deleted"
+      assert Repo.get_by!(TrustAnchor, id: trust_anchor.id, account_id: account.id)
+    end
+
+    test "cannot be added a second time", %{conn: conn, account: account, actor: actor} do
+      {:ok, ca} = Portal.DeviceCA.ensure(account.id)
+
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/trust_anchors/new")
+
+      html =
+        lv
+        |> form("#trust-anchor-new-form", trust_anchor: %{name: "Copy", certs: [X509.pem_encode(ca.certificate)]})
+        |> render_submit()
+
+      assert html =~ "already used by another trust anchor"
+      assert Repo.aggregate(TrustAnchor, :count) == 1
     end
 
     test "does not show another account's device CA", %{conn: conn, account: account, actor: actor} do

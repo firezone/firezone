@@ -12,6 +12,7 @@ defmodule Portal.TrustAnchorCertificate do
           trust_anchor_id: Ecto.UUID.t(),
           pem: String.t(),
           fingerprint: String.t(),
+          system: boolean(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -25,6 +26,9 @@ defmodule Portal.TrustAnchorCertificate do
     field :pem, :string
     # Hex-encoded SHA-256 over the certificate's DER bytes.
     field :fingerprint, :string
+    # Set on the certificate of the account's Firezone device CA, so queries for the
+    # organization's own anchors can leave it out without a join.
+    field :system, :boolean, default: false
 
     timestamps()
   end

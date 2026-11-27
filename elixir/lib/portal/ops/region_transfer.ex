@@ -441,6 +441,9 @@ defmodule Portal.Ops.RegionTransfer do
     alias Portal.OutboundEmailDelivery
     alias Portal.Safe
 
+    # The system trust anchor is the source region's device CA. The destination makes its own.
+    @row_filters %{"trust_anchors" => "NOT system", "trust_anchor_certificates" => "NOT system"}
+
     def fetch_account!(id) do
       from(a in Account, where: a.id == ^id)
       |> Safe.unscoped()
@@ -581,7 +584,9 @@ defmodule Portal.Ops.RegionTransfer do
 
     def count_rows(table, account_id) do
       %{rows: [[count]]} =
-        query!(~s[SELECT count(*) FROM #{ident(table)} WHERE account_id = $1], [Ecto.UUID.dump!(account_id)])
+        query!(~s[SELECT count(*) FROM #{ident(table)} WHERE account_id = $1#{row_filter(table)}], [
+          Ecto.UUID.dump!(account_id)
+        ])
 
       count
     end
@@ -639,9 +644,17 @@ defmodule Portal.Ops.RegionTransfer do
       {:ok, account_id} = Ecto.UUID.cast(account_id)
       select = Enum.map_join(columns, ", ", &if(&1 in nulled, do: "NULL", else: ident(&1)))
 
-      sql = ~s[COPY (SELECT #{select} FROM #{ident(table)} WHERE #{ident(where_column)} = '#{account_id}') TO STDOUT]
+      sql =
+        ~s[COPY (SELECT #{select} FROM #{ident(table)} WHERE #{ident(where_column)} = '#{account_id}'#{row_filter(table)}) TO STDOUT]
 
       File.open!(path, [:write, :binary], &copy_to_file(sql, &1))
+    end
+
+    defp row_filter(table) do
+      case Map.fetch(@row_filters, table) do
+        {:ok, filter} -> " AND " <> filter
+        :error -> ""
+      end
     end
 
     defp copy_to_file(sql, file) do

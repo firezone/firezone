@@ -19,6 +19,18 @@ defmodule Portal.TrustAnchorTest do
     der
   end
 
+  describe "changeset/1 for the system trust anchor" do
+    test "refuses any change" do
+      account = Portal.AccountFixtures.account_fixture()
+      {:ok, _ca} = Portal.DeviceCA.ensure(account.id)
+      trust_anchor = Repo.get_by!(TrustAnchor, account_id: account.id, system: true)
+
+      changeset = trust_anchor |> Ecto.Changeset.change(name: "Renamed") |> TrustAnchor.changeset()
+
+      assert %{base: ["is managed by Firezone"]} = errors_on(changeset)
+    end
+  end
+
   describe "changeset/1 basic validations" do
     test "validates name is required" do
       changeset = build_changeset(%{certs: [sample_cert_der()]})

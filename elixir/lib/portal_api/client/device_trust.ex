@@ -1131,8 +1131,10 @@ defmodule PortalAPI.Client.DeviceTrust do
       end
     end
 
+    # The organization's own anchors only: a Firezone device certificate never proves a managed device.
     def fetch_anchors(%Portal.Authentication.Subject{} = subject) do
       from(c in Portal.TrustAnchorCertificate,
+        where: not c.system,
         select: %{id: c.id, pem: c.pem}
       )
       |> Safe.scoped(subject)
@@ -1143,6 +1145,7 @@ defmodule PortalAPI.Client.DeviceTrust do
     def fetch_anchors(account_id) when is_binary(account_id) do
       from(c in Portal.TrustAnchorCertificate,
         where: c.account_id == ^account_id,
+        where: not c.system,
         select: %{id: c.id, pem: c.pem}
       )
       |> Safe.unscoped()

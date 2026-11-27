@@ -1,5 +1,6 @@
 defmodule Portal.Workers.ProvisionMissingDeviceCAsTest do
   use Portal.DataCase, async: true
+  import Ecto.Query
   use Oban.Testing, repo: Portal.Repo
   import Portal.AccountFixtures
 
@@ -16,6 +17,16 @@ defmodule Portal.Workers.ProvisionMissingDeviceCAsTest do
     assert_enqueued(worker: ProvisionDeviceCA, args: %{account_id: enabled.id})
     assert_enqueued(worker: ProvisionDeviceCA, args: %{account_id: disabled.id})
     refute_enqueued(worker: ProvisionDeviceCA, args: %{account_id: with_ca.id})
+  end
+
+  test "queues an account whose CA has no system trust anchor yet" do
+    account = account_fixture()
+    {:ok, _ca} = Portal.DeviceCA.ensure(account.id)
+    Repo.delete_all(from(t in Portal.TrustAnchor, where: t.account_id == ^account.id))
+
+    assert :ok = perform_job(ProvisionMissingDeviceCAs, %{})
+
+    assert_enqueued(worker: ProvisionDeviceCA, args: %{account_id: account.id})
   end
 
   test "queues nothing when no key storage is set" do

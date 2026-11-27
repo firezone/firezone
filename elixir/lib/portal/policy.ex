@@ -146,7 +146,7 @@ defmodule Portal.Policy do
 
     @spec trust_anchors?(Ecto.UUID.t()) :: boolean()
     def trust_anchors?(account_id) do
-      from(t in Portal.TrustAnchorCertificate, where: t.account_id == ^account_id)
+      from(t in Portal.TrustAnchorCertificate, where: t.account_id == ^account_id and not t.system)
       |> Safe.unscoped()
       |> Safe.exists?()
     end

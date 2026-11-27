@@ -18,8 +18,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     import Ecto.Query
     alias Portal.{Safe, TrustAnchor}
 
+    # The system anchor is Firezone's, so it never counts against the account's limits.
     def count_trust_anchors(subject) do
-      from(t in TrustAnchor)
+      from(t in TrustAnchor, where: not t.system)
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
@@ -28,7 +29,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     # whole bundle. The anchor being edited is excluded so its own rows are
     # not counted twice against the certificates replacing them.
     def count_trust_anchor_certificates(subject, except_trust_anchor_id) do
-      from(c in Portal.TrustAnchorCertificate)
+      from(c in Portal.TrustAnchorCertificate, where: not c.system)
       |> then(fn queryable ->
         if except_trust_anchor_id do
           where(queryable, [c], c.trust_anchor_id != ^except_trust_anchor_id)
@@ -41,18 +42,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end
 
     def list_trust_anchors(subject) do
-      from(t in TrustAnchor, order_by: [asc: t.inserted_at, asc: t.id])
+      from(t in TrustAnchor, order_by: [desc: t.system, asc: t.inserted_at, asc: t.id])
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Safe.preload(:certificates)
-    end
-
-    def get_device_ca(subject) do
-      from(ca in Portal.DeviceCertificateAuthority,
-        select: %{certificate: ca.certificate, inserted_at: ca.inserted_at}
-      )
-      |> Safe.scoped(subject)
-      |> Safe.one()
     end
 
     def get_trust_anchor!(id, subject) do
@@ -192,15 +185,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   end
 
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :edit}} = socket) do
-    trust_anchor = Database.get_trust_anchor!(id, socket.assigns.subject)
-    changeset = build_edit_changeset(trust_anchor, %{}, socket.assigns.subject)
+    case Database.get_trust_anchor!(id, socket.assigns.subject) do
+      %TrustAnchor{system: true} ->
+        {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors/#{id}")}
 
-    socket =
-      socket
-      |> assign(selected_trust_anchor: trust_anchor, input_mode: :paste, confirm_delete?: false)
-      |> assign(form: to_form(changeset, as: "trust_anchor"), pending_update: nil)
-
-    {:noreply, socket}
+      trust_anchor ->
+        edit_trust_anchor(socket, trust_anchor)
+    end
   end
 
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :show}} = socket) do
@@ -244,7 +235,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <div class="flex items-center gap-2">
             <h2 class="text-xs font-semibold text-heading">Trust Anchors</h2>
             <span :if={@trust_anchors} class="text-xs text-subtle tabular-nums">
-              {length(@trust_anchors) + if(@device_ca, do: 1, else: 0)}
+              {length(@trust_anchors)}
             </span>
           </div>
           <div class="flex items-center gap-2">
@@ -262,7 +253,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <%= cond do %>
             <% is_nil(@trust_anchors) -> %>
               <SettingsComponents.skeleton id="trust-anchors-skeleton" />
-            <% Enum.empty?(@trust_anchors) and is_nil(@device_ca) -> %>
+            <% Enum.empty?(@trust_anchors) -> %>
               <div class="flex items-center justify-center h-full">
                 <div class="flex flex-col items-center gap-3 py-16">
                   <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
@@ -298,11 +289,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   </tr>
                 </thead>
                 <tbody>
-                  <.device_ca_row
-                    :if={@device_ca}
-                    device_ca={@device_ca}
-                    selected?={@live_action == :device_ca}
-                  />
                   <.trust_anchor_row
                     :for={trust_anchor <- @trust_anchors}
                     trust_anchor={trust_anchor}
@@ -337,20 +323,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           panel_tab={@panel_tab}
           expanded_endpoint={@expanded_endpoint}
         />
-      </div>
-
-    <!-- Device CA Panel (:device_ca) -->
-      <div
-        id="device-ca-panel"
-        class={[
-          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-elevated border-l border-border-strong",
-          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
-          "transition-transform duration-200 ease-in-out",
-          (@live_action == :device_ca && "translate-x-0") || "translate-x-full"
-        ]}
-      >
-        <.device_ca_panel :if={@live_action == :device_ca && @device_ca} device_ca={@device_ca} />
       </div>
 
     <!-- Creation Panel (:new) -->
@@ -510,9 +482,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       <td class="px-6 py-3">
         <div class="flex items-center gap-1.5 min-w-0">
           <div class="text-sm font-medium text-heading truncate">{@trust_anchor.name}</div>
-          <.revocation_warning_icon health={@health} />
+          <Core.badge :if={@trust_anchor.system} type="neutral" size="xs" class="shrink-0">System</Core.badge>
+          <.revocation_warning_icon :if={not @trust_anchor.system} health={@health} />
         </div>
-        <div class="font-mono text-[10px] text-subtle mt-0.5 truncate">
+        <div :if={@trust_anchor.system} class="text-xs text-subtle truncate">
+          Powers Firezone-managed device trust on Clients 1.6.0+ and Gateways 1.6.6+
+        </div>
+        <div :if={not @trust_anchor.system} class="font-mono text-[10px] text-subtle mt-0.5 truncate">
           {@trust_anchor.id}
         </div>
       </td>
@@ -525,89 +501,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         </span>
       </td>
     </tr>
-    """
-  end
-
-  attr :device_ca, :map, required: true
-  attr :selected?, :boolean, required: true
-
-  defp device_ca_row(assigns) do
-    ~H"""
-    <tr
-      id="device-ca-row"
-      phx-click="select_device_ca"
-      class={[
-        "border-b border-border cursor-pointer transition-colors",
-        @selected? && "bg-raised",
-        !@selected? && "hover:bg-raised"
-      ]}
-    >
-      <td class="px-6 py-3">
-        <div class="flex items-center gap-1.5 min-w-0">
-          <div class="text-sm font-medium text-heading truncate">Firezone device CA</div>
-          <Core.badge type="neutral" size="xs" class="shrink-0">System</Core.badge>
-        </div>
-        <div class="text-xs text-subtle truncate">
-          Powers Firezone-managed device trust on Clients 1.6.0+ and Gateways 1.6.6+
-        </div>
-      </td>
-      <td class="px-6 py-3 w-36">
-        <span class="text-sm text-body">1 certificate</span>
-      </td>
-      <td class="px-6 py-3 w-36">
-        <span class="text-sm text-body">
-          <Core.relative_datetime datetime={@device_ca.inserted_at} />
-        </span>
-      </td>
-    </tr>
-    """
-  end
-
-  attr :device_ca, :map, required: true
-
-  defp device_ca_panel(assigns) do
-    pem = X509.pem_encode(assigns.device_ca.certificate)
-    fingerprint = Base.encode16(:crypto.hash(:sha256, assigns.device_ca.certificate), case: :lower)
-    assigns = assign(assigns, :detail, describe_certificate(%{pem: pem, fingerprint: fingerprint}))
-
-    ~H"""
-    <div class="flex flex-col h-full overflow-hidden">
-      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-sm font-semibold text-heading truncate">Firezone device CA</h2>
-          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-        </div>
-      </div>
-
-      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        <p class="text-xs text-subtle">
-          Your built-in device trust CA. Firezone gives every device its own certificate, so each
-          machine proves who it is every time it connects. No setup, no upkeep: Firezone runs it for
-          you.
-        </p>
-
-        <div class="border border-border rounded p-3 bg-surface space-y-3">
-          <div class="flex items-center justify-between gap-2">
-            <p class="text-xs font-semibold text-heading truncate">{@detail.common_name}</p>
-            <a
-              href={"data:application/x-pem-file;base64," <> Base.encode64(@detail.pem)}
-              download={download_filename("firezone-device-ca", @detail)}
-              class="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-elevated transition-colors"
-            >
-              <Core.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
-            </a>
-          </div>
-          <dl class="space-y-2">
-            <div :for={{label, value} <- certificate_detail_rows(@detail)}>
-              <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
-              <dd class="text-xs text-body font-mono break-all font-medium">
-                <.detail_value value={value} />
-              </dd>
-            </div>
-          </dl>
-        </div>
-      </div>
-    </div>
     """
   end
 
@@ -753,6 +646,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <Navigation.link
+              :if={not @trust_anchor.system}
               patch={~p"/#{@account}/settings/trust_anchors/#{@trust_anchor.id}/edit"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
@@ -774,6 +668,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           active={@panel_tab}
         />
         <.panel_tab
+          :if={not @trust_anchor.system}
           label={"Revocation (#{length(@revocation)})"}
           tab={:revocation}
           active={@panel_tab}
@@ -783,6 +678,11 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       <div class="flex-1 overflow-y-auto px-5 py-4 space-y-5">
         <section :if={@panel_tab == :overview}>
+          <p :if={@trust_anchor.system} class="text-xs text-subtle mb-4">
+            Your built-in device trust CA. Firezone gives every device its own certificate, so each
+            machine proves who it is every time it connects. No setup, no upkeep: Firezone runs it
+            for you.
+          </p>
           <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
             Details
           </h3>
@@ -891,9 +791,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           </div>
         </section>
 
-        <div class="border-t border-border"></div>
+        <div :if={not @trust_anchor.system} class="border-t border-border"></div>
 
-        <section>
+        <section :if={not @trust_anchor.system}>
           <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
             Danger Zone
           </h3>
@@ -1071,7 +971,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         %{"key" => "Escape"},
         %{assigns: %{live_action: action}} = socket
       )
-      when action in [:new, :edit, :show, :device_ca] do
+      when action in [:new, :edit, :show] do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
   end
 
@@ -1082,10 +982,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def handle_event("select_trust_anchor", %{"id" => id}, socket) do
     {:noreply,
      push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors/#{id}")}
-  end
-
-  def handle_event("select_device_ca", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors/firezone")}
   end
 
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
@@ -1182,6 +1078,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("cancel_delete_trust_anchor", _params, socket) do
     {:noreply, assign(socket, confirm_delete?: false)}
+  end
+
+  def handle_event("delete_trust_anchor", _params, %{assigns: %{selected_trust_anchor: %TrustAnchor{system: true}}} = socket) do
+    {:noreply, put_flash(socket, :error, "Firezone manages this trust anchor, so it can't be deleted.")}
   end
 
   def handle_event("delete_trust_anchor", _params, socket) do
@@ -1379,10 +1279,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       socket
       |> assign(trust_anchors: trust_anchors)
-      |> assign(device_ca: Database.get_device_ca(socket.assigns.subject))
       |> assign_revocation_health(trust_anchors)
     else
-      assign(socket, trust_anchors: nil, device_ca: nil, revocation_health: %{})
+      assign(socket, trust_anchors: nil, revocation_health: %{})
     end
   end
 
@@ -1695,4 +1594,15 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     do: true
 
   defp stale_event?(_event, _assigns), do: false
+
+  defp edit_trust_anchor(socket, trust_anchor) do
+    changeset = build_edit_changeset(trust_anchor, %{}, socket.assigns.subject)
+
+    socket =
+      socket
+      |> assign(selected_trust_anchor: trust_anchor, input_mode: :paste, confirm_delete?: false)
+      |> assign(form: to_form(changeset, as: "trust_anchor"), pending_update: nil)
+
+    {:noreply, socket}
+  end
 end

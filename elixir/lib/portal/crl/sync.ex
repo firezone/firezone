@@ -400,6 +400,7 @@ defmodule Portal.Crl.Sync do
     def anchor_ders(account_id) do
       from(c in Portal.TrustAnchorCertificate,
         where: c.account_id == ^account_id,
+        where: not c.system,
         select: c.pem
       )
       |> Safe.unscoped()
