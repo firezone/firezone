@@ -459,7 +459,8 @@ impl Allocation {
             return false;
         };
 
-        let rtt = now.duration_since(backoff.start_time());
+        let sent_at = backoff.start_time();
+        let rtt = now.duration_since(sent_at);
         Span::current().record("rtt", field::debug(rtt));
 
         self.update_rtt(rtt);
@@ -739,7 +740,7 @@ impl Allocation {
                     return true;
                 }
 
-                self.allocation_lifetime = Some((now, lifetime));
+                self.allocation_lifetime = Some((sent_at, lifetime));
                 update_candidate(
                     maybe_ip4_relay_candidate,
                     &mut self.ip4_allocation,
@@ -778,7 +779,7 @@ impl Allocation {
                     return true;
                 }
 
-                self.allocation_lifetime = Some((now, lifetime.lifetime()));
+                self.allocation_lifetime = Some((sent_at, lifetime.lifetime()));
 
                 self.log_update(now);
             }
@@ -1159,17 +1160,17 @@ impl Allocation {
     }
 
     fn refresh_allocation_at(&self) -> Option<Instant> {
-        let (received_at, lifetime) = self.allocation_lifetime?;
+        let (requested_at, lifetime) = self.allocation_lifetime?;
 
         let refresh_after = lifetime / 2;
 
-        Some(received_at + refresh_after)
+        Some(requested_at + refresh_after)
     }
 
     fn allocation_expires_at(&self) -> Option<Instant> {
-        let (received_at, lifetime) = self.allocation_lifetime?;
+        let (requested_at, lifetime) = self.allocation_lifetime?;
 
-        Some(received_at + lifetime)
+        Some(requested_at + lifetime)
     }
 
     /// Makes a new allocation once the lifetime of this one passed.
