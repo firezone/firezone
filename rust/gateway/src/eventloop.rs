@@ -57,6 +57,7 @@ pub struct Eventloop {
         ResolveDnsRequest,
     >,
     portal_event_rx: mpsc::Receiver<Result<PortalEvent, phoenix_channel::Error>>,
+    portal_thread: async_runtime::ThreadOutput<()>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     sigint: signals::Terminate,
@@ -97,7 +98,7 @@ impl Eventloop {
 
         let public_key = PublicKeyParam(tunnel.public_key().to_bytes());
         let portal_resolver = dns_resolver()?;
-        async_runtime::spawn_thread("fz-portal", move || {
+        let portal_thread = async_runtime::spawn_thread("fz-portal", move || {
             phoenix_channel_event_loop(
                 portal,
                 public_key,
@@ -105,8 +106,7 @@ impl Eventloop {
                 portal_cmd_rx,
                 portal_resolver,
             )
-        })
-        .context("Failed to spawn portal thread")?;
+        });
 
         Ok(Self {
             clock,
@@ -125,6 +125,7 @@ impl Eventloop {
             tunnel_errors: otel_instruments::tunnel_errors(),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
             portal_event_rx,
+            portal_thread,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
         })
@@ -135,6 +136,7 @@ enum CombinedEvent {
     SigIntTerm,
     Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
+    PortalThread(Result<()>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
     Clock(clock::Alarm),
 }
@@ -189,6 +191,11 @@ impl Eventloop {
                 "phoenix channel task stopped unexpectedly",
             )),
             CombinedEvent::Portal(Some(Err(e))) => Err(e).context("Failed to login to portal"),
+            CombinedEvent::PortalThread(result) => {
+                result?;
+
+                Err(anyhow::Error::msg("portal thread stopped unexpectedly"))
+            }
             CombinedEvent::DomainResolved((result, req)) => {
                 let now = self.clock.now();
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -230,6 +237,10 @@ impl Eventloop {
 
         if let Poll::Ready(event) = self.portal_event_rx.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::Portal(event));
+        }
+
+        if let Poll::Ready(result) = std::pin::Pin::new(&mut self.portal_thread).poll(cx) {
+            return Poll::Ready(CombinedEvent::PortalThread(result));
         }
 
         if let Poll::Ready((result, trigger)) = self.resolve_tasks.poll_unpin(cx) {
@@ -349,6 +360,7 @@ impl Eventloop {
             }
 
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
+                || e.any_is::<tunnel::DnsResolverThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
                 || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
             {
