@@ -14,9 +14,9 @@ repos:
         entry: codespell
         language: system
         pass_filenames: false
-      - id: prettier
-        name: Prettier
-        entry: bash -c 'cd .github && git -C .. ls-files "*.md" "*.json" "*.yaml" "*.yml" "*.css" "*.js" "*.ts" "*.tsx" | sed "s|^|../|" | xargs pnpm exec prettier --ignore-path ../.prettierignore --check --ignore-unknown --no-error-on-unmatched-pattern'
+      - id: biome
+        name: Biome
+        entry: biome format
         language: system
         pass_filenames: false
   # Standard pre-commit hooks
