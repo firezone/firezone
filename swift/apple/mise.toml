@@ -20,7 +20,7 @@ MACOSX_DEPLOYMENT_TARGET = "13.0"
 swiftlint = "0.65.1" # Swift static analysis
 
 [tools."github:rorkai/App-Store-Connect-CLI"]
-version = "4.11.0"
+version = "7.0.0"
 version_prefix = ""
 bin = "asc"
 os = ["linux"]
