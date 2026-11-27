@@ -92,14 +92,7 @@ impl Eventloop {
         local_flow_logs: bool,
         account_slug: account_slug::Cache,
         metrics_exporter: otel_metrics_export::Exporter,
-        metrics_thread: async_runtime::ThreadOutput<()>,
     ) -> Result<Self> {
-        tokio::spawn(async move {
-            if let Err(e) = metrics_thread.await {
-                tracing::error!("Metrics export stopped: {e:#}");
-            }
-        });
-
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
@@ -240,6 +233,10 @@ impl Eventloop {
 
         if let Poll::Ready(event) = self.portal_event_rx.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::Portal(event));
+        }
+
+        if let Poll::Ready(e) = self.metrics_exporter.poll_thread_stopped(cx) {
+            tracing::error!("Metrics export stopped: {e:#}");
         }
 
         if let Poll::Ready(result) = std::pin::Pin::new(&mut self.portal_thread).poll(cx) {

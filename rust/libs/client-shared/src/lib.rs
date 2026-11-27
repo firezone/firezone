@@ -85,7 +85,6 @@ impl Session {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         config: SessionConfig,
         metrics_exporter: otel_metrics_export::Exporter,
-        metrics_thread: async_runtime::ThreadOutput<()>,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
@@ -98,7 +97,6 @@ impl Session {
                     udp_socket_factory,
                     config,
                     metrics_exporter,
-                    metrics_thread,
                     portal,
                     cmd_rx,
                     resource_list_sender,

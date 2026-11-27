@@ -237,8 +237,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         }
     });
 
-    let (metrics_exporter, metrics_thread) =
-        otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory));
+    let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory));
 
     let login = LoginUrl::gateway(
         cli.api_url,
@@ -312,7 +311,6 @@ async fn try_main(cli: Cli) -> Result<()> {
             local_flow_logs,
             account_slug,
             metrics_exporter,
-            metrics_thread,
         )?
         .run()
         .await
