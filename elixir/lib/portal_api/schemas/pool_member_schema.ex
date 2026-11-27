@@ -47,8 +47,6 @@ defmodule PortalAPI.Schemas.PoolMember do
                :type,
                :updated_at,
                :verified_at,
-               :enrolled_at,
-               :enrolled_by_actor_id,
                :ephemeral,
                :key_hash
              ]}

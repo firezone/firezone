@@ -71,8 +71,6 @@ defmodule Portal.Device do
           verified_at: DateTime.t() | nil,
           key_hash: binary() | nil,
           ephemeral: boolean(),
-          enrolled_by_actor_id: Ecto.UUID.t() | nil,
-          enrolled_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -131,8 +129,6 @@ defmodule Portal.Device do
     field :key_hash, :binary
     # The key lives only in memory, so a later enrollment may take this row over. Internal only.
     field :ephemeral, :boolean, default: false
-    field :enrolled_by_actor_id, :binary_id
-    field :enrolled_at, :utc_datetime_usec
 
     # Gateway-only
     has_one :site_device, Portal.SiteDevice, foreign_key: :device_id, references: :id

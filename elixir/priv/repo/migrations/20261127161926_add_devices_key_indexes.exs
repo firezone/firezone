@@ -13,13 +13,6 @@ defmodule Portal.Repo.Migrations.AddDevicesKeyIndexes do
     )
 
     create_if_not_exists(
-      index(:devices, [:account_id, :enrolled_by_actor_id],
-        where: "enrolled_by_actor_id IS NOT NULL",
-        concurrently: true
-      )
-    )
-
-    create_if_not_exists(
       unique_index(:devices, [:account_id, :firezone_id],
         where: "type = 'client' AND key_hash IS NULL",
         name: :devices_account_id_unkeyed_client_firezone_id_index,
@@ -80,7 +73,6 @@ defmodule Portal.Repo.Migrations.AddDevicesKeyIndexes do
       )
     )
 
-    drop_if_exists(index(:devices, [:account_id, :enrolled_by_actor_id], concurrently: true))
     drop_if_exists(index(:devices, [:account_id, :key_hash], concurrently: true))
   end
 end

@@ -119,18 +119,6 @@ defmodule Portal.GatewayTest do
       assert {:ok, _gateway} =
                gateway_fixture() |> change(key_hash: key_hash) |> Device.changeset() |> Repo.update()
     end
-
-    test "keeps the device when the actor that enrolled it is deleted", %{account: account, gateway: gateway} do
-      actor = Portal.ActorFixtures.actor_fixture(account: account)
-
-      Repo.update_all(from(d in Device, where: d.id == ^gateway.id),
-        set: [enrolled_by_actor_id: actor.id, enrolled_at: DateTime.utc_now()]
-      )
-
-      Repo.delete!(actor)
-
-      assert %Device{enrolled_by_actor_id: nil} = Repo.get_by!(Device, id: gateway.id)
-    end
   end
 
   defp key_hash, do: :crypto.strong_rand_bytes(32)
