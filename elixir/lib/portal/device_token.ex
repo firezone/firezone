@@ -33,6 +33,7 @@ defmodule Portal.DeviceToken do
 
     # Used only during creation
     field :secret_nonce, :string, virtual: true, redact: true
+    field :nonce_hash, :string, virtual: true, redact: true
     field :secret_fragment, :string, virtual: true, redact: true
 
     # Populated on fetch-for-verification: the id of this token's rotated

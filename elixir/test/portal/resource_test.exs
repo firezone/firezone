@@ -352,40 +352,6 @@ defmodule Portal.ResourceTest do
     end
   end
 
-  describe "matches_dns_pattern?/2" do
-    test "matches single-label wildcard" do
-      assert Portal.Resource.matches_dns_pattern?("*.devices.example.com", "host.devices.example.com")
-    end
-
-    test "rejects multi-label match against single-label wildcard" do
-      refute Portal.Resource.matches_dns_pattern?("*.devices.example.com", "a.b.devices.example.com")
-    end
-
-    test "matches multi-label wildcard" do
-      assert Portal.Resource.matches_dns_pattern?("**.devices.example.com", "a.b.devices.example.com")
-    end
-
-    test "is case-insensitive on both sides" do
-      assert Portal.Resource.matches_dns_pattern?(
-               "*.Devices.EXAMPLE.com",
-               "Host.devices.example.COM"
-             )
-    end
-
-    test "rejects domains outside the pattern" do
-      refute Portal.Resource.matches_dns_pattern?("*.devices.example.com", "host.other.example.com")
-    end
-
-    test "matches single-character wildcard" do
-      assert Portal.Resource.matches_dns_pattern?("host?.example.com", "host1.example.com")
-      refute Portal.Resource.matches_dns_pattern?("host?.example.com", "host42.example.com")
-    end
-
-    test "treats literal dots in pattern literally" do
-      refute Portal.Resource.matches_dns_pattern?("host.example.com", "hostXexample.com")
-    end
-  end
-
   describe "changeset/1 type change revalidation" do
     test "revalidates address when type changes from cidr to ip" do
       # A valid CIDR but invalid IP

@@ -11,6 +11,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Username};
+use stun_codec::rfc5389::errors::StaleNonce;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress,
 };
@@ -389,6 +390,86 @@ fn create_permission_for_public_peer_succeeds() {
 }
 
 #[test]
+fn requests_above_the_burst_get_no_response() {
+    let mut relay = TestRelay::with_allocation();
+
+    let answered = (0..2000)
+        .filter(|_| relay.try_send(REFRESH, []).is_some())
+        .count();
+
+    assert!((1000..1010).contains(&answered), "answered {answered}");
+}
+
+#[test]
+fn request_budget_refills_over_time() {
+    let mut relay = TestRelay::with_allocation();
+    while relay.try_send(REFRESH, []).is_some() {}
+
+    relay.now += Duration::from_secs(1);
+    let answered = (0..1000)
+        .filter(|_| relay.try_send(REFRESH, []).is_some())
+        .count();
+
+    assert!((200..210).contains(&answered), "answered {answered}");
+}
+
+#[test]
+fn request_budgets_are_per_client() {
+    let mut relay = TestRelay::with_allocation();
+    while relay.try_send(REFRESH, []).is_some() {}
+
+    let response = relay.allocate_as(socket(1), username(relay.account, EXPIRY, "b"));
+
+    assert_eq!(response.class(), MessageClass::SuccessResponse);
+}
+
+#[test]
+fn requests_with_a_stale_nonce_do_not_use_the_budget() {
+    let mut relay = TestRelay::with_allocation();
+    relay.nonce = Nonce::new("0:00".to_owned()).unwrap();
+
+    let stale = (0..2000)
+        .filter(|_| {
+            relay
+                .send(REFRESH, [])
+                .get_attribute::<ErrorCode>()
+                .unwrap()
+                .code()
+                == StaleNonce::CODEPOINT
+        })
+        .count();
+
+    assert_eq!(stale, 2000);
+}
+
+#[test]
+fn clients_over_budget_get_no_response_to_any_stun_message() {
+    let mut relay = TestRelay::with_allocation();
+    while relay.try_send(REFRESH, []).is_some() {}
+
+    let mut allocate =
+        Message::<Attribute>::new(MessageClass::Request, ALLOCATE, TransactionId::new([0; 12]));
+    allocate.add_attribute(RequestedTransport::new(UDP_TRANSPORT));
+    let bytes = MessageEncoder::new().encode_into_bytes(allocate).unwrap();
+    relay
+        .server
+        .handle_client_input(&bytes, relay.client, relay.now, relay.now_utc);
+
+    assert_eq!(relay.server.next_command(), None);
+}
+
+#[test]
+fn idle_request_budgets_are_released() {
+    let mut relay = TestRelay::with_allocation();
+    let budget_deadline = relay.server.poll_timeout().unwrap();
+    assert!(budget_deadline <= relay.now + Duration::from_secs(1));
+
+    relay.server.handle_timeout(budget_deadline);
+
+    assert!(relay.server.poll_timeout().unwrap() > relay.now + Duration::from_secs(60));
+}
+
+#[test]
 fn channel_bindings_adopt_a_changed_throughput_limit() {
     let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
     let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
@@ -452,6 +533,65 @@ fn unchanged_throughput_limit_does_not_touch_channel_bindings() {
         .set_accounts([(relay.account, Some(limit_5_mbps()))]);
 
     assert_eq!(relay.next_command(), None);
+}
+
+#[test]
+fn refreshing_a_bound_channel_keeps_its_rate_limiters() {
+    let peer = SocketAddr::from(([198, 51, 100, 2], 50_001));
+    let mut relay = TestRelay::with_allocation();
+    relay
+        .server
+        .set_accounts([(relay.account, Some(limit_5_mbps()))]);
+    relay.channel_bind(peer);
+    assert!(matches!(
+        relay.next_command(),
+        Some(Command::CreateChannelBinding { .. })
+    ));
+
+    let response = relay.channel_bind(peer);
+
+    assert_eq!(response.class(), MessageClass::SuccessResponse);
+    assert_eq!(relay.next_command(), None);
+}
+
+#[test]
+fn refreshing_an_expired_channel_binds_it_again() {
+    let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
+    let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
+    let mut relay = TestRelay::with_allocation();
+    relay.send(
+        REFRESH,
+        [Attribute::Lifetime(
+            Lifetime::new(Duration::from_secs(3600)).unwrap(),
+        )],
+    );
+    relay.channel_bind(peer.into_socket());
+    let Some(Command::CreateChannelBinding {
+        allocation_port, ..
+    }) = relay.next_command()
+    else {
+        panic!("the relay binds the channel");
+    };
+    relay.now += Duration::from_secs(600);
+    relay.server.handle_timeout(relay.now);
+    assert!(matches!(
+        relay.next_command(),
+        Some(Command::DeleteChannelBinding { .. })
+    ));
+
+    let response = relay.channel_bind(peer.into_socket());
+
+    assert_eq!(response.class(), MessageClass::SuccessResponse);
+    assert_eq!(
+        relay.next_command(),
+        Some(Command::CreateChannelBinding {
+            client: relay.client,
+            channel_number: channel,
+            peer,
+            allocation_port,
+            throughput_limit: None,
+        })
+    );
 }
 
 #[test]
@@ -606,6 +746,16 @@ impl TestRelay {
         method: Method,
         attributes: impl IntoIterator<Item = Attribute>,
     ) -> Message<Attribute> {
+        self.try_send(method, attributes)
+            .expect("the relay sends a response")
+    }
+
+    /// Sends an authenticated request and returns the relay's response, if any.
+    fn try_send(
+        &mut self,
+        method: Method,
+        attributes: impl IntoIterator<Item = Attribute>,
+    ) -> Option<Message<Attribute>> {
         let mut message = Message::<Attribute>::new(
             MessageClass::Request,
             method,
@@ -635,9 +785,9 @@ impl TestRelay {
 
         loop {
             match self.server.next_command() {
-                Some(Command::SendMessage { payload, .. }) => return decode(&payload),
+                Some(Command::SendMessage { payload, .. }) => return Some(decode(&payload)),
                 Some(command) => self.commands.push_back(command),
-                None => panic!("the relay sends a response"),
+                None => return None,
             }
         }
     }

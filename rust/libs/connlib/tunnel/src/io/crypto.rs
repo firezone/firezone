@@ -374,11 +374,11 @@ struct DecryptJob {
     decrypted: oneshot::Sender<DecryptedJob>,
 }
 
-/// How many crypto workers to spawn: up to half of the cores.
+/// How many crypto workers to spawn: half of the cores, between 2 and 8.
 fn num_crypto_workers() -> usize {
     let cores = thread::available_parallelism().map_or(1, NonZeroUsize::get);
 
-    (cores / 2).max(2)
+    (cores / 2).clamp(2, 8)
 }
 
 fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::Sender<Job>> {

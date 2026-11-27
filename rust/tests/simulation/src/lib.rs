@@ -116,14 +116,16 @@ pub fn run_tunnel(data: &[u8], now: Instant) {
 pub fn run_relay(data: &[u8], now: Instant) {
     let _guard = init_subscriber();
 
+    let clock = Clock::new(now, Timestamp::UNIX_EPOCH);
     let mut generator = RelayGenerator::new(data);
-    let mut model = generator.model();
+    let mut model = generator.model(clock.now());
 
-    let mut system = RealRelaySystem::new(&model, now);
+    let mut system = RealRelaySystem::new(&model, clock.clone());
     let mut interference = Interference::default();
     let settled = system.settle(&mut interference);
-    check_settled(&model, &settled);
-    model.settle();
+    let now = clock.now();
+    check_settled(&model, &settled, now);
+    model.settle(now);
 
     for index in 0..MAX_RELAY_TRANSITIONS {
         if generator.is_empty() {
@@ -137,9 +139,9 @@ pub fn run_relay(data: &[u8], now: Instant) {
             "Applying transition {index}: {transition:?} with {interference:?}, settle: {settle}"
         );
 
-        model.apply(&transition, &interference);
+        model.apply(&transition, &interference, clock.now());
         let applied = system.apply(&transition, &mut interference);
-        check_applied(&model, &applied);
+        check_applied(&model, &applied, clock.now());
 
         // The next transition meets whatever the client and the relay are in the middle of.
         if !settle {
@@ -147,12 +149,13 @@ pub fn run_relay(data: &[u8], now: Instant) {
         }
 
         let settled = system.settle(&mut interference);
-        check_settled(&model, &settled);
-        model.settle();
+        let now = clock.now();
+        check_settled(&model, &settled, now);
+        model.settle(now);
     }
 
     let settled = system.settle(&mut interference);
-    check_settled(&model, &settled);
+    check_settled(&model, &settled, clock.now());
 }
 
 /// Initializes a subscriber that panics on error events.

@@ -5,15 +5,18 @@
 mod pipeline;
 
 use std::{
-    io,
     pin::pin,
     sync::Arc,
+    task::{Context, Poll, ready},
     time::{Duration, Instant},
 };
 
 use anyhow::{Context as _, Result};
 use bytes::Bytes;
-use futures::future::{Either, select};
+use futures::{
+    FutureExt as _,
+    future::{Either, select},
+};
 use http::{StatusCode, header};
 use http_client::{HttpClient, TlsConfig};
 use opentelemetry::KeyValue;
@@ -34,20 +37,39 @@ const IO_WINDOW: Duration = Duration::from_secs(1);
 /// Dropping it stops the thread.
 pub struct Exporter {
     config: watch::Sender<Option<Config>>,
+    thread: Option<async_runtime::ThreadOutput<()>>,
 }
 
 impl Exporter {
     /// Spawns the export thread, which samples the process' memory usage and IO bottlenecks and exports nothing until [`Exporter::configure`] provides a token.
-    pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> io::Result<Self> {
+    pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> Self {
         let (config, rx) = watch::channel(None);
 
-        async_runtime::spawn_thread("fz-metrics-export", move || async move {
+        let thread = async_runtime::spawn_thread("fz-metrics-export", move || async move {
             tokio::spawn(sample_memory_usage());
             tokio::spawn(sample_io_windows());
             run(rx, socket_factory).await;
-        })?;
+        });
 
-        Ok(Self { config })
+        Self {
+            config,
+            thread: Some(thread),
+        }
+    }
+
+    /// Resolves once the export thread has stopped, with the reason.
+    pub fn poll_thread_stopped(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
+        let Some(thread) = self.thread.as_mut() else {
+            return Poll::Pending;
+        };
+        let output = ready!(thread.poll_unpin(cx));
+        self.thread = None;
+
+        Poll::Ready(
+            output
+                .err()
+                .unwrap_or_else(|| anyhow::Error::msg("Thread exited unexpectedly")),
+        )
     }
 
     /// Applies the portal's metrics config; a `None` endpoint or token stops exporting.

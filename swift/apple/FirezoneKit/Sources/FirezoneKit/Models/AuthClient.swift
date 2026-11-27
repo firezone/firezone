@@ -5,6 +5,7 @@
 //
 
 import AuthenticationServices
+import CryptoKit
 import Foundation
 
 enum AuthClientError: LocalizedError {
@@ -45,12 +46,17 @@ struct AuthClient {
     nonce = try Self.createRandomHexString(byteCount: 32)
   }
 
+  // Only the hash leaves the app. The token needs the nonce itself.
+  static func sha256Hex(_ value: String) -> String {
+    SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
+  }
+
   // Builds a full URL to send to the portal
   func build() throws -> URL {
     return
       authURL
       .appendingQueryItem(URLQueryItem(name: "state", value: state))
-      .appendingQueryItem(URLQueryItem(name: "nonce", value: nonce))
+      .appendingQueryItem(URLQueryItem(name: "nonce_hash", value: Self.sha256Hex(nonce)))
       .appendingQueryItem(URLQueryItem(name: "as", value: "gui-client"))
   }
 

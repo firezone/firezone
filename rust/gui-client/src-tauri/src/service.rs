@@ -34,6 +34,8 @@ use tracing::Instrument as _;
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
+const HANDLER_RETRY_DELAY: Duration = Duration::from_secs(1);
+
 #[cfg(target_os = "linux")]
 #[path = "service/linux.rs"]
 mod platform;
@@ -226,6 +228,9 @@ async fn ipc_listen(
             Ok(handler) => handler,
             Err(e) => {
                 tracing::warn!("Failed to initialise IPC handler: {e:#}");
+
+                // `Handler::new` can fail before it awaits anything, so retrying at once would spin.
+                tokio::time::sleep(HANDLER_RETRY_DELAY).await;
                 continue;
             }
         };
@@ -984,8 +989,7 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         );
 
-        let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
-            .context("Failed to spawn metrics exporter")?;
+        let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory));
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -1004,8 +1008,7 @@ impl<'a> Handler<'a> {
             portal,
             config,
             metrics_exporter,
-        )
-        .context("Failed to start connlib")?;
+        );
 
         if self.force_relayed_connections {
             connlib.set_force_relayed_connections(true);

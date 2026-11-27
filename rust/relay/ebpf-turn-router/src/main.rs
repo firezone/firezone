@@ -37,11 +37,16 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             | Error::NotTurn
             | Error::NotAChannelDataMessage
             | Error::UdpChecksumMissing
-            | Error::Ipv4PacketWithOptions),
+            | Error::Ipv4Fragment),
         ) => {
             debug!(&ctx, target: "eBPF", "^^^ pass packet to userspace: {}", e.as_str());
 
             xdp_action::XDP_PASS
+        }
+        Err(e @ Error::Ipv4PacketWithOptions) => {
+            debug!(&ctx, target: "eBPF", "XXX drop packet: {}", e.as_str());
+
+            xdp_action::XDP_DROP
         }
         Err(e @ Error::ThroughputLimitExceeded) => {
             trace!(&ctx, target: "eBPF", "XXX drop packet: {}", e.as_str());
@@ -55,7 +60,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             xdp_action::XDP_DROP
         }
         // We only relay WireGuard and STUN; anything else comes from a misbehaving or malicious client or peer.
-        Err(e @ Error::NotRelayable) => {
+        Err(e @ (Error::NotRelayable | Error::InconsistentLength)) => {
             debug!(&ctx,target: "eBPF", "XXX drop packet: {}", e.as_str());
 
             xdp_action::XDP_DROP

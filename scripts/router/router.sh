@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euo pipefail
+set -euxo pipefail
 
 # Get network configuration
 INTERNAL_NET_V4=$(ip -4 --json route | jq -r '.[] | select(.dev == "internal") | select(.dst == "default" | not) | .dst')
@@ -72,8 +72,8 @@ if [ "${NETWORK_LATENCY_MS:-0}" -gt 0 ]; then
     tc qdisc add dev internal root netem delay "${LATENCY}ms" limit 100000
 fi
 
-ip link set dev internal txqueuelen 100000
-ip link set dev internet txqueuelen 100000
+ip link set dev internal txqueuelen 10000
+ip link set dev internet txqueuelen 10000
 
 echo "-----------------------------------------------------------------------------------------------"
 cat "$CONFIG_FILE"

@@ -107,7 +107,7 @@ defmodule PortalWeb.SignIn.Email do
         id="pin-input"
         phx-hook="PINInput"
         phx-update="ignore"
-        class="flex gap-3 justify-center mb-6"
+        class="flex gap-2 sm:gap-3 justify-center mb-6"
       >
         <input
           :for={i <- 0..5}
@@ -116,7 +116,7 @@ defmodule PortalWeb.SignIn.Email do
           maxlength="1"
           inputmode="text"
           autocomplete="off"
-          class="w-12 h-14 text-center text-xl font-semibold rounded-md border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-2 focus:ring-border-focus/30 transition-colors uppercase"
+          class="w-full min-w-0 max-w-12 h-14 text-center text-xl font-semibold rounded-md border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-2 focus:ring-border-focus/30 transition-colors uppercase"
         />
         <input type="hidden" name="secret" id="secret" />
       </div>
@@ -129,7 +129,7 @@ defmodule PortalWeb.SignIn.Email do
       </button>
     </form>
 
-    <div class={["mt-4 grid gap-2", if(@resend_action, do: "grid-cols-2", else: "grid-cols-1")]}>
+    <div class={["mt-4 grid gap-2", if(@resend_action, do: "grid-cols-1 sm:grid-cols-2", else: "grid-cols-1")]}>
       <Navigation.link
         href={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
         class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"

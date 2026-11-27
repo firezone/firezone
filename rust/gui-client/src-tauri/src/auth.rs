@@ -6,6 +6,7 @@ use keyring_core::CredentialStore;
 use logging::err_with_src;
 use rand::Rng;
 use secrecy::{ExposeSecret, SecretString};
+use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -92,9 +93,11 @@ impl Request {
         // Avoid further usage of `Url` here so we don't need to zeroize it.
         let base = url.to_string();
 
+        // Only the hash leaves this process. The token needs the nonce itself.
+        let nonce_hash = hex::encode(Sha256::digest(self.nonce.expose_secret()));
+
         SecretString::from(format!(
-            "{base}?as=gui-client&nonce={}&state={}",
-            self.nonce.expose_secret(),
+            "{base}?as=gui-client&nonce_hash={nonce_hash}&state={}",
             self.state.expose_secret()
         ))
     }
@@ -245,7 +248,6 @@ impl Auth {
         let req = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
 
         if !secure_equality(&resp.state, &req.state) {
-            self.sign_out()?;
             return Err(Error::StatesDontMatch);
         }
 
@@ -509,7 +511,7 @@ mod tests {
         };
         assert_eq!(
             req.to_url().expose_secret(),
-            "https://app.firez.one/?as=gui-client&nonce=some_nonce&state=some_state"
+            "https://app.firez.one/?as=gui-client&nonce_hash=259c3342c0017c48a4b145571be0622790a6a9ad98c5e63dbad74256232d48ca&state=some_state"
         );
     }
 
@@ -697,6 +699,17 @@ mod tests {
             _ => panic!("Expected StatesDontMatch error"),
         }
         assert!(state.credential().is_none());
-        assert!(state.is_signed_out());
+        assert!(!state.is_signed_out());
+
+        // The pending sign-in still completes with the right state
+        let req_state = state.ongoing_request().unwrap().state.clone();
+        state
+            .handle_response(Response {
+                fragment: bogus_secret("fragment"),
+                state: req_state,
+                control_plane: None,
+            })
+            .unwrap();
+        assert!(matches!(state.state, State::AwaitingPortal(_)));
     }
 }

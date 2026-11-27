@@ -60,6 +60,22 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn replaces_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("link");
+        std::fs::write(&target, b"original").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write(&link, b"new").unwrap();
+
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+        assert!(!std::fs::symlink_metadata(&link).unwrap().is_symlink());
+        assert_eq!(std::fs::read(&link).unwrap(), b"new");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn file_is_owner_only() {
         use std::os::unix::fs::PermissionsExt as _;
 

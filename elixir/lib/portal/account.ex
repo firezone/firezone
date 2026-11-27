@@ -15,7 +15,6 @@ defmodule Portal.Account do
     field :key, :string
 
     has_many :slugs, Portal.AccountSlug
-    has_one :metrics, Portal.AccountMetrics
 
     field :legal_name, :string
 

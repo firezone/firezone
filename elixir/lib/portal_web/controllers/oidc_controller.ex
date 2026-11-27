@@ -947,23 +947,26 @@ defmodule PortalWeb.OIDCController do
         )
 
       :gui_client ->
-        create_client_token(identity, provider, expires_at, params["nonce"])
+        identity
+        |> client_token_attrs(provider, expires_at)
+        |> Map.merge(%{secret_nonce: params["nonce"], nonce_hash: params["nonce_hash"]})
+        |> Portal.Authentication.create_gui_client_token()
 
       :headless_client ->
-        create_client_token(identity, provider, expires_at, "")
+        identity
+        |> client_token_attrs(provider, expires_at)
+        |> Map.put(:secret_nonce, "")
+        |> Portal.Authentication.create_interactive_client_token()
     end
   end
 
-  defp create_client_token(identity, provider, expires_at, nonce) do
-    attrs = %{
-      secret_nonce: nonce,
+  defp client_token_attrs(identity, provider, expires_at) do
+    %{
       account_id: identity.account_id,
       actor_id: identity.actor_id,
       auth_provider_id: provider.id,
       expires_at: expires_at
     }
-
-    Portal.Authentication.create_interactive_client_token(attrs)
   end
 
   defp session_lifetime_secs(provider, schema, type)
@@ -1008,7 +1011,7 @@ defmodule PortalWeb.OIDCController do
       identity.actor.name,
       identity.email,
       token,
-      params["state"]
+      params
     )
   end
 
@@ -2197,7 +2200,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp sanitize(params) do
-    Map.take(params, ["as", "redirect_to", "state", "nonce"])
+    Map.take(params, ["as", "redirect_to", "state", "nonce", "nonce_hash", "callback"])
   end
 
   defp verification_params(pending_identity_id, params) do

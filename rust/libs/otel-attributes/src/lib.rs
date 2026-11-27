@@ -162,9 +162,23 @@ const ERROR_TYPE_KEYS: [&str; MAX_ERROR_LAYERS] = [
 /// Each layer is the error's `Display` string with variable substrings (IP addresses,
 /// UUIDs) replaced by static placeholders to keep metric cardinality low.
 pub fn error_layers(error: &anyhow::Error) -> Vec<KeyValue> {
+    error_layers_with(error, |_| None)
+}
+
+/// Like [`error_layers`] but `classify` can map a layer to a fixed label instead of its `Display` string.
+///
+/// Use this for errors whose `Display` contains values chosen by a remote peer.
+pub fn error_layers_with(
+    error: &anyhow::Error,
+    classify: impl Fn(&(dyn std::error::Error + 'static)) -> Option<&'static str>,
+) -> Vec<KeyValue> {
     error
         .chain()
-        .map(error_value)
+        .map(|e| {
+            classify(e)
+                .map(Value::from)
+                .unwrap_or_else(|| error_value(e))
+        })
         .zip(ERROR_TYPE_KEYS)
         .map(|(error, key)| KeyValue::new(key, error))
         .collect()

@@ -246,8 +246,10 @@ jobs:
     uses: ./.github/workflows/_elixir.yml
     secrets: inherit
     permissions:
+      contents: read
       checks: write # dorny/test-reporter
       pull-requests: write # breaking OpenAPI changes comment
+      security-events: write # trivy SARIF upload from setup-mise
 
   swift:
     uses: ./.github/workflows/_swift.yml

@@ -55,6 +55,7 @@ config :portal, run_manual_migrations: false
 
 config :portal, data_residency_region: :on_prem
 config :portal, slug_registry_table_url: nil
+config :portal, device_ca_key_storage: :db, device_ca_key_vault_url: nil
 config :portal, region_transfer_outbox_url: nil, region_transfer_inbox_url: nil
 config :portal, avatars_container_url: nil
 
@@ -181,7 +182,7 @@ config :portal, Portal.Changes.Consumer,
   table_subscriptions: ~w[
     accounts
     account_slugs
-    account_metrics
+    metrics_rules
     actors
     groups
     memberships
@@ -288,6 +289,13 @@ config :portal, Portal.Avatars.Picture,
 config :portal, Portal.Avatars.Storage,
   req_opts: [
     receive_timeout: 15_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.DeviceCA.KeyVault,
+  req_opts: [
+    connect_options: [timeout: 2_000],
+    receive_timeout: 10_000,
     retry: :transient
   ]
 

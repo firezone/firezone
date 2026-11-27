@@ -7,7 +7,7 @@
 use std::{
     collections::BTreeMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use connlib_model::IpStack;
@@ -32,7 +32,7 @@ pub(crate) const PEERS: [SocketAddr; 4] = [
 /// 0, 1, 2.5 and 4.75 seconds.
 const RETRANSMISSION_BUDGET: u8 = 3;
 
-/// The longest partition that the last transmission of every request outlasts, with the
+/// The longest partition or sleep that the last transmission of every request outlasts, with the
 /// latencies that the hosts may have.
 const BRIDGED_PARTITION: Duration = Duration::from_secs(4);
 
@@ -51,8 +51,9 @@ pub(crate) struct RelayModel {
     disrupted: bool,
     /// How many transmissions a request may have lost since the system last settled.
     lost_transmissions: u8,
-    /// Whether the client called `Allocation::refresh` since the system last settled.
-    refreshed: bool,
+
+    /// When the credentials that the client holds expire.
+    pub(crate) credentials_expire_at: SystemTime,
 }
 
 /// A host with an address of each family, of which it uses those in `stack`.
@@ -67,7 +68,13 @@ pub(crate) struct ModelHost {
 }
 
 impl RelayModel {
-    pub(crate) fn new(relay: ModelHost, client: ModelHost, foreign: ModelHost) -> Self {
+    pub(crate) fn new(
+        relay: ModelHost,
+        client: ModelHost,
+        foreign: ModelHost,
+        credentials_lifetime: Duration,
+        now: SystemTime,
+    ) -> Self {
         Self {
             relay,
             client,
@@ -75,34 +82,51 @@ impl RelayModel {
             connections: PEERS.into_iter().map(|peer| (peer, false)).collect(),
             disrupted: true,
             lost_transmissions: 0,
-            refreshed: false,
+            credentials_expire_at: expiry(now, credentials_lifetime),
         }
     }
 
-    /// Whether relaying must work once the system has settled: whenever the client and the
-    /// relay share an address family.
-    pub(crate) fn must_relay(&self) -> bool {
-        (self.client.stack.supports_ipv4() && self.relay.stack.supports_ipv4())
-            || (self.client.stack.supports_ipv6() && self.relay.stack.supports_ipv6())
+    /// Whether relaying must work once the system has settled: whenever the client's
+    /// credentials are valid and the client and the relay share an address family.
+    pub(crate) fn must_relay(&self, now: SystemTime) -> bool {
+        let shares_family = (self.client.stack.supports_ipv4() && self.relay.stack.supports_ipv4())
+            || (self.client.stack.supports_ipv6() && self.relay.stack.supports_ipv6());
+
+        shares_family && !self.credentials_expired(now)
     }
 
     /// Whether the relay can relay data between the client and `peer`: it needs an address of
     /// the peer's family to send from.
-    pub(crate) fn can_relay(&self, peer: SocketAddr) -> bool {
+    pub(crate) fn can_relay(&self, peer: SocketAddr, now: SystemTime) -> bool {
         let reaches_peer = match peer {
             SocketAddr::V4(_) => self.relay.stack.supports_ipv4(),
             SocketAddr::V6(_) => self.relay.stack.supports_ipv6(),
         };
 
-        self.must_relay() && reaches_peer
+        self.must_relay(now) && reaches_peer
     }
 
     /// Whether the client's relay addresses may have changed since the system last settled.
-    pub(crate) fn disrupted(&self) -> bool {
-        self.disrupted
+    ///
+    /// With expired credentials, they may change at any time.
+    pub(crate) fn disrupted(&self, now: SystemTime) -> bool {
+        self.disrupted || self.credentials_expired(now)
     }
 
-    pub(crate) fn apply(&mut self, transition: &Transition, interference: &Interference) {
+    /// Whether the credentials that the client holds expired: relaying keeps working until the
+    /// client or the relay notices.
+    pub(crate) fn credentials_expired(&self, now: SystemTime) -> bool {
+        self.credentials_expire_at < now
+    }
+
+    pub(crate) fn apply(
+        &mut self,
+        transition: &Transition,
+        interference: &Interference,
+        now: SystemTime,
+    ) {
+        let credentials_were_expired = self.credentials_expired(now);
+
         self.lost_transmissions = self
             .lost_transmissions
             .saturating_add(interference.lose_to_relay)
@@ -118,16 +142,20 @@ impl RelayModel {
                 self.disrupted = true;
             }
             Transition::RebootRelay => self.disrupted = true,
-            Transition::Partition { duration } if *duration > BRIDGED_PARTITION => {
+            Transition::Partition { duration } | Transition::Sleep { duration }
+                if *duration > BRIDGED_PARTITION =>
+            {
                 self.disrupted = true;
             }
             // Costs every request that is in flight all but its last transmission.
-            Transition::Partition { .. } => {
+            Transition::Partition { .. } | Transition::Sleep { .. } => {
                 self.lost_transmissions = self
                     .lost_transmissions
                     .saturating_add(RETRANSMISSION_BUDGET);
             }
-            Transition::Refresh => self.refreshed = true,
+            Transition::RotateCredentials { lifetime } => {
+                self.credentials_expire_at = expiry(now, *lifetime);
+            }
             Transition::Connect { peer } => {
                 self.connections.entry(*peer).or_insert(false);
             }
@@ -137,13 +165,10 @@ impl RelayModel {
             Transition::Advance { .. } | Transition::InjectDatagram(_) => {}
         }
 
-        // An exception for `Allocation::refresh`: it sends its request only once, so a single
-        // lost datagram makes the client give up on the allocation.
-        let budget = match self.refreshed {
-            true => 0,
-            false => RETRANSMISSION_BUDGET,
-        };
-        self.disrupted |= self.lost_transmissions > budget;
+        // Expired credentials cost the client its allocation once it or the relay notices.
+        self.disrupted |= credentials_were_expired || self.credentials_expired(now);
+
+        self.disrupted |= self.lost_transmissions > RETRANSMISSION_BUDGET;
 
         if self.disrupted {
             for established in self.connections.values_mut() {
@@ -153,9 +178,9 @@ impl RelayModel {
     }
 
     /// Records that the system settled and relays data for every connection it can.
-    pub(crate) fn settle(&mut self) {
+    pub(crate) fn settle(&mut self, now: SystemTime) {
         for peer in PEERS {
-            let can_relay = self.can_relay(peer);
+            let can_relay = self.can_relay(peer, now);
 
             self.connections
                 .entry(peer)
@@ -163,8 +188,17 @@ impl RelayModel {
         }
         self.disrupted = false;
         self.lost_transmissions = 0;
-        self.refreshed = false;
     }
+}
+
+/// When credentials issued at `issued_at` for `lifetime` expire: their expiry has a resolution of
+/// whole seconds.
+fn expiry(issued_at: SystemTime, lifetime: Duration) -> SystemTime {
+    let expires_at = (issued_at + lifetime)
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("the simulation starts at the Unix epoch");
+
+    SystemTime::UNIX_EPOCH + Duration::from_secs(expires_at.as_secs())
 }
 
 impl ModelHost {

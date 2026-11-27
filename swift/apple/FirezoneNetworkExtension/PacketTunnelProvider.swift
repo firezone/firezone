@@ -143,6 +143,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       completionHandler(PacketTunnelProviderError.providerConfigurationIsInvalid)
       return
     }
+    let profileIsManaged =
+      (protocolConfiguration as? NETunnelProviderProtocol)?.isManagedProfile ?? false
+    if signInSettings.differsFromManaged(
+      in: providerConfiguration, profileIsManaged: profileIsManaged)
+    {
+      Log.info("Sign-in settings differ from the managed settings, signing out")
+      do { try Token.delete() } catch { Log.error(error) }
+      completionHandler(PacketTunnelProviderError.credentialNotConfigured)
+      return
+    }
     token.signInSettings = signInSettings
     let apiURL = signInSettings.apiURL
     let logFilter =

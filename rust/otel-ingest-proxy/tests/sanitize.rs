@@ -61,6 +61,30 @@ fn rebuilds_resource_from_claims() {
 }
 
 #[test]
+fn labels_resource_with_actor_and_device_if_token_asks() {
+    let mut claims = claims(&["*"]);
+    claims.label_devices = true;
+    claims.actor_id = Some("actor".to_owned());
+
+    let request = sanitize(request(&[&["connlib.a"]]), &claims).unwrap();
+
+    assert_eq!(
+        request.resource_metrics[0].resource,
+        Some(Resource {
+            attributes: vec![
+                string_attribute("service.name", "client"),
+                string_attribute("service.version", "1.5.0"),
+                string_attribute("firezone.account.id", "account"),
+                string_attribute("firezone.account.slug", "slug"),
+                string_attribute("firezone.actor.id", "actor"),
+                string_attribute("firezone.device.id", "device"),
+            ],
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
 fn drops_firezone_data_point_attributes_and_exemplars() {
     let mut request = request(&[&["connlib.a"]]);
     let Some(Data::Sum(sum)) = &mut request.resource_metrics[0].scope_metrics[0].metrics[0].data
@@ -118,6 +142,8 @@ fn claims(metrics: &[&str]) -> Claims {
         device_id: "device".to_owned(),
         device_type: DeviceType::Client,
         device_version: Some("1.5.0".to_owned()),
+        label_devices: false,
+        actor_id: None,
         metrics: metrics.iter().map(|m| m.to_string()).collect(),
         exp: 0,
     }

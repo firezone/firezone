@@ -43,11 +43,12 @@ defmodule Portal.Ops.RegionTransfer do
   # cursors into logs that stay here (the destination seeds new ones), and the
   # log tables, which are deleted with the account in the source region.
   # Nullable foreign keys from moved tables to these are exported as NULL.
+  # The device CA is not moved: the destination creates a new one.
   # Profile photos are not moved: the destination fetches them again, and
   # deleting the source account deletes them here.
   @nulled_columns %{"external_identities" => ["avatar_etag", "avatar_source"]}
 
-  @skipped_tables ~w(api_request_logs change_logs device_tokens feedback_submissions flow_logs log_sink_cursors oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes pending_identities policy_authorizations portal_sessions session_logs)
+  @skipped_tables ~w(api_request_logs change_logs device_certificate_authorities device_tokens feedback_submissions flow_logs log_sink_cursors oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes pending_identities policy_authorizations portal_sessions session_logs)
 
   @doc """
   Starts a transfer in the source region. Refuses while the customer owes

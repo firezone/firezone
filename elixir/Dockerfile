@@ -1,5 +1,5 @@
 ARG ELIXIR_VERSION="1.20.5"
-ARG ERLANG_VERSION="29.1.2"
+ARG ERLANG_VERSION="29.1.3"
 ARG ALPINE_VERSION="3.24.4"
 # `compiler` builds the public portal. `ops-compiler` adds the private ops dashboard
 # (firezone/portal-ops), which CI checks out at ./ops before building the portal-ops
@@ -64,10 +64,12 @@ RUN mix compile --force
 # so mix tasks (test, ecto.migrate, etc.) can run against it.
 
 # Only built for the portal-ops image. mix.exs compiles ops/lib when it exists. The
-# ops database migrations go where `Portal.Release.migrate/1` finds them.
+# ops database migrations go where `Portal.Release.migrate/1` finds them. The build
+# context `otel-instruments` gives it the metric names to suggest.
 FROM compiler AS ops-compiler
 
 COPY ops ops
+COPY --from=otel-instruments lib.rs ops/otel_instruments.rs
 RUN if [ -d ops/priv/migrations ]; then \
       mkdir -p priv/ops_repo && cp -R ops/priv/migrations priv/ops_repo/migrations; \
     fi
