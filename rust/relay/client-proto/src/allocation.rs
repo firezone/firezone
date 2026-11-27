@@ -2833,7 +2833,7 @@ mod tests {
     }
 
     #[test]
-    fn wrong_credentials_on_delete_means_socket_is_taken() {
+    fn wrong_credentials_without_allocation_means_socket_is_taken() {
         let now = Instant::now();
         let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
         let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
@@ -2848,7 +2848,7 @@ mod tests {
     }
 
     #[test]
-    fn wrong_credentials_on_refresh_reallocates() {
+    fn wrong_credentials_with_allocation_reallocates() {
         let now = Instant::now();
         let mut allocation = Allocation::for_test_ip4(now)
             .with_binding_response(PEER1, now)

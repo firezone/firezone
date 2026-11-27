@@ -1048,9 +1048,7 @@ impl AgentExt for Agent {
 
     fn transmits(&mut self) -> Vec<Transmit> {
         std::iter::from_fn(|| self.poll_transmit())
-            .map(|o| match o {
-                Outgoing::Reply(t) | Outgoing::Initiated(t) => t,
-            })
+            .map(Outgoing::into_transmit)
             .collect()
     }
 

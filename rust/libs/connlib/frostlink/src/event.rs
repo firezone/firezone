@@ -9,10 +9,26 @@ pub struct Transmit {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outgoing {
-    /// Answers something the remote just sent us.
-    Reply(Transmit),
-    /// Sent of our own accord.
-    Initiated(Transmit),
+    ProbeRequest(Transmit),
+    ProbeReply(Transmit),
+    /// A re-key on the primary, or the bootstrap fan-out over the relay pairs.
+    HandshakeInitiation(Transmit),
+    /// Answers a handshake initiation, also when replayed from the cache.
+    HandshakeResponse(Transmit),
+    /// Confirms a handshake response on the path it arrived on.
+    Keepalive(Transmit),
+}
+
+impl Outgoing {
+    pub fn into_transmit(self) -> Transmit {
+        match self {
+            Outgoing::ProbeRequest(t)
+            | Outgoing::ProbeReply(t)
+            | Outgoing::HandshakeInitiation(t)
+            | Outgoing::HandshakeResponse(t)
+            | Outgoing::Keepalive(t) => t,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

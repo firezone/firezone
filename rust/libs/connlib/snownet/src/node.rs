@@ -717,7 +717,7 @@ where
         let socket = conn.ready_socket(cid)?;
 
         let batch = conn
-            .encapsulate(cid, socket, packet, false, now, &mut self.allocations)
+            .encapsulate(cid, socket, packet, now, &mut self.allocations)
             .with_context(|| format!("cid={cid}"))?;
 
         Ok(batch)
@@ -812,7 +812,9 @@ where
             now,
         );
         for (cid, remote) in validated_remotes {
-            self.add_remote(cid, remote, now);
+            if self.connections.record_validated_path(cid, remote, now) {
+                self.contested_addresses.add(1, &[]);
+            }
         }
 
         if now >= self.next_connection_count {
@@ -1281,36 +1283,6 @@ where
             ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
             ControlFlow::Break(Err(e)) => {
                 ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
-            }
-        }
-    }
-
-    /// Records that the Frostlink connection `cid` validated a path to `remote`.
-    ///
-    /// Once several did, every Frostlink connection only replies to `remote`.
-    fn add_remote(&mut self, cid: TId, remote: SocketAddr, now: Instant) {
-        if !self.connections.add_remote(cid, remote) {
-            return;
-        }
-
-        tracing::debug!(%cid, %remote, "Remote address contested by several connections");
-
-        self.contested_addresses.add(1, &[]);
-
-        for (cid, c) in self
-            .connections
-            .iter_mut_frostlink_by_remote_candidate(remote)
-        {
-            c.contested.insert(remote);
-
-            let candidates = c
-                .agent
-                .remote_candidates()
-                .filter(|candidate| candidate.addr() == remote)
-                .collect::<Vec<_>>();
-
-            for candidate in candidates {
-                c.remove_remote_candidate(cid, candidate, now);
             }
         }
     }
@@ -1887,22 +1859,31 @@ where
         // Plaintext payloads (probes) need encapsulation; ciphertext
         // goes straight to the wire.
         while let Some(outgoing) = self.agent.poll_frostlink_transmit() {
-            let (pt, reply) = match outgoing {
-                frostlink::Outgoing::Reply(pt) => (pt, true),
-                frostlink::Outgoing::Initiated(pt) => (pt, false),
+            let pt = match outgoing {
+                frostlink::Outgoing::ProbeReply(pt)
+                | frostlink::Outgoing::HandshakeResponse(pt) => pt,
+                frostlink::Outgoing::ProbeRequest(pt)
+                | frostlink::Outgoing::HandshakeInitiation(pt)
+                | frostlink::Outgoing::Keepalive(pt) => {
+                    if self.contested.contains(&pt.remote) {
+                        continue;
+                    }
+
+                    pt
+                }
             };
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             match pt.payload {
                 frostlink::Payload::Ciphertext(ref bytes) => {
                     if let Some(transmit) =
-                        self.transmit_to(peer_socket, bytes, reply, allocations, now)
+                        make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
                     {
                         transmits.push_back(transmit);
                     }
                 }
                 frostlink::Payload::Plaintext(ref ip) => {
                     if let Ok(Some(batch)) =
-                        self.encapsulate(cid, peer_socket, ip, reply, now, allocations)
+                        self.encapsulate(cid, peer_socket, ip, now, allocations)
                         && let Ok(transmit) = batch.encrypt_single(ip)
                     {
                         transmits.push_back(transmit);
@@ -1972,12 +1953,10 @@ where
             match event {
                 sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
                     Agent::Frostlink(agent) => agent.send_handshake_initiation(init, now),
-                    Agent::Ice(_) => {
-                        self.buffer_or_send(&cid, init, false, allocations, transmits, now)
-                    }
+                    Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
                 },
                 sanstun::Event::SendKeepalive(keepalive) => {
-                    self.buffer_or_send(&cid, keepalive, false, allocations, transmits, now)
+                    self.buffer_or_send(&cid, keepalive, allocations, transmits, now)
                 }
                 sanstun::Event::Established {
                     started_at,
@@ -2022,7 +2001,7 @@ where
                     "Frostlink primary selected; flushing buffered packets",
                 );
                 transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
-                    self.transmit_to(peer_socket, &packet, false, allocations, now)
+                    make_owned_transmit(self.relay, peer_socket, &packet, allocations, now)
                 }));
                 self.state = ConnectionState::Connected {
                     peer_socket,
@@ -2066,7 +2045,6 @@ where
         cid: TId,
         socket: PeerSocket,
         packet: &IpPacket,
-        reply: bool,
         now: Instant,
         allocations: &mut Allocations<RId>,
     ) -> Result<Option<EncapsulateBatch<'_>>>
@@ -2075,10 +2053,6 @@ where
     {
         self.state
             .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
-
-        if !reply && self.contested.contains(&socket.dest()) {
-            return Ok(None);
-        }
 
         let (src, dst, relay) = match socket {
             PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
@@ -2142,13 +2116,10 @@ where
                     Agent::Frostlink(agent) => {
                         agent.handle_handshake_initiation(&mut self.tunnel, init, path, now)
                     }
-                    Agent::Ice(_) => {
-                        self.tunnel
-                            .handle_handshake_initiation(init, now)
-                            .map(|reply| {
-                                self.buffer_or_send(&cid, reply, true, allocations, transmits, now)
-                            })
-                    }
+                    Agent::Ice(_) => self
+                        .tunnel
+                        .handle_handshake_initiation(init, now)
+                        .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
 
                 ControlFlow::Break(result.context("handshake packet"))
@@ -2162,20 +2133,10 @@ where
                         path,
                         now,
                     ),
-                    Agent::Ice(_) => {
-                        self.tunnel
-                            .handle_handshake_response(response, now)
-                            .map(|keepalive| {
-                                self.buffer_or_send(
-                                    &cid,
-                                    keepalive,
-                                    false,
-                                    allocations,
-                                    transmits,
-                                    now,
-                                )
-                            })
-                    }
+                    Agent::Ice(_) => self
+                        .tunnel
+                        .handle_handshake_response(response, now)
+                        .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
                 if result.is_ok() {
                     self.restore_rekey_attempt_time();
@@ -2261,7 +2222,6 @@ where
         &mut self,
         cid: &TId,
         message: sanstun::Datagram,
-        reply: bool,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
@@ -2277,29 +2237,16 @@ where
             }
             ConnectionState::Connected { peer_socket, .. }
             | ConnectionState::Idle { peer_socket } => {
-                let peer_socket = *peer_socket;
-                transmits.extend(self.transmit_to(peer_socket, &message, reply, allocations, now));
+                transmits.extend(make_owned_transmit(
+                    self.relay,
+                    *peer_socket,
+                    &message,
+                    allocations,
+                    now,
+                ));
             }
             ConnectionState::Failed => {}
         }
-    }
-
-    fn transmit_to(
-        &self,
-        socket: PeerSocket,
-        message: &[u8],
-        reply: bool,
-        allocations: &mut Allocations<RId>,
-        now: Instant,
-    ) -> Option<Transmit>
-    where
-        RId: Ord + Hash + fmt::Display + Copy,
-    {
-        if !reply && self.contested.contains(&socket.dest()) {
-            return None;
-        }
-
-        make_owned_transmit(self.relay, socket, message, allocations, now)
     }
 
     fn peer_socket_for_tuple(
@@ -2395,7 +2342,7 @@ where
 
         self.last_proactive_handshake_sent_at = Some(now);
 
-        if let Some(transmit) = self.transmit_to(socket, &bytes, false, allocations, now) {
+        if let Some(transmit) = make_owned_transmit(self.relay, socket, &bytes, allocations, now) {
             transmits.push_back(transmit);
         }
     }

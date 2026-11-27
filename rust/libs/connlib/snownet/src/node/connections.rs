@@ -190,7 +190,7 @@ where
             };
 
             let encrypted = connection
-                .encapsulate(cid, socket, &goodbye.packet, false, now, allocations)
+                .encapsulate(cid, socket, &goodbye.packet, now, allocations)
                 .and_then(|batch| {
                     let Some(batch) = batch else {
                         return Ok(None);
@@ -270,24 +270,45 @@ where
 
     /// Records that the Frostlink connection `id` validated a path to `remote`.
     ///
-    /// Returns whether more than one did.
-    pub(crate) fn add_remote(&mut self, id: TId, remote: SocketAddr) -> bool {
+    /// Once several did, a NAT maps several devices to `remote` and delivers what we send there to
+    /// whichever of them sent last, so every Frostlink connection drops its candidates at `remote`
+    /// and only replies to it. Returns whether `remote` became contested.
+    pub(crate) fn record_validated_path(
+        &mut self,
+        id: TId,
+        remote: SocketAddr,
+        now: Instant,
+    ) -> bool {
         // `id` may have failed and been removed after it validated `remote`.
         if self.established.get(&id).is_none() {
             return false;
         }
 
         let ids = self.established_by_remote.entry(remote).or_default();
+        if !ids.insert(id) || ids.len() < 2 {
+            return false;
+        }
 
-        ids.insert(id) && ids.len() > 1
-    }
+        tracing::debug!(%id, %remote, "Remote address contested by several connections");
 
-    pub(crate) fn iter_mut_frostlink_by_remote_candidate(
-        &mut self,
-        remote: SocketAddr,
-    ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
-        self.established
+        for (cid, c) in self
+            .established
             .filter_mut(move |c| c.agent.is_frostlink() && c.agent.has_remote_candidate(remote))
+        {
+            c.contested.insert(remote);
+
+            let candidates = c
+                .agent
+                .remote_candidates()
+                .filter(|candidate| candidate.addr() == remote)
+                .collect::<Vec<_>>();
+
+            for candidate in candidates {
+                c.remove_remote_candidate(cid, candidate, now);
+            }
+        }
+
+        true
     }
 
     pub(crate) fn iter_mut_by_relay(

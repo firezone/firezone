@@ -306,15 +306,6 @@ impl From<PeerSocket> for ConnectionPath {
 }
 
 impl PeerSocket {
-    pub(crate) fn dest(&self) -> SocketAddr {
-        match self {
-            PeerSocket::PeerToPeer { dest, .. }
-            | PeerSocket::PeerToRelay { dest, .. }
-            | PeerSocket::RelayToPeer { dest }
-            | PeerSocket::RelayToRelay { dest } => *dest,
-        }
-    }
-
     pub(crate) fn fmt<RId>(&self, relay: Option<RId>) -> String
     where
         RId: fmt::Display,

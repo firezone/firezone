@@ -483,7 +483,7 @@ impl Agent {
 
         if let Some((local, remote)) = self.primary {
             self.pending_transmits
-                .push_back(Outgoing::Initiated(Transmit {
+                .push_back(Outgoing::HandshakeInitiation(Transmit {
                     local,
                     remote,
                     payload: Payload::Ciphertext(init),
@@ -526,11 +526,12 @@ impl Agent {
 
                 tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
 
-                self.pending_transmits.push_back(Outgoing::Reply(Transmit {
-                    local: path.0,
-                    remote: path.1,
-                    payload: Payload::Ciphertext(response),
-                }));
+                self.pending_transmits
+                    .push_back(Outgoing::HandshakeResponse(Transmit {
+                        local: path.0,
+                        remote: path.1,
+                        payload: Payload::Ciphertext(response),
+                    }));
 
                 return Ok(());
             }
@@ -576,11 +577,12 @@ impl Agent {
             response_bytes: response.clone(),
             cached_at: now,
         });
-        self.pending_transmits.push_back(Outgoing::Reply(Transmit {
-            local: path.0,
-            remote: path.1,
-            payload: Payload::Ciphertext(response),
-        }));
+        self.pending_transmits
+            .push_back(Outgoing::HandshakeResponse(Transmit {
+                local: path.0,
+                remote: path.1,
+                payload: Payload::Ciphertext(response),
+            }));
 
         Ok(())
     }
@@ -619,7 +621,7 @@ impl Agent {
         self.promote_from_handshake(path);
 
         self.pending_transmits
-            .push_back(Outgoing::Initiated(Transmit {
+            .push_back(Outgoing::Keepalive(Transmit {
                 local: path.0,
                 remote: path.1,
                 payload: Payload::Ciphertext(keepalive),
@@ -665,13 +667,14 @@ impl Agent {
             crate::icmpv6::Echo::Request => {
                 tracing::trace!(local = %pair.0, remote = %pair.1, seq = probe.seq, "Probe request received");
 
-                self.pending_transmits.push_back(Outgoing::Reply(Transmit {
-                    local: pair.0,
-                    remote: pair.1,
-                    payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_reply(
-                        probe.id, probe.seq,
-                    ))),
-                }));
+                self.pending_transmits
+                    .push_back(Outgoing::ProbeReply(Transmit {
+                        local: pair.0,
+                        remote: pair.1,
+                        payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_reply(
+                            probe.id, probe.seq,
+                        ))),
+                    }));
 
                 self.register_peer_reflexive(pair, now);
 
@@ -829,7 +832,7 @@ impl Agent {
         for (local, remote) in unfanned {
             tracing::debug!(%local, %remote, "Fanning out HandshakeInit on relay pair");
 
-            pending.push_back(Outgoing::Initiated(Transmit {
+            pending.push_back(Outgoing::HandshakeInitiation(Transmit {
                 local,
                 remote,
                 payload: Payload::Ciphertext(outbound.bytes.clone()),
@@ -851,7 +854,7 @@ impl Agent {
             if now >= fire_at {
                 tracing::trace!(%local, %remote, step = state.step, "WG init retransmit");
 
-                pending.push_back(Outgoing::Initiated(Transmit {
+                pending.push_back(Outgoing::HandshakeInitiation(Transmit {
                     local: *local,
                     remote: *remote,
                     payload: Payload::Ciphertext(outbound.bytes.clone()),
@@ -892,7 +895,7 @@ impl Agent {
 
             tracing::trace!(%local, %remote, seq, "Probe send");
 
-            pending.push_back(Outgoing::Initiated(Transmit {
+            pending.push_back(Outgoing::ProbeRequest(Transmit {
                 local: *local,
                 remote: *remote,
                 payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_request(
