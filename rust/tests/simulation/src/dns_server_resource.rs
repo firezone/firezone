@@ -1,8 +1,8 @@
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     iter,
     net::SocketAddr,
-    time::Instant,
 };
 
 use dns_types::ResponseCode;

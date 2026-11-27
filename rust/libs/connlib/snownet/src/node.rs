@@ -30,11 +30,12 @@ use rand::{Rng, SeedableRng};
 use relay_client_proto::channel_data::channel_data_packet_buffer;
 use relay_client_proto::{Allocation, RelaySocket, Socket};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
+use sans_io_time::Instant;
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
 use std::hash::Hash;
 use std::ops::ControlFlow;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{collections::VecDeque, net::SocketAddr};
 use std::{iter, mem};
 use stun_codec::rfc5389::attributes::{Realm, Username};
@@ -2578,7 +2579,7 @@ mod tests {
         let srvflx =
             Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut agent = Agent::ice(IceAgent::new(is::IceCreds::new()));
         agent.add_remote_candidate(host, now);
         agent.add_remote_candidate(srvflx, now);
@@ -2605,7 +2606,7 @@ mod tests {
         let srvflx =
             Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut agent = Agent::ice(IceAgent::new(is::IceCreds::new()));
         agent.add_remote_candidate(host, now);
         agent.add_remote_candidate(srvflx, now);
@@ -2633,7 +2634,7 @@ mod tests {
         let srflx3 =
             Candidate::server_reflexive(SocketAddr::new(addr3, 40000), base, "udp").unwrap();
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut agent = Agent::ice(IceAgent::new(is::IceCreds::new()));
         agent.add_remote_candidate(host, now);
         agent.add_remote_candidate(srflx1, now);
@@ -2662,7 +2663,7 @@ mod tests {
         let unknown = SocketAddr::from(([192, 0, 2, 1], 52625));
 
         for use_frostlink in [false, true] {
-            let now = Instant::now();
+            let now = Instant::ZERO;
             let mut node = Node::<u32, u32>::new([0; 32], now, Duration::ZERO);
             node.set_additional_host_candidates(BTreeSet::from([host]), now);
             node.update_relays(

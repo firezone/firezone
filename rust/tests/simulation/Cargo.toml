@@ -31,6 +31,7 @@ l3-tcp = { workspace = true }
 rand = { workspace = true }
 relay-client-proto = { workspace = true }
 relay-server-proto = { workspace = true }
+sans-io-time = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

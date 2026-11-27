@@ -1,5 +1,5 @@
+use sans_io_time::Instant;
 use std::net::SocketAddr;
-use std::time::Instant;
 
 use anyhow::Result;
 use connlib_model::ClientOrGatewayId;

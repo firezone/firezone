@@ -1,7 +1,8 @@
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::IpAddr,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use connlib_model::{ClientId, GatewayId, ResourceId};

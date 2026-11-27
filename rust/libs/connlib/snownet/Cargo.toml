@@ -23,6 +23,7 @@ prefetch = { workspace = true }
 rand = { workspace = true }
 relay-client-proto = { workspace = true }
 ringbuffer = { workspace = true }
+sans-io-time = { workspace = true }
 sanstun = { workspace = true }
 smallvec = { workspace = true }
 str0m-proto = { workspace = true }

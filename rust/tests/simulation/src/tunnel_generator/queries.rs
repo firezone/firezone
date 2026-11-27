@@ -1,10 +1,10 @@
 //! What the generator asks the model to learn which transitions it can generate.
 
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Instant,
 };
 
 use connlib_model::{ClientId, ResourceId};

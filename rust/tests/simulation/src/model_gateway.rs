@@ -8,10 +8,11 @@ use super::{
 use connlib_model::GatewayId;
 use dns_types::{DomainName, OwnedRecordData};
 use jiff::Timestamp;
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{Ipv4Addr, Ipv6Addr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tunnel_proto::{GatewayState, IpConfig};
 

@@ -1,12 +1,13 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use sans_io_time::Instant;
 use std::{
     collections::{
         BTreeMap, VecDeque,
         btree_map::{Entry, OccupiedEntry},
     },
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::{Context as _, Result, anyhow, bail};
@@ -370,7 +371,7 @@ mod tests {
     #[test]
     fn test_timeout_multiple_queries() {
         let mut client = create_test_client();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let server1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let server2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 4, 4)), 53);
 
@@ -412,7 +413,7 @@ mod tests {
     #[test]
     fn test_reset_times_out_all_pending_queries() {
         let mut client = create_test_client();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let server1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let server2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 4, 4)), 53);
         let query1 = create_test_query();
@@ -442,7 +443,7 @@ mod tests {
     #[test]
     fn handles_icmp_error_for_pending_query() {
         let mut client = create_test_client();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();
 
@@ -468,7 +469,7 @@ mod tests {
     #[test]
     fn late_response_to_timed_out_query_is_dropped() {
         let mut client = create_test_client();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();
 
@@ -487,7 +488,7 @@ mod tests {
     #[test]
     fn owns_outbound_matches_only_pending_queries() {
         let mut client = create_test_client();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
 
         client.send_query(server, create_test_query(), now).unwrap();

@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use sans_io_time::Instant;
+use std::time::Duration;
 
 pub(crate) struct PairRetransmit {
     /// `None` once the ladder is spent: it runs once and stops, leaving further

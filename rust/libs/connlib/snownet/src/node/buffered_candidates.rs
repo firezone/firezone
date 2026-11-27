@@ -1,10 +1,6 @@
 use fast_random_state::FastRandomState;
-use std::{
-    collections::HashMap,
-    fmt,
-    hash::Hash,
-    time::{Duration, Instant},
-};
+use sans_io_time::Instant;
+use std::{collections::HashMap, fmt, hash::Hash, time::Duration};
 
 /// Remote candidates for connections we have not been told about (yet).
 ///
@@ -99,7 +95,7 @@ mod tests {
     #[test]
     fn drains_candidates_in_order_of_arrival() {
         let mut buffer = BufferedCandidates::<u32>::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         buffer.push(1, "first".to_owned(), now);
         buffer.push(1, "second".to_owned(), now);
@@ -113,7 +109,7 @@ mod tests {
     #[test]
     fn expires_candidates_after_timeout() {
         let mut buffer = BufferedCandidates::<u32>::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         buffer.push(1, "early".to_owned(), now);
         buffer.push(1, "late".to_owned(), now + Duration::from_secs(5));
@@ -130,7 +126,7 @@ mod tests {
     #[test]
     fn caps_candidates_per_connection() {
         let mut buffer = BufferedCandidates::<u32>::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         for i in 0..=BufferedCandidates::<u32>::MAX_PER_CONNECTION {
             buffer.push(1, i.to_string(), now);
@@ -147,7 +143,7 @@ mod tests {
     #[test]
     fn removes_candidate() {
         let mut buffer = BufferedCandidates::<u32>::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         buffer.push(1, "candidate".to_owned(), now);
 

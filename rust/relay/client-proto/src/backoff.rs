@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use sans_io_time::Instant;
+use std::time::Duration;
 
 const MULTIPLIER: f32 = 1.5;
 
@@ -74,7 +75,7 @@ mod tests {
 
     #[test]
     fn backoff_steps() {
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         let steps = Vec::from_iter(
             iter::from_fn({

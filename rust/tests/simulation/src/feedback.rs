@@ -16,9 +16,10 @@
 //! Recording needs the `ijon` feature and a build for discovery. Every other
 //! build, replay included, evaluates the observations without recording feedback.
 
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, IpStack, ResourceId};

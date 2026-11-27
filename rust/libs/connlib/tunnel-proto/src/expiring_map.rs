@@ -1,10 +1,11 @@
 use core::fmt;
 use fast_random_state::FastRandomState;
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque, btree_map},
     hash::Hash,
     mem,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// Sentinel TTL used by callers that don't have an explicit expiry. Picked
@@ -213,7 +214,7 @@ mod tests {
     #[test]
     fn poll_timeout_returns_next_expiration() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("key1", "value1", now, Duration::from_secs(1));
         map.insert("key2", "value2", now, Duration::from_secs(2));
@@ -224,7 +225,7 @@ mod tests {
     #[test]
     fn handle_timeout_removes_expired_entries() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("key1", "value1", now, Duration::from_secs(1));
         map.insert("key2", "value2", now, Duration::from_secs(2));
@@ -238,7 +239,7 @@ mod tests {
     #[test]
     fn removing_item_updates_expiration() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("key1", "value1", now, Duration::from_secs(1));
         map.insert("key2", "value2", now, Duration::from_secs(2));
@@ -251,7 +252,7 @@ mod tests {
     #[test]
     fn expiring_all_items_empties_map() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("key1", "value1", now, Duration::from_secs(1));
         map.insert("key2", "value2", now, Duration::from_secs(1));
@@ -269,7 +270,7 @@ mod tests {
     #[test]
     fn can_handle_multiple_items_at_same_timestamp() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("key1", "value1", now, Duration::from_secs(1));
         map.insert("key2", "value2", now, Duration::from_secs(1));
@@ -283,7 +284,7 @@ mod tests {
     #[test]
     fn reinsert_with_new_ttl_does_not_evict_early() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("key", "v1", now, Duration::from_secs(1));
         // Re-insert the same key with a longer TTL.
@@ -305,7 +306,7 @@ mod tests {
     #[test]
     fn reinsert_with_shorter_ttl_expires_at_new_time() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("key", "v1", now, Duration::from_secs(5));
         map.insert("key", "v2", now, Duration::from_secs(1));
@@ -323,7 +324,7 @@ mod tests {
     #[test]
     fn reinsert_with_same_ttl_does_not_duplicate_expiration_entry() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("key", "v1", now, Duration::from_secs(1));
         map.insert("key", "v2", now, Duration::from_secs(1));
@@ -340,7 +341,7 @@ mod tests {
     #[test]
     fn extract_if_removing_everything_leaves_empty_map() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("a", 1, now, Duration::from_secs(1));
         map.insert("b", 2, now, Duration::from_secs(2));
@@ -355,7 +356,7 @@ mod tests {
     #[test]
     fn extract_if_removing_nothing_preserves_all_entries() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("a", 1, now, Duration::from_secs(1));
         map.insert("b", 2, now, Duration::from_secs(2));
@@ -371,7 +372,7 @@ mod tests {
     #[test]
     fn extract_if_multiple_entries_in_same_expiration_bucket() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("keep", 1, now, Duration::from_secs(1));
         map.insert("drop1", 2, now, Duration::from_secs(1));
@@ -391,7 +392,7 @@ mod tests {
     #[test]
     fn extract_if_drops_matching_entries_and_updates_expiration_index() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("keep", "value1", now, Duration::from_secs(1));
         map.insert("drop", "value2", now, Duration::from_secs(2));
@@ -411,7 +412,7 @@ mod tests {
     #[test]
     fn update_expiry_pushes_entry_into_new_bucket() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         map.insert("k", 1, now, Duration::from_secs(1));
 
         let updated = map.update_expiry(&"k", now, Duration::from_secs(10));
@@ -433,14 +434,14 @@ mod tests {
     #[test]
     fn update_expiry_returns_false_for_unknown_key() {
         let mut map = ExpiringMap::<&'static str, ()>::default();
-        let updated = map.update_expiry(&"nope", Instant::now(), Duration::from_secs(1));
+        let updated = map.update_expiry(&"nope", Instant::ZERO, Duration::from_secs(1));
         assert!(!updated);
     }
 
     #[test]
     fn clear_resets_expiration_index() {
         let mut map = ExpiringMap::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         map.insert("a", 1, now, Duration::from_secs(1));
         map.insert("b", 2, now, Duration::from_secs(2));

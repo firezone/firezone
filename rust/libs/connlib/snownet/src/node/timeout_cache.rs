@@ -1,4 +1,5 @@
-use std::{ops::ControlFlow, time::Instant};
+use sans_io_time::Instant;
+use std::ops::ControlFlow;
 
 #[derive(Debug, Default)]
 pub struct TimeoutCache {
@@ -36,7 +37,7 @@ mod tests {
     #[test]
     fn check_returns_break_if_deadline_not_reached() {
         let mut cache = TimeoutCache::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         cache.update(now + Duration::from_secs(1));
 
@@ -46,7 +47,7 @@ mod tests {
     #[test]
     fn check_returns_continue_if_deadline_reached() {
         let mut cache = TimeoutCache::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         cache.update(now + Duration::from_secs(1));
 
@@ -64,7 +65,7 @@ mod tests {
     #[test]
     fn empty_cache_returns_break() {
         let mut cache = TimeoutCache::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         assert_eq!(cache.check(now), ControlFlow::Break(()));
     }

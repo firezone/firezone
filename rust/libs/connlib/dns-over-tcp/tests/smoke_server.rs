@@ -1,12 +1,12 @@
 #![allow(clippy::unwrap_used)]
 #![cfg(target_os = "linux")] // The DNS-over-TCP server is sans-IO so it doesn't matter where the IP packets come from. Testing it only on Linux is therefore fine.
 
+use sans_io_time::Instant;
 use std::{
     collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     process::Stdio,
     task::{Context, Poll, ready},
-    time::Instant,
 };
 
 use anyhow::{Context as _, Result};
@@ -39,7 +39,7 @@ async fn smoke() {
         .unwrap();
 
     let listen_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 1), 53));
-    let mut dns_server = dns_over_tcp::Server::new(Instant::now());
+    let mut dns_server = dns_over_tcp::Server::new(Instant::ZERO);
     dns_server.set_listen_addresses::<CLIENT_CONCURRENCY>(BTreeSet::from([listen_addr]));
     let mut eventloop = Eventloop::new(tun, dns_server);
 
@@ -138,7 +138,7 @@ impl Eventloop {
             for ip_packet in packets.drain() {
                 if self.dns_server.accepts(&ip_packet) {
                     self.dns_server.handle_inbound(ip_packet);
-                    self.dns_server.handle_timeout(Instant::now());
+                    self.dns_server.handle_timeout(Instant::ZERO);
                 }
             }
         }

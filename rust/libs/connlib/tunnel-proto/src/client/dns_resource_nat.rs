@@ -1,7 +1,8 @@
+use sans_io_time::Instant;
 use std::{
     collections::{HashMap, VecDeque, hash_map::Entry},
     ops::ControlFlow,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -415,7 +416,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
@@ -437,7 +438,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_none());
@@ -454,7 +455,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         dns_resource_nat.on_domain_status(
@@ -476,7 +477,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
@@ -487,7 +488,7 @@ mod tests {
                 .unwrap();
 
         let control_flow =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, packet, Instant::now());
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, packet, Instant::ZERO);
 
         assert!(control_flow.is_break());
     }
@@ -503,7 +504,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
 
@@ -516,7 +517,7 @@ mod tests {
             &example_com(),
             RID,
             packet.clone(),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         assert!(control_flow.is_break());
@@ -545,7 +546,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         dns_resource_nat.on_domain_status(
@@ -566,7 +567,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
 
@@ -575,7 +576,7 @@ mod tests {
                 .unwrap();
 
         let control_flow =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, app_packet, Instant::now());
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, app_packet, Instant::ZERO);
 
         assert!(control_flow.is_continue());
         assert!(dns_resource_nat.poll_packet().is_some());
@@ -592,7 +593,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         dns_resource_nat.on_domain_status(
@@ -616,7 +617,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::from([packet.clone()]),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
 
@@ -626,7 +627,7 @@ mod tests {
     #[test]
     fn resend_intent_after_2_seconds() {
         let mut dns_resource_nat = DnsResourceNat::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         dns_resource_nat
             .update(
@@ -670,7 +671,7 @@ mod tests {
     #[test]
     fn resend_intent_on_outgoing_packet_after_2s() {
         let mut dns_resource_nat = DnsResourceNat::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         dns_resource_nat
             .update(
@@ -708,7 +709,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
@@ -730,7 +731,7 @@ mod tests {
                 RID2,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
@@ -749,7 +750,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::from([packet1.clone()]),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         assert!(sendable.is_empty());
@@ -761,7 +762,7 @@ mod tests {
             &example_com(),
             RID,
             packet2.clone(),
-            Instant::now(),
+            Instant::ZERO,
         );
         assert!(control_flow.is_break());
 
@@ -785,7 +786,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
@@ -795,7 +796,7 @@ mod tests {
             &example_com(),
             RID,
             app_packet(1),
-            Instant::now(),
+            Instant::ZERO,
         );
         assert!(control_flow.is_break());
     }
@@ -810,7 +811,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         let packet = app_packet(1);
@@ -819,7 +820,7 @@ mod tests {
             &example_com(),
             RID,
             packet.clone(),
-            Instant::now(),
+            Instant::ZERO,
         );
         assert!(control_flow.is_break());
 
@@ -841,7 +842,7 @@ mod tests {
                 RID,
                 ProxyIps::for_test(),
                 VecDeque::default(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         dns_resource_nat.on_domain_status(GID, example_com(), domain_status(NatStatus::Active));

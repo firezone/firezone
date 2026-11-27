@@ -25,13 +25,14 @@ use connlib_model::{ClientId, IceCandidate, PublicKey, RelayId, ResourceId};
 use dns_types::{DomainName, Query, Response, ResponseBuilder, ResponseCode};
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket};
+use sans_io_time::Instant;
 use secrecy::ExposeSecret as _;
 use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use zeroize::Zeroizing;
 
 pub const TUN_DNS_PORT: u16 = 53535;

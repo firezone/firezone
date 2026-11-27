@@ -1,10 +1,11 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::print_stdout)]
 
+use sans_io_time::Instant;
 use std::{
     collections::BTreeSet,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use dns_over_tcp::QueryResult;
@@ -22,10 +23,10 @@ fn smoke() {
     let resolver_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 1), 53));
 
     let mut dns_client =
-        dns_over_tcp::Client::new(Instant::now(), Duration::from_secs(10), [0u8; 32]);
+        dns_over_tcp::Client::new(Instant::ZERO, Duration::from_secs(10), [0u8; 32]);
     dns_client.set_source_interface(ipv4, ipv6);
 
-    let mut dns_server = dns_over_tcp::Server::new(Instant::now());
+    let mut dns_server = dns_over_tcp::Server::new(Instant::ZERO);
     dns_server.set_listen_addresses::<1>(BTreeSet::from([resolver_addr]));
 
     for id in 0..5 {
@@ -60,10 +61,10 @@ fn concurrent_queries_with_same_id() {
     let resolver_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 1), 53));
 
     let mut dns_client =
-        dns_over_tcp::Client::new(Instant::now(), Duration::from_secs(10), [0u8; 32]);
+        dns_over_tcp::Client::new(Instant::ZERO, Duration::from_secs(10), [0u8; 32]);
     dns_client.set_source_interface(ipv4, ipv6);
 
-    let mut dns_server = dns_over_tcp::Server::new(Instant::now());
+    let mut dns_server = dns_over_tcp::Server::new(Instant::ZERO);
     dns_server.set_listen_addresses::<1>(BTreeSet::from([resolver_addr]));
 
     // Windows' stub resolver always uses query ID 1 for queries over TCP.
@@ -115,10 +116,10 @@ fn no_panic_after_set_listen_address() {
     let resolver_addr3 = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 3), 53));
 
     let mut dns_client =
-        dns_over_tcp::Client::new(Instant::now(), Duration::from_secs(10), [0u8; 32]);
+        dns_over_tcp::Client::new(Instant::ZERO, Duration::from_secs(10), [0u8; 32]);
     dns_client.set_source_interface(ipv4, ipv6);
 
-    let mut dns_server = dns_over_tcp::Server::new(Instant::now());
+    let mut dns_server = dns_over_tcp::Server::new(Instant::ZERO);
     dns_server.set_listen_addresses::<2>(BTreeSet::from([resolver_addr1, resolver_addr2]));
 
     // Feed some queries.
@@ -172,8 +173,8 @@ fn receive_queries<const N: usize>(
             continue;
         }
 
-        dns_client.handle_timeout(Instant::now());
-        dns_server.handle_timeout(Instant::now());
+        dns_client.handle_timeout(Instant::ZERO);
+        dns_server.handle_timeout(Instant::ZERO);
 
         if queries.len() == N {
             return queries;
@@ -215,7 +216,7 @@ fn progress(
             return Some(query);
         }
 
-        dns_client.handle_timeout(Instant::now());
-        dns_server.handle_timeout(Instant::now());
+        dns_client.handle_timeout(Instant::ZERO);
+        dns_server.handle_timeout(Instant::ZERO);
     }
 }

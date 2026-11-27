@@ -18,13 +18,14 @@ use super::{
 use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
+use sans_io_time::Instant;
 use std::{
     collections::BTreeMap,
     fmt,
     marker::PhantomData,
     net::IpAddr,
     sync::atomic::{AtomicBool, Ordering},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;

@@ -2,12 +2,12 @@ use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, RelayId, ResourceId,
 use dns_types::DomainName;
 use ip_packet::Protocol;
 use itertools::Itertools;
+use sans_io_time::Instant;
 use smallvec::SmallVec;
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    time::Instant,
 };
 use tunnel_proto::dns;
 use tunnel_proto::messages::client::FailReason;

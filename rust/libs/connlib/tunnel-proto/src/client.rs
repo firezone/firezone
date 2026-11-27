@@ -57,13 +57,14 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
+use sans_io_time::Instant;
 use secrecy::ExposeSecret as _;
 use snownet::{Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{io, iter};
 use zeroize::Zeroizing;
 
@@ -3050,7 +3051,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_out_of_band_ip_packet(packet, Instant::now())
+                .handle_out_of_band_ip_packet(packet, Instant::ZERO)
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -3068,7 +3069,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_out_of_band_ip_packet(packet, Instant::now())
+                .handle_out_of_band_ip_packet(packet, Instant::ZERO)
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -3079,7 +3080,7 @@ mod tests {
     #[test]
     fn packet_to_a_tunnel_address_asks_for_device_access_through_permitting_pools() {
         let mut state = ClientState::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
         state.upsert_resource(device_pool(1, vec![]), now);
         state.upsert_resource(device_pool(2, vec![Filter::Icmp]), now);
@@ -3116,7 +3117,7 @@ mod tests {
     #[test]
     fn packet_to_a_tunnel_address_no_pool_permits_is_prohibited_locally() {
         let mut state = ClientState::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
         state.upsert_resource(device_pool(2, vec![Filter::Icmp]), now);
         while state.poll_event().is_some() {}
@@ -3136,7 +3137,7 @@ mod tests {
     #[test]
     fn denied_device_flow_is_answered_and_asked_again_on_the_next_packet() {
         let mut state = ClientState::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
         state.upsert_resource(device_pool(1, vec![]), now);
         while state.poll_event().is_some() {}
@@ -3217,7 +3218,7 @@ mod tests {
             test_ingest_token(),
         );
 
-        state.reset(Instant::now(), "test");
+        state.reset(Instant::ZERO, "test");
         let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
 
         assert_eq!(
@@ -3233,7 +3234,7 @@ mod tests {
 
     #[test]
     fn offline_site_status_resets_after_5_minutes() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut state = ClientState::for_test();
         let site = SiteId::from_u128(1);
 
@@ -3259,7 +3260,7 @@ mod tests {
 
     #[test]
     fn no_resource_list_update_if_site_status_does_not_change() {
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let mut state = ClientState::for_test();
         let site = SiteId::from_u128(1);
 
@@ -3286,7 +3287,7 @@ mod tests {
                 rand::random(),
                 Default::default(),
                 false,
-                Instant::now(),
+                Instant::ZERO,
                 Duration::ZERO,
             )
         }
@@ -3358,8 +3359,8 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.upsert_resource(Resource::Cidr(resource1.clone()), Instant::now());
-        client_state.upsert_resource(Resource::Cidr(resource2.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(resource1.clone()), Instant::ZERO);
+        client_state.upsert_resource(Resource::Cidr(resource2.clone()), Instant::ZERO);
 
         assert_eq!(
             hashset(client_state.routes()),
@@ -3375,8 +3376,8 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.upsert_resource(Resource::Cidr(resource1.clone()), Instant::now());
-        client_state.upsert_resource(Resource::Dns(resource2.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(resource1.clone()), Instant::ZERO);
+        client_state.upsert_resource(Resource::Dns(resource2.clone()), Instant::ZERO);
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -3386,7 +3387,7 @@ mod proptests {
             ])
         );
 
-        client_state.upsert_resource(Resource::Cidr(resource3.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(resource3.clone()), Instant::ZERO);
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -3404,14 +3405,14 @@ mod proptests {
         #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.upsert_resource(Resource::Cidr(resource.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(resource.clone()), Instant::ZERO);
 
         let updated_resource = CidrResource {
             address: new_address,
             ..resource
         };
 
-        client_state.upsert_resource(Resource::Cidr(updated_resource.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(updated_resource.clone()), Instant::ZERO);
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -3431,10 +3432,10 @@ mod proptests {
         #[strategy(cidr_resource())] cidr_resource: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.upsert_resource(Resource::Dns(dns_resource.clone()), Instant::now());
-        client_state.upsert_resource(Resource::Cidr(cidr_resource.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Dns(dns_resource.clone()), Instant::ZERO);
+        client_state.upsert_resource(Resource::Cidr(cidr_resource.clone()), Instant::ZERO);
 
-        client_state.remove_resource(dns_resource.id, Instant::now());
+        client_state.remove_resource(dns_resource.id, Instant::ZERO);
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -3447,7 +3448,7 @@ mod proptests {
             expected_routes(vec![cidr_resource.address])
         );
 
-        client_state.remove_resource(cidr_resource.id, Instant::now());
+        client_state.remove_resource(cidr_resource.id, Instant::ZERO);
 
         assert_eq!(hashset(client_state.resources().iter()), hashset(&[]));
         assert_eq!(hashset(client_state.routes()), expected_routes(vec![]));
@@ -3461,15 +3462,15 @@ mod proptests {
         #[strategy(cidr_resource())] cidr_resource2: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.upsert_resource(Resource::Dns(dns_resource1), Instant::now());
-        client_state.upsert_resource(Resource::Cidr(cidr_resource1), Instant::now());
+        client_state.upsert_resource(Resource::Dns(dns_resource1), Instant::ZERO);
+        client_state.upsert_resource(Resource::Cidr(cidr_resource1), Instant::ZERO);
 
         client_state.replace_resources(
             vec![
                 Resource::Dns(dns_resource2.clone()),
                 Resource::Cidr(cidr_resource2.clone()),
             ],
-            Instant::now(),
+            Instant::ZERO,
         );
 
         assert_eq!(
@@ -3494,7 +3495,7 @@ mod proptests {
         let mut client_state = ClientState::for_test();
 
         for r in resources_online.iter().chain(resources_unknown.iter()) {
-            client_state.upsert_resource(r.clone(), Instant::now())
+            client_state.upsert_resource(r.clone(), Instant::ZERO)
         }
 
         let first_resource = resources_online.first().unwrap();
@@ -3508,11 +3509,7 @@ mod proptests {
             HashSet::from([gateway]),
         );
 
-        client_state.update_site_status_by_gateway(
-            &gateway,
-            ResourceStatus::Online,
-            Instant::now(),
-        );
+        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online, Instant::ZERO);
 
         for resource in resources_online {
             assert_eq!(
@@ -3536,7 +3533,7 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
         for r in &resources {
-            client_state.upsert_resource(r.clone(), Instant::now());
+            client_state.upsert_resource(r.clone(), Instant::ZERO);
         }
         let first_resources = resources.first().unwrap();
         client_state.outbound_authorizations.authorize_gateway(
@@ -3549,15 +3546,11 @@ mod proptests {
             HashSet::from([gateway]),
         );
 
-        client_state.update_site_status_by_gateway(
-            &gateway,
-            ResourceStatus::Online,
-            Instant::now(),
-        );
+        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online, Instant::ZERO);
         client_state.update_site_status_by_gateway(
             &gateway,
             ResourceStatus::Unknown,
-            Instant::now(),
+            Instant::ZERO,
         );
 
         for resource in resources {
@@ -3574,12 +3567,12 @@ mod proptests {
         #[strategy(resource())] single_site_resource: Resource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.upsert_resource(single_site_resource.clone(), Instant::now());
+        client_state.upsert_resource(single_site_resource.clone(), Instant::ZERO);
         for r in &multi_site_resources {
-            client_state.upsert_resource(r.clone(), Instant::now());
+            client_state.upsert_resource(r.clone(), Instant::ZERO);
         }
 
-        client_state.set_resource_offline(single_site_resource.id(), Instant::now());
+        client_state.set_resource_offline(single_site_resource.id(), Instant::ZERO);
 
         assert_eq!(
             client_state.resource_status(&single_site_resource),

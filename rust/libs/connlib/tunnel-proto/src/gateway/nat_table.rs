@@ -3,9 +3,10 @@ use anyhow::{Context, Result};
 use bimap::BiHashMap;
 use fast_random_state::FastRandomState;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
+use sans_io_time::Instant;
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// This stateful NAT table converts a client's proxy OP for a domain name into a real IP for the domain.
 ///
@@ -371,7 +372,7 @@ mod tests {
 
     #[test]
     fn rejects_new_entries_when_full() {
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let mut table = NatTable::default();
         let outside_dst = IpAddr::from(Ipv4Addr::new(1, 1, 1, 1));
 
@@ -421,7 +422,7 @@ mod tests {
     ) {
         proptest::prop_assume!(packet.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
 
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let mut table = NatTable::default();
         let response_delay = Duration::from_secs(response_delay);
 
@@ -498,7 +499,7 @@ mod tests {
         // Translate out
         let new_src_p_and_dst = packets
             .clone()
-            .map(|(p, d)| table.translate_outgoing(&p, d, Instant::now()).unwrap());
+            .map(|(p, d)| table.translate_outgoing(&p, d, Instant::ZERO).unwrap());
 
         // Pretend we are getting a response.
         for ((p, _), (new_src_p, new_d)) in packets.iter_mut().zip(new_src_p_and_dst) {
@@ -508,7 +509,7 @@ mod tests {
 
         // Translate in
         let responses = packets.map(|(p, _)| {
-            let res = table.translate_incoming(&p, Instant::now()).unwrap();
+            let res = table.translate_incoming(&p, Instant::ZERO).unwrap();
 
             match res {
                 TranslateIncomingResult::Ok { proto, src } => (proto, src),
@@ -537,7 +538,7 @@ mod tests {
         rst.set_dst(req.destination()).unwrap();
 
         let mut table = NatTable::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         let outside = table.translate_outgoing(&req, outside_dst, now).unwrap();
 

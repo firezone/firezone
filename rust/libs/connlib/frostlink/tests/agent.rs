@@ -7,8 +7,9 @@
 
 #![allow(clippy::unwrap_used)]
 
+use sans_io_time::Instant;
 use std::net::{IpAddr, SocketAddr};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use frostlink::{
     Agent, Candidate, CandidateKind, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC,
@@ -22,7 +23,7 @@ use zeroize::Zeroizing;
 #[test]
 fn outbound_handshake_init_fans_out_on_every_relay_pair() {
     let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let init = handshake_init_bytes();
     a.send_handshake_initiation(init.clone(), now);
     a.handle_timeout(now);
@@ -38,7 +39,7 @@ fn outbound_handshake_init_fans_out_on_every_relay_pair() {
 #[test]
 fn outbound_handshake_init_arms_retransmits_with_initial_50ms_deadline() {
     let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+    let now = Instant::ZERO;
     a.send_handshake_initiation(handshake_init_bytes(), now);
     a.handle_timeout(now);
     let _ = a.transmits();
@@ -49,7 +50,7 @@ fn outbound_handshake_init_arms_retransmits_with_initial_50ms_deadline() {
 #[test]
 fn retransmit_ladder_runs_once_then_stops() {
     let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+    let now = Instant::ZERO;
 
     a.send_handshake_initiation(handshake_init_bytes(), now);
     a.handle_timeout(now);
@@ -81,7 +82,7 @@ fn retransmit_ladder_runs_once_then_stops() {
 #[test]
 fn a_wireguard_reinit_refans_once_without_re_arming_the_ladder() {
     let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+    let now = Instant::ZERO;
 
     // First init arms the one-time fast ladder on each relay pair.
     a.send_handshake_initiation(handshake_init_bytes(), now);
@@ -121,7 +122,7 @@ fn a_wireguard_reinit_refans_once_without_re_arming_the_ladder() {
 #[test]
 fn inbound_handshake_response_stops_the_fanout() {
     let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+    let now = Instant::ZERO;
 
     a.send_handshake_initiation(handshake_init_bytes(), now);
     a.handle_timeout(now);
@@ -152,7 +153,7 @@ fn inbound_handshake_response_stops_the_fanout() {
 #[test]
 fn an_inbound_init_keeps_the_fanout_until_the_session_is_confirmed() {
     let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let init = handshake_init_bytes();
     a.send_handshake_initiation(init.clone(), now);
 
@@ -188,7 +189,7 @@ fn an_inbound_init_keeps_the_fanout_until_the_session_is_confirmed() {
 #[test]
 fn rejected_handshake_leaves_state_untouched() {
     let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let mut hs = Handshake::new(now);
 
     let _ = a.receive(
@@ -207,7 +208,7 @@ fn rejected_handshake_leaves_state_untouched() {
 #[test]
 fn responder_dedup_replays_within_window_then_expires() {
     let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let mut hs = Handshake::new(now);
     let path = (addr(2), addr(4));
 
@@ -264,7 +265,7 @@ fn establishing_init_adopts_its_relay_path_as_the_primary() {
     // its connection carries data before the first probe reply. Probing then
     // promotes away from the relay.
     let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let mut hs = Handshake::new(now);
 
     let _ = a.receive(
@@ -291,7 +292,7 @@ fn establishing_init_adopts_its_relay_path_as_the_primary() {
 #[test]
 fn handshake_response_seeds_preliminary_primary_by_tier() {
     let mut a = agent_with_relay_pairs();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
 
     // A response on the relay pair adopts it (no other primary yet).
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
@@ -328,7 +329,7 @@ fn the_confirming_keepalive_goes_back_on_the_responses_path() {
 fn probe_reply_promotes_to_a_better_tier() {
     // Relay preliminary, then a host probe reply promotes (host beats relay).
     let mut a = agent_with_relay_pairs();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
     a.drain_events();
@@ -348,8 +349,8 @@ fn a_higher_priority_pair_wins_the_same_tier_when_rtts_are_a_wash_out() {
     let mut a = agent_with_relay_pairs();
     let preferred =
         Candidate::from_sdp_string("candidate:1 1 udp 2130706431 127.0.0.1 5 typ host").unwrap();
-    a.add_remote_candidate(preferred, Instant::now());
-    let t0 = Instant::now();
+    a.add_remote_candidate(preferred, Instant::ZERO);
+    let t0 = Instant::ZERO;
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
 
     let probes = a.tick(t0);
@@ -364,8 +365,8 @@ fn a_clearly_faster_pair_wins_the_same_tier_despite_a_lower_priority() {
     let mut a = agent_with_relay_pairs();
     let preferred =
         Candidate::from_sdp_string("candidate:1 1 udp 2130706431 127.0.0.1 5 typ host").unwrap();
-    a.add_remote_candidate(preferred, Instant::now());
-    let t0 = Instant::now();
+    a.add_remote_candidate(preferred, Instant::ZERO);
+    let t0 = Instant::ZERO;
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
 
     let probes = a.tick(t0);
@@ -390,8 +391,8 @@ fn a_worse_tier_probe_never_demotes_the_primary() {
 #[test]
 fn a_primary_reply_does_not_promote_a_quiet_pair_on_its_stale_rtt() {
     let mut a = agent_with_relay_pairs();
-    a.add_remote_candidate(Candidate::host(addr(5)), Instant::now());
-    let t0 = Instant::now();
+    a.add_remote_candidate(Candidate::host(addr(5)), Instant::ZERO);
+    let t0 = Instant::ZERO;
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
 
     let probes = a.tick(t0);
@@ -416,7 +417,7 @@ fn a_primary_reply_does_not_promote_a_quiet_pair_on_its_stale_rtt() {
 #[test]
 fn a_non_primary_pair_goes_quiet_after_its_probe_budget() {
     let mut a = agent_with_relay_pairs();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     // Adopt (2,4) as primary so the budget applies to the other pairs.
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
     a.drain_events();
@@ -437,7 +438,7 @@ fn a_pathless_agent_probes_forever() {
     // Establish (adopting the init's relay path), then lose the primary by
     // dropping its remote candidate, with nothing else answering.
     let mut a = agent_with_relay_pairs();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut hs = Handshake::new(t0);
     let _ = a.receive(
         &mut hs.responder,
@@ -465,7 +466,7 @@ fn a_pathless_agent_probes_forever() {
 #[test]
 fn a_reply_with_a_stale_pair_id_is_ignored() {
     let mut a = agent_with_relay_pairs();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
     a.drain_events();
 
@@ -551,7 +552,7 @@ fn a_primary_change_resets_the_distress_count() {
     // Distress is scoped to the current primary: a count that climbed on the
     // previous primary must not carry over and trip distress early on the next.
     let mut a = agent_with_relay_pairs();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
 
@@ -685,7 +686,7 @@ fn a_new_candidate_clears_the_primary_and_reprobes() {
 #[test]
 fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
     let mut a = Agent::new();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     a.add_local_candidate(Candidate::host(addr(1)), t0);
     a.add_remote_candidate(Candidate::host(addr(9)), t0);
     bootstrap_primary(&mut a, (addr(1), addr(9)), t0);
@@ -727,7 +728,7 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
 #[test]
 fn invalidated_relay_primary_fails_over_to_remote_relay_and_back() {
     let mut a = Agent::new();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
 
     let local_relay = Candidate::relayed(addr(2), addr(2));
     a.add_local_candidate(Candidate::host(addr(1)), t0);
@@ -813,7 +814,7 @@ fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
     // existing pair in place — keeping its primary/RTT/schedule — not treat it
     // as new, which would overwrite the pair's `PairState` and re-probe.
     let mut a = Agent::new();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     a.add_local_candidate(Candidate::host(addr(1)), t0);
 
     // An inbound init from an unadvertised address registers it peer-reflexive
@@ -854,7 +855,7 @@ fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
 #[test]
 fn a_peer_reflexive_remote_stays_peer_reflexive_until_signaled() {
     let mut a = Agent::new();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     a.add_local_candidate(Candidate::host(addr(1)), t0);
 
     let mut hs = Handshake::new(t0);
@@ -1070,7 +1071,7 @@ impl AgentExt for Agent {
 
 fn agent_with_relay_pairs() -> Agent {
     let mut a = Agent::new();
-    let now = Instant::now();
+    let now = Instant::ZERO;
     a.add_local_candidate(Candidate::host(addr(1)), now);
     a.add_local_candidate(Candidate::relayed(addr(2), addr(2)), now);
     a.add_remote_candidate(Candidate::host(addr(3)), now);
@@ -1082,7 +1083,7 @@ fn agent_with_relay_pairs() -> Agent {
 /// relay pair `(2, 4)` as the fail-over target.
 fn direct_primary_with_relay_fallback() -> (Agent, Instant) {
     let mut a = agent_with_relay_pairs();
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
 
     let probes = a.tick(t0);
@@ -1106,7 +1107,7 @@ fn prove_pair_alive(a: &mut Agent, pair: Pair, now: Instant) {
 }
 
 fn handshake_init_bytes() -> sanstun::Datagram {
-    Handshake::new(Instant::now()).init
+    Handshake::new(Instant::ZERO).init
 }
 
 /// Synthetic data packet: only the type byte and a length past the data
@@ -1202,7 +1203,7 @@ fn interface(now: Instant, seed: u8, static_private: u8) -> sanstun::Interface {
 
 /// Mismatched keypair: every message is rejected.
 fn reject_all() -> sanstun::Tunnel {
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let peer = interface(now, 98, 4).static_public();
 
     interface(now, 99, 3)

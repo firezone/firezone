@@ -20,7 +20,7 @@ fn reindexed(map: &mut DeadlineMap<u32, Value>) -> Vec<u32> {
 
 #[test]
 fn poll_timeout_follows_deadline_moving_earlier_and_later() {
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let mut map = DeadlineMap::default();
     map.insert(1, Value(Some(now + Duration::from_secs(5))));
     map.insert(2, Value(Some(now + Duration::from_secs(3))));
@@ -61,7 +61,7 @@ fn only_mutable_access_marks() {
 
 #[test]
 fn due_mut_hands_out_marked_and_due() {
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let mut map = DeadlineMap::default();
     map.insert(1, Value(Some(now + Duration::from_secs(2))));
     map.insert(2, Value(Some(now + Duration::from_secs(1))));
@@ -81,7 +81,7 @@ fn due_mut_hands_out_marked_and_due() {
 
 #[test]
 fn due_mut_marks_handed_out_entries() {
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let mut map = DeadlineMap::default();
     map.insert(1, Value(Some(now)));
     map.insert(2, Value(Some(now + Duration::from_secs(1))));
@@ -98,7 +98,7 @@ fn due_mut_marks_handed_out_entries() {
 
 #[test]
 fn removal_forgets_deadline() {
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let mut map = DeadlineMap::default();
     map.insert(1, Value(Some(now)));
     map.insert(2, Value(Some(now + Duration::from_secs(1))));

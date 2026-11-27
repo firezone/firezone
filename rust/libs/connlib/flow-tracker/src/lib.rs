@@ -26,6 +26,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use sans_io_time::Instant;
 use std::{
     cell::RefCell,
     collections::{HashMap, hash_map},
@@ -33,7 +34,7 @@ use std::{
     hash::Hash,
     mem,
     net::{IpAddr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};

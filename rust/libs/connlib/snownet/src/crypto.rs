@@ -1,7 +1,7 @@
+use sans_io_time::Instant;
 use std::fmt;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
-use std::time::Instant;
 
 use anyhow::Result;
 use bufferpool::Bytes;

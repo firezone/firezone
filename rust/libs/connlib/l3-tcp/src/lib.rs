@@ -28,7 +28,7 @@ pub fn create_tcp_socket() -> Socket<'static> {
 }
 
 /// Computes an instance of [`smoltcp::time::Instant`] based on a given starting point and the current time.
-pub fn now(boot: std::time::Instant, now: std::time::Instant) -> Instant {
+pub fn now(boot: sans_io_time::Instant, now: sans_io_time::Instant) -> Instant {
     let millis_since_startup = now.duration_since(boot).as_millis();
 
     Instant::from_millis(millis_since_startup as i64)

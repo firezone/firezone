@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 ip-packet = { workspace = true }
+sans-io-time = { workspace = true }
 sanstun = { workspace = true }
 tracing = { workspace = true }
 

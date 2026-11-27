@@ -1,7 +1,8 @@
+use sans_io_time::Instant;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
 use std::net::IpAddr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
@@ -928,7 +929,7 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
         peer.add_resource(
@@ -1014,7 +1015,7 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
         assert!(peer.resources.contains_key(&foo_resource_id()));
@@ -1033,7 +1034,7 @@ mod tests {
 
     #[test]
     fn tun_dns_queries_require_an_active_dns_resource_and_txt_or_srv_type() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut peer = ClientOnGateway::new(
             client_id(),
             client_key(),
@@ -1099,7 +1100,7 @@ mod tests {
                     .unwrap(),
             ] {
                 assert!(matches!(
-                    peer.translate_outbound(request, Instant::now()).unwrap(),
+                    peer.translate_outbound(request, Instant::ZERO).unwrap(),
                     TranslateOutboundResult::Send(_, _)
                 ));
             }
@@ -1111,7 +1112,7 @@ mod tests {
                 ip_packet::make::icmp_request_packet(client, gateway, 1, 1, &[]).unwrap(),
             ] {
                 assert!(matches!(
-                    peer.translate_outbound(request, Instant::now()).unwrap(),
+                    peer.translate_outbound(request, Instant::ZERO).unwrap(),
                     TranslateOutboundResult::IcmpError { .. }
                 ));
             }
@@ -1125,7 +1126,7 @@ mod tests {
                 &[],
             )
             .unwrap();
-            peer.translate_inbound(&mut response, Instant::now())
+            peer.translate_inbound(&mut response, Instant::ZERO)
                 .unwrap();
         }
     }
@@ -1139,14 +1140,14 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
-        peer.add_resource(bar_cidr_resource(), None, Instant::now());
+        peer.add_resource(foo_dns_resource(), None, Instant::ZERO);
+        peer.add_resource(bar_cidr_resource(), None, Instant::ZERO);
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
 
@@ -1161,7 +1162,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+        assert!(peer.translate_outbound(pkt, Instant::ZERO).is_ok());
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -1173,7 +1174,7 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            peer.translate_outbound(pkt, Instant::ZERO).unwrap(),
             TranslateOutboundResult::IcmpError { .. }
         ));
 
@@ -1187,7 +1188,7 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            peer.translate_outbound(pkt, Instant::ZERO).unwrap(),
             TranslateOutboundResult::IcmpError { .. }
         ));
 
@@ -1200,7 +1201,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+        assert!(peer.translate_outbound(pkt, Instant::ZERO).is_ok());
     }
 
     #[test]
@@ -1212,14 +1213,14 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
-        peer.add_resource(internet_resource(), None, Instant::now());
+        peer.add_resource(foo_dns_resource(), None, Instant::ZERO);
+        peer.add_resource(internet_resource(), None, Instant::ZERO);
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
 
@@ -1232,7 +1233,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+        assert!(peer.translate_outbound(pkt, Instant::ZERO).is_ok());
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -1244,7 +1245,7 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            peer.translate_outbound(pkt, Instant::ZERO).unwrap(),
             TranslateOutboundResult::IcmpError { .. }
         ));
 
@@ -1257,7 +1258,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+        assert!(peer.translate_outbound(pkt, Instant::ZERO).is_ok());
     }
 
     #[test]
@@ -1269,7 +1270,7 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(internet_resource(), None, Instant::now());
+        peer.add_resource(internet_resource(), None, Instant::ZERO);
 
         let request = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -1281,14 +1282,14 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(request, Instant::now()).unwrap(),
+            peer.translate_outbound(request, Instant::ZERO).unwrap(),
             TranslateOutboundResult::IcmpError { .. }
         ));
     }
 
     #[test]
     fn internet_resource_does_not_allow_traffic_from_another_client() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut peer = ClientOnGateway::new(
             client_id(),
             client_key(),
@@ -1328,13 +1329,13 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.add_resource(foo_dns_resource(), None, Instant::ZERO);
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
 
@@ -1347,7 +1348,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         assert!(matches!(
             peer.translate_outbound(request, now),
@@ -1394,7 +1395,7 @@ mod tests {
     fn setting_up_dns_resource_nat_does_not_clear_existing_nat_session() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let mut peer = ClientOnGateway::new(
             client_id(),
@@ -1403,13 +1404,13 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.add_resource(foo_dns_resource(), None, Instant::ZERO);
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
 
@@ -1432,7 +1433,7 @@ mod tests {
                 foo_resource_id(),
                 BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
                 ProxyIps::for_test(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
 
@@ -1491,7 +1492,7 @@ mod tests {
     fn setting_up_dns_resource_nat_rejects_proxy_ips_of_another_domain() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let mut peer = ClientOnGateway::new(
             client_id(),
@@ -1500,14 +1501,14 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
-        peer.add_resource(baz_dns_resource(), None, Instant::now());
+        peer.add_resource(foo_dns_resource(), None, Instant::ZERO);
+        peer.add_resource(baz_dns_resource(), None, Instant::ZERO);
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
 
@@ -1533,7 +1534,7 @@ mod tests {
             baz_resource_id(),
             BTreeSet::from([baz_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         assert!(result.unwrap_err().any_is::<ProxyIpAlreadyAssigned>());
@@ -1558,13 +1559,13 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.add_resource(foo_dns_resource(), None, Instant::ZERO);
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
 
@@ -1577,7 +1578,7 @@ mod tests {
                 [4, 5, 6, 7].map(|i| Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i)),
             )
             .unwrap(),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         assert!(result.unwrap_err().any_is::<TooManyProxyIpsForDomain>());
@@ -1598,7 +1599,7 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.add_resource(foo_dns_resource(), None, Instant::ZERO);
 
         for ip_stack in [IpStack::Ipv4Only, IpStack::Ipv6Only, IpStack::Dual] {
             peer.setup_nat(
@@ -1606,7 +1607,7 @@ mod tests {
                 foo_resource_id(),
                 BTreeSet::from([foo_real_ip1().into()]),
                 ProxyIps::for_test().for_stack(ip_stack),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         }
@@ -1616,7 +1617,7 @@ mod tests {
     fn setup_nat_evicts_least_recently_set_up_domain() {
         let _guard = logging::test("debug");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut peer = wildcard_foo_peer();
 
         for i in 0..MAX_DNS_DOMAINS {
@@ -1665,7 +1666,7 @@ mod tests {
     fn setup_nat_refuses_new_domain_while_least_recently_set_up_domain_is_young() {
         let _guard = logging::test("debug");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut peer = wildcard_foo_peer();
 
         for i in 0..MAX_DNS_DOMAINS {
@@ -1695,7 +1696,7 @@ mod tests {
     fn setup_nat_routes_match_full_recalculation() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let mut peer = ClientOnGateway::new(
             client_id(),
@@ -1715,7 +1716,7 @@ mod tests {
                 resource_id,
                 BTreeSet::from([foo_real_ip1().into()]),
                 ProxyIps::for_test(),
-                Instant::now(),
+                Instant::ZERO,
             )
             .unwrap();
         }
@@ -1728,7 +1729,7 @@ mod tests {
                 [4, 5, 6, 7].map(|i| Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i)),
             )
             .unwrap(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
 
@@ -1742,7 +1743,7 @@ mod tests {
     fn setup_dns_resource_nat_ipv4_only_adds_ipv6_translation_state_entries() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let mut peer = ClientOnGateway::new(
             client_id(),
@@ -1751,13 +1752,13 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.add_resource(foo_dns_resource(), None, Instant::ZERO);
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
 
@@ -1796,7 +1797,7 @@ mod tests {
     fn multiple_resources_can_share_same_proxy_ip() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let mut peer = ClientOnGateway::new(
             client_id(),
@@ -1806,15 +1807,15 @@ mod tests {
             MAX_DNS_DOMAINS,
         );
 
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
-        peer.add_resource(foo_dns_resource2(), None, Instant::now());
+        peer.add_resource(foo_dns_resource(), None, Instant::ZERO);
+        peer.add_resource(foo_dns_resource2(), None, Instant::ZERO);
 
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
         peer.setup_nat(
@@ -1822,7 +1823,7 @@ mod tests {
             foo_resource2_id(),
             BTreeSet::from([foo_real_ip1().into()]),
             ProxyIps::for_test(),
-            Instant::now(),
+            Instant::ZERO,
         )
         .unwrap();
 
@@ -1873,7 +1874,7 @@ mod tests {
     fn no_translate_outbound_icmp_error() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let mut peer = ClientOnGateway::new(
             client_id(),
@@ -1906,7 +1907,7 @@ mod tests {
             gateway_tun(),
             MAX_DNS_DOMAINS,
         );
-        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
+        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::ZERO);
 
         peer
     }
@@ -2175,7 +2176,7 @@ mod proptests {
             DEFAULT_MAX_DNS_DOMAINS,
         );
         for (resource, _, _) in &resources {
-            peer.add_resource(resource.clone(), None, Instant::now());
+            peer.add_resource(resource.clone(), None, Instant::ZERO);
         }
 
         for (_, protocol, dest) in &resources {
@@ -2240,7 +2241,7 @@ mod proptests {
                     filters: filters.clone(),
                 }),
                 None,
-                Instant::now(),
+                Instant::ZERO,
             );
         }
 
@@ -2307,7 +2308,7 @@ mod proptests {
                 filters,
             }),
             None,
-            Instant::now(),
+            Instant::ZERO,
         );
 
         assert!(
@@ -2377,7 +2378,7 @@ mod proptests {
                 filters: filters_allowed,
             }),
             None,
-            Instant::now(),
+            Instant::ZERO,
         );
 
         peer.add_resource(
@@ -2388,7 +2389,7 @@ mod proptests {
                 filters: filters_removed,
             }),
             None,
-            Instant::now(),
+            Instant::ZERO,
         );
         peer.remove_resource(&resource_id_removed);
 

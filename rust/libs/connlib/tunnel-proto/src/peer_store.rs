@@ -1,8 +1,8 @@
 use core::fmt;
+use sans_io_time::Instant;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::Instant;
 
 use deadline_map::{DeadlineMap, PollTimeout};
 use fast_random_state::FastRandomState;

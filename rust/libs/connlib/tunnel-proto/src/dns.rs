@@ -31,8 +31,8 @@ use crate::dns::pattern::Candidate;
 use anyhow::Result;
 use dns_types::DoHUrl;
 use logging::err_with_src;
+use sans_io_time::Instant;
 use std::net::SocketAddr;
-use std::time::Instant;
 
 pub const DNS_PORT: u16 = 53;
 

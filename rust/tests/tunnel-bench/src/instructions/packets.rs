@@ -1,5 +1,5 @@
+use sans_io_time::Instant;
 use std::collections::VecDeque;
-use std::time::Instant;
 
 use crate::callgrind;
 use crate::fixture::{AnyHost, Host, Resource, connect, tun_batches};

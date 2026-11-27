@@ -8,9 +8,9 @@ use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
+use sans_io_time::Instant;
 use smallvec::SmallVec;
 use std::collections::{BTreeSet, HashMap};
-use std::time::Instant;
 
 /// Peer-level state of a connection with another Client.
 ///
@@ -416,7 +416,7 @@ mod tests {
     #[test_case::test_case(true; "inbound_authorization_first")]
     #[test_case::test_case(false; "outbound_authorization_first")]
     fn ingest_tokens_are_separate_for_each_direction(inbound_first: bool) {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let rid = ResourceId::from_u128(1);
         let mut peer = peer();
         let inbound = ingest_token(Responder);
@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     fn spoofed_source_is_rejected() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut peer = peer();
         peer.add_resource(
             ResourceId::from_u128(1),
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn spoofed_destination_is_rejected() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut peer = peer();
         peer.add_resource(
             ResourceId::from_u128(1),
@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn icmp_error_for_known_flow_is_forwarded() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut peer = peer();
 
         let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn icmp_error_for_unknown_flow_is_rejected() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut peer = peer();
 
         let stray = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
@@ -535,7 +535,7 @@ mod tests {
 
     #[test]
     fn peer_opened_flow_is_re_filtered_after_revocation() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let rid = ResourceId::from_u128(1);
         let mut peer = peer();
         peer.add_resource(rid, udp_port(80), None, ingest_token(Responder), now);
@@ -553,7 +553,7 @@ mod tests {
 
     #[test]
     fn our_reply_admitted_for_flow_we_opened_without_authorization() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut peer = peer();
 
         let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
@@ -565,7 +565,7 @@ mod tests {
 
     #[test]
     fn authorization_expires_and_is_enforced() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let rid = ResourceId::from_u128(1);
         let mut peer = peer();
         peer.add_resource(
@@ -599,7 +599,7 @@ mod tests {
 
     #[test]
     fn retain_authorizations_drops_absent_resources() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let keep = ResourceId::from_u128(1);
         let drop = ResourceId::from_u128(2);
         let mut peer = peer();
@@ -632,7 +632,7 @@ mod tests {
 
     #[test]
     fn update_resource_expiry_in_the_past_evicts_on_timeout() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let rid = ResourceId::from_u128(1);
         let mut peer = peer();
         peer.add_resource(
@@ -653,7 +653,7 @@ mod tests {
 
     #[test]
     fn inbound_resource_matches_like_the_sender() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let r1 = ResourceId::from_u128(1);
         let r2 = ResourceId::from_u128(2);
 

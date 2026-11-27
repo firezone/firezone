@@ -3,7 +3,7 @@ use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Wake, Waker};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::ErrorExt as _;
 use bufferpool::Bytes;
@@ -229,7 +229,7 @@ async fn dns_responses_flow_while_udp_and_tun_are_stalled() {
         remote: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 22222),
         message: dns_types::Query::new("example.com".parse().unwrap(), dns_types::RecordType::A),
         transport: dns::Transport::Udp,
-        started_at: Instant::now(),
+        started_at: sans_io_time::Instant::ZERO,
     });
 
     assert_eq!(poll_fn(|cx| io.poll(cx)).await.dns_responses.len(), 1);

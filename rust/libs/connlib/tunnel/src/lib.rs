@@ -18,6 +18,7 @@ use futures::{FutureExt, future::BoxFuture};
 use io::{CryptoWorkers, Io};
 use packet_counts::{DroppedTunPackets, TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
+use sans_io_time::Instant;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use sockets::Sockets;
 use std::{
@@ -26,7 +27,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, SystemTime},
 };
 use tun::Tun;
 

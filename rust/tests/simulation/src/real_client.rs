@@ -19,11 +19,12 @@ use dns_types::{DomainName, Query, RecordData, RecordType, ResponseCode, prelude
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use jiff::Timestamp;
+use sans_io_time::Instant;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     net::{IpAddr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tunnel_proto::{
     ClientEvent, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,

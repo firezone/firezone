@@ -1,6 +1,7 @@
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeSet, HashMap},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use is::stun::TransId;
@@ -69,7 +70,7 @@ mod tests {
     #[test]
     fn add_and_remove_returns_conn_id() {
         let mut requests = InflightStunRequests::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let id = TransId::new();
 
         requests.add(42u32, id, now);
@@ -91,7 +92,7 @@ mod tests {
     #[test]
     fn remove_is_idempotent() {
         let mut requests = InflightStunRequests::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let id = TransId::new();
 
         requests.add(1u32, id, now);
@@ -102,7 +103,7 @@ mod tests {
     #[test]
     fn entry_not_expired_before_ttl() {
         let mut requests = InflightStunRequests::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let id = TransId::new();
 
         requests.add(1u32, id, now);
@@ -114,7 +115,7 @@ mod tests {
     #[test]
     fn entry_expired_after_ttl() {
         let mut requests = InflightStunRequests::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let id = TransId::new();
 
         requests.add(1u32, id, now);
@@ -126,7 +127,7 @@ mod tests {
     #[test]
     fn entries_with_same_time_get_cleared_with_handle_timeout() {
         let mut requests = InflightStunRequests::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let id1 = TransId::new();
         let id2 = TransId::new();
 
@@ -141,7 +142,7 @@ mod tests {
     #[test]
     fn only_expired_entries_are_removed() {
         let mut requests = InflightStunRequests::default();
-        let t0 = Instant::now();
+        let t0 = Instant::ZERO;
         let early_id = TransId::new();
         let late_id = TransId::new();
 
@@ -158,7 +159,7 @@ mod tests {
     #[test]
     fn remove_by_conn_id_removes_all_matching_entries() {
         let mut requests = InflightStunRequests::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let id_a = TransId::new();
         let id_b = TransId::new();
         let id_c = TransId::new();
@@ -177,7 +178,7 @@ mod tests {
     #[test]
     fn remove_by_conn_id_is_noop_for_unknown_id() {
         let mut requests = InflightStunRequests::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let id = TransId::new();
 
         requests.add(1u32, id, now);

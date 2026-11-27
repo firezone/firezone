@@ -1,10 +1,7 @@
 use super::network::Host;
+use sans_io_time::Instant;
 use snownet::Transmit;
-use std::{
-    cmp::Reverse,
-    collections::BinaryHeap,
-    time::{Duration, Instant},
-};
+use std::{cmp::Reverse, collections::BinaryHeap, time::Duration};
 
 /// A buffer for network packets that need to be handled at a certain point in time.
 #[derive(Debug, Clone, Default)]

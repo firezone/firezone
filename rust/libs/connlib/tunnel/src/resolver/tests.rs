@@ -69,7 +69,7 @@ fn example_com_query(server: DoHUrl) -> ResolverQuery {
         remote: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 22222),
         message: dns_types::Query::new("example.com".parse().unwrap(), dns_types::RecordType::A),
         transport: dns::Transport::Udp,
-        started_at: Instant::now(),
+        started_at: sans_io_time::Instant::ZERO,
     }
 }
 

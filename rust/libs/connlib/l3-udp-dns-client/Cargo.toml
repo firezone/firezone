@@ -12,6 +12,7 @@ anyhow = { workspace = true }
 dns-types = { workspace = true }
 ip-packet = { workspace = true }
 rand = { workspace = true }
+sans-io-time = { workspace = true }
 tracing = { workspace = true }
 
 [lints]

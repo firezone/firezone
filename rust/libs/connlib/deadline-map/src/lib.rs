@@ -5,9 +5,9 @@
 #[cfg(test)]
 mod tests;
 
+use sans_io_time::Instant;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::time::Instant;
 
 use fast_random_state::FastRandomState;
 

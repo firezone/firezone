@@ -2,7 +2,8 @@
 //! `Agent::Frostlink`. Mode-irrelevant operations are no-ops on
 //! the wrong variant.
 
-use std::time::Instant;
+use sans_io_time::Instant;
+use std::sync::LazyLock;
 
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
@@ -223,7 +224,7 @@ impl Agent {
 
     pub(crate) fn handle_stun_packet(&mut self, now: Instant, p: StunPacket<'_>) -> bool {
         match self {
-            Self::Ice(a) => a.handle_packet(now, p),
+            Self::Ice(a) => a.handle_packet(now.to_std(*IS_EPOCH), p),
             Self::Frostlink(_) => false,
         }
     }
@@ -249,14 +250,16 @@ impl Agent {
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         match self {
-            Self::Ice(a) => a.handle_timeout(now),
+            Self::Ice(a) => a.handle_timeout(now.to_std(*IS_EPOCH)),
             Self::Frostlink(agent) => agent.handle_timeout(now),
         }
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
         match self {
-            Self::Ice(a) => a.poll_timeout(),
+            Self::Ice(a) => a
+                .poll_timeout()
+                .map(|t| Instant::from_nanos(t.duration_since(*IS_EPOCH).as_nanos() as i64)),
             Self::Frostlink(agent) => agent.poll_timeout(),
         }
     }
@@ -295,3 +298,6 @@ impl Agent {
         }
     }
 }
+
+/// `is` takes [`std::time::Instant`]: map our time onto an arbitrary, fixed base for it.
+static IS_EPOCH: LazyLock<std::time::Instant> = LazyLock::new(std::time::Instant::now);

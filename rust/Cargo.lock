@@ -1463,6 +1463,7 @@ name = "clock"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "sans-io-time",
  "tokio",
  "windows",
 ]
@@ -1974,6 +1975,7 @@ name = "deadline-map"
 version = "0.1.0"
 dependencies = [
  "fast-random-state",
+ "sans-io-time",
 ]
 
 [[package]]
@@ -2236,6 +2238,7 @@ dependencies = [
  "l3-tcp",
  "logging",
  "rand 0.10.4",
+ "sans-io-time",
  "tokio",
  "tracing",
  "tun",
@@ -2983,6 +2986,7 @@ dependencies = [
  "ip-packet",
  "jiff",
  "jsonschema",
+ "sans-io-time",
  "serde",
  "serde_json",
  "smallvec",
@@ -3077,6 +3081,7 @@ name = "frostlink"
 version = "0.1.0"
 dependencies = [
  "ip-packet",
+ "sans-io-time",
  "sanstun",
  "tracing",
  "zeroize",
@@ -4732,6 +4737,7 @@ name = "l3-tcp"
 version = "0.1.0"
 dependencies = [
  "ip-packet",
+ "sans-io-time",
  "smoltcp",
  "tracing",
 ]
@@ -4744,6 +4750,7 @@ dependencies = [
  "dns-types",
  "ip-packet",
  "rand 0.10.4",
+ "sans-io-time",
  "tracing",
 ]
 
@@ -6648,6 +6655,7 @@ dependencies = [
  "otel-instruments",
  "rand 0.10.4",
  "ringbuffer",
+ "sans-io-time",
  "smallvec",
  "stun_codec",
  "test-case",
@@ -6985,15 +6993,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sans-io-time"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e1c4baf93f2fbecd194191bdb8b911b14f37ae35f0d1e1cbfb4cb6e067e8c52"
+
+[[package]]
 name = "sanstun"
 version = "0.2.0"
-source = "git+https://github.com/firezone/sanstun?branch=main#35cb1932948bd0776ef7d590329c1fdc0b1b9718"
+source = "git+https://github.com/firezone/sanstun?rev=3fe68e7a577ed8dde2867be63dc0afb856fe0c8b#3fe68e7a577ed8dde2867be63dc0afb856fe0c8b"
 dependencies = [
  "blake2",
  "chacha20",
  "hmac 0.13.0",
  "rand 0.10.4",
  "ring",
+ "sans-io-time",
  "subtle",
  "tracing",
  "x25519-dalek",
@@ -7580,6 +7595,7 @@ dependencies = [
  "rand 0.10.4",
  "relay-client-proto",
  "relay-server-proto",
+ "sans-io-time",
  "secrecy",
  "serde_json",
  "sha2 0.11.1",
@@ -7677,6 +7693,7 @@ dependencies = [
  "rand 0.10.4",
  "relay-client-proto",
  "ringbuffer",
+ "sans-io-time",
  "sanstun",
  "smallvec",
  "str0m-proto",
@@ -9271,6 +9288,7 @@ dependencies = [
  "prefetch",
  "quinn-udp",
  "rand 0.10.4",
+ "sans-io-time",
  "smallvec",
  "snownet",
  "socket-factory",
@@ -9298,6 +9316,7 @@ dependencies = [
  "otel-metrics-export",
  "rand 0.10.4",
  "relay-server-proto",
+ "sans-io-time",
  "seeded-rng",
  "serde_json",
  "snownet",
@@ -9356,6 +9375,7 @@ dependencies = [
  "rand 0.10.4",
  "rangemap",
  "ringbuffer",
+ "sans-io-time",
  "sanstun",
  "secrecy",
  "serde",

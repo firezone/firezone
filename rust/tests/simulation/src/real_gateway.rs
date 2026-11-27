@@ -13,11 +13,12 @@ use connlib_model::{ClientId, GatewayId, PublicKey, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
 use jiff::Timestamp;
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     mem,
     net::{IpAddr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tunnel_proto::{GatewayEvent, GatewayState};
 

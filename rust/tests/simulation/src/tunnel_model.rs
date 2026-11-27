@@ -11,7 +11,8 @@ use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
 use dns_types::{DomainName, RecordType, prelude::*};
 use ip_packet::Protocol;
 use itertools::Itertools;
-use std::time::{Duration, Instant};
+use sans_io_time::Instant;
+use std::time::Duration;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,

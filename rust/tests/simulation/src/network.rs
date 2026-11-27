@@ -3,12 +3,13 @@ use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+use sans_io_time::Instant;
 use snownet::Transmit;
 use std::{
     collections::BTreeMap,
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tracing::Span;
 
@@ -423,7 +424,11 @@ impl PollTimeout for RealGateway {
 
 impl PollTimeout for RealRelay {
     fn poll_timeout(&mut self) -> Option<Instant> {
-        self.server.poll_timeout()
+        let t = self.server.poll_timeout()?;
+
+        Some(Instant::from_nanos(
+            t.duration_since(self.std_start).as_nanos() as i64,
+        ))
     }
 }
 
@@ -708,7 +713,7 @@ mod tests {
             EXPIRY,
         );
 
-        let public = nat.egress(HOST_1, SERVER_1, Instant::now());
+        let public = nat.egress(HOST_1, SERVER_1, Instant::ZERO);
 
         assert_eq!(public, SocketAddr::new(NAT_IP.into(), HOST_1.port()));
     }
@@ -721,7 +726,7 @@ mod tests {
             FilterMode::Open,
             EXPIRY,
         );
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let first = nat.egress(HOST_1, SERVER_1, now);
         let second = nat.egress(HOST_2, SERVER_1, now);
@@ -738,7 +743,7 @@ mod tests {
             FilterMode::Open,
             EXPIRY,
         );
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let to_server_1 = nat.egress(HOST_1, SERVER_1, now);
         let to_server_2 = nat.egress(HOST_1, SERVER_2, now);
@@ -754,7 +759,7 @@ mod tests {
             FilterMode::PortRestricted,
             EXPIRY,
         );
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let to_server_1 = nat.egress(HOST_1, SERVER_1, now);
         let to_server_2 = nat.egress(HOST_1, SERVER_2, now);
@@ -770,7 +775,7 @@ mod tests {
             FilterMode::Open,
             EXPIRY,
         );
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         nat.egress(HOST_1, SERVER_1, now);
         let public = nat.egress(HOST_2, SERVER_1, now + EXPIRY.timeout);

@@ -1,9 +1,10 @@
+use sans_io_time::Instant;
 use std::{
     collections::{HashMap, hash_map::Entry},
     fmt,
     hash::Hash,
     net::{IpAddr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use fast_random_state::FastRandomState;
@@ -444,7 +445,7 @@ mod tests {
             Username::new("test".to_owned()).unwrap(),
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         allocations.remove_by_id(&1);
@@ -464,12 +465,12 @@ mod tests {
             Username::new("test".to_owned()).unwrap(),
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
-            Instant::now(),
+            Instant::ZERO,
         );
         // Drain the initial handshake so a fresh one is observable after the restart.
         while allocations.poll_transmit().is_some() {}
 
-        allocations.restart(Instant::now());
+        allocations.restart(Instant::ZERO);
 
         // The allocation is kept (still Connected on the same server), not dropped, ...
         assert!(matches!(
@@ -489,7 +490,7 @@ mod tests {
             Username::new("test".to_owned()).unwrap(),
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         allocations.upsert(
@@ -498,7 +499,7 @@ mod tests {
             Username::new("test".to_owned()).unwrap(),
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         assert!(matches!(
@@ -510,7 +511,7 @@ mod tests {
     #[test]
     fn gc_reports_removal_of_last_allocation() {
         let mut allocations = Allocations::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         allocations.upsert(
             1,
             RelaySocket::from(SERVER_V4),
@@ -530,7 +531,7 @@ mod tests {
     #[test]
     fn gc_does_not_report_last_removal_if_allocations_remain() {
         let mut allocations = Allocations::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         allocations.upsert(
             1,
             RelaySocket::from(SERVER_V4),
@@ -558,7 +559,7 @@ mod tests {
     #[test]
     fn ignores_failed_relay_until_block_expires() {
         let mut allocations = Allocations::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         upsert(&mut allocations, 1, SERVER_V4, now);
 
         reject_allocation(&mut allocations, 1, now);
@@ -583,7 +584,7 @@ mod tests {
     #[test]
     fn reports_updated_credentials_only_when_they_change() {
         let mut allocations = Allocations::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         upsert(&mut allocations, 1, SERVER_V4, now);
 
         assert!(matches!(
@@ -607,7 +608,7 @@ mod tests {
     #[test]
     fn does_not_block_unresponsive_relay() {
         let mut allocations = Allocations::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         upsert(&mut allocations, 1, SERVER_V4, now);
 
         let now = fail_allocations(&mut allocations, now);
@@ -622,7 +623,7 @@ mod tests {
     #[test]
     fn restart_unblocks_relays() {
         let mut allocations = Allocations::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         upsert(&mut allocations, 1, SERVER_V4, now);
 
         reject_allocation(&mut allocations, 1, now);
@@ -744,7 +745,7 @@ mod tests {
 
     #[test]
     fn sample_excludes_outlier_relay_among_many_fast_ones() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocations = Allocations::for_test();
 
         for (rid, port, rtt_ms) in [
@@ -772,7 +773,7 @@ mod tests {
 
     #[test]
     fn sample_distributes_load_across_similar_rtt_relays() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocations = Allocations::for_test();
 
         // 1ms apart: both relays should be picked roughly equally (uniform within bucket).
@@ -803,7 +804,7 @@ mod tests {
 
     #[test]
     fn sample_excludes_n2_relay_when_much_slower() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocations = Allocations::for_test();
 
         // 30ms vs 200ms with n=2 ⇒ 200ms is 6.7x the leader, well outside 1.5x.
@@ -826,7 +827,7 @@ mod tests {
 
     #[test]
     fn sample_falls_back_to_only_remaining_relay_even_if_high_rtt() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocations = Allocations::for_test();
 
         allocations.upsert(
@@ -844,7 +845,7 @@ mod tests {
 
     #[test]
     fn sample_excludes_allocations_without_rtt() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocations = Allocations::for_test();
 
         allocations.upsert(

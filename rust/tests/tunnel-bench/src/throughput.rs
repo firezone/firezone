@@ -9,6 +9,7 @@
 
 mod device;
 
+use sans_io_time::Instant;
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::poll_fn;
 use std::net::SocketAddr;
@@ -16,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::task::Poll;
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::ErrorExt as _;
 use criterion::measurement::Measurement;
@@ -383,7 +384,7 @@ fn measure<M: Measurement + Copy, T>(
                 remaining -= packets;
                 let inputs = inputs(packets);
 
-                let start = Instant::now();
+                let start = std::time::Instant::now();
                 let measuring = measurement.start();
                 let arrived = arrivals.count();
                 let mut sent = 0_usize;

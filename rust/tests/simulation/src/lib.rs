@@ -32,8 +32,6 @@ mod tunnel_generator;
 mod tunnel_model;
 mod tunnel_transition;
 
-use std::time::Instant;
-
 use jiff::Timestamp;
 use tracing_subscriber::{
     EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
@@ -75,7 +73,7 @@ const MAX_RELAY_TRANSITIONS: usize = 64;
 ///
 /// Simulates clients, gateways, relays and the portal and checks the tunnel state machines
 /// against a model. Panics if the tunnel violates an invariant.
-pub fn run_tunnel(data: &[u8], now: Instant) {
+pub fn run_tunnel(data: &[u8], now: std::time::Instant) {
     let _guard = init_subscriber();
 
     let clock = Clock::new(now, Timestamp::UNIX_EPOCH);
@@ -113,7 +111,7 @@ pub fn run_tunnel(data: &[u8], now: Instant) {
 ///
 /// Simulates a relay client and a relay and checks the client against a model.
 /// Panics if the client or the relay violates it.
-pub fn run_relay(data: &[u8], now: Instant) {
+pub fn run_relay(data: &[u8], now: std::time::Instant) {
     let _guard = init_subscriber();
 
     let clock = Clock::new(now, Timestamp::UNIX_EPOCH);

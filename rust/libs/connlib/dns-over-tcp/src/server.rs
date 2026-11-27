@@ -1,7 +1,8 @@
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     net::SocketAddr,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use crate::codec;

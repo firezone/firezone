@@ -12,6 +12,7 @@ use super::{
     tunnel_model::PrivateKey,
     tunnel_transition::{Destination, DnsQuery, DnsTransport},
 };
+use sans_io_time::Instant;
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
     messages::{Filter, Interface, UpstreamDo53, UpstreamDoH, client::FailReason},
@@ -28,7 +29,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// Model of a particular client.

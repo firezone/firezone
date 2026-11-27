@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use sans_io_time::Instant;
+use std::time::Duration;
 
 /// Maps portal-supplied unix timestamps (`Duration` since `UNIX_EPOCH`) to
 /// monotonic [`Instant`]s.
@@ -55,7 +56,7 @@ mod tests {
 
     #[test]
     fn forward_offset() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let baseline_unix = Duration::from_secs(1_700_000_000);
         let clock = UnixTsClock::new(now, baseline_unix);
         let later_unix = baseline_unix + Duration::from_secs(30);
@@ -67,7 +68,7 @@ mod tests {
 
     #[test]
     fn past_timestamp_clamps_to_start() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let baseline_unix = Duration::from_secs(1_700_000_000);
         let clock = UnixTsClock::new(now, baseline_unix);
         let earlier_unix = baseline_unix - Duration::from_secs(10);

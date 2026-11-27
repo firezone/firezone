@@ -11,6 +11,7 @@ dns-types = { workspace = true }
 fast-random-state = { workspace = true }
 ip-packet = { workspace = true }
 jiff = { workspace = true }
+sans-io-time = { workspace = true }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }
 smallvec = { workspace = true }

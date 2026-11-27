@@ -5,12 +5,13 @@ use crate::{
 };
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
+use sans_io_time::Instant;
 use smallvec::{SmallVec, smallvec};
 use std::{
     collections::{HashMap, VecDeque},
     iter,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// How long to wait for the portal to answer a query before giving up.
@@ -380,7 +381,7 @@ mod tests {
             LOCAL,
             remote,
             dns::Transport::Tcp,
-            Instant::now(),
+            Instant::ZERO,
         );
         drain(&mut resolver);
 
@@ -458,7 +459,7 @@ mod tests {
     #[test]
     fn pending_query_times_out_with_servfail() {
         let mut resolver = DeviceStubResolver::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         resolver.handle_query(
             &query(DEVICE, dns_types::RecordType::A),
             LOCAL,
@@ -556,7 +557,7 @@ mod tests {
             LOCAL,
             REMOTE,
             dns::Transport::Tcp,
-            Instant::now(),
+            Instant::ZERO,
         );
         drain(&mut resolver);
         let names = (0..2_000)
@@ -615,7 +616,7 @@ mod tests {
             LOCAL,
             REMOTE,
             dns::Transport::Udp,
-            Instant::now(),
+            Instant::ZERO,
         )
     }
 

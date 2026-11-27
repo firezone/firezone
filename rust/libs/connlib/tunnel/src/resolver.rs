@@ -16,6 +16,7 @@ use futures::{
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::{HttpClient, TlsConfig};
 use nameserver_set::NameserverSet;
+use sans_io_time::Instant;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeSet, HashMap},
@@ -24,7 +25,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::sync::mpsc;
 

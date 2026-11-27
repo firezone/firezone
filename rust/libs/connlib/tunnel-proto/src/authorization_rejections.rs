@@ -2,8 +2,9 @@ use crate::expiring_map::ExpiringMap;
 use crate::p2p_control::no_authorization::{self, NoAuthorization};
 use connlib_model::ClientId;
 use ip_packet::IpPacket;
+use sans_io_time::Instant;
 use std::net::IpAddr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Limits authorization rejection events per client and destination IP.
 #[derive(Default)]
@@ -56,7 +57,7 @@ mod tests {
     #[test_case::test_case(2000, true; "after two seconds")]
     fn retries_on_rejected_traffic(milliseconds: u64, expected: bool) {
         let mut rejections = AuthorizationRejections::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let client = ClientId::from_u128(1);
         let rejection = rejection("10.0.0.1", 443);
 
@@ -71,7 +72,7 @@ mod tests {
     #[test]
     fn limits_each_client_and_ip_independently_of_ports() {
         let mut rejections = AuthorizationRejections::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let client = ClientId::from_u128(1);
         let other_client = ClientId::from_u128(2);
         let first = rejection("10.0.0.1", 443);

@@ -2,8 +2,10 @@ use std::{
     future::Future as _,
     pin::Pin,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
+
+use sans_io_time::Instant;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Alarm {
@@ -24,7 +26,6 @@ enum ArmedAlarm {
 /// the suspend-inclusive clock determines when the deadline is due.
 pub struct Clock {
     source: Box<dyn Fn() -> Duration + Send>,
-    instant_at_start: Instant,
     os_clock_at_start: Duration,
     armed_alarm: Option<ArmedAlarm>,
     timer: Option<Pin<Box<tokio::time::Sleep>>>,
@@ -45,7 +46,6 @@ impl Clock {
     /// arbitrary, fixed point, including time spent suspended.
     fn with_source(source: impl Fn() -> Duration + Send + 'static) -> Self {
         Self {
-            instant_at_start: Instant::now(),
             os_clock_at_start: source(),
             source: Box::new(source),
             armed_alarm: None,
@@ -56,7 +56,7 @@ impl Clock {
     pub fn now(&self) -> Instant {
         let elapsed_since_start = (self.source)().saturating_sub(self.os_clock_at_start);
 
-        self.instant_at_start + elapsed_since_start
+        Instant::ZERO + elapsed_since_start
     }
 
     /// Replaces the alarm and registers the event loop for a wake-up.

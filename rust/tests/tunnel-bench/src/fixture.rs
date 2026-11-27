@@ -3,12 +3,13 @@
 
 #![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
 
+use sans_io_time::Instant;
 use std::collections::{BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::ops::RangeInclusive;
 use std::sync::LazyLock;
 use std::task::{Context, Poll, Waker};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
 use dns_types::{Query, RecordType, Response};
@@ -417,7 +418,7 @@ pub struct Client {
 
 impl Network {
     pub fn established(clients: usize, connectivity: Connectivity, resource: Resource) -> Self {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let unix_ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
@@ -819,6 +820,7 @@ struct Relay {
     allocations: BTreeSet<u16>,
     /// When it started, by the simulated and the system clock.
     started: (Instant, SystemTime),
+    std_start: std::time::Instant,
 }
 
 impl Relay {
@@ -835,6 +837,7 @@ impl Relay {
             server,
             allocations: BTreeSet::new(),
             started: (now, SystemTime::now()),
+            std_start: std::time::Instant::now(),
         }
     }
 
@@ -878,6 +881,7 @@ impl Relay {
         now: Instant,
     ) -> Vec<(SocketAddr, SocketAddr, Vec<u8>)> {
         let now_utc = self.started.1 + now.duration_since(self.started.0);
+        let now = now.to_std(self.std_start);
         let mut datagrams = Vec::new();
 
         if to == RELAY_SOCKET.into() {

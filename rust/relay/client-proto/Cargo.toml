@@ -18,6 +18,7 @@ otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 rand = { workspace = true }
 ringbuffer = { workspace = true }
+sans-io-time = { workspace = true }
 smallvec = { workspace = true }
 stun_codec = { workspace = true }
 thiserror = { workspace = true }

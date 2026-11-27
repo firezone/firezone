@@ -1,8 +1,5 @@
-use std::{
-    collections::BTreeMap,
-    iter,
-    time::{Duration, Instant},
-};
+use sans_io_time::Instant;
+use std::{collections::BTreeMap, iter, time::Duration};
 
 use connlib_model::{ClientOrGatewayId, Site};
 use dns_types::DomainName;

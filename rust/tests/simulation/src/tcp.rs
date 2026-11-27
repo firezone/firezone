@@ -1,7 +1,7 @@
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, VecDeque},
     net::SocketAddr,
-    time::Instant,
 };
 
 use anyhow::{Context, Result};

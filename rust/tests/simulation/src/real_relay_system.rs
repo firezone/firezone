@@ -6,11 +6,12 @@
 //! the relay. [`RealRelaySystem::settle`] reports what the system looks like once it settled,
 //! which [`check_settled`] holds against what the model expects.
 
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, SystemTime},
 };
 
 use bufferpool::Bytes;
@@ -185,12 +186,11 @@ impl RealRelaySystem {
     /// Builds the hosts of `model`.
     pub(crate) fn new(model: &RelayModel, clock: Clock) -> Self {
         let start = clock.now();
-        let now_utc = clock.now();
         let (relay_ip4, relay_ip6) = model.relay.interfaces(model.relay.stack);
 
         Self {
             relay: host(
-                RealRelay::new(0, relay_ip4, relay_ip6, now_utc),
+                RealRelay::new(0, relay_ip4, relay_ip6, &clock),
                 &model.relay,
             ),
             clock,
@@ -249,7 +249,7 @@ impl RealRelaySystem {
             }
             Transition::RebootRelay => {
                 self.relay_boots += 1;
-                self.relay = new_relay(self.relay_boots, &self.relay, self.clock.now());
+                self.relay = new_relay(self.relay_boots, &self.relay, &self.clock);
             }
             Transition::Partition { duration } => {
                 self.client.set_offline();
@@ -524,12 +524,16 @@ impl RealRelaySystem {
     /// Obtains a nonce for `socket` the way a client does: from the relay's answer to a
     /// request without one.
     fn issue_nonce(&mut self, socket: SocketAddr) -> Nonce {
-        let (now, now_utc) = (self.clock.now(), self.clock.now());
+        let (now, now_utc) = (self.clock.now::<Instant>(), self.clock.now());
         let request = stun::request(ForeignRequest::Allocate, None).expect("request is valid");
 
         let answer = self.relay.exec_mut(|r| {
-            r.server
-                .handle_client_input(&request, ClientSocket::new(socket), now, now_utc);
+            r.server.handle_client_input(
+                &request,
+                ClientSocket::new(socket),
+                now.to_std(r.std_start),
+                now_utc,
+            );
             r.server.next_command()
         });
         let Some(Command::SendMessage { payload, .. }) = answer else {
@@ -868,9 +872,9 @@ impl ExecMutScope for RealAllocation {
 }
 
 /// A relay that boots with the interfaces, latency and port of `like`.
-fn new_relay<T>(boot: u64, like: &Host<T>, now_utc: SystemTime) -> Host<RealRelay> {
+fn new_relay<T>(boot: u64, like: &Host<T>, clock: &Clock) -> Host<RealRelay> {
     let mut relay = Host::new(
-        RealRelay::new(boot, like.ip4, like.ip6, now_utc),
+        RealRelay::new(boot, like.ip4, like.ip6, clock),
         like.latency(),
         like.port,
     );

@@ -1,8 +1,9 @@
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use crate::codec;
@@ -680,7 +681,7 @@ mod tests {
     fn handles_icmp_error_for_pending_query() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut client = create_test_client(now);
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();
@@ -710,7 +711,7 @@ mod tests {
     fn consumes_icmp_error_for_reset_connection() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut client = create_test_client(now);
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
 
@@ -735,7 +736,7 @@ mod tests {
     fn consumes_late_packet_for_reset_connection() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut client = create_test_client(now);
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
 
@@ -773,7 +774,7 @@ mod tests {
     fn fails_pending_query_with_timeout() {
         let _guard = logging::test("trace");
 
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut client = create_test_client(now);
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();

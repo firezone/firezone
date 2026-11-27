@@ -5,6 +5,7 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
+sans-io-time = { workspace = true }
 tokio = { workspace = true, features = ["time"] }
 
 [target.'cfg(unix)'.dependencies]

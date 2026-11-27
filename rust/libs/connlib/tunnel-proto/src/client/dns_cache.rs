@@ -1,5 +1,6 @@
+use sans_io_time::Instant;
 use std::time::Duration;
-use std::{fmt, net::IpAddr, time::Instant};
+use std::{fmt, net::IpAddr};
 
 use dns_types::{DomainName, RecordType, ResponseBuilder, ResponseCode, Ttl};
 use dns_types::{OwnedRecord, Query};
@@ -151,7 +152,7 @@ mod tests {
     #[test]
     fn cache_hit_decrements_ttl() {
         let mut cache = DnsCache::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         let domain = DomainName::vec_from_str("example.com").unwrap();
         let query1 = Query::new(domain.clone(), RecordType::A);
@@ -181,7 +182,7 @@ mod tests {
     #[test]
     fn cache_with_multiple_ttls_calculates_correctly() {
         let mut cache = DnsCache::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         let domain = DomainName::vec_from_str("example.com").unwrap();
         let query1 = Query::new(domain.clone(), RecordType::A);
@@ -211,7 +212,7 @@ mod tests {
     #[test]
     fn cache_hit_notes_what_the_answer_lists_to_queries_with_edns() {
         let mut cache = DnsCache::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let domain = DomainName::vec_from_str("all-devices.firezone.network").unwrap();
         let laptop = DomainName::vec_from_str("laptop.firezone.network").unwrap();
         let query = Query::new(domain.clone(), RecordType::PTR);
@@ -244,9 +245,9 @@ mod tests {
         let ResolveStrategy::LocalResponse { response, .. } = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
-        cache.insert("example.com".parse().unwrap(), &response, Instant::now());
+        cache.insert("example.com".parse().unwrap(), &response, Instant::ZERO);
 
-        let result = cache.try_answer(&query, Instant::now());
+        let result = cache.try_answer(&query, Instant::ZERO);
 
         assert!(result.is_none());
     }

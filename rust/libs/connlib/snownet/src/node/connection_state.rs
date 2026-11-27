@@ -1,8 +1,5 @@
-use std::{
-    fmt,
-    net::SocketAddr,
-    time::{Duration, Instant},
-};
+use sans_io_time::Instant;
+use std::{fmt, net::SocketAddr, time::Duration};
 
 use ip_packet::IpPacket;
 use ringbuffer::AllocRingBuffer;

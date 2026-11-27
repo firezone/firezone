@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 fast-random-state = { workspace = true }
+sans-io-time = { workspace = true }
 
 [lints]
 workspace = true

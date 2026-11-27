@@ -3,9 +3,10 @@
 
 #![allow(clippy::unwrap_used)]
 
+use sans_io_time::Instant;
 use std::{
     net::{Ipv4Addr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use base64::Engine as _;
@@ -100,7 +101,7 @@ fn spooled_reports_conform_to_the_committed_ingest_contract() {
 
     let authz_id = "aaaaaaaa-1111-2222-3333-444444444444";
     let spool = SpoolObserver::new(authz_id);
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
@@ -162,7 +163,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
     let token = test_token(authz_id, "responder");
 
     let spool = SpoolObserver::new(authz_id);
-    let now = Instant::now();
+    let now = Instant::ZERO;
     let mut tracker = enabled_tracker::<(ClientId, ResourceId)>(now);
 
     let client = ClientId::from_u128(1);
@@ -225,7 +226,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
 fn syn_retransmit_updates_flow_instead_of_splitting() {
     let authz_id = "33333333-3333-3333-3333-333333333333";
     let spool = SpoolObserver::new(authz_id);
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
@@ -251,7 +252,7 @@ fn syn_retransmit_updates_flow_instead_of_splitting() {
 fn syn_retransmit_after_syn_ack_updates_flow() {
     let authz_id = "44444444-4444-4444-4444-444444444444";
     let spool = SpoolObserver::new(authz_id);
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
@@ -282,7 +283,7 @@ fn syn_retransmit_after_syn_ack_updates_flow() {
 fn syn_after_established_connection_splits_flow() {
     let authz_id = "88888888-8888-8888-8888-888888888888";
     let spool = SpoolObserver::new(authz_id);
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
@@ -319,7 +320,7 @@ fn syn_after_established_connection_splits_flow() {
 fn context_change_stamps_the_path_activation_time() {
     let authz_id = "99999999-9999-9999-9999-999999999999";
     let spool = SpoolObserver::new(authz_id);
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
@@ -355,7 +356,7 @@ fn context_change_stamps_the_path_activation_time() {
 fn context_change_past_the_cap_splits_flow() {
     let authz_id = "77777777-7777-7777-7777-777777777777";
     let spool = SpoolObserver::new(authz_id);
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
@@ -383,7 +384,7 @@ fn context_change_past_the_cap_splits_flow() {
 fn bare_ack_does_not_create_flow() {
     let authz_id = "55555555-5555-5555-5555-555555555555";
     let spool = SpoolObserver::new(authz_id);
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
@@ -398,7 +399,7 @@ fn bare_ack_does_not_create_flow() {
 fn data_packet_creates_flow_without_syn() {
     let authz_id = "66666666-6666-6666-6666-666666666666";
     let spool = SpoolObserver::new(authz_id);
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
@@ -413,7 +414,7 @@ fn data_packet_creates_flow_without_syn() {
 fn added_packets_count_towards_one_flow() {
     let authz_id = "77777777-7777-7777-7777-777777777777";
     let spool = SpoolObserver::new(authz_id);
-    let t0 = Instant::now();
+    let t0 = Instant::ZERO;
     let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {

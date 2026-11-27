@@ -6,7 +6,7 @@
 //! construction; transition preconditions are encoded by the transition
 //! generator rather than checked after generation.
 
-use std::time::Instant;
+use sans_io_time::Instant;
 
 use dns_types::DomainName;
 

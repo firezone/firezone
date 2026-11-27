@@ -6,9 +6,10 @@
 
 use fast_random_state::FastRandomState;
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Protocol};
+use sans_io_time::Instant;
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Default, Debug)]
 pub(crate) struct ConnTrack {
@@ -244,7 +245,7 @@ mod tests {
     #[test]
     fn records_outbound_admits_reply() {
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
@@ -258,7 +259,7 @@ mod tests {
     #[test]
     fn unrelated_inbound_is_not_return_traffic() {
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
@@ -273,7 +274,7 @@ mod tests {
     #[test]
     fn peer_opened_flow_is_not_return_traffic() {
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
             .expect("valid packet");
@@ -295,7 +296,7 @@ mod tests {
     #[test]
     fn an_error_we_may_send_is_not_one_we_would_accept() {
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
             .expect("valid packet");
@@ -310,7 +311,7 @@ mod tests {
     #[test]
     fn continued_traffic_keeps_initiated_flow_alive() {
         let mut ct = ConnTrack::default();
-        let start = Instant::now();
+        let start = Instant::ZERO;
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
@@ -328,7 +329,7 @@ mod tests {
     #[test]
     fn reply_to_peer_opened_flow_does_not_create_exemption() {
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
             .expect("valid packet");
@@ -346,7 +347,7 @@ mod tests {
     #[test]
     fn entries_expire_after_ttl() {
         let mut ct = ConnTrack::default();
-        let start = Instant::now();
+        let start = Instant::ZERO;
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
@@ -362,7 +363,7 @@ mod tests {
     #[test]
     fn icmp_echo_reply_admitted_via_identifier() {
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let request =
             make::icmp_request_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 1, 42, &[]).expect("valid");
@@ -379,7 +380,7 @@ mod tests {
         let local = local.parse::<IpAddr>().unwrap();
         let peer = peer.parse::<IpAddr>().unwrap();
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let inbound = make::icmp_request_packet(peer, local, 1, 42, &[]).unwrap();
         let outbound = make::icmp_request_packet(local, peer, 2, 42, &[]).unwrap();
         let our_reply = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
@@ -411,7 +412,7 @@ mod tests {
         let local = local.parse::<IpAddr>().unwrap();
         let peer = peer.parse::<IpAddr>().unwrap();
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let outbound = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
         let inbound = make::icmp_reply_packet(peer, local, 1, 42, &[]).unwrap();
 
@@ -425,7 +426,7 @@ mod tests {
     #[test]
     fn ipv4_and_ipv6_flows_with_same_ports_do_not_alias() {
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let v4_outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 5353, 5353, &[])
             .expect("valid packet");
@@ -446,7 +447,7 @@ mod tests {
     #[test]
     fn outbound_originator_follows_who_opened_the_flow() {
         let mut ct = ConnTrack::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let ours = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");

@@ -11,12 +11,13 @@ use logging::err_with_src;
 use otel_instruments::Histogram;
 use rand::{SeedableRng as _, rngs::StdRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
+use sans_io_time::Instant;
 use smallvec::SmallVec;
 use std::{
     collections::{HashMap, VecDeque},
     fmt, iter,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use stun_codec::{
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
@@ -2001,7 +2002,7 @@ mod tests {
         let mut channel_bindings = ChannelBindings::default();
 
         let channel = channel_bindings
-            .new_channel_to_peer(PEER1, Instant::now())
+            .new_channel_to_peer(PEER1, Instant::ZERO)
             .unwrap();
 
         assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
@@ -2010,7 +2011,7 @@ mod tests {
     #[test]
     fn recycles_channels_in_case_they_are_not_in_use() {
         let mut channel_bindings = ChannelBindings::default();
-        let start = Instant::now();
+        let start = Instant::ZERO;
 
         for channel in ChannelBindings::FIRST_CHANNEL..=ChannelBindings::LAST_CHANNEL {
             let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
@@ -2033,7 +2034,7 @@ mod tests {
     #[test]
     fn uses_unused_channels_first_before_reusing_expired_one() {
         let mut channel_bindings = ChannelBindings::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         for n in 0..100 {
             let allocated_channel = channel_bindings
@@ -2052,7 +2053,7 @@ mod tests {
     #[test]
     fn uses_next_channel_as_long_as_its_available_before_reusing() {
         let mut channel_bindings = ChannelBindings::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         for n in 0..=4095 {
             let allocated_channel = channel_bindings
@@ -2080,7 +2081,7 @@ mod tests {
     #[test]
     fn channel_with_activity_is_due_for_a_refresh_after_half_its_lifetime() {
         let mut channel_bindings = ChannelBindings::default();
-        let start = Instant::now();
+        let start = Instant::ZERO;
         let bound_at = start + Duration::from_secs(1);
 
         let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
@@ -2099,7 +2100,7 @@ mod tests {
     #[test]
     fn channel_without_activity_is_not_refreshed() {
         let mut channel_bindings = ChannelBindings::default();
-        let start = Instant::now();
+        let start = Instant::ZERO;
 
         let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
         channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
@@ -2113,7 +2114,7 @@ mod tests {
 
     #[test]
     fn channel_that_is_less_than_5_min_old_should_not_be_refreshed() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let channel = ch(PEER1, now);
 
         let four_minutes_later = now + 4 * MINUTE;
@@ -2124,7 +2125,7 @@ mod tests {
 
     #[test]
     fn channel_with_received_data_but_less_than_5_min_old_should_not_be_refreshed() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut channel = ch(PEER1, now);
 
         let three_minutes_later = now + 3 * MINUTE;
@@ -2138,7 +2139,7 @@ mod tests {
 
     #[test]
     fn channel_with_no_activity_and_older_than_5_minutes_should_not_be_refreshed() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let channel = ch(PEER1, now);
 
         let six_minutes_later = now + 6 * MINUTE;
@@ -2149,7 +2150,7 @@ mod tests {
 
     #[test]
     fn when_just_expires_channel_cannot_be_rebound() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let channel = ch(PEER1, now);
 
         let ten_minutes_one_second = now + 10 * MINUTE + Duration::from_secs(1);
@@ -2160,7 +2161,7 @@ mod tests {
 
     #[test]
     fn when_just_expires_plus_5_minutes_channel_can_be_rebound() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let channel = ch(PEER1, now);
 
         let fiveteen_minutes = now + 10 * MINUTE + 5 * MINUTE;
@@ -2172,12 +2173,12 @@ mod tests {
     #[test]
     fn buffer_channel_bind_requests_until_we_have_allocation() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         assert_eq!(allocate.method(), ALLOCATE);
 
-        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER1, Instant::ZERO);
         assert!(
             allocation.next_message().is_none(),
             "no messages to be sent if we don't have an allocation"
@@ -2185,7 +2186,7 @@ mod tests {
 
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4]),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         let message = allocation.next_message().unwrap();
@@ -2194,29 +2195,29 @@ mod tests {
 
     #[test]
     fn relays_to_inflight_channel() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
-        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::ZERO)
+            .with_binding_response(PEER1, Instant::ZERO)
+            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::ZERO);
+        allocation.bind_channel(PEER2_IP4, Instant::ZERO);
 
         let mut buffer = channel_data_packet_buffer(b"foobar");
         let encode_ok =
-            allocation.encode_channel_data_header(PEER2_IP4, &mut buffer, Instant::now());
+            allocation.encode_channel_data_header(PEER2_IP4, &mut buffer, Instant::ZERO);
 
         assert!(encode_ok.is_some())
     }
 
     #[test]
     fn failed_channel_binding_removes_state() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
-        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::ZERO)
+            .with_binding_response(PEER1, Instant::ZERO)
+            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::ZERO);
+        allocation.bind_channel(PEER2_IP4, Instant::ZERO);
 
         let channel_bind_msg = allocation.next_message().unwrap();
 
         allocation
-            .handle_test_input_ip4(channel_bind_bad_request(&channel_bind_msg), Instant::now());
+            .handle_test_input_ip4(channel_bind_bad_request(&channel_bind_msg), Instant::ZERO);
 
         // TODO: Not the best assertion because we are reaching into private state but better than nothing for now.
         let channel = allocation
@@ -2230,15 +2231,15 @@ mod tests {
 
     #[test]
     fn rebinding_existing_channel_send_no_message() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
-        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::ZERO)
+            .with_binding_response(PEER1, Instant::ZERO)
+            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::ZERO);
+        allocation.bind_channel(PEER2_IP4, Instant::ZERO);
 
         let channel_bind_msg = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(channel_bind_success(&channel_bind_msg), Instant::now());
+        allocation.handle_test_input_ip4(channel_bind_success(&channel_bind_msg), Instant::ZERO);
 
-        allocation.bind_channel(PEER2_IP4, Instant::now());
+        allocation.bind_channel(PEER2_IP4, Instant::ZERO);
         let next_msg = allocation.next_message();
 
         assert!(next_msg.is_none())
@@ -2246,7 +2247,7 @@ mod tests {
 
     #[test]
     fn retries_requests_using_backoff_and_gives_up_eventually() {
-        let start = Instant::now();
+        let start = Instant::ZERO;
         let mut allocation = Allocation::for_test_ip4(start);
 
         let mut expected_backoffs = VecDeque::from(backoff::steps(start));
@@ -2265,11 +2266,11 @@ mod tests {
 
     #[test]
     fn given_no_ip6_allocation_does_not_attempt_to_bind_channel_to_ip6_address() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::ZERO)
+            .with_binding_response(PEER1, Instant::ZERO)
+            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::ZERO);
 
-        allocation.bind_channel(PEER2_IP6, Instant::now());
+        allocation.bind_channel(PEER2_IP6, Instant::ZERO);
         let next_msg = allocation.next_message();
 
         assert!(next_msg.is_none());
@@ -2277,10 +2278,10 @@ mod tests {
 
     #[test]
     fn given_no_ip4_allocation_does_not_attempt_to_bind_channel_to_ip4_address() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP6], Instant::now());
-        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::ZERO)
+            .with_binding_response(PEER1, Instant::ZERO)
+            .with_allocate_response(&[RELAY_ADDR_IP6], Instant::ZERO);
+        allocation.bind_channel(PEER2_IP4, Instant::ZERO);
 
         let next_msg = allocation.next_message();
         assert!(next_msg.is_none());
@@ -2289,14 +2290,14 @@ mod tests {
     #[test]
     fn given_only_ip4_allocation_when_binding_channel_to_ip6_does_not_emit_buffered_binding() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         // Attempt to allocate
         let allocate = allocation.next_message().unwrap();
         assert_eq!(allocate.method(), ALLOCATE);
 
         // No response yet, try to bind channel to an IPv6 peer.
-        allocation.bind_channel(PEER2_IP6, Instant::now());
+        allocation.bind_channel(PEER2_IP6, Instant::ZERO);
         assert!(
             allocation.next_message().is_none(),
             "no messages to be sent if we don't have an allocation"
@@ -2305,7 +2306,7 @@ mod tests {
         // Allocation succeeds but only for IPv4
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4]),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         let next_msg = allocation.next_message();
@@ -2315,7 +2316,7 @@ mod tests {
     #[test]
     fn initial_allocate_has_username_realm_and_message_integrity_set() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
 
@@ -2333,7 +2334,7 @@ mod tests {
     #[test]
     fn initial_allocate_is_missing_nonce() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
 
@@ -2343,12 +2344,12 @@ mod tests {
     #[test]
     fn upon_stale_nonce_reauthorizes_using_new_nonce() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(
             stale_nonce_response(&allocate, Nonce::new("nonce2".to_owned()).unwrap()),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         assert_eq!(
@@ -2363,7 +2364,7 @@ mod tests {
 
     #[test]
     fn uses_nonce_from_success_response_for_next_request() {
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
 
         let allocate = allocation.next_message().unwrap();
@@ -2385,7 +2386,7 @@ mod tests {
 
     #[test]
     fn ignores_error_response_to_binding_request() {
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let mut allocation = Allocation::for_test_ip4(now)
             .with_binding_response(PEER1, now)
             .with_allocate_response(&[RELAY_ADDR_IP4], now);
@@ -2406,12 +2407,11 @@ mod tests {
     #[test]
     fn given_a_request_with_nonce_and_we_are_unauthorized_dont_retry() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         // Attempt to authenticate without a nonce
         let allocate = allocation.next_message().unwrap();
-        allocation
-            .handle_test_input_ip4(unauthorized_response(&allocate, "nonce1"), Instant::now());
+        allocation.handle_test_input_ip4(unauthorized_response(&allocate, "nonce1"), Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         assert_eq!(
@@ -2420,8 +2420,7 @@ mod tests {
             "expect next message to include nonce from error response"
         );
 
-        allocation
-            .handle_test_input_ip4(unauthorized_response(&allocate, "nonce2"), Instant::now());
+        allocation.handle_test_input_ip4(unauthorized_response(&allocate, "nonce2"), Instant::ZERO);
 
         assert!(
             allocation.next_message().is_none(),
@@ -2432,12 +2431,12 @@ mod tests {
     #[test]
     fn returns_new_candidates_on_successful_allocation() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4]),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         let next_event = allocation.poll_event();
@@ -2466,19 +2465,19 @@ mod tests {
     #[test]
     fn failed_refresh_will_invalidate_relay_candiates() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            Instant::now(),
+            Instant::ZERO,
         );
         let _ = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(); // Drain events.
 
         allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(allocation_mismatch(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(allocation_mismatch(&refresh), Instant::ZERO);
 
         assert_eq!(
             allocation.poll_event(),
@@ -2502,36 +2501,36 @@ mod tests {
     #[test]
     fn failed_refresh_clears_all_channel_bindings() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            Instant::now(),
+            Instant::ZERO,
         );
 
-        allocation.bind_channel(PEER2_IP4, Instant::now());
+        allocation.bind_channel(PEER2_IP4, Instant::ZERO);
         let channel_bind_msg = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(channel_bind_success(&channel_bind_msg), Instant::now());
+        allocation.handle_test_input_ip4(channel_bind_success(&channel_bind_msg), Instant::ZERO);
 
         let mut packet = channel_data_packet_buffer(b"foobar");
-        let msg = allocation.encode_channel_data_header(PEER2_IP4, &mut packet, Instant::now());
+        let msg = allocation.encode_channel_data_header(PEER2_IP4, &mut packet, Instant::ZERO);
         assert!(msg.is_some(), "expect to have a channel to peer");
 
         allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(allocation_mismatch(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(allocation_mismatch(&refresh), Instant::ZERO);
 
         let mut packet = channel_data_packet_buffer(b"foobar");
-        let msg = allocation.encode_channel_data_header(PEER2_IP4, &mut packet, Instant::now());
+        let msg = allocation.encode_channel_data_header(PEER2_IP4, &mut packet, Instant::ZERO);
         assert!(msg.is_none(), "expect to no longer have a channel to peer");
     }
 
     #[test]
     fn refresh_does_nothing_if_we_dont_have_an_allocation_yet() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let _allocate = allocation.next_message().unwrap();
 
@@ -2544,12 +2543,12 @@ mod tests {
     #[test]
     fn allocation_is_refreshed_only_once() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         let refresh_at = allocation.poll_timeout().unwrap();
@@ -2562,16 +2561,16 @@ mod tests {
     #[test]
     fn when_refreshed_with_no_allocation_after_failed_response_tries_to_allocate() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(server_error(&allocate), Instant::now());
+        allocation.handle_test_input_ip4(server_error(&allocate), Instant::ZERO);
 
         allocation.refresh_with_same_credentials();
 
         let binding = allocation.next_message().unwrap();
         assert_eq!(binding.method(), BINDING);
-        allocation.handle_test_input_ip4(binding_response(&binding, PEER1), Instant::now());
+        allocation.handle_test_input_ip4(binding_response(&binding, PEER1), Instant::ZERO);
 
         let next_msg = allocation.next_message().unwrap();
         assert_eq!(next_msg.method(), ALLOCATE)
@@ -2580,23 +2579,23 @@ mod tests {
     #[test]
     fn failed_allocation_clears_buffered_channel_bindings() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
-        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
+        allocation.handle_test_input_ip4(server_error(&allocate), Instant::ZERO); // This should clear the buffered channel bindings.
 
         allocation.refresh_with_same_credentials();
 
         let binding = allocation.next_message().unwrap();
         assert_eq!(binding.method(), BINDING);
-        allocation.handle_test_input_ip4(binding_response(&binding, PEER1), Instant::now());
+        allocation.handle_test_input_ip4(binding_response(&binding, PEER1), Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         let next_msg = allocation.next_message();
@@ -2607,14 +2606,14 @@ mod tests {
     fn allocation_mismatch_in_channel_binding_clears_and_reallocates() {
         let _guard = logging::test("debug");
 
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP4, RELAY_ADDR_IP6], Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::ZERO)
+            .with_binding_response(PEER1, Instant::ZERO)
+            .with_allocate_response(&[RELAY_ADDR_IP4, RELAY_ADDR_IP6], Instant::ZERO);
 
-        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER1, Instant::ZERO);
 
         let channel_bind = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(allocation_mismatch(&channel_bind), Instant::now());
+        allocation.handle_test_input_ip4(allocation_mismatch(&channel_bind), Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         assert_eq!(
@@ -2624,7 +2623,7 @@ mod tests {
         );
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         let channel_bind = allocation.next_message().unwrap();
@@ -2638,15 +2637,15 @@ mod tests {
     #[test]
     fn dont_buffer_channel_bindings_twice() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
-        allocation.bind_channel(PEER1, Instant::now());
-        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER1, Instant::ZERO);
+        allocation.bind_channel(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4]),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         let channel_bind = allocation.next_message().unwrap();
@@ -2659,15 +2658,15 @@ mod tests {
     #[test]
     fn buffered_channel_bindings_to_different_peers_work() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
-        allocation.bind_channel(PEER1, Instant::now());
-        allocation.bind_channel(PEER2_IP4, Instant::now());
+        allocation.bind_channel(PEER1, Instant::ZERO);
+        allocation.bind_channel(PEER2_IP4, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(
             allocate_response(&allocate, &[RELAY_ADDR_IP4]),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         let channel_bind_peer_1 = allocation.next_message().unwrap();
@@ -2682,32 +2681,32 @@ mod tests {
 
     #[test]
     fn dont_send_channel_binding_if_inflight() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::ZERO)
+            .with_binding_response(PEER1, Instant::ZERO)
+            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::ZERO);
 
-        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER1, Instant::ZERO);
 
         let channel_bind = allocation.next_message().unwrap();
         assert_eq!(channel_bind.method(), CHANNEL_BIND);
 
-        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER1, Instant::ZERO);
 
         assert!(allocation.next_message().is_none());
     }
 
     #[test]
     fn send_channel_binding_to_second_peer_if_inflight_for_other() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now())
-            .with_binding_response(PEER1, Instant::now())
-            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::ZERO)
+            .with_binding_response(PEER1, Instant::ZERO)
+            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::ZERO);
 
-        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER1, Instant::ZERO);
 
         let channel_bind = allocation.next_message().unwrap();
         assert_eq!(channel_bind.method(), CHANNEL_BIND);
 
-        allocation.bind_channel(PEER2_IP4, Instant::now());
+        allocation.bind_channel(PEER2_IP4, Instant::ZERO);
         let channel_bind_peer_2 = allocation.next_message().unwrap();
 
         assert_eq!(channel_bind_peer_2.method(), CHANNEL_BIND);
@@ -2717,17 +2716,17 @@ mod tests {
     #[test]
     fn failed_allocation_is_suspended() {
         let mut allocation =
-            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
+            Allocation::for_test_ip4(Instant::ZERO).with_binding_response(PEER1, Instant::ZERO);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(server_error(&allocate), Instant::now());
+        allocation.handle_test_input_ip4(server_error(&allocate), Instant::ZERO);
 
         assert!(allocation.is_suspended())
     }
 
     #[test]
     fn expires_allocation_invalidates_candidates() {
-        let start = Instant::now();
+        let start = Instant::ZERO;
         let mut allocation = Allocation::for_test_ip4(start)
             .with_binding_response(PEER1, start)
             .with_allocate_response(&[RELAY_ADDR_IP4, RELAY_ADDR_IP6], start);
@@ -2747,7 +2746,7 @@ mod tests {
 
     #[test]
     fn invalid_credentials_invalidates_existing_allocation() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocation = Allocation::for_test_ip4(now)
             .with_binding_response(PEER1, now)
             .with_allocate_response(&[RELAY_ADDR_IP4, RELAY_ADDR_IP6], now);
@@ -2790,7 +2789,7 @@ mod tests {
         response: fn(&Message<Attribute>) -> Message<Attribute>,
         reason: FreeReason,
     ) {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
 
         let allocate = allocation.next_message().unwrap();
@@ -2801,7 +2800,7 @@ mod tests {
 
     #[test]
     fn unhandled_refresh_error_frees_allocation() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocation = Allocation::for_test_ip4(now)
             .with_binding_response(PEER1, now)
             .with_allocate_response(&[RELAY_ADDR_IP4], now);
@@ -2881,7 +2880,7 @@ mod tests {
 
     #[test]
     fn rtt_is_tracked_after_response() {
-        let start = Instant::now();
+        let start = Instant::ZERO;
         let mut allocation = Allocation::for_test_ip4(start);
 
         assert_eq!(allocation.rtt(), None);
@@ -2895,7 +2894,7 @@ mod tests {
 
     #[test]
     fn rtt_is_smoothed_over_multiple_responses() {
-        let start = Instant::now();
+        let start = Instant::ZERO;
         let mut allocation = Allocation::for_test_ip4(start);
 
         // First response: BINDING (40ms)
@@ -2915,7 +2914,7 @@ mod tests {
 
     #[test]
     fn first_binding_response_sets_socket_to_use() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocation = Allocation::for_test_dual(now);
 
         let _ = allocation.next_message().unwrap(); // Discard the first one.
@@ -2933,7 +2932,7 @@ mod tests {
 
     #[test]
     fn both_stun_responses_are_returned_as_candidates() {
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let mut allocation = Allocation::for_test_dual(now);
 
         let binding = allocation.next_message().unwrap();
@@ -2968,7 +2967,7 @@ mod tests {
 
     #[test]
     fn sends_binding_request_on_nominated_socket() {
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         let mut allocation = Allocation::for_test_ip4(now)
             .with_binding_response(PEER1, now)
@@ -2989,7 +2988,7 @@ mod tests {
     fn skips_binding_request_on_outbound_channel_data_message() {
         let _guard = logging::test("trace");
 
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         let mut allocation = Allocation::for_test_ip4(now)
             .with_binding_response(PEER1, now)
@@ -3194,7 +3193,7 @@ mod tests {
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
-                Instant::now(),
+                Instant::ZERO,
             );
         }
     }

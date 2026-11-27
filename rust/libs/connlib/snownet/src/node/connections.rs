@@ -1,9 +1,10 @@
+use sans_io_time::Instant;
 use std::{
     collections::{HashMap, VecDeque},
     fmt,
     hash::Hash,
     iter, mem,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::{Context as _, Result, bail};
@@ -637,7 +638,7 @@ mod tests {
     #[test]
     fn explicitly_removed_connection() {
         let mut connections = Connections::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         let (id, idx, key) = insert_dummy_connection(&mut connections);
 
@@ -657,7 +658,7 @@ mod tests {
     #[test]
     fn failed_connection() {
         let mut connections = Connections::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
 
         let (id, idx, key) = insert_dummy_connection(&mut connections);
 
@@ -693,7 +694,7 @@ mod tests {
     fn connection_without_relay_gets_one_once_available() {
         let mut connections: Connections<u32, u32> = Connections::default();
         let mut allocations: Allocations<u32> = Allocations::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let conn = new_connection(Some(1), [1u8; 32]);
         connections.insert_established(1, conn);
@@ -714,7 +715,7 @@ mod tests {
         // must not stay pinned to relays that no longer exist.
         let mut connections: Connections<u32, u32> = Connections::default();
         let mut allocations: Allocations<u32> = Allocations::for_test();
-        let now = Instant::now();
+        let now = Instant::ZERO;
 
         let mut conn = new_connection(Some(1), [1u8; 32]);
         conn.agent = crate::agent::Agent::frostlink();
@@ -812,11 +813,11 @@ mod tests {
 
     fn new_connection(relay: Option<u32>, key: [u8; 32]) -> Connection<u32> {
         let tunnel =
-            sanstun::Interface::new(Zeroizing::new(random()), Instant::now(), Duration::ZERO)
+            sanstun::Interface::new(Zeroizing::new(random()), Instant::ZERO, Duration::ZERO)
                 .new_tunnel(
                     sanstun::PublicKey::from(key),
                     sanstun::TunnelConfig::default(),
-                    Instant::now(),
+                    Instant::ZERO,
                 )
                 .unwrap();
 
@@ -831,7 +832,7 @@ mod tests {
                 wg_buffer: AllocRingBuffer::new(1),
             },
             disconnected_at: None,
-            intent_sent_at: Instant::now(),
+            intent_sent_at: Instant::ZERO,
             candidate_timeout: None,
             first_handshake_completed_at: None,
             default_ice_config: IceConfig::client_default(),

@@ -1,7 +1,8 @@
+use sans_io_time::Instant;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use connlib_model::ResourceId;
@@ -287,7 +288,7 @@ mod tests {
     #[test]
     fn no_authorization_requests_access_without_buffering_traffic() {
         let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let rid = ResourceId::from_u128(1);
 
         pending.on_not_authorized(resource_request(rid), Trigger::NoAuthorization, now);
@@ -320,7 +321,7 @@ mod tests {
     #[test]
     fn skips_authorization_request_if_sent_within_last_two_seconds() {
         let mut pending = PendingAuthorizations::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let rid = ResourceId::from_u128(1);
 
         pending.on_not_authorized(resource_request(rid), udp_trigger(1), now);
@@ -338,7 +339,7 @@ mod tests {
     #[test]
     fn sends_new_request_after_two_seconds() {
         let mut pending = PendingAuthorizations::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let rid = ResourceId::from_u128(1);
 
         pending.on_not_authorized(resource_request(rid), udp_trigger(1), now);
@@ -366,7 +367,7 @@ mod tests {
         pending.on_not_authorized(
             AuthorizationRequest::Resources(resource_ids.clone()),
             udp_trigger(1),
-            Instant::now(),
+            Instant::ZERO,
         );
 
         assert_eq!(
@@ -380,7 +381,7 @@ mod tests {
     #[test]
     fn throttles_only_identical_candidate_lists() {
         let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let a = ResourceId::from_u128(1);
         let b = ResourceId::from_u128(2);
         let c = ResourceId::from_u128(3);
@@ -408,7 +409,7 @@ mod tests {
     #[test]
     fn authorization_drains_all_lists_containing_the_granted_resource() {
         let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let a = ResourceId::from_u128(1);
         let b = ResourceId::from_u128(2);
         let c = ResourceId::from_u128(3);
@@ -447,7 +448,7 @@ mod tests {
         let _guard = logging::test("trace");
 
         let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let rid1 = ResourceId::from_u128(1);
         let rid2 = ResourceId::from_u128(2);
 
@@ -466,7 +467,7 @@ mod tests {
     #[test]
     fn skips_device_authorization_request_if_sent_within_last_two_seconds() {
         let mut pending = PendingAuthorizations::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let ip = device_ip();
 
         pending.on_not_authorized(device_request(ip), udp_trigger(1), now);
@@ -481,7 +482,7 @@ mod tests {
     #[test]
     fn sends_new_device_request_after_two_seconds() {
         let mut pending = PendingAuthorizations::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let ip = device_ip();
 
         pending.on_not_authorized(device_request(ip), udp_trigger(1), now);
@@ -498,7 +499,7 @@ mod tests {
         let _guard = logging::test("trace");
 
         let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let ip_foo = device_ip();
         let ip_bar = other_device_ip();
 
@@ -517,7 +518,7 @@ mod tests {
     #[test]
     fn remove_device_authorizations_leaves_resource_entries() {
         let mut pending = PendingAuthorizations::default();
-        let mut now = Instant::now();
+        let mut now = Instant::ZERO;
         let rid = ResourceId::from_u128(1);
         let ip = device_ip();
 
@@ -551,7 +552,7 @@ mod tests {
     #[test]
     fn removing_pool_clears_only_device_requests_that_named_it() {
         let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
+        let now = Instant::ZERO;
         let removed_pool = ResourceId::from_u128(1);
         let remaining_pool = ResourceId::from_u128(2);
         let removed_device = device_ip();

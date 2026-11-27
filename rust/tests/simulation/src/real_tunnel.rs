@@ -1,10 +1,10 @@
+use sans_io_time::Instant;
 use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
     task::{Context, Poll, Wake, Waker},
-    time::Instant,
 };
 
 use ip_packet::IpPacket;

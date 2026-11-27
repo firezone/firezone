@@ -15,6 +15,7 @@ use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, 
 use ip_packet::IpPacket;
 use rand::SeedableRng;
 use rand::distr::SampleString;
+use sans_io_time::Instant;
 use sha2::Digest;
 use snownet::Transmit;
 use std::iter;
@@ -22,7 +23,7 @@ use std::net::SocketAddr;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::IpAddr,
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, SystemTime},
 };
 use tracing::debug_span;
 use tunnel_proto::dns::is_subdomain;
@@ -125,7 +126,7 @@ impl RealTunnelSystem {
             .iter()
             .map(|(rid, relay)| {
                 let relay = relay.map(
-                    |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, clock.now()),
+                    |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, &clock),
                     debug_span!("relay", %rid),
                 );
 
@@ -1470,7 +1471,6 @@ impl RealTunnelSystem {
     }
 
     fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<u64>>, now: Instant) {
-        let now_utc = self.clock.now::<SystemTime>();
         let disconnected = self
             .relays
             .keys()
@@ -1484,7 +1484,7 @@ impl RealTunnelSystem {
                 (
                     relay_id,
                     relay.map(
-                        |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, now_utc),
+                        |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, &self.clock),
                         debug_span!("relay", %relay_id),
                     ),
                 )
@@ -1519,8 +1519,6 @@ impl RealTunnelSystem {
         new_relays: BTreeMap<RelayId, Host<u64>>,
         now: Instant,
     ) {
-        let now_utc = self.clock.now::<SystemTime>();
-
         for relay in self.relays.values() {
             self.network.remove_host(relay);
         }
@@ -1531,7 +1529,7 @@ impl RealTunnelSystem {
                 (
                     rid,
                     relay.map(
-                        |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, now_utc),
+                        |seed, ip4, ip6| RealRelay::new(seed, ip4, ip6, &self.clock),
                         debug_span!("relay", %rid),
                     ),
                 )

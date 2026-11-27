@@ -9,11 +9,11 @@ use dns_types::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
+use sans_io_time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, SocketAddr},
-    time::Instant,
 };
 
 /// The routing table of the network behind a site's Gateways.

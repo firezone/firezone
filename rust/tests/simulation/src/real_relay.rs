@@ -1,5 +1,6 @@
 use super::{
     buffered_transmits::BufferedTransmits,
+    clock::Clock,
     network::{ExecMutScope, Host},
 };
 use bufferpool::Bytes;
@@ -10,12 +11,13 @@ use rand::{SeedableRng as _, rngs::StdRng};
 use relay_server_proto::{
     AddressFamily, AllocationPort, Attribute, ClientSocket, IpStack, PeerSocket,
 };
+use sans_io_time::Instant;
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
     collections::HashSet,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, SystemTime},
 };
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username};
 use stun_codec::rfc5766::{errors::InsufficientCapacity, methods::ALLOCATE};
@@ -32,6 +34,7 @@ pub(crate) struct RealRelay {
     pub(crate) out_of_capacity: bool,
 
     created_at: SystemTime,
+    pub(crate) std_start: std::time::Instant,
 }
 
 /// How long the credentials are valid that the tunnel simulation hands out.
@@ -63,7 +66,7 @@ impl RealRelay {
         seed: u64,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
-        created_at: SystemTime,
+        clock: &Clock,
     ) -> Self {
         let mut server = relay_server_proto::Server::new(
             IpStack::from((ip4, ip6)),
@@ -77,7 +80,8 @@ impl RealRelay {
             server,
             allocations: Default::default(),
             out_of_capacity: false,
-            created_at,
+            created_at: clock.now(),
+            std_start: clock.std_start(),
         }
     }
 
@@ -162,9 +166,12 @@ impl RealRelay {
             });
         }
 
-        let (port, peer) = self
-            .server
-            .handle_client_input(&payload, client, now, now_utc)?;
+        let (port, peer) = self.server.handle_client_input(
+            &payload,
+            client,
+            now.to_std(self.std_start),
+            now_utc,
+        )?;
 
         let payload = Bytes::copied_from(&payload[4..]);
 
@@ -245,7 +252,9 @@ impl RealRelay {
         port: AllocationPort,
         now: Instant,
     ) -> Option<Transmit> {
-        let (client, channel) = self.server.handle_peer_traffic(&payload, peer, port, now)?;
+        let (client, channel) =
+            self.server
+                .handle_peer_traffic(&payload, peer, port, now.to_std(self.std_start))?;
 
         let mut header = [0; 4];
         relay_server_proto::ChannelData::encode_header_to_slice(
@@ -302,6 +311,7 @@ impl Host<RealRelay> {
         now_utc: SystemTime,
     ) {
         self.exec_mut(|r| {
+            let now = now.to_std(r.std_start);
             if r.server.poll_timeout().is_some_and(|t| t <= now) {
                 r.server.handle_timeout(now)
             }

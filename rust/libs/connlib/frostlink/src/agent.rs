@@ -1,7 +1,8 @@
+use sans_io_time::Instant;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::SocketAddr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::candidate::{Candidate, CandidateKind};
 use crate::event::{Event, Payload, Transmit};
@@ -1029,7 +1030,7 @@ mod tests {
             "127.0.0.1:1".parse().unwrap(),
             "127.0.0.1:2".parse().unwrap(),
         );
-        let t0 = Instant::now();
+        let t0 = Instant::ZERO;
         let mut state = PairState {
             kinds: (CandidateKind::Host, CandidateKind::Host),
             priorities: (0, 0),

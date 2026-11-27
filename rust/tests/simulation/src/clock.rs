@@ -1,15 +1,17 @@
 use jiff::Timestamp;
+use sans_io_time::Instant;
 use std::{
     fmt,
     sync::{Arc, Mutex},
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, SystemTime},
 };
 use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 
 /// A device that allows us to travel into the future.
 #[derive(Debug, Clone)]
 pub struct Clock {
-    start: Instant,
+    /// Where [`Instant::ZERO`] lies for components that take [`std::time::Instant`].
+    std_start: std::time::Instant,
     now: Arc<Mutex<(Instant, Timestamp)>>,
 }
 
@@ -21,11 +23,15 @@ impl FormatTime for Clock {
 }
 
 impl Clock {
-    pub fn new(start: Instant, utc_start: Timestamp) -> Self {
+    pub fn new(std_start: std::time::Instant, utc_start: Timestamp) -> Self {
         Self {
-            start,
-            now: Arc::new(Mutex::new((start, utc_start))),
+            std_start,
+            now: Arc::new(Mutex::new((Instant::ZERO, utc_start))),
         }
+    }
+
+    pub(crate) fn std_start(&self) -> std::time::Instant {
+        self.std_start
     }
 
     const SMALL_TICK: Duration = Duration::from_millis(10);
@@ -84,7 +90,7 @@ impl Clock {
     }
 
     fn elapsed(&self) -> Duration {
-        self.now::<Instant>().duration_since(self.start)
+        self.now::<Instant>().duration_since(Instant::ZERO)
     }
 }
 
