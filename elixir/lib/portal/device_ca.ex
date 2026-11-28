@@ -71,17 +71,18 @@ defmodule Portal.DeviceCA do
   end
 
   @doc """
-  Issues a device certificate for the P-256 key in a CSR, signed by the account's CA. Returns
-  the certificate with the hash of the key, which the device row stores.
+  Issues a device certificate for the P-256 key in a CSR, signed by the account's CA. The
+  certificate names the key, not a device: the key binds to a device row when the device
+  connects. Returns the certificate with the CA certificate and the hash of the key.
   """
-  @spec issue(Ecto.UUID.t(), Ecto.UUID.t(), binary()) ::
-          {:ok, %{certificate: binary(), key_hash: binary()}} | {:error, term()}
-  def issue(account_id, device_id, csr) do
+  @spec issue(Ecto.UUID.t(), binary()) ::
+          {:ok, %{certificate: binary(), ca_certificate: binary(), key_hash: binary()}} | {:error, term()}
+  def issue(account_id, csr) do
     with {:ok, point} <- csr_public_point(csr),
          {:ok, ca} <- ensure(account_id),
          {:ok, adapter} <- fetch_adapter(),
-         {:ok, certificate} <- device_certificate(adapter, ca, device_id, point) do
-      {:ok, %{certificate: certificate, key_hash: key_hash(point)}}
+         {:ok, certificate} <- device_certificate(adapter, ca, point) do
+      {:ok, %{certificate: certificate, ca_certificate: ca.certificate, key_hash: key_hash(point)}}
     end
   end
 
@@ -149,7 +150,7 @@ defmodule Portal.DeviceCA do
 
   defp self_signed_certificate(_adapter, _account_id, _key, _public_key), do: {:error, :unsupported_key}
 
-  defp device_certificate(adapter, ca, device_id, point) do
+  defp device_certificate(adapter, ca, point) do
     {:OTPCertificate, {:OTPTBSCertificate, _, _, _, _, _, ca_name, ca_key_info, _, _, _}, _, _} =
       :public_key.pkix_decode_cert(ca.certificate, :otp)
 
@@ -160,7 +161,8 @@ defmodule Portal.DeviceCA do
       {:OTPTBSCertificate, :v3, serial_number(), @ecdsa_with_sha256, ca_name,
        {:Validity, x509_time(DateTime.add(now, -@clock_skew_seconds)),
         x509_time(DateTime.add(now, @device_lifetime_days, :day))},
-       {:rdnSequence, [[{:AttributeTypeAndValue, @common_name, {:utf8String, device_id}}]]},
+       {:rdnSequence,
+        [[{:AttributeTypeAndValue, @common_name, {:utf8String, Base.encode16(key_hash(point), case: :lower)}}]]},
        {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, @ec_public_key, @p256}, {:ECPoint, point}},
        :asn1_NOVALUE, :asn1_NOVALUE,
        [

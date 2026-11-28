@@ -75,22 +75,22 @@ defmodule Portal.DeviceCATest do
     end
   end
 
-  describe "issue/3" do
+  describe "issue/2" do
     test "issues a client certificate for the device's key, chained to the account's CA" do
       account = account_fixture()
-      device_id = Ecto.UUID.generate()
       {point, private_key} = device_key()
 
-      assert {:ok, %{certificate: certificate, key_hash: key_hash}} =
-               DeviceCA.issue(account.id, device_id, csr(point, private_key))
+      assert {:ok, %{certificate: certificate, ca_certificate: ca_certificate, key_hash: key_hash}} =
+               DeviceCA.issue(account.id, csr(point, private_key))
 
       {:ok, ca} = DeviceCA.ensure(account.id)
+      assert ca_certificate == ca.certificate
       assert {:ok, _result} = :public_key.pkix_path_validation(ca.certificate, [certificate], [])
       assert key_hash == :crypto.hash(:sha256, point)
 
       otp = :public_key.pkix_decode_cert(certificate, :otp)
       assert {:ok, {{:ECPoint, ^point}, _curve}} = Portal.Crypto.X509.subject_public_key(otp)
-      assert Portal.Crypto.X509.subject_common_name(otp) == device_id
+      assert Portal.Crypto.X509.subject_common_name(otp) == Base.encode16(key_hash, case: :lower)
       assert Portal.Crypto.X509.client_auth_eku?(otp)
       refute Portal.Crypto.X509.ca_certificate?(otp)
 
@@ -102,19 +102,19 @@ defmodule Portal.DeviceCATest do
       {point, _private_key} = device_key()
       {_other_point, other_key} = device_key()
 
-      assert DeviceCA.issue(account_fixture().id, Ecto.UUID.generate(), csr(point, other_key)) ==
+      assert DeviceCA.issue(account_fixture().id, csr(point, other_key)) ==
                {:error, :invalid_csr}
     end
 
     test "refuses a key that is not P-256" do
       {:ECPrivateKey, _, _, curve, point, _} = private_key = :public_key.generate_key({:namedCurve, :secp384r1})
 
-      assert DeviceCA.issue(account_fixture().id, Ecto.UUID.generate(), csr(point, private_key, curve)) ==
+      assert DeviceCA.issue(account_fixture().id, csr(point, private_key, curve)) ==
                {:error, :unsupported_key}
     end
 
     test "refuses bytes that are not a CSR" do
-      assert DeviceCA.issue(account_fixture().id, Ecto.UUID.generate(), "not a csr") == {:error, :invalid_csr}
+      assert DeviceCA.issue(account_fixture().id, "not a csr") == {:error, :invalid_csr}
     end
   end
 

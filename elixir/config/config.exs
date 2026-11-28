@@ -700,6 +700,15 @@ config :portal, PortalAPI.Sockets.RateLimit,
   refill_rate: 1,
   capacity: 1
 
+# Device certificates per token and per account. Each one is a Key Vault signature, and the
+# vault's limit is shared by every account in the region. A device asks about every two months,
+# and ephemeral devices that share a token ask at every start.
+config :portal, PortalAPI.DeviceCertificateController,
+  token_refill_rate: 1,
+  token_capacity: 60,
+  account_refill_rate: 20,
+  account_capacity: 600
+
 # Flow-log requests per source IP, checked before the ingest token. Uploaders
 # send one request per policy authorization, so a Gateway serving many clients,
 # or many devices behind one NAT, sends many requests in each pass. The row

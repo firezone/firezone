@@ -38,7 +38,8 @@ defmodule PortalAPI.ApiSpec do
   # /mcp is the Model Context Protocol endpoint. It speaks JSON-RPC rather than
   # REST and derives its tools from this very spec, so publishing it as an API
   # operation would be circular.
-  @excluded_prefixes ["/openapi", "/swaggerui", "/integrations", "/mcp"]
+  # /device is where Clients and Gateways get their device certificates.
+  @excluded_prefixes ["/openapi", "/swaggerui", "/integrations", "/mcp", "/device"]
 
   defp api_paths do
     Router

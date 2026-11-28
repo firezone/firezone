@@ -108,6 +108,22 @@ defmodule PortalAPI.Router do
       length: 10_000_000
   end
 
+  pipeline :device do
+    plug :accepts, ["json"]
+
+    plug Plug.Parsers,
+      parsers: [Portal.Parsers.JSON],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 16_384
+  end
+
+  scope "/device", PortalAPI do
+    pipe_through :device
+
+    post "/certificate", DeviceCertificateController, :create
+  end
+
   scope "/ingestion", PortalAPI do
     pipe_through :ingestion
 
