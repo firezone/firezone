@@ -14,7 +14,7 @@ use http_body_util::{BodyExt, Full};
 use rustls::{ClientConfig, RootCertStore};
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio_rustls::TlsConnector;
-use tokio_util::task::AbortOnDropHandle;
+use tokio_util::{either::Either, task::AbortOnDropHandle};
 
 /// The negotiated request sender for a connection.
 ///
@@ -86,15 +86,22 @@ impl HttpClient {
     /// Connects to `host` on `port` via the first of `addresses` that succeeds.
     ///
     /// `host` is spelled as in a URI, i.e. an IPv6 address is enclosed in brackets.
+    /// Without a `tls_config`, the connection uses plaintext HTTP/1.1.
     pub async fn new(
         host: String,
         port: u16,
         addresses: Vec<IpAddr>,
-        tls_config: TlsConfig,
+        tls_config: Option<TlsConfig>,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Result<Self> {
-        let (sender, driver) =
-            connect(addresses, port, host.clone(), tls_config.0, socket_factory).await?;
+        let (sender, driver) = connect(
+            addresses,
+            port,
+            host.clone(),
+            tls_config.map(|config| config.0),
+            socket_factory,
+        )
+        .await?;
 
         let connection = tokio::spawn({
             let host = host.clone();
@@ -223,7 +230,7 @@ async fn connect(
     addresses: Vec<IpAddr>,
     port: u16,
     domain: String,
-    tls_config: Arc<ClientConfig>,
+    tls_config: Option<Arc<ClientConfig>>,
     sf: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<(Sender, ConnectionDriver)> {
     tracing::debug!(?addresses, %domain, "Creating new HTTP connection");
@@ -262,7 +269,7 @@ async fn connect(
 async fn connect_one(
     socket: SocketAddr,
     domain: String,
-    tls_client_config: Arc<ClientConfig>,
+    tls_client_config: Option<Arc<ClientConfig>>,
     sf: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<(Sender, ConnectionDriver)> {
     let stream = sf
@@ -272,17 +279,24 @@ async fn connect_one(
         .await
         .context("Failed to connect TCP stream")?;
 
-    let connector = TlsConnector::from(tls_client_config);
-    // A URI encloses an IPv6 address in brackets, a `ServerName` does not.
-    let tls_domain = rustls_pki_types::ServerName::try_from(
-        domain.trim_start_matches('[').trim_end_matches(']'),
-    )?
-    .to_owned();
+    let (stream, is_h2) = match tls_client_config {
+        Some(tls_client_config) => {
+            let connector = TlsConnector::from(tls_client_config);
+            // A URI encloses an IPv6 address in brackets, a `ServerName` does not.
+            let tls_domain = rustls_pki_types::ServerName::try_from(
+                domain.trim_start_matches('[').trim_end_matches(']'),
+            )?
+            .to_owned();
 
-    let stream = connector.connect(tls_domain, stream).await?;
+            let stream = connector.connect(tls_domain, stream).await?;
 
-    // Drive the HTTP version off what the server negotiated via ALPN.
-    let is_h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
+            // Drive the HTTP version off what the server negotiated via ALPN.
+            let is_h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
+
+            (Either::Left(stream), is_h2)
+        }
+        None => (Either::Right(stream), false),
+    };
     let io = hyper_util::rt::TokioIo::new(stream);
 
     if is_h2 {
@@ -339,7 +353,7 @@ mod tests {
             "127.0.0.1".to_owned(),
             server.url().port(),
             vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
-            TlsConfig::new(server.root_cert_store()),
+            Some(TlsConfig::new(server.root_cert_store())),
             Arc::new(socket_factory::tcp),
         )
         .await

@@ -481,7 +481,7 @@ impl Resolver {
                         server.host().into_owned(),
                         server.port(),
                         addresses,
-                        tls_config,
+                        Some(tls_config),
                         socket_factory,
                     )
                     .await?;
