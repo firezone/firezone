@@ -348,7 +348,7 @@ impl Resource {
                 "address": address,
                 "name": name,
                 "address_description": address_description,
-                "gateway_groups": sites_json(sites),
+                "sites": sites_json(sites),
                 "ip_stack": ip_stack_json(ip_stack),
                 "filters": filters_json(filters),
             })),
@@ -364,14 +364,14 @@ impl Resource {
                 "address": address.to_string(),
                 "name": name,
                 "address_description": address_description,
-                "gateway_groups": sites_json(sites),
+                "sites": sites_json(sites),
                 "filters": filters_json(filters),
             })),
             Resource::Internet(InternetResource { name, id, sites }) => {
                 ResourceDescription::Internet(json!({
                     "id": id,
                     "name": name,
-                    "gateway_groups": sites_json(sites),
+                    "sites": sites_json(sites),
                 }))
             }
             Resource::DevicePool(DevicePoolResource { id, name, filters }) => {
