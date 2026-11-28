@@ -664,6 +664,8 @@ mod tests {
     #[test_case("*.Example.com", "example.com"; "single star matches root domain case-insensitively")]
     #[test_case("*.example.com", "EXAMPLE.com"; "single star matches uppercase root domain")]
     #[test_case("**.Example.com", "foo.EXAMPLE.com"; "double star matches case-insensitively")]
+    #[test_case("*.us-east?.example.com", "us-east1.example.com"; "single star matches root domain with question mark")]
+    #[test_case("*.*.example.com", "foo.example.com"; "single star matches root domain with star")]
 
     fn domain_pattern_matches(pattern: &str, domain: &str) {
         let pattern = Pattern::new(pattern).unwrap();
