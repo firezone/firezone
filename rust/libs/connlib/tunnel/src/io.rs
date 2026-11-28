@@ -15,6 +15,7 @@ use crate::{
 use anyhow::Result;
 use crypto::{DecryptJobs, DecryptedJobs, Decrypting, EncryptJobs};
 use fast_random_state::FastRandomState;
+use io_bottleneck::{Backpressure, Site};
 use ip_packet::IpPacket;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -41,6 +42,9 @@ pub struct Io {
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     tun: Device,
+
+    tun_write_backpressure: Backpressure,
+    decrypt_backpressure: Backpressure,
 }
 
 /// Represents all IO sources that may be ready during a single event-loop tick.
@@ -120,6 +124,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
 
     fn flush_tun(&mut self) {
         let poll = self.io.tun.poll_flush(self.cx);
+        self.io.tun_write_backpressure.record(poll.is_ready());
 
         self.tun_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
     }
@@ -133,7 +138,10 @@ impl<'a, 'cx> PollState<'a, 'cx> {
     }
 
     fn poll_network(&mut self) {
-        if !self.io.decrypting.has_room() {
+        let has_room = self.io.decrypting.has_room();
+        self.io.decrypt_backpressure.record(has_room);
+
+        if !has_room {
             return;
         }
 
@@ -205,6 +213,11 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             return Poll::Pending;
         }
 
+        io_bottleneck::count_packets(
+            input.device.as_ref().map_or(0, |batch| batch.len())
+                + input.network.as_ref().map_or(0, ReceivedDatagrams::len),
+        );
+
         Poll::Ready(input)
     }
 }
@@ -227,6 +240,8 @@ impl Io {
             tcp_socket_factory,
             udp_socket_factory,
             tun: Device::new(),
+            tun_write_backpressure: Backpressure::new(Site::TunWrite),
+            decrypt_backpressure: Backpressure::new(Site::Decrypt),
         }
     }
 

@@ -16,6 +16,7 @@ fast-random-state = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 http-client = { workspace = true }
+io-bottleneck = { workspace = true }
 ip-packet = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l4-tcp-dns-server = { workspace = true }

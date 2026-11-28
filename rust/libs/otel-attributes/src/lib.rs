@@ -69,6 +69,15 @@ pub fn connection_agent(agent: &'static str) -> KeyValue {
     KeyValue::new("connection.agent", agent)
 }
 
+/// The name of a thread, with the numbered `fz-crypto-{i}` threads collapsed into `fz-crypto`.
+pub fn thread(name: &str) -> KeyValue {
+    if name.starts_with("fz-crypto-") {
+        return KeyValue::new("thread", "fz-crypto");
+    }
+
+    KeyValue::new("thread", name.to_owned())
+}
+
 pub fn io_error_code(e: &io::Error) -> KeyValue {
     KeyValue::new("error.code", e.raw_os_error().unwrap_or_default() as i64)
 }
@@ -277,6 +286,15 @@ fn classify(s: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crypto_threads_collapse_into_one() {
+        assert_eq!(thread("fz-crypto-3"), KeyValue::new("thread", "fz-crypto"));
+        assert_eq!(
+            thread("fz-eventloop"),
+            KeyValue::new("thread", "fz-eventloop")
+        );
+    }
 
     #[test]
     fn io_error_type_serialisation() {

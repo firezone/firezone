@@ -11,6 +11,7 @@ bytes = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 http-client = { workspace = true }
+io-bottleneck = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-proto = { workspace = true, features = ["gen-tonic-messages", "metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["metrics", "experimental_metrics_custom_reader"] }
@@ -20,6 +21,7 @@ process-memory = { workspace = true }
 prost = { workspace = true, features = ["std"] }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }
+thread-cpu = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
