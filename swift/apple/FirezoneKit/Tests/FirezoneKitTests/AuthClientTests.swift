@@ -200,9 +200,12 @@ struct AuthClientTests {
       signInSettings: captured)
 
     let signInURL = try client.build()
-    let nonce = try #require(
-      URLComponents(url: signInURL, resolvingAgainstBaseURL: false)?.sanitizedQueryParam("nonce"))
-    #expect(signIn.token == nonce + "token-fragment")
+    let nonceHash = try #require(
+      URLComponents(url: signInURL, resolvingAgainstBaseURL: false)?.sanitizedQueryParam(
+        "nonce_hash"))
+    #expect(signIn.token.hasSuffix("token-fragment"))
+    let nonce = String(signIn.token.dropLast("token-fragment".count))
+    #expect(AuthClient.sha256Hex(nonce) == nonceHash)
     if region == "eu" {
       #expect(signIn.signInSettings.authURL == ControlPlane.cloudEu.urls?.authURL)
     } else {
