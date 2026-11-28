@@ -802,6 +802,157 @@ defmodule PortalAPI.Gateway.SocketTest do
     end
   end
 
+  describe "connect/3 device key" do
+    setup do
+      Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
+      account = account_fixture()
+      site = site_fixture(account: account)
+      token = gateway_token_fixture(account: account, site: site) |> encode_gateway_token()
+      %{account: account, site: site, token: token, key: Portal.DeviceCAFixtures.device_key()}
+    end
+
+    test "finds the gateway by its key", %{account: account, site: site, key: key, token: token} do
+      assert {:ok, socket} = key_connect(account, key, token, external_id: "fz-1")
+      gateway = Repo.get_by!(Portal.Device, id: socket.assigns.gateway.id)
+      assert gateway.key_hash == key.key_hash
+      assert socket.assigns.site.id == site.id
+
+      assert {:ok, again} = key_connect(account, key, token, external_id: "fz-2")
+      assert again.assigns.gateway.id == gateway.id
+    end
+
+    test "claims the site's gateway with the reported firezone_id and no key", %{
+      account: account,
+      site: site,
+      key: key,
+      token: token
+    } do
+      existing = gateway_fixture(account: account, site: site, firezone_id: "fz-1")
+
+      assert {:ok, socket} = key_connect(account, key, token, external_id: "fz-1")
+      assert socket.assigns.gateway.id == existing.id
+      assert Repo.get_by!(Portal.Device, id: existing.id).key_hash == key.key_hash
+    end
+
+    test "never moves a gateway of another site", %{account: account, key: key, token: token} do
+      other_site = site_fixture(account: account)
+      other = gateway_fixture(account: account, site: other_site, firezone_id: "fz-1")
+
+      assert {:ok, socket} = key_connect(account, key, token, external_id: "fz-1")
+      refute socket.assigns.gateway.id == other.id
+      assert is_nil(Repo.get_by!(Portal.Device, id: other.id).key_hash)
+
+      other_token = gateway_token_fixture(account: account, site: other_site) |> encode_gateway_token()
+      assert key_connect(account, key, other_token, external_id: "fz-1") == {:error, :device_key_conflict}
+    end
+
+    test "a connect without the key never finds a gateway with a key", %{account: account, key: key, token: token} do
+      attrs = connect_attrs(external_id: "fz-1")
+      assert {:ok, keyed} = connect(Socket, attrs, connect_info: key_connect_info(account, key, token))
+      assert {:ok, unkeyed} = connect(Socket, attrs, connect_info: build_connect_info(token: token))
+
+      refute unkeyed.assigns.gateway.id == keyed.assigns.gateway.id
+      assert is_nil(unkeyed.assigns.gateway.key_hash)
+    end
+
+    test "the first connection with a key stays", %{account: account, key: key, token: token} do
+      assert {:ok, socket} = key_connect(account, key, token, external_id: "fz-1")
+      :ok = Portal.PG.join(socket.assigns.gateway.id)
+
+      assert key_connect(account, key, token, external_id: "fz-1") == {:error, :device_key_in_use}
+    end
+
+    test "an ephemeral gateway takes over the site's offline ephemeral gateway", %{
+      account: account,
+      key: key,
+      token: token
+    } do
+      assert {:ok, first} = key_connect(account, key, token, external_id: "fz-1", ephemeral: "true")
+
+      next_key = Portal.DeviceCAFixtures.device_key()
+      assert {:ok, next} = key_connect(account, next_key, token, external_id: "fz-1", ephemeral: "true")
+      assert next.assigns.gateway.id == first.assigns.gateway.id
+      assert Repo.get_by!(Portal.Device, id: first.assigns.gateway.id).key_hash == next_key.key_hash
+
+      :ok = Portal.PG.join(first.assigns.gateway.id)
+      online_key = Portal.DeviceCAFixtures.device_key()
+
+      assert key_connect(account, online_key, token, external_id: "fz-1", ephemeral: "true") ==
+               {:error, :device_key_in_use}
+
+      assert {:ok, other} = key_connect(account, online_key, token, external_id: "fz-1")
+      refute other.assigns.gateway.id == first.assigns.gateway.id
+    end
+
+    test "refuses a certificate from another CA on the mTLS host", %{account: account, key: key, token: token} do
+      certificate = Portal.DeviceCAFixtures.device_certificate(account_fixture(), key)
+
+      info = fn ->
+        build_connect_info(token: token, host: "mtls.firezone.test", client_cert: certificate)
+      end
+
+      assert connect(Socket, connect_attrs([]), connect_info: info.()) == {:error, :device_untrusted}
+      assert {:ok, _ca} = Portal.DeviceCA.ensure(account.id)
+      assert connect(Socket, connect_attrs([]), connect_info: info.()) == {:error, :device_untrusted}
+    end
+
+    test "refuses a certificate from an earlier CA of the account", %{account: account, key: key, token: token} do
+      info = key_connect_info(account, key, token)
+      Portal.DeviceCertificateAuthority |> Repo.get_by!(account_id: account.id) |> Repo.delete!()
+      {:ok, _ca} = Portal.DeviceCA.ensure(account.id)
+
+      assert connect(Socket, connect_attrs([]), connect_info: info) == {:error, :device_certificate_invalid}
+    end
+
+    test "a token for one gateway binds the key to that gateway", %{account: account, site: site, key: key} do
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway) |> encode_gateway_token()
+
+      assert {:ok, socket} = key_connect(account, key, token)
+      assert socket.assigns.gateway.id == gateway.id
+      assert socket.assigns.site.id == site.id
+      assert Repo.get_by!(Portal.Device, id: gateway.id).key_hash == key.key_hash
+
+      assert {:ok, _socket} = key_connect(account, key, token)
+
+      assert connect(Socket, connect_attrs([]), connect_info: build_connect_info(token: token)) ==
+               {:error, :device_certificate_required}
+
+      assert key_connect(account, Portal.DeviceCAFixtures.device_key(), token) ==
+               {:error, :device_key_conflict}
+    end
+
+    test "a token for one gateway refuses the key of another gateway", %{
+      account: account,
+      site: site,
+      key: key,
+      token: token
+    } do
+      assert {:ok, _socket} = key_connect(account, key, token)
+      gateway = gateway_fixture(account: account, site: site)
+      bound_token = gateway_token_fixture(gateway: gateway) |> encode_gateway_token()
+
+      assert key_connect(account, key, bound_token) == {:error, :device_key_conflict}
+      assert is_nil(Repo.get_by!(Portal.Device, id: gateway.id).key_hash)
+    end
+
+    test "a token for one gateway lets a new ephemeral key take over its ephemeral key", %{
+      account: account,
+      site: site,
+      key: key
+    } do
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway) |> encode_gateway_token()
+
+      assert {:ok, _socket} = key_connect(account, key, token, ephemeral: "true")
+      next_key = Portal.DeviceCAFixtures.device_key()
+
+      assert {:ok, socket} = key_connect(account, next_key, token, ephemeral: "true")
+      assert socket.assigns.gateway.id == gateway.id
+      assert Repo.get_by!(Portal.Device, id: gateway.id).key_hash == next_key.key_hash
+    end
+  end
+
   describe "id/1" do
     test "creates a channel for a gateway" do
       subject = subject_fixture(type: :client)
@@ -809,6 +960,18 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert id(socket) == "socket:#{subject.credential.id}"
     end
+  end
+
+  defp key_connect(account, key, token, attrs \\ []) do
+    connect(Socket, connect_attrs(attrs), connect_info: key_connect_info(account, key, token))
+  end
+
+  defp key_connect_info(account, key, token) do
+    build_connect_info(
+      token: token,
+      host: "mtls.firezone.test",
+      client_cert: Portal.DeviceCAFixtures.device_certificate(account, key)
+    )
   end
 
   defp connect_attrs(attrs) do

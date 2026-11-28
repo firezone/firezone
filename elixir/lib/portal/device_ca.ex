@@ -86,6 +86,26 @@ defmodule Portal.DeviceCA do
     end
   end
 
+  @doc """
+  Checks a device certificate against the account's current CA, and returns the hash of its key
+  and its expiry. `{:error, :not_device_ca_certificate}` means another CA issued it. A
+  certificate from an earlier CA of the account fails the signature check, so the device gets a
+  new one.
+  """
+  @spec verify_certificate(Ecto.UUID.t(), binary()) ::
+          {:ok, %{key_hash: binary(), not_after: DateTime.t()}}
+          | {:error, :not_device_ca_certificate | :invalid_device_certificate}
+  def verify_certificate(account_id, der) do
+    with %DeviceCertificateAuthority{certificate: ca_der} <- Database.fetch(account_id),
+         true <- :public_key.pkix_is_issuer(der, ca_der) do
+      validate_device_certificate(der, ca_der)
+    else
+      _not_issued_by_ca -> {:error, :not_device_ca_certificate}
+    end
+  rescue
+    _exception -> {:error, :not_device_ca_certificate}
+  end
+
   @doc "The hash that identifies a device by its P-256 public point."
   @spec key_hash(binary()) :: binary()
   def key_hash(point), do: :crypto.hash(:sha256, point)
@@ -180,6 +200,19 @@ defmodule Portal.DeviceCA do
     with {:ok, signature} <- adapter.sign(key, digest),
          :ok <- verify(digest, signature, {{:ECPoint, ca_point}, @p256}) do
       {:ok, :public_key.pkix_encode(:OTPCertificate, {:OTPCertificate, tbs, @ecdsa_with_sha256, signature}, :otp)}
+    end
+  end
+
+  # The path validation checks the signature and both validity windows.
+  defp validate_device_certificate(der, ca_der) do
+    with {:ok, {{@ec_public_key, {:ECPoint, point}, @p256}, _policy_tree}} <-
+           :public_key.pkix_path_validation(ca_der, [der], []),
+         {:ok, leaf} <- Portal.Crypto.X509.decode_der_certificate(der, :otp),
+         true <- Portal.Crypto.X509.client_auth_eku?(leaf),
+         %DateTime{} = not_after <- Portal.Crypto.X509.not_after(leaf) do
+      {:ok, %{key_hash: key_hash(point), not_after: not_after}}
+    else
+      _invalid -> {:error, :invalid_device_certificate}
     end
   end
 

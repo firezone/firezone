@@ -1791,6 +1791,30 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
+    test "a device with a key keeps its first connection", %{client: client, subject: subject} do
+      client = client |> Ecto.Changeset.change(key_hash: :crypto.strong_rand_bytes(32)) |> Repo.update!()
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      :ok = PG.join(client.id)
+
+      assert_receive :duplicate_connection
+      assert Process.alive?(socket.channel_pid)
+      refute_push "disconnect", _payload
+    end
+
+    test "a duplicate connection of a device with a key closes", %{client: client, subject: subject} do
+      Process.flag(:trap_exit, true)
+      client = client |> Ecto.Changeset.change(key_hash: :crypto.strong_rand_bytes(32)) |> Repo.update!()
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, :duplicate_connection)
+
+      assert_receive {:EXIT, _pid, _reason}
+      refute_push "disconnect", _payload
+    end
+
     test "targeted disconnect stops the channel whose session_ref matches", %{
       client: client,
       subject: subject

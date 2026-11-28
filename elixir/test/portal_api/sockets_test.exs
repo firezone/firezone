@@ -162,6 +162,20 @@ defmodule PortalAPI.SocketsTest do
       assert_problem_json(result, "device_identity_conflict")
     end
 
+    test "returns problem details for device key errors" do
+      for {reason, status} <- [
+            device_certificate_invalid: 403,
+            device_certificate_required: 403,
+            device_key_conflict: 409,
+            device_key_in_use: 409
+          ] do
+        result = Sockets.handle_error(Plug.Test.conn(:get, "/"), reason)
+
+        assert result.status == status
+        assert_problem_json(result, Atom.to_string(reason))
+      end
+    end
+
     test "returns 409 for conflict" do
       conn = Plug.Test.conn(:get, "/")
 

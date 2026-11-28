@@ -1290,6 +1290,163 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
+  describe "connect/3 device key" do
+    setup do
+      Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      key = Portal.DeviceCAFixtures.device_key()
+
+      %{
+        account: account,
+        actor: actor,
+        key: key,
+        token: encode_token(client_token_fixture(account: account, actor: actor))
+      }
+    end
+
+    test "finds the device by its key", %{account: account, key: key, token: token} do
+      assert {:ok, socket} =
+               connect(Socket, connect_attrs(external_id: "fz-1"), connect_info: key_connect_info(account, key, token))
+
+      client = Repo.get_by!(Portal.Device, id: socket.assigns.client.id)
+      assert client.key_hash == key.key_hash
+      refute client.ephemeral
+      refute socket.assigns.client.attested?
+
+      assert {:ok, again} =
+               connect(Socket, connect_attrs(external_id: "fz-2"), connect_info: key_connect_info(account, key, token))
+
+      assert again.assigns.client.id == client.id
+    end
+
+    test "claims the actor's row with the reported firezone_id and no key", %{
+      account: account,
+      actor: actor,
+      key: key,
+      token: token
+    } do
+      existing = client_fixture(account: account, actor: actor, firezone_id: "fz-1")
+      verified_at = DateTime.utc_now()
+      existing |> Ecto.Changeset.change(verified_at: verified_at) |> Repo.update!()
+
+      assert {:ok, socket} =
+               connect(Socket, connect_attrs(external_id: "fz-1"), connect_info: key_connect_info(account, key, token))
+
+      assert socket.assigns.client.id == existing.id
+      client = Repo.get_by!(Portal.Device, id: existing.id)
+      assert client.key_hash == key.key_hash
+      assert client.firezone_id == "fz-1"
+      assert client.verified_at
+    end
+
+    test "does not claim the row of another actor", %{account: account, key: key, token: token} do
+      other = client_fixture(account: account, actor: actor_fixture(account: account), firezone_id: "fz-1")
+
+      assert {:ok, socket} =
+               connect(Socket, connect_attrs(external_id: "fz-1"), connect_info: key_connect_info(account, key, token))
+
+      refute socket.assigns.client.id == other.id
+      assert is_nil(Repo.get_by!(Portal.Device, id: other.id).key_hash)
+    end
+
+    test "a connect without the key never finds a row with a key", %{account: account, key: key, token: token} do
+      attrs = connect_attrs(external_id: "fz-1")
+      assert {:ok, keyed} = connect(Socket, attrs, connect_info: key_connect_info(account, key, token))
+      assert {:ok, unkeyed} = connect(Socket, attrs, connect_info: build_connect_info(token: token))
+
+      refute unkeyed.assigns.client.id == keyed.assigns.client.id
+      assert is_nil(unkeyed.assigns.client.key_hash)
+    end
+
+    test "a new key with the firezone_id of a row with a key gets a new row", %{
+      account: account,
+      key: key,
+      token: token
+    } do
+      attrs = connect_attrs(external_id: "fz-1")
+      assert {:ok, first} = connect(Socket, attrs, connect_info: key_connect_info(account, key, token))
+
+      other_key = Portal.DeviceCAFixtures.device_key()
+      assert {:ok, second} = connect(Socket, attrs, connect_info: key_connect_info(account, other_key, token))
+
+      refute second.assigns.client.id == first.assigns.client.id
+      assert Repo.get_by!(Portal.Device, id: first.assigns.client.id).key_hash == key.key_hash
+    end
+
+    test "the first connection with a key stays", %{account: account, key: key, token: token} do
+      attrs = connect_attrs([])
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: key_connect_info(account, key, token))
+      :ok = Portal.PG.join(socket.assigns.client.id)
+
+      assert connect(Socket, attrs, connect_info: key_connect_info(account, key, token)) ==
+               {:error, :device_key_in_use}
+    end
+
+    test "an ephemeral device takes over the offline ephemeral row of its firezone_id", %{
+      account: account,
+      key: key,
+      token: token
+    } do
+      attrs = connect_attrs(external_id: "fz-1", ephemeral: "true")
+      assert {:ok, first} = connect(Socket, attrs, connect_info: key_connect_info(account, key, token))
+      client_id = first.assigns.client.id
+      Repo.get_by!(Portal.Device, id: client_id) |> Ecto.Changeset.change(verified_at: DateTime.utc_now()) |> Repo.update!()
+
+      next_key = Portal.DeviceCAFixtures.device_key()
+      assert {:ok, next} = connect(Socket, attrs, connect_info: key_connect_info(account, next_key, token))
+      assert next.assigns.client.id == client_id
+
+      client = Repo.get_by!(Portal.Device, id: client_id)
+      assert client.key_hash == next_key.key_hash
+      assert client.ephemeral
+      assert is_nil(client.verified_at)
+
+      :ok = Portal.PG.join(client_id)
+      online_key = Portal.DeviceCAFixtures.device_key()
+
+      assert connect(Socket, attrs, connect_info: key_connect_info(account, online_key, token)) ==
+               {:error, :device_key_in_use}
+    end
+
+    test "a device that is not ephemeral does not take over an ephemeral row", %{
+      account: account,
+      key: key,
+      token: token
+    } do
+      assert {:ok, first} =
+               connect(Socket, connect_attrs(external_id: "fz-1", ephemeral: "true"),
+                 connect_info: key_connect_info(account, key, token)
+               )
+
+      next_key = Portal.DeviceCAFixtures.device_key()
+
+      assert {:ok, next} =
+               connect(Socket, connect_attrs(external_id: "fz-1"),
+                 connect_info: key_connect_info(account, next_key, token)
+               )
+
+      refute next.assigns.client.id == first.assigns.client.id
+    end
+
+    test "refuses a certificate from an earlier CA of the account", %{account: account, key: key, token: token} do
+      info = key_connect_info(account, key, token)
+      Portal.DeviceCertificateAuthority |> Repo.get_by!(account_id: account.id) |> Repo.delete!()
+      {:ok, _ca} = Portal.DeviceCA.ensure(account.id)
+
+      assert connect(Socket, connect_attrs([]), connect_info: info) == {:error, :device_certificate_invalid}
+    end
+
+    test "refuses the key of a gateway", %{account: account, key: key, token: token} do
+      gateway_fixture(account: account)
+      |> Ecto.Changeset.change(key_hash: key.key_hash)
+      |> Repo.update!()
+
+      assert connect(Socket, connect_attrs([]), connect_info: key_connect_info(account, key, token)) ==
+               {:error, :device_key_conflict}
+    end
+  end
+
   describe "connect/3 posture rows" do
     setup do
       account = Portal.DevicePostureFixtures.device_posture_account_fixture()
@@ -2080,6 +2237,14 @@ defmodule PortalAPI.Client.SocketTest do
              assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
                       {:error, :invalid_x509_identity}
            end) =~ "invalid_x509_identity"
+  end
+
+  defp key_connect_info(account, key, token) do
+    build_connect_info(
+      token: token,
+      host: "mtls.firezone.test",
+      client_cert: Portal.DeviceCAFixtures.device_certificate(account, key)
+    )
   end
 
   defp attested_connect_info(pki, token) do
