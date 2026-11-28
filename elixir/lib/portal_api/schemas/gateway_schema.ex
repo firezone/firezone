@@ -9,6 +9,8 @@ defmodule PortalAPI.Schemas.Gateway do
              for: Portal.Device,
              internal: [
                :account_id,
+               :ephemeral,
+               :key_hash,
                :actor,
                :actor_id,
                :attested?,

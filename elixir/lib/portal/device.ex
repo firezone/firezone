@@ -69,6 +69,8 @@ defmodule Portal.Device do
           last_attested_cert_issuer: binary() | nil,
           last_attested_at: DateTime.t() | nil,
           verified_at: DateTime.t() | nil,
+          key_hash: binary() | nil,
+          ephemeral: boolean(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -122,6 +124,11 @@ defmodule Portal.Device do
     # `attested?` presence attribute).
     field :last_attested_at, :utc_datetime_usec
     field :verified_at, :utc_datetime_usec
+
+    # Device identity: the SHA-256 of the key that the device's certificates carry.
+    field :key_hash, :binary
+    # The key lives only in memory, so a later enrollment may take this row over. Internal only.
+    field :ephemeral, :boolean, default: false
 
     # Gateway-only
     has_one :site_device, Portal.SiteDevice, foreign_key: :device_id, references: :id
@@ -191,8 +198,9 @@ defmodule Portal.Device do
     |> validate_identifiers()
     |> validate_type_rules()
     |> check_constraint(:type, name: :devices_type_check)
-    |> unique_constraint(:firezone_id, name: :devices_account_id_client_firezone_id_index)
-    |> unique_constraint(:firezone_id, name: :devices_account_id_firezone_id_index)
+    |> unique_constraint(:firezone_id, name: :devices_account_id_unkeyed_client_firezone_id_index)
+    |> unique_constraint(:firezone_id, name: :devices_account_id_unkeyed_gateway_firezone_id_index)
+    |> unique_constraint(:key_hash, name: :devices_account_id_key_hash_index)
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)

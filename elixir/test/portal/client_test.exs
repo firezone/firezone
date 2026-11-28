@@ -1,6 +1,7 @@
 defmodule Portal.ClientTest do
   use Portal.DataCase, async: true
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
@@ -95,6 +96,16 @@ defmodule Portal.ClientTest do
 
       assert {:ok, _client} =
                insert_client(elsewhere, actor_fixture(account: elsewhere), %{name: "Elsewhere", firezone_id: "fid-shared"})
+    end
+
+    test "lets a client with a key share a firezone_id" do
+      account = account_fixture()
+      first = client_fixture(account: account, firezone_id: "fid-keyed")
+
+      Repo.update_all(from(d in Portal.Device, where: d.id == ^first.id), set: [key_hash: :crypto.strong_rand_bytes(32)])
+
+      assert {:ok, _client} =
+               insert_client(account, actor_fixture(account: account), %{name: "Second", firezone_id: "fid-keyed"})
     end
 
     test "rejects duplicate hostname within the same account for clients" do
