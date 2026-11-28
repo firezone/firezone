@@ -72,6 +72,19 @@ class AuthCallbackHandlerTest {
     }
 
     @Test
+    fun `https callbacks read the region from the fragment`() {
+        session.begin("nonce-", STATE, originalSettings)
+
+        val outcome =
+            handler.handle(
+                Uri.parse("https://app.firezone.dev/sign_in/client_callback?region=us#state=$STATE&fragment=fragment&region=eu"),
+            )
+
+        assertEquals(checkNotNull(ControlPlane.CLOUD_EU.authUrl), repo.getConfigSync().authUrl)
+        assertEquals(AuthCallbackOutcome.Success("nonce-fragment", checkNotNull(repo.getActiveSignInSettingsSync())), outcome)
+    }
+
+    @Test
     fun `missing and unknown regions preserve current settings and the captured sign-in settings`() {
         val desired = repo.getConfigSync().copy(authUrl = "https://next.example.com", apiUrl = "wss://next-api.example.com")
         repo.saveSettingsSync(desired)

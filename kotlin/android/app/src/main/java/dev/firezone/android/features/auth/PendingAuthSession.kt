@@ -9,6 +9,36 @@ import javax.inject.Singleton
 
 internal const val AUTH_CALLBACK_SCHEME = "firezone-fd0020211111"
 internal const val AUTH_CALLBACK_HOST = "handle_client_sign_in_callback"
+internal const val AUTH_HTTPS_CALLBACK_PATH = "/sign_in/client_callback"
+private val AUTH_HTTPS_CALLBACK_HOSTS = setOf("app.firezone.dev", "eu.app.firezone.dev")
+
+internal fun authHttpsCallbackHost(authUrl: String): String? {
+    val uri = Uri.parse(authUrl)
+    return uri.host?.takeIf { isHttpsCallbackOrigin(uri) }
+}
+
+// The callback's parameters as a query-only URI, or null when the URI is not a sign-in callback.
+internal fun authCallbackParams(uri: Uri?): Uri? =
+    when {
+        uri == null -> {
+            null
+        }
+
+        uri.scheme == AUTH_CALLBACK_SCHEME && uri.host == AUTH_CALLBACK_HOST -> {
+            uri
+        }
+
+        isHttpsCallbackOrigin(uri) && uri.path == AUTH_HTTPS_CALLBACK_PATH -> {
+            Uri.Builder().encodedQuery(uri.encodedFragment.orEmpty()).build()
+        }
+
+        else -> {
+            null
+        }
+    }
+
+private fun isHttpsCallbackOrigin(uri: Uri): Boolean =
+    uri.scheme == "https" && uri.port == -1 && uri.userInfo == null && uri.host in AUTH_HTTPS_CALLBACK_HOSTS
 
 @Singleton
 internal class PendingAuthSession
@@ -63,12 +93,12 @@ internal class PendingAuthSession
         fun hasPendingRequest(): Boolean = synchronized(lock) { pendingRequest != null }
 
         private fun parseCallback(uri: Uri?): ParsedCallback {
-            if (uri?.scheme != AUTH_CALLBACK_SCHEME || uri.host != AUTH_CALLBACK_HOST) {
-                return ParsedCallback.Invalid("Unknown authentication callback URI")
-            }
+            val params =
+                authCallbackParams(uri)
+                    ?: return ParsedCallback.Invalid("Unknown authentication callback URI")
 
-            val state = uri.getQueryParameter(QUERY_CLIENT_STATE)
-            val fragment = uri.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)
+            val state = params.getQueryParameter(QUERY_CLIENT_STATE)
+            val fragment = params.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)
             val errors =
                 buildList {
                     if (state.isNullOrBlank()) {

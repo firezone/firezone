@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,6 +57,55 @@ class PendingAuthSessionTest {
             assertEquals("nonce-fragment", tokenStore.get())
             assertEquals(originalConfig, repository.getActiveSignInSettingsSync())
         }
+
+    @Test
+    fun `https callbacks carry their parameters in the fragment`() {
+        for (host in listOf("app.firezone.dev", "eu.app.firezone.dev")) {
+            session.begin(nonce = "nonce-", state = EXPECTED_STATE, signedInWith = SIGN_IN_SETTINGS)
+
+            assertEquals(
+                AuthCallbackOutcome.Success("nonce-abc def", SIGN_IN_SETTINGS),
+                session.complete(Uri.parse("https://$host/sign_in/client_callback#state=$EXPECTED_STATE&fragment=abc+def")),
+            )
+        }
+    }
+
+    @Test
+    fun `https callbacks are only read from the fragment of the portal callback page`() {
+        session.begin(nonce = "nonce-", state = EXPECTED_STATE, signedInWith = SIGN_IN_SETTINGS)
+        val params = "state=$EXPECTED_STATE&fragment=fragment"
+        val malformedCallbacks =
+            listOf(
+                "https://app.firezone.dev/sign_in/client_callback?$params",
+                "http://app.firezone.dev/sign_in/client_callback#$params",
+                "https://evil.app.firezone.dev/sign_in/client_callback#$params",
+                "https://app.firezone.dev.evil.com/sign_in/client_callback#$params",
+                "https://app.firezone.dev:8443/sign_in/client_callback#$params",
+                "https://user@app.firezone.dev/sign_in/client_callback#$params",
+                "https://app.firezone.dev/sign_in/other#$params",
+                "https://app.firezone.dev/sign_in/client_callback/#$params",
+                "$AUTH_CALLBACK_SCHEME://$AUTH_CALLBACK_HOST#$params",
+            )
+
+        malformedCallbacks.forEach { callback ->
+            assertTrue(callback, session.complete(Uri.parse(callback)) is AuthCallbackOutcome.Error)
+        }
+        assertTrue(session.hasPendingRequest())
+    }
+
+    @Test
+    fun `only the hosted portals get an https callback`() {
+        assertEquals("app.firezone.dev", authHttpsCallbackHost("https://app.firezone.dev"))
+        assertEquals("eu.app.firezone.dev", authHttpsCallbackHost("https://eu.app.firezone.dev/"))
+        listOf(
+            "http://app.firezone.dev",
+            "https://app.firezone.dev:8443",
+            "https://staging.app.firezone.dev",
+            "https://app.firezone.dev.example.com",
+            "https://custom.example.com",
+            "",
+        ).forEach { assertNull(it, authHttpsCallbackHost(it)) }
+    }
 
     @Test
     fun `callback without pending request is rejected`() {

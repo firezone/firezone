@@ -11,9 +11,11 @@ import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra
 import dev.firezone.android.features.auth.AUTH_CALLBACK_SCHEME
+import dev.firezone.android.features.auth.AUTH_HTTPS_CALLBACK_PATH
 import dev.firezone.android.features.auth.nonceHash
 import org.hamcrest.Matcher
 import org.hamcrest.Matchers.allOf
+import org.hamcrest.Matchers.anyOf
 import java.util.concurrent.atomic.AtomicReference
 
 private const val AUTH_CALLBACK_HOST = "handle_client_sign_in_callback"
@@ -46,9 +48,10 @@ internal fun stubAuthTab(resultCode: Int): AtomicReference<AuthAttempt> {
                 )
             captured.set(attempt)
 
+            val httpsHost = intent.getStringExtra(AuthTabIntent.EXTRA_HTTPS_REDIRECT_HOST)
             val result =
                 if (resultCode == Activity.RESULT_OK) {
-                    Intent().setData(callbackUri(attempt.state))
+                    Intent().setData(if (httpsHost != null) httpsCallbackUri(httpsHost, attempt.state) else callbackUri(attempt.state))
                 } else {
                     null
                 }
@@ -68,9 +71,31 @@ internal fun callbackUri(state: String): Uri =
         .appendQueryParameter("fragment", AUTH_FRAGMENT)
         .build()
 
+private fun httpsCallbackUri(
+    host: String,
+    state: String,
+): Uri =
+    Uri
+        .Builder()
+        .scheme("https")
+        .authority(host)
+        .path(AUTH_HTTPS_CALLBACK_PATH)
+        .encodedFragment(
+            Uri
+                .Builder()
+                .appendQueryParameter("state", state)
+                .appendQueryParameter("fragment", AUTH_FRAGMENT)
+                .build()
+                .encodedQuery,
+        ).build()
+
+// Whether the emulator's browser supports Auth Tab decides which redirect the app asks for.
 internal fun authTabIntent(): Matcher<Intent> =
     allOf(
         hasAction(Intent.ACTION_VIEW),
         hasExtra(AuthTabIntent.EXTRA_LAUNCH_AUTH_TAB, true),
-        hasExtra(AuthTabIntent.EXTRA_REDIRECT_SCHEME, AUTH_CALLBACK_SCHEME),
+        anyOf(
+            hasExtra(AuthTabIntent.EXTRA_REDIRECT_SCHEME, AUTH_CALLBACK_SCHEME),
+            hasExtra(AuthTabIntent.EXTRA_HTTPS_REDIRECT_PATH, AUTH_HTTPS_CALLBACK_PATH),
+        ),
     )

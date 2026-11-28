@@ -9,6 +9,7 @@ import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.features.auth.AuthCallbackHandler
 import dev.firezone.android.features.auth.AuthCallbackOutcome
 import dev.firezone.android.features.auth.PendingAuthSession
+import dev.firezone.android.features.auth.authHttpsCallbackHost
 import dev.firezone.android.features.auth.nonceHash
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,7 +29,7 @@ internal class AuthViewModel
         private var hasStartedAuthFlow = false
         private var authState: String? = null
 
-        fun startAuthFlow() {
+        fun startAuthFlow(authTabBrowser: String?) {
             if (hasStartedAuthFlow) {
                 return
             }
@@ -39,10 +40,15 @@ internal class AuthViewModel
             authState = state
             val config = repo.getConfigSync()
             pendingAuthSession.begin(nonce = nonce, state = state, signedInWith = config.signInSettings())
-            val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce_hash=${nonceHash(nonce)}&as=gui-client"
+            val httpsCallback =
+                authTabBrowser?.let { browser ->
+                    authHttpsCallbackHost(config.authUrl)?.let { HttpsCallback(it, browser) }
+                }
+            val callbackParam = if (httpsCallback != null) "&callback=https" else ""
+            val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce_hash=${nonceHash(nonce)}&as=gui-client$callbackParam"
 
             actionMutableStateFlow.value =
-                ViewAction.LaunchAuthFlow(authUrl)
+                ViewAction.LaunchAuthFlow(authUrl, httpsCallback)
         }
 
         fun processAuthCallback(uri: Uri?) {
@@ -90,6 +96,7 @@ internal class AuthViewModel
         internal sealed class ViewAction {
             data class LaunchAuthFlow(
                 val url: String,
+                val httpsCallback: HttpsCallback?,
             ) : ViewAction()
 
             data object AuthFlowComplete : ViewAction()
@@ -98,6 +105,11 @@ internal class AuthViewModel
                 val errors: List<String>,
             ) : ViewAction()
         }
+
+        internal data class HttpsCallback(
+            val host: String,
+            val authTabBrowser: String,
+        )
 
         internal companion object {
             private const val NONCE_LENGTH = 32

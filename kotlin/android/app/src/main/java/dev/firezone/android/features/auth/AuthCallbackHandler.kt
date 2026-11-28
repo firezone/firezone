@@ -21,7 +21,7 @@ internal class AuthCallbackHandler
             }
 
             val controlPlane =
-                when (uri?.getQueryParameter("region")) {
+                when (authCallbackParams(uri)?.getQueryParameter("region")) {
                     "us" -> ControlPlane.CLOUD_US
                     "eu" -> ControlPlane.CLOUD_EU
                     else -> null
