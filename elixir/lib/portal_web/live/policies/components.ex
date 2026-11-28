@@ -1328,9 +1328,9 @@ defmodule PortalWeb.Policies.Components do
           </dd>
         </div>
         <div>
-          <dt class="text-[10px] text-subtle mb-0.5">Device attestation</dt>
+          <dt class="text-[10px] text-subtle mb-0.5">Device trust</dt>
           <dd class="text-xs text-body font-medium">
-            {if @policy.require_attestation, do: "Required", else: "Not required"}
+            {if @policy.device_trust == :organization, do: "Organization PKI", else: "Not required"}
           </dd>
         </div>
         <div :if={@policy.description}>

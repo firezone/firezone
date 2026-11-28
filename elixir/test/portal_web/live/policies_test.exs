@@ -1561,7 +1561,7 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "Require Verified Device"
     end
 
-    test "the attestation toggle is disabled without trust anchors", %{conn: conn, account: account, actor: actor} do
+    test "organization device trust is disabled without trust anchors", %{conn: conn, account: account, actor: actor} do
       policy = policy_fixture(account: account)
 
       {:ok, lv, _html} =
@@ -1569,13 +1569,13 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      assert lv |> element("#policy-postures-require-attestation") |> render() =~ "disabled"
+      assert lv |> element(~s(#policy-postures-device-trust option[value="organization"][disabled])) |> has_element?()
 
-      render_click(lv, "postures_require_attestation", %{})
-      refute lv |> element("#policy-postures-require-attestation") |> render() =~ "checked"
+      choose_device_trust(lv, "organization")
+      refute lv |> element(~s(#policy-postures-device-trust option[value="organization"][selected])) |> has_element?()
     end
 
-    test "saves require_attestation", %{conn: conn, account: account, actor: actor} do
+    test "saves organization device trust", %{conn: conn, account: account, actor: actor} do
       trust_anchor_fixture(account: account)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
@@ -1586,7 +1586,7 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      render_click(lv, "postures_require_attestation", %{})
+      choose_device_trust(lv, "organization")
 
       html =
         lv
@@ -1597,10 +1597,10 @@ defmodule PortalWeb.PoliciesTest do
       html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
-      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).require_attestation
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).device_trust == :organization
     end
 
-    test "turns off require_attestation after the last trust anchor is gone", %{
+    test "turns off organization device trust after the last trust anchor is gone", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1608,7 +1608,7 @@ defmodule PortalWeb.PoliciesTest do
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
       anchor = trust_anchor_fixture(account: account)
-      policy = policy_fixture(group: group, resource: resource, require_attestation: true)
+      policy = policy_fixture(group: group, resource: resource, device_trust: :organization)
       Repo.delete!(anchor)
 
       {:ok, lv, _html} =
@@ -1616,20 +1616,19 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      toggle = lv |> element("#policy-postures-require-attestation") |> render()
-      assert toggle =~ "checked"
-      refute toggle =~ "disabled"
+      assert lv |> element(~s(#policy-postures-device-trust option[value="organization"][selected])) |> has_element?()
+      refute lv |> element(~s(#policy-postures-device-trust option[value="organization"][disabled])) |> has_element?()
 
-      render_click(lv, "postures_require_attestation", %{})
+      choose_device_trust(lv, "none")
 
       lv
-      |> form("[phx-submit='submit_policy_form']", policy: %{group_id: group.id, resource_id: resource.id})
+      |> form("[phx-submit='submit_policy_form']", policy: %{group_id: group.id, resource_id: resource.id, device_trust: "none"})
       |> render_submit()
 
       html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
-      refute Repo.get_by!(Policy, id: policy.id, account_id: account.id).require_attestation
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).device_trust == :none
     end
 
     test "is available without the policy conditions feature", %{conn: conn} do
@@ -1642,7 +1641,7 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/new")
 
-      refute lv |> element("#policy-postures-require-attestation") |> render() =~ "disabled"
+      refute lv |> element(~s(#policy-postures-device-trust option[value="organization"][disabled])) |> has_element?()
     end
   end
 
@@ -1701,7 +1700,7 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "to configure over 300 posture fields"
       assert html =~ "kb/device-posture/grammar?utm_source=product"
       assert html =~ "settings/trust_anchors"
-      refute html =~ "Unattested devices are matched on the serial number their Client reports"
+      refute html =~ "Devices without a certificate are matched on the serial number their Client reports"
 
       assert toggle(lv, "disk_encryption") =~ "disabled"
       refute toggle(lv, "client_up_to_date") =~ "disabled"
@@ -1709,7 +1708,7 @@ defmodule PortalWeb.PoliciesTest do
       html = render_click(lv, "postures_toggle_check", %{"name" => "client_up_to_date"})
       assert toggle(lv, "client_up_to_date") =~ "checked"
       assert html =~ ~s(&quot;field&quot;:&quot;firezone.last_seen_version&quot;)
-      assert html =~ "Unattested devices are matched on the serial number their Client reports"
+      assert html =~ "Devices without a certificate are matched on the serial number their Client reports"
       assert html =~ "kb/device-trust?utm_source=product#device-attributes"
 
       html =
@@ -1744,7 +1743,7 @@ defmodule PortalWeb.PoliciesTest do
       assert toggle(lv, "app_allowlisting") =~ "disabled"
     end
 
-    test "connected providers unlock checks and required attestation silences the warning", %{
+    test "connected providers unlock checks and organization device trust silences the warning", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1764,10 +1763,10 @@ defmodule PortalWeb.PoliciesTest do
       html = render_click(lv, "postures_toggle_check", %{"name" => "disk_encryption"})
       assert html =~ ~s(&quot;field&quot;:&quot;intune.compliance_state&quot;)
       assert html =~ ~s(&quot;field&quot;:&quot;iru.filevault_enabled&quot;)
-      assert html =~ "Unattested devices are matched on the serial number their Client reports"
+      assert html =~ "Devices without a certificate are matched on the serial number their Client reports"
 
-      html = render_click(lv, "postures_require_attestation", %{})
-      refute html =~ "Unattested devices are matched on the serial number their Client reports"
+      html = choose_device_trust(lv, "organization")
+      refute html =~ "Devices without a certificate are matched on the serial number their Client reports"
 
       html = render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
       refute html =~ ~s(&quot;field&quot;:&quot;intune.compliance_state&quot;)
@@ -2380,5 +2379,9 @@ defmodule PortalWeb.PoliciesTest do
 
       assert Repo.get_by(Policy, account_id: account.id, id: policy.id).description == policy.description
     end
+  end
+
+  defp choose_device_trust(lv, value) do
+    lv |> element("#policy-postures-device-trust") |> render_change(%{"policy" => %{"device_trust" => value}})
   end
 end

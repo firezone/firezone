@@ -18,11 +18,11 @@ defmodule Portal.Policies.Evaluator do
       {{:ok, _expires_at}, {:error, violated}} -> {:error, violated}
       {{:error, left}, {:error, right}} -> {:error, left ++ right}
     end
-    |> ensure_attested(policy.require_attestation, client)
+    |> ensure_attested(policy.device_trust, client)
   end
 
   # Reported as the property the old condition used, which Clients already know.
-  defp ensure_attested(result, true, %Device{} = client) do
+  defp ensure_attested(result, :organization, %Device{} = client) do
     case {result, attested_until(client)} do
       {{:ok, expires_at}, %DateTime{} = attested_until} -> {:ok, min_expires_at(expires_at, attested_until)}
       {{:ok, _expires_at}, nil} -> {:error, [:device_attested]}
@@ -31,7 +31,7 @@ defmodule Portal.Policies.Evaluator do
     end
   end
 
-  defp ensure_attested(result, _require_attestation, %Device{}), do: result
+  defp ensure_attested(result, _device_trust, %Device{}), do: result
 
   defp attested_until(%Device{attested?: true, attested_until: %DateTime{} = attested_until}) do
     if DateTime.compare(current_time(), attested_until) == :gt do

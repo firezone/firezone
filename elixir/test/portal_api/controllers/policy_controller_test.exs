@@ -185,6 +185,7 @@ defmodule PortalAPI.PolicyControllerTest do
                  "flow_log_uploads_enabled" => true,
                  "is_disabled" => false,
                  "postures" => nil,
+                 "device_trust" => "none",
                  "require_attestation" => false,
                  "conditions" => []
                }
@@ -427,7 +428,75 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/policies", policy: attrs)
 
-      assert json_response(conn, 201)["data"]["require_attestation"] == true
+      data = json_response(conn, 201)["data"]
+      assert data["require_attestation"] == true
+      assert data["device_trust"] == "organization"
+    end
+
+    test "creates a policy that requires organization device trust", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor_fixture(account: account)
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{"group_id" => group.id, "resource_id" => resource.id, "device_trust" => "organization"}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      data = json_response(conn, 201)["data"]
+      assert data["device_trust"] == "organization"
+      assert data["require_attestation"] == true
+    end
+
+    test "prefers device_trust over the deprecated require_attestation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor_fixture(account: account)
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "device_trust" => "none",
+        "require_attestation" => true
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 201)["data"]["device_trust"] == "none"
+    end
+
+    test "rejects organization device trust when the account has no trust anchors", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{"group_id" => group.id, "resource_id" => resource.id, "device_trust" => "organization"}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 422)
     end
 
     test "rejects require_attestation when the account has no trust anchors", %{
@@ -1003,6 +1072,7 @@ defmodule PortalAPI.PolicyControllerTest do
 
       data = json_response(conn, 200)["data"]
       assert data["require_attestation"] == true
+      assert data["device_trust"] == "organization"
       assert data["conditions"] == [%{"property" => "client_verified", "operator" => "is", "values" => ["true"]}]
     end
 
@@ -1129,6 +1199,7 @@ defmodule PortalAPI.PolicyControllerTest do
                  "flow_log_uploads_enabled" => true,
                  "is_disabled" => false,
                  "postures" => nil,
+                 "device_trust" => "none",
                  "require_attestation" => false,
                  "conditions" => []
                }

@@ -225,14 +225,23 @@ defmodule PortalAPI.Schemas.Policy do
               "Defaults to true. Always false for Internet Resource policies.",
           default: true
         },
+        device_trust: %Schema{
+          example: "none",
+          type: :string,
+          enum: ["none", "organization"],
+          description:
+            "The certificate the Client must present on its current connection. `none` asks for " <>
+              "none. `organization` asks for one that chains to one of the account's trust " <>
+              "anchors, and returns 422 when the account has no trust anchors.",
+          default: "none"
+        },
         require_attestation: %Schema{
+          deprecated: true,
           example: false,
           type: :boolean,
           description:
-            "Whether the Client must present a valid X.509 certificate from one of the account's " <>
-              "trust anchors on its current connection. Device posture checks then match only on " <>
-              "the identifiers that certificate proves. Defaults to false. Setting it to true " <>
-              "returns 422 when the account has no trust anchors.",
+            "Deprecated: use `device_trust`. `true` is `organization` and `false` is `none`. " <>
+              "Ignored when `device_trust` is also given.",
           default: false
         },
         is_disabled: %Schema{
@@ -296,12 +305,20 @@ defmodule PortalAPI.Schemas.Policy do
             "Whether flow logs are reported for connections authorized by this Policy. " <>
               "Always false for Internet Resource policies."
         },
+        device_trust: %Schema{
+          type: :string,
+          enum: ["none", "organization"],
+          description:
+            "The certificate the Client must present on its current connection. `none` asks for " <>
+              "none. `organization` asks for one that chains to one of the account's trust " <>
+              "anchors, and returns 422 when the account has no trust anchors."
+        },
         require_attestation: %Schema{
+          deprecated: true,
           type: :boolean,
           description:
-            "Whether the Client must present a valid X.509 certificate from one of the account's " <>
-              "trust anchors on its current connection. Setting it to true returns 422 when the " <>
-              "account has no trust anchors."
+            "Deprecated: use `device_trust`. `true` is `organization` and `false` is `none`. " <>
+              "Ignored when `device_trust` is also given."
         },
         is_disabled: %Schema{
           example: false,
@@ -384,11 +401,18 @@ defmodule PortalAPI.Schemas.Policy do
           type: :boolean,
           description: "Whether flow logs are reported for connections authorized by this Policy"
         },
+        device_trust: %Schema{
+          example: "none",
+          type: :string,
+          enum: ["none", "organization"],
+          description: "The certificate the Client must present on its current connection"
+        },
         require_attestation: %Schema{
+          deprecated: true,
           example: false,
           type: :boolean,
           description:
-            "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors"
+            "Deprecated: use `device_trust`. True when `device_trust` is `organization`."
         },
         is_disabled: %Schema{
           example: false,
@@ -427,6 +451,7 @@ defmodule PortalAPI.Schemas.Policy do
         :id,
         :is_disabled,
         :postures,
+        :device_trust,
         :require_attestation,
         :resource_id
       ]

@@ -2176,14 +2176,14 @@ Relays.render(relays, relay_owner(socket)),
              group_id: old_group_id,
              conditions: old_conditions,
              postures: old_postures,
-             require_attestation: old_require_attestation
+             device_trust: old_device_trust
            },
            struct: %Portal.Policy{
              resource_id: resource_id,
              group_id: group_id,
              conditions: conditions,
              postures: postures,
-             require_attestation: require_attestation,
+             device_trust: device_trust,
              is_disabled: is_disabled
            }
          } = change,
@@ -2191,7 +2191,7 @@ Relays.render(relays, relay_owner(socket)),
        )
        when old_resource_id != resource_id or old_group_id != group_id or
               old_conditions != conditions or old_postures != postures or
-              old_require_attestation != require_attestation do
+              old_device_trust != device_trust do
     # TODO: Optimization
     # Breaking update - process this as a delete and then create to make our lives easier.
     # We could be smarter here and process the individual side effects more cleverly to avoid

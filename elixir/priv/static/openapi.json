@@ -595,6 +595,16 @@
             "nullable": true,
             "type": "string"
           },
+          "device_trust": {
+            "default": "none",
+            "description": "The certificate the Client must present on its current connection. `none` asks for none. `organization` asks for one that chains to one of the account's trust anchors, and returns 422 when the account has no trust anchors.",
+            "enum": [
+              "none",
+              "organization"
+            ],
+            "example": "none",
+            "type": "string"
+          },
           "flow_log_uploads_enabled": {
             "default": true,
             "description": "Whether flow logs are reported for connections authorized by this Policy. Defaults to true. Always false for Internet Resource policies.",
@@ -667,7 +677,8 @@
           },
           "require_attestation": {
             "default": false,
-            "description": "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors on its current connection. Device posture checks then match only on the identifiers that certificate proves. Defaults to false. Setting it to true returns 422 when the account has no trust anchors.",
+            "deprecated": true,
+            "description": "Deprecated: use `device_trust`. `true` is `organization` and `false` is `none`. Ignored when `device_trust` is also given.",
             "example": false,
             "type": "boolean"
           },
@@ -8549,6 +8560,14 @@
             "nullable": true,
             "type": "string"
           },
+          "device_trust": {
+            "description": "The certificate the Client must present on its current connection. `none` asks for none. `organization` asks for one that chains to one of the account's trust anchors, and returns 422 when the account has no trust anchors.",
+            "enum": [
+              "none",
+              "organization"
+            ],
+            "type": "string"
+          },
           "flow_log_uploads_enabled": {
             "description": "Whether flow logs are reported for connections authorized by this Policy. Always false for Internet Resource policies.",
             "type": "boolean"
@@ -8617,7 +8636,8 @@
             "nullable": true
           },
           "require_attestation": {
-            "description": "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors on its current connection. Setting it to true returns 422 when the account has no trust anchors.",
+            "deprecated": true,
+            "description": "Deprecated: use `device_trust`. `true` is `organization` and `false` is `none`. Ignored when `device_trust` is also given.",
             "type": "boolean"
           },
           "resource_id": {
@@ -11478,6 +11498,15 @@
             "nullable": true,
             "type": "string"
           },
+          "device_trust": {
+            "description": "The certificate the Client must present on its current connection",
+            "enum": [
+              "none",
+              "organization"
+            ],
+            "example": "none",
+            "type": "string"
+          },
           "flow_log_uploads_enabled": {
             "description": "Whether flow logs are reported for connections authorized by this Policy",
             "example": true,
@@ -11554,7 +11583,8 @@
             "nullable": true
           },
           "require_attestation": {
-            "description": "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors",
+            "deprecated": true,
+            "description": "Deprecated: use `device_trust`. True when `device_trust` is `organization`.",
             "example": false,
             "type": "boolean"
           },
@@ -11573,6 +11603,7 @@
           "id",
           "is_disabled",
           "postures",
+          "device_trust",
           "require_attestation",
           "resource_id"
         ],

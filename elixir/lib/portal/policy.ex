@@ -18,6 +18,7 @@ defmodule Portal.Policy do
           resource_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           flow_log_uploads_enabled: boolean(),
+          device_trust: :none | :organization,
           require_attestation: boolean(),
           is_disabled: boolean(),
           inserted_at: DateTime.t(),
@@ -38,6 +39,10 @@ defmodule Portal.Policy do
     belongs_to :resource, Portal.Resource
 
     field :flow_log_uploads_enabled, :boolean, default: true
+    # What certificate the connection must show: none, or one that chains to the account's
+    # trust anchors.
+    field :device_trust, Ecto.Enum, values: [:none, :organization], default: :none
+    # Deprecated: kept in sync with device_trust until the column is dropped.
     field :require_attestation, :boolean, default: false
 
     field :is_disabled, :boolean, default: false, read_after_writes: true
@@ -49,7 +54,9 @@ defmodule Portal.Policy do
     changeset
     |> validate_length(:description, min: 1, max: 1024)
     |> validate_unique_condition_properties()
-    |> validate_trust_anchors_for_attestation()
+    |> validate_trust_anchors_for_device_trust()
+    |> sync_require_attestation()
+    |> check_constraint(:device_trust, name: :policies_device_trust_check)
     |> unique_constraint(
       :base,
       name: :policies_account_id_resource_id_group_id_index,
@@ -113,16 +120,32 @@ defmodule Portal.Policy do
     end
   end
 
+  @doc """
+  Maps the deprecated `require_attestation` input to `device_trust` when `device_trust` is not
+  given.
+  """
+  def put_device_trust_from_alias(%Ecto.Changeset{} = changeset, attrs) do
+    case {attrs, Map.has_key?(attrs, "device_trust")} do
+      {%{"require_attestation" => true}, false} -> put_change(changeset, :device_trust, :organization)
+      {%{"require_attestation" => false}, false} -> put_change(changeset, :device_trust, :none)
+      _other -> changeset
+    end
+  end
+
   # Turning it off stays allowed after the account's last trust anchor is gone.
-  defp validate_trust_anchors_for_attestation(%Ecto.Changeset{} = changeset) do
+  defp validate_trust_anchors_for_device_trust(%Ecto.Changeset{} = changeset) do
     account_id = get_field(changeset, :account_id)
 
-    if get_change(changeset, :require_attestation) == true and not is_nil(account_id) and
+    if get_change(changeset, :device_trust) == :organization and not is_nil(account_id) and
          not Database.trust_anchors?(account_id) do
-      add_error(changeset, :require_attestation, "requires at least one trust anchor")
+      add_error(changeset, :device_trust, "requires at least one trust anchor")
     else
       changeset
     end
+  end
+
+  defp sync_require_attestation(%Ecto.Changeset{} = changeset) do
+    put_change(changeset, :require_attestation, get_field(changeset, :device_trust) == :organization)
   end
 
   @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()

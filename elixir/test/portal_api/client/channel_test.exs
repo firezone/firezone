@@ -2889,7 +2889,7 @@ defmodule PortalAPI.Client.ChannelTest do
         )
 
       trust_anchor_fixture(account: account)
-      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+      policy_fixture(account: account, group: group, resource: resource, device_trust: :organization)
 
       membership =
         membership_fixture(
@@ -2934,7 +2934,7 @@ defmodule PortalAPI.Client.ChannelTest do
       resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
 
       trust_anchor_fixture(account: account)
-      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+      policy_fixture(account: account, group: group, resource: resource, device_trust: :organization)
 
       membership_fixture(account: account, actor: actor, group: group)
 
@@ -2967,7 +2967,7 @@ defmodule PortalAPI.Client.ChannelTest do
       resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
 
       trust_anchor_fixture(account: account)
-      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+      policy_fixture(account: account, group: group, resource: resource, device_trust: :organization)
       membership_fixture(account: account, actor: actor, group: group)
 
       socket = join_channel(client, subject, attested?: true)
@@ -4517,7 +4517,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
       trust_anchor_fixture(account: account)
-      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
+      policy_fixture(account: account, group: group, resource: resource, device_trust: :organization)
 
       attested_until = DateTime.add(DateTime.utc_now(), 10, :second)
       socket = join_channel(client, subject, attested?: true, attested_until: attested_until)
