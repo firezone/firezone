@@ -56,6 +56,12 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   @max_ice_candidate_gateways 64
 
+  # Admin-only data, so a receiving client's ingest token does not include it.
+  @admin_only_initiator_claims ~w[initiator_actor_email initiator_auth_provider_id
+                                  initiator_device_serial initiator_device_uuid
+                                  initiator_device_identifier_for_vendor
+                                  initiator_device_firebase_installation_id]
+
   @doc false
   def policy_authorization_queue_opts do
     [
@@ -286,7 +292,6 @@ defmodule PortalAPI.Client.Channel.Shared do
         remote_ice_credentials: request.ice_credentials.initiator,
         ice_role: :controlled,
         resource: Views.Resource.render(request.resource, client, protocol_version(socket)),
-        subject: request.subject,
         flow_logs_ingest_token: request.responder_token,
         use_iceless: use_iceless
       }
@@ -1158,6 +1163,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         secrets =
           connection_secrets(
             socket,
+            :gateway,
             gateway,
             gateway_public_key,
             resource,
@@ -1672,6 +1678,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     secrets =
       connection_secrets(
         socket,
+        :client,
         target_client,
         target_meta.public_key,
         resource,
@@ -1879,6 +1886,7 @@ Relays.render(relays, relay_owner(socket)),
   # Gateways and receiving clients get the same secrets for a connection.
   defp connection_secrets(
          socket,
+         receiver_type,
          receiver,
          receiver_public_key,
          resource,
@@ -1896,7 +1904,7 @@ Relays.render(relays, relay_owner(socket)),
         policy_id,
         flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
         initiator,
-        receiver.id,
+        {receiver_type, receiver.id},
         expires_at
       )
 
@@ -2510,7 +2518,8 @@ Relays.render(relays, relay_owner(socket)),
   # initiator (the client) and one for the responder (the gateway or receiving
   # client). Each token snapshots the attribution the corresponding device must
   # report and is the sole authenticator for its flow-log uploads. Both tokens
-  # name both endpoint devices, so only `role` differs between them.
+  # name both endpoint devices. Only `role` differs between them, except that a
+  # receiving client's token leaves out `@admin_only_initiator_claims`.
   defp mint_ingest_tokens(
          %Authentication.Subject{account: account, actor: actor, credential: credential} = subject,
          {resource_id, resource_name, resource_type, resource_address},
@@ -2518,7 +2527,7 @@ Relays.render(relays, relay_owner(socket)),
          policy_id,
          flow_log_uploads_enabled,
          %Device{type: :client} = initiator_client,
-         responder_device_id,
+         {responder_type, responder_device_id},
          expires_at
        ) do
     {os_name, os_version, client_version} =
@@ -2577,8 +2586,14 @@ Relays.render(relays, relay_owner(socket)),
     initiator_token =
       FlowLogToken.mint(account, Map.put(attribution, "role", "initiator"), expires_at)
 
+    responder_attribution =
+      case responder_type do
+        :gateway -> attribution
+        :client -> Map.drop(attribution, @admin_only_initiator_claims)
+      end
+
     responder_token =
-      FlowLogToken.mint(account, Map.put(attribution, "role", "responder"), expires_at)
+      FlowLogToken.mint(account, Map.put(responder_attribution, "role", "responder"), expires_at)
 
     {initiator_token, responder_token}
   end
