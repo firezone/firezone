@@ -99,6 +99,16 @@ defmodule PortalAPI.Integrations.YC.WebhookControllerTest do
       assert job.args["request"]["text_body"] =~ "Hi Alice,"
       assert job.args["request"]["text_body"] =~ @code
       assert job.args["request"]["text_body"] =~ "expires on December 13, 2026"
+      assert job.args["request"]["text_body"] =~ "Settings → Account → Manage billing, pick Team or Business"
+
+      assert job.args["request"]["text_body"] =~
+               "Request a demo at https://www.firezone.dev/contact/sales and mention you're YC."
+
+      assert job.args["request"]["text_body"] =~ "https://meetings.hubspot.com/jamil-bou-kheir"
+      assert job.args["request"]["text_body"] =~ "Settings → Account → Request swag"
+
+      assert job.args["request"]["html_body"] =~
+               ~s(<a href="https://meetings.hubspot.com/jamil-bou-kheir">)
 
       refute_enqueued(worker: MirrorYCDealRedemption)
     end
