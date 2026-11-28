@@ -141,6 +141,45 @@ defmodule PortalAPI.Sockets do
           "registered under the same MDM device ID. Please contact your administrator."
       )
 
+  def handle_error(conn, :device_certificate_invalid),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        403,
+        :device_certificate_invalid,
+        "The device certificate is not from the current device CA of this account, or it " <>
+          "expired. Get a new certificate and connect again."
+      )
+
+  def handle_error(conn, :device_certificate_required),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        403,
+        :device_certificate_required,
+        "This device has a device key. Connect with its certificate."
+      )
+
+  def handle_error(conn, :device_key_conflict),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        409,
+        :device_key_conflict,
+        "This device key or token belongs to a different device. Please contact your " <>
+          "administrator to reset the identity of the device."
+      )
+
+  def handle_error(conn, :device_key_in_use),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        409,
+        :device_key_in_use,
+        "Another connection uses this device key. If this machine is a copy of another " <>
+          "machine, clear its state directory."
+      )
+
   def handle_error(conn, :invalid_proto_range),
     do:
       ProblemDetails.send_with_code(

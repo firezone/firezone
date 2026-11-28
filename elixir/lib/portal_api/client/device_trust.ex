@@ -34,12 +34,10 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   alias Portal.Authentication.{Credential, Subject}
   alias Portal.Crypto.X509
+  alias PortalAPI.Sockets.DeviceIdentity
   alias __MODULE__.Database
   require Logger
 
-  # Mirrors the trust anchor upload bound and caps synthetic peer data before
-  # certificate decoding.
-  @max_cert_bytes 16_384
   @max_chain_depth 4
   # Matches the varchar(255) device columns: the bulk session flush bypasses
   # changeset validation, so an oversized value would abort the whole batch.
@@ -172,8 +170,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   @spec prepare_authentication(map()) ::
           {:ok, prepared_authentication()} | {:error, reason()}
   def prepare_authentication(connect_info) do
-    with :ok <- validate_attestation_host(connect_info),
-         {:ok, der} <- presented_certificate(connect_info),
+    with {:ok, der} <- DeviceIdentity.presented_certificate(connect_info),
          {:ok, leaf} <- decode_leaf(der),
          {:ok, account_id, identity} <- extract_authentication_identity(leaf) do
       {:ok, %{der: der, leaf: leaf, account_id: account_id, identity: identity}}
@@ -278,8 +275,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   @spec attest(map(), Portal.Authentication.Subject.t()) ::
           {:ok, verified()} | {:error, reason()}
   def attest(connect_info, subject) do
-    with :ok <- validate_attestation_host(connect_info),
-         {:ok, der} <- presented_certificate(connect_info),
+    with {:ok, der} <- DeviceIdentity.presented_certificate(connect_info),
          {:ok, anchors} <- fetch_anchors(subject),
          {:ok, leaf} <- decode_leaf(der),
          {:ok, anchor_ids} <- validate_leaf(leaf, der, anchors) do
@@ -332,15 +328,6 @@ defmodule PortalAPI.Client.DeviceTrust do
   ##### Certificate verification #####
   ####################################
 
-  # Checked before anything touches the database: a connect on the plain API
-  # origin never pays for the anchor lookup.
-  defp validate_attestation_host(connect_info) do
-    case attestation_origin() do
-      nil -> {:error, :not_attestation_host}
-      origin -> validate_origin(connect_info, origin)
-    end
-  end
-
   defp fetch_anchors(subject) do
     case Database.fetch_anchors(subject) do
       [] -> {:error, :no_trust_anchors}
@@ -367,38 +354,6 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   defp ensure_x509_authentication_enabled(%Portal.X509.AuthProvider{is_disabled: false} = provider),
     do: {:ok, provider}
-
-  defp presented_certificate(%{peer_data: %{ssl_cert: der}})
-       when is_binary(der) and byte_size(der) > 0 and byte_size(der) <= @max_cert_bytes,
-       do: {:ok, der}
-
-  defp presented_certificate(%{peer_data: %{ssl_cert: der}}) when is_binary(der),
-    do: {:error, :invalid_certificate}
-
-  defp presented_certificate(_connect_info), do: {:error, :no_certificate_presented}
-
-  defp attestation_origin do
-    with url when is_binary(url) <- Portal.Config.get_env(:portal, :mtls_external_url),
-         %URI{host: host, port: port} when is_binary(host) and is_integer(port) <- URI.parse(url) do
-      {String.downcase(host), port}
-    else
-      _unconfigured -> nil
-    end
-  end
-
-  defp validate_origin(
-         %{uri: %URI{host: host, port: port}},
-         {attestation_host, attestation_port}
-       )
-       when is_binary(host) and is_integer(port) do
-    if {String.downcase(host), port} == {attestation_host, attestation_port} do
-      :ok
-    else
-      {:error, :not_attestation_host}
-    end
-  end
-
-  defp validate_origin(_connect_info, _attestation_origin), do: {:error, :not_attestation_host}
 
   defp decode_leaf(der) do
     case X509.decode_der_certificate(der, :otp) do

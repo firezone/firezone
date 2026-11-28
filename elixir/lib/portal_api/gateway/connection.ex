@@ -6,6 +6,7 @@ defmodule PortalAPI.Gateway.Connection do
   """
   alias Portal.Authentication
   alias Portal.{Device, PG, Version}
+  alias PortalAPI.Sockets.DeviceIdentity
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -43,7 +44,8 @@ defmodule PortalAPI.Gateway.Connection do
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, subject} <- Authentication.build_subject(gateway_token, context),
          {:ok, public_key} <- validate_public_key(attrs),
-         {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs, subject),
+         {:ok, identity} <- device_identity(connect_info, subject, attrs),
+         {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs, identity, subject),
          :ok <- ensure_gateway_not_connected(gateway),
          {:ok, gateway} <- put_reported_metadata(gateway, attrs, subject),
          {:ok, gateway} <- maybe_put_firezone_id(gateway, site, attrs, subject) do
@@ -93,34 +95,57 @@ defmodule PortalAPI.Gateway.Connection do
     end
   end
 
+  # On the mTLS host a Gateway connects only with a certificate from its account's device CA.
+  defp device_identity(connect_info, subject, attrs) do
+    case DeviceIdentity.verify(connect_info, subject.account.id, attrs) do
+      {:error, :not_device_ca_certificate} -> {:error, :device_untrusted}
+      result -> result
+    end
+  end
+
   # First-wins: a gateway that appears connected must disconnect before a
   # replacement is allowed. Cross-node registration races are resolved by the
   # channel's connection-claim protocol after join.
   defp ensure_gateway_not_connected(gateway) do
-    case PG.members(gateway.id) do
-      [] -> :ok
-      _pids -> {:error, :conflict}
+    case {PG.members(gateway.id), gateway.key_hash} do
+      {[], _key_hash} -> :ok
+      {_pids, nil} -> {:error, :conflict}
+      {_pids, _key_hash} -> {:error, :device_key_in_use}
     end
   end
 
   # Multi-owner (site) token: gateways are identified by their reported
-  # firezone_id and created on the fly
-  defp resolve_gateway(%Portal.DeviceToken{device_id: nil} = gateway_token, attrs, subject) do
+  # firezone_id and created on the fly, or by their key when they have one.
+  # A key never moves a gateway to another site.
+  defp resolve_gateway(%Portal.DeviceToken{device_id: nil} = gateway_token, attrs, identity, subject) do
     with {:ok, site} <- Database.fetch_site(gateway_token.site_id, subject),
          changeset = insert_changeset(site, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, gateway} <- Database.find_or_create_gateway(site, changeset, subject) do
+         {:ok, gateway} <- find_or_create_gateway(site, changeset, identity, subject) do
       {:ok, site, gateway}
     end
   end
 
   # Single-owner token: the token identifies the gateway directly; the
-  # reported firezone_id is kept in sync as a telemetry hint
-  defp resolve_gateway(%Portal.DeviceToken{} = gateway_token, _attrs, subject) do
-    with {:ok, gateway} <- Database.fetch_gateway(gateway_token.device_id, subject) do
+  # reported firezone_id is kept in sync as a telemetry hint. Once the gateway
+  # has a key, it connects only with that key.
+  defp resolve_gateway(%Portal.DeviceToken{} = gateway_token, _attrs, identity, subject) do
+    with {:ok, gateway} <- Database.fetch_gateway(gateway_token.device_id, subject),
+         {:ok, gateway} <- bind_key(gateway, identity, subject) do
       {:ok, gateway.site_device.site, gateway}
     end
   end
+
+  defp find_or_create_gateway(site, changeset, nil, subject),
+    do: Database.find_or_create_gateway(site, changeset, subject)
+
+  defp find_or_create_gateway(site, changeset, identity, subject),
+    do: Database.find_or_create_keyed_gateway(site, changeset, identity, subject)
+
+  defp bind_key(%Device{key_hash: nil} = gateway, nil, _subject), do: {:ok, gateway}
+  defp bind_key(%Device{}, nil, _subject), do: {:error, :device_certificate_required}
+  defp bind_key(%Device{key_hash: key_hash} = gateway, %{key_hash: key_hash}, _subject), do: {:ok, gateway}
+  defp bind_key(%Device{} = gateway, identity, subject), do: Database.bind_key(gateway, identity, subject)
 
   # Hardware metadata is self-reported on every connection. Only fields present
   # in the socket params are cast, so an older gateway that omits a field keeps
@@ -141,6 +166,11 @@ defmodule PortalAPI.Gateway.Connection do
   # Identity comes from the token, so the stored firezone_id is only a
   # telemetry hint: keep it in sync with whatever the gateway currently
   # reports (a rebuilt host generates a fresh one)
+  # A gateway with a key keeps the firezone_id it had when it got the key, as a label.
+  defp maybe_put_firezone_id(%Device{key_hash: key_hash} = gateway, _site, _attrs, _subject)
+       when not is_nil(key_hash),
+       do: {:ok, gateway}
+
   defp maybe_put_firezone_id(
          %Device{firezone_id: reported} = gateway,
          _site,
@@ -353,6 +383,7 @@ defmodule PortalAPI.Gateway.Connection do
         where: sd.site_id != ^site.id,
         where: d.firezone_id == ^firezone_id,
         where: d.type == :gateway,
+        where: is_nil(d.key_hash),
         order_by: [desc_nulls_last: d.last_seen_at, asc: d.id],
         limit: 1
       )
@@ -394,6 +425,7 @@ defmodule PortalAPI.Gateway.Connection do
         where: sd.site_id == ^site.id,
         where: d.firezone_id == ^firezone_id,
         where: d.type == :gateway,
+        where: is_nil(d.key_hash),
         order_by: [asc: d.inserted_at, asc: d.id],
         limit: 1
       )
@@ -405,10 +437,152 @@ defmodule PortalAPI.Gateway.Connection do
       from(d in Device,
         where: d.account_id == ^site.account_id,
         where: d.firezone_id == ^firezone_id,
-        where: d.type == :gateway
+        where: d.type == :gateway,
+        where: is_nil(d.key_hash)
       )
       |> Safe.scoped(subject)
       |> Safe.exists?()
+    end
+
+    # A gateway with a key is found by its key, and only in the token's site. A new key claims
+    # the site's gateway with the reported firezone_id and no key, else the site's offline
+    # ephemeral gateway with that firezone_id when the gateway is ephemeral too, else a new
+    # gateway. A copy of the gateway that connected at the same time may insert first.
+    def find_or_create_keyed_gateway(site, changeset, identity, subject) do
+      firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
+
+      with nil <- find_by_key_hash(identity.key_hash, subject),
+           nil <- claim_gateway(site, firezone_id, identity, subject),
+           nil <- take_over_ephemeral_gateway(site, firezone_id, identity, subject) do
+        insert_keyed_gateway(site, changeset, identity, subject)
+      else
+        %Device{type: :gateway} = gateway -> in_site(gateway, site)
+        %Device{} -> {:error, :device_key_conflict}
+        {:error, _reason} = error -> error
+      end
+    end
+
+    # The token names the gateway, so a new key binds to it, or takes over its ephemeral key.
+    def bind_key(gateway, identity, subject) do
+      cond do
+        not is_nil(find_by_key_hash(identity.key_hash, subject)) ->
+          {:error, :device_key_conflict}
+
+        is_nil(gateway.key_hash) ->
+          gateway |> unkeyed() |> set_key(identity, []) |> bound(gateway)
+
+        gateway.ephemeral and identity.ephemeral ->
+          take_over(gateway, identity) |> bound(gateway)
+
+        true ->
+          {:error, :device_key_conflict}
+      end
+    end
+
+    defp insert_keyed_gateway(site, changeset, identity, subject) do
+      result =
+        changeset
+        |> Ecto.Changeset.put_change(:key_hash, identity.key_hash)
+        |> Ecto.Changeset.put_change(:ephemeral, identity.ephemeral)
+        |> insert_gateway(subject)
+
+      if key_hash_taken?(result),
+        do: find_or_create_keyed_gateway(site, changeset, identity, subject),
+        else: result
+    end
+
+    defp key_hash_taken?({:error, %Ecto.Changeset{errors: errors}}), do: Keyword.has_key?(errors, :key_hash)
+    defp key_hash_taken?(_result), do: false
+
+    defp bound(nil, _gateway), do: {:error, :device_key_conflict}
+    defp bound({:error, _reason} = error, _gateway), do: error
+    defp bound(%Device{} = updated, gateway), do: {:ok, %{updated | site_device: gateway.site_device}}
+
+    defp find_by_key_hash(key_hash, subject) do
+      from(d in Device, where: d.key_hash == ^key_hash)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    defp in_site(gateway, site) do
+      case Safe.preload(gateway, :site_device) do
+        %Device{site_device: %SiteDevice{site_id: site_id}} = gateway when site_id == site.id ->
+          {:ok, gateway}
+
+        %Device{} ->
+          {:error, :device_key_conflict}
+      end
+    end
+
+    # The gateway that the firezone_id finds without a key.
+    defp claim_gateway(_site, nil, _identity, _subject), do: nil
+
+    defp claim_gateway(site, firezone_id, identity, subject) do
+      case find_gateway(site, firezone_id, subject) do
+        %Device{} = gateway -> gateway |> unkeyed() |> set_key(identity, [])
+        other -> other
+      end
+    end
+
+    defp unkeyed(gateway) do
+      from(d in Device,
+        where: d.account_id == ^gateway.account_id,
+        where: d.id == ^gateway.id,
+        where: is_nil(d.key_hash)
+      )
+    end
+
+    defp take_over_ephemeral_gateway(_site, _firezone_id, %{ephemeral: false}, _subject), do: nil
+    defp take_over_ephemeral_gateway(_site, nil, _identity, _subject), do: nil
+
+    defp take_over_ephemeral_gateway(site, firezone_id, identity, subject) do
+      case from(d in site_gateways(site, firezone_id),
+             where: d.ephemeral and not is_nil(d.key_hash),
+             limit: 1
+           )
+           |> Safe.scoped(subject)
+           |> Safe.one() do
+        %Device{} = gateway -> take_over(gateway, identity)
+        other -> other
+      end
+    end
+
+    # Only when the gateway is offline: a live connection is another ephemeral gateway.
+    # The new key is a new machine, so the admin's verification goes.
+    defp take_over(gateway, identity) do
+      if Portal.PG.members(gateway.id) == [] do
+        from(d in Device,
+          where: d.account_id == ^gateway.account_id,
+          where: d.id == ^gateway.id,
+          where: d.key_hash == ^gateway.key_hash
+        )
+        |> set_key(identity, verified_at: nil)
+      else
+        {:error, :device_key_in_use}
+      end
+    end
+
+    defp site_gateways(site, firezone_id) do
+      from(d in Device,
+        join: sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        where: d.account_id == ^site.account_id,
+        where: sd.site_id == ^site.id,
+        where: d.firezone_id == ^firezone_id,
+        where: d.type == :gateway
+      )
+    end
+
+    # A racing connect that claimed the row first leaves it unchanged here.
+    defp set_key(query, identity, extra) do
+      updates = [key_hash: identity.key_hash, ephemeral: identity.ephemeral] ++ extra
+
+      case from(d in query, select: d, update: [set: ^updates])
+           |> Safe.unscoped()
+           |> Safe.update_all([]) do
+        {1, [gateway]} -> gateway
+        {0, []} -> nil
+      end
     end
 
     @dialyzer {:no_opaque, [insert_gateway: 2]}

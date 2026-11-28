@@ -5,6 +5,7 @@ defmodule PortalAPI.Client.Socket do
   alias Portal.Repo.Batch
   alias PortalAPI.Client.DeviceTrust
   alias PortalAPI.Sockets
+  alias PortalAPI.Sockets.DeviceIdentity
   alias Portal.Types.LogId
   alias __MODULE__.Database
   require Logger
@@ -124,8 +125,10 @@ defmodule PortalAPI.Client.Socket do
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, proof} <- attest_device(proof, connect_info, subject),
-         {:ok, client, attested?} <- Database.resolve_client(changeset, proof, subject),
+         {:ok, identity} <- device_identity(connect_info, subject, attrs),
+         {:ok, proof} <- attest_device(proof, identity, connect_info, subject),
+         {:ok, client, attested?} <- resolve_client(changeset, proof, identity, subject),
+         :ok <- ensure_key_not_in_use(client),
          :ok <- check_connected_devices(subject, client) do
       version = derive_version(subject.context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
@@ -162,6 +165,11 @@ defmodule PortalAPI.Client.Socket do
         OpenTelemetry.Tracer.set_status(:error, "device_identity_conflict")
         {:error, :device_identity_conflict}
 
+      {:error, reason}
+      when reason in [:device_certificate_invalid, :device_key_conflict, :device_key_in_use] ->
+        OpenTelemetry.Tracer.set_status(:error, Atom.to_string(reason))
+        {:error, reason}
+
       {:error, :certificate_revoked} ->
         OpenTelemetry.Tracer.set_status(:error, "certificate_revoked")
         {:error, :certificate_revoked}
@@ -171,6 +179,33 @@ defmodule PortalAPI.Client.Socket do
         OpenTelemetry.Tracer.set_status(:error, inspect(changeset))
         Logger.debug("Error connecting client websocket: #{inspect(changeset)}")
         {:error, changeset}
+    end
+  end
+
+  # A certificate from the account's device CA finds the row by its key. Any other certificate
+  # is for device trust.
+  defp device_identity(nil, _subject, _attrs), do: {:ok, nil}
+
+  defp device_identity(connect_info, subject, attrs) do
+    case DeviceIdentity.verify(connect_info, subject.account.id, attrs) do
+      {:error, :not_device_ca_certificate} -> {:ok, nil}
+      result -> result
+    end
+  end
+
+  defp resolve_client(changeset, proof, nil, subject),
+    do: Database.resolve_client(changeset, proof, subject)
+
+  defp resolve_client(changeset, nil, identity, subject),
+    do: Database.resolve_keyed_client(changeset, identity, subject)
+
+  # The first connection of a device with a key stays. Without a key the newest one wins.
+  defp ensure_key_not_in_use(%Device{key_hash: nil}), do: :ok
+
+  defp ensure_key_not_in_use(%Device{} = client) do
+    case PG.members(client.id) do
+      [] -> :ok
+      _pids -> {:error, :device_key_in_use}
     end
   end
 
@@ -204,9 +239,10 @@ defmodule PortalAPI.Client.Socket do
   # silently downgrading to an unattested session. A connect on any other host
   # is unattested and carries on; whether that device may reach a given
   # resource is a policy question, not a socket one.
-  defp attest_device(%{} = proof, _connect_info, _subject), do: {:ok, proof}
+  defp attest_device(%{} = proof, _identity, _connect_info, _subject), do: {:ok, proof}
+  defp attest_device(nil, %{} = _identity, _connect_info, _subject), do: {:ok, nil}
 
-  defp attest_device(nil, connect_info, subject) do
+  defp attest_device(nil, nil, connect_info, subject) do
     case DeviceTrust.attest(connect_info, subject) do
       {:ok, proof} ->
         {:ok, proof}
@@ -610,6 +646,118 @@ defmodule PortalAPI.Client.Socket do
     defp contradicts?(_row_value, nil, :mdm_device_id), do: false
     defp contradicts?(row_value, cert_value, :mdm_device_id), do: row_value != cert_value
 
+    # A device with a key is found by its key. A new key claims the actor's row with the
+    # reported firezone_id and no key, else an offline ephemeral row of the actor with that
+    # firezone_id when the device is ephemeral too, else a new row. The claim keeps the row's
+    # verification. A takeover replaces the key, so it clears it.
+    def resolve_keyed_client(changeset, identity, subject) do
+      firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
+
+      with nil <- find_by_key_hash(identity.key_hash, subject),
+           nil <- claim_client(firezone_id, identity, subject),
+           nil <- take_over_ephemeral_client(firezone_id, identity, subject) do
+        insert_keyed(changeset, identity, subject)
+      else
+        %Device{type: :client} = client -> {:ok, merge_hardware_ids(client, changeset), false}
+        %Device{} -> {:error, :device_key_conflict}
+        {:error, _reason} = error -> error
+      end
+    end
+
+    defp find_by_key_hash(key_hash, subject) do
+      from(d in Device, where: d.key_hash == ^key_hash)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    defp claim_client(firezone_id, identity, subject) do
+      from(d in actor_client(firezone_id, subject),
+        where: is_nil(d.key_hash),
+        select: d,
+        update: [set: [key_hash: ^identity.key_hash, ephemeral: ^identity.ephemeral]]
+      )
+      |> update_one()
+    end
+
+    # Only when the row is offline: a live connection on it is another ephemeral device.
+    defp take_over_ephemeral_client(_firezone_id, %{ephemeral: false}, _subject), do: nil
+
+    defp take_over_ephemeral_client(firezone_id, identity, subject) do
+      case from(d in actor_client(firezone_id, subject),
+             where: d.ephemeral and not is_nil(d.key_hash),
+             limit: 1
+           )
+           |> Safe.scoped(subject)
+           |> Safe.one() do
+        %Device{} = client ->
+          if PG.members(client.id) == [] do
+            from(d in Device,
+              where: d.account_id == ^client.account_id,
+              where: d.id == ^client.id,
+              where: d.key_hash == ^client.key_hash,
+              select: d,
+              update: [set: [key_hash: ^identity.key_hash, verified_at: nil]]
+            )
+            |> update_one()
+          else
+            {:error, :device_key_in_use}
+          end
+
+        other ->
+          other
+      end
+    end
+
+    defp actor_client(nil, _subject), do: from(d in Device, where: false)
+
+    defp actor_client(firezone_id, subject) do
+      from(d in Device,
+        as: :device,
+        where: d.account_id == ^subject.account.id,
+        where: d.type == :client,
+        where: d.firezone_id == ^firezone_id,
+        where:
+          exists(
+            from(da in Portal.DeviceActor,
+              where: da.account_id == parent_as(:device).account_id,
+              where: da.device_id == parent_as(:device).id,
+              where: da.actor_id == ^subject.actor.id
+            )
+          )
+      )
+    end
+
+    # The row stays unchanged when a racing connect claimed it first.
+    defp update_one(query) do
+      case query |> Safe.unscoped() |> Safe.update_all([]) do
+        {1, [client]} -> client
+        {0, []} -> nil
+      end
+    end
+
+    # A copy of the device that connected at the same time inserted the row first.
+    defp insert_keyed(changeset, identity, subject) do
+      with :ok <- Portal.Devices.RegistrationRateLimit.check(subject.account) do
+        changeset
+        |> Ecto.Changeset.put_change(:key_hash, identity.key_hash)
+        |> Ecto.Changeset.put_change(:ephemeral, identity.ephemeral)
+        |> insert_with_slug(subject)
+        |> keyed_insert_result(changeset, identity, subject)
+      end
+    end
+
+    defp keyed_insert_result({:ok, client}, _changeset, _identity, _subject), do: {:ok, client, false}
+
+    defp keyed_insert_result({:error, %Ecto.Changeset{errors: errors}} = error, changeset, identity, subject) do
+      if Keyword.has_key?(errors, :key_hash) do
+        resolve_keyed_client(changeset, identity, subject)
+      else
+        error
+      end
+    end
+
+    defp keyed_insert_result({:error, _reason} = error, _changeset, _identity, _subject), do: error
+
     defp resolve_unattested(changeset, firezone_id, subject) do
       if client = find_by_firezone_id(firezone_id, subject) do
         {:ok, merge_hardware_ids(client, changeset), false}
@@ -710,11 +858,13 @@ defmodule PortalAPI.Client.Socket do
 
     defp find_by_firezone_id(nil, _subject), do: nil
 
-    # A device is the same machine whoever signs in on it.
+    # A device is the same machine whoever signs in on it. A row with a key is found only by
+    # its key.
     defp find_by_firezone_id(firezone_id, subject) do
       from(d in Device,
         where: d.firezone_id == ^firezone_id,
-        where: d.type == :client
+        where: d.type == :client,
+        where: is_nil(d.key_hash)
       )
       |> Safe.scoped(subject)
       |> Safe.one()
