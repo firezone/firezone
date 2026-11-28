@@ -118,6 +118,38 @@ defmodule Portal.DeviceCATest do
     end
   end
 
+  describe "verify_certificate/2" do
+    test "returns the key hash and expiry of a certificate from the account's CA" do
+      account = account_fixture()
+      key = Portal.DeviceCAFixtures.device_key()
+      certificate = Portal.DeviceCAFixtures.device_certificate(account, key)
+      not_after = certificate |> :public_key.pkix_decode_cert(:otp) |> Portal.Crypto.X509.not_after()
+
+      assert DeviceCA.verify_certificate(account.id, certificate) ==
+               {:ok, %{key_hash: key.key_hash, not_after: not_after}}
+    end
+
+    test "tells apart a certificate from another CA" do
+      account = account_fixture()
+      certificate = Portal.DeviceCAFixtures.device_certificate(account_fixture())
+
+      assert {:ok, _ca} = DeviceCA.ensure(account.id)
+      assert DeviceCA.verify_certificate(account.id, certificate) == {:error, :not_device_ca_certificate}
+      assert DeviceCA.verify_certificate(account_fixture().id, certificate) == {:error, :not_device_ca_certificate}
+      assert DeviceCA.verify_certificate(account.id, "not a certificate") == {:error, :not_device_ca_certificate}
+    end
+
+    test "refuses a certificate from an earlier CA of the account" do
+      account = account_fixture()
+      certificate = Portal.DeviceCAFixtures.device_certificate(account)
+
+      Repo.delete_all(from(ca in DeviceCertificateAuthority, where: ca.account_id == ^account.id))
+      assert {:ok, _ca} = DeviceCA.ensure(account.id)
+
+      assert DeviceCA.verify_certificate(account.id, certificate) == {:error, :invalid_device_certificate}
+    end
+  end
+
   describe "Local" do
     test "signs with the key it created" do
       {:ok, %{public_key: public_key} = key} = DeviceCA.Local.create_key(Ecto.UUID.generate())

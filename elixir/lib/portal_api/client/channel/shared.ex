@@ -399,6 +399,22 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
+  # A device with a key has one connection, and the first one stays: a connection that joins
+  # after it, past the check at connect, is told to close.
+  def handle_info({_ref, :join, client_id, pids}, socket)
+      when client_id == socket.assigns.client.id do
+    for pid <- pids, pid != self(), do: send(pid, :duplicate_connection)
+    {:noreply, socket}
+  end
+
+  def handle_info(:duplicate_connection, socket) do
+    Logger.info("Disconnecting duplicate connection of a device with a key",
+      device_id: socket.assigns.client.id
+    )
+
+    Session.close_transport(socket)
+  end
+
   def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
     case Session.monitored(socket, pid) do
       :pg_scope -> register(socket)
@@ -2664,7 +2680,7 @@ Relays.render(relays, relay_owner(socket)),
   defp register(socket) do
     case Session.monitor_pg_scope(socket) do
       {:joined, socket, previous_pid} ->
-        :ok = PG.register(socket.assigns.client.id)
+        :ok = register_device(socket.assigns.client)
         :ok = PG.join(socket.assigns.subject.credential.id)
 
         # The account CDC subscription is already active. Checking current state
@@ -2679,6 +2695,15 @@ Relays.render(relays, relay_owner(socket)),
       result ->
         result
     end
+  end
+
+  # Without a key the newest connection wins.
+  defp register_device(%{key_hash: nil} = client), do: PG.register(client.id)
+
+  defp register_device(client) do
+    :ok = PG.join(client.id)
+    {_ref, _members} = PG.monitor(client.id)
+    :ok
   end
 
   defp x509_session_enabled?(%{
