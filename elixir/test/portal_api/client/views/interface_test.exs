@@ -6,7 +6,7 @@ defmodule PortalAPI.Client.Views.InterfaceTest do
 
   alias PortalAPI.Client.Views.Interface
 
-  describe "render/1" do
+  describe "render/2" do
     test "renders interface config with Do53 resolvers" do
       account =
         account_fixture(
@@ -25,7 +25,7 @@ defmodule PortalAPI.Client.Views.InterfaceTest do
       client = client_fixture(account: account)
       device = fetch_device!(client) |> Repo.preload(:account)
 
-      result = Interface.render(device)
+      result = Interface.render(device, 4)
 
       assert result.search_domain == "example.com"
       assert result.ipv4 == device.ipv4
@@ -61,7 +61,7 @@ defmodule PortalAPI.Client.Views.InterfaceTest do
       client = client_fixture(account: account)
       device = fetch_device!(client) |> Repo.preload(:account)
 
-      result = Interface.render(device)
+      result = Interface.render(device, 4)
 
       assert result.upstream_doh == [
                %{url: "https://doh.opendns.com/dns-query"}
@@ -87,9 +87,26 @@ defmodule PortalAPI.Client.Views.InterfaceTest do
       client = client_fixture(account: account)
       device = fetch_device!(client) |> Repo.preload(:account)
 
-      result = Interface.render(device)
+      result = Interface.render(device, 4)
 
       assert Enum.map(result.upstream_do53, & &1.ip) == addresses
+    end
+
+    test "leaves out upstream_dns on the v5 protocol" do
+      account =
+        account_fixture(
+          config: %{
+            clients_upstream_dns: %{type: :custom, addresses: [%{address: "1.1.1.1"}]}
+          }
+        )
+
+      client = client_fixture(account: account)
+      device = fetch_device!(client) |> Repo.preload(:account)
+
+      result = Interface.render(device, 5)
+
+      assert result.upstream_do53 == [%{ip: "1.1.1.1"}]
+      refute Map.has_key?(result, :upstream_dns)
     end
   end
 end

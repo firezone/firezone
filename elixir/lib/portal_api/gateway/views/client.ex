@@ -1,15 +1,22 @@
 defmodule PortalAPI.Gateway.Views.Client do
   alias Portal.Device
 
-  def render(%Device{} = client, public_key, preshared_key, user_agent) do
-    {os_name, os_version, client_version} = parse_user_agent(user_agent)
-
+  def render(%Device{} = client, public_key, preshared_key) do
     %{
       id: client.id,
       public_key: public_key,
       preshared_key: preshared_key,
       ipv4: client.ipv4,
-      ipv6: client.ipv6,
+      ipv6: client.ipv6
+    }
+  end
+
+  def render(%Device{} = client, public_key, preshared_key, user_agent) do
+    {os_name, os_version, client_version} = parse_user_agent(user_agent)
+
+    client
+    |> render(public_key, preshared_key)
+    |> Map.merge(%{
       version: client_version,
       device_serial: client.device_serial,
       device_os_name: os_name,
@@ -17,7 +24,7 @@ defmodule PortalAPI.Gateway.Views.Client do
       device_uuid: client.device_uuid,
       firebase_installation_id: client.firebase_installation_id,
       identifier_for_vendor: client.identifier_for_vendor
-    }
+    })
   end
 
   # The OS name can have spaces, hence split the user-agent step by step.
