@@ -401,8 +401,6 @@ fn try_main() -> Result<()> {
             url,
             Some(token),
             get_user_agent("headless-client", env!("CARGO_PKG_VERSION")),
-            "client",
-            (),
             move || {
                 ExponentialBackoffBuilder::default()
                     .with_max_elapsed_time(max_partition_time)

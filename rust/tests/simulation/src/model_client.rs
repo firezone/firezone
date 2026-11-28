@@ -182,7 +182,6 @@ impl ModelClient {
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
-            upstream_dns: Vec::new(),
             upstream_do53,
             upstream_doh,
             search_domain,

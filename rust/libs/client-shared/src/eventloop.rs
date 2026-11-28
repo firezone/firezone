@@ -1,4 +1,4 @@
-use crate::{ConnectedAs, PHOENIX_TOPIC, SessionConfig};
+use crate::{ConnectedAs, SessionConfig};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -172,7 +172,7 @@ impl Eventloop {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         config: SessionConfig,
         metrics_exporter: otel_metrics_export::Exporter,
-        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+        portal: PhoenixChannel<EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -862,8 +862,6 @@ impl Eventloop {
                     now,
                 );
             }
-            // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
-            IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
                 ipv4,
                 ipv6,
@@ -1028,7 +1026,7 @@ fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToke
 }
 
 async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    mut portal: PhoenixChannel<EgressMessages, IngressMessages, PublicKeyParam>,
     mut public_key: PublicKeyParam,
     event_tx: mpsc::Sender<Result<PortalEvent, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
@@ -1055,14 +1053,12 @@ async fn phoenix_channel_event_loop(
         // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
         // This allows `Hiccup` events to use the updated `BootstrapDnsClient` to resolve the domain.
         match select(pin!(cmd_rx.recv()), poll_fn(|cx| portal.poll(cx))).await {
-            Either::Left((Some(PortalCommand::Send(msg)), _)) => {
-                match portal.send(PHOENIX_TOPIC, msg) {
-                    Ok(()) => {}
-                    Err(phoenix_channel::NotConnected(msg)) => {
-                        tracing::debug!(?msg, "Failed to send message to portal: Not connected")
-                    }
+            Either::Left((Some(PortalCommand::Send(msg)), _)) => match portal.send(msg) {
+                Ok(()) => {}
+                Err(phoenix_channel::NotConnected(msg)) => {
+                    tracing::debug!(?msg, "Failed to send message to portal: Not connected")
                 }
-            }
+            },
             Either::Left((Some(PortalCommand::Connect(new_public_key)), _)) => {
                 public_key = new_public_key; // Important! Update the current public key so we can reuse on connection hiccups!
 
@@ -1114,7 +1110,6 @@ async fn phoenix_channel_event_loop(
             }
             Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {
                 if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
-                    PHOENIX_TOPIC,
                     EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
                 ) {
                     tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");

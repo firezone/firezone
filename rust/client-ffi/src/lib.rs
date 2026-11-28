@@ -681,8 +681,6 @@ fn connect(
         url,
         Some(token),
         get_user_agent(platform::COMPONENT, platform::VERSION),
-        "client",
-        (),
         || {
             ExponentialBackoffBuilder::default()
                 .with_max_elapsed_time(Some(platform::MAX_PARTITION_TIME))

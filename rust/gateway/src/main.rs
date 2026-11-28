@@ -3,7 +3,7 @@
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
+use crate::eventloop::Eventloop;
 use anyhow::{Context, ErrorExt, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
@@ -268,8 +268,6 @@ async fn try_main(cli: Cli) -> Result<()> {
         login,
         token,
         get_user_agent("gateway", env!("CARGO_PKG_VERSION")),
-        PHOENIX_TOPIC,
-        (),
         move || {
             ExponentialBackoffBuilder::default()
                 .with_max_interval(Duration::from_secs(60))

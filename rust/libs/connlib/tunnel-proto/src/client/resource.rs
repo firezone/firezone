@@ -312,7 +312,7 @@ mod tests {
             "address": "example.com",
             "id": "03000143-e25e-45c7-aafb-144990e57dce",
             "name": "example.com",
-            "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
             "type": "dns",
             "ip_stack": "ipv4_only"
         })))
@@ -331,7 +331,7 @@ mod tests {
             "address": "example.com",
             "id": "03000143-e25e-45c7-aafb-144990e57dce",
             "name": "example.com",
-            "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
             "type": "dns",
             "ip_stack": "ipv6_only"
         })))
@@ -350,7 +350,7 @@ mod tests {
             "address": "example.com",
             "id": "03000143-e25e-45c7-aafb-144990e57dce",
             "name": "example.com",
-            "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
             "type": "dns",
             "ip_stack": "dual"
         })))
@@ -369,7 +369,7 @@ mod tests {
             "address": "example.com",
             "id": "03000143-e25e-45c7-aafb-144990e57dce",
             "name": "example.com",
-            "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
             "type": "dns"
         })))
         .unwrap();
@@ -387,7 +387,7 @@ mod tests {
             "address": "example.com",
             "id": "03000143-e25e-45c7-aafb-144990e57dce",
             "name": "example.com",
-            "gateway_groups": [{"name": "foo", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "sites": [{"name": "foo", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
             "type": "dns"
         })))
         .unwrap();
@@ -395,7 +395,7 @@ mod tests {
             "address": "example.com",
             "id": "03000143-e25e-45c7-aafb-144990e57dce",
             "name": "example.com",
-            "gateway_groups": [{"name": "bar", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "sites": [{"name": "bar", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
             "type": "dns"
         })))
         .unwrap();

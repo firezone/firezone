@@ -19,64 +19,87 @@ use tokio::task::JoinError;
 use tokio_tungstenite::tungstenite::{Message, http};
 
 #[tokio::test]
-async fn client_does_not_pipeline_messages() {
+async fn sends_messages_without_joining() {
     let _guard = logging::test("debug,wire::api=trace");
 
-    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-
-    let server = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-
-        loop {
-            match ws.next().await {
-                Some(Ok(Message::Text(text))) => match text.as_str() {
-                    JOIN_REQUEST => {
-                        // The real Elixir backend processes messages in parallel and therefore may drop messages if we pipeline them instead of waiting for the channel join.
-                        // This is difficult to assert in a test because we need to mimic this behaviour of not processing messages sequentially.
-                        // The way we assert this is by checking, whether any messages are pipelined.
-                        // Reading another message from the stream should timeout at this point because we haven't acknowledged the room join yet.
-                        if let Ok(msg) =
-                            tokio::time::timeout(Duration::from_millis(100), ws.next()).await
-                        {
-                            panic!("Did not yet expect another msg: {msg:?}")
-                        }
-
-                        ws.send(Message::text(JOIN_REPLY)).await.unwrap();
-                    }
-                    BAR_REQUEST => {
-                        ws.send(Message::text(FOO_MESSAGE)).await.unwrap();
-                    }
-                    other => panic!("Unexpected message: {other}"),
-                },
-                Some(Ok(Message::Close(_))) => continue,
-                Some(other) => panic!("Unexpected message: {other:?}"),
-                None => break,
-            }
-        }
-    });
-
+    let (server, port) = spawn_echo_server().await;
     let mut channel = make_test_channel("localhost", port, default_backoff);
 
     let client = async move {
         connect(&mut channel, Duration::ZERO);
         poll_until_connected(&mut channel).await;
 
-        channel.send("test", OutboundMsg::Bar).unwrap();
+        // The first frame the server sees is the message itself.
+        channel.send(OutboundMsg::Bar).unwrap();
         next_message(&mut channel).await;
 
         channel.close().unwrap();
         poll_until_closed(&mut channel).await;
     };
 
-    let (join_res, _) = tokio::time::timeout(
-        Duration::from_secs(2),
-        futures::future::join(server, client),
-    )
-    .await
-    .unwrap();
-    join_res.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), client)
+        .await
+        .unwrap();
+    server.wait().await;
+}
+
+#[tokio::test]
+#[expect(
+    clippy::result_large_err,
+    reason = "The header callback of `accept_hdr_async` returns tungstenite's response type"
+)]
+async fn sends_secret_headers_with_the_upgrade_request() {
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut stamp_secret = None;
+
+        let _ws =
+            tokio_tungstenite::accept_hdr_async(stream, |request: &http::Request<()>, response| {
+                stamp_secret = request
+                    .headers()
+                    .get("X-Stamp-Secret")
+                    .map(|value| value.to_str().unwrap().to_owned());
+
+                Ok(response)
+            })
+            .await
+            .unwrap();
+
+        stamp_secret
+    });
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff)
+        .with_header("X-Stamp-Secret", SecretString::from("secret"));
+    connect(&mut channel, Duration::ZERO);
+    poll_until_connected(&mut channel).await;
+
+    assert_eq!(server.await.unwrap().as_deref(), Some("secret"));
+}
+
+#[tokio::test]
+async fn token_expired_disconnect_requires_sign_in() {
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let (server, port) = spawn_websocket_server(|text| match text {
+        BAR_REQUEST => r#"{"event":"disconnect","payload":{"reason":"token_expired"}}"#,
+        other => panic!("Unexpected message: {other}"),
+    })
+    .await;
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    connect(&mut channel, Duration::ZERO);
+    poll_until_connected(&mut channel).await;
+    channel.send(OutboundMsg::Bar).unwrap();
+
+    let error = future::poll_fn(|cx| channel.poll(cx)).await.unwrap_err();
+
+    assert!(error.requires_sign_in(), "got {error:?}");
+    server.abort();
 }
 
 #[tokio::test]
@@ -93,7 +116,7 @@ async fn client_deduplicates_messages() {
         poll_until_connected(&mut channel).await;
 
         for _ in 0..4 {
-            channel.send("test", OutboundMsg::Bar).unwrap();
+            channel.send(OutboundMsg::Bar).unwrap();
         }
 
         loop {
@@ -116,18 +139,29 @@ async fn client_deduplicates_messages() {
 async fn client_clears_local_message_on_connect() {
     let _guard = logging::test("debug,wire::api=trace");
 
-    let (server, port) = spawn_echo_server().await;
+    let num_bars = Arc::new(AtomicUsize::default());
+    let (server, port) = spawn_websocket_server({
+        let num_bars = num_bars.clone();
+
+        move |text| match text {
+            BAR_REQUEST => {
+                num_bars.fetch_add(1, Ordering::SeqCst);
+                FOO_MESSAGE
+            }
+            other => panic!("Unexpected message: {other}"),
+        }
+    })
+    .await;
     let mut channel = make_test_channel("localhost", port, default_backoff);
 
     let client = async {
-        // A message sent while disconnected must not be buffered: the echo server only
-        // answers the `bar` with `ref: 1` and thus fails if this one is sent on connect.
-        channel.send("test", OutboundMsg::Bar).unwrap_err();
+        // A message sent while disconnected must not be buffered and sent on connect.
+        channel.send(OutboundMsg::Bar).unwrap_err();
 
         connect(&mut channel, Duration::ZERO);
         poll_until_connected(&mut channel).await;
 
-        channel.send("test", OutboundMsg::Bar).unwrap();
+        channel.send(OutboundMsg::Bar).unwrap();
         next_message(&mut channel).await;
 
         channel.close().unwrap();
@@ -136,6 +170,8 @@ async fn client_clears_local_message_on_connect() {
 
     client.await;
     server.wait().await;
+
+    assert_eq!(num_bars.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -152,14 +188,13 @@ async fn ignores_unknown_messages() {
         loop {
             match ws.next().await {
                 Some(Ok(Message::Text(text))) => match text.as_str() {
-                    JOIN_REQUEST => ws.send(Message::text(JOIN_REPLY)).await.unwrap(),
                     BAR_REQUEST => {
                         ws.send(Message::text(UNKNOWN_MESSAGE)).await.unwrap();
                         ws.send(Message::text(FOO_MESSAGE)).await.unwrap();
                     }
                     other => panic!("Unexpected message: {other}"),
                 },
-                Some(Ok(Message::Close(_))) => continue,
+                Some(Ok(Message::Close(_) | Message::Ping(_))) => continue,
                 Some(other) => panic!("Unexpected message: {other:?}"),
                 None => break,
             }
@@ -172,7 +207,7 @@ async fn ignores_unknown_messages() {
         connect(&mut channel, Duration::ZERO);
         poll_until_connected(&mut channel).await;
 
-        channel.send("test", OutboundMsg::Bar).unwrap();
+        channel.send(OutboundMsg::Bar).unwrap();
         let msg = next_message(&mut channel).await;
         assert!(matches!(msg, InboundMsg::Foo));
 
@@ -193,7 +228,7 @@ async fn ignores_unknown_messages() {
 async fn replies_with_close_frame_upon_close() {
     let _guard = logging::test("debug,wire::api=trace");
 
-    let (server, port) = spawn_joining_server().await;
+    let (server, port) = spawn_idle_server().await;
     let mut channel = make_test_channel("localhost", port, default_backoff);
 
     let (mut connected_tx, mut connected_rx) = futures::channel::mpsc::channel(1);
@@ -220,17 +255,19 @@ async fn replies_with_close_frame_upon_close() {
 }
 
 #[tokio::test]
-async fn times_out_after_missed_heartbeats() {
+async fn times_out_after_unanswered_pings() {
     let _guard = logging::test("debug,wire::api=trace");
 
-    let (server, port) = spawn_websocket_server(|text| match text {
-        JOIN_REQUEST => JOIN_REPLY,
-        // The channel gives up once more than three heartbeats are unanswered, so it never sends a fifth.
-        // Each reply carries a `ref` the channel never sent to ensure the implementation matches replies up correctly.
-        text if (1..=4).any(|reference| text == heartbeat_request(reference)) => UNMATCHED_REPLY,
-        other => panic!("Unexpected message: {other}"),
-    })
-    .await;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    // A server that never reads, so it never answers the pings.
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let _ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+
+        future::pending::<()>().await;
+    });
 
     let mut channel = make_test_channel("localhost", port, default_backoff);
 
@@ -240,43 +277,43 @@ async fn times_out_after_missed_heartbeats() {
 
     server.abort();
 
-    assert_eq!(
-        error,
-        "Connection hiccup: too many heartbeats were unanswered"
-    );
+    assert_eq!(error, "Connection hiccup: too many pings were unanswered");
 }
 
 #[tokio::test]
-async fn sends_heartbeats_regardless_of_messages() {
+async fn keeps_pinging_while_the_portal_answers() {
     let _guard = logging::test("debug,wire::api=trace");
 
-    let num_heartbeats = Arc::new(AtomicUsize::default());
+    let num_pings = Arc::new(AtomicUsize::default());
 
-    let (server, port) = spawn_websocket_server({
-        let num_heartbeats = num_heartbeats.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
 
-        move |text| {
-            let msg = serde_json::from_str::<'_, serde_json::Value>(text).unwrap();
-            let reference = &msg["ref"];
-            let topic = msg["topic"].as_str().unwrap();
+    let server = tokio::spawn({
+        let num_pings = num_pings.clone();
 
-            match msg["event"].as_str().unwrap() {
-                "phx_join" => {
-                    format!(r#"{{"event":"phx_reply","ref":{reference},"topic":"{topic}","payload":{{"status":"ok","response":{{}}}}}}"#)
+        async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+
+            // Reading answers each ping with a pong.
+            while let Some(Ok(message)) = ws.next().await {
+                match message {
+                    Message::Ping(_) => {
+                        num_pings.fetch_add(1, Ordering::SeqCst);
+                    }
+                    Message::Text(text) if text.as_str() == BAR_REQUEST => {
+                        ws.send(Message::text(FOO_MESSAGE)).await.unwrap();
+                    }
+                    other @ (Message::Text(_)
+                    | Message::Binary(_)
+                    | Message::Pong(_)
+                    | Message::Close(_)
+                    | Message::Frame(_)) => panic!("Unexpected message: {other:?}"),
                 }
-                "heartbeat" => {
-                    num_heartbeats.fetch_add(1, Ordering::SeqCst);
-
-                    format!(r#"{{"event":"phx_reply","ref":{reference},"topic":"phoenix","payload":{{"status":"ok","response":{{}}}}}}"#)
-                }
-                "bar" => {
-                    format!(r#"{{"event":"foo","ref":{reference},"topic":"{topic}","payload":null}}"#)
-                }
-                other => panic!("Unknown event: {other}")
             }
         }
-    })
-    .await;
+    });
 
     let mut channel = make_test_channel("localhost", port, default_backoff);
 
@@ -298,7 +335,7 @@ async fn sends_heartbeats_regardless_of_messages() {
             };
 
             let Some(event) = event else {
-                let _ = channel.send("test", OutboundMsg::Bar);
+                let _ = channel.send(OutboundMsg::Bar);
                 continue;
             };
 
@@ -311,9 +348,10 @@ async fn sends_heartbeats_regardless_of_messages() {
         }
     });
 
-    tokio::time::sleep(Duration::from_secs(25)).await;
+    // More pings than `MAX_UNANSWERED_PINGS`: the pongs keep the connection up.
+    tokio::time::sleep(Duration::from_secs(45)).await;
 
-    assert_eq!(num_heartbeats.load(Ordering::SeqCst), 2);
+    assert_eq!(num_pings.load(Ordering::SeqCst), 4);
 
     client.abort();
     server.abort();
@@ -323,7 +361,7 @@ async fn sends_heartbeats_regardless_of_messages() {
 async fn includes_ip_from_hostname() {
     let _guard = logging::test("debug,wire::api=trace");
 
-    let (server, port) = spawn_joining_server().await;
+    let (server, port) = spawn_idle_server().await;
     let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
 
     // Without any IPs, the channel has to resolve them from the URL's host itself.
@@ -371,7 +409,7 @@ async fn initial_connection_uses_constant_1s_backoff() {
 async fn connect_with_zero_backoff_resets_reconnect_backoff() {
     let _guard = logging::test("debug");
 
-    let (server, port) = spawn_joining_server().await;
+    let (server, port) = spawn_idle_server().await;
     let mut channel = make_test_channel("127.0.0.1", port, fast_backoff);
 
     tokio::time::timeout(Duration::from_secs(10), async {
@@ -582,7 +620,7 @@ fn expect_error(event: Result<Event<InboundMsg>, Error>) -> Error {
     }
 }
 
-type TestChannel = PhoenixChannel<(), OutboundMsg, InboundMsg, PublicKeyParam>;
+type TestChannel = PhoenixChannel<OutboundMsg, InboundMsg, PublicKeyParam>;
 
 fn make_test_channel(
     host: &str,
@@ -602,8 +640,6 @@ fn make_test_channel(
         url,
         SecretString::from("test_token"),
         "test-user-agent".to_string(),
-        "test",
-        (),
         make_reconnect_backoff,
         Arc::new(socket_factory::tcp),
     )
@@ -639,37 +675,19 @@ enum OutboundMsg {
     Bar,
 }
 
-const JOIN_REQUEST: &str = r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"#;
-const JOIN_REPLY: &str =
-    r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#;
-const BAR_REQUEST: &str = r#"{"topic":"test","event":"bar","ref":1}"#;
-const FOO_MESSAGE: &str = r#"{"topic":"test","event":"foo","payload":null}"#;
+const BAR_REQUEST: &str = r#"{"event":"bar"}"#;
+const FOO_MESSAGE: &str = r#"{"event":"foo","payload":null}"#;
 /// A message with an event the channel does not know.
-const UNKNOWN_MESSAGE: &str = r#"{"topic":"test","event":"unknown_event","payload":{"foo":"bar"}}"#;
-/// A reply carrying a reference the channel never sent.
-const UNMATCHED_REPLY: &str =
-    r#"{"event":"phx_reply","ref":9999,"topic":"phoenix","payload":{"status":"ok","response":{}}}"#;
+const UNKNOWN_MESSAGE: &str = r#"{"event":"unknown_event","payload":{"foo":"bar"}}"#;
 
-/// Formats the heartbeat a channel sends with the given reference.
-fn heartbeat_request(reference: u32) -> String {
-    format!(r#"{{"topic":"phoenix","event":"heartbeat","payload":{{}},"ref":{reference}}}"#)
+/// Spawns a WebSocket server that accepts the connection and expects no messages.
+async fn spawn_idle_server() -> (ServerHandle, u16) {
+    spawn_websocket_server(|text| -> &'static str { panic!("Unexpected message: {text}") }).await
 }
 
-/// Spawns a WebSocket server that only acknowledges the channel join.
-async fn spawn_joining_server() -> (ServerHandle, u16) {
-    spawn_websocket_server(|text| match text {
-        JOIN_REQUEST => JOIN_REPLY,
-        other => panic!("Unexpected message: {other}"),
-    })
-    .await
-}
-
-/// Spawns a WebSocket server that answers a single [`OutboundMsg::Bar`] with [`InboundMsg::Foo`].
-///
-/// Only the `bar` with `ref: 1` is answered, so any additional or earlier one fails the server.
+/// Spawns a WebSocket server that answers each [`OutboundMsg::Bar`] with [`InboundMsg::Foo`].
 async fn spawn_echo_server() -> (ServerHandle, u16) {
     spawn_websocket_server(|text| match text {
-        JOIN_REQUEST => JOIN_REPLY,
         BAR_REQUEST => FOO_MESSAGE,
         other => panic!("Unexpected message: {other}"),
     })
@@ -697,7 +715,7 @@ where
                     let response = handler(text.as_str());
                     ws.send(Message::text(response)).await.unwrap();
                 }
-                Either::Left((Some(Ok(Message::Close(_))), _)) => continue,
+                Either::Left((Some(Ok(Message::Close(_) | Message::Ping(_))), _)) => continue,
                 Either::Left((Some(other), _)) => panic!("Unexpected message: {other:?}"),
                 Either::Left((None, _)) => break,
                 Either::Right((Err(_), _)) => continue,

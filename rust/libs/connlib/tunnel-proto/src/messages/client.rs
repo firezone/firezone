@@ -29,7 +29,6 @@ pub struct ResourceDescriptionDns {
     pub name: String,
 
     pub address_description: Option<String>,
-    #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
 
     /// The IP stack supported by this resource.
@@ -55,7 +54,6 @@ pub struct ResourceDescriptionCidr {
     pub name: String,
 
     pub address_description: Option<String>,
-    #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
 
     #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
@@ -92,7 +90,6 @@ pub struct ResourceDescriptionInternet {
     /// Resource's id.
     pub id: ResourceId,
     /// Sites for the internet resource
-    #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
 }
 
@@ -110,13 +107,10 @@ pub enum ResourceDescription {
 #[derive(Debug, Deserialize)]
 pub struct InitClient {
     pub interface: Interface,
-    #[serde(default)]
     pub resources: Vec<ResourceDescription>,
-    #[serde(default)]
     pub relays: Vec<Relay>,
     /// Currently-valid inbound client-to-client authorizations, used to
     /// resync on (re)connect.
-    #[serde(default)]
     pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
     pub account_slug: String,
@@ -135,12 +129,11 @@ pub struct AuthorizationCreated {
     pub gateway_public_key: Key,
     pub gateway_ipv4: Ipv4Addr,
     pub gateway_ipv6: Ipv6Addr,
-    #[serde(rename = "gateway_group_id", alias = "site_id")]
     pub site_id: SiteId,
     pub preshared_key: SecretKey,
     pub client_ice_credentials: IceCredentials,
     pub gateway_ice_credentials: IceCredentials,
-    #[serde(default, rename = "use_iceless")]
+    #[serde(rename = "use_iceless")]
     pub use_frostlink: bool,
 
     /// The initiator-side ingest token for this flow's logs.
@@ -172,7 +165,7 @@ pub struct ClientDeviceAccessAuthorized {
     pub local_ice_credentials: IceCredentials,
     pub remote_ice_credentials: IceCredentials,
     pub ice_role: IceRole,
-    #[serde(default, rename = "use_iceless")]
+    #[serde(rename = "use_iceless")]
     pub use_frostlink: bool,
 
     /// The pool the portal picked for the flow we asked about. `None` on the
@@ -257,16 +250,6 @@ pub struct PublicKeyChanged {
 pub enum Peer {
     Client { client_id: ClientId },
     Gateway { gateway_id: GatewayId },
-}
-
-/// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
-#[serde_as]
-#[derive(Debug, Deserialize, Clone)]
-pub struct ClientAccessAuthorizationExpiryUpdated {
-    pub client_id: ClientId,
-    pub resource_id: ResourceId,
-    #[serde_as(as = "DurationSeconds<u64>")]
-    pub expires_at: Duration,
 }
 
 /// Portal's denial of a device access request.
@@ -360,11 +343,7 @@ pub enum IngressMessages {
     ResourceCreatedOrUpdated(ResourceDescription),
     ResourceDeleted(ResourceId),
 
-    // Backwards compatibility prior to client <> client feature.
-    #[serde(alias = "ice_candidates")]
     GatewayIceCandidates(GatewayIceCandidates),
-    // Backwards compatibility prior to client <> client feature.
-    #[serde(alias = "invalidate_ice_candidates")]
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
 
     ClientIceCandidates(ClientIceCandidates),
@@ -396,9 +375,6 @@ pub enum IngressMessages {
     PublicKeyChanged(PublicKeyChanged),
 
     MetricsConfig(MetricsConfig),
-
-    /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
-    AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
 }
 
 #[serde_with::serde_as]
@@ -467,6 +443,9 @@ mod tests {
     fn can_deserialize_init_with_flow_logs_config() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "resources": [],
+            "relays": [],
+            "authorizations": [],
             "account_slug": "acme",
             "actor_name": "Jane Doe",
             "flow_logs": {
@@ -486,7 +465,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_metrics_config_message_without_endpoint_and_token() {
-        let json = r#"{"event":"metrics_config","ref":null,"topic":"client","payload":{"endpoint":null,"token":null,"export_interval_secs":60,"patterns":[]}}"#;
+        let json = r#"{"event":"metrics_config","payload":{"endpoint":null,"token":null,"export_interval_secs":60,"patterns":[]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -502,6 +481,9 @@ mod tests {
     fn can_deserialize_init_with_account_slug() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "resources": [],
+            "relays": [],
+            "authorizations": [],
             "account_slug": "acme",
             "actor_name": "Jane Doe",
             "flow_logs": {
@@ -520,6 +502,9 @@ mod tests {
     fn init_without_account_slug_is_rejected() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "resources": [],
+            "relays": [],
+            "authorizations": [],
             "actor_name": "Jane Doe",
             "flow_logs": {
                 "api_url": "https://flow-api.firezone.dev",
@@ -535,6 +520,9 @@ mod tests {
     fn can_deserialize_init_with_actor_name() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "resources": [],
+            "relays": [],
+            "authorizations": [],
             "account_slug": "acme",
             "actor_name": "Jane Doe",
             "flow_logs": {
@@ -553,6 +541,9 @@ mod tests {
     fn init_without_actor_name_is_rejected() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "resources": [],
+            "relays": [],
+            "authorizations": [],
             "account_slug": "acme",
             "flow_logs": {
                 "api_url": "https://flow-api.firezone.dev",
@@ -568,6 +559,9 @@ mod tests {
     fn init_without_flow_logs_config_is_rejected() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "resources": [],
+            "relays": [],
+            "authorizations": [],
             "account_slug": "acme",
             "actor_name": "Jane Doe"
         }"#;
@@ -584,7 +578,7 @@ mod tests {
                 "name": "172.172.0.0/16",
                 "address": "172.172.0.0/16",
                 "address_description": "cidr resource",
-                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
             },
             {
                 "id": "03000143-e25e-45c7-aafb-144990e57dcd",
@@ -598,7 +592,7 @@ mod tests {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
                 "type": "internet",
                 "name": "Internet Resource",
-                "gateway_groups": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+                "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
                 "not": "relevant",
                 "some_other": [
                     "field"
@@ -618,7 +612,7 @@ mod tests {
                 "name": "172.172.0.0/16",
                 "address": "172.172.0.0/16",
                 "address_description": "cidr resource",
-                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
             },
             {
                 "id": "03000143-e25e-45c7-aafb-144990e57dcd",
@@ -632,7 +626,7 @@ mod tests {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
                 "type": "internet",
                 "name": "Internet Resource",
-                "gateway_groups": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+                "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
                 "not": "relevant",
                 "some_other": [
                     "field"
@@ -647,8 +641,8 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_ice_candidates_message() {
-        let json = r#"{"topic":"client","event":"ice_candidates","payload":{"gateway_id":"b3d34a15-55ab-40df-994b-a838e75d65d7","candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]},"ref":6}"#;
+    fn can_deserialize_gateway_ice_candidates_message() {
+        let json = r#"{"event":"gateway_ice_candidates","payload":{"gateway_id":"b3d34a15-55ab-40df-994b-a838e75d65d7","candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -656,8 +650,8 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_invalidate_ice_candidates_message() {
-        let json = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"client","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"gateway_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
+    fn can_deserialize_invalidate_gateway_ice_candidates_message() {
+        let json = r#"{"event":"invalidate_gateway_ice_candidates","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"gateway_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -671,7 +665,7 @@ mod tests {
     fn can_deserialize_authorization_created() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = format!(
-            r#"{{"event":"authorization_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","flow_logs_ingest_token":"{token}"}}}}"#
+            r#"{{"event":"authorization_created","payload":{{"site_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":false,"flow_logs_ingest_token":"{token}"}}}}"#
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
@@ -679,7 +673,6 @@ mod tests {
         let IngressMessages::AuthorizationCreated(flow) = message else {
             panic!("expected AuthorizationCreated");
         };
-        // Old portals don't send the flag; default is `false`.
         assert!(!flow.use_frostlink);
     }
 
@@ -687,7 +680,7 @@ mod tests {
     fn authorization_created_picks_up_use_frostlink() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = format!(
-            r#"{{"event":"authorization_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":true,"flow_logs_ingest_token":"{token}"}}}}"#
+            r#"{{"event":"authorization_created","payload":{{"site_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":true,"flow_logs_ingest_token":"{token}"}}}}"#
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
@@ -700,7 +693,7 @@ mod tests {
 
     #[test]
     fn authorization_created_requires_ingest_token() {
-        let json = r#"{"event":"authorization_created","ref":null,"topic":"client","payload":{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd"}}"#;
+        let json = r#"{"event":"authorization_created","payload":{"site_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":false}}"#;
 
         serde_json::from_str::<IngressMessages>(json).unwrap_err();
     }
@@ -709,7 +702,7 @@ mod tests {
     fn authorization_created_carries_ingest_token() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = format!(
-            r#"{{"event":"authorization_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","flow_logs_ingest_token":"{token}"}}}}"#
+            r#"{{"event":"authorization_created","payload":{{"site_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":false,"flow_logs_ingest_token":"{token}"}}}}"#
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
@@ -724,7 +717,7 @@ mod tests {
     fn client_device_access_authorized_carries_ingest_token() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = format!(
-            r#"{{"event":"client_device_access_authorized","ref":null,"topic":"client","payload":{{"client_id":"d263d490-a0bb-452a-8990-01d27a1f1144","client_name":"Test Device","client_slug":"test-device","client_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","client_ipv4":"100.72.145.83","client_ipv6":"fd00:2021:1111::5:bcfd","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","local_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"remote_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"ice_role":"controlled","resource":{{"id":"733e8d14-c18d-4931-af30-3639fa09c0c0","filters":[]}},"expires_at":1729813989,"flow_logs_ingest_token":"{token}"}}}}"#
+            r#"{{"event":"client_device_access_authorized","payload":{{"client_id":"d263d490-a0bb-452a-8990-01d27a1f1144","client_name":"Test Device","client_slug":"test-device","client_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","client_ipv4":"100.72.145.83","client_ipv6":"fd00:2021:1111::5:bcfd","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","local_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"remote_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"ice_role":"controlled","use_iceless":false,"resource":{{"id":"733e8d14-c18d-4931-af30-3639fa09c0c0","filters":[]}},"expires_at":1729813989,"flow_logs_ingest_token":"{token}"}}}}"#
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
@@ -749,17 +742,10 @@ mod tests {
         let json = r#"
         {
             "event": "config_changed",
-            "ref": null,
-            "topic": "client",
             "payload": {
               "interface": {
                 "ipv6": "fd00:2021:1111::e:65ea",
-                "upstream_dns": [
-                  {
-                    "protocol": "ip_port",
-                    "address": "1.1.1.1:53"
-                  }
-                ],
+                "upstream_do53": [{ "ip": "1.1.1.1" }],
                 "ipv4": "100.67.138.25"
               }
             }
@@ -778,18 +764,19 @@ mod tests {
             "payload": {
                 "interface": {
                     "ipv4": "100.72.112.111",
-                    "ipv6": "fd00:2021:1111::13:efb9",
-                    "upstream_dns": []
+                    "ipv6": "fd00:2021:1111::13:efb9"
                 },
                 "account_slug": "acme",
                 "actor_name": "Jane Doe",
+                "relays": [],
+                "authorizations": [],
                 "resources": [
                     {
                         "address": "172.172.0.0/16",
                         "id": "73037362-715d-4a83-a749-f18eadd970e6",
                         "name": "172.172.0.0/16",
                         "address_description": "cidr resource",
-                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "cidr"
                     },
                     {
@@ -807,14 +794,14 @@ mod tests {
                         "ipv6": "fd00:2021:1111::e:7758",
                         "name": "gitlab.mycorp.com",
                         "address_description": "dns resource",
-                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "dns"
                     },
                     {
                         "address": "github.mycorp.com",
                         "id": "03000143-e25e-45c7-aafb-144990e57dce",
                         "name": "github.mycorp.com",
-                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "dns"
                     }
                 ],
@@ -823,9 +810,7 @@ mod tests {
                     "upload_interval_secs": 60,
                     "upload_batch_size": 1000
                 }
-            },
-            "ref": null,
-            "topic": "client"
+            }
         }"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
@@ -840,11 +825,12 @@ mod tests {
             "payload": {
                 "interface": {
                     "ipv4": "100.72.112.111",
-                    "ipv6": "fd00:2021:1111::13:efb9",
-                    "upstream_dns": []
+                    "ipv6": "fd00:2021:1111::13:efb9"
                 },
                 "account_slug": "acme",
                 "actor_name": "Jane Doe",
+                "relays": [],
+                "authorizations": [],
                 "resources": [
                     {
                         "address_foobar": "172.172.0.0/16",
@@ -863,7 +849,7 @@ mod tests {
                         "address": "github.mycorp.com",
                         "id": "03000143-e25e-45c7-aafb-144990e57dce",
                         "name": "github.mycorp.com",
-                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "dns"
                     }
                 ],
@@ -872,9 +858,7 @@ mod tests {
                     "upload_interval_secs": 60,
                     "upload_batch_size": 1000
                 }
-            },
-            "ref": null,
-            "topic": "client"
+            }
         }"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
@@ -887,8 +871,6 @@ mod tests {
         let json = r#"
             {
                 "event": "relays_presence",
-                "ref": null,
-                "topic": "client",
                 "payload": {
                     "disconnected_ids": [
                         "e95f9517-2152-4677-a16a-fbb2687050a3",
@@ -915,7 +897,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_unknown_authorization_creation_failed_err() {
-        let json = r#"{"event":"authorization_creation_failed","ref":null,"topic":"client","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","reason":"foobar"}}"#;
+        let json = r#"{"event":"authorization_creation_failed","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","reason":"foobar"}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -930,7 +912,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_known_authorization_creation_failed_err() {
-        let json = r#"{"event":"authorization_creation_failed","ref":null,"topic":"client","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","reason":"offline"}}"#;
+        let json = r#"{"event":"authorization_creation_failed","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","reason":"offline"}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
