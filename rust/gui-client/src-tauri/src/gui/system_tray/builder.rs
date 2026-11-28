@@ -4,6 +4,8 @@ use connlib_model::{ResourceId, ResourceView};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::view::description_link;
+
 pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 pub const COPY_ADDRESS: &str = "Copy address";
 
@@ -58,8 +60,6 @@ pub enum Icon {
 /// Events that the menu can send to the app
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Event {
-    /// Marks this Resource as favorite
-    AddFavorite(ResourceId),
     /// Opens the admin portal in the default web browser
     AdminPortal,
     /// Cancels any ongoing sign-in flow
@@ -72,7 +72,7 @@ pub enum Event {
     SignIn,
     /// Signs the user out, without quitting the app
     SignOut,
-    /// Opens the About or Settings window
+    /// Opens the window on the given page
     ShowWindow(Window),
     /// Opens an arbitrary URL in the default web browser
     ///
@@ -90,6 +90,7 @@ pub enum Event {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Window {
     About,
+    Resources,
     Settings,
 }
 
@@ -102,11 +103,9 @@ fn resource_header(res: &ResourceView) -> Item {
         return copyable(&res.pastable());
     }
 
-    match Url::parse(address_description) {
-        Ok(url) if matches!(url.scheme(), "http" | "https") => {
-            item(Event::Url(url), format!("<{address_description}>"))
-        }
-        Ok(_) | Err(_) => copyable(address_description),
+    match description_link(address_description) {
+        Some(url) => item(Event::Url(url), format!("<{address_description}>")),
+        None => copyable(address_description),
     }
 }
 

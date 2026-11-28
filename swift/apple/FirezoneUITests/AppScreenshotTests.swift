@@ -39,6 +39,21 @@
       "x509-expired",
     ]
 
+    /// What the Resources window says under each connection status.
+    private static let connectedNote = "You're connected to a healthy Gateway in this Site."
+    private static let offlineNote = "No healthy Gateways are online in this Site."
+    private static let noActivityNote =
+      "No connection has been attempted yet. Access the Resource to connect."
+
+    /// The Resources the window is photographed showing, in the order they are selected,
+    /// each with a label the screen before it does not carry.
+    private static let resourceScreens = [
+      (resource: "GitLab", name: "dns", showing: connectedNote),
+      (resource: "Lab test bench", name: "offline", showing: offlineNote),
+      (resource: "Internet Resource", name: "internet", showing: noActivityNote),
+      (resource: "Lab hardware", name: "device-pool", showing: "Client ID"),
+    ]
+
     private var brightness: [String: Double] = [:]
 
     /// What each capture came out as, so a test can tell two of its own screens apart.
@@ -176,13 +191,42 @@
       }
     }
 
-    /// The menu bar menu with a resource hovered, so its submenu is open beside it.
-    func testMenuWithResource() throws {
-      try captureMenu(hovering: "Engineering wiki", showing: "Copy address", as: "menu")
+    /// The Resources window: nothing selected, a Resource of each kind, then a search.
+    func testResources() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(
+          scenario: "connected-favorites", appearance: appearance, window: "resources")
+        defer { app.terminate() }
+
+        let window = try onlyWindow(of: app)
+        XCTAssertTrue(
+          window.staticTexts["No Resource Selected"].firstMatch.waitForExistence(timeout: 30))
+        capture(window, as: "resources", in: appearance)
+
+        for screen in Self.resourceScreens {
+          try selectResource(screen.resource, showing: screen.showing, in: window)
+          capture(window, as: "resources-\(screen.name)", in: appearance)
+        }
+
+        let search = window.searchFields.firstMatch
+        search.click()
+        search.typeText("prod")
+        XCTAssertTrue(
+          window.staticTexts["Lab test bench"].firstMatch.waitForNonExistence(timeout: 10))
+
+        // Selecting a result also takes the blinking insertion point out of the field.
+        try selectResource("Production VPC", showing: Self.connectedNote, in: window)
+        capture(window, as: "resources-search", in: appearance)
+      }
     }
 
-    /// The menu bar menu with a device pool hovered, so its connected devices are
-    /// listed beside it.
+    /// The menu bar menu with a favorite hovered, so its submenu is open beside it.
+    func testMenuWithResource() throws {
+      try captureMenu(hovering: "GitLab", showing: "Copy address", as: "menu")
+    }
+
+    /// The menu bar menu with a favorite device pool hovered, so its connected devices
+    /// are listed beside it.
     func testMenuWithDevicePool() throws {
       try captureMenu(
         hovering: "Lab hardware", showing: "bench-controller-01", as: "menu-device-pool")
@@ -202,10 +246,11 @@
       )
 
       for appearance in Appearance.allCases {
-        let app = launchApp(scenario: "connected", appearance: appearance, window: "none")
+        let app = launchApp(
+          scenario: "connected-favorites", appearance: appearance, window: "none")
         defer { app.terminate() }
 
-        let menu = try openMenu(of: app)
+        let menu = try openMenu(of: app, listing: title)
         // The row and the submenu it opens share the title.
         let row = menu.menuItems[title].firstMatch
         let menuFrame = menu.frame
@@ -268,9 +313,10 @@
     /// Clicks the status item and hands back its open menu.
     ///
     /// The rows reach the accessibility tree before the menu is ever shown, so the
-    /// store's resources are waited for first: a title set on a menu that is
-    /// already showing is drawn a shade differently from one drawn as it opens.
-    private func openMenu(of app: XCUIApplication) throws -> XCUIElement {
+    /// store's resources are waited for first, by the row titled `title`: a title set
+    /// on a menu that is already showing is drawn a shade differently from one drawn
+    /// as it opens.
+    private func openMenu(of app: XCUIApplication, listing title: String) throws -> XCUIElement {
       let item = app.statusItems.firstMatch
 
       guard item.waitForExistence(timeout: 30) else {
@@ -279,7 +325,7 @@
         throw AppScreenshotError.statusItemNotFound
       }
 
-      let row = app.menuItems["Office network"]
+      let row = app.menuItems[title].firstMatch
 
       guard row.waitForExistence(timeout: 30) else {
         print("The menu never listed the resources; the app presents:\n\(app.debugDescription)")
@@ -425,6 +471,29 @@
       throw AppScreenshotError.windowDidNotAppear
     }
 
+    /// Selects the Resource named `name` in the sidebar and waits for `anchor`, which its
+    /// details carry and the screen before them does not.
+    private func selectResource(
+      _ name: String, showing anchor: String, in window: XCUIElement
+    ) throws {
+      // Until a Resource is selected, only its sidebar row carries its name.
+      let row = window.staticTexts[name].firstMatch
+
+      guard row.waitForExistence(timeout: 10) else {
+        throw AppScreenshotError.resourceNotFound(name)
+      }
+
+      row.click()
+
+      let details = window.descendants(matching: .any)[anchor].firstMatch
+
+      guard details.waitForExistence(timeout: 10) else {
+        print("\(name) did not open; the window presents:\n\(window.debugDescription)")
+
+        throw AppScreenshotError.resourceDidNotOpen(name)
+      }
+    }
+
     /// Opens the tab named `label` and waits for `anchor`, which only its own
     /// content carries.
     ///
@@ -469,5 +538,7 @@
     case menuDidNotStayOpen
     case tabNotFound(String)
     case tabDidNotOpen(String)
+    case resourceNotFound(String)
+    case resourceDidNotOpen(String)
   }
 #endif

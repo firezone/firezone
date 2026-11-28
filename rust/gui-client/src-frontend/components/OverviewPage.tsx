@@ -79,7 +79,7 @@ function SignedIn({ actorName, accountSlug, signOut }: SignedInProps) {
         &nbsp;as&nbsp;
         <span className="font-bold text-heading">{actorName}</span>
         .<br />
-        Click the Firezone icon in the taskbar to see the list of Resources.
+        Open the Resources tab to see what you have access to.
       </p>
       <Button onClick={signOut} variant="primary">
         Sign out

@@ -215,14 +215,16 @@ Refs:
 - [ ] Given the client is running, when you right-click the tray icon, then a menu opens
 - [ ] Given the client is signed out, when you click "Sign In", then the auth URL opens in the default web browser
 - [ ] Given the client is running, when you authenticate in the browser, then the browser deep-links back and the GUI (including the tray menu) switches to the signed-in state, without any elevation / UAC prompt
-- [ ] Given the client is signed in, when you open the tray menu, then the resources are listed
+- [ ] Given the client is signed in, when you open the tray menu, then the Internet Resource and your favorite resources are listed
+- [ ] Given the client is signed in, when you click "Resources" in the tray menu, then the window opens on the Resources tab, which lists all resources
+- [ ] Given the client is signed in, when you click the star of a resource in the Resources tab, then the resource is added to the tray menu
 - [ ] Given the client is signed in, when you click a resource's CIDR or DNS name, then it is copied to the clipboard
 - [ ] Given the client is signed in, when you click "Sign out", then the GUI returns to the signed-out state, the token is deleted from the keyring, and the GUI keeps running
 - [ ] Given the client is signed in, when you click "Disconnect and quit Firezone", then the GUI stops and the token stays in the keyring
 - [ ] Given the client was signed in when it stopped, when you start it again, then the GUI returns to the signed-in state and shows the actor name
 - [ ] Given the client is signed out, when you sign in, sign out, then sign in again, then the second sign-in works
 
-The signed-in tray menu also offers favoriting resources and an "Admin Portal..." item (which can be hidden by MDM policy).
+The signed-in tray menu also offers removing a resource from the favorites and an "Admin Portal..." item (which can be hidden by MDM policy).
 
 ## Settings
 

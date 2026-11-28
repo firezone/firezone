@@ -129,80 +129,38 @@
     }
   }
 
-  /// Main resources section showing favorites and other resources
+  /// The Internet Resource and the favorites, then the item that opens the Resources window,
+  /// which leads the items below it.
   struct ResourcesSection: View {
     @EnvironmentObject var store: Store
-
-    /// Partitioned resources for display.
-    /// If no resources are favorited, all resources show directly in the menu.
-    /// Otherwise, favorites show directly and others go in the "Other Resources" submenu.
-    private var partitionedResources:
-      (
-        internetResource: Resource?,
-        directlyShown: [Resource],
-        others: [Resource]
-      )
-    {
-      let allResources = store.resourceList.asArray()
-
-      // Check if user has favorited anything (excluding internet resource)
-      let hasAnyFavorites = allResources.contains {
-        !$0.isInternetResource() && store.favorites.contains($0.id)
-      }
-
-      return allResources.reduce(
-        into: (internetResource: nil, directlyShown: [], others: [])
-      ) { result, resource in
-        if resource.isInternetResource() {
-          result.internetResource = resource
-        } else if !hasAnyFavorites {
-          // No favorites: show all resources directly
-          result.directlyShown.append(resource)
-        } else if store.favorites.contains(resource.id) {
-          // Has favorites: show only favorites directly
-          result.directlyShown.append(resource)
-        } else {
-          // Has favorites: non-favorites go to submenu
-          result.others.append(resource)
-        }
-      }
-    }
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-      let resources = partitionedResources
+      let sections = ResourceSections(store.resourceList.asArray(), favorites: store.favorites)
 
       Group {
-        // Header text
-        Text(resourcesHeaderText)
-          .foregroundStyle(.secondary)
+        if !sections.favorites.isEmpty {
+          Text("Favorite Resources")
+            .foregroundStyle(.secondary)
+        }
 
-        // Internet resource (always first if present)
-        if let internet = resources.internetResource {
+        if let internet = sections.internet {
           ResourceMenuItem(resource: internet)
         }
 
-        // Directly shown resources (favorites, or all if no favorites)
-        ForEach(resources.directlyShown) { resource in
+        ForEach(sections.favorites) { resource in
           ResourceMenuItem(resource: resource)
         }
 
-        // Other Resources submenu (only when favorites exist and there are non-favorites)
-        if !resources.others.isEmpty {
-          Menu("Other Resources") {
-            ForEach(resources.others) { resource in
-              ResourceMenuItem(resource: resource)
-            }
-          }
+        if sections.internet != nil || !sections.favorites.isEmpty {
+          Divider()
         }
-      }
-    }
 
-    var resourcesHeaderText: String {
-      switch store.resourceList {
-      case .loading:
-        return "Loading Resources..."
-      case .loaded(let list):
-        return list.isEmpty ? "No Resources" : "Resources"
+        Button("Resources") {
+          openWindow(id: ResourcesView.windowID)
+          // A menu bar app is not active while its menu is used.
+          NSApp.activate(ignoringOtherApps: true)
+        }
       }
     }
   }

@@ -114,6 +114,30 @@ public enum ResourceStatus: String, Codable, Sendable {
   }
 
   #if os(macOS)
+    /// How the Resources window names this status.
+    var label: String {
+      switch self {
+      case .offline:
+        return "Offline"
+      case .online:
+        return "Connected"
+      case .unknown:
+        return "No activity"
+      }
+    }
+
+    /// What the status means for reaching the Resource.
+    var explanation: String {
+      switch self {
+      case .offline:
+        return "No healthy Gateways are online in this Site."
+      case .online:
+        return "You're connected to a healthy Gateway in this Site."
+      case .unknown:
+        return "No connection has been attempted yet. Access the Resource to connect."
+      }
+    }
+
     /// Returns the system status icon for this resource status
     public var statusIcon: NSImage? {
       switch self {
