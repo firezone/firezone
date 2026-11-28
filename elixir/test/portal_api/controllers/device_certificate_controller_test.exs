@@ -66,14 +66,18 @@ defmodule PortalAPI.DeviceCertificateControllerTest do
     end
 
     test "limits certificates per account", %{conn: conn, account: account} do
-      Portal.Config.merge_env_override(PortalAPI.DeviceCertificateController, account_capacity: 1)
+      Portal.Config.merge_env_override(PortalAPI.DeviceCertificateController,
+        account_capacity: 1,
+        account_refill_rate: 1
+      )
+
       {point, private_key} = device_key()
+      csr = csr(point, private_key)
+      first_token = encode_token(client_token_fixture(account: account))
+      second_token = encode_token(client_token_fixture(account: account))
 
-      assert conn |> request(encode_token(client_token_fixture(account: account)), csr(point, private_key)) |> json_response(200)
-
-      assert conn
-             |> request(encode_token(client_token_fixture(account: account)), csr(point, private_key))
-             |> json_response(429)
+      assert conn |> request(first_token, csr) |> json_response(200)
+      assert conn |> request(second_token, csr) |> json_response(429)
     end
 
     test "asks the device to wait when the vault is busy", %{conn: conn, account: account} do
