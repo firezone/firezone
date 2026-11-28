@@ -1,5 +1,6 @@
 defmodule Portal.DeviceCATest do
   use Portal.DataCase, async: true
+  import Ecto.Query
   import Portal.AccountFixtures
 
   alias Portal.{DeviceCA, DeviceCertificateAuthority}
@@ -22,6 +23,34 @@ defmodule Portal.DeviceCATest do
       assert Portal.Crypto.X509.ca_certificate?(certificate)
       assert Portal.Crypto.X509.key_cert_sign_allowed?(certificate)
       assert Portal.Crypto.X509.subject_common_name(certificate) == "Firezone device CA " <> account.id
+    end
+
+    test "shows the CA as the account's system trust anchor" do
+      account = account_fixture()
+      {:ok, ca} = DeviceCA.ensure(account.id)
+
+      trust_anchor = Repo.get_by!(Portal.TrustAnchor, account_id: account.id) |> Repo.preload(:certificates)
+      assert trust_anchor.system
+      assert trust_anchor.name == "Firezone device CA"
+      assert [%{system: true, fingerprint: fingerprint}] = trust_anchor.certificates
+      assert fingerprint == Base.encode16(:crypto.hash(:sha256, ca.certificate), case: :lower)
+    end
+
+    test "adds the system trust anchor to a CA made before it" do
+      account = account_fixture()
+      {:ok, ca} = DeviceCA.ensure(account.id)
+      Repo.delete_all(from(t in Portal.TrustAnchor, where: t.account_id == ^account.id))
+
+      assert DeviceCA.ensure(account.id) == {:ok, ca}
+      assert Repo.get_by!(Portal.TrustAnchor, account_id: account.id, system: true)
+    end
+
+    test "keeps the system trust anchor out of the organization's PKI" do
+      account = account_fixture()
+      {:ok, _ca} = DeviceCA.ensure(account.id)
+
+      assert PortalAPI.Client.DeviceTrust.Database.fetch_anchors(account.id) == []
+      refute Portal.Policy.Database.trust_anchors?(account.id)
     end
 
     test "returns the existing CA" do

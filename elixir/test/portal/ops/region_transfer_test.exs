@@ -49,6 +49,11 @@ defmodule Portal.Ops.RegionTransferTest do
           assert Enum.any?(manifest["tables"], &(&1["name"] == "devices" and &1["rows"] == 2))
           assert manifest["slugs"] == [account.slug]
 
+          # The device CA and its system trust anchor stay behind: the destination makes its own.
+          for table <- ~w(trust_anchors trust_anchor_certificates) do
+            assert %{"rows" => 0} = Enum.find(manifest["tables"], &(&1["name"] == table))
+          end
+
           refute Enum.any?(
                    manifest["tables"],
                    &(&1["name"] in ~w(device_certificate_authorities device_tokens log_sink_cursors pending_identities portal_sessions api_request_logs))

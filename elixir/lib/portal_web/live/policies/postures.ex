@@ -337,7 +337,7 @@ defmodule PortalWeb.Policies.Postures do
     end
 
     def trust_anchors?(account_id) do
-      from(t in Portal.TrustAnchorCertificate, where: t.account_id == ^account_id)
+      from(t in Portal.TrustAnchorCertificate, where: t.account_id == ^account_id and not t.system)
       |> Safe.unscoped()
       |> Safe.exists?()
     end

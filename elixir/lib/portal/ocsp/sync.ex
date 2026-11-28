@@ -300,6 +300,7 @@ defmodule Portal.Ocsp.Sync do
     def issuer_certificate(endpoint) do
       from(c in Portal.TrustAnchorCertificate,
         where: c.account_id == ^endpoint.account_id,
+        where: not c.system,
         select: c.pem
       )
       |> Safe.unscoped()

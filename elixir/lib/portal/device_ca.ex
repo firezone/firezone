@@ -43,9 +43,21 @@ defmodule Portal.DeviceCA do
   @spec ensure(Ecto.UUID.t()) :: {:ok, DeviceCertificateAuthority.t()} | {:error, term()}
   def ensure(account_id) do
     case {Database.fetch(account_id), adapter()} do
-      {%DeviceCertificateAuthority{} = ca, _adapter} -> {:ok, ca}
+      {%DeviceCertificateAuthority{} = ca, _adapter} -> with_trust_anchor(ca)
       {nil, nil} -> {:error, :no_key_storage}
-      {nil, adapter} -> create(adapter, account_id)
+      {nil, adapter} -> with {:ok, ca} <- create(adapter, account_id), do: with_trust_anchor(ca)
+    end
+  end
+
+  @doc "The name of the system trust anchor that holds the account's CA certificate."
+  def trust_anchor_name, do: "Firezone device CA"
+
+  # The CA shows as the account's system trust anchor. CAs made before that get it here.
+  defp with_trust_anchor(%DeviceCertificateAuthority{} = ca) do
+    if Database.trust_anchor?(ca.account_id) do
+      {:ok, ca}
+    else
+      with {:ok, _trust_anchor} <- Database.insert_trust_anchor(ca), do: {:ok, ca}
     end
   end
 
@@ -224,7 +236,37 @@ defmodule Portal.DeviceCA do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{DeviceCertificateAuthority, Safe}
+    alias Portal.{DeviceCertificateAuthority, Safe, TrustAnchor}
+
+    def trust_anchor?(account_id) do
+      from(t in TrustAnchor, where: t.account_id == ^account_id and t.system)
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+
+    # A racing insert loses on the one-per-account index and finds the winner's anchor.
+    def insert_trust_anchor(%DeviceCertificateAuthority{} = ca) do
+      %TrustAnchor{}
+      |> Ecto.Changeset.change(
+        account_id: ca.account_id,
+        name: Portal.DeviceCA.trust_anchor_name(),
+        system: true,
+        certs: [ca.certificate]
+      )
+      |> TrustAnchor.changeset()
+      |> Ecto.Changeset.unique_constraint(:account_id, name: :trust_anchors_account_id_system_index)
+      |> Safe.unscoped()
+      |> Safe.insert()
+      |> case do
+        {:ok, trust_anchor} ->
+          {:ok, trust_anchor}
+
+        {:error, %Ecto.Changeset{errors: errors} = changeset} ->
+          if Keyword.has_key?(errors, :account_id) and trust_anchor?(ca.account_id),
+            do: {:ok, :exists},
+            else: {:error, changeset}
+      end
+    end
 
     def fetch(account_id) do
       from(ca in DeviceCertificateAuthority, where: ca.account_id == ^account_id)

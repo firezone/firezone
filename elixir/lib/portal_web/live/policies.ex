@@ -1378,7 +1378,7 @@ defmodule PortalWeb.Policies do
     end
 
     def has_trust_anchors?(subject) do
-      Portal.TrustAnchorCertificate
+      from(t in Portal.TrustAnchorCertificate, where: not t.system)
       |> Safe.scoped(subject)
       |> Safe.exists?()
     end

@@ -20,6 +20,7 @@ defmodule Portal.TrustAnchor do
           id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           name: String.t(),
+          system: boolean(),
           certs: [binary()],
           certificates: [TrustAnchorCertificate.t()],
           inserted_at: DateTime.t(),
@@ -31,6 +32,8 @@ defmodule Portal.TrustAnchor do
     field :id, :binary_id, primary_key: true, autogenerate: true
 
     field :name, :string
+    # The account's Firezone device CA. Firezone creates and keeps it; nobody edits it.
+    field :system, :boolean, default: false
 
     # Write-only input: raw PEM/base64/DER blobs as pasted or uploaded by the
     # admin. Normalized at write time into individual `certificates` rows
@@ -44,6 +47,7 @@ defmodule Portal.TrustAnchor do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
+    |> validate_not_system()
     |> trim_change(:name)
     |> validate_required([:name])
     |> validate_length(:name, max: 255)
@@ -52,6 +56,13 @@ defmodule Portal.TrustAnchor do
     |> unique_constraint(:name, name: :trust_anchors_account_id_name_index)
     |> assoc_constraint(:account)
   end
+
+  defp validate_not_system(%Ecto.Changeset{data: %__MODULE__{system: true} = data} = changeset)
+       when data.__meta__.state == :loaded do
+    add_error(changeset, :base, "is managed by Firezone")
+  end
+
+  defp validate_not_system(changeset), do: changeset
 
   defp validate_cert_presence(changeset, field) do
     if field_has_errors?(changeset, field) do
@@ -236,8 +247,13 @@ defmodule Portal.TrustAnchor do
         :error ->
           %TrustAnchorCertificate{}
           |> cast(
-            %{pem: X509.pem_encode(der), fingerprint: fingerprint, account_id: account_id},
-            [:pem, :fingerprint, :account_id]
+            %{
+              pem: X509.pem_encode(der),
+              fingerprint: fingerprint,
+              account_id: account_id,
+              system: get_field(changeset, :system)
+            },
+            [:pem, :fingerprint, :account_id, :system]
           )
           |> TrustAnchorCertificate.changeset()
       end
