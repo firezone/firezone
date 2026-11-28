@@ -32,8 +32,6 @@ use crate::eventloop::UserNotification;
 
 mod eventloop;
 
-const PHOENIX_TOPIC: &str = "client";
-
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [`Session::connect`].
@@ -82,7 +80,7 @@ impl Session {
     pub fn connect(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+        portal: PhoenixChannel<EgressMessages, IngressMessages, PublicKeyParam>,
         config: SessionConfig,
         metrics_exporter: otel_metrics_export::Exporter,
     ) -> (Self, EventStream) {

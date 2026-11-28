@@ -70,14 +70,12 @@ pub async fn fetch_relay(
 
     let socket_factory = Arc::new(socket_factory::tcp) as Arc<dyn SocketFactory<TcpSocket>>;
 
-    let mut channel = PhoenixChannel::<(), NoEgress, IngressMessages, PublicKeyParam>::disconnected(
+    let mut channel = PhoenixChannel::<NoEgress, IngressMessages, PublicKeyParam>::disconnected(
         url,
         token,
         // The portal only accepts connections from recognised clients, so we
         // present the loadtest as a headless-client.
         get_user_agent("headless-client", env!("CARGO_PKG_VERSION")),
-        "client",
-        (),
         || ExponentialBackoffBuilder::default().build(),
         socket_factory,
     );
@@ -104,7 +102,7 @@ pub async fn fetch_relay(
 
 /// Drive the channel until the `init` message yields a TURN relay.
 async fn drive(
-    channel: &mut PhoenixChannel<(), NoEgress, IngressMessages, PublicKeyParam>,
+    channel: &mut PhoenixChannel<NoEgress, IngressMessages, PublicKeyParam>,
     prefer: Option<IpFamily>,
 ) -> Result<RelayCredentials> {
     loop {
@@ -113,7 +111,7 @@ async fn drive(
             .map_err(|e| anyhow!("portal connection failed: {e}"))?;
 
         match event {
-            Event::Connected => tracing::info!("Joined portal client channel"),
+            Event::Connected => tracing::info!("Connected to portal"),
             Event::Message {
                 msg: IngressMessages::Init(init),
                 ..

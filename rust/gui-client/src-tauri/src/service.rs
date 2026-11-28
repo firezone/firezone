@@ -979,8 +979,6 @@ impl<'a> Handler<'a> {
             url,
             Some(token),
             get_user_agent("gui-client", env!("CARGO_PKG_VERSION")),
-            "client",
-            (),
             || {
                 ExponentialBackoffBuilder::default()
                     .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))

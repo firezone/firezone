@@ -7,10 +7,10 @@ mod tls;
 
 use anyhow::{Context as _, Result};
 use futures::stream::FuturesUnordered;
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
@@ -45,12 +45,20 @@ const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are
 const INITIAL_CONNECT_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
 const INITIAL_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
 
+/// How often we send a WebSocket ping. The portal closes a connection that sends nothing for 37s.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+
+/// We reconnect when this many pings in a row are unanswered.
+const MAX_UNANSWERED_PINGS: usize = 3;
 
 /// Overall timeout for a single connection attempt (TCP + TLS + WebSocket handshake).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
+/// A connection to the portal over a plain WebSocket.
+///
+/// Every frame is a JSON text frame `{"event": name, "payload": object}`, in both directions.
+/// There is no topic, join or reply: the portal sends `init` once the connection is up.
+pub struct PhoenixChannel<TOutboundMsg, TInboundMsg, TFinish> {
     state: State<TOutboundMsg>,
     waker: Option<Waker>,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -63,13 +71,12 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     user_agent: String,
     /// The optional authentication token, sent via X-Authorization when present.
     token: Option<SecretString>,
+    /// More secret headers for the upgrade request.
+    headers: Vec<(&'static str, SecretString)>,
     make_initial_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     backoff: Option<ExponentialBackoff>,
     was_connected: bool,
-
-    login: &'static str,
-    init_req: TInitReq,
 }
 
 enum State<TOutboundMsg> {
@@ -85,14 +92,9 @@ struct Connected<TOutboundMsg> {
     stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
 
     heartbeat: tokio::time::Interval,
-    inflight_heartbeats: HashSet<OutboundRequestId>,
+    unanswered_pings: usize,
 
-    pending_joins: VecDeque<String>,
-    pending_join_requests: BTreeMap<OutboundRequestId, Instant>,
-
-    pending_messages: VecDeque<PhoenixMessage<TOutboundMsg>>,
-
-    next_request_id: u64,
+    pending_messages: VecDeque<TOutboundMsg>,
 }
 
 async fn create_and_connect_websocket(
@@ -101,6 +103,7 @@ async fn create_and_connect_websocket(
     host: String,
     user_agent: String,
     token: Option<SecretString>,
+    headers: Vec<(&'static str, SecretString)>,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     connect_timeout: Duration,
     tls_client_config: Option<Arc<rustls::ClientConfig>>,
@@ -122,7 +125,7 @@ async fn create_and_connect_websocket(
 
         let connector = tls_client_config.map(Connector::Rustls);
         let (stream, _) = client_async_tls_with_config(
-            make_request(url, host, user_agent, token.as_ref()),
+            make_request(url, host, user_agent, token.as_ref(), &headers),
             socket,
             None,
             connector,
@@ -239,8 +242,6 @@ pub enum Error {
         #[source]
         final_error: BoxError,
     },
-    #[error("The Firezone Portal refused to start a session for this device")]
-    LoginFailed(#[source] BoxError),
     #[error("Firezone ran into an unrecoverable error")]
     FatalIo(#[source] io::Error),
 }
@@ -261,7 +262,6 @@ impl Error {
             // The certificate is the credential the portal refused, so a new token cannot help.
             Error::CertificateRejected(_) => false,
             Error::MaxRetriesReached { .. } => false,
-            Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
         }
     }
@@ -297,10 +297,8 @@ impl Error {
 enum InternalError {
     WebSocket(tungstenite::Error),
     Serde(serde_json::Error),
-    CloseMessage,
     WsClose(Option<CloseFrame>),
     StreamClosed,
-    RoomJoinTimedOut,
     SocketConnection(Vec<(SocketAddr, io::Error)>),
     NoAddresses,
     ConnectTimeout,
@@ -368,7 +366,6 @@ impl fmt::Display for InternalError {
         match self {
             InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
             InternalError::Serde(_) => write!(f, "failed to deserialize message"),
-            InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
             InternalError::WsClose(Some(frame)) => {
                 write!(f, "portal sent websocket close frame: {frame}")
             }
@@ -386,11 +383,10 @@ impl fmt::Display for InternalError {
                         .join(", ")
                 )
             }
-            InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
             InternalError::NoAddresses => write!(f, "no IP addresses available"),
             InternalError::ConnectTimeout => write!(f, "connection to portal timed out"),
             InternalError::TooManyUnansweredHeartbeats => {
-                write!(f, "too many heartbeats were unanswered")
+                write!(f, "too many pings were unanswered")
             }
         }
     }
@@ -402,10 +398,8 @@ impl std::error::Error for InternalError {
             InternalError::WebSocket(e) => Some(e),
             InternalError::Serde(e) => Some(e),
             InternalError::SocketConnection(_) => None,
-            InternalError::CloseMessage => None,
             InternalError::WsClose(_) => None,
             InternalError::StreamClosed => None,
-            InternalError::RoomJoinTimedOut => None,
             InternalError::NoAddresses => None,
             InternalError::ConnectTimeout => None,
             InternalError::TooManyUnansweredHeartbeats => None,
@@ -427,30 +421,6 @@ pub fn http_error_body(error: &anyhow::Error) -> Option<String> {
         .map(|body| String::from_utf8_lossy(body).into_owned())
 }
 
-/// A strict-monotonically increasing ID for outbound requests.
-#[derive(Debug, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
-pub struct OutboundRequestId(u64);
-
-impl OutboundRequestId {
-    // Should only be used for unit-testing.
-    pub fn for_test(id: u64) -> Self {
-        Self(id)
-    }
-
-    /// Internal function to make a copy.
-    ///
-    /// Not exposed publicly because these IDs are meant to be unique.
-    pub(crate) fn copy(&self) -> Self {
-        Self(self.0)
-    }
-}
-
-impl fmt::Display for OutboundRequestId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "OutReq-{}", self.0)
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 #[error("Cannot close websocket while we are connecting")]
 pub struct Connecting;
@@ -459,10 +429,8 @@ pub struct Connecting;
 #[error("Not connected")]
 pub struct NotConnected<T>(pub T);
 
-impl<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
-    PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
+impl<TOutboundMsg, TInboundMsg, TFinish> PhoenixChannel<TOutboundMsg, TInboundMsg, TFinish>
 where
-    TInitReq: Serialize + Clone,
     TOutboundMsg: Serialize + PartialEq + fmt::Debug,
     TInboundMsg: DeserializeOwned,
     TFinish: IntoIterator<Item = (&'static str, String)>,
@@ -476,8 +444,6 @@ where
         url: LoginUrl<TFinish>,
         token: impl Into<Option<SecretString>>,
         user_agent: String,
-        login: &'static str,
-        init_req: TInitReq,
         make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
@@ -489,76 +455,36 @@ where
             url_prototype: url,
             user_agent,
             token: token.into(),
+            headers: Vec::new(),
             state: State::Closed,
             socket_factory,
             waker: None,
             _phantom: PhantomData,
-            login,
-            init_req,
             last_url: None,
         }
     }
 
-    /// Join our room.
-    fn join_room(&mut self) {
-        let topic = self.login.to_owned();
-
-        let State::Connected(Connected {
-            pending_joins,
-            pending_join_requests,
-            next_request_id,
-            ..
-        }) = &mut self.state
-        else {
-            tracing::debug!(%topic, "Cannot join topic when disconnected");
-            return;
-        };
-
-        let (request_id, msg) = make_control_message(
-            next_request_id,
-            topic,
-            EgressControlMessage::PhxJoin(self.init_req.clone()),
-        );
-
-        pending_joins.push_back(msg);
-        pending_join_requests.insert(request_id, Instant::now());
+    /// Sends a secret header with every upgrade request.
+    pub fn with_header(mut self, name: &'static str, value: SecretString) -> Self {
+        self.headers.push((name, value));
+        self
     }
 
-    /// Send a message to a topic.
-    pub fn send(
-        &mut self,
-        topic: impl Into<String>,
-        message: TOutboundMsg,
-    ) -> Result<(), NotConnected<TOutboundMsg>> {
-        let topic = topic.into();
-
+    /// Sends a message to the portal.
+    pub fn send(&mut self, message: TOutboundMsg) -> Result<(), NotConnected<TOutboundMsg>> {
         let State::Connected(Connected {
-            pending_messages,
-            next_request_id,
-            ..
+            pending_messages, ..
         }) = &mut self.state
         else {
             return Err(NotConnected(message));
         };
 
-        if pending_messages.iter().any(|m| match &m.payload {
-            Payload::Message(m) => m == &message,
-            Payload::Reply(_) => false,
-            Payload::Error(_) => false,
-            Payload::Close(_) => false,
-            Payload::Disconnect { .. } => false,
-        }) {
+        if pending_messages.contains(&message) {
             tracing::debug!(?message, "Refusing to queue exact duplicate");
             return Ok(());
         }
 
-        let request_id = fetch_add_request_id(next_request_id);
-
-        pending_messages.push_back(PhoenixMessage::new_message(
-            topic,
-            message,
-            Some(request_id),
-        ));
+        pending_messages.push_back(message);
 
         Ok(())
     }
@@ -584,6 +510,7 @@ where
             let host = self.host();
             let user_agent = self.user_agent.clone();
             let token = self.token.clone();
+            let headers = self.headers.clone();
             let socket_factory = self.socket_factory.clone();
             let tls_client_config = self.url_prototype.tls_client_config();
 
@@ -599,6 +526,7 @@ where
                     host,
                     user_agent,
                     token,
+                    headers,
                     socket_factory,
                     CONNECT_TIMEOUT,
                     tls_client_config,
@@ -654,11 +582,8 @@ where
             let Connected {
                 stream,
                 heartbeat,
-                inflight_heartbeats,
-                pending_joins,
-                pending_join_requests,
+                unanswered_pings,
                 pending_messages,
-                next_request_id,
             } = match &mut self.state {
                 State::Connected(stream) => stream,
                 State::Closed => return Poll::Ready(Ok(Event::Closed)),
@@ -684,18 +609,16 @@ where
                                 tokio::time::Instant::now() + HEARTBEAT_INTERVAL,
                                 HEARTBEAT_INTERVAL,
                             ),
-                            inflight_heartbeats: Default::default(),
-                            pending_joins: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
-                            pending_join_requests: Default::default(),
+                            unanswered_pings: 0,
                             pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
-                            next_request_id: 0,
                         });
+                        self.backoff = None;
+                        self.was_connected = true;
 
-                        tracing::debug!("WebSocket connection established");
+                        let (host, _) = self.url_prototype.host_and_port();
+                        tracing::info!(%host, "Connected to portal");
 
-                        self.join_room();
-
-                        continue;
+                        return Poll::Ready(Ok(Event::Connected));
                     }
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(ref r))))
                         if let Some(error) = Error::from_rejection(r) =>
@@ -760,64 +683,41 @@ where
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
                     if heartbeat.poll_tick(cx).is_ready() {
-                        let (id, heartbeat) = make_control_message(
-                            next_request_id,
-                            "phoenix",
-                            EgressControlMessage::<()>::Heartbeat(Empty {}),
-                        );
-
-                        match stream.start_send_unpin(Message::Text(heartbeat.clone().into())) {
-                            Ok(()) => {
-                                inflight_heartbeats.insert(id);
-                                tracing::trace!(target: "wire::api::send", %heartbeat);
-                            }
-                            Err(e) => {
-                                self.handle_internal_error(InternalError::WebSocket(e));
-                            }
-                        }
-
-                        continue;
-                    }
-
-                    if let Some(join) = pending_joins.pop_front() {
-                        match stream.start_send_unpin(Message::Text(join.clone().into())) {
-                            Ok(()) => {
-                                tracing::trace!(target: "wire::api::send", %join);
-                            }
-                            Err(e) => {
-                                pending_joins.push_front(join);
-                                self.handle_internal_error(InternalError::WebSocket(e));
-                            }
-                        }
-
-                        continue;
-                    }
-
-                    if pending_join_requests.is_empty() {
-                        if let Some(msg) = pending_messages.pop_front() {
-                            let serialized_msg = serde_json::to_string(&msg)
-                                .map_err(io::Error::other)
-                                .map_err(Error::FatalIo)?;
-
-                            match stream
-                                .start_send_unpin(Message::Text(serialized_msg.clone().into()))
-                            {
-                                Ok(()) => {
-                                    tracing::trace!(target: "wire::api::send", msg = %serialized_msg);
-                                }
-                                Err(e) => {
-                                    pending_messages.push_front(msg);
-                                    self.handle_internal_error(InternalError::WebSocket(e));
-                                }
-                            }
-
+                        if *unanswered_pings >= MAX_UNANSWERED_PINGS {
+                            self.handle_internal_error(InternalError::TooManyUnansweredHeartbeats);
                             continue;
                         }
-                    } else if !pending_messages.is_empty() {
-                        tracing::trace!(
-                            requests = ?pending_join_requests,
-                            "Unable to send message because we are waiting for JOIN requests to complete"
-                        );
+
+                        match stream.start_send_unpin(Message::Ping(Default::default())) {
+                            Ok(()) => {
+                                *unanswered_pings += 1;
+                                tracing::trace!(target: "wire::api::send", "ping");
+                            }
+                            Err(e) => {
+                                self.handle_internal_error(InternalError::WebSocket(e));
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    if let Some(msg) = pending_messages.pop_front() {
+                        let serialized_msg = serde_json::to_string(&msg)
+                            .map_err(io::Error::other)
+                            .map_err(Error::FatalIo)?;
+
+                        match stream.start_send_unpin(Message::Text(serialized_msg.clone().into()))
+                        {
+                            Ok(()) => {
+                                tracing::trace!(target: "wire::api::send", msg = %serialized_msg);
+                            }
+                            Err(e) => {
+                                pending_messages.push_front(msg);
+                                self.handle_internal_error(InternalError::WebSocket(e));
+                            }
+                        }
+
+                        continue;
                     }
                 }
                 Poll::Ready(Err(e)) => {
@@ -862,106 +762,22 @@ where
                 Poll::Ready(Some(Ok(Message::Text(message)))) => {
                     tracing::trace!(target: "wire::api::recv", %message);
 
-                    let message =
-                        match serde_json::from_str::<PhoenixMessage<TInboundMsg>>(&message) {
-                            Ok(m) => m,
-                            Err(e) if e.is_io() || e.is_eof() => {
-                                self.handle_internal_error(InternalError::Serde(e));
-                                continue;
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Failed to deserialize message: {}",
-                                    err_with_src(&e)
-                                );
-                                continue;
-                            }
-                        };
-
-                    match (message.payload, message.reference) {
-                        (Payload::Message(msg), _) => {
-                            return Poll::Ready(Ok(Event::Message {
-                                topic: message.topic,
-                                msg,
-                            }));
+                    match serde_json::from_str::<Inbound<TInboundMsg>>(&message) {
+                        Ok(Inbound::Message(msg)) => {
+                            return Poll::Ready(Ok(Event::Message { msg }));
                         }
-                        (Payload::Reply(_), None) => {
-                            tracing::warn!("Discarding reply because server omitted reference");
-                            continue;
-                        }
-                        (Payload::Reply(Reply::Error { reason }), Some(req_id)) => {
-                            if message.topic == self.login
-                                && pending_join_requests.contains_key(&req_id)
-                            {
-                                return Poll::Ready(Err(Error::LoginFailed(
-                                    reason.to_string().into(),
-                                )));
-                            }
-
-                            match reason {
-                                ErrorReply::UnmatchedTopic if message.topic == self.login => {
-                                    tracing::debug!(topic = %self.login, "We are no longer part of our room, rejoining");
-
-                                    self.join_room();
-                                    continue;
-                                }
-                                ErrorReply::UnmatchedTopic
-                                | ErrorReply::InvalidVersion
-                                | ErrorReply::Disabled
-                                | ErrorReply::Other => {
-                                    tracing::debug!(%req_id, %reason, "Received error reply");
-                                }
-                            }
-
-                            continue;
-                        }
-                        (Payload::Reply(Reply::Ok(OkReply::Message(()))), Some(_)) => {
-                            // We don't use the reply feature of phoenix-channel.
-                            continue;
-                        }
-                        (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
-                            if inflight_heartbeats.remove(&req_id) {
-                                tracing::trace!(%req_id, "Received heartbeat reply");
-                                continue;
-                            }
-
-                            if pending_join_requests.remove(&req_id).is_some() {
-                                if message.topic == self.login {
-                                    self.backoff = None;
-                                    self.was_connected = true;
-
-                                    let (host, _) = self.url_prototype.host_and_port();
-                                    tracing::info!(%host, "Connected to portal");
-
-                                    return Poll::Ready(Ok(Event::Connected));
-                                }
-
-                                continue;
-                            }
-
-                            tracing::trace!("Received empty reply for request {req_id:?}");
-
-                            continue;
-                        }
-                        (Payload::Error(Empty {}), reference) => {
-                            tracing::debug!(
-                                ?reference,
-                                topic = &message.topic,
-                                "Received empty error response"
-                            );
-                            continue;
-                        }
-                        (Payload::Close(Empty {}), _) => {
-                            self.handle_internal_error(InternalError::CloseMessage);
-                            continue;
-                        }
-                        (
-                            Payload::Disconnect {
-                                reason: DisconnectReason::TokenExpired,
-                            },
-                            _,
-                        ) => {
+                        Ok(Inbound::Disconnect {
+                            reason: DisconnectReason::TokenExpired,
+                        }) => {
                             return Poll::Ready(Err(Error::InvalidToken));
+                        }
+                        Err(e) if e.is_io() || e.is_eof() => {
+                            self.handle_internal_error(InternalError::Serde(e));
+                            continue;
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to deserialize message: {}", err_with_src(&e));
+                            continue;
                         }
                     }
                 }
@@ -969,7 +785,12 @@ where
                     tracing::warn!("Received unexpected binary message from portal");
                     continue;
                 }
-                Poll::Ready(Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_)))) => {
+                Poll::Ready(Some(Ok(Message::Pong(_)))) => {
+                    *unanswered_pings = 0;
+                    continue;
+                }
+                // tungstenite answers pings itself.
+                Poll::Ready(Some(Ok(Message::Ping(_) | Message::Frame(_)))) => {
                     continue;
                 }
                 Poll::Ready(Some(Err(e))) => {
@@ -983,20 +804,6 @@ where
                 Poll::Pending => {}
             }
 
-            if pending_join_requests
-                .values()
-                .any(|sent_at| sent_at.elapsed() > Duration::from_secs(5))
-            {
-                self.handle_internal_error(InternalError::RoomJoinTimedOut);
-                continue;
-            }
-
-            // Priority 4: Handle heartbeats.
-            if inflight_heartbeats.len() > 3 {
-                self.handle_internal_error(InternalError::TooManyUnansweredHeartbeats);
-                continue;
-            }
-
             return Poll::Pending;
         }
     }
@@ -1007,30 +814,6 @@ where
     fn handle_internal_error(&mut self, e: InternalError) {
         self.state = State::Connecting(future::ready(Err(e)).boxed())
     }
-}
-
-fn make_control_message<TInitReq>(
-    next_request_id: &mut u64,
-    topic: impl Into<String>,
-    payload: EgressControlMessage<TInitReq>,
-) -> (OutboundRequestId, String)
-where
-    TInitReq: serde::Serialize,
-{
-    let request_id = fetch_add_request_id(next_request_id);
-
-    // We don't care about the reply type when serializing
-    let msg = serialize_msg(topic, payload, request_id.copy());
-
-    (request_id, msg)
-}
-
-fn fetch_add_request_id(next_request_id: &mut u64) -> OutboundRequestId {
-    let id = *next_request_id;
-
-    *next_request_id += 1;
-
-    OutboundRequestId(id)
 }
 
 fn make_initial_backoff() -> ExponentialBackoff {
@@ -1046,7 +829,7 @@ fn make_initial_backoff() -> ExponentialBackoff {
 #[derive(Debug)]
 pub enum Event<TInboundMsg> {
     /// The server sent us a message.
-    Message { topic: String, msg: TInboundMsg },
+    Message { msg: TInboundMsg },
     /// The connection failed with a transient error.
     ///
     /// You must call [`PhoenixChannel::connect`] after this (or discard the instance).
@@ -1058,118 +841,23 @@ pub enum Event<TInboundMsg> {
     /// The connection was closed successfully.
     Closed,
     /// The portal connection was established.
-    ///
-    /// This includes successfully joining the room on the portal end.
     Connected,
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct PhoenixMessage<T> {
-    // TODO: we should use a newtype pattern for topics
-    topic: String,
-    #[serde(flatten)]
-    payload: Payload<T>,
-    #[serde(rename = "ref")]
-    reference: Option<OutboundRequestId>,
-}
-
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+/// A message from the portal.
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "event", content = "payload")]
-enum Payload<T> {
-    #[serde(rename = "phx_reply")]
-    Reply(Reply),
-    #[serde(rename = "phx_error")]
-    Error(Empty),
-    #[serde(rename = "phx_close")]
-    Close(Empty),
+enum Inbound<T> {
     #[serde(rename = "disconnect")]
     Disconnect { reason: DisconnectReason },
     #[serde(untagged)]
     Message(T),
 }
 
-// Awful hack to get serde_json to generate an empty "{}" instead of using "null"
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
-#[serde(deny_unknown_fields)]
-struct Empty {}
-
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "status", content = "response")]
-enum Reply {
-    Ok(OkReply<()>), // We never expect responses for our requests.
-    Error { reason: ErrorReply },
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(untagged)]
-enum OkReply<T> {
-    Message(T),
-    NoMessage(Empty),
-}
-
-// TODO: I think this should also be a type-parameter.
-/// This represents the info we have about the error
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-enum ErrorReply {
-    #[serde(rename = "unmatched topic")]
-    UnmatchedTopic,
-    InvalidVersion,
-    Disabled,
-    #[serde(other)]
-    Other,
-}
-
-impl fmt::Display for ErrorReply {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ErrorReply::UnmatchedTopic => write!(f, "unmatched topic"),
-            ErrorReply::InvalidVersion => write!(f, "invalid version"),
-            ErrorReply::Disabled => write!(f, "disabled"),
-            ErrorReply::Other => write!(f, "other"),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum DisconnectReason {
+enum DisconnectReason {
     TokenExpired,
-}
-
-impl<T> PhoenixMessage<T> {
-    pub fn new_message(
-        topic: impl Into<String>,
-        payload: T,
-        reference: Option<OutboundRequestId>,
-    ) -> Self {
-        Self {
-            topic: topic.into(),
-            payload: Payload::Message(payload),
-            reference,
-        }
-    }
-
-    pub fn new_ok_reply(topic: impl Into<String>, reference: Option<OutboundRequestId>) -> Self {
-        Self {
-            topic: topic.into(),
-            payload: Payload::Reply(Reply::Ok(OkReply::Message(()))),
-            reference,
-        }
-    }
-
-    #[cfg(test)]
-    fn new_err_reply(
-        topic: impl Into<String>,
-        reason: ErrorReply,
-        reference: Option<OutboundRequestId>,
-    ) -> Self {
-        Self {
-            topic: topic.into(),
-            payload: Payload::Reply(Reply::Error { reason }),
-            reference,
-        }
-    }
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
@@ -1178,6 +866,7 @@ fn make_request(
     host: String,
     user_agent: String,
     token: Option<&SecretString>,
+    headers: &[(&'static str, SecretString)],
 ) -> Request {
     let r: [u8; 16] = rand::random();
     let key = base64::engine::general_purpose::STANDARD.encode(r);
@@ -1200,30 +889,17 @@ fn make_request(
         builder = builder.header("X-Authorization", format!("Bearer {token}"));
     }
 
+    for (name, value) in headers {
+        builder = builder.header(
+            *name,
+            value.expose_secret().replace(char::is_whitespace, ""),
+        );
+    }
+
     builder
         .uri(url.to_string())
         .body(())
         .expect("should always be able to build a request if we only pass strings to it")
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum EgressControlMessage<T> {
-    PhxJoin(T),
-    Heartbeat(Empty),
-}
-
-fn serialize_msg(
-    topic: impl Into<String>,
-    payload: impl Serialize,
-    request_id: OutboundRequestId,
-) -> String {
-    serde_json::to_string(&PhoenixMessage::new_message(
-        topic,
-        payload,
-        Some(request_id),
-    ))
-    .expect("we should always be able to serialize a join topic message")
 }
 
 #[cfg(test)]
@@ -1312,134 +988,30 @@ mod tests {
 
     #[test]
     fn can_deserialize_inbound_message() {
-        let msg = r#"{
-            "topic": "room:lobby",
-            "ref": null,
-            "payload": {
-                "hello": "world"
-            },
-            "join_ref": null,
-            "event": "shout"
-        }"#;
+        let msg = r#"{"event": "shout", "payload": {"hello": "world"}}"#;
 
-        let msg = serde_json::from_str::<PhoenixMessage<Msg>>(msg).unwrap();
+        let msg = serde_json::from_str::<Inbound<Msg>>(msg).unwrap();
 
-        assert_eq!(msg.topic, "room:lobby");
-        assert_eq!(msg.reference, None);
         assert_eq!(
-            msg.payload,
-            Payload::Message(Msg::Shout {
+            msg,
+            Inbound::Message(Msg::Shout {
                 hello: "world".to_owned()
             })
         );
     }
 
     #[test]
-    fn unmatched_topic_reply() {
-        let actual_reply = r#"
-            {
-               "event": "phx_reply",
-               "ref": "12",
-               "topic": "client",
-               "payload":{
-                  "status": "error",
-                  "response":{
-                     "reason": "unmatched topic"
-                  }
-               }
-            }
-        "#;
-        let actual_reply = serde_json::from_str::<Payload<()>>(actual_reply).unwrap();
-        let expected_reply = Payload::<()>::Reply(Reply::Error {
-            reason: ErrorReply::UnmatchedTopic,
-        });
-        assert_eq!(actual_reply, expected_reply);
-    }
-
-    #[test]
-    fn phx_close() {
-        let actual_reply = r#"
-        {
-          "event": "phx_close",
-          "ref": null,
-          "topic": "client",
-          "payload": {}
-        }
-        "#;
-        let actual_reply = serde_json::from_str::<Payload<()>>(actual_reply).unwrap();
-        let expected_reply = Payload::<()>::Close(Empty {});
-        assert_eq!(actual_reply, expected_reply);
-    }
-
-    #[test]
     fn token_expired() {
-        let actual_reply = r#"
-        {
-          "event": "disconnect",
-          "ref": null,
-          "topic": "client",
-          "payload": { "reason": "token_expired" }
-        }
-        "#;
-        let actual_reply = serde_json::from_str::<Payload<()>>(actual_reply).unwrap();
-        let expected_reply = Payload::<()>::Disconnect {
-            reason: DisconnectReason::TokenExpired,
-        };
-        assert_eq!(actual_reply, expected_reply);
-    }
+        let msg = r#"{"event": "disconnect", "payload": {"reason": "token_expired"}}"#;
 
-    #[test]
-    fn unexpected_error_reply() {
-        let actual_reply = r#"
-            {
-               "event": "phx_reply",
-               "ref": "12",
-               "topic": "client",
-               "payload": {
-                  "status": "error",
-                  "response": {
-                     "reason": "bad reply"
-                  }
-               }
+        let msg = serde_json::from_str::<Inbound<Msg>>(msg).unwrap();
+
+        assert_eq!(
+            msg,
+            Inbound::Disconnect {
+                reason: DisconnectReason::TokenExpired
             }
-        "#;
-        let actual_reply = serde_json::from_str::<Payload<()>>(actual_reply).unwrap();
-        let expected_reply = Payload::<()>::Reply(Reply::Error {
-            reason: ErrorReply::Other,
-        });
-        assert_eq!(actual_reply, expected_reply);
-    }
-
-    #[test]
-    fn invalid_version_reply() {
-        let actual_reply = r#"
-            {
-                "event": "phx_reply",
-                "ref": "12",
-                "topic": "client",
-                "payload":{
-                    "status": "error",
-                    "response":{
-                        "reason": "invalid_version"
-                    }
-                }
-            }
-        "#;
-        let actual_reply = serde_json::from_str::<Payload<()>>(actual_reply).unwrap();
-        let expected_reply = Payload::<()>::Reply(Reply::Error {
-            reason: ErrorReply::InvalidVersion,
-        });
-        assert_eq!(actual_reply, expected_reply);
-    }
-
-    #[test]
-    fn disabled_err_reply() {
-        let json = r#"{"event":"phx_reply","ref":null,"topic":"client","payload":{"status":"error","response":{"reason": "disabled"}}}"#;
-
-        let actual = serde_json::from_str::<PhoenixMessage<()>>(json).unwrap();
-        let expected = PhoenixMessage::new_err_reply("client", ErrorReply::Disabled, None);
-
-        assert_eq!(actual, expected)
+        );
     }
 
     #[tokio::test]
@@ -1534,6 +1106,7 @@ mod tests {
             "127.0.0.1".to_string(),
             "test-agent".to_string(),
             Some(SecretString::from("test-token".to_string())),
+            Vec::new(),
             Arc::new(socket_factory::tcp),
             Duration::from_secs(2),
             None,
@@ -1555,6 +1128,7 @@ mod tests {
             Some(&SecretString::from(
                 "valid-token-part\ninjected".to_string(),
             )),
+            &[],
         );
 
         assert_eq!(
@@ -1572,6 +1146,7 @@ mod tests {
             Some(&SecretString::from(
                 "valid-token-part\rinjected".to_string(),
             )),
+            &[],
         );
 
         assert_eq!(
@@ -1587,6 +1162,7 @@ mod tests {
             "example.com".to_string(),
             "test-agent".to_string(),
             None,
+            &[],
         );
 
         assert!(!request.headers().contains_key("X-Authorization"));
@@ -1601,6 +1177,7 @@ mod tests {
             Some(&SecretString::from(
                 "a-perfectly-valid.token_123".to_string(),
             )),
+            &[],
         );
 
         assert_eq!(

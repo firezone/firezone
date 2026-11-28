@@ -31,8 +31,6 @@ use tunnel::{
 
 use crate::{RELEASE, account_slug};
 
-pub const PHOENIX_TOPIC: &str = "gateway";
-
 /// How long we allow a DNS resolution via hickory.
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -87,7 +85,7 @@ impl Eventloop {
     pub(crate) fn new(
         clock: Clock,
         tunnel: GatewayTunnel,
-        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+        portal: PhoenixChannel<EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
@@ -664,7 +662,7 @@ fn dns_resolver() -> Result<TokioResolver> {
 }
 
 async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    mut portal: PhoenixChannel<EgressMessages, IngressMessages, PublicKeyParam>,
     public_key: PublicKeyParam,
     event_tx: mpsc::Sender<Result<PortalEvent, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
@@ -713,7 +711,6 @@ async fn phoenix_channel_event_loop(
             }
             Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {
                 if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
-                    PHOENIX_TOPIC,
                     EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
                 ) {
                     tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
@@ -726,14 +723,12 @@ async fn phoenix_channel_event_loop(
 
                 break;
             }
-            Either::Right((Some(PortalCommand::Send(msg)), _)) => {
-                match portal.send(PHOENIX_TOPIC, msg) {
-                    Ok(()) => {}
-                    Err(phoenix_channel::NotConnected(msg)) => {
-                        tracing::debug!(?msg, "Failed to send message to portal: Not connected")
-                    }
+            Either::Right((Some(PortalCommand::Send(msg)), _)) => match portal.send(msg) {
+                Ok(()) => {}
+                Err(phoenix_channel::NotConnected(msg)) => {
+                    tracing::debug!(?msg, "Failed to send message to portal: Not connected")
                 }
-            }
+            },
             Either::Right((Some(PortalCommand::Close), _)) => {
                 let _ = portal.close();
             }

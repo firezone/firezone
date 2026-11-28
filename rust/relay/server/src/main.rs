@@ -20,7 +20,7 @@ use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -273,18 +273,14 @@ async fn try_main(args: Args) -> Result<()> {
         login,
         args.token.clone(),
         get_user_agent("relay", env!("CARGO_PKG_VERSION")),
-        "relay",
-        JoinMessage {
-            stamp_secret: server.auth_secret().expose_secret().to_string(),
-            turn_account_validation: true,
-        },
         || {
             ExponentialBackoffBuilder::default()
                 .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
                 .build()
         },
         Arc::new(socket_factory::tcp),
-    );
+    )
+    .with_header("X-Stamp-Secret", server.auth_secret().clone());
 
     let mut eventloop = Eventloop::new(
         server,
@@ -475,12 +471,6 @@ impl Account {
     }
 }
 
-#[derive(serde::Serialize, PartialEq, Debug, Clone)]
-struct JoinMessage {
-    stamp_secret: String,
-    turn_account_validation: bool,
-}
-
 fn make_rng(seed: Option<u64>) -> StdRng {
     let Some(seed) = seed else {
         return StdRng::from_seed(rand::random());
@@ -526,7 +516,7 @@ where
     fn new(
         server: Server<R>,
         ebpf: Option<ebpf::Program>,
-        portal: PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
+        portal: PhoenixChannel<(), IngressMessages, NoParams>,
         public_address: IpStack,
         bind_ip4: Ipv4Addr,
         bind_ip6: Ipv6Addr,
@@ -911,7 +901,7 @@ where
 }
 
 async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
+    mut portal: PhoenixChannel<(), IngressMessages, NoParams>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     is_connected: Arc<AtomicBool>,
 ) {
