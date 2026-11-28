@@ -150,6 +150,10 @@ defmodule PortalAPI.Sockets.ConnectionTest do
       {:ok, ws} = connect_gateway(ctx, gateway_token, params)
       assert {:ok, %{"interface" => _interface}} = WebSocketClient.recv_message(ws, "init")
 
+      gateway = Repo.get_by!(Portal.Device, firezone_id: params["external_id"], type: :gateway)
+      [pid] = PG.members(gateway.id)
+      assert pid in PortalAPI.Gateway.V4.Socket.connections()
+
       assert {:error, 409, _headers, body} = connect_gateway(ctx, gateway_token, params)
       assert %{"code" => "gateway_already_connected"} = JSON.decode!(body)
     end

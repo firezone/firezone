@@ -747,7 +747,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   # after a PG scope crash share the same channel and session row.
   defp register_session(socket, nil) do
     Portal.Queue.enqueue(
-      :gateway_session_queue,
+      Portal.Queue.name(:gateway_session_queue),
       session_attrs(socket.assigns.gateway, socket.assigns.session_ref),
       metadata: %{timestamp: DateTime.utc_now()}
     )
