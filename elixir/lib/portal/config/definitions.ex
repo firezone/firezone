@@ -1134,7 +1134,7 @@ defmodule Portal.Config.Definitions do
   defconfig(:otlp_metrics_endpoint, :string,
     default: nil,
     changeset: fn changeset, key ->
-      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["http", "https"])
     end
   )
 
@@ -1144,7 +1144,7 @@ defmodule Portal.Config.Definitions do
   defconfig(:otlp_traces_endpoint, :string,
     default: nil,
     changeset: fn changeset, key ->
-      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["http", "https"])
     end
   )
 
@@ -1153,6 +1153,7 @@ defmodule Portal.Config.Definitions do
   `OTEL_EXPORTER_OTLP_HEADERS`.
 
   Set to `azure-managed-identity` to send a managed identity token for Azure Monitor instead.
+  The OTLP endpoints must then use `https`.
   """
   defconfig(
     :otlp_auth,

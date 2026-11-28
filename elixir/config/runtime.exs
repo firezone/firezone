@@ -7,6 +7,11 @@ otlp_auth =
   Portal.Config.env_var_to_config!(:otlp_auth) ||
     {:headers, Portal.Config.env_var_to_config!(:otel_exporter_otlp_headers)}
 
+if otlp_auth == :azure_managed_identity and
+     Enum.any?([otlp_metrics_endpoint, otlp_traces_endpoint], &(&1 && URI.parse(&1).scheme == "http")) do
+  raise "OTLP_METRICS_ENDPOINT and OTLP_TRACES_ENDPOINT must use https when OTLP_AUTH is azure-managed-identity"
+end
+
 if config_env() == :prod do
   import Portal.Config, only: [env_var_to_config!: 1, env_var_to_config: 1]
 

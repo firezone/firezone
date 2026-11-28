@@ -242,17 +242,17 @@ defmodule Portal.ConfigTest do
     end
 
     test "returns the configured OTLP metrics endpoint" do
-      endpoint = "https://otlp.example.com/v1/metrics"
-
       assert env_var_to_config!(Portal.Config.Definitions, :otlp_metrics_endpoint, %{}) == nil
 
-      assert env_var_to_config!(Portal.Config.Definitions, :otlp_metrics_endpoint, %{
-               "OTLP_METRICS_ENDPOINT" => endpoint
-             }) == endpoint
+      for endpoint <- ["https://otlp.example.com/v1/metrics", "http://10.0.0.5:4318/v1/metrics"] do
+        assert env_var_to_config!(Portal.Config.Definitions, :otlp_metrics_endpoint, %{
+                 "OTLP_METRICS_ENDPOINT" => endpoint
+               }) == endpoint
+      end
     end
 
-    test "rejects an OTLP metrics endpoint that is not a full HTTPS URL" do
-      for endpoint <- ["http://otlp.example.com/v1/metrics", "https:///v1/metrics", "otlp.example.com"] do
+    test "rejects an OTLP metrics endpoint that is not a full HTTP(S) URL" do
+      for endpoint <- ["ftp://otlp.example.com/v1/metrics", "https:///v1/metrics", "otlp.example.com"] do
         assert_raise RuntimeError, ~r/OTLP_METRICS_ENDPOINT/, fn ->
           env_var_to_config!(Portal.Config.Definitions, :otlp_metrics_endpoint, %{
             "OTLP_METRICS_ENDPOINT" => endpoint
@@ -261,16 +261,16 @@ defmodule Portal.ConfigTest do
       end
     end
 
-    test "returns the configured OTLP traces endpoint and rejects a non-HTTPS one" do
-      endpoint = "https://otlp.example.com/v1/traces"
-
-      assert env_var_to_config!(Portal.Config.Definitions, :otlp_traces_endpoint, %{
-               "OTLP_TRACES_ENDPOINT" => endpoint
-             }) == endpoint
+    test "returns the configured OTLP traces endpoint and rejects a non-HTTP(S) one" do
+      for endpoint <- ["https://otlp.example.com/v1/traces", "http://10.0.0.5:4318/v1/traces"] do
+        assert env_var_to_config!(Portal.Config.Definitions, :otlp_traces_endpoint, %{
+                 "OTLP_TRACES_ENDPOINT" => endpoint
+               }) == endpoint
+      end
 
       assert_raise RuntimeError, ~r/OTLP_TRACES_ENDPOINT/, fn ->
         env_var_to_config!(Portal.Config.Definitions, :otlp_traces_endpoint, %{
-          "OTLP_TRACES_ENDPOINT" => "http://otlp.example.com/v1/traces"
+          "OTLP_TRACES_ENDPOINT" => "ftp://otlp.example.com/v1/traces"
         })
       end
     end
