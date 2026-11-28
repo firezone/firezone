@@ -31,6 +31,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
     socket_module =
       case channel do
         PortalAPI.Gateway.V3.Channel -> PortalAPI.Gateway.V3.Socket
+        PortalAPI.Gateway.V4.Channel -> PortalAPI.Gateway.V4.Socket
         PortalAPI.Gateway.V2.Channel -> PortalAPI.Gateway.V2.Socket
         PortalAPI.Gateway.Channel -> PortalAPI.Gateway.Socket
       end
@@ -46,7 +47,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(channel, "gateway")
+      |> then(fn socket ->
+        if Keyword.get(opts, :phoenix, false),
+          do: subscribe_and_join(socket, channel, "gateway"),
+          else: run_channel(socket, channel, "gateway")
+      end)
 
     socket
   end
@@ -3101,7 +3106,7 @@ assert site_ids == [site.id]
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
         })
-        |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+        |> run_channel(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", _init_payload
 
@@ -3323,7 +3328,7 @@ assert site_ids == [site.id]
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+      |> run_channel(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: [relay_view | _] = relays}
       relay_view_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
@@ -3374,7 +3379,7 @@ assert site_ids == [site.id]
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+      |> run_channel(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: []}
 
@@ -4949,7 +4954,7 @@ assert site_ids == [site.id]
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
         })
-        |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+        |> run_channel(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
@@ -4992,7 +4997,7 @@ assert site_ids == [site.id]
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
         })
-        |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+        |> run_channel(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
@@ -5046,7 +5051,7 @@ assert site_ids == [site.id]
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+      |> run_channel(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
@@ -5095,7 +5100,7 @@ assert site_ids == [site.id]
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+      |> run_channel(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: [_, _]}
 
@@ -5395,6 +5400,192 @@ assert site_ids == [site.id]
       fun.()
     after
       :sys.resume(pid)
+    end
+  end
+
+  describe "v4 channel" do
+    test "sends init without the fields only older gateways need", %{gateway: gateway, site: site, token: token} do
+      join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)
+
+      assert_push "init", init
+      refute Map.has_key?(init, :config)
+      assert %{account_slug: _, authorizations: _, flow_logs: _, interface: _, relays: _} = init
+    end
+
+    test "sends metrics_config after init", %{gateway: gateway, site: site, token: token} do
+      metrics_rule_fixture()
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+    end
+
+    test "pushes create_authorization with only the client fields gateways read", %{
+      client: client,
+      account: account,
+      actor: actor,
+      gateway: gateway,
+      resource: resource,
+      site: site,
+      token: token,
+      subject: subject,
+      group: group
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)
+      assert_push "init", _init_payload
+
+      policy_authorization =
+        policy_authorization_fixture(account: account, actor: actor, client: client, resource: resource, group: group)
+
+      %{public_key: public_key, preshared_key: preshared_key} =
+        send_authorize(socket, client, subject, resource, policy_authorization.id)
+
+      assert_push "create_authorization", payload
+      assert is_binary(payload.ref)
+      refute Map.has_key?(payload, :subject)
+
+      assert payload.client == %{
+               id: client.id,
+               public_key: public_key,
+               preshared_key: preshared_key,
+               ipv4: client.ipv4,
+               ipv6: client.ipv6
+             }
+
+      push_ref = push(socket, "authorization_created", %{"ref" => payload.ref})
+      assert_reply push_ref, :ok
+      assert_receive {:authorized, _ref, %{resource_id: resource_id}}
+      assert resource_id == resource.id
+    end
+
+    test "pushes public_key_changed whatever the gateway's version", %{
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel, version: "1.6.4")
+      assert_push "init", _init_payload
+      public_key = generate_public_key()
+
+      send(socket.channel_pid, {:public_key_changed, :client, client.id, public_key})
+
+      assert_push "public_key_changed", %{client_id: client_id, public_key: ^public_key}
+      assert client_id == client.id
+    end
+
+    test "pushes resource_updated without adapting it to the gateway's version", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      account: account
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel, version: "1.1.0")
+      assert_push "init", _init_payload
+
+      resource = dns_resource_fixture(account: account, site: site, address: "example.*.com")
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => "example.*.com",
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      data = Map.put(old_data, "filters", [%{"protocol" => "tcp", "ports" => ["443"]}])
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: struct_from_params(Portal.Resource, old_data),
+        struct: struct_from_params(Portal.Resource, data)
+      })
+
+      assert_push "resource_updated", payload
+      assert payload.address == "example.*.com"
+      assert payload.filters == [%{protocol: :tcp, port_range_start: 443, port_range_end: 443}]
+    end
+
+    test "ignores the requests of clients before 1.4", %{
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)
+      assert_push "init", _init_payload
+      expires_at = DateTime.add(DateTime.utc_now(), 30, :second)
+
+      send(
+        socket.channel_pid,
+        {:allow_access, {self(), make_ref()},
+         %{
+           client_id: client.id,
+           client_ipv4: client.ipv4,
+           client_ipv6: client.ipv6,
+           resource: to_cache(resource),
+           policy_authorization_id: Ecto.UUID.generate(),
+           authorization_expires_at: expires_at,
+           client_payload: "RTC_SD"
+         }}
+      )
+
+      send(
+        socket.channel_pid,
+        {:request_connection, {self(), make_ref()},
+         %{
+           client: PortalAPI.Gateway.Views.Client.render_legacy(client, generate_public_key(), "RTC_SD", "PSK"),
+           resource: to_cache(resource),
+           policy_authorization_id: Ecto.UUID.generate(),
+           authorization_expires_at: expires_at
+         }}
+      )
+
+      :sys.get_state(socket.channel_pid)
+      refute_push "allow_access", _payload
+      refute_push "request_connection", _payload
+      refute Portal.Cache.Authorizations.has_client?(:sys.get_state(socket.channel_pid).assigns.authorizations_cache, client.id)
+    end
+
+    for event <- ~w[connection_ready flow_authorized] do
+      test "refuses #{event}, which current gateways do not send", %{gateway: gateway, site: site, token: token} do
+        socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)
+        assert_push "init", _init_payload
+
+        log =
+          capture_log(fn ->
+            ref = push(socket, unquote(event), %{"ref" => "ref"})
+            assert_reply ref, :error, %{reason: :unknown_message}
+          end)
+
+        assert log =~ "Unknown gateway message"
+      end
+    end
+  end
+
+  describe "Phoenix channels" do
+    for channel <- [PortalAPI.Gateway.Channel, PortalAPI.Gateway.V2.Channel, PortalAPI.Gateway.V3.Channel] do
+      test "#{inspect(channel)} runs on Phoenix.Channel.Server", %{gateway: gateway, site: site, token: token} do
+        Process.flag(:trap_exit, true)
+        socket = join_channel(gateway, site, token, channel: unquote(channel), phoenix: true)
+        assert_push "init", _init_payload
+
+        capture_log(fn ->
+          ref = push(socket, "unknown", %{})
+          assert_reply ref, :error, %{reason: :unknown_message}
+        end)
+
+        send(socket.channel_pid, :disconnect)
+        assert_push "disconnect", %{reason: "token_expired"}
+        assert_receive :socket_drain
+        assert_receive {:EXIT, _pid, :shutdown}
+      end
     end
   end
 end

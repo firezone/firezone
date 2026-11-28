@@ -189,6 +189,15 @@ defmodule PortalAPI.Sockets do
         "proto_min and proto_max must be whole numbers with proto_min no larger than proto_max"
       )
 
+  def handle_error(conn, :invalid_stamp_secret),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        400,
+        :invalid_stamp_secret,
+        "X-Stamp-Secret must be between 1 and 256 bytes"
+      )
+
   def handle_error(conn, :conflict),
     do:
       ProblemDetails.send_with_code(

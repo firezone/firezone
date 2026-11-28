@@ -28,6 +28,13 @@ defmodule PortalAPI.ChannelCase do
     {:rand.uniform(255), :rand.uniform(255), :rand.uniform(255), :rand.uniform(255)}
   end
 
+  @doc """
+  Joins `channel` on `topic` like `Phoenix.ChannelTest.subscribe_and_join/3`, but runs it with
+  `PortalAPI.Channel.Runner`, as the plain WebSocket connection does.
+  """
+  def run_channel(socket, channel, topic, payload \\ %{}),
+    do: PortalAPI.ChannelCase.Runner.join(socket, channel, topic, payload)
+
   @geo_headers [
     {"x-geo-location-region", "Ukraine"},
     {"x-geo-location-city", "Kyiv"},

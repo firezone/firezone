@@ -460,7 +460,7 @@ defmodule PortalAPI.Device.V1.Channel do
       resources: [],
       authorizations: PortalAPI.Client.Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       relays: Relays.render(relays, serve_only_relay_owner(socket)),
-      interface: PortalAPI.Client.Views.Interface.render(%{device | account: subject.account})
+      interface: PortalAPI.Client.Views.Interface.render(%{device | account: subject.account}, protocol_version())
     }
 
     Protocol.push(socket, "init", extend_init(socket, payload))

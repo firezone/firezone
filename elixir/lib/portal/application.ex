@@ -72,6 +72,8 @@ defmodule Portal.Application do
         # Builds the MCP tool table from the API spec; must be ready before the
         # API endpoint starts serving /mcp.
         PortalAPI.MCP.Tools,
+        # Lists the open plain WebSocket connections, for the drainer.
+        PortalAPI.Sockets.Connection.registry_child_spec(),
         # The public listener owns the socket transports, so it must stop after
         # the endpoints it dispatches into have drained their sockets.
         {Portal.Endpoint, shutdown: 40_000},

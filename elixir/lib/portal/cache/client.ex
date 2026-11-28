@@ -258,7 +258,7 @@ defmodule Portal.Cache.Client do
     raw_connectable =
       cache.policies
       |> conforming_resource_ids(client, Credential.auth_provider_id(subject.credential))
-      |> adapted_resources(cache.resources, client)
+      |> adapted_resources(cache.resources, client, cache.protocol_version)
       |> reject_unsupported_pools(cache.protocol_version)
 
     {pool_members, device_addresses} =
@@ -401,7 +401,7 @@ defmodule Portal.Cache.Client do
 
     cache = %{cache | resources: resources}
 
-    toggle = Version.resource_cannot_change_sites_on_client?(client)
+    toggle = cache.protocol_version < 5 and Version.resource_cannot_change_sites_on_client?(client)
 
     # For these updates we need to make sure the resource is toggled deleted then created.
     # See https://github.com/firezone/firezone/issues/9881
@@ -538,7 +538,8 @@ defmodule Portal.Cache.Client do
       cache = %{cache | resources: resources}
 
       # Determine if we need to toggle the resource (delete then add) based on site change and client version
-      toggle = Version.resource_cannot_change_sites_on_client?(client) and site_changed?
+      toggle =
+        cache.protocol_version < 5 and Version.resource_cannot_change_sites_on_client?(client) and site_changed?
 
       recompute_connectable_resources(cache, client, subject, toggle: toggle)
     else
@@ -554,9 +555,9 @@ defmodule Portal.Cache.Client do
   #
   # Nil is the steady state for device pools, which connect without a gateway
   # and have their site_id forced to nil by `Portal.Resource.changeset/1`;
-  # `adapted_resources/3` keeps those and their render clauses never ask for a
+  # `adapted_resources/4` keeps those and their render clauses never ask for a
   # site. For every other type nil means the site was deleted (`ON DELETE SET
-  # NULL`) or hydration missed it, and `adapted_resources/3` drops the resource
+  # NULL`) or hydration missed it, and `adapted_resources/4` drops the resource
   # before anything renders it.
   #
   # Returns whether the site changed as well, because older clients cannot
@@ -695,10 +696,10 @@ defmodule Portal.Cache.Client do
     end
   end
 
-  defp adapted_resources(conforming_resource_ids, resources, client) do
+  defp adapted_resources(conforming_resource_ids, resources, client, protocol_version) do
     for id <- conforming_resource_ids,
         resource = Map.get(resources, id),
-        adapted_resource = adapt(resource, client),
+        adapted_resource = adapt(resource, client, protocol_version),
         not is_nil(adapted_resource),
         resource_connectable_without_gateway?(adapted_resource) or
           not is_nil(adapted_resource.site) do
@@ -723,9 +724,9 @@ defmodule Portal.Cache.Client do
 
   defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{}), do: false
 
-  defp adapt(resource, client) do
-    Resource.adapt_resource_for_version(resource, client)
-  end
+  # Clients of the v5 protocol are new enough for every resource as it is.
+  defp adapt(resource, _client, protocol_version) when protocol_version >= 5, do: resource
+  defp adapt(resource, client, _protocol_version), do: Resource.adapt_resource_for_version(resource, client)
 
   defp load_pool_state(_connectable_resources, _subject, protocol_version)
        when protocol_version >= 3,

@@ -313,7 +313,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   def handle_info({:public_key_changed, type, device_id, public_key}, socket) do
-    if Portal.Version.supports_public_key_changed?(socket.assigns.client) do
+    if protocol_version(socket) >= 5 or Portal.Version.supports_public_key_changed?(socket.assigns.client) do
       payload =
         case type do
           :client -> %{client_id: device_id, public_key: public_key}
@@ -535,9 +535,9 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp fetch_resource_gateway(_account_id, _gateway_id, _resource), do: {:error, :offline}
 
-  defp put_site_id(payload, site_id, client) do
+  defp put_site_id(payload, site_id, socket) do
     key =
-      if Portal.Version.client_supports_sites_payload?(client) do
+      if protocol_version(socket) >= 5 or Portal.Version.client_supports_sites_payload?(socket.assigns.client) do
         :site_id
       else
         :gateway_group_id
@@ -1866,10 +1866,10 @@ defmodule PortalAPI.Client.Channel.Shared do
       relays:
 Relays.render(relays, relay_owner(socket)),
       interface:
-        Views.Interface.render(%{
-          socket.assigns.client
-          | account: socket.assigns.subject.account
-        })
+        Views.Interface.render(
+          %{socket.assigns.client | account: socket.assigns.subject.account},
+          protocol_version(socket)
+        )
     }
 
     Protocol.push(socket, "init", protocol_extension(socket, :extend_init, payload))
@@ -2073,7 +2073,7 @@ Relays.render(relays, relay_owner(socket)),
 
     if old_account.config != account.config do
       client = %{socket.assigns.client | account: account}
-      payload = %{interface: Views.Interface.render(client)}
+      payload = %{interface: Views.Interface.render(client, protocol_version(socket))}
       :ok = Protocol.push(socket, "config_changed", payload)
     end
 
@@ -2872,7 +2872,7 @@ Relays.render(relays, relay_owner(socket)),
             use_iceless: gateway.use_iceless,
             flow_logs_ingest_token: initiator_token
           }
-          |> put_site_id(gateway.site_id, socket.assigns.client)
+          |> put_site_id(gateway.site_id, socket)
           |> Map.merge(address_fields(address))
 
         Protocol.push(socket, authorization_created_event(socket), reply_payload, gateway)

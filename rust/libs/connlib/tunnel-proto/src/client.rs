@@ -3303,7 +3303,6 @@ mod tests {
         InterfaceConfig {
             ipv4,
             ipv6,
-            upstream_dns: vec![],
             upstream_do53: vec![],
             upstream_doh: vec![],
             search_domain: None,

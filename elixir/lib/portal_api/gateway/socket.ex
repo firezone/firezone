@@ -14,7 +14,7 @@ defmodule PortalAPI.Gateway.Socket do
   @doc false
   def gateway_session_queue_opts do
     [
-      name: :gateway_session_queue,
+      name: Portal.Queue.name(:gateway_session_queue),
       flush_interval: :timer.seconds(5),
       flush_threshold: 1_000,
       label: "gateway session",
