@@ -22,6 +22,7 @@ To run the headless Client:
    e.g. `export FIREZONE_ID=$(head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1)`. The client requires this variable at
    startup. We recommend this to be a 64 character hex string.
 1. Set `LOG_DIR` to a suitable directory for writing logs
+
    ```
    export LOG_DIR=/tmp/firezone-logs
    mkdir $LOG_DIR

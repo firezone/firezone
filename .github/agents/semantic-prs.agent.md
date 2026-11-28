@@ -1,4 +1,5 @@
 ---
+
 name: semantic-prs
 description: "Opens PRs with Conventional Commits / semantic titles and descriptions, and uses semantic commits when it needs to commit."
 ---

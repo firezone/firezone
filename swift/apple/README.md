@@ -409,6 +409,7 @@ How to do it:
    file. Make sure to set a password -- this is the
    `APPLE_BUILD_CERTIFICATE_P12_PASSWORD`.
 1. Convert the p12 file to base64:
+
    ```bash
    base64 < cert.p12
    ```

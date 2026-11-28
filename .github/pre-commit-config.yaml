@@ -14,11 +14,10 @@ repos:
         entry: codespell
         language: system
         pass_filenames: false
-      - id: prettier
-        name: Prettier
-        entry: bash -c 'git ls-files "*.md" "*.json" "*.yaml" "*.yml" "*.css" "*.js" "*.ts" "*.tsx" | xargs prettier --check --ignore-unknown --no-error-on-unmatched-pattern'
+      - id: biome
+        name: Biome
+        entry: biome format --files-ignore-unknown=true --no-errors-on-unmatched
         language: system
-        pass_filenames: false
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
