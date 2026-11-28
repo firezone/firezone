@@ -3,13 +3,13 @@ defmodule PortalAPI.Client.Views.Resource do
   alias Portal.Cache.Cacheable
 
   def render_many(resources, client_session, protocol_version) do
-    site_key = site_key(client_session)
+    site_key = site_key(client_session, protocol_version)
 
     Enum.map(resources, &render_cacheable(&1, site_key, protocol_version))
   end
 
   def render(%Cacheable.Resource{} = resource, client_session, protocol_version) do
-    render_cacheable(resource, site_key(client_session), protocol_version)
+    render_cacheable(resource, site_key(client_session, protocol_version), protocol_version)
   end
 
   @doc """
@@ -143,8 +143,8 @@ defmodule PortalAPI.Client.Views.Resource do
     Map.put(attrs, :ip_stack, resource.ip_stack)
   end
 
-  defp site_key(client_session) do
-    if Portal.Version.client_supports_sites_payload?(client_session) do
+  defp site_key(client_session, protocol_version) do
+    if protocol_version >= 5 or Portal.Version.client_supports_sites_payload?(client_session) do
       :sites
     else
       :gateway_groups

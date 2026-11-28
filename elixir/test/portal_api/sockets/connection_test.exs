@@ -175,15 +175,18 @@ defmodule PortalAPI.Sockets.ConnectionTest do
           "connected_gateway_ids" => []
         })
 
-      assert {:ok, %{"ref" => ref, "resource" => %{"id" => resource_id}}} =
+      assert {:ok, %{"ref" => ref, "resource" => %{"id" => resource_id}} = create_authorization} =
                WebSocketClient.recv_message(gateway_ws, "create_authorization")
 
       assert resource_id == resource.id
+      refute Map.has_key?(create_authorization, "subject")
 
       :ok = WebSocketClient.send_message(gateway_ws, "authorization_created", %{"ref" => ref})
 
-      assert {:ok, %{"resource_id" => ^resource_id}} =
+      assert {:ok, %{"resource_id" => ^resource_id, "site_id" => site_id}} =
                WebSocketClient.recv_message(client_ws, "authorization_created")
+
+      assert site_id == ctx.site.id
     end
   end
 

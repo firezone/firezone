@@ -524,125 +524,123 @@ assert site_ids == [site.id]
       refute_push "metrics_config", _payload
     end
 
-    for channel <- [PortalAPI.Gateway.V3.Channel, PortalAPI.Gateway.V4.Channel] do
-      test "sends no metrics token without an ingest URL on #{inspect(channel)}", %{
-        gateway: gateway,
-        site: site,
-        token: token
-      } do
-        metrics_rule_fixture()
-        socket = join_channel(gateway, site, token, channel: unquote(channel))
-        assert_push "init", _init_payload
-        assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+    test "sends no metrics token without an ingest URL", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      metrics_rule_fixture()
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
 
-        send(socket.channel_pid, :refresh_metrics_token)
-        assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
-      end
+      send(socket.channel_pid, :refresh_metrics_token)
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+    end
 
-      test "sends no metrics token while no rule matches the gateway on #{inspect(channel)}", %{
-        gateway: gateway,
-        site: site,
-        token: token
-      } do
-        Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
-        metrics_rule_fixture(match: %{"device_type" => "client"})
-        socket = join_channel(gateway, site, token, channel: unquote(channel))
-        assert_push "init", init
-        refute Map.has_key?(init, :metrics)
-        assert_push "metrics_config", %{token: nil, export_interval_secs: 60, patterns: []}
+    test "sends no metrics token while no rule matches the gateway", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      metrics_rule_fixture(match: %{"device_type" => "client"})
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
+      assert_push "init", init
+      refute Map.has_key?(init, :metrics)
+      assert_push "metrics_config", %{token: nil, export_interval_secs: 60, patterns: []}
 
-        send(socket.channel_pid, :refresh_metrics_token)
-        assert_push "metrics_config", %{token: nil, patterns: []}
-      end
+      send(socket.channel_pid, :refresh_metrics_token)
+      assert_push "metrics_config", %{token: nil, patterns: []}
+    end
 
-      test "sends a metrics token after init and refreshes it on #{inspect(channel)}", %{
-        account: account,
-        gateway: gateway,
-        site: site,
-        token: token
-      } do
-        Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
-        metrics_rule_fixture(match: %{"account_id" => account.id}, patterns: ["b"])
-        socket = join_channel(gateway, site, token, channel: unquote(channel))
+    test "sends a metrics token after init and refreshes it", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      metrics_rule_fixture(match: %{"account_id" => account.id}, patterns: ["b"])
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
 
-        assert_push "init", _init_payload
+      assert_push "init", _init_payload
 
-        assert_push "metrics_config", %{
-          endpoint: "https://otlp.example.com/v1/metrics",
-          export_interval_secs: 60,
-          patterns: ["b"],
-          token: metrics_token
-        }
+      assert_push "metrics_config", %{
+        endpoint: "https://otlp.example.com/v1/metrics",
+        export_interval_secs: 60,
+        patterns: ["b"],
+        token: metrics_token
+      }
 
-        claims = JOSE.JWT.peek_payload(metrics_token).fields
-        assert claims["account_id"] == account.id
-        assert claims["account_slug"] == account.slug
-        assert claims["device_id"] == gateway.id
-        assert claims["device_type"] == "gateway"
-        assert claims["device_version"] == fetch_device!(gateway).last_seen_version
-        assert claims["metrics"] == ["b"]
+      claims = JOSE.JWT.peek_payload(metrics_token).fields
+      assert claims["account_id"] == account.id
+      assert claims["account_slug"] == account.slug
+      assert claims["device_id"] == gateway.id
+      assert claims["device_type"] == "gateway"
+      assert claims["device_version"] == fetch_device!(gateway).last_seen_version
+      assert claims["metrics"] == ["b"]
 
-        plan = account |> Portal.Billing.plan_type() |> Atom.to_string()
-        metrics_rule_fixture(match: %{"plan" => plan}, patterns: ["a"])
-        send(socket.channel_pid, :refresh_metrics_token)
+      plan = account |> Portal.Billing.plan_type() |> Atom.to_string()
+      metrics_rule_fixture(match: %{"plan" => plan}, patterns: ["a"])
+      send(socket.channel_pid, :refresh_metrics_token)
 
-        assert_push "metrics_config", %{patterns: ["a", "b"], token: metrics_token}
-        assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["a", "b"]
-      end
+      assert_push "metrics_config", %{patterns: ["a", "b"], token: metrics_token}
+      assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["a", "b"]
+    end
 
-      test "labels the gateway only while a rule targets it on #{inspect(channel)}", %{
-        gateway: gateway,
-        site: site,
-        token: token
-      } do
-        Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
-        metrics_rule_fixture(match: %{"device_type" => "gateway"}, export_interval_secs: 30)
-        socket = join_channel(gateway, site, token, channel: unquote(channel))
+    test "labels the gateway only while a rule targets it", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      metrics_rule_fixture(match: %{"device_type" => "gateway"}, export_interval_secs: 30)
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
 
-        assert_push "init", _init_payload
-        assert_push "metrics_config", %{export_interval_secs: 30, patterns: ["*"], token: metrics_token}
-        refute Map.has_key?(JOSE.JWT.peek_payload(metrics_token).fields, "label_devices")
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{export_interval_secs: 30, patterns: ["*"], token: metrics_token}
+      refute Map.has_key?(JOSE.JWT.peek_payload(metrics_token).fields, "label_devices")
 
-        metrics_rule_fixture(match: %{"device_id" => gateway.id}, patterns: ["a"])
-        send(socket.channel_pid, :refresh_metrics_token)
+      metrics_rule_fixture(match: %{"device_id" => gateway.id}, patterns: ["a"])
+      send(socket.channel_pid, :refresh_metrics_token)
 
-        assert_push "metrics_config", %{patterns: ["*", "a"], token: metrics_token}
-        claims = JOSE.JWT.peek_payload(metrics_token).fields
-        assert claims["label_devices"] == true
-        refute Map.has_key?(claims, "actor_id")
-      end
+      assert_push "metrics_config", %{patterns: ["*", "a"], token: metrics_token}
+      claims = JOSE.JWT.peek_payload(metrics_token).fields
+      assert claims["label_devices"] == true
+      refute Map.has_key?(claims, "actor_id")
+    end
 
-      test "pushes the metrics config when a rule that matched or matches the gateway changes on #{inspect(channel)}", %{
-        gateway: gateway,
-        site: site,
-        token: token
-      } do
-        Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
-        socket = join_channel(gateway, site, token, channel: unquote(channel))
-        assert_push "init", _init_payload
-        assert_push "metrics_config", %{token: nil}
+    test "pushes the metrics config when a rule that matched or matches the gateway changes", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Portal.Config.put_env_override(:portal, :otlp_metrics_ingest_url, "https://otlp.example.com/v1/metrics")
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{token: nil}
 
-        other = metrics_rule_fixture(match: %{"device_type" => "client"})
-        lsn = System.unique_integer([:positive, :monotonic])
-        send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :insert, struct: other})
-        refute_push "metrics_config", _payload
+      other = metrics_rule_fixture(match: %{"device_type" => "client"})
+      lsn = System.unique_integer([:positive, :monotonic])
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :insert, struct: other})
+      refute_push "metrics_config", _payload
 
-        rule = metrics_rule_fixture(match: %{"device_id" => gateway.id}, patterns: ["a"])
-        lsn = System.unique_integer([:positive, :monotonic])
-        send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :insert, struct: rule})
+      rule = metrics_rule_fixture(match: %{"device_id" => gateway.id}, patterns: ["a"])
+      lsn = System.unique_integer([:positive, :monotonic])
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :insert, struct: rule})
 
-        assert_push "metrics_config", %{token: metrics_token, patterns: ["a"]}
-        assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["a"]
+      assert_push "metrics_config", %{token: metrics_token, patterns: ["a"]}
+      assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["a"]
 
-        Repo.delete!(rule)
-        lsn = System.unique_integer([:positive, :monotonic])
-        send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: rule})
+      Repo.delete!(rule)
+      lsn = System.unique_integer([:positive, :monotonic])
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: rule})
 
-        assert_push "metrics_config", %{token: nil, patterns: []}
+      assert_push "metrics_config", %{token: nil, patterns: []}
 
-        send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: rule})
-        refute_push "metrics_config", _payload
-      end
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: rule})
+      refute_push "metrics_config", _payload
     end
 
     test "init includes inbound authorizations from the hydrated cache", %{
@@ -3811,35 +3809,33 @@ assert site_ids == [site.id]
                DateTime.truncate(expires_at, :second)
     end
 
-    for channel <- [PortalAPI.Gateway.V2.Channel, PortalAPI.Gateway.V4.Channel] do
-      test "pushes create_authorization on #{inspect(channel)}", %{
-        client: client,
-        account: account,
-        actor: actor,
-        gateway: gateway,
-        resource: resource,
-        site: site,
-        token: token,
-        subject: subject,
-        group: group
-      } do
-        socket = join_channel(gateway, site, token, channel: unquote(channel))
-        assert_push "init", _init_payload
+    test "pushes create_authorization on the v2 channel", %{
+      client: client,
+      account: account,
+      actor: actor,
+      gateway: gateway,
+      resource: resource,
+      site: site,
+      token: token,
+      subject: subject,
+      group: group
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V2.Channel)
+      assert_push "init", _init_payload
 
-        policy_authorization =
-          policy_authorization_fixture(
-            account: account,
-            actor: actor,
-            client: client,
-            resource: resource,
-            group: group
-          )
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          group: group
+        )
 
-        send_authorize(socket, client, subject, resource, policy_authorization.id)
+      send_authorize(socket, client, subject, resource, policy_authorization.id)
 
-        assert_push "create_authorization", %{ref: ref}
-        assert is_binary(ref)
-      end
+      assert_push "create_authorization", %{ref: ref}
+      assert is_binary(ref)
     end
 
     test "authorize_flow tracks policy authorization and sends reject_access when policy authorization is deleted",
@@ -4639,19 +4635,17 @@ assert site_ids == [site.id]
       refute_received {:authorized, _, _}
     end
 
-    for channel <- [PortalAPI.Gateway.V2.Channel, PortalAPI.Gateway.V4.Channel] do
-      test "authorization_created accepts the renamed acknowledgement on #{inspect(channel)}", %{
-        gateway: gateway,
-        site: site,
-        token: token
-      } do
-        socket = join_channel(gateway, site, token, channel: unquote(channel))
-        assert_push "init", _init_payload
+    test "authorization_created accepts the renamed acknowledgement", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V2.Channel)
+      assert_push "init", _init_payload
 
-        push_ref = push(socket, "authorization_created", %{"ref" => "invalid"})
+      push_ref = push(socket, "authorization_created", %{"ref" => "invalid"})
 
-        assert_reply push_ref, :error, %{reason: :invalid_ref}
-      end
+      assert_reply push_ref, :error, %{reason: :invalid_ref}
     end
 
     test "connection ready forwards RFC session description to the client channel", %{
@@ -5410,6 +5404,155 @@ assert site_ids == [site.id]
   end
 
   describe "v4 channel" do
+    test "sends init without the fields only older gateways need", %{gateway: gateway, site: site, token: token} do
+      join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)
+
+      assert_push "init", init
+      refute Map.has_key?(init, :config)
+      assert %{account_slug: _, authorizations: _, flow_logs: _, interface: _, relays: _} = init
+    end
+
+    test "sends metrics_config after init", %{gateway: gateway, site: site, token: token} do
+      metrics_rule_fixture()
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+    end
+
+    test "pushes create_authorization with only the client fields gateways read", %{
+      client: client,
+      account: account,
+      actor: actor,
+      gateway: gateway,
+      resource: resource,
+      site: site,
+      token: token,
+      subject: subject,
+      group: group
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)
+      assert_push "init", _init_payload
+
+      policy_authorization =
+        policy_authorization_fixture(account: account, actor: actor, client: client, resource: resource, group: group)
+
+      %{public_key: public_key, preshared_key: preshared_key} =
+        send_authorize(socket, client, subject, resource, policy_authorization.id)
+
+      assert_push "create_authorization", payload
+      assert is_binary(payload.ref)
+      refute Map.has_key?(payload, :subject)
+
+      assert payload.client == %{
+               id: client.id,
+               public_key: public_key,
+               preshared_key: preshared_key,
+               ipv4: client.ipv4,
+               ipv6: client.ipv6
+             }
+
+      push_ref = push(socket, "authorization_created", %{"ref" => payload.ref})
+      assert_reply push_ref, :ok
+      assert_receive {:authorized, _ref, %{resource_id: resource_id}}
+      assert resource_id == resource.id
+    end
+
+    test "pushes public_key_changed whatever the gateway's version", %{
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel, version: "1.6.4")
+      assert_push "init", _init_payload
+      public_key = generate_public_key()
+
+      send(socket.channel_pid, {:public_key_changed, :client, client.id, public_key})
+
+      assert_push "public_key_changed", %{client_id: client_id, public_key: ^public_key}
+      assert client_id == client.id
+    end
+
+    test "pushes resource_updated without adapting it to the gateway's version", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      account: account
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel, version: "1.1.0")
+      assert_push "init", _init_payload
+
+      resource = dns_resource_fixture(account: account, site: site, address: "example.*.com")
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => "example.*.com",
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      data = Map.put(old_data, "filters", [%{"protocol" => "tcp", "ports" => ["443"]}])
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: struct_from_params(Portal.Resource, old_data),
+        struct: struct_from_params(Portal.Resource, data)
+      })
+
+      assert_push "resource_updated", payload
+      assert payload.address == "example.*.com"
+      assert payload.filters == [%{protocol: :tcp, port_range_start: 443, port_range_end: 443}]
+    end
+
+    test "ignores the requests of clients before 1.4", %{
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)
+      assert_push "init", _init_payload
+      expires_at = DateTime.add(DateTime.utc_now(), 30, :second)
+
+      send(
+        socket.channel_pid,
+        {:allow_access, {self(), make_ref()},
+         %{
+           client_id: client.id,
+           client_ipv4: client.ipv4,
+           client_ipv6: client.ipv6,
+           resource: to_cache(resource),
+           policy_authorization_id: Ecto.UUID.generate(),
+           authorization_expires_at: expires_at,
+           client_payload: "RTC_SD"
+         }}
+      )
+
+      send(
+        socket.channel_pid,
+        {:request_connection, {self(), make_ref()},
+         %{
+           client: PortalAPI.Gateway.Views.Client.render_legacy(client, generate_public_key(), "RTC_SD", "PSK"),
+           resource: to_cache(resource),
+           policy_authorization_id: Ecto.UUID.generate(),
+           authorization_expires_at: expires_at
+         }}
+      )
+
+      :sys.get_state(socket.channel_pid)
+      refute_push "allow_access", _payload
+      refute_push "request_connection", _payload
+      refute Portal.Cache.Authorizations.has_client?(:sys.get_state(socket.channel_pid).assigns.authorizations_cache, client.id)
+    end
+
     for event <- ~w[connection_ready flow_authorized] do
       test "refuses #{event}, which current gateways do not send", %{gateway: gateway, site: site, token: token} do
         socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V4.Channel)

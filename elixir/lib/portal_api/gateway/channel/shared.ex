@@ -210,7 +210,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   ###########################
 
   def handle_info({:public_key_changed, :client, client_id, public_key}, socket) do
-    if Portal.Version.supports_public_key_changed?(socket.assigns.gateway) do
+    if protocol_version(socket) >= 4 or Portal.Version.supports_public_key_changed?(socket.assigns.gateway) do
       push(socket, "public_key_changed", %{client_id: client_id, public_key: public_key})
     end
 
@@ -244,23 +244,20 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       {:authorize, channel_pid, ref, request.resource.id, request.preshared_key,
        request.ice_credentials, use_iceless}
 
-    push(socket, socket.assigns.channel_protocol.create_authorization_event(), %{
+    payload = %{
       ref: encode_ref(socket, ref_tuple),
       resource: Views.Resource.render(request.resource),
       gateway_ice_credentials: request.ice_credentials.receiver,
-      client:
-        Views.Client.render(
-          struct(Device, initiator),
-          initiator.public_key,
-          request.preshared_key,
-          initiator.user_agent
-        ),
+      client: render_client(initiator, request.preshared_key, socket),
       client_ice_credentials: request.ice_credentials.initiator,
       expires_at: DateTime.to_unix(request.expires_at, :second),
-      subject: request.subject,
       use_iceless: use_iceless,
       flow_logs_ingest_token: request.responder_token
-    })
+    }
+
+    payload = put_legacy_field(payload, :subject, request.subject, socket)
+
+    push(socket, socket.assigns.channel_protocol.create_authorization_event(), payload)
 
     {:noreply, socket}
   end
@@ -577,19 +574,18 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   defp init(socket, account, relays) do
-    push(socket, "init", %{
+    payload = %{
       flow_logs: flow_logs_config(),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
-      relays:
-        Relays.render(relays, relay_owner(socket)),
-      # These aren't used but needed for API compatibility
-      config: %{
-        ipv4_masquerade_enabled: true,
-        ipv6_masquerade_enabled: true
-      }
-    })
+      relays: Relays.render(relays, relay_owner(socket))
+    }
+
+    payload =
+      put_legacy_field(payload, :config, %{ipv4_masquerade_enabled: true, ipv6_masquerade_enabled: true}, socket)
+
+    push(socket, "init", payload)
   end
 
   defp flow_logs_config do
@@ -713,7 +709,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     # it will simply ignore the message.
     resource = Cache.Cacheable.to_cache(resource)
 
-    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case adapt_resource(resource, socket) do
       nil ->
         {:noreply, socket}
 
@@ -814,6 +810,37 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       Telemetry.ice_candidates_dropped(:gateway, :unauthorized, length(candidates))
     end
   end
+
+  # Gateways of the v4 protocol are new enough for every resource as it is.
+  defp adapt_resource(resource, socket) do
+    if protocol_version(socket) >= 4 do
+      resource
+    else
+      Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version)
+    end
+  end
+
+  # Gateways before the v4 protocol attribute flow logs with the client's details.
+  defp render_client(initiator, preshared_key, socket) do
+    client = struct(Device, initiator)
+
+    if protocol_version(socket) >= 4 do
+      Views.Client.render(client, initiator.public_key, preshared_key)
+    else
+      Views.Client.render(client, initiator.public_key, preshared_key, initiator.user_agent)
+    end
+  end
+
+  # Only gateways before the v4 protocol read these fields.
+  defp put_legacy_field(payload, key, value, socket) do
+    if protocol_version(socket) >= 4 do
+      payload
+    else
+      Map.put(payload, key, value)
+    end
+  end
+
+  defp protocol_version(socket), do: socket.assigns.channel_protocol.protocol_version()
 
   defp candidate_count(candidates) when is_list(candidates), do: length(candidates)
   defp candidate_count(_candidates), do: 0

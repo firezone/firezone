@@ -1,6 +1,6 @@
 defmodule PortalAPI.Gateway.V4.Socket do
   @moduledoc """
-  The `/gateway/v4` socket: the v3 gateway protocol over a plain WebSocket. See
+  The `/gateway/v4` socket: the newest gateway protocol over a plain WebSocket. See
   `PortalAPI.Sockets.Connection` for the framing.
   """
   @behaviour Phoenix.Socket.Transport

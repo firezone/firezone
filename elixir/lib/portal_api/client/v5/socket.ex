@@ -1,6 +1,6 @@
 defmodule PortalAPI.Client.V5.Socket do
   @moduledoc """
-  The `/client/v5` socket: the v4 client protocol over a plain WebSocket. See
+  The `/client/v5` socket: the newest client protocol over a plain WebSocket. See
   `PortalAPI.Sockets.Connection` for the framing.
   """
   @behaviour Phoenix.Socket.Transport
