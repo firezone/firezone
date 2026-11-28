@@ -373,6 +373,7 @@ defmodule PortalWeb.Router do
         live "/profile", Profile
         live "/account", Account
         live "/account/usage/:item", Account, :usage
+        live "/account/swag", Account, :swag
 
         scope "/api_clients", ApiClients do
           live "/", Index

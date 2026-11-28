@@ -188,6 +188,70 @@ defmodule PortalWeb.Settings.AccountTest do
     end
   end
 
+  describe "swag" do
+    setup %{conn: conn, actor: actor} do
+      %{conn: authorize_conn(conn, actor)}
+    end
+
+    @swag_params %{
+      "name" => "Ada Lovelace",
+      "address" => "1 Main St",
+      "city" => "Austin",
+      "state" => "TX",
+      "zip" => "78701",
+      "shirt_size" => "Men's L"
+    }
+
+    test "sends a swag request to support on paid plans", %{conn: conn, account: account, actor: actor} do
+      account = update_account(account, metadata: %{stripe: %{product_name: "Team"}})
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+
+      lv |> element("#request-swag", "Request swag") |> render_click()
+      assert_patch(lv, ~p"/#{account}/settings/account/swag")
+      assert has_element?(lv, "#swag-form input[name='swag[name]'][value='#{actor.name}']")
+
+      lv |> form("#swag-form", swag: @swag_params) |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/settings/account")
+      refute has_element?(lv, "#swag-form")
+      assert render(lv) =~ "Request sent! Firezone support will email #{actor.email}"
+
+      assert_receive {:email, email}
+      assert email.to == [{"", "support@firezone.dev"}]
+      assert email.subject == "Swag request: #{account.name}"
+      assert email.reply_to == {actor.name, actor.email}
+      assert email.text_body =~ "Account: #{account.name} (#{account.id})"
+      assert email.text_body =~ "Plan: team"
+      assert email.text_body =~ "Ada Lovelace\n1 Main St\nAustin, TX 78701"
+      assert email.text_body =~ "T-shirt size: Men's L"
+    end
+
+    test "rejects an unknown shirt size", %{conn: conn, account: account} do
+      account = update_account(account, metadata: %{stripe: %{product_name: "Business"}})
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account/swag")
+
+      html = render_submit(lv, "submit_swag", %{"swag" => Map.put(@swag_params, "shirt_size", "Kids XS")})
+
+      assert html =~ "is invalid"
+      assert has_element?(lv, "#swag-form")
+      refute_receive {:email, _email}
+    end
+
+    test "hides swag on the Starter plan", %{conn: conn, account: account} do
+      account = update_account(account, metadata: %{stripe: %{product_name: "Starter"}})
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+
+      refute has_element?(lv, "#request-swag")
+
+      render_submit(lv, "submit_swag", %{"swag" => @swag_params})
+      refute_receive {:email, _email}
+
+      assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
+        live(conn, ~p"/#{account}/settings/account/swag")
+      end
+    end
+  end
+
   describe "limits banner" do
     for {flags, message} <- [
           {%{users_limit_exceeded: true}, "users."},

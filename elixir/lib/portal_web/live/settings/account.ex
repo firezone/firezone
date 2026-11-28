@@ -15,6 +15,8 @@ defmodule PortalWeb.Settings.Account do
   @usage_page_size 50
   @usage_items ~w[seats adhoc_service_accounts users service_accounts admins sites]
   @slug_change_window_days 30
+  @shirt_sizes ["Men's S", "Men's M", "Men's L", "Men's XL", "Men's XXL", "Men's XXXL", "Men's XXXXL"]
+  @swag_fields [:name, :address, :city, :state, :zip, :shirt_size]
 
   # First path segments the router already uses.
   # Top-level routes, static path prefixes, region names, and words that
@@ -48,7 +50,8 @@ defmodule PortalWeb.Settings.Account do
         slug_history: slug_history,
         account_form: to_form(account_changeset(account, %{}, slug_history)),
         usage: if(connected?(socket), do: load_usage(account, socket.assigns.subject)),
-        usage_panel: nil
+        usage_panel: nil,
+        swag_form: nil
       )
 
     {:ok, socket}
@@ -63,8 +66,17 @@ defmodule PortalWeb.Settings.Account do
     raise PortalWeb.LiveErrors.NotFoundError
   end
 
+  def handle_params(_params, _uri, %{assigns: %{live_action: :swag}} = socket) do
+    if Billing.paid_plan?(socket.assigns.account) do
+      form = to_form(swag_changeset(%{"name" => socket.assigns.subject.actor.name}), as: :swag)
+      {:noreply, assign(socket, usage_panel: nil, swag_form: form)}
+    else
+      raise PortalWeb.LiveErrors.NotFoundError
+    end
+  end
+
   def handle_params(_params, _uri, socket) do
-    {:noreply, assign(socket, usage_panel: nil)}
+    {:noreply, assign(socket, usage_panel: nil, swag_form: nil)}
   end
 
   # The static render shows a skeleton instead, so usage is only counted once,
@@ -194,6 +206,28 @@ defmodule PortalWeb.Settings.Account do
               label="Account Slug Changes"
               enabled={feature_enabled?(@account, :slug_changes)}
             />
+          </div>
+
+          <div :if={Billing.paid_plan?(@account)} id="swag" class="mt-6">
+            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
+              Swag
+            </h3>
+            <div class="rounded border border-border bg-raised p-4 space-y-3">
+              <div class="flex items-center gap-3">
+                <img src={~p"/images/swag-shirt.png"} alt="" class="w-14 h-14 object-contain" />
+                <p class="text-xs text-body">
+                  Thanks for backing Firezone. Grab a T-shirt and a sticker pack, on us.
+                </p>
+              </div>
+              <Form.button
+                id="request-swag"
+                patch={~p"/#{@account}/settings/account/swag"}
+                size="xs"
+                class="w-full"
+              >
+                Request swag
+              </Form.button>
+            </div>
           </div>
 
           <%!-- Actions (pending deletion, self-initiated, not locked) --%>
@@ -491,6 +525,8 @@ defmodule PortalWeb.Settings.Account do
       </div>
 
       <.usage_panel account={@account} panel={@usage_panel} />
+
+      <.swag_panel account={@account} form={@swag_form} />
 
       <.edit_account_panel
         open={@edit_account_open}
@@ -840,6 +876,82 @@ defmodule PortalWeb.Settings.Account do
     """
   end
 
+  attr :account, :any, required: true
+  attr :form, :any, default: nil
+
+  defp swag_panel(assigns) do
+    assigns = assign(assigns, shirt_sizes: @shirt_sizes)
+
+    ~H"""
+    <div
+      id="swag-panel"
+      class={[
+        "absolute inset-y-0 right-0 z-20",
+        "w-full lg:w-3/4 xl:w-96",
+        "flex flex-col bg-surface border-l border-border shadow-xl",
+        "transition-transform duration-200",
+        @form && "translate-x-0",
+        is_nil(@form) && "translate-x-full"
+      ]}
+    >
+      <.form
+        :if={@form}
+        id="swag-form"
+        for={@form}
+        phx-change="change_swag"
+        phx-submit="submit_swag"
+        as={:swag}
+        class="flex flex-col h-full overflow-hidden"
+      >
+        <Form.panel_header title="Get Firezone swag" close_event="close_swag" />
+        <div class="flex-1 overflow-y-auto p-5 space-y-5">
+          <div class="flex items-center justify-center gap-4 rounded border border-border bg-raised p-4">
+            <img
+              src={~p"/images/swag-shirt.png"}
+              alt="Black Firezone T-shirt with the orange Firezone logo"
+              class="h-28 object-contain"
+            />
+            <img src={~p"/images/swag-sticker.png"} alt="Firezone sticker" class="h-24 object-contain" />
+          </div>
+          <p class="text-sm text-body">
+            A Firezone T-shirt and a sticker pack, on the house. Tell us your size and where to
+            send it. We ship within the continental US only.
+          </p>
+          <Form.input field={@form[:name]} label="Full name" autocomplete="name" required />
+          <Form.input
+            field={@form[:address]}
+            label="Street address"
+            autocomplete="street-address"
+            required
+          />
+          <Form.input field={@form[:city]} label="City" autocomplete="address-level2" required />
+          <div class="grid grid-cols-2 gap-3">
+            <Form.input field={@form[:state]} label="State" autocomplete="address-level1" required />
+            <Form.input field={@form[:zip]} label="Zip code" autocomplete="postal-code" required />
+          </div>
+          <Form.input
+            field={@form[:shirt_size]}
+            type="select"
+            label="T-shirt size"
+            prompt="Select your size"
+            options={@shirt_sizes}
+            required
+          />
+        </div>
+
+        <Form.panel_footer>
+          <Form.panel_footer_button type="button" phx-click="close_swag">
+            Cancel
+          </Form.panel_footer_button>
+          <Form.panel_footer_button type="submit" style="primary" disabled={not @form.source.valid?}>
+            Send request
+          </Form.panel_footer_button>
+        </Form.panel_footer>
+      </.form>
+    </div>
+    """
+  end
+
   defp feature_enabled?(account, feature) do
     features = account.features || %Portal.Accounts.Features{}
     Map.get(features, feature) == true
@@ -972,7 +1084,7 @@ defmodule PortalWeb.Settings.Account do
 
     socket = assign(socket, region_transfer_open: false)
 
-    with {:ok, :reserved} <- Database.reserve_region_transfer_request(account.id),
+    with {:ok, :reserved} <- Database.reserve_support_request(account.id),
          {:ok, _email} <-
            account
            |> InternalEmail.region_transfer_request_email(
@@ -996,6 +1108,49 @@ defmodule PortalWeb.Settings.Account do
         Logger.error("Failed to send region transfer request", reason: inspect(reason))
         {:noreply, put_flash(socket, :error, "Could not send the request. Please try again later.")}
     end
+  end
+
+  def handle_event("close_swag", _params, socket) do
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/account")}
+  end
+
+  def handle_event("change_swag", %{"swag" => params}, %{assigns: %{swag_form: %{}}} = socket) do
+    changeset = params |> swag_changeset() |> Map.put(:action, :validate)
+    {:noreply, assign(socket, swag_form: to_form(changeset, as: :swag))}
+  end
+
+  def handle_event("submit_swag", %{"swag" => params}, %{assigns: %{swag_form: %{}}} = socket) do
+    %{account: account, subject: subject} = socket.assigns
+
+    with true <- Billing.paid_plan?(account),
+         {:ok, request} <- apply_action(swag_changeset(params), :insert),
+         {:ok, :reserved} <- Database.reserve_support_request(account.id),
+         {:ok, _email} <-
+           account
+           |> InternalEmail.swag_request_email(subject, request)
+           |> Portal.Mailer.deliver() do
+      {:noreply,
+       socket
+       |> put_flash(:success, "Request sent! Firezone support will email #{subject.actor.email} if we need anything else.")
+       |> push_patch(to: ~p"/#{account}/settings/account")}
+    else
+      false ->
+        {:noreply, socket}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, swag_form: to_form(changeset, as: :swag))}
+
+      {:error, :rate_limited} ->
+        {:noreply, put_flash(socket, :error, "You already sent a few requests today. Please try again tomorrow.")}
+
+      {:error, reason} ->
+        Logger.error("Failed to send swag request", reason: inspect(reason))
+        {:noreply, put_flash(socket, :error, "Could not send the request. Please try again later.")}
+    end
+  end
+
+  def handle_event(event, _params, socket) when event in ["change_swag", "submit_swag"] do
+    {:noreply, socket}
   end
 
   def handle_event("redirect_to_billing_portal", _params, socket) do
@@ -1199,6 +1354,20 @@ defmodule PortalWeb.Settings.Account do
   defp billing_currency(:eu), do: "EUR"
 
   defp region_transfer_enabled?(region), do: region != :on_prem
+
+  defp swag_changeset(params) do
+    types = Map.new(@swag_fields, &{&1, :string})
+
+    {%{}, types}
+    |> cast(params, @swag_fields)
+    |> validate_required(@swag_fields)
+    |> validate_length(:name, max: 200)
+    |> validate_length(:address, max: 500)
+    |> validate_length(:city, max: 200)
+    |> validate_length(:state, max: 100)
+    |> validate_length(:zip, max: 20)
+    |> validate_inclusion(:shirt_size, @shirt_sizes)
+  end
 
   defp account_changeset(%Account{} = account, attrs, slug_history) do
     account
@@ -1437,7 +1606,7 @@ defmodule PortalWeb.Settings.Account do
 
     # Shares the support form's per-account budget so a stuck button cannot
     # flood support. Serialized across nodes by the row lock.
-    def reserve_region_transfer_request(account_id) do
+    def reserve_support_request(account_id) do
       account_id = Ecto.UUID.dump!(account_id)
 
       Safe.unscoped()
