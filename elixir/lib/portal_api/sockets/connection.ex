@@ -36,7 +36,8 @@ defmodule PortalAPI.Sockets.Connection do
 
   @doc """
   Authenticates the upgrade request with `socket_module.connect/3`, the callback of the
-  Phoenix socket at the same path.
+  Phoenix socket at the same path. Once the device is authenticated, `:join_payload` builds
+  the payload the channel joins with from the connect info. Without it, the payload is empty.
   """
   def connect(%{endpoint: endpoint, params: params, connect_info: connect_info}, opts) do
     socket = %Socket{
@@ -49,14 +50,18 @@ defmodule PortalAPI.Sockets.Connection do
       transport: :websocket
     }
 
-    with {:ok, socket} <- Keyword.fetch!(opts, :socket).connect(params, socket, connect_info) do
-      {:ok, %{socket: socket, stop_reason: nil}}
+    join_payload = Keyword.get(opts, :join_payload, fn _connect_info -> {:ok, %{}} end)
+
+    with {:ok, socket} <- Keyword.fetch!(opts, :socket).connect(params, socket, connect_info),
+         {:ok, join_payload} <- join_payload.(connect_info) do
+      {:ok, %{socket: socket, join_payload: join_payload, stop_reason: nil}}
     end
   end
 
-  def init(%{socket: socket} = state) do
+  def init(%{socket: socket, join_payload: join_payload} = state) do
     {:ok, _owner} = Registry.register(@registry, socket.handler, nil)
-    {:ok, %{state | socket: Runner.join(%{socket | transport_pid: self()})}}
+    {:ok, socket} = Runner.join(%{socket | transport_pid: self()}, join_payload)
+    {:ok, %{state | socket: socket}}
   end
 
   def handle_in({text, opcode: :text}, state) do

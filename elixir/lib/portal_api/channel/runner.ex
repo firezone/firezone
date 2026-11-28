@@ -16,11 +16,10 @@ defmodule PortalAPI.Channel.Runner do
 
   @type result :: {:ok, Socket.t()} | {:stop, term(), Socket.t()}
 
-  @doc "Joins the channel of `socket` on its topic."
-  @spec join(Socket.t()) :: Socket.t()
-  def join(%Socket{channel: channel, topic: topic} = socket) do
-    {:ok, socket} = channel.join(topic, %{}, %{socket | channel_pid: self(), joined: true})
-    socket
+  @doc "Joins the channel of `socket` on its topic with `payload`."
+  @spec join(Socket.t(), map()) :: {:ok, Socket.t()} | {:error, term()}
+  def join(%Socket{channel: channel, topic: topic} = socket, payload) do
+    channel.join(topic, payload, %{socket | channel_pid: self(), joined: true})
   end
 
   @doc "Handles a message from the device. `ref` is nil when the transport has no replies."

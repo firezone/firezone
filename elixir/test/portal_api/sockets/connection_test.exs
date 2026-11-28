@@ -187,6 +187,34 @@ defmodule PortalAPI.Sockets.ConnectionTest do
     end
   end
 
+  describe "/relay/v2" do
+    test "joins with the stamp secret from its header and tracks the relay's presence", ctx do
+      stamp_secret = Ecto.UUID.generate()
+
+      {:ok, ws} = connect_relay(ctx, [{"x-stamp-secret", stamp_secret}])
+
+      assert {:ok, %{"account_ids" => _account_ids}} = WebSocketClient.recv_message(ws, "init")
+
+      relay_id = Portal.Relay.generate_id(stamp_secret)
+      assert %{metas: [_meta]} = Map.fetch!(Presence.Relays.list(), relay_id)
+    end
+
+    test "refuses a connection without a stamp secret", ctx do
+      assert {:error, 400, _headers, body} = connect_relay(ctx, [])
+      assert %{"code" => "invalid_stamp_secret"} = JSON.decode!(body)
+    end
+  end
+
+  defp connect_relay(ctx, headers) do
+    token = relay_token_fixture() |> encode_relay_token()
+
+    WebSocketClient.connect(
+      ctx.port,
+      "/relay/v2/websocket?" <> URI.encode_query(%{"ipv4" => "100.64.1.1"}),
+      [{"x-authorization", "Bearer #{token}"}, {"user-agent", "Linux/6.8 relay/1.5.0"} | headers]
+    )
+  end
+
   defp connect_client(ctx) do
     token = client_token_fixture(account: ctx.account, actor: ctx.actor) |> encode_token()
     params = client_params()

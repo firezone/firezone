@@ -12,16 +12,32 @@ defmodule PortalAPI.ChannelCase.Runner do
   alias Phoenix.Socket.Message
   alias PortalAPI.Channel.Runner
 
-  @doc "Joins `channel` on `topic` with a socket from `Phoenix.ChannelTest.socket/3`."
-  def join(socket, channel, topic) do
-    {:ok, pid} = GenServer.start_link(__MODULE__, {self(), %{socket | channel: channel, topic: topic}})
-    {:ok, %{}, GenServer.call(pid, :socket)}
+  @doc """
+  Joins `channel` on `topic` with a socket from `Phoenix.ChannelTest.socket/3`. Returns what
+  `Phoenix.ChannelTest.subscribe_and_join/4` returns.
+  """
+  def join(socket, channel, topic, payload) do
+    socket = %{socket | channel: channel, topic: topic}
+    payload = Phoenix.ChannelTest.__stringify__(payload)
+
+    case GenServer.start(__MODULE__, {self(), socket, payload}) do
+      {:ok, pid} ->
+        Process.link(pid)
+        {:ok, %{}, GenServer.call(pid, :socket)}
+
+      {:error, {:shutdown, {:join, reply}}} ->
+        {:error, reply}
+    end
   end
 
   @impl true
-  def init({caller, socket}) do
+  def init({caller, socket, payload}) do
     Process.put(:"$callers", [caller])
-    {:ok, Runner.join(socket)}
+
+    case Runner.join(socket, payload) do
+      {:ok, socket} -> {:ok, socket}
+      {:error, reply} -> {:stop, {:shutdown, {:join, reply}}}
+    end
   end
 
   @impl true

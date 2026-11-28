@@ -20,7 +20,7 @@ defmodule PortalAPI.EndpointTest do
              Enum.find(sockets, fn {path, _socket, _opts} -> path == "/gateway/v2" end)
   end
 
-  test "mounts the plain WebSocket client and gateway sockets" do
+  test "mounts the plain WebSocket client, gateway and relay sockets" do
     sockets = PortalAPI.Endpoint.__sockets__()
 
     assert {"/client/v5", PortalAPI.Client.V5.Socket, _opts} =
@@ -28,6 +28,9 @@ defmodule PortalAPI.EndpointTest do
 
     assert {"/gateway/v4", PortalAPI.Gateway.V4.Socket, _opts} =
              Enum.find(sockets, fn {path, _socket, _opts} -> path == "/gateway/v4" end)
+
+    assert {"/relay/v2", PortalAPI.Relay.V2.Socket, _opts} =
+             Enum.find(sockets, fn {path, _socket, _opts} -> path == "/relay/v2" end)
   end
 
   test "every Phoenix socket keeps phx_error payloads empty for released devices" do
