@@ -66,6 +66,15 @@ defmodule PortalAPI.Endpoint do
     longpoll: false,
     drainer: false
 
+  socket "/gateway/v4", PortalAPI.Gateway.V4.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false
+
   # Client sockets take `:uri` so device trust can tell a connect on the
   # mutual-TLS origin from one on the plain API origin.
   socket "/client", PortalAPI.Client.Socket,
@@ -111,6 +120,15 @@ defmodule PortalAPI.Endpoint do
     ],
     longpoll: false,
     drainer: false
+
+  socket "/client/v5", PortalAPI.Client.V5.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false
 
   socket "/device/v1", PortalAPI.Device.Socket,
     websocket: [
