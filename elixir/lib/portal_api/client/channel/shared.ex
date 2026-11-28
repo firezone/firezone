@@ -17,6 +17,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     Changes.Change,
     PubSub,
     Presence,
+    Relay.CandidateIPs,
     Routing,
     SchemaHelpers,
     Authentication
@@ -185,11 +186,14 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   def handle_info({tag, %{type: :gateway, id: gateway_id}, candidates}, socket)
       when tag in [:ice_candidates, :invalidate_ice_candidates] do
+    if tag == :ice_candidates, do: report_candidate_ips(socket, candidates)
+
     Protocol.push(socket, Atom.to_string(tag), %{gateway_id: gateway_id, candidates: candidates})
     {:noreply, socket}
   end
 
   def handle_info({:ice_candidates, %{type: :client, id: client_id}, candidates}, socket) do
+    report_candidate_ips(socket, candidates)
     Protocol.push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
     {:noreply, socket}
   end
@@ -1759,6 +1763,15 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp proto_range(socket) do
     Map.get(socket.assigns, :proto_range) ||
       Portal.Version.legacy_proto_range(:client, socket.assigns.client_version)
+  end
+
+  # The client binds channels on its own relays towards these candidates.
+  defp report_candidate_ips(socket, candidates) do
+    CandidateIPs.report(
+      socket.assigns[:cached_relay_ids] || MapSet.new(),
+      socket.assigns.client.account_id,
+      candidates
+    )
   end
 
   # The socket read these before the channel subscribed, so a change in between would be lost.
