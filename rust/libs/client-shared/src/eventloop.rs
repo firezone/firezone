@@ -862,8 +862,6 @@ impl Eventloop {
                     now,
                 );
             }
-            // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
-            IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
                 ipv4,
                 ipv6,

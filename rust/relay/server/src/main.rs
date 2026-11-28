@@ -430,12 +430,9 @@ enum IngressMessages {
 
 #[derive(serde::Deserialize, Debug)]
 struct Init {
-    #[serde(default)]
     account_ids: Vec<AccountId>,
     /// Throughput limits in bits per second; absent accounts are unlimited.
-    #[serde(default)]
     throughput_limits_bps: HashMap<AccountId, u64>,
-    #[serde(default)]
     allocation_limits: HashMap<AccountId, NonZeroUsize>,
 }
 
@@ -1043,35 +1040,13 @@ mod tests {
         assert!(invalid.is_err());
     }
 
-    // Portals without throughput limits must keep working, e.g. while deploying.
-    #[test]
-    fn accounts_without_throughput_limits_are_unlimited() {
-        let account_id = "00000000-0000-0000-0000-000000000001";
-
-        let init = parse(&format!(
-            r#"{{"event":"init","payload":{{"account_ids":["{account_id}"]}}}}"#
-        ));
-        let added = parse(&format!(
-            r#"{{"event":"account_added","payload":{{"account_id":"{account_id}"}}}}"#
-        ));
-
-        let IngressMessages::Init(init) = init else {
-            panic!("expected init");
-        };
-        let IngressMessages::AccountAdded(added) = added else {
-            panic!("expected account_added");
-        };
-        assert_eq!(init.accounts().next().unwrap().1, None);
-        assert_eq!(added.throughput_limit(), None);
-    }
-
     #[test]
     fn parses_throughput_limits_from_portal() {
         let limited = "00000000-0000-0000-0000-000000000001";
         let unlimited = "00000000-0000-0000-0000-000000000002";
 
         let init = parse(&format!(
-            r#"{{"event":"init","payload":{{"account_ids":["{limited}","{unlimited}"],"throughput_limits_bps":{{"{limited}":5000000}}}}}}"#
+            r#"{{"event":"init","payload":{{"account_ids":["{limited}","{unlimited}"],"throughput_limits_bps":{{"{limited}":5000000}},"allocation_limits":{{}}}}}}"#
         ));
         let added = parse(&format!(
             r#"{{"event":"account_added","payload":{{"account_id":"{unlimited}","throughput_limit_bps":null}}}}"#

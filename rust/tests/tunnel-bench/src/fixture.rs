@@ -746,7 +746,6 @@ impl Client {
         state.update_interface_config(Interface {
             ipv4: tun.v4,
             ipv6: tun.v6,
-            upstream_dns: Vec::new(),
             upstream_do53: Vec::new(),
             upstream_doh: Vec::new(),
             search_domain: None,

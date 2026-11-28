@@ -557,7 +557,6 @@ impl RealTunnelSystem {
                         c.state_mut().update_interface_config(Interface {
                             ipv4: ip.v4,
                             ipv6: ip.v6,
-                            upstream_dns: vec![],
                             upstream_do53: upstream_do53.clone(),
                             search_domain: portal.search_domain(),
                             upstream_doh: portal.upstream_doh().to_vec(),
@@ -583,7 +582,6 @@ impl RealTunnelSystem {
                         c.state_mut().update_interface_config(Interface {
                             ipv4: ip.v4,
                             ipv6: ip.v6,
-                            upstream_dns: vec![],
                             upstream_do53: portal.upstream_do53().to_vec(),
                             search_domain: portal.search_domain(),
                             upstream_doh: upstream_doh.clone(),
@@ -598,7 +596,6 @@ impl RealTunnelSystem {
                         c.state_mut().update_interface_config(Interface {
                             ipv4: ip.v4,
                             ipv6: ip.v6,
-                            upstream_dns: vec![],
                             upstream_do53: portal.upstream_do53().to_vec(),
                             upstream_doh: portal.upstream_doh().to_vec(),
                             search_domain: search_domain.clone(),
@@ -675,7 +672,6 @@ impl RealTunnelSystem {
                     c.state_mut().update_interface_config(Interface {
                         ipv4,
                         ipv6,
-                        upstream_dns: Vec::new(),
                         upstream_do53: portal.upstream_do53().to_vec(),
                         upstream_doh: portal.upstream_doh().to_vec(),
                         search_domain: portal.search_domain(),
@@ -943,7 +939,6 @@ impl RealTunnelSystem {
             c.state_mut().update_interface_config(Interface {
                 ipv4,
                 ipv6,
-                upstream_dns: Vec::new(),
                 upstream_do53: portal.upstream_do53().to_vec(),
                 upstream_doh: portal.upstream_doh().to_vec(),
                 search_domain: portal.search_domain(),

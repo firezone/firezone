@@ -201,7 +201,6 @@ enum IngressMessages {
 
 #[derive(Deserialize)]
 struct InitClient {
-    #[serde(default)]
     relays: Vec<Relay>,
 }
 
@@ -230,7 +229,7 @@ mod tests {
         let json = r#"{
             "event": "init",
             "payload": {
-                "interface": { "upstream_dns": [] },
+                "interface": { "upstream_do53": [] },
                 "resources": [],
                 "relays": [
                     { "type": "stun", "id": "a", "addr": "9.9.9.9:3478" },

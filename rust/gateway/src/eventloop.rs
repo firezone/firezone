@@ -471,21 +471,18 @@ impl Eventloop {
             ),
             IngressMessages::Init(InitGateway {
                 interface,
-                config: _,
                 account_slug,
                 relays,
                 authorizations,
                 flow_logs,
             }) => {
-                if let Some(account_slug) = account_slug {
-                    telemetry::set_account_slug(account_slug.clone());
+                telemetry::set_account_slug(account_slug.clone());
 
-                    if let Err(e) = self.account_slug.set(&account_slug) {
-                        tracing::debug!("Failed to cache account slug: {e:#}");
-                    }
-
-                    analytics::identify(RELEASE.to_owned(), account_slug, None, None)
+                if let Err(e) = self.account_slug.set(&account_slug) {
+                    tracing::debug!("Failed to cache account slug: {e:#}");
                 }
+
+                analytics::identify(RELEASE.to_owned(), account_slug, None, None);
 
                 tunnel
                     .state_mut()
@@ -593,8 +590,6 @@ impl Eventloop {
                 metrics.token,
                 metrics.patterns,
             ),
-            // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
-            IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
         }
 
         Ok(())

@@ -86,20 +86,10 @@ impl ResourceDescription {
 #[derive(Debug, Deserialize, Clone)]
 pub struct InitGateway {
     pub interface: Interface,
-    pub config: Config,
-    #[serde(default)]
     pub relays: Vec<Relay>,
-    #[serde(default)]
-    pub account_slug: Option<String>,
-    #[serde(default)]
+    pub account_slug: String,
     pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
-}
-
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-pub struct Config {
-    pub ipv4_masquerade_enabled: bool,
-    pub ipv6_masquerade_enabled: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -135,8 +125,6 @@ pub enum IngressMessages {
     CreateAuthorization(CreateAuthorization),
     PublicKeyChanged(PublicKeyChanged),
     MetricsConfig(MetricsConfig),
-    /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
-    AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -162,21 +150,11 @@ pub struct CreateAuthorization {
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     pub expires_at: Option<Duration>,
 
-    #[serde(default, rename = "use_iceless")]
+    #[serde(rename = "use_iceless")]
     pub use_frostlink: bool,
 
     /// The responder-side ingest token for this flow's logs.
     pub flow_logs_ingest_token: IngestToken,
-}
-
-/// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
-#[serde_as]
-#[derive(Debug, Deserialize, Clone)]
-pub struct AccessAuthorizationExpiryUpdated {
-    pub client_id: ClientId,
-    pub resource_id: ResourceId,
-    #[serde_as(as = "DurationSeconds<u64>")]
-    pub expires_at: Duration,
 }
 
 /// A client's ice candidate message.
@@ -327,7 +305,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_invalidate_ice_candidates_message() {
-        let json = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"gateway","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"client_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
+        let json = r#"{"event":"invalidate_ice_candidates","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"client_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -339,7 +317,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_init_message() {
-        let json = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true},"flow_logs":{"api_url":"https://flow-api.firezone.dev","upload_interval_secs":60,"upload_batch_size":1000}}}"#;
+        let json = r#"{"event":"init","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"account_slug":"acme","relays":[],"authorizations":[],"flow_logs":{"api_url":"https://flow-api.firezone.dev","upload_interval_secs":60,"upload_batch_size":1000}}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -353,7 +331,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_metrics_config_message() {
-        let json = r#"{"event":"metrics_config","ref":null,"topic":"gateway","payload":{"endpoint":"https://otlp.firezone.dev/v1/metrics","export_interval_secs":30,"token":"metrics-token","patterns":["connlib.*","tunnel.error"]}}"#;
+        let json = r#"{"event":"metrics_config","payload":{"endpoint":"https://otlp.firezone.dev/v1/metrics","export_interval_secs":30,"token":"metrics-token","patterns":["connlib.*","tunnel.error"]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -367,7 +345,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_resource_updated_message() {
-        let json = r#"{"event":"resource_updated","ref":null,"topic":"gateway","payload":{"id":"57f9ebbb-21d5-4f9f-bf86-b25122fc7a43","name":"?.httpbin","type":"dns","address":"?.httpbin","filters":[{"protocol":"icmp"},{"protocol":"tcp"}]}}"#;
+        let json = r#"{"event":"resource_updated","payload":{"id":"57f9ebbb-21d5-4f9f-bf86-b25122fc7a43","name":"?.httpbin","type":"dns","address":"?.httpbin","filters":[{"protocol":"icmp"},{"protocol":"tcp"}]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -379,8 +357,6 @@ mod tests {
         let json = r#"
         {
             "event": "relays_presence",
-            "ref": null,
-            "topic": "gateway",
             "payload": {
                 "disconnected_ids": [
                     "e95f9517-2152-4677-a16a-fbb2687050a3",
@@ -405,14 +381,14 @@ mod tests {
         assert!(matches!(message, IngressMessages::RelaysPresence(_)));
     }
 
-    const CREATE_AUTHORIZATION: &str = r#"{"event":"create_authorization","ref":null,"topic":"gateway","payload":{"client":{"id":"3abd725a-733b-4801-ac16-72f26cd98a24","ipv6":"fd00:2021:1111::f:853b","public_key":"fiAjSBWDgQfD1CFJkTwOf4zg+1QhH0eTT+oLaVIMpH8=","ipv4":"100.93.74.51","preshared_key":"BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="},"resource":{"id":"c7793628-8579-465b-83e3-1a5d4af4db3b","name":"MyCorp Network","type":"cidr","address":"172.20.0.0/16","filters":[]},"actor":{"id":"24eb631e-c529-4182-a746-d99ee66f7426"},"ref":"SFMyNTY.g2gDbQAAAkxnMmdHV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFEWlFBQUFBQm5FYU9DYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFOakFBQUFBR2NSbzRKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFGaEFHMEFBQUFrWXpjM09UTTJNamd0T0RVM09TMDBOalZpTFRnelpUTXRNV0UxWkRSaFpqUmtZak5pYlFBQUFDQnRTWFZ3TldWUVYwUkRVa1Z3WTNNM2QwaE5VMWREZGxwYWNqQlpTalZCZEhRQUFBQUNkd1pqYkdsbGJuUjBBQUFBQW5jSWRYTmxjbTVoYldWdEFBQUFCR2huZDJoM0NIQmhjM04zYjNKa2JRQUFBQlpxTW1aeGRXWmhkRzQzZUd4eWNuWjJObVp6ZG1WaGR3ZG5ZWFJsZDJGNWRBQUFBQUozQ0hWelpYSnVZVzFsYlFBQUFBUmxhbkYwZHdod1lYTnpkMjl5WkcwQUFBQVdlbVpxY25KcVpHdGlZMmswTW5ReVlYaDVaRFExWVd3QUFBQUJhQUp0QUFBQUMzUnlZV05sY0dGeVpXNTBiUUFBQURjd01DMDFNRGRoTUdSbE9HWm1NekpsWmpVMU9EaGlZV1psWkRZMk1XWXpaVFZrTlMxa1ptTTVZMkl3Wm1NeE5tRTBNbUU1TFRBeGFnPT1uBgCeY-eckgFiAAFRgA.5-aLUjF4RiPoYASwWYfSmWuTEc4cT0u8J9cyBUiP9BY","expires_at":1729813989,"flow_id":"eeb66205-5f53-4f64-acbc-deed47293f04","client_ice_credentials":{"username":"hgwh","password":"j2fqufatn7xlrrvv6fsvea"},"gateway_ice_credentials":{"username":"ejqt","password":"zfjrrjdkbci42t2axyd45a"}}}"#;
+    const CREATE_AUTHORIZATION: &str = r#"{"event":"create_authorization","payload":{"client":{"id":"3abd725a-733b-4801-ac16-72f26cd98a24","ipv6":"fd00:2021:1111::f:853b","public_key":"fiAjSBWDgQfD1CFJkTwOf4zg+1QhH0eTT+oLaVIMpH8=","ipv4":"100.93.74.51","preshared_key":"BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="},"resource":{"id":"c7793628-8579-465b-83e3-1a5d4af4db3b","name":"MyCorp Network","type":"cidr","address":"172.20.0.0/16","filters":[]},"actor":{"id":"24eb631e-c529-4182-a746-d99ee66f7426"},"ref":"SFMyNTY.g2gDbQAAAkxnMmdHV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFEWlFBQUFBQm5FYU9DYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFOakFBQUFBR2NSbzRKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFGaEFHMEFBQUFrWXpjM09UTTJNamd0T0RVM09TMDBOalZpTFRnelpUTXRNV0UxWkRSaFpqUmtZak5pYlFBQUFDQnRTWFZ3TldWUVYwUkRVa1Z3WTNNM2QwaE5VMWREZGxwYWNqQlpTalZCZEhRQUFBQUNkd1pqYkdsbGJuUjBBQUFBQW5jSWRYTmxjbTVoYldWdEFBQUFCR2huZDJoM0NIQmhjM04zYjNKa2JRQUFBQlpxTW1aeGRXWmhkRzQzZUd4eWNuWjJObVp6ZG1WaGR3ZG5ZWFJsZDJGNWRBQUFBQUozQ0hWelpYSnVZVzFsYlFBQUFBUmxhbkYwZHdod1lYTnpkMjl5WkcwQUFBQVdlbVpxY25KcVpHdGlZMmswTW5ReVlYaDVaRFExWVd3QUFBQUJhQUp0QUFBQUMzUnlZV05sY0dGeVpXNTBiUUFBQURjd01DMDFNRGRoTUdSbE9HWm1NekpsWmpVMU9EaGlZV1psWkRZMk1XWXpaVFZrTlMxa1ptTTVZMkl3Wm1NeE5tRTBNbUU1TFRBeGFnPT1uBgCeY-eckgFiAAFRgA.5-aLUjF4RiPoYASwWYfSmWuTEc4cT0u8J9cyBUiP9BY","expires_at":1729813989,"flow_id":"eeb66205-5f53-4f64-acbc-deed47293f04","client_ice_credentials":{"username":"hgwh","password":"j2fqufatn7xlrrvv6fsvea"},"gateway_ice_credentials":{"username":"ejqt","password":"zfjrrjdkbci42t2axyd45a"}}}"#;
 
     #[test]
     fn can_deserialize_create_authorization() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = CREATE_AUTHORIZATION.replace(
             r#""flow_id""#,
-            &format!(r#""flow_logs_ingest_token":"{token}","flow_id""#),
+            &format!(r#""use_iceless":false,"flow_logs_ingest_token":"{token}","flow_id""#),
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
@@ -442,7 +418,9 @@ mod tests {
 
     #[test]
     fn create_authorization_requires_ingest_token() {
-        serde_json::from_str::<IngressMessages>(CREATE_AUTHORIZATION).unwrap_err();
+        let json = CREATE_AUTHORIZATION.replace(r#""flow_id""#, r#""use_iceless":false,"flow_id""#);
+
+        serde_json::from_str::<IngressMessages>(&json).unwrap_err();
     }
 
     #[test]

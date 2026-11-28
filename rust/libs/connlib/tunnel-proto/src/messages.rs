@@ -10,7 +10,6 @@ use ip_network::IpNetwork;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, serde_as};
-use std::fmt;
 use std::ops::RangeInclusive;
 
 pub mod client;
@@ -138,50 +137,6 @@ impl SnownetCapabilities {
     pub const LOCAL: Self = Self { frostlink: true };
 }
 
-#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
-#[serde(tag = "protocol", rename_all = "snake_case")]
-pub enum DnsServer {
-    IpPort(IpDnsServer),
-}
-
-impl fmt::Debug for DnsServer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::IpPort(IpDnsServer { address }) => address.fmt(f),
-        }
-    }
-}
-
-impl DnsServer {
-    pub fn ip(&self) -> IpAddr {
-        match self {
-            DnsServer::IpPort(s) => s.address.ip(),
-        }
-    }
-
-    pub fn address(&self) -> SocketAddr {
-        match self {
-            DnsServer::IpPort(s) => s.address,
-        }
-    }
-}
-
-impl<T> From<T> for DnsServer
-where
-    T: Into<SocketAddr>,
-{
-    fn from(addr: T) -> Self {
-        Self::IpPort(IpDnsServer {
-            address: addr.into(),
-        })
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct IpDnsServer {
-    pub address: SocketAddr,
-}
-
 /// Represents a wireguard interface configuration.
 ///
 /// Note that the ips are /32 for ipv4 and /128 for ipv6.
@@ -192,10 +147,6 @@ pub struct Interface {
     pub ipv4: Ipv4Addr,
     /// Interface's Ipv6.
     pub ipv6: Ipv6Addr,
-    /// DNS that will be used to query for DNS that aren't within our resource list.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    #[serde(default)]
-    pub upstream_dns: Vec<DnsServer>, // TODO: Remove once portal with `upstream_do53` support has been deployed.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub upstream_do53: Vec<UpstreamDo53>,
@@ -208,17 +159,7 @@ pub struct Interface {
 
 impl Interface {
     pub fn upstream_do53(&self) -> Vec<IpAddr> {
-        if !self.upstream_do53.is_empty() {
-            return self.upstream_do53.iter().map(|u| u.ip).collect();
-        }
-
-        // Fallback whilst the portal does not send `upstream_do53`.
-        self.upstream_dns
-            .iter()
-            .map(|u| match u {
-                DnsServer::IpPort(ip_dns_server) => ip_dns_server.address.ip(),
-            })
-            .collect()
+        self.upstream_do53.iter().map(|u| u.ip).collect()
     }
 
     pub fn upstream_doh(&self) -> Vec<DoHUrl> {
