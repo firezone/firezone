@@ -22,19 +22,18 @@ pub use builder::{Entry, Event, Item, Menu, Window};
 mod builder;
 mod compositor;
 
-// The tray is drawn by a platform-native backend rather than Tauri's own tray,
-// so that menu-item icons (e.g. Site status) actually render:
+// The tray is drawn by a platform-native backend, so that menu-item icons
+// (e.g. Site status) actually render:
 //
-// - **Windows / macOS**: Tauri's built-in tray (the `tray-icon` feature),
-//   which renders per-item icons natively.
+// - **Windows / macOS**: `tray-icon`, which renders per-item icons natively.
 // - **Linux**: `ksni`, a pure-Rust StatusNotifierItem implementation that
 //   speaks the DBusMenu protocol directly and can attach per-item icon data
-//   (a PNG) — which GNOME (with the AppIndicator extension) and KDE render,
-//   unlike Tauri's `libappindicator` path.
+//   (a PNG), which GNOME (with the AppIndicator extension) and KDE render,
+//   unlike `libappindicator`.
 #[cfg(not(target_os = "linux"))]
-mod tray_tauri;
+mod tray_native;
 #[cfg(not(target_os = "linux"))]
-pub(crate) use tray_tauri::Tray;
+pub(crate) use tray_native::{Tray, decode_menu_event};
 
 #[cfg(target_os = "linux")]
 mod tray_ksni;

@@ -6,11 +6,10 @@
 // TODO: remove once all clients have migrated.
 #[cfg(target_os = "windows")]
 mod mdm_migration;
+mod ui;
 pub mod updates;
 mod uptime;
 mod view;
-
-pub use view::export_bindings;
 
 // TODO: See how many of these we can make private.
 pub mod auth;
@@ -28,10 +27,6 @@ pub mod service;
 pub mod settings;
 
 /// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
-///
-/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
-/// but sometimes I need to use this before Tauri has booted up, or in a place where
-/// getting the Tauri app handle would be awkward.
 ///
 /// Note: under the sparse MSIX identity this is *not* the
 /// AppUserModelId Windows uses to label notifications; that is derived

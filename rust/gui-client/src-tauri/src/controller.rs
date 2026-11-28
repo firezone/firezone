@@ -817,7 +817,7 @@ impl<I: GuiIntegration> Controller<I> {
                     ));
                 };
                 tx.send(result)
-                    .map_err(|_| anyhow!("Couldn't send `ClearLogs` result to Tauri task"))?;
+                    .map_err(|_| anyhow!("Couldn't send `ClearLogs` result to the GUI"))?;
 
                 let file_count = logging::count_logs().await?;
                 self.integration.notify_logs_recounted(&file_count)?;

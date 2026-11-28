@@ -8,9 +8,6 @@ default-run = "firezone-gui-client"
 authors = ["Firezone, Inc."]
 license = { workspace = true }
 
-[package.metadata.tslink]
-enum_representation = "discriminated"
-
 # `cargo deb --no-build` and `cargo generate-rpm` package what `mise run build` built.
 [package.metadata.deb]
 name = "firezone-client-gui"
@@ -18,8 +15,9 @@ maintainer = "Firezone, Inc."
 extended-description = ""
 revision = ""
 priority = "optional"
-depends = "libwebkit2gtk-4.1-0, libgtk-3-0"
-recommends = "p11-kit-modules, firezone-archive-keyring"
+depends = "libdbus-1-3, libegl1, libfontconfig1, libfreetype6, libgl1, libxkbcommon0"
+# Loaded at run time on X11.
+recommends = "libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon-x11-0, p11-kit-modules, firezone-archive-keyring"
 maintainer-scripts = "linux_package/"
 assets = [
     ["target/release/firezone-gui-client", "usr/bin/firezone-client-gui", "755"],
@@ -62,13 +60,18 @@ assets = [
 ]
 
 [package.metadata.generate-rpm.requires]
-"libwebkit2gtk-4.1.so.0()(64bit)" = "*"
-"libgtk-3.so.0()(64bit)" = "*"
+"libdbus-1.so.3()(64bit)" = "*"
+"libEGL.so.1()(64bit)" = "*"
+"libfontconfig.so.1()(64bit)" = "*"
+"libfreetype.so.6()(64bit)" = "*"
+"libGL.so.1()(64bit)" = "*"
+"libxkbcommon.so.0()(64bit)" = "*"
 
 [package.metadata.generate-rpm.recommends]
 p11-kit = "*"
 
 [dependencies]
+accesskit = { workspace = true }
 anyhow = { workspace = true }
 arboard = { workspace = true }
 async-runtime = { workspace = true }
@@ -83,7 +86,9 @@ derive_more = { workspace = true, features = ["debug"] }
 desktop-notifications = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
+freya = { workspace = true }
 futures = { workspace = true }
+git-sha = { workspace = true }
 gui-ipc = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true }
@@ -93,14 +98,16 @@ keyring-core = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
+open = { workspace = true }
 otel-attributes = { workspace = true }
 otel-metrics-export = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
-png = { workspace = true } # `png` is mostly free since we already need it for Tauri
+png = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["stream", "rustls-no-provider"] }
+rfd = { workspace = true }
 rustls = { workspace = true, features = ["ring"] }
 sadness-generator = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
@@ -110,16 +117,8 @@ serde_json = { workspace = true }
 serde_variant = { workspace = true }
 sha2 = { workspace = true }
 socket-factory = { workspace = true }
-specta = { workspace = true, features = ["url"] }
-specta-typescript = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 subtle = { workspace = true }
-tauri = { workspace = true, features = ["image-png"] }
-tauri-plugin-dialog = { workspace = true }
-tauri-plugin-opener = { workspace = true }
-tauri-runtime = { workspace = true }
-tauri-specta = { workspace = true, features = ["derive", "typescript"] }
-tauri-utils = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
@@ -136,9 +135,8 @@ windows-package-identity = { workspace = true }
 x509-keystore = { workspace = true }
 zip = { workspace = true, features = ["deflate", "time"] }
 
-# Windows and macOS keep Tauri's built-in tray.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-tauri = { workspace = true, features = ["tray-icon"] }
+tray-icon = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service-keyring-store = { workspace = true }
@@ -198,7 +196,6 @@ features = [
 
 [build-dependencies]
 anyhow = { workspace = true }
-tauri-build = { workspace = true, features = [] }
 windows-package-identity = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
@@ -207,6 +204,7 @@ embed-resource = { workspace = true }
 [dev-dependencies]
 bin-shared = { workspace = true, features = ["test"] }
 client-ipc = { workspace = true, features = ["test"] }
+freya-testing = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

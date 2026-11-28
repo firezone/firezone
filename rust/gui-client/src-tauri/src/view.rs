@@ -1,38 +1,25 @@
-use std::{path::PathBuf, time::Duration};
-
-use anyhow::{Context as _, Result};
-use logging::err_with_src;
-use serde::Serialize;
-use tauri_plugin_dialog::DialogExt as _;
+use std::path::PathBuf;
 
 use crate::{
     controller::ControllerRequest,
-    gui::Managed,
-    logging::FileCount,
     settings::{
-        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, DeveloperSettingsViewModel,
-        GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, GeneralSettings, MdmSettings,
     },
 };
+use anyhow::{Context as _, Result};
 use url::Url;
 
-#[derive(Clone, Default, serde::Deserialize, specta::Type)]
+/// The settings the user changed, [`None`] for those they left alone.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ClientSettingsForm {
-    #[serde(default)]
     pub start_minimized: Option<bool>,
-    #[serde(default)]
     pub start_on_login: Option<bool>,
-    #[serde(default)]
     pub connect_on_start: Option<bool>,
-    #[serde(default)]
     pub account_slug: Option<String>,
-    #[serde(default)]
     pub control_plane: Option<ControlPlane>,
     /// Only used for [`ControlPlane::Custom`].
-    #[serde(default)]
     pub auth_url: Option<String>,
     /// Only used for [`ControlPlane::Custom`].
-    #[serde(default)]
     pub api_url: Option<String>,
 }
 
@@ -139,7 +126,7 @@ fn parse_url(value: &str, schemes: &[&str]) -> Result<Url> {
     Ok(url)
 }
 
-#[derive(Clone, Debug, serde::Serialize, specta::Type, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SessionViewModel {
     SignedIn {
         account_slug: String,
@@ -149,33 +136,14 @@ pub enum SessionViewModel {
     SignedOut,
 }
 
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct SessionChanged(pub SessionViewModel);
-
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
-
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct LogFilterChanged(pub LogFilterViewModel);
-
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct DeveloperSettingsChanged(pub DeveloperSettingsViewModel);
-
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct LogsRecounted(pub FileCount);
-
-/// The platform keystore's certificate as the device trust page renders it.
-#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct X509CertificateChanged(pub Option<X509Certificate>);
-
 /// A certificate the Tunnel service loaded from the platform keystore.
-#[derive(Clone, serde::Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct X509Certificate {
     pub fields: Vec<X509DetailField>,
 }
 
 /// A label-value row of the certificate, and what is wrong with it.
-#[derive(Clone, serde::Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct X509DetailField {
     pub label: String,
     /// What the row carries, [`None`] when it carries nothing.
@@ -185,7 +153,7 @@ pub struct X509DetailField {
 }
 
 /// Mirrors [`x509_keystore::ValidationError`].
-#[derive(Clone, serde::Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum X509ValidationError {
     Empty,
     TooLong,
@@ -196,12 +164,6 @@ pub enum X509ValidationError {
     Expired,
     MissingClientAuthEku,
     DigitalSignatureNotAllowed,
-}
-
-impl From<Option<&x509_keystore::ParsedCertificate>> for X509CertificateChanged {
-    fn from(certificate: Option<&x509_keystore::ParsedCertificate>) -> Self {
-        Self(certificate.map(X509Certificate::from))
-    }
 }
 
 impl From<&x509_keystore::ParsedCertificate> for X509Certificate {
@@ -244,285 +206,36 @@ impl From<x509_keystore::ValidationError> for X509ValidationError {
     }
 }
 
-#[tauri::command]
-#[specta::specta]
-pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-
-    managed
-        .send_request(ControllerRequest::ClearLogs(tx))
-        .await?;
-
-    rx.await
-        .context("Failed to await `ClearLogs` result")?
-        .map_err(anyhow::Error::msg)?;
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn export_logs(
-    app: tauri::AppHandle,
-    managed: tauri::State<'_, Managed>,
-) -> Result<(), Error> {
-    show_export_dialog(&app, managed.inner().clone())?;
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn apply_client_settings(
-    managed: tauri::State<'_, Managed>,
-    settings: ClientSettingsForm,
-) -> Result<(), Error> {
-    if managed.inner().inject_faults {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    managed
-        .send_request(ControllerRequest::ApplyClientSettings(Box::new(settings)))
-        .await?;
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn apply_log_filter(
-    managed: tauri::State<'_, Managed>,
-    log_filter: String,
-) -> Result<(), Error> {
-    check_log_filter(&log_filter)?;
-
-    if managed.inner().inject_faults {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    managed
-        .send_request(ControllerRequest::ApplyLogFilter(log_filter))
-        .await?;
-
-    Ok(())
-}
-
-fn check_log_filter(log_filter: &str) -> Result<(), Error> {
+/// Returns why `log_filter` is rejected, if it is.
+pub(crate) fn check_log_filter(log_filter: &str) -> Result<(), String> {
     logging::try_filter::<tracing_subscriber::Registry>(log_filter)
-        .map_err(|e| Error(format!("Invalid log filter: {e}")))?;
+        .map_err(|e| format!("Invalid log filter: {e}"))?;
 
     Ok(())
 }
 
-#[tauri::command]
-#[specta::specta]
-pub async fn reset_client_settings(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
-    managed
-        .send_request(ControllerRequest::ResetClientSettings)
-        .await?;
-
-    Ok(())
-}
-
-/// Pops up the "Save File" dialog
-fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<(), Error> {
+/// Asks where to save the exported logs, [`None`] if the user cancels.
+pub(crate) async fn pick_log_export() -> Option<ControllerRequest> {
     let now = jiff::Zoned::now();
     let datetime_string = now.strftime("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
     let filename = stem.with_extension("zip");
-    let filename = filename
-        .to_str()
-        .context("zip filename isn't valid Unicode")?;
 
-    tauri_plugin_dialog::FileDialogBuilder::new(app.dialog().clone())
+    let file = rfd::AsyncFileDialog::new()
         .add_filter("Zip", &["zip"])
-        .set_file_name(filename)
-        .save_file(move |file_path| {
-            let Some(file_path) = file_path else {
-                return;
-            };
-
-            let path = match file_path.clone().into_path() {
-                Ok(path) => path,
-                Err(e) => {
-                    tracing::warn!(%file_path, "Invalid file path: {}", err_with_src(&e));
-                    return;
-                }
-            };
-
-            // blocking_send here because we're in a sync callback within Tauri somewhere
-            if let Err(e) =
-                managed.blocking_send_request(ControllerRequest::ExportLogs { path, stem })
-            {
-                tracing::warn!("{e:#}");
-            }
-        });
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
-    managed.send_request(ControllerRequest::SignIn).await?;
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
-    managed.send_request(ControllerRequest::SignOut).await?;
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn update_state(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
-    managed.send_request(ControllerRequest::UpdateState).await?;
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn reset_connlib(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
-    managed
-        .send_request(ControllerRequest::ResetConnlib)
+        .set_file_name(filename.to_string_lossy())
+        .save_file()
         .await?;
 
-    Ok(())
+    Some(ControllerRequest::ExportLogs {
+        path: file.path().to_owned(),
+        stem,
+    })
 }
 
-#[tauri::command]
-#[specta::specta]
-pub async fn set_developer_settings_unlocked(
-    managed: tauri::State<'_, Managed>,
-    unlocked: bool,
-) -> Result<(), Error> {
-    managed
-        .send_request(ControllerRequest::SetDeveloperSettingsUnlocked(unlocked))
-        .await?;
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn set_force_relayed_connections(
-    managed: tauri::State<'_, Managed>,
-    enabled: bool,
-) -> Result<(), Error> {
-    managed
-        .send_request(ControllerRequest::SetForceRelayedConnections(enabled))
-        .await?;
-
-    Ok(())
-}
-
-#[derive(Debug, specta::Type, Serialize)]
-pub struct Error(String);
-
-impl From<anyhow::Error> for Error {
-    fn from(error: anyhow::Error) -> Self {
-        Self(format!("{error:#}"))
-    }
-}
-
-/// The tauri-specta registry of every command and event the frontend calls.
-///
-/// One constructor serves the app and the bindings test, so the TypeScript the app exports on
-/// startup and the committed file the test pins cannot diverge.
-pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
-    tauri_specta::Builder::<tauri::Wry>::new()
-        .events(tauri_specta::collect_events![
-            SessionChanged,
-            GeneralSettingsChanged,
-            LogFilterChanged,
-            DeveloperSettingsChanged,
-            LogsRecounted,
-            X509CertificateChanged,
-        ])
-        .commands(tauri_specta::collect_commands![
-            clear_logs,
-            export_logs,
-            apply_client_settings,
-            reset_client_settings,
-            apply_log_filter,
-            sign_in,
-            sign_out,
-            update_state,
-            reset_connlib,
-            set_developer_settings_unlocked,
-            set_force_relayed_connections,
-        ])
-        .typ::<Error>()
-}
-
-/// How the TypeScript bindings are rendered.
-///
-/// No external formatter: the export has to produce the same bytes on every machine that runs
-/// it, including one that has no Node toolchain.
-pub fn typescript_exporter() -> specta_typescript::Typescript {
-    specta_typescript::Typescript::default()
-        .bigint(specta_typescript::BigIntExportBehavior::Number)
-        .header("/* eslint-disable */\n// @ts-nocheck\n/* tslint:disable */\n")
-}
-
-/// Where the committed bindings live.
-pub fn bindings_path() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src-frontend/generated/bindings.ts")
-}
-
-/// Rewrites the committed bindings from the current view types.
-///
-/// The debug build runs this on startup; `cargo run -p firezone-gui-client --example
-/// export-bindings` runs it without a display server.
-pub fn export_bindings() -> Result<()> {
-    export_bindings_to(&bindings_path())
-}
-
-/// Exports the bindings to `path`, normalized so the committed file satisfies the repo's
-/// hooks: no trailing whitespace, one trailing newline, no formatter involved.
-fn export_bindings_to(path: &std::path::Path) -> Result<()> {
-    specta_builder()
-        .export(typescript_exporter(), path)
-        .context("Failed to export TypeScript bindings")?;
-
-    let exported = std::fs::read_to_string(path).context("Failed to read exported bindings")?;
-    let mut normalized = exported
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<_>>()
-        .join("\n");
-    normalized.push('\n');
-    std::fs::write(path, normalized).context("Failed to write normalized bindings")?;
-
-    Ok(())
-}
-
-// Not on Windows: referencing the `tauri::Wry`-typed builder from a test makes the test
-// executable import WebView2Loader.dll, which is not beside it, so the process fails to
-// load before any test runs.
-#[cfg(all(test, not(target_os = "windows")))]
+#[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The debug build re-exports the bindings on startup, so a committed file that differs
-    /// from the export dirties the tree of everyone who runs the app.
-    #[test]
-    fn the_committed_bindings_are_what_the_app_exports() {
-        let directory = tempfile::tempdir().unwrap();
-        let exported = directory.path().join("bindings.ts");
-
-        export_bindings_to(&exported).unwrap();
-
-        assert_eq!(
-            std::fs::read_to_string(exported).unwrap(),
-            std::fs::read_to_string(bindings_path()).unwrap(),
-            "the committed bindings.ts is stale: run `cargo run -p firezone-gui-client --example export-bindings`"
-        );
-    }
 
     #[test]
     fn a_cloud_control_plane_ignores_the_typed_urls() {
@@ -567,7 +280,7 @@ mod tests {
 
     #[test]
     fn rejects_a_log_filter_connlib_cannot_parse() {
-        let Error(message) = check_log_filter("info,connlib=nonsense").unwrap_err();
+        let message = check_log_filter("info,connlib=nonsense").unwrap_err();
 
         assert!(message.starts_with("Invalid log filter: "), "{message}");
     }

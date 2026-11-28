@@ -128,13 +128,13 @@ pub struct DeveloperSettings {
     pub force_relayed_connections: bool,
 }
 
-#[derive(Clone, Copy, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DeveloperSettingsViewModel {
     pub unlocked: bool,
     pub force_relayed_connections: bool,
 }
 
-#[derive(Clone, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct GeneralSettingsViewModel {
     pub start_minimized: bool,
     pub start_on_login: bool,
@@ -156,7 +156,7 @@ pub struct GeneralSettingsViewModel {
     pub signed_in_with: Option<SignInSettingsViewModel>,
 }
 
-#[derive(Clone, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SignInSettingsViewModel {
     pub account_slug: String,
     pub control_plane: ControlPlane,
@@ -231,7 +231,7 @@ impl GeneralSettingsViewModel {
 }
 
 /// The control plane a client signs in to: a Firezone Cloud deployment, or [`ControlPlane::Custom`] for any other URLs.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum ControlPlane {
     CloudUs,
     CloudEu,
@@ -275,7 +275,7 @@ mod control_plane {
     pub(crate) const EU_API_URL: &str = "wss://eu.api.firezone.dev/";
 }
 
-#[derive(Clone, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LogFilterViewModel {
     pub log_filter: String,
     pub log_filter_is_managed: bool,

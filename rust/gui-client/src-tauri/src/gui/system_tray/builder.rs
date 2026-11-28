@@ -1,4 +1,4 @@
-//! An abstraction over Tauri's system tray menu structs, that implements `PartialEq` for unit testing
+//! An abstraction over the tray backends' menu structs, that implements `PartialEq` for unit testing
 
 use connlib_model::{ResourceId, ResourceView};
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ pub const COPY_ADDRESS: &str = "Copy address";
 
 /// A menu that can either be assigned to the system tray directly or used as a submenu in another menu.
 ///
-/// Equivalent to `tauri::menu::Menu` or `tauri::menu::Submenu`
+/// A menu or submenu
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Menu {
     pub entries: Vec<Entry>,
@@ -25,7 +25,7 @@ pub enum Entry {
 
 /// Something that shows text and may be clickable
 ///
-/// Equivalent to `tauri::CustomMenuItem`
+/// A menu item
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Item {
     /// An event to send to the app when the item is clicked.
@@ -46,7 +46,7 @@ pub struct Item {
 ///
 /// Named by color rather than meaning so it can be reused. Currently it
 /// mirrors the native status images the macOS client uses for Site status in
-/// its tray menu (`NSImage.statusAvailableName` and friends); Tauri has no
+/// its tray menu (`NSImage.statusAvailableName` and friends); there are no
 /// cross-platform "native" status icons, so we ship our own equivalents.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub enum Icon {

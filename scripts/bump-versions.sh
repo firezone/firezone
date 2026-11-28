@@ -171,7 +171,7 @@ function android() {
 # We support Windows and Linux with a single build workflow.
 #
 # Instructions:
-# 1. Run the `Tauri` workflow from `main`. This will push new release assets to
+# 1. Run the `Build GUI client` workflow from `main`. This will push new release assets to
 #    the drafted release on GitHub.
 # 2. Perform any final QA testing on the new release assets, then publish the
 #    release.

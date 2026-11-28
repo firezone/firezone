@@ -14,10 +14,6 @@ in
     inherit fzLib;
   };
 
-  firezone-gui-client-frontend = final.callPackage ./packages/firezone-gui-client/frontend.nix {
-    inherit fzLib;
-  };
-
   firezone-gui-client = final.callPackage ./packages/firezone-gui-client/package.nix {
     inherit fzLib;
   };

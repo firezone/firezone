@@ -1,4 +1,4 @@
-//! The Tauri-based GUI Client for Windows and Linux
+//! The GUI Client for Windows and Linux
 //!
 //! Most of this Client is stubbed out with panics on macOS.
 //! The real macOS Client is in `swift/apple`
@@ -12,20 +12,19 @@ use crate::{
         self, AdvancedSettings, DeveloperSettings, DeveloperSettingsViewModel, GeneralSettings,
         GeneralSettingsViewModel, LogFilterViewModel, MdmSettings, SignInSettings,
     },
+    ui::{self, Page, Ui, ViewModel},
     updates,
-    view::{
-        DeveloperSettingsChanged, GeneralSettingsChanged, LogFilterChanged, LogsRecounted,
-        SessionChanged, SessionViewModel, X509CertificateChanged,
-    },
+    view::{SessionViewModel, X509Certificate},
 };
 use anyhow::{Context, Result, bail};
 use client_ipc::{self as ipc, ClientRead, ClientWrite, SocketId};
+use freya::{
+    prelude::*,
+    winit::{event_loop::EventLoop, window::WindowId},
+};
 use futures::SinkExt as _;
 use gui_ipc::{ClientMsg, ServerMsg};
-use logging::err_with_src;
 use std::time::Duration;
-use tauri::Manager;
-use tauri_specta::Event;
 use tokio::{runtime::Runtime, sync::mpsc};
 use tokio_stream::StreamExt;
 use tracing::instrument;
@@ -46,72 +45,86 @@ mod os;
 
 pub use os::set_autostart;
 
-/// All managed state that we might need to access from odd places like Tauri commands.
-///
-/// Note that this never gets Dropped because of
-/// <https://github.com/tauri-apps/tauri/issues/8631>
-#[derive(Clone)]
-pub(crate) struct Managed {
-    req_tx: mpsc::Sender<ControllerRequest>,
-    pub inject_faults: bool,
-}
+const WINDOW_ICON: &[u8] = include_bytes!("../icons/128x128.png");
 
-impl Managed {
-    pub async fn send_request(&self, msg: ControllerRequest) -> Result<()> {
-        let msg_name = msg.to_string();
-
-        self.req_tx
-            .send(msg)
-            .await
-            .with_context(|| format!("Failed to send `{msg_name}`"))
-    }
-
-    pub fn blocking_send_request(&self, msg: ControllerRequest) -> Result<()> {
-        let msg_name = msg.to_string();
-
-        self.req_tx
-            .blocking_send(msg)
-            .with_context(|| format!("Failed to send `{msg_name}`"))
-    }
-}
-
-pub(crate) struct TauriIntegration {
-    app: tauri::AppHandle,
+pub(crate) struct FreyaIntegration {
     tray: system_tray::Tray,
+    /// Declared after `tray`, so the tray is removed before the event loop exits.
+    gui: Gui,
 }
 
-impl TauriIntegration {
-    fn main_window(&self) -> Result<tauri::WebviewWindow> {
-        self.app
-            .get_webview_window("main")
-            .context("Couldn't get handle to window")
+/// The GUI thread, which runs Freya's event loop.
+#[derive(Clone)]
+struct Gui(LaunchHandle);
+
+impl Gui {
+    /// Runs `f` on the GUI thread.
+    ///
+    /// Requires `Send` because the closure crosses threads, which `LaunchHandle` does not check.
+    fn post(&self, f: impl FnOnce(&mut RendererContext) + Send + 'static) {
+        drop(self.0.post_callback(f));
     }
 
-    fn navigate(&self, path: &str) -> Result<()> {
-        let window = self.main_window()?;
+    fn update(&self, f: impl FnOnce(&mut ViewModel) + Send + 'static) {
+        self.post(|ctx| {
+            let mut ui = ctx.global_contexts.get_context::<Ui>();
+            f(&mut ui.view_model.write());
+        });
+    }
 
-        let mut url = window.url()?;
-        url.set_path(path);
+    fn show(&self, page: Option<Page>) {
+        self.post(move |ctx| {
+            let mut ui = ctx.global_contexts.get_context::<Ui>();
+            if let Some(page) = page {
+                ui.page.set(page);
+            }
 
-        window.navigate(url)?;
+            if let Some(window) = ctx.windows().values().next() {
+                let window = window.window();
+                window.set_visible(true);
+                window.focus_window();
+                return;
+            }
+
+            ctx.launch_window(window_config());
+        });
+    }
+
+    fn close(&self) {
+        self.post(|ctx| {
+            let ids = ctx.windows().keys().copied().collect::<Vec<WindowId>>();
+            for id in ids {
+                Platform::get().close_window(id);
+            }
+        });
+    }
+}
+
+impl Drop for Gui {
+    fn drop(&mut self) {
+        tracing::debug!("Instructing the GUI to exit");
+
+        self.post(|ctx| ctx.exit());
+    }
+}
+
+fn window_config() -> WindowConfig {
+    WindowConfig::new(ui::app)
+        .with_size(ui::WINDOW_SIZE.0, ui::WINDOW_SIZE.1)
+        .with_title("Firezone")
+        .with_app_id("firezone-client-gui")
+        .with_icon(LaunchConfig::window_icon(WINDOW_ICON))
+        .with_decorations(false)
+        .with_resizable(false)
+}
+
+impl GuiIntegration for FreyaIntegration {
+    fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
+        let session = session.clone();
+        self.gui
+            .update(|view_model| view_model.session = Some(session));
 
         Ok(())
-    }
-}
-
-impl Drop for TauriIntegration {
-    fn drop(&mut self) {
-        tracing::debug!("Instructing Tauri to exit");
-
-        self.app.exit(0);
-    }
-}
-
-impl GuiIntegration for TauriIntegration {
-    fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
-        SessionChanged(session.clone())
-            .emit(&self.app)
-            .context("Failed to emit `session_changed` event")
     }
 
     fn notify_settings_changed(
@@ -121,18 +134,17 @@ impl GuiIntegration for TauriIntegration {
         advanced_settings: AdvancedSettings,
         signed_in_with: Option<SignInSettings>,
     ) -> Result<()> {
-        GeneralSettingsChanged(GeneralSettingsViewModel::new(
+        let general_settings = GeneralSettingsViewModel::new(
             mdm_settings.clone(),
             general_settings,
             advanced_settings.clone(),
             signed_in_with,
-        ))
-        .emit(&self.app)
-        .context("Failed to emit `general_settings_changed` event")?;
-
-        LogFilterChanged(LogFilterViewModel::new(mdm_settings, advanced_settings))
-            .emit(&self.app)
-            .context("Failed to emit `log_filter_changed` event")?;
+        );
+        let log_filter = LogFilterViewModel::new(mdm_settings, advanced_settings);
+        self.gui.update(|view_model| {
+            view_model.general_settings = Some(general_settings);
+            view_model.log_filter = Some(log_filter);
+        });
 
         Ok(())
     }
@@ -141,15 +153,16 @@ impl GuiIntegration for TauriIntegration {
         &self,
         settings: DeveloperSettingsViewModel,
     ) -> Result<()> {
-        DeveloperSettingsChanged(settings)
-            .emit(&self.app)
-            .context("Failed to emit `developer_settings_changed` event")
+        self.gui
+            .update(move |view_model| view_model.developer_settings = Some(settings));
+
+        Ok(())
     }
 
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
-        LogsRecounted(file_count.clone())
-            .emit(&self.app)
-            .context("Failed to emit `logs_recounted` event")?;
+        let file_count = file_count.clone();
+        self.gui
+            .update(|view_model| view_model.log_count = Some(file_count));
 
         Ok(())
     }
@@ -158,15 +171,16 @@ impl GuiIntegration for TauriIntegration {
         &self,
         certificate: Option<&x509_keystore::ParsedCertificate>,
     ) -> Result<()> {
-        X509CertificateChanged::from(certificate)
-            .emit(&self.app)
-            .context("Failed to emit `x509_certificate_changed` event")?;
+        let certificate = certificate.map(X509Certificate::from);
+        self.gui
+            .update(|view_model| view_model.certificate = certificate);
 
         Ok(())
     }
 
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
-        tauri_plugin_opener::open_url(url, Option::<&str>::None)?;
+        open::that_detached(url.as_ref())
+            .with_context(|| format!("Failed to open `{}`", url.as_ref()))?;
 
         Ok(())
     }
@@ -204,26 +218,18 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn set_window_visible(&self, visible: bool) -> Result<()> {
-        let win = self.main_window()?;
-
         if visible {
-            // Needed to bring shown windows to the front
-            // `request_user_attention` and `set_focus` don't work, at least on Linux
-            win.hide()?;
-            // Needed to show windows that are completely hidden
-            win.show()?;
+            self.gui.show(None);
         } else {
-            win.hide().context("Couldn't hide window")?;
+            self.gui.close();
         }
 
         Ok(())
     }
 
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()> {
-        // Ensure state in frontend is up-to-date.
         self.notify_session_changed(session)?;
-        self.navigate("overview")?;
-        self.set_window_visible(true)?;
+        self.gui.show(Some(Page::Overview));
 
         Ok(())
     }
@@ -240,16 +246,14 @@ impl GuiIntegration for TauriIntegration {
             general_settings,
             advanced_settings,
             signed_in_with,
-        )?; // Ensure settings are up to date in GUI.
-        self.navigate("general-settings")?;
-        self.set_window_visible(true)?;
+        )?;
+        self.gui.show(Some(Page::Settings));
 
         Ok(())
     }
 
     fn show_about_page(&self) -> Result<()> {
-        self.navigate("about")?;
-        self.set_window_visible(true)?;
+        self.gui.show(Some(Page::About));
 
         Ok(())
     }
@@ -292,11 +296,9 @@ fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
     });
 }
 
-/// Runs the Tauri GUI and returns on exit or unrecoverable error
+/// Runs the GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
 pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandle) -> Result<()> {
-    tauri::async_runtime::set(rt.handle().clone());
-
     #[cfg(not(debug_assertions))]
     crate::package_identity::ensure_package_identity()?;
 
@@ -309,17 +311,28 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
     let developer_settings = settings::load_developer_settings().unwrap_or_default();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let req_tx = ctlr_tx.clone();
-    let (ready_tx, mut ready_rx) = mpsc::channel::<tauri::AppHandle>(1);
+    let tray_tx = ctlr_tx.clone();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<LaunchHandle>();
+
+    let ui = Ui::new(
+        ui::Requests {
+            tx: ctlr_tx.clone(),
+            rt: rt.handle().clone(),
+            inject_faults: config.inject_faults,
+        },
+        ui::Build {
+            version: env!("CARGO_PKG_VERSION"),
+            git_sha: git_sha::git_sha().unwrap_or("0000000000000000000000000000000000000000"),
+        },
+    );
 
     // Spawn the setup task.
-    // Everything we need to do once Tauri is fully initialised goes in here.
+    // Everything we need to do once the GUI event loop runs goes in here.
     let setup_task = rt.spawn(async move {
-        // Block until Tauri is ready.
-        let app_handle = ready_rx
-            .recv()
+        // Dropping it on any error below exits the event loop.
+        let gui = Gui(ready_rx
             .await
-            .context("Never received ready event from Tauri")?;
+            .context("Never received ready event from the GUI")?);
 
         let (updates_tx, updates_rx) = mpsc::channel(1);
 
@@ -346,8 +359,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         if !config.no_deep_links {
             // The single-instance check is done, so register our exe
             // to handle deep links
-            let exe =
-                tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
+            let exe = std::env::current_exe().context("Can't find our own exe path")?;
             deep_link::register(exe).context("Failed to register deep link handler")?;
         }
 
@@ -378,24 +390,24 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
             });
         }
 
-        assert_eq!(
-            crate::BUNDLE_ID,
-            app_handle.config().identifier,
-            "BUNDLE_ID should match bundle ID in tauri.conf.json"
-        );
+        #[cfg(target_os = "linux")]
+        let tray = system_tray::Tray::new(&tokio::runtime::Handle::current(), move |event| {
+            handle_system_tray_event(&tray_tx, event);
+        });
+        #[cfg(not(target_os = "linux"))]
+        let tray = {
+            tray_icon::menu::MenuEvent::set_event_handler(Some(
+                move |event: tray_icon::menu::MenuEvent| {
+                    if let Some(event) = system_tray::decode_menu_event(&event.id.0) {
+                        handle_system_tray_event(&tray_tx, event);
+                    }
+                },
+            ));
 
-        let tray = system_tray::Tray::new(
-            tokio::runtime::Handle::current(),
-            app_handle.clone(),
-            |app, event| match handle_system_tray_event(app, event) {
-                Ok(_) => {}
-                Err(e) => tracing::error!("{e}"),
-            },
-        )?;
-        let integration = TauriIntegration {
-            app: app_handle,
-            tray,
+            let gui = gui.clone();
+            system_tray::Tray::new(Box::new(move |f| gui.post(move |_| f()))).await?
         };
+        let integration = FreyaIntegration { tray, gui };
 
         let legacy_advanced_settings_path = known_dirs::settings()
             .context("`known_dirs::settings` failed")?
@@ -417,60 +429,24 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         anyhow::Ok(ctrl_task)
     });
 
-    let tauri_specta_builder = crate::view::specta_builder();
-
-    #[cfg(debug_assertions)]
-    {
-        tracing::debug!(path = %crate::view::bindings_path().display(), "Exporting TypeScript bindings");
-
-        crate::view::export_bindings()?;
-    }
-
-    tauri::Builder::default()
-        .manage(Managed {
-            req_tx,
-            inject_faults: config.inject_faults,
+    // Building the event loop ourselves turns a missing display into an error rather than a panic.
+    let event_loop = EventLoop::builder()
+        .build()
+        .context("Failed to start the GUI event loop")?;
+    let launch_config = ui::FONTS
+        .iter()
+        .fold(LaunchConfig::new(), |launch_config, (family, bytes)| {
+            launch_config.with_font(*family, Bytes::from_static(bytes))
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // Keep the frontend running but just hide this webview
-                // Per https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
-                // Closing the window fully seems to deallocate it or something.
-
-                if let Err(e) = window.hide() {
-                    tracing::warn!("Failed to hide window: {}", err_with_src(&e))
-                };
-                api.prevent_close();
-            }
-        })
-        .invoke_handler(tauri_specta_builder.invoke_handler())
-        .setup(move |app| {
-            tauri_specta_builder.mount_events(app);
-
-            Ok(())
-        })
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
-        .build(tauri::generate_context!())
-        .context("Failed to build Tauri app instance")?
-        .run_return(move |app_handle, event| {
-            #[expect(
-                clippy::wildcard_enum_match_arm,
-                reason = "We only care about these two events from Tauri"
-            )]
-            match event {
-                tauri::RunEvent::ExitRequested {
-                        api, code: None, .. // `code: None` means the user closed the last window.
-                    } => {
-                    api.prevent_exit();
-                }
-                tauri::RunEvent::Ready => {
-                    // Notify our setup task that we are ready!
-                    let _ = ready_tx.try_send(app_handle.clone());
-                }
-                _ => (),
-            }
+        .with_default_font(ui::SANS)
+        .with_global_context(ui)
+        .with_event_loop(event_loop)
+        .with_exit_on_close(false)
+        .with_task(move |proxy| async move {
+            let _ = ready_tx.send(proxy);
         });
+
+    launch(launch_config);
 
     // Wait until the controller task finishes.
     rt.block_on(async move {
@@ -573,15 +549,13 @@ async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
     Ok::<_, anyhow::Error>(())
 }
 
-fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -> Result<()> {
+fn handle_system_tray_event(req_tx: &mpsc::Sender<ControllerRequest>, event: system_tray::Event) {
     // `try_send` rather than `blocking_send`: on Linux this runs inside the
     // ksni service's async task, where a blocking send would panic. Tray
     // clicks are human-paced, so the bounded channel won't realistically fill.
-    app.try_state::<Managed>()
-        .context("can't get Managed struct from Tauri")?
-        .req_tx
-        .try_send(ControllerRequest::SystemTrayMenu(event))?;
-    Ok(())
+    if let Err(e) = req_tx.try_send(ControllerRequest::SystemTrayMenu(event)) {
+        tracing::error!("Failed to send tray event: {e}");
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
