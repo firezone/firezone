@@ -702,8 +702,7 @@ fn connect(
 
     let metrics_exporter = otel_metrics_export::Exporter::spawn(tcp_socket_factory.clone());
 
-    let listen_port = client_shared::free_udp_port().context("Failed to find a free UDP port")?;
-    let config = client_shared::SessionConfig::new(listen_port)
+    let config = client_shared::SessionConfig::default()
         .with_internet_resource_active(is_internet_resource_active)
         .with_additional_host_candidates(additional_host_candidates)
         .with_flow_logs_dir(flow_logs_dir);

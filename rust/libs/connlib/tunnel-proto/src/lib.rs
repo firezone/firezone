@@ -102,6 +102,8 @@ pub enum ClientEvent {
     NoRelays {
         excluded_relay_ids: Vec<RelayId>,
     },
+    /// Another device behind our NAT uses our public socket: we need to move to a new port.
+    SocketTaken,
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
@@ -150,6 +152,8 @@ pub enum GatewayEvent {
     NoRelays {
         excluded_relay_ids: Vec<RelayId>,
     },
+    /// Another device behind our NAT uses our public socket: we need to move to a new port.
+    SocketTaken,
 }
 
 #[derive(Debug, thiserror::Error)]

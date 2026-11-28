@@ -155,6 +155,17 @@ pub fn connection_count() -> Histogram<u64> {
         .build()
 }
 
+/// How often a remote address became contested by several Frostlink connections.
+pub fn contested_addresses() -> Counter<u64> {
+    connlib_meter()
+        .u64_counter("connlib.address.contested")
+        .with_description(
+            "Number of remote addresses that several Frostlink connections validated a path to.",
+        )
+        .with_unit("{address}")
+        .build()
+}
+
 /// How long a connection took to establish, from its creation until it can send packets.
 pub fn connection_setup_duration() -> Histogram<f64> {
     connlib_meter()

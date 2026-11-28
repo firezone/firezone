@@ -209,8 +209,8 @@ pub struct Host<R> {
 }
 
 impl<R: Role> Host<R> {
-    fn new(state: R) -> Self {
-        let (tunnel, ends) = Tunnel::fake(state);
+    fn new(state: R, listen_port: u16) -> Self {
+        let (tunnel, ends) = Tunnel::fake(state, listen_port);
 
         Self {
             tunnel,
@@ -423,7 +423,10 @@ impl Network {
             .unwrap();
         let relay = Relay::new(now);
 
-        let mut gateway = Host::new(GatewayState::new([2; 32], now, unix_ts));
+        let mut gateway = Host::new(
+            GatewayState::new([2; 32], now, unix_ts),
+            GATEWAY_SOCKET.port(),
+        );
         let state = gateway.state_mut(now);
         state.set_flow_logs_enabled(true);
         state.update_tun_device(GATEWAY_TUN);
@@ -740,7 +743,10 @@ impl Client {
         let mut key = [1; 32];
         key[..8].copy_from_slice(&(index as u64).to_be_bytes());
 
-        let mut host = Host::new(ClientState::new(key, BTreeSet::new(), false, now, unix_ts));
+        let mut host = Host::new(
+            ClientState::new(key, BTreeSet::new(), false, now, unix_ts),
+            client_socket(index).port(),
+        );
         let state = host.state_mut(now);
         state.set_flow_logs_enabled(true);
         state.update_interface_config(Interface {

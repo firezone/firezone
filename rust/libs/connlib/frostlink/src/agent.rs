@@ -485,7 +485,7 @@ impl Agent {
             self.pending_transmits.push_back(Transmit {
                 local,
                 remote,
-                payload: Payload::Ciphertext(init),
+                payload: Payload::HandshakeInitiation(init),
             });
         }
 
@@ -528,7 +528,7 @@ impl Agent {
                 self.pending_transmits.push_back(Transmit {
                     local: path.0,
                     remote: path.1,
-                    payload: Payload::Ciphertext(response),
+                    payload: Payload::HandshakeResponse(response),
                 });
 
                 return Ok(());
@@ -578,7 +578,7 @@ impl Agent {
         self.pending_transmits.push_back(Transmit {
             local: path.0,
             remote: path.1,
-            payload: Payload::Ciphertext(response),
+            payload: Payload::HandshakeResponse(response),
         });
 
         Ok(())
@@ -620,7 +620,7 @@ impl Agent {
         self.pending_transmits.push_back(Transmit {
             local: path.0,
             remote: path.1,
-            payload: Payload::Ciphertext(keepalive),
+            payload: Payload::Keepalive(keepalive),
         });
 
         Ok(())
@@ -666,7 +666,7 @@ impl Agent {
                 self.pending_transmits.push_back(Transmit {
                     local: pair.0,
                     remote: pair.1,
-                    payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_reply(
+                    payload: Payload::ProbeReply(Box::new(crate::icmpv6::build_echo_reply(
                         probe.id, probe.seq,
                     ))),
                 });
@@ -699,6 +699,13 @@ impl Agent {
 
                 let inflight = state.inflight.remove(i);
                 let rtt = now.saturating_duration_since(inflight.sent_at);
+
+                if state.rtt.is_none() {
+                    self.events.push_back(Event::PathValidated {
+                        local: pair.0,
+                        remote: pair.1,
+                    });
+                }
 
                 state.rtt = Some(Rtt {
                     smoothed: match state.rtt {
@@ -823,7 +830,7 @@ impl Agent {
             pending.push_back(Transmit {
                 local,
                 remote,
-                payload: Payload::Ciphertext(outbound.bytes.clone()),
+                payload: Payload::HandshakeInitiation(outbound.bytes.clone()),
             });
             outbound.fanned.insert((local, remote));
             // Arm the one-time fast head the first time we send to this pair; a
@@ -845,7 +852,7 @@ impl Agent {
                 pending.push_back(Transmit {
                     local: *local,
                     remote: *remote,
-                    payload: Payload::Ciphertext(outbound.bytes.clone()),
+                    payload: Payload::HandshakeInitiation(outbound.bytes.clone()),
                 });
 
                 state.advance(now);
@@ -886,7 +893,7 @@ impl Agent {
             pending.push_back(Transmit {
                 local: *local,
                 remote: *remote,
-                payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_request(
+                payload: Payload::ProbeRequest(Box::new(crate::icmpv6::build_echo_request(
                     state.id, seq,
                 ))),
             });

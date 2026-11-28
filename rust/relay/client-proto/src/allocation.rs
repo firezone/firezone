@@ -31,7 +31,7 @@ use stun_codec::{
         attributes::{
             ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
         },
-        errors::{AllocationMismatch, AllocationQuotaReached},
+        errors::{AllocationMismatch, AllocationQuotaReached, WrongCredentials},
         methods::{ALLOCATE, CHANNEL_BIND, REFRESH},
     },
     rfc8656::attributes::AdditionalAddressFamily,
@@ -118,6 +118,10 @@ struct ActiveSocket {
 pub enum Event {
     New(Candidate),
     Invalid(Candidate),
+    /// The relay has an allocation of another device on our socket.
+    ///
+    /// The NAT in front of us maps both of us to the same public socket.
+    SocketTaken,
 }
 
 pub enum CredentialUpdate {
@@ -532,8 +536,20 @@ impl Allocation {
                 return true;
             }
 
-            // If we receive an allocation mismatch, we need to clear our local state.
-            if error.code() == AllocationMismatch::CODEPOINT {
+            // On these requests, the relay only answers 441 if its allocation on our socket belongs to another device.
+            let allocation_of_another_device = error.code() == WrongCredentials::CODEPOINT
+                && matches!(message.method(), REFRESH | CHANNEL_BIND);
+
+            // Without an allocation of our own, we only refresh to delete the one we ran into on allocate.
+            if allocation_of_another_device && !self.has_allocation() {
+                tracing::debug!("Socket is taken by another device");
+                self.events.push_back(Event::SocketTaken);
+
+                return true;
+            }
+
+            // If we receive an allocation mismatch or our socket moved onto another device's allocation, we need to clear our local state.
+            if error.code() == AllocationMismatch::CODEPOINT || allocation_of_another_device {
                 self.invalidate_allocation();
 
                 match message.method() {
@@ -2817,6 +2833,77 @@ mod tests {
         );
     }
 
+    #[test]
+    fn wrong_credentials_without_allocation_means_socket_is_taken() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+        let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(allocation_mismatch(&allocate), now);
+        let delete = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(wrong_credentials(&delete), now);
+
+        assert_eq!(allocation.poll_event(), Some(Event::SocketTaken));
+        assert_eq!(allocation.can_be_freed(), None);
+    }
+
+    #[test]
+    fn wrong_credentials_with_allocation_reallocates() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1, now)
+            .with_allocate_response(&[RELAY_ADDR_IP4], now);
+        let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+
+        allocation.refresh_with_same_credentials();
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(wrong_credentials(&refresh), now);
+
+        assert_eq!(allocation.next_message().unwrap().method(), ALLOCATE);
+        assert_eq!(
+            iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
+            vec![Event::Invalid(
+                Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()
+            )]
+        );
+    }
+
+    #[test]
+    fn wrong_credentials_on_channel_bind_reallocates() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1, now)
+            .with_allocate_response(&[RELAY_ADDR_IP4], now);
+        let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+
+        allocation.bind_channel(PEER2_IP4, now);
+        let channel_bind = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(wrong_credentials(&channel_bind), now);
+
+        assert_eq!(allocation.next_message().unwrap().method(), ALLOCATE);
+        assert_eq!(
+            iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
+            vec![Event::Invalid(
+                Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()
+            )]
+        );
+    }
+
+    #[test]
+    fn wrong_credentials_on_allocate_is_unhandled() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(wrong_credentials(&allocate), now);
+
+        assert_eq!(
+            allocation.can_be_freed(),
+            Some(FreeReason::UnhandledResponse)
+        );
+    }
+
     fn allocate_success_without_lifetime(allocate: &Message<Attribute>) -> Message<Attribute> {
         let mut response = allocate_success(allocate);
         response.add_attribute(XorRelayAddress::new(RELAY_ADDR_IP4));
@@ -3112,6 +3199,17 @@ mod tests {
             request.transaction_id(),
         );
         message.add_attribute(ErrorCode::from(AllocationMismatch));
+
+        message
+    }
+
+    fn wrong_credentials(request: &Message<Attribute>) -> Message<Attribute> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(WrongCredentials));
 
         message
     }

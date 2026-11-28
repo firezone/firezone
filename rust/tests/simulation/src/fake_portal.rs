@@ -877,6 +877,13 @@ impl FakePortal {
         *gateway
     }
 
+    pub(crate) fn site_of_gateway(&self, gateway: GatewayId) -> Option<SiteId> {
+        self.gateways_by_site
+            .iter()
+            .find(|(_, gateways)| gateways.iter().any(|(id, _, _)| *id == gateway))
+            .map(|(site, _)| *site)
+    }
+
     pub(crate) fn site_for_resource(&self, rid: ResourceId) -> Option<SiteId> {
         self.sites_by_resource.get(&rid).copied()
     }

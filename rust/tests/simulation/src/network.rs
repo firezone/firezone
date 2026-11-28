@@ -3,9 +3,10 @@ use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+use itertools::Itertools as _;
 use snownet::Transmit;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
@@ -145,23 +146,37 @@ pub(crate) fn direct_path_possible(
 /// (there is no NAT66 in the wild) but subject to the same stateful filtering
 /// per host, like the "simple security" of [RFC 6092](https://datatracker.ietf.org/doc/html/rfc6092).
 ///
-/// A public port belongs to exactly one mapping. A new mapping keeps the port
-/// of its internal socket unless a live mapping holds it, and takes the next
-/// free port otherwise.
+/// A new mapping keeps the port of its internal socket unless the
+/// [`PortAssignment`] gives it a fresh port.
 #[derive(Debug, Clone)]
 pub(crate) struct Nat {
     ip4: Ipv4Addr,
     mapping: Mapping,
     filter: FilterMode,
     expiry: Expiry,
+    assignment: PortAssignment,
     next_port: u16,
-    bindings: BTreeMap<u16, Binding>,
+    bindings: Vec<Binding>,
     /// IPv6 destinations each host has sent to; the state backing [`FilterMode`] for IPv6.
     sent_to6: BTreeMap<(IpAddr, SocketAddr), Instant>,
 }
 
+/// How a NAT assigns public ports to new mappings.
+#[derive(Debug, Clone)]
+pub(crate) enum PortAssignment {
+    /// A public port belongs to exactly one mapping, per [RFC 4787, REQ-3](https://datatracker.ietf.org/doc/html/rfc4787#section-4.2.1).
+    Compliant,
+    /// Mappings of several internal sockets share a public port ("port overloading").
+    ///
+    /// A new mapping keeps its internal port even if other mappings hold it, unless it draws a
+    /// fresh port with [`Nat::FRESH_PORT_PROBABILITY`]. An inbound packet goes to the mapping that
+    /// last sent to its sender, or else to the one that sent last.
+    Overloading(fastrand::Rng),
+}
+
 #[derive(Debug, Clone)]
 struct Binding {
+    port: u16,
     internal: SocketAddr,
     /// The destination of an endpoint-dependent mapping.
     destination: Option<SocketAddr>,
@@ -172,14 +187,26 @@ struct Binding {
 }
 
 impl Nat {
-    pub(crate) fn new(ip4: Ipv4Addr, mapping: Mapping, filter: FilterMode, expiry: Expiry) -> Self {
+    /// Makes two hosts with the same internal port about equally likely to share their public port
+    /// towards a destination or not, so that they often share it towards one destination but not
+    /// towards another.
+    const FRESH_PORT_PROBABILITY: f64 = 0.3;
+
+    pub(crate) fn new(
+        ip4: Ipv4Addr,
+        mapping: Mapping,
+        filter: FilterMode,
+        expiry: Expiry,
+        assignment: PortAssignment,
+    ) -> Self {
         Self {
             ip4,
             mapping,
             filter,
             expiry,
+            assignment,
             next_port: 42000,
-            bindings: BTreeMap::default(),
+            bindings: Vec::default(),
             sent_to6: BTreeMap::default(),
         }
     }
@@ -204,7 +231,7 @@ impl Nat {
         }
 
         let timeout = self.expiry.timeout;
-        for _ in self.bindings.extract_if(.., |_, binding| {
+        for _ in self.bindings.extract_if(.., |binding| {
             now.duration_since(binding.refreshed_at) >= timeout
         }) {}
 
@@ -216,31 +243,34 @@ impl Nat {
         let existing = self
             .bindings
             .iter_mut()
-            .find(|(_, binding)| binding.internal == src && binding.destination == destination);
+            .find(|binding| binding.internal == src && binding.destination == destination);
 
-        if let Some((port, binding)) = existing {
+        if let Some(binding) = existing {
             binding.refreshed_at = now;
             binding.sent_to.insert(dst, now);
 
-            return SocketAddr::new(self.ip4.into(), *port);
+            return SocketAddr::new(self.ip4.into(), binding.port);
         }
 
-        let port = self.free_port(src.port());
-        self.bindings.insert(
+        let port = self.assign_port(src.port());
+        self.bindings.push(Binding {
             port,
-            Binding {
-                internal: src,
-                destination,
-                sent_to: BTreeMap::from([(dst, now)]),
-                refreshed_at: now,
-            },
-        );
+            internal: src,
+            destination,
+            sent_to: BTreeMap::from([(dst, now)]),
+            refreshed_at: now,
+        });
 
         SocketAddr::new(self.ip4.into(), port)
     }
 
-    fn free_port(&mut self, preferred: u16) -> u16 {
-        if !self.bindings.contains_key(&preferred) {
+    fn assign_port(&mut self, preferred: u16) -> u16 {
+        let keep = match &mut self.assignment {
+            PortAssignment::Compliant => !self.is_held(preferred),
+            PortAssignment::Overloading(rng) => rng.f64() >= Self::FRESH_PORT_PROBABILITY,
+        };
+
+        if keep {
             return preferred;
         }
 
@@ -248,10 +278,14 @@ impl Nat {
             let port = self.next_port;
             self.next_port += 1;
 
-            if !self.bindings.contains_key(&port) {
+            if !self.is_held(port) {
                 return port;
             }
         }
+    }
+
+    fn is_held(&self, port: u16) -> bool {
+        self.bindings.iter().any(|binding| binding.port == port)
     }
 
     fn ingress(&mut self, src: SocketAddr, dst: SocketAddr, now: Instant) -> Result<SocketAddr> {
@@ -264,24 +298,27 @@ impl Nat {
                     bail!("IPv4 address behind NAT is not routable");
                 }
 
+                let filter = self.filter;
                 let binding = self
                     .bindings
-                    .get_mut(&dst.port())
-                    .context("no NAT binding for destination")?;
+                    .iter_mut()
+                    .filter(|binding| binding.port == dst.port() && fresh(&binding.refreshed_at))
+                    .filter(|binding| {
+                        let sent_to = binding
+                            .sent_to
+                            .iter()
+                            .filter(|(_, sent_at)| fresh(sent_at))
+                            .map(|(dst, _)| dst);
 
-                if !fresh(&binding.refreshed_at) {
-                    bail!("NAT binding expired");
-                }
-
-                let sent_to = binding
-                    .sent_to
-                    .iter()
-                    .filter(|(_, sent_at)| fresh(sent_at))
-                    .map(|(dst, _)| dst);
-
-                if !self.filter.accepts(sent_to, src) {
-                    bail!("sender not in NAT filter state");
-                }
+                        filter.accepts(sent_to, src)
+                    })
+                    .max_by_key(|binding| {
+                        (
+                            binding.sent_to.get(&src).copied(),
+                            binding.sent_to.values().max().copied(),
+                        )
+                    })
+                    .context("no NAT binding admits the sender")?;
 
                 if self.expiry.inbound_refreshes {
                     binding.refreshed_at = now;
@@ -547,8 +584,10 @@ impl RoutingTable {
         self.nats.keys().copied()
     }
 
-    /// The edge of each NAT device that two or more Clients sit behind.
-    pub(crate) fn edges_shared_by_clients(&self) -> impl Iterator<Item = EdgeConfig> + '_ {
+    /// The edge and port assignment of each NAT device that two or more Clients sit behind.
+    pub(crate) fn edges_shared_by_clients(
+        &self,
+    ) -> impl Iterator<Item = (EdgeConfig, &PortAssignment)> + '_ {
         self.nats.iter().filter_map(|(ip, nat)| {
             let clients = self
                 .attachments
@@ -556,8 +595,48 @@ impl RoutingTable {
                 .filter(|(id, attached)| matches!(id, HostId::Client(_)) && *attached == ip)
                 .count();
 
-            (clients >= 2).then(|| nat.edge_config())
+            (clients >= 2).then(|| (nat.edge_config(), &nat.assignment))
         })
+    }
+
+    /// The hosts behind each overloading NAT device that two or more hosts sit behind.
+    pub(crate) fn hosts_behind_shared_overloading_nats(
+        &self,
+    ) -> impl Iterator<Item = (Ipv4Addr, Vec<HostId>)> + '_ {
+        self.nats.iter().filter_map(|(ip, nat)| {
+            let PortAssignment::Overloading(_) = nat.assignment else {
+                return None;
+            };
+            let hosts = self
+                .attachments
+                .iter()
+                .filter(|(_, attached)| *attached == ip)
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>();
+
+            (hosts.len() >= 2).then_some((*ip, hosts))
+        })
+    }
+
+    /// The destinations that two hosts behind the NAT device at `ip` both sent to from the same
+    /// public port.
+    pub(crate) fn shared_port_destinations(&self, ip: Ipv4Addr) -> BTreeSet<SocketAddr> {
+        let Some(nat) = self.nats.get(&ip) else {
+            return BTreeSet::new();
+        };
+
+        nat.bindings
+            .iter()
+            .array_combinations()
+            .filter(|[a, b]| a.port == b.port && a.internal.ip() != b.internal.ip())
+            .flat_map(|[a, b]| {
+                a.sent_to
+                    .keys()
+                    .filter(|dst| b.sent_to.contains_key(dst))
+                    .copied()
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     /// The edge of a host behind a NAT device, i.e. a Client or a Gateway.
@@ -694,6 +773,8 @@ mod tests {
     const SERVER_2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2)), 3478);
     const HOST_1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 52625);
     const HOST_2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 52625);
+    /// Keeps the internal port on the first two new mappings.
+    const SEED: u64 = 1;
     const EXPIRY: Expiry = Expiry {
         timeout: Duration::from_secs(30),
         inbound_refreshes: false,
@@ -706,6 +787,7 @@ mod tests {
             Mapping::EndpointIndependent,
             FilterMode::Open,
             EXPIRY,
+            PortAssignment::Compliant,
         );
 
         let public = nat.egress(HOST_1, SERVER_1, Instant::now());
@@ -720,6 +802,7 @@ mod tests {
             Mapping::EndpointIndependent,
             FilterMode::Open,
             EXPIRY,
+            PortAssignment::Compliant,
         );
         let now = Instant::now();
 
@@ -737,6 +820,7 @@ mod tests {
             Mapping::EndpointIndependent,
             FilterMode::Open,
             EXPIRY,
+            PortAssignment::Compliant,
         );
         let now = Instant::now();
 
@@ -753,6 +837,7 @@ mod tests {
             Mapping::EndpointDependent,
             FilterMode::PortRestricted,
             EXPIRY,
+            PortAssignment::Compliant,
         );
         let now = Instant::now();
 
@@ -769,6 +854,7 @@ mod tests {
             Mapping::EndpointIndependent,
             FilterMode::Open,
             EXPIRY,
+            PortAssignment::Compliant,
         );
         let now = Instant::now();
 
@@ -776,5 +862,42 @@ mod tests {
         let public = nat.egress(HOST_2, SERVER_1, now + EXPIRY.timeout);
 
         assert_eq!(public.port(), HOST_2.port());
+    }
+
+    #[test]
+    fn overloading_keeps_internal_port_held_by_another_mapping() {
+        let mut nat = Nat::new(
+            NAT_IP,
+            Mapping::EndpointIndependent,
+            FilterMode::Open,
+            EXPIRY,
+            PortAssignment::Overloading(fastrand::Rng::with_seed(SEED)),
+        );
+        let now = Instant::now();
+
+        let first = nat.egress(HOST_1, SERVER_1, now);
+        let second = nat.egress(HOST_2, SERVER_1, now);
+
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn overloading_delivers_inbound_to_last_sender() {
+        let mut nat = Nat::new(
+            NAT_IP,
+            Mapping::EndpointIndependent,
+            FilterMode::Open,
+            EXPIRY,
+            PortAssignment::Overloading(fastrand::Rng::with_seed(SEED)),
+        );
+        let now = Instant::now();
+
+        let public = nat.egress(HOST_1, SERVER_1, now);
+        nat.egress(HOST_2, SERVER_1, now + Duration::from_secs(1));
+        let internal = nat
+            .ingress(SERVER_1, public, now + Duration::from_secs(2))
+            .unwrap();
+
+        assert_eq!(internal, HOST_2);
     }
 }

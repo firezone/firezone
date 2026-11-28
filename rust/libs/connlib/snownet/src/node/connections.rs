@@ -1,8 +1,9 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     fmt,
     hash::Hash,
     iter, mem,
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -34,11 +35,58 @@ pub struct Connections<TId, RId> {
 
     established_by_tunnel_id: HashMap<sanstun::TunnelId, TId, FastRandomState>,
     established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
+    validated_paths: ValidatedPaths<TId>,
+    contested_addresses: opentelemetry::metrics::Counter<u64>,
 
     disconnected_ids: HashMap<TId, Instant, FastRandomState>,
     disconnected_public_keys: HashMap<[u8; 32], Instant, FastRandomState>,
     disconnected_tunnel_ids: HashMap<sanstun::TunnelId, Instant, FastRandomState>,
     disconnected_ufrags: HashMap<String, Instant, FastRandomState>,
+}
+
+/// The Frostlink connections that validated a path to each remote socket.
+pub(crate) struct ValidatedPaths<TId> {
+    by_remote: HashMap<SocketAddr, BTreeSet<TId>, FastRandomState>,
+    /// Remotes that became contested since the last [`ValidatedPaths::drain_contested`].
+    contested: Vec<SocketAddr>,
+}
+
+impl<TId> Default for ValidatedPaths<TId> {
+    fn default() -> Self {
+        Self {
+            by_remote: Default::default(),
+            contested: Vec::new(),
+        }
+    }
+}
+
+impl<TId> ValidatedPaths<TId>
+where
+    TId: Ord,
+{
+    pub(crate) fn insert(&mut self, id: TId, remote: SocketAddr) {
+        let ids = self.by_remote.entry(remote).or_default();
+
+        if ids.insert(id) && ids.len() >= 2 {
+            self.contested.push(remote);
+        }
+    }
+
+    fn drain_contested(&mut self) -> impl Iterator<Item = SocketAddr> + '_ {
+        self.contested.drain(..)
+    }
+
+    fn remove(&mut self, id: &TId) {
+        for ids in self.by_remote.values_mut() {
+            ids.remove(id);
+        }
+        for _ in self.by_remote.extract_if(|_, ids| ids.is_empty()) {}
+    }
+
+    fn clear(&mut self) {
+        self.by_remote.clear();
+        self.contested.clear();
+    }
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -50,6 +98,8 @@ impl<TId, RId> Default for Connections<TId, RId> {
             closing: Default::default(),
             established_by_tunnel_id: Default::default(),
             established_by_local_ufrag: Default::default(),
+            validated_paths: Default::default(),
+            contested_addresses: otel_instruments::contested_addresses(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_tunnel_ids: Default::default(),
@@ -76,6 +126,7 @@ where
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.established_by_local_ufrag.remove(ufrag);
         }
+        self.validated_paths.remove(id);
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
@@ -156,7 +207,19 @@ where
                 transmits,
                 events,
                 inflight_stun_requests,
+                &mut self.validated_paths,
             );
+        }
+
+        // A NAT maps several devices to each of these and delivers what we send there to whichever
+        // of them sent last, so we only reply to them.
+        for remote in self.validated_paths.drain_contested() {
+            tracing::debug!(%remote, "Remote address contested by several connections");
+            self.contested_addresses.add(1, &[]);
+
+            for (cid, c) in self.established.iter_mut() {
+                c.mark_contested(cid, remote, now);
+            }
         }
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
@@ -173,6 +236,7 @@ where
                 transmits,
                 &mut VecDeque::new(),
                 inflight_stun_requests,
+                &mut ValidatedPaths::default(),
             );
 
             // The goodbye may have to wait for a channel binding or a handshake, e.g. when
@@ -252,6 +316,9 @@ where
         self.established_by_tunnel_id.insert(tunnel_id, id);
         if let Some(ufrag) = local_ufrag {
             self.established_by_local_ufrag.insert(ufrag, id);
+        }
+        if existing.is_some() {
+            self.validated_paths.remove(&id);
         }
 
         existing
@@ -399,6 +466,7 @@ where
         self.missing_relay = false;
         self.failed.clear();
         self.established_by_tunnel_id.clear();
+        self.validated_paths.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
@@ -477,6 +545,7 @@ where
                 self.established_by_local_ufrag.remove(ufrag);
                 self.disconnected_ufrags.insert(ufrag.to_owned(), now);
             }
+            self.validated_paths.remove(&id);
         }
 
         self.disconnected_ids
@@ -837,6 +906,7 @@ mod tests {
             default_ice_config: IceConfig::client_default(),
             idle_ice_config: IceConfig::client_idle(),
             poll_timeout_cache: Default::default(),
+            contested: Default::default(),
         }
     }
 }

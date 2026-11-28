@@ -70,6 +70,7 @@ pub struct Eventloop {
 }
 
 enum PortalCommand {
+    Connect(PublicKeyParam),
     Send(EgressMessages),
     Close,
 }
@@ -337,6 +338,25 @@ impl Eventloop {
                     }))
                     .await
                     .context("Failed to send message to portal")?;
+            }
+            Ok(GatewayEvent::SocketTaken) => {
+                let now = self.clock.now();
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(());
+                };
+
+                let old_key = tunnel.public_key();
+                tunnel.reset_on_new_port(now);
+                let public_key = tunnel.public_key();
+
+                if public_key != old_key {
+                    self.portal_cmd_tx
+                        .send(PortalCommand::Connect(PublicKeyParam(
+                            public_key.to_bytes(),
+                        )))
+                        .await
+                        .context("Failed to connect phoenix-channel")?;
+                }
             }
             Err(error) => self.handle_tunnel_error(error)?,
         }
@@ -665,7 +685,7 @@ fn dns_resolver() -> Result<TokioResolver> {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    public_key: PublicKeyParam,
+    mut public_key: PublicKeyParam,
     event_tx: mpsc::Sender<Result<PortalEvent, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     resolver: TokioResolver,
@@ -725,6 +745,12 @@ async fn phoenix_channel_event_loop(
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
                 break;
+            }
+            Either::Right((Some(PortalCommand::Connect(key)), _)) => {
+                public_key = key;
+
+                let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
+                portal.connect(ips, Duration::ZERO, public_key.clone());
             }
             Either::Right((Some(PortalCommand::Send(msg)), _)) => {
                 match portal.send(PHOENIX_TOPIC, msg) {

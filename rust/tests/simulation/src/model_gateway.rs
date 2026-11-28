@@ -59,6 +59,7 @@ impl ModelGateway {
         self,
         id: GatewayId,
         tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
+        listen_port: u16,
         now: Instant,
         utc_now: Timestamp,
     ) -> RealGateway {
@@ -83,6 +84,7 @@ impl ModelGateway {
             network,
             self.site_specific_dns_records,
             self.max_dns_domains_per_client,
+            listen_port,
         )
     }
 

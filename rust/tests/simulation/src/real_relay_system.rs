@@ -791,6 +791,7 @@ impl RealAllocation {
             let (candidate, is_new) = match event {
                 Event::New(candidate) => (candidate, true),
                 Event::Invalid(candidate) => (candidate, false),
+                Event::SocketTaken => continue,
             };
             if candidate.kind() != CandidateKind::Relayed {
                 continue;

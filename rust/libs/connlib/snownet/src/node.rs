@@ -13,7 +13,7 @@ use crate::crypto::{CommittedBatch, DecapsulateBatch, DecryptedBatch, Encapsulat
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
-use crate::node::connections::Connections;
+use crate::node::connections::{Connections, ValidatedPaths};
 use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::node::timeout_cache::TimeoutCache;
 use anyhow::{Context, Result, anyhow};
@@ -1036,6 +1036,7 @@ where
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
+            contested: Default::default(),
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         };
 
@@ -1328,6 +1329,9 @@ where
                         c.remove_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
                 }
+                relay_client_proto::Event::SocketTaken => {
+                    self.pending_events.push_back(Event::SocketTaken);
+                }
             }
         }
     }
@@ -1521,6 +1525,12 @@ pub enum Event<TId, RId> {
     NoRelays {
         blocked: Vec<RId>,
     },
+
+    /// A relay has an allocation of another device on our socket.
+    ///
+    /// The NAT in front of us maps both of us to the same public socket.
+    /// Upper layers should bind to a different local port and call [`Node::reset`].
+    SocketTaken,
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
@@ -1587,6 +1597,10 @@ struct Connection<RId> {
     idle_ice_config: IceConfig,
 
     poll_timeout_cache: TimeoutCache,
+
+    /// Remotes several Frostlink connections validated; a NAT delivers what we send there to
+    /// whichever device sent last, so we only reply to what arrives from them.
+    contested: BTreeSet<SocketAddr>,
 }
 
 impl<RId> Connection<RId> {
@@ -1656,6 +1670,7 @@ where
         transmits: &mut VecDeque<Transmit>,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
+        validated_paths: &mut ValidatedPaths<TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + Hash + fmt::Display,
@@ -1824,22 +1839,34 @@ where
                         now,
                     );
                 }
+                frostlink::Event::PathValidated { remote, .. } => {
+                    validated_paths.insert(cid, remote);
+                }
             }
         }
 
-        // Plaintext payloads (probes) need encapsulation; ciphertext
-        // goes straight to the wire.
+        // Probes need encapsulation; WireGuard messages go straight to the wire.
         while let Some(pt) = self.agent.poll_frostlink_transmit() {
-            let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
+            use frostlink::Payload::*;
+
             match pt.payload {
-                frostlink::Payload::Ciphertext(ref bytes) => {
+                ProbeRequest(_) | HandshakeInitiation(_) | Keepalive(_)
+                    if self.contested.contains(&pt.remote) =>
+                {
+                    tracing::trace!(local = %pt.local, remote = %pt.remote, "Not initiating traffic to contested remote");
+                }
+                HandshakeInitiation(ref bytes)
+                | HandshakeResponse(ref bytes)
+                | Keepalive(ref bytes) => {
+                    let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
                     if let Some(transmit) =
                         make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
                     {
                         transmits.push_back(transmit);
                     }
                 }
-                frostlink::Payload::Plaintext(ref ip) => {
+                ProbeRequest(ref ip) | ProbeReply(ref ip) => {
+                    let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
                     if let Ok(Some(batch)) =
                         self.encapsulate(cid, peer_socket, ip, now, allocations)
                         && let Ok(transmit) = batch.encrypt_single(ip)
@@ -2388,6 +2415,28 @@ where
 
         self.state
             .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
+    }
+
+    /// Stops initiating traffic to `remote` if this is a Frostlink connection with a candidate there.
+    fn mark_contested<TId>(&mut self, cid: TId, remote: SocketAddr, now: Instant)
+    where
+        TId: fmt::Display + Copy,
+    {
+        if !self.agent.is_frostlink() || !self.agent.has_remote_candidate(remote) {
+            return;
+        }
+
+        self.contested.insert(remote);
+
+        let candidates = self
+            .agent
+            .remote_candidates()
+            .filter(|candidate| candidate.addr() == remote)
+            .collect::<SmallVec<[_; 2]>>();
+
+        for candidate in candidates {
+            self.remove_remote_candidate(cid, candidate, now);
+        }
     }
 
     fn socket(&self) -> Option<PeerSocket> {
