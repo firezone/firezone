@@ -59,6 +59,8 @@ pub struct TunnelGenerator<'a> {
     socket_ip4: Ipv4Cursor,
     socket_ip6: Ipv6Cursor,
     nat_ip4: Ipv4Cursor,
+    link_ip4: Ipv4Cursor,
+    link_ip6: Ipv6Cursor,
     do53_ip4: Ipv4Cursor,
     do53_ip6: Ipv6Cursor,
     tunnel_ip4: Ipv4Cursor,
@@ -96,6 +98,11 @@ impl<'a> TunnelGenerator<'a> {
                 .unwrap(),
             ),
             nat_ip4: Ipv4Cursor::over("198.51.100.0/24".parse::<Ipv4Network>().unwrap()),
+            link_ip4: Ipv4Cursor::over("192.168.123.0/24".parse::<Ipv4Network>().unwrap()),
+            link_ip6: Ipv6Cursor::over(
+                Ipv6Network::new_truncate(Ipv6Addr::new(0xfd00, 0, 0, 0x123, 0, 0, 0, 0), 64)
+                    .unwrap(),
+            ),
             do53_ip4: Ipv4Cursor::over("192.18.0.0/24".parse::<Ipv4Network>().unwrap()),
             do53_ip6: Ipv6Cursor::over(
                 Ipv6Network::new_truncate(
@@ -194,6 +201,14 @@ impl<'a> TunnelGenerator<'a> {
 
     pub(super) fn nat_ip4(&mut self) -> Ipv4Addr {
         self.nat_ip4.next()
+    }
+
+    pub(super) fn link_ip4(&mut self) -> Ipv4Addr {
+        self.link_ip4.next()
+    }
+
+    pub(super) fn link_ip6(&mut self) -> Ipv6Addr {
+        self.link_ip6.next()
     }
 
     pub(super) fn do53_ip4(&mut self) -> Ipv4Addr {

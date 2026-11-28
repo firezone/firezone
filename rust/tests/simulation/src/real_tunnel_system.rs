@@ -1,7 +1,7 @@
 use super::buffered_transmits::BufferedTransmits;
 use super::dns_records::record_ip;
 use super::fake_portal::FakePortal;
-use super::network::{Host, HostId, RoutingTable};
+use super::network::{Host, HostId, LinkTraffic, RoutingTable};
 use super::real_client::RealClient;
 use super::real_gateway::RealGateway;
 use super::real_relay::RealRelay;
@@ -46,10 +46,19 @@ pub struct RealTunnelSystem {
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
     network: RoutingTable,
+    pub(crate) link_traffic: LinkTraffic,
+    pub(crate) linked_connections: BTreeMap<(ClientId, GatewayId), LinkedConnection>,
     icmp_flows: BTreeMap<FlowId, ResolvedIcmpFlow>,
     udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
     tcp_flows: BTreeMap<FlowId, ResolvedTcpFlow>,
     pub(crate) dns_nat_observations: Vec<DnsNatObservation>,
+}
+
+/// The uptime of a linked Client's connection to its Gateway, as the Client sees it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LinkedConnection {
+    pub(crate) down_since: Instant,
+    pub(crate) up_since: Option<Instant>,
 }
 
 #[derive(Clone, Copy)]
@@ -135,10 +144,20 @@ impl RealTunnelSystem {
 
         // Configure client and gateway with the relays.
         for client in clients.values_mut() {
-            client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), clock.now()));
+            let sockets = client.link_sockets();
+            client.exec_mut(|c| {
+                c.state_mut()
+                    .set_additional_host_candidates(sockets, clock.now());
+                c.update_relays(iter::empty(), relays.iter(), clock.now())
+            });
         }
         for gateway in gateways.values_mut() {
-            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), clock.now()));
+            let sockets = gateway.link_sockets();
+            gateway.exec_mut(|g| {
+                g.state_mut()
+                    .set_additional_host_candidates(sockets, clock.now());
+                g.update_relays(iter::empty(), relays.iter(), clock.now())
+            });
         }
 
         let upstream_do53_servers = portal
@@ -153,9 +172,25 @@ impl RealTunnelSystem {
             gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
         }
 
+        let linked_connections = clients
+            .keys()
+            .flat_map(|cid| gateways.keys().map(move |gid| (*cid, *gid)))
+            .filter(|(cid, gid)| model.network.linked(*cid, *gid))
+            .map(|pair| {
+                let connection = LinkedConnection {
+                    down_since: clock.now(),
+                    up_since: None,
+                };
+
+                (pair, connection)
+            })
+            .collect();
+
         let mut this = Self {
             clock,
             network: model.network.clone(),
+            link_traffic: LinkTraffic::default(),
+            linked_connections,
             client_portal_offline_until: None,
             clients,
             gateways,
@@ -620,9 +655,16 @@ impl RealTunnelSystem {
                 // 1. Dead-socket window: the old link is gone but the new one is
                 //    not up yet. Unregister the client from the network so all
                 //    traffic to it is dropped (as `HostId::Stale`) and advance
-                //    simulated time.
+                //    simulated time. A Client on a link leaves it behind, like a
+                //    laptop unplugged from its cable.
                 let client = self.clients.get_mut(&client_id).unwrap();
                 self.network.remove_host(client);
+                self.network.unplug_link(client_id);
+                client.unplug_link();
+                for _ in self
+                    .linked_connections
+                    .extract_if(.., |(cid, _), _| *cid == client_id)
+                {}
                 client.set_offline();
 
                 let dead_until = now + dead_window;
@@ -639,8 +681,10 @@ impl RealTunnelSystem {
                 client.update_interface(ip4, ip6);
                 let added = self.network.add_host(client_id, client, nat_ip4);
                 debug_assert!(added);
+                let sockets = client.link_sockets();
                 client.exec_mut(|c| {
                     c.tunnel.inner_mut().reset("roam", now);
+                    c.state_mut().set_additional_host_candidates(sockets, now);
                     c.state_mut().set_portal_connected(false);
                 });
 
@@ -856,8 +900,11 @@ impl RealTunnelSystem {
                 key,
                 clients,
             } => {
-                self.gateways.get_mut(&gateway_id).unwrap().exec_mut(|g| {
+                let gateway = self.gateways.get_mut(&gateway_id).unwrap();
+                let sockets = gateway.link_sockets();
+                gateway.exec_mut(|g| {
                     g.crash(key, now, utc_now);
+                    g.state_mut().set_additional_host_candidates(sockets, now);
                     g.update_relays(iter::empty(), self.relays.iter(), now);
                 });
 
@@ -938,7 +985,10 @@ impl RealTunnelSystem {
             buffered_transmits.push_from(transmit, client, now);
         }
 
+        let sockets = client.link_sockets();
         client.exec_mut(|c| {
+            c.state_mut().set_additional_host_candidates(sockets, now);
+
             // Apply to new instance.
             c.state_mut().update_interface_config(Interface {
                 ipv4,
@@ -1069,6 +1119,7 @@ impl RealTunnelSystem {
 
         while self.clock.now::<Instant>() < cut_off {
             let now = self.clock.now();
+            self.observe_linked_connections(now);
             let now_utc = self.clock.now::<SystemTime>();
 
             while let Some(transmit) = buffered_transmits.pop(now) {
@@ -1138,6 +1189,29 @@ impl RealTunnelSystem {
         for (transmit, at) in buffered_transmits.drain() {
             self.dispatch_transmit(transmit, at);
         }
+        self.observe_linked_connections(self.clock.now());
+    }
+
+    fn observe_linked_connections(&mut self, now: Instant) {
+        for ((cid, gid), connection) in &mut self.linked_connections {
+            let established = self.clients[cid]
+                .inner()
+                .state()
+                .connection_path(ClientOrGatewayId::Gateway(*gid))
+                .is_some();
+
+            match (established, connection.up_since) {
+                (true, None) => connection.up_since = Some(now),
+                (false, Some(_)) => {
+                    *connection = LinkedConnection {
+                        down_since: now,
+                        up_since: None,
+                    }
+                }
+                (true, Some(_)) => {}
+                (false, None) => {}
+            }
+        }
     }
 
     fn poll_timeout(&mut self) -> Option<Instant> {
@@ -1157,6 +1231,13 @@ impl RealTunnelSystem {
         let Some((host, transmit)) = self.network.route(transmit, at) else {
             return;
         };
+
+        if let Some(src) = transmit.src
+            && self.network.is_link_address(src.ip())
+            && let Some(sender) = self.network.host_by_ip(src.ip())
+        {
+            self.link_traffic.record(sender, host, at);
+        }
 
         match host {
             HostId::Client(id) => {

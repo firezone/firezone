@@ -22,7 +22,7 @@ use crate::dns_records::DnsRecords;
 use crate::fake_portal::{FakePortal, PoolMembers};
 use crate::model_client::ModelClient;
 use crate::model_gateway::ModelGateway;
-use crate::network::{Expiry, FilterMode, Host, Mapping, Nat, RoutingTable};
+use crate::network::{Expiry, FilterMode, Host, HostId, LinkInterface, Mapping, Nat, RoutingTable};
 use crate::os::SimulatedOs;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
 use crate::site_network::{IcmpError, RouteType, Routes};
@@ -41,12 +41,12 @@ pub(super) fn generate(
     }
     let nat_ips = network.nat_ips().collect::<Vec<_>>();
 
-    let clients = arb_clients(g, portal, &nat_ips, &mut network);
+    let mut clients = arb_clients(g, portal, &nat_ips, &mut network);
     let dns_resource_records = arb_dns_resource_records(g, portal, &domain_tree);
     let host_routes = arb_host_routes(g, &dns_resource_records, portal.upstream_do53());
     let sites = arb_sites(g, portal, &host_routes);
     let tcp_services = arb_tcp_services(g, &dns_resource_records, &sites);
-    let gateways = arb_gateways(g, portal, &domain_tree, &sites, &nat_ips, &mut network);
+    let mut gateways = arb_gateways(g, portal, &domain_tree, &sites, &nat_ips, &mut network);
     let relays = arb_relays(g);
 
     let global_dns_records = merge_dns_records(
@@ -59,6 +59,8 @@ pub(super) fn generate(
         debug_assert!(ok, "relay socket IPs must be unique by construction");
     }
 
+    arb_links(g, portal, &mut clients, &mut gateways, &mut network);
+
     TunnelModel::from_parts(
         clients,
         gateways,
@@ -68,6 +70,48 @@ pub(super) fn generate(
         tcp_services,
         network,
     )
+}
+
+/// Connects some Clients each to a different Gateway with a dedicated link, like a cable between
+/// two machines, if the portal hands out frostlink connections.
+///
+/// Drawn last, so an input that runs out of bytes before it has no links.
+fn arb_links(
+    g: &mut TunnelGenerator,
+    portal: &FakePortal,
+    clients: &mut BTreeMap<ClientId, Host<ModelClient>>,
+    gateways: &mut BTreeMap<GatewayId, Host<ModelGateway>>,
+    network: &mut RoutingTable,
+) {
+    if !portal.frostlink() {
+        return;
+    }
+
+    let mut unlinked = gateways.iter_mut().collect::<Vec<_>>();
+
+    for (cid, client) in clients.iter_mut() {
+        let Some(index) = g.choose_index(unlinked.len() + 1).checked_sub(1) else {
+            continue;
+        };
+        let (gid, gateway) = unlinked.remove(index);
+
+        let client_link = link_interface(g);
+        let gateway_link = link_interface(g);
+
+        client.connect_link(client_link);
+        gateway.connect_link(gateway_link);
+        network.add_link(
+            (HostId::from(*cid), client_link),
+            (HostId::from(*gid), gateway_link),
+        );
+    }
+}
+
+fn link_interface(g: &mut TunnelGenerator) -> LinkInterface {
+    LinkInterface {
+        ip4: g.link_ip4(),
+        ip6: g.link_ip6(),
+    }
 }
 
 pub(super) fn pick_site<'a>(g: &mut TunnelGenerator, sites: &'a [Site]) -> &'a Site {
