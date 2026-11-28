@@ -46,5 +46,9 @@
   {
     "file": "elixir/test/portal_api/controllers/integrations/webhook_body_error_test.exs",
     "name": "read_req_body"
+  },
+  {
+    "file": "elixir/test/support/channel_runner.ex",
+    "name": "handle_cast"
   }
 ]

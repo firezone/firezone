@@ -32,6 +32,7 @@ defmodule PortalAPI.Client.ChannelTest do
       case channel do
         PortalAPI.Client.V2.Channel -> PortalAPI.Client.V2.Socket
         PortalAPI.Client.V4.Channel -> PortalAPI.Client.V4.Socket
+        PortalAPI.Client.V5.Channel -> PortalAPI.Client.V5.Socket
         PortalAPI.Client.V3.Channel -> PortalAPI.Client.V3.Socket
         PortalAPI.Client.Channel -> PortalAPI.Client.Socket
       end
@@ -77,7 +78,11 @@ defmodule PortalAPI.Client.ChannelTest do
         trust_anchor_certificate_ids: Keyword.get(opts, :trust_anchor_certificate_ids, []),
         previous_public_key: Keyword.get(opts, :previous_public_key)
       })
-      |> subscribe_and_join(channel, "client")
+      |> then(fn socket ->
+        if Keyword.get(opts, :phoenix, false),
+          do: subscribe_and_join(socket, channel, "client"),
+          else: run_channel(socket, channel, "client")
+      end)
 
     socket
   end
@@ -611,7 +616,7 @@ defmodule PortalAPI.Client.ChannelTest do
           subject: subject,
           client_version: nil
         })
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+        |> run_channel(PortalAPI.Client.Channel, "client")
 
       refute_receive {:EXIT, _pid, _}
       refute_receive {:socket_close, _pid, _}
@@ -986,7 +991,7 @@ defmodule PortalAPI.Client.ChannelTest do
         subject: subject,
         client_version: nil
       })
-      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+      |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{resources: resources}
       assert Enum.count(resources, &(Map.get(&1, :address) == resource.address)) == 1
@@ -1055,7 +1060,7 @@ defmodule PortalAPI.Client.ChannelTest do
         subject: subject,
         client_version: "1.1.55"
       })
-      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+      |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{
         resources: resources
@@ -1090,7 +1095,7 @@ defmodule PortalAPI.Client.ChannelTest do
         subject: subject,
         client_version: nil
       })
-      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+      |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{relays: [relay_view | _] = relays}
       relay_view_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
@@ -1135,7 +1140,7 @@ defmodule PortalAPI.Client.ChannelTest do
       {:ok, _reply, socket1} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", assigns)
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+        |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{relays: relays1}
 
@@ -1145,7 +1150,7 @@ defmodule PortalAPI.Client.ChannelTest do
       {:ok, _reply, socket2} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", assigns)
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+        |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{relays: relays2}
 
@@ -1208,7 +1213,7 @@ defmodule PortalAPI.Client.ChannelTest do
         subject: subject,
         client_version: nil
       })
-      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+      |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{relays: [relay_view | _] = relays}
       relay_view_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
@@ -5029,7 +5034,7 @@ defmodule PortalAPI.Client.ChannelTest do
           subject: subject,
           client_version: nil
         })
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+        |> run_channel(PortalAPI.Client.Channel, "client")
 
       :sys.get_state(socket.channel_pid)
       assert_push "init", _init_payload
@@ -5107,7 +5112,7 @@ defmodule PortalAPI.Client.ChannelTest do
           subject: subject,
           client_version: client_version
         })
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+        |> run_channel(PortalAPI.Client.Channel, "client")
 
       :sys.get_state(socket.channel_pid)
       assert_push "init", _init_payload
@@ -5893,7 +5898,7 @@ defmodule PortalAPI.Client.ChannelTest do
           subject: subject,
           client_version: nil
         })
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+        |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{resources: _, relays: _, interface: _}
 
@@ -5942,7 +5947,7 @@ defmodule PortalAPI.Client.ChannelTest do
           subject: subject,
           client_version: client_version
         })
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+        |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{resources: _, relays: _, interface: _}
 
@@ -6261,7 +6266,7 @@ defmodule PortalAPI.Client.ChannelTest do
           subject: subject,
           client_version: nil
         })
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+        |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{resources: _, relays: _, interface: _}
 
@@ -6606,7 +6611,7 @@ defmodule PortalAPI.Client.ChannelTest do
           subject: subject,
           client_version: nil
         })
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+        |> run_channel(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{resources: _, relays: _, interface: _}
 
@@ -10631,5 +10636,206 @@ defmodule PortalAPI.Client.ChannelTest do
     start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
   end
 
+  describe "v5 channel" do
+    test "sends init with sites and without the fields only older clients need", %{
+      client: client,
+      subject: subject,
+      site: site,
+      dns_resource: dns_resource
+    } do
+      join_channel(client, subject, channel: PortalAPI.Client.V5.Channel)
 
+      assert_push "init", %{resources: resources, interface: interface}
+
+      payload = Enum.find(resources, &(&1.id == dns_resource.id))
+      assert payload.sites == [%{id: site.id, name: site.name}]
+      refute Enum.any?(resources, &Map.has_key?(&1, :gateway_groups))
+
+      refute Map.has_key?(interface, :upstream_dns)
+      assert interface.upstream_do53 == [%{ip: "1:2:3:4:5:6:7:8"}, %{ip: "1.1.1.1"}, %{ip: "8.8.8.8"}]
+    end
+
+    test "sends resources without adapting them to the client's version", %{
+      account: account,
+      client: client,
+      subject: subject,
+      site: site,
+      group: group,
+      internet_resource: internet_resource
+    } do
+      resource = dns_resource_fixture(address: "foo.**.glob-example.com", account: account, site: site)
+      policy_fixture(account: account, group: group, resource: resource)
+
+      join_channel(client, subject, channel: PortalAPI.Client.V5.Channel, client_version: "1.1.55")
+
+      assert_push "init", %{resources: resources}
+      assert %{address: "foo.**.glob-example.com"} = Enum.find(resources, &(&1.id == resource.id))
+      assert Enum.any?(resources, &(&1.id == internet_resource.id))
+    end
+
+    test "sends config_changed without the fields only older clients need", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V5.Channel)
+      assert_push "init", _init_payload
+
+      updated = %{account | config: %{account.config | search_domain: "new.example.com"}}
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :update, old_struct: account, struct: updated})
+
+      assert_push "config_changed", %{interface: interface}
+      assert interface.search_domain == "new.example.com"
+      refute Map.has_key?(interface, :upstream_dns)
+    end
+
+    test "for resource site changes pushes only resource_created_or_updated", %{
+      client: client,
+      subject: subject,
+      account: account,
+      actor: actor
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V5.Channel)
+      assert_push "init", _init_payload
+      group = group_fixture(account: account)
+      site = site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site)
+      policy_fixture(account: account, group: group, resource: resource)
+      membership = membership_fixture(account: account, actor: actor, group: group)
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: membership})
+      assert_push "resource_created_or_updated", %{sites: [%{id: site_id}]}
+      assert site_id == site.id
+
+      new_site = site_fixture(account: account)
+      updated_resource = update_resource(resource, site_id: new_site.id)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 200,
+        op: :update,
+        old_struct: resource,
+        struct: updated_resource
+      })
+
+      assert_push "resource_created_or_updated", %{id: resource_id, sites: [%{id: new_site_id}]}
+      assert resource_id == resource.id
+      assert new_site_id == new_site.id
+      refute_push "resource_deleted", _payload
+    end
+
+    test "pushes authorization_created with site_id", %{
+      client: client,
+      subject: subject,
+      cidr_resource: cidr_resource,
+      gateway: gateway,
+      gateway_token: gateway_token,
+      global_relay: global_relay
+    } do
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V5.Channel)
+      assert_push "init", _init_payload
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "request_access", %{"resource_ids" => [cidr_resource.id]})
+
+      assert_receive {:authorize, {channel_pid, ref}, payload}
+      resource_id = Ecto.UUID.load!(payload.resource.id)
+      assert resource_id == cidr_resource.id
+
+      send(channel_pid, {:authorized, ref, authorized_by(gateway, payload)})
+
+      gateway_id = gateway.id
+      site_id = gateway.site.id
+
+      assert_push "authorization_created",
+                  %{resource_id: ^resource_id, gateway_id: ^gateway_id, site_id: ^site_id} = created
+
+      refute Map.has_key?(created, :gateway_group_id)
+    end
+
+    test "pushes gateway ICE candidates by their current names", %{
+      client: client,
+      gateway: gateway,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V5.Channel)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:ice_candidates, %{id: gateway.id, type: :gateway}, ["cand1"]})
+      assert_push "gateway_ice_candidates", payload
+      assert payload == %{gateway_id: gateway.id, candidates: ["cand1"]}
+
+      send(socket.channel_pid, {:invalidate_ice_candidates, %{id: gateway.id, type: :gateway}, ["cand1"]})
+      assert_push "invalidate_gateway_ice_candidates", payload
+      assert payload == %{gateway_id: gateway.id, candidates: ["cand1"]}
+    end
+
+    test "pushes public_key_changed whatever the client's version", %{
+      client: client,
+      gateway: gateway,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V5.Channel, client_version: "1.5.20")
+      assert_push "init", _init_payload
+      public_key = generate_public_key()
+
+      send(socket.channel_pid, {:public_key_changed, :gateway, gateway.id, public_key})
+
+      assert_push "public_key_changed", payload
+      assert payload == %{gateway_id: gateway.id, public_key: public_key}
+    end
+
+    test "sends metrics_config after init", %{client: client, subject: subject} do
+      metrics_rule_fixture()
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V5.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      assert_push "metrics_config", %{endpoint: nil, token: nil, patterns: []}
+    end
+
+    for event <-
+          ~w[prepare_connection reuse_connection request_connection create_flow request_authorization request_device_access broadcast_ice_candidates broadcast_invalidated_ice_candidates] do
+      test "refuses #{event}, which current clients do not send", %{client: client, subject: subject} do
+        socket = join_channel(client, subject, channel: PortalAPI.Client.V5.Channel)
+        assert_push "init", _init_payload
+
+        log =
+          capture_log(fn ->
+            ref = push(socket, unquote(event), %{})
+            assert_reply ref, :error, %{reason: :unknown_message}
+          end)
+
+        assert log =~ "Unknown client message"
+      end
+    end
+  end
+
+  describe "Phoenix channels" do
+    for channel <- [
+          PortalAPI.Client.Channel,
+          PortalAPI.Client.V2.Channel,
+          PortalAPI.Client.V3.Channel,
+          PortalAPI.Client.V4.Channel
+        ] do
+      test "#{inspect(channel)} runs on Phoenix.Channel.Server", %{client: client, subject: subject} do
+        Process.flag(:trap_exit, true)
+        socket = join_channel(client, subject, channel: unquote(channel), phoenix: true)
+        assert_push "init", _init_payload
+
+        capture_log(fn ->
+          ref = push(socket, "unknown", %{})
+          assert_reply ref, :error, %{reason: :unknown_message}
+        end)
+
+        send(socket.channel_pid, :disconnect)
+        assert_push "disconnect", %{reason: "token_expired"}
+        assert_receive :socket_drain
+        assert_receive {:EXIT, _pid, :shutdown}
+      end
+    end
+  end
 end

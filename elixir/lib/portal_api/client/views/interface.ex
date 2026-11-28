@@ -8,7 +8,7 @@ defmodule PortalAPI.Client.Views.Interface do
     opendns: [%{url: "https://doh.opendns.com/dns-query"}]
   }
 
-  def render(%Device{} = client) do
+  def render(%Device{} = client, protocol_version) do
     dns_config = Map.get(client.account.config, :clients_upstream_dns)
 
     {upstream_do53, upstream_doh, upstream_dns} =
@@ -35,12 +35,13 @@ defmodule PortalAPI.Client.Views.Interface do
       upstream_do53: upstream_do53,
       upstream_doh: upstream_doh,
       ipv4: client.ipv4,
-      ipv6: client.ipv6,
-
-      # Legacy field
-      upstream_dns: upstream_dns
+      ipv6: client.ipv6
     }
+    |> put_legacy_dns(upstream_dns, protocol_version)
   end
+
+  defp put_legacy_dns(interface, _upstream_dns, protocol_version) when protocol_version >= 5, do: interface
+  defp put_legacy_dns(interface, upstream_dns, _protocol_version), do: Map.put(interface, :upstream_dns, upstream_dns)
 
   defp format_legacy_dns_address(%{address: address}) do
     ip = if String.contains?(address, ":"), do: "[#{address}]", else: address

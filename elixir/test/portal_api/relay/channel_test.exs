@@ -30,7 +30,7 @@ defmodule PortalAPI.Relay.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
+      |> run_channel(PortalAPI.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
     %{relay: relay, socket: socket, token: token, stamp_secret: stamp_secret}
   end
@@ -49,7 +49,7 @@ defmodule PortalAPI.Relay.ChannelTest do
                    opentelemetry_ctx: OpenTelemetry.Ctx.new(),
                    opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
                  })
-                 |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{
+                 |> run_channel(PortalAPI.Relay.Channel, "relay", %{
                    stamp_secret: stamp_secret
                  })
       end
@@ -109,7 +109,7 @@ defmodule PortalAPI.Relay.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
         })
-        |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{
+        |> run_channel(PortalAPI.Relay.Channel, "relay", %{
           stamp_secret: relay.stamp_secret,
           turn_account_validation: true
       })
@@ -234,7 +234,7 @@ defmodule PortalAPI.Relay.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
         })
-        |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{
+        |> run_channel(PortalAPI.Relay.Channel, "relay", %{
           stamp_secret: relay.stamp_secret,
           turn_account_validation: true
         })
@@ -331,7 +331,7 @@ defmodule PortalAPI.Relay.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{
+      |> run_channel(PortalAPI.Relay.Channel, "relay", %{
         stamp_secret: relay.stamp_secret,
         turn_account_validation: true
       })
@@ -345,6 +345,25 @@ defmodule PortalAPI.Relay.ChannelTest do
       ref = push(socket, "unknown_message", %{})
 
       assert_reply ref, :error, %{reason: :unknown_message}, 1000
+    end
+  end
+
+  describe "Phoenix channel" do
+    test "runs on Phoenix.Channel.Server" do
+      relay = relay_fixture()
+      token = relay_token_fixture()
+
+      assert {:ok, _reply, _socket} =
+               PortalAPI.Relay.Socket
+               |> socket("relay:#{relay.id}", %{
+                 token_id: token.id,
+                 relay: relay,
+                 opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+                 opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+               })
+               |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{stamp_secret: relay.stamp_secret})
+
+      assert_push "init", %{}
     end
   end
 end

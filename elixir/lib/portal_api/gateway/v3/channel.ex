@@ -59,5 +59,8 @@ defmodule PortalAPI.Gateway.V3.Channel do
   end
 
   @doc false
+  def protocol_version, do: 3
+
+  @doc false
   def create_authorization_event, do: "create_authorization"
 end

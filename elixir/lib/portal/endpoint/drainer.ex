@@ -52,14 +52,24 @@ defmodule Portal.Endpoint.Drainer do
     |> await(deadline)
   end
 
-  # Endpoint and socket modules, not user input.
-  # sobelow_skip ["DOS.ModuleConcat"]
   defp channels(endpoint) do
     for {_path, handler, _opts} <- endpoint.__sockets__(),
-        {_id, partition, _type, _modules} <- children(Module.concat(endpoint, handler)),
-        {_id, channel, _type, _modules} <- children(partition),
-        is_pid(channel),
+        channel <- channels(endpoint, handler),
         do: channel
+  end
+
+  # A plain WebSocket connection runs its channel in its own process and lists itself.
+  # Endpoint and socket modules, not user input.
+  # sobelow_skip ["DOS.ModuleConcat"]
+  defp channels(endpoint, handler) do
+    if function_exported?(handler, :connections, 0) do
+      handler.connections()
+    else
+      for {_id, partition, _type, _modules} <- children(Module.concat(endpoint, handler)),
+          {_id, channel, _type, _modules} <- children(partition),
+          is_pid(channel),
+          do: channel
+    end
   end
 
   defp children(supervisor) do
